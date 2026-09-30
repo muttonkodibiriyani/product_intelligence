@@ -15,18 +15,39 @@ a comparison board and an AI assistant behind a login.
 
 ## Quick start
 
-Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), Docker (for the local stack, later PRs).
+Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), Docker, and for the emulators the
+[Firebase CLI](https://firebase.google.com/docs/cli) plus Java 11+.
 
 ```bash
-make install   # uv sync
-make check     # ruff + mypy --strict + pytest with coverage — same as CI
+make install     # uv sync
+make check       # ruff + mypy --strict + pytest with coverage — same as CI
+
+cp .env.example .env   # optional: override ports/credentials (git-ignored)
+make up          # PostgreSQL 16 + pgvector on 127.0.0.1:55432 (waits until healthy)
+make db-shell    # psql into the local database
+make emulators   # Firebase auth/firestore/storage emulators, UI on http://127.0.0.1:54000
+make down        # stop the stack; data stays in the pi_pgdata volume
 ```
+
+Local stack ports (all bound to `127.0.0.1`):
+
+| Service | Port |
+|---|---|
+| PostgreSQL + pgvector | 55432 |
+| Auth emulator | 59099 |
+| Firestore emulator | 58080 |
+| Storage emulator | 59199 |
+| Emulator UI | 54000 |
+
+The emulators run against project id `productintelligence-beeb3` in single-project mode; nothing
+is created or changed in the cloud. Dagster and Cube join `infra/docker-compose.yml` in later PRs.
 
 ## Repository layout
 
 ```
 packages/        Python packages (uv workspace)
   pi_core/       shared domain model: enums, money, context
+infra/           docker-compose (local stack), Firebase emulator config
 docs/            blueprint, ADRs, requirement traceability, runbooks
 .github/         CI workflows and PR template
 ```
