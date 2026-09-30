@@ -38,9 +38,13 @@ Local stack ports (all bound to `127.0.0.1`):
 | Firestore emulator | 58080 |
 | Storage emulator | 59199 |
 | Emulator UI | 54000 |
+| Emulator hub | 54400 |
+| Emulator logging | 54500 |
 
-The emulators run against project id `productintelligence-beeb3` in single-project mode; nothing
-is created or changed in the cloud. Dagster and Cube join `infra/docker-compose.yml` in later PRs.
+The emulators run against the demo project id `demo-productintelligence` in single-project
+mode. A `demo-*` id has no cloud counterpart, so the emulators cannot reach the real
+`productintelligence-beeb3` project or use real credentials. Dagster and Cube join
+`infra/docker-compose.yml` in later PRs.
 
 ## Repository layout
 
