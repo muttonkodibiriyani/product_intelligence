@@ -129,8 +129,11 @@ def _availability(stock: Stock) -> tuple[AvailabilityState, FieldState | None]:
     return AvailabilityState.UNKNOWN, FieldState.UNKNOWN
 
 
-def _available_variants(product: ProductRecord) -> int:
-    return sum(variant.stock.state is StockState.IN_STOCK for variant in product.variants)
+def _available_variants(product: ProductRecord) -> tuple[int | None, FieldState | None]:
+    states = tuple(variant.stock.state for variant in product.variants)
+    if StockState.UNKNOWN in states:
+        return None, FieldState.UNKNOWN
+    return sum(state is StockState.IN_STOCK for state in states), None
 
 
 def _offer_draft(
@@ -141,7 +144,7 @@ def _offer_draft(
 ) -> OfferDraft:
     prices = variant.prices
     availability, availability_reason = _availability(variant.stock)
-    available_variants = _available_variants(product)
+    available_variants, variants_reason = _available_variants(product)
     rating = product.ratings
     field_state: dict[str, FieldState] = {
         "installment": FieldState.NOT_PUBLISHED,
@@ -171,6 +174,8 @@ def _offer_draft(
         )
     if availability_reason is not None:
         field_state["availability_state"] = availability_reason
+    if variants_reason is not None:
+        field_state["available_variants"] = variants_reason
 
     return OfferDraft(
         source_listing_key=variant.source_variant_id,

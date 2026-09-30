@@ -188,8 +188,8 @@ def test_unknown_stock_does_not_assert_low_stock_or_available_variant_count() ->
     offer = map_product(_product(), _result(), CONTEXT).offers[0]
     assert offer.low_stock_flag is None
     assert offer.field_state["low_stock_flag"] is FieldState.NOT_PUBLISHED
-    assert offer.available_variants == 1
-    assert "available_variants" not in offer.field_state
+    assert offer.available_variants is None
+    assert offer.field_state["available_variants"] is FieldState.UNKNOWN
 
 
 def test_available_variant_count_uses_only_observed_in_stock_variants() -> None:
@@ -201,6 +201,15 @@ def test_available_variant_count_uses_only_observed_in_stock_variants() -> None:
     }
     offers = map_product(_product(payload), _result(), CONTEXT).offers
     assert all(offer.available_variants == 1 for offer in offers)
+
+
+def test_all_unknown_variants_never_emit_a_false_zero_count() -> None:
+    payload = _payload()
+    for variant in payload["variants"]:
+        variant["stock"] = {"state": "unknown", "reason": "not published"}
+    offers = map_product(_product(payload), _result(), CONTEXT).offers
+    assert all(offer.available_variants is None for offer in offers)
+    assert all(offer.field_state["available_variants"] is FieldState.UNKNOWN for offer in offers)
 
 
 def test_absent_shade_and_concentration_are_not_assumed_inapplicable() -> None:
