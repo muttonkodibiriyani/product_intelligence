@@ -5,6 +5,7 @@ Pure and deterministic: the same inputs give byte-identical outputs. Rules, blue
 - GTIN: two valid, different GTINs never match. Two valid, equal GTINs are exact only if the
   rules below agree; a rule conflict makes the pair ``candidate`` with ``gtin_conflict``.
 - Concentration (EDP/EDT/parfum/...), when both are known, must agree or the pair is dropped.
+  Known on one side only ("Sauvage EDP" vs "Sauvage"), it caps the pair at ``probable``.
 - Item kind (regular/mini/refill/set) must agree or the pair is dropped.
 - Exact needs a strong name score, the same size and a compatible shade. A known size or shade
   code that differs caps the pair at ``candidate`` (same family, not the same item).
@@ -142,6 +143,9 @@ def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[
         reasons.append(f"kind={left.kind.value}")
     if left.concentration is not None and left.concentration is right.concentration:
         reasons.append(f"concentration={left.concentration.value}")
+    one_side = (left.concentration is None) != (right.concentration is None)
+    if one_side:
+        reasons.append("concentration_unknown_one_side")
     size = _size_relation(left.size, right.size)
     shade = _shade_relation(left.shade, right.shade)
     reasons.extend((f"size_{size}", f"shade_{shade}"))
@@ -155,7 +159,11 @@ def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[
         if conflicts:
             return Bucket.CANDIDATE, score, (*reasons, "gtin_conflict", *conflicts)
         return Bucket.EXACT, Decimal(1), tuple(reasons)
-    return _bucket(left, right, score, size, shade), score, tuple(reasons)
+    bucket = _bucket(left, right, score, size, shade)
+    if one_side and bucket is Bucket.EXACT:
+        # The bare name is ambiguous across EDT/EDP/parfum lines: never exact on one side.
+        bucket = Bucket.PROBABLE
+    return bucket, score, tuple(reasons)
 
 
 def unit_price(item: Prepared) -> UnitPrice | None:

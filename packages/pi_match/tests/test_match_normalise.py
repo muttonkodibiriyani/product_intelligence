@@ -40,6 +40,14 @@ from pi_match.normalise import (
         ("Christian Dior", "dior"),
         ("Lancôme", "lancome"),
         ("Charlotte Tilbury", "charlotte tilbury"),
+        # Ulta prints brands in capitals, Sephora in title case (#28).
+        ("KYLIE COSMETICS", "kylie"),
+        ("Kylie Cosmetics", "kylie"),
+        ("Kylie Cosmetics by Kylie Jenner", "kylie"),
+        ("FENTY BEAUTY BY RIHANNA", "fenty beauty"),
+        ("MAKE UP FOR EVER", "make up for ever"),
+        ("L'ORÉAL PARIS", "loreal paris"),
+        ("BENEFIT COSMETICS", "benefit"),
     ],
 )
 def test_normalise_brand(raw: str, key: str) -> None:
@@ -49,6 +57,11 @@ def test_normalise_brand(raw: str, key: str) -> None:
 def test_fold() -> None:
     assert fold("  Crème  de la MER! ") == "creme de la mer"
     assert fold("Rock & Roll") == "rock and roll"
+
+
+@given(st.text(alphabet=st.sampled_from("abcdefghijklmnopqrstuvwxyzéô&' ")))
+def test_brand_key_ignores_case(text: str) -> None:
+    assert normalise_brand(text.upper()) == normalise_brand(text) == normalise_brand(text.title())
 
 
 @given(st.text())
