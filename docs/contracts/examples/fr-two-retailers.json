@@ -58,7 +58,6 @@
     "fields": {
       "price": "ok",
       "regular": "ok",
-      "promo": "ok",
       "stock": "partial",
       "size": "ok",
       "shades": "ok",
@@ -116,7 +115,6 @@
               }
             ],
             "regular": null,
-            "promo": null,
             "availability": null
           },
           "evidence": {
@@ -159,7 +157,6 @@
               }
             ],
             "regular": null,
-            "promo": null,
             "availability": null
           },
           "evidence": {

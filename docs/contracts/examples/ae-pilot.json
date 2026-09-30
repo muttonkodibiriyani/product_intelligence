@@ -62,7 +62,6 @@
     "fields": {
       "price": "ok",
       "regular": "ok",
-      "promo": "ok",
       "stock": "partial",
       "size": "ok",
       "shades": "ok",
@@ -137,7 +136,6 @@
                 "currency": "AED"
               }
             ],
-            "promo": null,
             "availability": [
               "in_stock",
               "in_stock",
@@ -180,7 +178,6 @@
               }
             ],
             "regular": null,
-            "promo": null,
             "availability": [
               "in_stock",
               null,
@@ -254,7 +251,6 @@
               }
             ],
             "regular": null,
-            "promo": null,
             "availability": [
               "in_stock",
               "out_of_stock",
@@ -293,7 +289,6 @@
               }
             ],
             "regular": null,
-            "promo": null,
             "availability": null
           },
           "evidence": {
@@ -368,7 +363,6 @@
               }
             ],
             "regular": null,
-            "promo": null,
             "availability": null
           },
           "evidence": {

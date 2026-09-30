@@ -209,16 +209,20 @@ class Rating(ContractModel):
 
 
 class Series(ContractModel):
-    """One entry per ``meta.dates``; ``null`` means not observed that day, never zero."""
+    """One entry per ``meta.dates``; ``null`` means not observed that day, never zero.
+
+    ``price`` is the selling price observed; ``regular`` is the retailer's stated regular (was)
+    price. There is no promo series: promotion depth is derived from the two by the metric layer,
+    so the contract carries only what was observed.
+    """
 
     price: tuple[MoneyValue | None, ...]
     regular: tuple[MoneyValue | None, ...] | None = None
-    promo: tuple[MoneyValue | None, ...] | None = None
     availability: tuple[AvailabilityState | None, ...] | None = None
 
     def lengths(self) -> dict[str, int]:
         found = {"price": len(self.price)}
-        for name in ("regular", "promo", "availability"):
+        for name in ("regular", "availability"):
             values = getattr(self, name)
             if values is not None:
                 found[name] = len(values)
@@ -227,7 +231,7 @@ class Series(ContractModel):
     def money(self) -> list[MoneyValue]:
         return [
             value
-            for values in (self.price, self.regular or (), self.promo or ())
+            for values in (self.price, self.regular or ())
             for value in values
             if value is not None
         ]

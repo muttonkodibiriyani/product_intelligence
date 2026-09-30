@@ -50,7 +50,6 @@ _CAPS = Capabilities(
 _FIELDS = {
     "price": FieldStatus.OK,
     "regular": FieldStatus.OK,
-    "promo": FieldStatus.OK,
     "stock": FieldStatus.PARTIAL,
     "size": FieldStatus.OK,
     "shades": FieldStatus.OK,

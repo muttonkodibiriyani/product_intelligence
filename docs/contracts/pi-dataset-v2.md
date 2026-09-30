@@ -82,7 +82,7 @@ Every violation is reported, each with its path, in one `DatasetError`.
 5. **Currency:** an offer's `currency` is its retailer's market currency, and every money value
    in its series is in that currency. Cross-currency comparison is a consumer decision (the API
    reports `currency_mismatch`); the contract never converts.
-6. **Series:** `price`, and `regular`, `promo` and `availability` when present, have exactly one
+6. **Series:** `price`, and `regular` and `availability` when present, have exactly one
    entry per `meta.dates`. `null` means not observed on that date: never zero, and never carried
    forward.
 7. **Match edges:** `a < b` (canonical order), and both retailers have an offer on the product.
@@ -97,6 +97,12 @@ Every violation is reported, each with its path, in one `DatasetError`.
 10. **Credentials:** a document containing credential-like content (Algolia keys and headers,
     `api_key`/`app_id` keys) is refused outright, with the same patterns as the publisher's
     guard.
+
+## Promotions
+
+v1 carried a `promo` series, an integer percent derived from price and regular. v2 carries only
+observations: `price` (the selling price) and `regular` (the stated regular price). Promotion
+depth is derived by the metric layer (`pi_metrics`), which applies the rounding rule once.
 
 ## Early examples
 

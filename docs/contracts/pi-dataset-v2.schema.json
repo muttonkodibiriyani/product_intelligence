@@ -771,7 +771,7 @@
     },
     "Series": {
       "additionalProperties": false,
-      "description": "One entry per ``meta.dates``; ``null`` means not observed that day, never zero.",
+      "description": "One entry per ``meta.dates``; ``null`` means not observed that day, never zero.\n\n``price`` is the selling price observed; ``regular`` is the retailer's stated regular (was)\nprice. There is no promo series: promotion depth is derived from the two by the metric layer,\nso the contract carries only what was observed.",
       "properties": {
         "availability": {
           "anyOf": [
@@ -808,28 +808,6 @@
           },
           "title": "Price",
           "type": "array"
-        },
-        "promo": {
-          "anyOf": [
-            {
-              "items": {
-                "anyOf": [
-                  {
-                    "$ref": "#/$defs/MoneyValue"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Promo"
         },
         "regular": {
           "anyOf": [
