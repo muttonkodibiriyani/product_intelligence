@@ -139,7 +139,7 @@ through the proxy. It does not add any new client technique. Conditions:
    There is no recurring Ulta crawl (on-demand cadence, blueprint §6.4). The pace is at most 1 page per 5–10 s, off-peak.
 5. **Minimal proxy traffic:** heavy assets (images, media, fonts, third-party trackers) are
    blocked in the proxied browser, and images are fetched directly from the CDN, not through the proxy.
-   A per-run proxy byte counter is recorded in the run manifest. The **hard stop at 2 GB** (unless the
+   A per-run proxy byte counter is recorded in the run manifest. The **hard stop at 1.8 GB** (the balance is 2 GB bought at $6.25/GB; 0.2 GB is kept for a re-test; more only if the
    owner approves more) is **enforced inside `pi_fetch`**: a request that would cross the cap is not sent,
    and the run aborts. The proxy configuration is **refused for any source other than ulta.ae**.
    Both are covered by tests.
