@@ -1,0 +1,388 @@
+{
+  "schema": "pi.dataset/v2",
+  "meta": {
+    "kind": "snapshot",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "generatedAt": "2026-09-30T01:00:00Z",
+    "scope": "pilot",
+    "vertical": "beauty",
+    "markets": [
+      {
+        "country": "AE",
+        "currency": "AED",
+        "timeZone": "Asia/Dubai",
+        "locales": [
+          "en",
+          "ar"
+        ]
+      }
+    ],
+    "retailers": [
+      {
+        "id": "example_north_ae",
+        "name": "Example North",
+        "country": "AE",
+        "status": "supported",
+        "since": "2026-09-01",
+        "note": null,
+        "logo": null,
+        "earlyExamples": false
+      },
+      {
+        "id": "example_south_ae",
+        "name": "Example South",
+        "country": "AE",
+        "status": "supported",
+        "since": "2026-09-01",
+        "note": {
+          "en": "Recon samples only.",
+          "ar": "عينات استطلاع فقط."
+        },
+        "logo": null,
+        "earlyExamples": true
+      }
+    ],
+    "dates": [
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30"
+    ],
+    "matchStage": "reviewed",
+    "capabilities": {
+      "history": true,
+      "promotions": true,
+      "campaigns": false,
+      "stock": true,
+      "sizes": true,
+      "shades": true,
+      "coverage": true,
+      "images": false,
+      "ratings": true
+    },
+    "fields": {
+      "price": "ok",
+      "regular": "ok",
+      "stock": "partial",
+      "size": "ok",
+      "shades": "ok",
+      "rating": "ok",
+      "gtin": "not_published",
+      "image": "not_collected"
+    },
+    "producer": {
+      "name": "pi_dataset.examples",
+      "version": "1",
+      "commit": null
+    },
+    "test": true
+  },
+  "products": [
+    {
+      "id": "p-0001",
+      "brand": "Example Beauty",
+      "name": "Hydra Serum",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "example_north_ae": {
+          "currency": "AED",
+          "sku": "EX-EXAMPLE_NORTH_AE-39900",
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml"
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.25",
+            "scale": "5",
+            "count": 12
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "129.00",
+                "minor": 12900,
+                "currency": "AED"
+              },
+              {
+                "amount": "129.00",
+                "minor": 12900,
+                "currency": "AED"
+              },
+              {
+                "amount": "99.00",
+                "minor": 9900,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "129.00",
+                "minor": 12900,
+                "currency": "AED"
+              },
+              {
+                "amount": "129.00",
+                "minor": 12900,
+                "currency": "AED"
+              },
+              {
+                "amount": "129.00",
+                "minor": 12900,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "low_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "example:example_north_ae",
+            "runId": null
+          },
+          "image": null
+        },
+        "example_south_ae": {
+          "currency": "AED",
+          "sku": "EX-EXAMPLE_SOUTH_AE-313550",
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml"
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.25",
+            "scale": "5",
+            "count": 12
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "135.50",
+                "minor": 13550,
+                "currency": "AED"
+              },
+              null,
+              {
+                "amount": "135.50",
+                "minor": 13550,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": [
+              "in_stock",
+              null,
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "example:example_south_ae",
+            "runId": null
+          },
+          "image": null
+        }
+      },
+      "matches": [
+        {
+          "a": "example_north_ae",
+          "b": "example_south_ae",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.97",
+          "method": "brand_line_size",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p-0002",
+      "brand": "Example Beauty",
+      "name": "Velvet Lipstick",
+      "category": [
+        "makeup",
+        "lips"
+      ],
+      "unit": "g",
+      "offers": {
+        "example_north_ae": {
+          "currency": "AED",
+          "sku": "EX-EXAMPLE_NORTH_AE-38900",
+          "url": null,
+          "size": {
+            "value": "3.5",
+            "unit": "g"
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.25",
+            "scale": "5",
+            "count": 12
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "89.00",
+                "minor": 8900,
+                "currency": "AED"
+              },
+              {
+                "amount": "89.00",
+                "minor": 8900,
+                "currency": "AED"
+              },
+              {
+                "amount": "89.00",
+                "minor": 8900,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": [
+              "in_stock",
+              "out_of_stock",
+              "out_of_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "example:example_north_ae",
+            "runId": null
+          },
+          "image": null
+        },
+        "example_south_ae": {
+          "currency": "AED",
+          "sku": "EX-EXAMPLE_SOUTH_AE-39200",
+          "url": null,
+          "size": {
+            "value": "3.5",
+            "unit": "g"
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.25",
+            "scale": "5",
+            "count": 12
+          },
+          "early": true,
+          "series": {
+            "price": [
+              null,
+              null,
+              {
+                "amount": "92.00",
+                "minor": 9200,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "example:example_south_ae",
+            "runId": null
+          },
+          "image": null
+        }
+      },
+      "matches": [
+        {
+          "a": "example_north_ae",
+          "b": "example_south_ae",
+          "matchClass": "exact",
+          "reviewState": "locked",
+          "decidedBy": "human",
+          "confidence": "0.97",
+          "method": "brand_line_size",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [
+        "Rose",
+        "Plum"
+      ],
+      "attributes": {
+        "finish": "matte"
+      },
+      "image": null
+    },
+    {
+      "id": "p-0003",
+      "brand": "Sample Labs",
+      "name": "Night Cream",
+      "category": [
+        "skincare",
+        "moisturiser"
+      ],
+      "unit": "ml",
+      "offers": {
+        "example_north_ae": {
+          "currency": "AED",
+          "sku": "EX-EXAMPLE_NORTH_AE-321000",
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml"
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.25",
+            "scale": "5",
+            "count": 12
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "210.00",
+                "minor": 21000,
+                "currency": "AED"
+              },
+              {
+                "amount": "210.00",
+                "minor": 21000,
+                "currency": "AED"
+              },
+              {
+                "amount": "210.00",
+                "minor": 21000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "example:example_north_ae",
+            "runId": null
+          },
+          "image": null
+        }
+      },
+      "matches": [],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    }
+  ],
+  "notObserved": []
+}
