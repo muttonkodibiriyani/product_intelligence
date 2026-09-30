@@ -60,16 +60,22 @@ cart/checkout, polite pacing, and every escalation audit-logged.
 - Coverage may be lower on bot-protected sources. The Proxy Decision Report is the only path
   past a block.
 
-## Amendment 1 (2026-10-01): owner rulings from the Gulf probe
+## Amendment 1 (2026-09-30 UTC): owner rulings from the Gulf probe
 1. **Browser engine choice.** Playwright's stock Chromium, Firefox and WebKit engines are all
    ordinary rung-2 clients, headless or headed, desktop or mobile profile. Using the engine
    that a site serves normally is allowed; for ulta.ae that is WebKit, because Chromium and
    Firefox got a Cloudflare 403. No stealth patches, no cookie reuse, a fresh context per
    attempt, and no challenge solving. If the working engine starts being challenged, collection
    stops and is reported; it does not rotate engines or user agents to get past the challenge.
+   To make this boundary mechanical:
+   - The engine and device profile are **pinned per source in configuration** by owner or
+     coordinator decision (for example, ulta.ae uses WebKit).
+   - `pi_fetch` has **no automatic engine fallback**. A blocked engine returns a blocked
+     result.
+   - The engine, headless/headed mode and device profile are recorded in evidence metadata.
 2. **ulta.ae first-party calls.** The data the page itself loads (`/graphql`,
    `query-index.json`, `promotion-schedule.json`) is read inside the browser session. ulta.ae's
-   `robots.txt` is obeyed. The robots override from ADR-0005 applies to Sephora only.
+   `robots.txt` is obeyed, including for those API and JSON paths. The robots override from ADR-0005 applies to Sephora only.
 3. **ulta.ae search via Algolia.**
    - **(A) Primary route:** read the search and listing responses the page loads inside the
      browser.
