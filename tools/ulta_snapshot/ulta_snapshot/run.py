@@ -223,6 +223,7 @@ class Run:
         self.counts: Counter[str] = Counter()
         self.started = datetime.now(UTC).isoformat()
         self.stopped = "running"
+        self.challenged = False  # set only by a block that stopped the source (challenge/401/403)
         self.console = extra.get("console", sys.stdout)
         (out / "pdp").mkdir(parents=True, exist_ok=True)
 
@@ -291,6 +292,7 @@ class Run:
         if result.block is not None:
             self.counts[f"block_{result.block.kind.value}"] += 1
             if result.block.marks_source_blocked:
+                self.challenged = True
                 self.stopped = f"stopped: {result.block.kind.value} {result.block.http_status}"
                 return False
         elif result.http_status == 200:
@@ -308,7 +310,7 @@ class Run:
     def summary(self) -> str:
         """The one line the operator pastes back: status, pages, bytes, GB, USD, challenges."""
         use = self.usage()
-        challenged = any(k.startswith("block_") for k in self.counts)
+        challenged = self.challenged
         if self.stopped == "complete":
             status = "complete"
         elif challenged:

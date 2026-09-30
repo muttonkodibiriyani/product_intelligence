@@ -198,6 +198,9 @@ def test_byte_cap_stops_the_run_before_a_page_could_cross_it(tmp_path: Path) -> 
     assert manifest["stopped"] == progress["stopped"]
     assert manifest["proxy_usage"][0]["prior_bytes"] == prior
     assert "status=cap_reached pages_ok=2/4" in console.getvalue()
+    assert "challenge=no" in console.getvalue()
+    run.counts["block_rate_limited"] += 1  # an earlier non-stopping 429 is not a challenge
+    assert "status=cap_reached" in run.summary()
 
 
 def test_exhausted_allowance_raises_before_any_request(tmp_path: Path) -> None:

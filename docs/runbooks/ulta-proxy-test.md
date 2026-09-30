@@ -8,7 +8,7 @@ by itself at the first challenge, 401/403, proxy error, second 429 in a row, or 
 **You need:** Google Cloud Shell opened on project `productintelligence-beeb3`. You don't need a
 key file or a password: the job borrows your own Cloud Shell login (a token that expires within
 an hour) only to read the proxy login from Secret Manager. Neither the token nor the proxy login
-is ever printed or saved.
+is ever printed or saved to the result files.
 
 **Time:** first build about 3-5 minutes, then the run about 5-8 minutes.
 **Expected cost:** well under 0.1 GB, about $0.50 at most at $6.25/GB. The job stops before the
@@ -35,7 +35,7 @@ cd ~ && rm -rf pi-ulta-test && git clone -q https://github.com/muttonkodibiriyan
 cd ~/pi-ulta-test && git checkout -q "$COMMIT" && git log --oneline -1
 docker build -q -f tools/ulta_snapshot/Dockerfile -t pi-ulta-fetch .
 TS=$(date -u +%Y%m%dT%H%M%SZ); OUT=~/ulta-test-$TS; mkdir -p "$OUT"; echo "files go to $OUT"
-export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
+TOKEN="$(gcloud auth print-access-token)"; export GOOGLE_OAUTH_ACCESS_TOKEN="$TOKEN"
 docker run --rm -i --name ulta-test --user "$(id -u):$(id -g)" \
   -v "$OUT":/out \
   -e GOOGLE_OAUTH_ACCESS_TOKEN \
@@ -59,7 +59,9 @@ page 2: http 200, 987654 bytes: https://www.ulta.ae/en/buy-...
 ## What the last line means
 
 The run always ends with one line that starts with `ULTA TEST RESULT:`. **Paste that line into
-the owner chat.** The `status=` value tells you how it went:
+the owner chat.** If the block stopped before the run began (for example `gcloud` could not
+get a token, or the build failed), there is no such line: paste the last few lines instead. The
+`status=` value tells you how it went:
 
 | `status=` | Meaning | What to do |
 |---|---|---|
@@ -100,5 +102,7 @@ In the summary line and in the per-page lines:
 - Stock Playwright WebKit from the official image, pinned by tag and digest.
 - No stealth, no fingerprint changes, no challenge solving, no logins, no cart.
 - The container runs as your own user, not root.
-- Your token lives only in the job's memory: it is removed from the environment before the
-  browser starts, and it expires by itself within the hour.
+- Your token is used only to read the proxy login. The job removes it from its environment
+  before the browser starts, and it expires by itself within the hour. While the job runs it is
+  still visible to you via `docker inspect ulta-test` in your own Cloud Shell. It is never
+  printed or saved to the result files.
