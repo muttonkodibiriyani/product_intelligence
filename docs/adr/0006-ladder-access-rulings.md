@@ -129,24 +129,40 @@ through the proxy. It does not add any new client technique. Conditions:
 2. **Same page and robots transport:** `robots.txt` is fetched through the same pinned engine and
    the same proxy egress as the pages. The fail-closed status matrix applies, and HTML or a challenge served with a 2xx
    means unreadable, which refuses the host. There is no fallback to another transport, engine or egress.
-3. **Stop at the first challenge:** a Cloudflare challenge, 401 or 403 stops the whole run and marks
-   ulta.ae blocked. There is no solving, no retry and no switch of engine, user agent or egress.
-   A 429 backs off per host as usual. If the ~20-page test is challenged, Ulta stays blocked and
-   no further proxy spend is made.
+3. **Stop at the first challenge:** a challenge is classified by the response body and markers
+   (for example, a Cloudflare "Just a moment..." or managed-challenge page), **not** by the status code.
+   Any challenge (whether served as 403, 429 or 503), and any 401 or 403, stops the whole run and
+   marks ulta.ae blocked. There is no solving, no retry and no switch of engine, user agent or egress.
+   Only a plain 429 without challenge markers backs off per host. **Two consecutive 429s stop the
+   run.** If the ~20-page test is challenged, Ulta stays blocked and no further proxy spend is made.
 4. **Sequence and volume:** a ~20-page test first. Then, if the test is clean, **one** full-catalogue snapshot, stored permanently.
    There is no recurring Ulta crawl (on-demand cadence, blueprint §6.4). The pace is at most 1 page per 5–10 s, off-peak.
 5. **Minimal proxy traffic:** heavy assets (images, media, fonts, third-party trackers) are
    blocked in the proxied browser, and images are fetched directly from the CDN, not through the proxy.
-   A per-run proxy byte counter is recorded in the run manifest, with a **hard stop at 2 GB**
-   unless the owner approves more.
+   A per-run proxy byte counter is recorded in the run manifest. The **hard stop at 2 GB** (unless the
+   owner approves more) is **enforced inside `pi_fetch`**: a request that would cross the cap is not sent,
+   and the run aborts. The proxy configuration is **refused for any source other than ulta.ae**.
+   Both are covered by tests.
+   Direct image fetches obey the image CDN's own `robots.txt` and have their own per-host pacing.
 6. **Credentials:** they are read at runtime from Secret Manager
    (`pi-proxy-iproyal-ae`, latest version). They are never printed, logged, committed or put in
    fixtures, and they are redacted in reprs, audit events and exceptions. The secret must be rotatable
-   without code changes. The owner rotates the password after the demo, because it was briefly visible in the owner chat.
+   without code changes. The password was briefly visible in the owner chat, so it should be
+   rotated **before first use**; the coordinator has asked the owner to do this. If it is not
+   rotated before first use, this is recorded as an owner-accepted risk and it is rotated after the demo.
 7. **Unchanged:** logins, cookie reuse, checkout, stealth (rung 3), TLS impersonation and
    challenge solving remain prohibited. Classifier refusals are never routed around.
 
 **Recorded concern (Reviewer, owner-accepted risk):** using a residential proxy while the site's
 WAF is actively challenging our other egresses sits uneasily with "not permission to bypass
 access controls". The owner accepted this risk with the stop-at-first-challenge condition above.
-No legal/ToS review by counsel has been done; this is recorded as an open item for the owner.
+**Legal/ToS review waived by the owner:** the cadence decision (2026-09-30, blueprint §6.4) makes a
+legal/ToS review a precondition for rung 5. The owner's explicit instruction to build and crawl
+ulta.ae now waives that precondition for this snapshot. The review by counsel remains an open item
+for the owner, and it is required before any further Ulta refresh.
+
+**Vendor note:** residential proxy exits are other people's connections. We rely on IPRoyal's stated
+consent-based pool, which we have not verified independently.
+
+**Proxy Decision Report (#19):** superseded by this amendment. It is closed as answered, with the
+owner's decision recorded here.
