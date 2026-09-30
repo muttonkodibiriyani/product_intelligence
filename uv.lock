@@ -12,6 +12,7 @@ members = [
     "pi-core",
     "pi-db",
     "pi-fetch",
+    "pi-match",
     "product-intelligence",
 ]
 
@@ -761,6 +762,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "pi-match"
+version = "0.1.0"
+source = { editable = "packages/pi_match" }
+dependencies = [
+    { name = "pi-core" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
+
+[[package]]
 name = "playwright"
 version = "1.63.0"
 source = { registry = "https://pypi.org/simple" }
@@ -797,6 +813,7 @@ dependencies = [
     { name = "pi-core" },
     { name = "pi-db" },
     { name = "pi-fetch" },
+    { name = "pi-match" },
 ]
 
 [package.dev-dependencies]
@@ -814,6 +831,7 @@ requires-dist = [
     { name = "pi-core", editable = "packages/pi_core" },
     { name = "pi-db", editable = "packages/pi_db" },
     { name = "pi-fetch", editable = "packages/pi_fetch" },
+    { name = "pi-match", editable = "packages/pi_match" },
 ]
 
 [package.metadata.requires-dev]
