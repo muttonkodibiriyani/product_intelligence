@@ -1,10 +1,17 @@
 rules_version = '2';
-// Deny-all baseline. Firestore holds app state only (ADR-0002); real rules arrive with the
-// web app (PR17). These rules are used by the local emulator only — never deployed from here.
+// Deployed to productintelligence-beeb3 and used by the local emulator.
+// Clients never write. Signed-in users with an invited role (custom claim set by
+// infra/scripts/invite_user.py) may read the demo_* collections; everything else is denied.
+// Server-side jobs use admin credentials, which bypass rules.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    function isInvited() {
+      return request.auth != null && request.auth.token.role in ['admin', 'viewer'];
+    }
+
+    match /{collection}/{document=**} {
+      allow read: if isInvited() && collection.matches('demo_.*');
+      allow write: if false;
     }
   }
 }
