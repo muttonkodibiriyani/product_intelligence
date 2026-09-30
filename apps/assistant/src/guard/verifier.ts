@@ -48,6 +48,8 @@ export const NON_METRIC_KEYS: ReadonlySet<string> = new Set([
   "datasetGeneration",
   "toolVersion",
   "url",
+  // Money is {amount, minor, currency}; the minor-unit integer is not a display value.
+  "minor",
   // Echoed tool inputs: a number the model put into a filter must not launder itself.
   "filters",
 ]);

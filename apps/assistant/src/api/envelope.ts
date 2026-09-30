@@ -48,6 +48,9 @@ export const EnvelopeSchema = z
       market: z.string().regex(/^[A-Z]{2}$/),
       currency: z.string().regex(/^[A-Z]{3}$/),
       apiVersion: identifier.optional(),
+      metricVersion: identifier.optional(),
+      endpoint: identifier.optional(),
+      scope: identifier.optional(),
     }),
   })
   .superRefine((value, ctx) => {

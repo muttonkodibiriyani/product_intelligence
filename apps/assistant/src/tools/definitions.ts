@@ -17,19 +17,32 @@ const retailerId = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/, "retailer id from 
 const productId = z.string().regex(/^[A-Za-z0-9_.:-]{1,200}$/);
 const money = z.string().regex(/^\d{1,9}(?:\.\d{1,3})?$/, "decimal amount, e.g. 120.50");
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const retailerPair = z.tuple([retailerId, retailerId]).refine(([a, b]) => a !== b, {
-  message: "two different retailers",
-});
+const retailerPair = z
+  .object({ base: retailerId, other: retailerId })
+  .strict()
+  .refine(({ base, other }) => base !== other, { message: "two different retailers" });
 const filters = { brand: textList.optional(), category: textList.optional() };
 
-type QueryValue = string | number | boolean | readonly (string | number)[] | undefined;
+type QueryValue =
+  | string
+  | number
+  | boolean
+  | readonly (string | number)[]
+  | { readonly base: string; readonly other: string }
+  | undefined;
 
 /** Flatten a parsed input into query parameters; arrays repeat the key. */
 export function toQuery(input: Readonly<Record<string, QueryValue>>): Record<string, string[]> {
   const query: Record<string, string[]> = {};
   for (const [key, value] of Object.entries(input)) {
     if (value === undefined) continue;
-    query[key] = Array.isArray(value) ? value.map(String) : [String(value)];
+    if (typeof value === "object" && !Array.isArray(value)) {
+      // A retailer pair travels as "base,other" (service-layer §6 common filters).
+      const pair = value as { readonly base: string; readonly other: string };
+      query[key] = [`${pair.base},${pair.other}`];
+    } else {
+      query[key] = Array.isArray(value) ? value.map(String) : [String(value)];
+    }
   }
   return query;
 }
@@ -102,8 +115,9 @@ export const indexTrend = defineTool({
   version: "1",
   description:
     "Price index between two retailers over a fixed basket of exact, reviewed, same-size pairs. " +
-    "Index = sum of base prices / sum of other prices x 100; above 100 means base is dearer. One " +
-    "point per collection date. A trend needs two or more dates of history.",
+    "Index = sum of other prices / sum of base prices x 100, over the basket counted on the first " +
+    "date; above 100 means other is dearer than base. One point per collection date. A trend needs " +
+    "two or more dates of history.",
   minRole: "viewer",
   input: z
     .object({
@@ -130,7 +144,7 @@ export const promotions = defineTool({
     .object({
       ...filters,
       retailer: z.array(retailerId).min(1).max(4).optional(),
-      minPromoPct: z.number().int().min(1).max(100).optional(),
+      minPct: z.number().int().min(1).max(100).optional(),
       limit,
     })
     .strict(),
@@ -169,8 +183,8 @@ export const launches = defineTool({
   input: z
     .object({
       since: isoDate.optional(),
-      retailer: z.array(retailerId).min(1).max(4).optional(),
-      ...filters,
+      retailer: retailerId.optional(),
+      category: textList.optional(),
       limit,
     })
     .strict(),

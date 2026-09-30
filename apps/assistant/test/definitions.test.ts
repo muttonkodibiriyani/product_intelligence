@@ -60,6 +60,9 @@ describe("tool definitions", () => {
     });
     expect(coverageStatus.request({})).toEqual({ method: "GET", path: "/v1/coverage" });
     expect(toQuery({ a: undefined, b: true, c: [1, 2] })).toEqual({ b: ["true"], c: ["1", "2"] });
+    expect(
+      indexTrend.request(indexTrend.input.parse({ retailers: { base: "north", other: "south" } })),
+    ).toEqual({ method: "GET", path: "/v1/index", query: { retailers: ["north,south"] } });
   });
 
   it("rejects unknown keys, floats for money, SQL-ish and malformed values", () => {
@@ -72,7 +75,8 @@ describe("tool definitions", () => {
       [getProduct, { id: "p1; drop table" }],
       [compare, { ids: ["p1"] }],
       [compare, { ids: ["p1", "p2"], brand: ["A"] }],
-      [compare, { retailers: ["north", "north"] }],
+      [compare, { retailers: { base: "north", other: "north" } }],
+      [compare, { retailers: ["north", "south"] }],
       [indexTrend, { from: "2026-09-15", to: "2026-09-01" }],
       [assortmentGaps, { missingAt: "north", presentAt: "north" }],
       [reviewsSummary, { ids: ["p1"], category: ["X"] }],

@@ -30,6 +30,7 @@ describe("ToolRegistry", () => {
       tool: "compare",
       toolVersion: "1",
       apiVersion: "v1.0.0",
+      metricVersion: null,
       datasetGeneration: "gen-42",
       cutoff: META.cutoff,
       market: "AE",
@@ -96,6 +97,21 @@ describe("ToolRegistry", () => {
     expect(result.data).toBeUndefined();
   });
 
+  it("keeps rows on not_enough_data (cohort below the minimum)", async () => {
+    const api = new FakeApi(() => ({
+      ...okEnvelope({ rows: [{ id: "p01", name: "Cream", gapPct: "-16.7" }], summary: null }),
+      status: "not_enough_data",
+      reason: "cohort_too_small",
+      detail: { en: "Fewer than five counted pairs.", ar: "…" },
+    }));
+    const result = (await registry(api).run("compare", {}, VIEWER, "t")) as ToolEnvelope;
+    expect(result.notEnoughData?.reason).toBe("cohort_too_small");
+    expect(result.data).toEqual({
+      rows: [{ id: "p01", name: { untrusted: "Cream" }, gapPct: "-16.7" }],
+      summary: null,
+    });
+  });
+
   it("returns typed errors", async () => {
     const ok = new FakeApi(() => okEnvelope({}));
     await expect(registry(ok).run("run_sql", {}, VIEWER, "t")).resolves.toMatchObject({
@@ -111,6 +127,9 @@ describe("ToolRegistry", () => {
       [401, "unauthenticated"],
       [403, "forbidden"],
       [422, "invalid_input"],
+      [404, "not_found"],
+      [409, "stale_cursor"],
+      [429, "rate_limited"],
       [503, "upstream_unavailable"],
       [0, "upstream_unavailable"],
     ];

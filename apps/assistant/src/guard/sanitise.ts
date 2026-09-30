@@ -39,6 +39,9 @@ export const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
   "method",
   "stage",
   "fieldStatus",
+  "class",
+  "convention",
+  "availability",
 ]);
 
 /**

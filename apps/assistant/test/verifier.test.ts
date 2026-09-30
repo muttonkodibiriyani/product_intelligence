@@ -13,6 +13,7 @@ const output = {
   data: {
     gapPct: "-16.7",
     basePrice: "1020.74",
+    price: { amount: "129.00", minor: 12900, currency: "AED" },
     count: 8,
     id: "p42",
     capturedAt: "2026-09-15T08:00:00Z",
@@ -37,7 +38,7 @@ describe("normalisation", () => {
 describe("collection", () => {
   it("collects typed values only", () => {
     const found = collectToolNumbers([output]).map((d) => `${d.units}/${d.scale}`);
-    expect(found.sort()).toEqual(["102074/2", "167/1", "8/0"].sort());
+    expect(found.sort()).toEqual(["102074/2", "12900/2", "167/1", "8/0"].sort());
   });
 });
 

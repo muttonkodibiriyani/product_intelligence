@@ -30,6 +30,9 @@ export type ToolErrorCode =
   | "forbidden"
   | "unauthenticated"
   | "invalid_input"
+  | "not_found"
+  | "rate_limited"
+  | "stale_cursor"
   | "upstream_unavailable"
   | "upstream_invalid"
   | "output_too_large";
@@ -45,6 +48,7 @@ export interface Citation {
   readonly tool: string;
   readonly toolVersion: string;
   readonly apiVersion: string | null;
+  readonly metricVersion: string | null;
   readonly datasetGeneration: string;
   readonly cutoff: string;
   readonly market: string;
@@ -76,6 +80,9 @@ function apiErrorCode(status: number): ToolErrorCode {
   if (status === 401) return "unauthenticated";
   if (status === 403) return "forbidden";
   if (status === 400 || status === 422) return "invalid_input";
+  if (status === 404) return "not_found";
+  if (status === 409) return "stale_cursor";
+  if (status === 429) return "rate_limited";
   return "upstream_unavailable";
 }
 
@@ -84,6 +91,9 @@ const API_ERROR_MESSAGES: Record<ToolErrorCode, string> = {
   forbidden: "This data is not available to your role.",
   unauthenticated: "Your session has expired; sign in again.",
   invalid_input: "The data service rejected these inputs.",
+  not_found: "Nothing has this id.",
+  rate_limited: "Too many requests; wait a moment and try again.",
+  stale_cursor: "The data was refreshed; run the search again without a cursor.",
   upstream_unavailable: "The data service is unavailable right now.",
   upstream_invalid: "The data service returned an unexpected result.",
   output_too_large: "Result too large; narrow the filters or lower limit.",
@@ -147,8 +157,12 @@ export class ToolRegistry {
     const { evidenceHosts } = this.config;
     const result: ToolEnvelope = {
       status: envelope.data.status,
+      // not_enough_data may still carry rows (e.g. compare below the cohort minimum).
+      ...(envelope.data.data === undefined
+        ? {}
+        : { data: sanitiseData(envelope.data.data, evidenceHosts) }),
       ...(envelope.data.status === "ok"
-        ? { data: sanitiseData(envelope.data.data, evidenceHosts) }
+        ? {}
         : {
             notEnoughData: {
               reason: envelope.data.reason ?? "no_match",
@@ -159,6 +173,7 @@ export class ToolRegistry {
         tool: tool.name,
         toolVersion: tool.version,
         apiVersion: meta.apiVersion ?? null,
+        metricVersion: meta.metricVersion ?? null,
         datasetGeneration: meta.generation,
         cutoff: meta.cutoff,
         market: meta.market,
