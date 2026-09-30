@@ -301,6 +301,12 @@ def test_policy_robots_agent_selects_the_group(tmp_path: Path) -> None:
         f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
 
 
+@pytest.mark.parametrize("token", ["Googlebot", "bingbot", "GPTBot"])
+def test_robots_agent_cannot_be_another_crawler(token: str) -> None:
+    with pytest.raises(ValueError, match="another crawler"):
+        FetchPolicy(robots_agent=token)
+
+
 def test_robots_is_read_over_plain_http_even_for_a_browser_fetch(tmp_path: Path) -> None:
     factory = ScriptedFactory(raw(404, b"missing"), raw())
     f = fetcher(tmp_path, factory, robots=RobotsTagger())

@@ -32,6 +32,16 @@ DEFAULT_USER_AGENT = (
     "Chrome/140.0.0.0 Safari/537.36"
 )
 
+#: Other crawlers' robots.txt tokens: we never select their groups (they may be allowed more).
+OTHER_CRAWLER_TOKENS = frozenset(
+    {
+        "googlebot", "googlebot-image", "googlebot-news", "google-extended", "adsbot-google",
+        "bingbot", "msnbot", "slurp", "duckduckbot", "baiduspider", "yandex", "yandexbot",
+        "applebot", "facebookexternalhit", "twitterbot", "gptbot", "ccbot", "claudebot",
+        "anthropic-ai", "petalbot", "amazonbot", "bytespider",
+    }
+)  # fmt: skip
+
 _RUNG0_METHOD: dict[PayloadKind, FetchMethod] = {
     PayloadKind.XML: FetchMethod.SITEMAP,
     PayloadKind.JSON: FetchMethod.SITE_API,
@@ -101,6 +111,14 @@ class FetchPolicy(PiModel):
         too_fast = sorted(k for k, v in value.items() if v < MIN_INTERVAL_FLOOR_S)
         if too_fast:
             msg = f"page_interval_s below {MIN_INTERVAL_FLOOR_S}s for sources {too_fast}"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("robots_agent")
+    @classmethod
+    def _check_robots_agent(cls, value: str | None) -> str | None:
+        if value is not None and value.lower() in OTHER_CRAWLER_TOKENS:
+            msg = f"robots_agent {value!r} is another crawler's token; use our own or None"
             raise ValueError(msg)
         return value
 

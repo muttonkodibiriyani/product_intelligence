@@ -226,6 +226,7 @@ ULTA_AE_ROBOTS = (Path(__file__).parent / "fixtures" / "robots" / "ulta_ae.txt")
         ("/en/fragments/nav", False),
         ("/en/footer", False),
         ("/en/system/404?referer=x", False),
+        ("/graphql?query=%7Bproducts%7D", False),  # /*?
         ("/sitemap.xml", True),
         ("/robots.txt", True),
     ],
