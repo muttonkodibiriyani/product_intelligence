@@ -11,6 +11,7 @@ for a source configured ``tag_only`` (ADR-0005 override).
 
 import random
 import re
+import string
 import threading
 import time
 from collections.abc import Callable
@@ -19,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from datetime import time as dtime
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator
@@ -194,9 +195,27 @@ class _Rule:
     regex: re.Pattern[str]
 
 
+_UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
+_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
+#: Printable ASCII stays as is; space and non-ASCII are UTF-8 percent-encoded.
+_PRINTABLE = "".join(chr(c) for c in range(0x21, 0x7F))
+
+
+def _normalise(value: str) -> str:
+    """RFC 9309 §2.2.2 comparison form for a path or pattern. Non-ASCII is percent-encoded,
+    escapes are upper-cased, and escaped unreserved characters are decoded."""
+
+    def fix(match: re.Match[str]) -> str:
+        char = chr(int(match.group(1), 16))
+        return char if char in _UNRESERVED else f"%{match.group(1).upper()}"
+
+    return _ESCAPE.sub(fix, quote(value, safe=_PRINTABLE))
+
+
 def _rule(allow: bool, pattern: str) -> _Rule:
     """An RFC 9309 path pattern: ``*`` matches any run of characters, a final ``$`` anchors the
-    end, and everything else is a literal prefix match."""
+    end, and everything else is a literal prefix match (after ``_normalise``)."""
+    pattern = _normalise(pattern)
     anchored = pattern.endswith("$")
     body = pattern[:-1] if anchored else pattern
     regex = ".*".join(re.escape(part) for part in body.split("*"))
@@ -238,7 +257,7 @@ class RobotsRules:
     def allows(self, url: str) -> bool:
         """True when ``url`` (path plus query) may be fetched."""
         parts = urlsplit(url)
-        target = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+        target = _normalise((parts.path or "/") + (f"?{parts.query}" if parts.query else ""))
         if parts.path == "/robots.txt":
             return True
         best: _Rule | None = None

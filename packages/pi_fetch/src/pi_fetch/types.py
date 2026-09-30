@@ -166,7 +166,8 @@ class FetchResult(PiModel):
     elapsed_ms: int = Field(ge=0)
     #: True when a 304 revalidation returned the stored payload.
     from_cache: bool
-    #: Set: the connector must not parse; listings become blocked / not_observed.
+    #: Set: the connector must not parse, and listings are not observed. Only a verdict with
+    #: ``marks_source_blocked`` (challenge or blocked, not rate_limited) makes the source blocked.
     block: BlockVerdict | None
     #: Where the raw payload is stored.
     evidence_uri: NonEmptyStr

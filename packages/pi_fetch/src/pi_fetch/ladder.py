@@ -55,7 +55,9 @@ _ACCEPT: dict[PayloadKind, str] = {
     PayloadKind.IMAGE: "image/avif,image/webp,image/png,image/*;q=0.8,*/*;q=0.5",
 }
 _NOT_MODIFIED = 304
-#: robots.txt statuses that mean "no robots.txt": everything allowed (RFC 9309 §2.3.1.3).
+#: robots.txt statuses that mean "no robots.txt": everything allowed (RFC 9309 §2.3.1.3). Every
+#: other non-2xx, 401/403/429 included, refuses the host: stricter than the RFC on purpose
+#: (ADR-0006 consequences).
 _ROBOTS_ABSENT = frozenset({404, 410})
 _ROBOTS_ACCEPT = "text/plain,*/*;q=0.8"
 

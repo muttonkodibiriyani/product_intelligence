@@ -226,8 +226,15 @@ def test_obeyed_robots_refuses_disallowed_url_before_any_page_request(
 
 @pytest.mark.parametrize(
     "robots_response",
-    [raw(503, b"down"), raw(403, b"denied"), raw(429, b"slow"), None],
-    ids=["5xx", "403", "429", "transport-error"],
+    [
+        raw(503, b"down"),
+        raw(500, b"err"),
+        raw(401, b"auth"),
+        raw(403, b"denied"),
+        raw(429, b"slow"),
+        None,
+    ],
+    ids=["503", "500", "401", "403", "429", "transport-error"],
 )
 def test_unreadable_robots_refuses_every_url(
     tmp_path: Path, robots_response: RawResponse | None
@@ -242,8 +249,9 @@ def test_unreadable_robots_refuses_every_url(
     assert len(factory.sends) <= 1  # robots.txt is read once per host, then remembered
 
 
-def test_missing_robots_allows_and_is_read_once(tmp_path: Path) -> None:
-    factory = ScriptedFactory(raw(404, b"missing"), raw(), raw())
+@pytest.mark.parametrize("status", [404, 410])
+def test_missing_robots_allows_and_is_read_once(tmp_path: Path, status: int) -> None:
+    factory = ScriptedFactory(raw(status, b"missing"), raw(), raw())
     f = fetcher(tmp_path, factory, robots=RobotsTagger())
     ctx = make_ctx(LadderRung.PLAIN_HTTP)
     assert f.fetch(req(), ctx).ok

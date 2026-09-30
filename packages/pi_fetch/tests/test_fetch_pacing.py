@@ -1,6 +1,7 @@
 import random
 from datetime import UTC, datetime, time
 from itertools import pairwise
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -180,3 +181,40 @@ def test_robots_tie_goes_to_allow_and_agent_groups_merge() -> None:
     assert not mine.allows("https://x.example/y")
     assert mine.allows("https://x.example/z")
     assert RobotsRules("# nothing\nSitemap: https://x.example/s.xml\n").allows("https://x.example/")
+
+
+SEPHORA_ROBOTS = (Path(__file__).parent / "fixtures" / "robots" / "sephora_me.txt").read_text()
+
+
+@pytest.mark.parametrize(
+    ("path", "allowed"),
+    [
+        ("/ae/en/p/lipstick-P123", True),
+        ("/on/demandware.store/Sites-SA/en/Home-GetFooter", True),  # longer Allow beats Disallow
+        ("/on/demandware.store/Sites-SA/en/Cart-Show", False),
+        ("/ae/en/makeup?scgid=C12", True),  # equal-length Allow and Disallow: Allow wins
+        ("/ae/en/makeup?scgid=X12", False),
+        ("/ae/en/search?q=rouge", False),
+        ("/ae/en/makeup?sz=48", False),
+        ("/checkout/cart", False),
+        ("/ae/en/api/v1/products", False),
+        ("/beautyboard/", True),
+    ],
+)
+def test_robots_real_sephora_file(path: str, allowed: bool) -> None:
+    assert RobotsRules(SEPHORA_ROBOTS).allows(f"https://www.sephora.me{path}") is allowed
+
+
+def test_robots_percent_encoding_is_normalised() -> None:
+    rules = RobotsRules(
+        "User-agent: *\nDisallow: /caf\u00e9\nDisallow: /%7euser\nDisallow: /a%2fb\n"
+    )
+    assert not rules.allows("https://x.example/caf%c3%a9/menu")
+    assert not rules.allows("https://x.example/~user/home")
+    assert not rules.allows("https://x.example/a%2Fb")
+    assert rules.allows("https://x.example/a/b")  # an encoded slash is not a path separator
+
+
+def test_robots_empty_disallow_allows_all() -> None:
+    rules = RobotsRules("User-agent: *\nDisallow:\n")
+    assert rules.allows("https://x.example/anything?at=all")
