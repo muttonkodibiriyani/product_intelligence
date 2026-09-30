@@ -129,3 +129,125 @@ class LadderRung(IntEnum):
     def is_paid(self) -> bool:
         """Paid rungs require an explicit owner decision before use."""
         return self is LadderRung.PAID_PROXY
+
+
+class FetchMethod(StrEnum):
+    """Concrete collection method, recorded for audit on every evidence row (ADR-0003).
+
+    Each method belongs to exactly one ladder rung, so the rung can never contradict the method.
+    """
+
+    SITE_API = "site_api"
+    EMBEDDED_JSON = "embedded_json"
+    SITEMAP = "sitemap"
+    CURL_CFFI = "curl_cffi"
+    PLAYWRIGHT = "playwright"
+    SCRAPLING = "scrapling"
+    CAMOUFOX = "camoufox"
+    PATCHRIGHT = "patchright"
+    EGRESS_VARIATION = "egress_variation"
+    RESIDENTIAL_PROXY = "residential_proxy"
+
+    @property
+    def rung(self) -> LadderRung:
+        """The ladder rung this method belongs to."""
+        return _METHOD_RUNG[self]
+
+
+_METHOD_RUNG: dict[FetchMethod, LadderRung] = {
+    FetchMethod.SITE_API: LadderRung.SITE_DATA,
+    FetchMethod.EMBEDDED_JSON: LadderRung.SITE_DATA,
+    FetchMethod.SITEMAP: LadderRung.SITE_DATA,
+    FetchMethod.CURL_CFFI: LadderRung.IMPERSONATED_HTTP,
+    FetchMethod.PLAYWRIGHT: LadderRung.BROWSER,
+    FetchMethod.SCRAPLING: LadderRung.STEALTH_BROWSER,
+    FetchMethod.CAMOUFOX: LadderRung.STEALTH_BROWSER,
+    FetchMethod.PATCHRIGHT: LadderRung.STEALTH_BROWSER,
+    FetchMethod.EGRESS_VARIATION: LadderRung.EGRESS_VARIATION,
+    FetchMethod.RESIDENTIAL_PROXY: LadderRung.PAID_PROXY,
+}
+
+
+class Market(StrEnum):
+    """Markets a source context can target (ADR-0004). Values are ISO 3166-1 alpha-2 codes."""
+
+    KSA = "SA"
+    UAE = "AE"
+
+    @property
+    def currency(self) -> str:
+        """ISO 4217 currency every price in this market is stated in."""
+        return _MARKET_CURRENCY[self]
+
+    @property
+    def time_zone(self) -> str:
+        """IANA time zone used for the market's local day (SRC-06)."""
+        return _MARKET_TIME_ZONE[self]
+
+
+_MARKET_CURRENCY: dict[Market, str] = {Market.KSA: "SAR", Market.UAE: "AED"}
+_MARKET_TIME_ZONE: dict[Market, str] = {Market.KSA: "Asia/Riyadh", Market.UAE: "Asia/Dubai"}
+
+
+class Locale(StrEnum):
+    """Collection and content locales (SCP-06, CAT-06). Both are collected for every source."""
+
+    EN = "en"
+    AR = "ar"
+
+    @property
+    def is_rtl(self) -> bool:
+        """True for right-to-left scripts."""
+        return self is Locale.AR
+
+
+class SourceKind(StrEnum):
+    """How a source is reached (blueprint 5.1 ``source.kind``)."""
+
+    WEB = "web"
+    APP = "app"
+    FEED = "feed"
+    AGGREGATOR = "aggregator"
+    OFFLINE = "offline"
+
+
+class Device(StrEnum):
+    """Device profile a context is collected as (SRC-02)."""
+
+    DESKTOP = "desktop"
+    MOBILE = "mobile"
+    APP = "app"
+
+
+class ImageRole(StrEnum):
+    """Role of an image on a listing (blueprint 5.1 ``listing_image.role``)."""
+
+    MAIN = "main"
+    ALT = "alt"
+    SWATCH = "swatch"
+    MODEL = "model"
+    TEXTURE = "texture"
+
+
+class Concentration(StrEnum):
+    """Fragrance concentration. Different concentrations are never an exact match (8.4, MAT-02)."""
+
+    EXTRAIT = "extrait"
+    PARFUM = "parfum"
+    EDP = "edp"
+    EDT = "edt"
+    COLOGNE = "cologne"
+
+
+class PromotionMechanic(StrEnum):
+    """Normalised promotion mechanic (PRC-09). Anything unparsed is UNCLASSIFIED, never guessed."""
+
+    PERCENT_OFF = "percent_off"
+    AMOUNT_OFF = "amount_off"
+    FIXED_PRICE = "fixed_price"
+    MULTIBUY = "multibuy"
+    BUY_X_GET_Y = "buy_x_get_y"
+    GIFT_WITH_PURCHASE = "gift_with_purchase"
+    FREE_SHIPPING = "free_shipping"
+    COUPON = "coupon"
+    UNCLASSIFIED = "unclassified"
