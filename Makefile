@@ -35,7 +35,8 @@ check: lint types test
 # ---------------------------------------------------------------- local stack (blueprint §3.3)
 # Reads ./.env when present (copy from .env.example); otherwise compose defaults apply.
 COMPOSE := docker compose -f infra/docker-compose.yml $(if $(wildcard .env),--env-file .env)
-FIREBASE_PROJECT := productintelligence-beeb3
+# demo-* ids make the emulators refuse to reach any real Firebase project or credentials.
+FIREBASE_PROJECT := demo-productintelligence
 
 up:
 	$(COMPOSE) up -d --wait
