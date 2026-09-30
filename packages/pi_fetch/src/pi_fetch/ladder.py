@@ -36,7 +36,6 @@ from pi_fetch.pacing import (
     RobotsTag,
     RobotsTagger,
     parse_retry_after,
-    product_token,
 )
 from pi_fetch.policy import Engine, FetchPlan, FetchPolicy, plan
 from pi_fetch.transports.base import RawResponse, Transport, TransportError
@@ -104,9 +103,7 @@ class Fetcher:
         self._evidence = evidence
         self._pacer = pacer or HostPacer()
         self._cache = cache
-        self._robots = robots or RobotsTagger(
-            self._policy.robots_agent or product_token(self._policy.user_agent)
-        )
+        self._robots = robots or RobotsTagger(self._policy.robots_group_agent)
         self._factory = transport_factory
         self._clock = clock
         self._transports: dict[tuple[Engine, str, BrowserProfile | None], Transport] = {}

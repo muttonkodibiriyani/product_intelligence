@@ -301,10 +301,30 @@ def test_policy_robots_agent_selects_the_group(tmp_path: Path) -> None:
         f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
 
 
-@pytest.mark.parametrize("token", ["Googlebot", "bingbot", "GPTBot"])
-def test_robots_agent_cannot_be_another_crawler(token: str) -> None:
-    with pytest.raises(ValueError, match="another crawler"):
+@pytest.mark.parametrize(
+    "token", ["Googlebot", "bingbot", "GPTBot", "Mediapartners-Google", "OAI-SearchBot", "*"]
+)
+def test_robots_agent_must_be_our_own_token(token: str) -> None:
+    with pytest.raises(ValueError, match="is not ours"):
         FetchPolicy(robots_agent=token)
+
+
+@pytest.mark.parametrize(
+    "user_agent",
+    [
+        "Googlebot/2.1 (+http://www.google.com/bot.html)",
+        "Mediapartners-Google",
+        "PerplexityBot/1.0",
+    ],
+)
+def test_user_agent_product_token_must_be_ours(user_agent: str) -> None:
+    with pytest.raises(ValueError, match="is not ours"):
+        FetchPolicy(user_agent=user_agent)
+
+
+def test_default_robots_token_is_mozilla() -> None:
+    assert FetchPolicy().robots_group_agent == "Mozilla"
+    assert FetchPolicy(robots_agent="PIBot").robots_group_agent == "PIBot"
 
 
 def test_robots_is_read_over_plain_http_even_for_a_browser_fetch(tmp_path: Path) -> None:

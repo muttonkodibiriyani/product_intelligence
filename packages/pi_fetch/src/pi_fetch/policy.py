@@ -15,12 +15,13 @@ are never redefined here. On top of that:
 import os
 from collections.abc import Mapping
 from enum import StrEnum
+from typing import Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from pi_core import CollectionContext, FetchMethod, LadderRung, PiModel, SourceContext
 from pi_core.types import DbId, NonEmptyStr
-from pi_fetch.pacing import MIN_INTERVAL_FLOOR_S, RobotsMode
+from pi_fetch.pacing import MIN_INTERVAL_FLOOR_S, RobotsMode, product_token
 from pi_fetch.types import BrowserProfile, FetchRequest, PayloadKind
 
 #: Egress name recorded on results fetched from the default (direct) network path.
@@ -32,15 +33,10 @@ DEFAULT_USER_AGENT = (
     "Chrome/140.0.0.0 Safari/537.36"
 )
 
-#: Other crawlers' robots.txt tokens: we never select their groups (they may be allowed more).
-OTHER_CRAWLER_TOKENS = frozenset(
-    {
-        "googlebot", "googlebot-image", "googlebot-news", "google-extended", "adsbot-google",
-        "bingbot", "msnbot", "slurp", "duckduckbot", "baiduspider", "yandex", "yandexbot",
-        "applebot", "facebookexternalhit", "twitterbot", "gptbot", "ccbot", "claudebot",
-        "anthropic-ai", "petalbot", "amazonbot", "bytespider",
-    }
-)  # fmt: skip
+#: The only robots.txt group tokens we may select: the product token of our normal browser
+#: User-Agent and our own name. An allowlist, so no configuration can pick another crawler's
+#: (possibly more permissive) group or claim its identity.
+OWN_ROBOTS_TOKENS = frozenset({"mozilla", "pibot"})
 
 _RUNG0_METHOD: dict[PayloadKind, FetchMethod] = {
     PayloadKind.XML: FetchMethod.SITEMAP,
@@ -114,13 +110,19 @@ class FetchPolicy(PiModel):
             raise ValueError(msg)
         return value
 
-    @field_validator("robots_agent")
-    @classmethod
-    def _check_robots_agent(cls, value: str | None) -> str | None:
-        if value is not None and value.lower() in OTHER_CRAWLER_TOKENS:
-            msg = f"robots_agent {value!r} is another crawler's token; use our own or None"
+    @model_validator(mode="after")
+    def _check_robots_agent_is_ours(self) -> Self:
+        token = self.robots_group_agent
+        if token.lower() not in OWN_ROBOTS_TOKENS:
+            allowed = sorted(OWN_ROBOTS_TOKENS)
+            msg = f"robots token {token!r} (robots_agent or user_agent) is not ours: {allowed}"
             raise ValueError(msg)
-        return value
+        return self
+
+    @property
+    def robots_group_agent(self) -> str:
+        """The effective robots.txt group token: ``robots_agent``, else the UA product token."""
+        return self.robots_agent or product_token(self.user_agent)
 
     def robots_mode_for(self, source_id: DbId) -> RobotsMode:
         """OBEY unless the source is explicitly configured otherwise."""
