@@ -124,6 +124,9 @@ make new-connector SOURCE=<source_key> VERTICAL=<vertical>   # after the ADR-000
     detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
   ```
 
+  In a `git worktree`, the container can't follow the `.git` file and reports "scanned ~0
+  bytes". Add `--no-git` there, and treat a 0-byte scan as a failed scan, not a pass.
+
 - Open the connector PR and get the Reviewer's approval. The coordinator merges.
 
 ## 5. On-demand snapshot
