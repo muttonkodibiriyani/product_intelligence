@@ -10,10 +10,15 @@ Output shows masked emails only.
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/invite_user.py \
         --project productintelligence-beeb3 --role admin < emails.txt
+
+Existing accounts are refused unless --existing is passed. Changing a role revokes the user's
+refresh tokens; --revoke removes the role and revokes tokens (the account is kept).
 """
 
 import argparse
 import sys
+from collections.abc import Callable
+from functools import partial
 
 import firebase_admin
 import google.auth
@@ -47,27 +52,46 @@ def send_reset_email(
         raise RuntimeError(f"sendOobCode failed: {msg}")
 
 
+class RefusedError(Exception):
+    """The requested change is not allowed without an explicit flag."""
+
+
 def invite(
-    email: str,
-    role: str,
-    project: str,
-    continue_url: str,
-    session: google.auth.transport.requests.AuthorizedSession | None,
+    email: str, role: str, send_email: Callable[[str], None] | None, *, allow_existing: bool
 ) -> str:
     try:
         user = auth.get_user_by_email(email)
-        state = "existing"
     except auth.UserNotFoundError:
         user = auth.create_user(email=email, email_verified=False, disabled=False)
         state = "created"
+    else:
+        # Never silently grant a role to an account someone else may control.
+        if not allow_existing:
+            raise RefusedError("account already exists; re-run with --existing if intended")
+        state = "existing"
     claims = dict(user.custom_claims or {})
+    previous = claims.get("role")
     claims["role"] = role
     auth.set_custom_user_claims(user.uid, claims)
+    revoked = ""
+    if previous is not None and previous != role:
+        # Old ID tokens keep the old claim for up to 1 h; force a fresh sign-in.
+        auth.revoke_refresh_tokens(user.uid)
+        revoked = f" (was {previous}; tokens revoked)"
     sent = "skipped"
-    if session is not None:
-        send_reset_email(session, project, email, continue_url)
+    if send_email is not None:
+        send_email(email)
         sent = "sent"
-    return f"{mask(email)} uid={user.uid} {state} role={role} reset-email={sent}"
+    return f"{mask(email)} uid={user.uid} {state} role={role}{revoked} reset-email={sent}"
+
+
+def revoke(email: str) -> str:
+    """Remove the role claim and revoke refresh tokens; the account itself is kept."""
+    user = auth.get_user_by_email(email)
+    claims = {k: v for k, v in (user.custom_claims or {}).items() if k != "role"}
+    auth.set_custom_user_claims(user.uid, claims or None)
+    auth.revoke_refresh_tokens(user.uid)
+    return f"{mask(email)} uid={user.uid} role removed, tokens revoked"
 
 
 def main() -> int:
@@ -76,6 +100,12 @@ def main() -> int:
     parser.add_argument("--role", choices=ROLES, default="viewer")
     parser.add_argument(
         "--no-email", action="store_true", help="create user + claim only; send the email later"
+    )
+    parser.add_argument(
+        "--existing", action="store_true", help="allow acting on accounts that already exist"
+    )
+    parser.add_argument(
+        "--revoke", action="store_true", help="remove access: drop the role and revoke tokens"
     )
     parser.add_argument("--continue-url", default="https://productintelligence-beeb3.web.app/")
     args = parser.parse_args()
@@ -88,11 +118,16 @@ def main() -> int:
     firebase_admin.initialize_app(options={"projectId": args.project})
     creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     session = google.auth.transport.requests.AuthorizedSession(creds)
-    mailer = None if args.no_email else session
+    mailer = None
+    if not args.no_email:
+        mailer = partial(send_reset_email, session, args.project, continue_url=args.continue_url)
     failed = 0
     for email in emails:
         try:
-            print(invite(email, args.role, args.project, args.continue_url, mailer))
+            if args.revoke:
+                print(revoke(email))
+            else:
+                print(invite(email, args.role, mailer, allow_existing=args.existing))
         except Exception as exc:
             failed += 1
             print(f"{mask(email)} FAILED: {exc}", file=sys.stderr)
