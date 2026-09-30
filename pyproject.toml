@@ -69,6 +69,7 @@ mypy_path = [
   "packages/pi_match/src",
   "tests",
   "tools/gulf_probe",
+  "tools/ulta_snapshot",
 ]
 files = [
   "packages/pi_core/src",
@@ -85,6 +86,7 @@ files = [
   "tools/gulf_probe/gulf_probe/analysis.py",
   "tools/gulf_probe/gulf_probe/plan.py",
   "tools/gulf_probe/tests",
+  "tools/ulta_snapshot",
 ]
 
 [tool.pydantic-mypy]
@@ -94,8 +96,8 @@ warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
-testpaths = ["packages", "tests/uat", "tools/gulf_probe/tests"]
-pythonpath = ["tests", "packages/pi_fetch/tests", "tools/gulf_probe"]
+testpaths = ["packages", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests"]
+pythonpath = ["tests", "packages/pi_fetch/tests", "tools/gulf_probe", "tools/ulta_snapshot"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",

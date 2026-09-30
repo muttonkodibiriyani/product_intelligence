@@ -704,6 +704,7 @@ source = { editable = "packages/pi_connector_ulta" }
 dependencies = [
     { name = "defusedxml" },
     { name = "pi-core" },
+    { name = "pi-fetch" },
     { name = "pydantic" },
 ]
 
@@ -711,6 +712,7 @@ dependencies = [
 requires-dist = [
     { name = "defusedxml", specifier = ">=0.7" },
     { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pi-fetch", editable = "packages/pi_fetch" },
     { name = "pydantic", specifier = ">=2.9" },
 ]
 
