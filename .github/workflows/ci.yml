@@ -30,7 +30,39 @@ jobs:
         run: uv run ruff format --check .
       - name: mypy (strict)
         run: uv run mypy
-      - name: pytest + coverage
+      - name: pytest + coverage (no database)
+        run: uv run pytest -m "not db" --cov=pi_core --cov-report=term
+
+  database:
+    name: Database — migrations up/down, schema tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: pi
+          POSTGRES_PASSWORD: pi_ci_only
+          POSTGRES_DB: pi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pi -d pi"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      PI_DATABASE_URL: postgresql+psycopg://pi:pi_ci_only@127.0.0.1:5432/pi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked
+      - name: alembic upgrade head (CLI path)
+        run: uv run alembic -c packages/pi_db/alembic.ini upgrade head
+      - name: pytest + coverage (full suite, incl. database)
         run: uv run pytest --cov --cov-report=term
 
   secrets:
