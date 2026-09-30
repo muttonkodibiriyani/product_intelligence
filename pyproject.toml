@@ -35,7 +35,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["packages/*/src", "packages/*/tests", "tests", "tools/gulf_probe"]
+src = ["packages/*/src", "packages/*/tests", "tests", "tools/gulf_probe", "tools/offline_import"]
 
 [tool.ruff.lint]
 select = [
@@ -80,6 +80,7 @@ mypy_path = [
   "tools/ulta_snapshot",
   "tools/sephora_snapshot",
   "tools/sephora_snapshot/tests",
+  "tools/offline_import",
   "infra/scripts",
 ]
 files = [
@@ -105,6 +106,7 @@ files = [
   "tools/gulf_probe/tests",
   "tools/ulta_snapshot",
   "tools/sephora_snapshot",
+  "tools/offline_import",
   "infra/scripts/invite_user.py",
   "infra/scripts/pg_backup.py",
   "infra/scripts/publish_dataset.py",
@@ -123,8 +125,8 @@ warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
-testpaths = ["packages", "apps/assistant/pytests", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "tools/sephora_snapshot/tests", "scripts/demo_export", "infra/tests"]
-pythonpath = ["tests", "packages/pi_fetch/tests", "packages/pi_metrics/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "infra/scripts"]
+testpaths = ["packages", "apps/assistant/pytests", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "tools/sephora_snapshot/tests", "tools/offline_import/tests", "scripts/demo_export", "infra/tests"]
+pythonpath = ["tests", "packages/pi_fetch/tests", "packages/pi_metrics/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "tools/offline_import", "infra/scripts"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",
@@ -143,7 +145,10 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe", "pi_match", "pi_metrics"]
+source = [
+  "pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe", "pi_match",
+  "pi_metrics", "offline_import",
+]
 omit = ["*/gulf_probe/run.py"]  # network entry point; runs only in the Cloud Run probe job
 
 [tool.coverage.report]
