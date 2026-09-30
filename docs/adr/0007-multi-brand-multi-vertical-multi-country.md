@@ -270,8 +270,8 @@ and each metric states which verticals it applies to.
 
 **Dataset contract v2 (E2–E4, I1–I2)** replaces `pi.dataset/v1`:
 - **Schema:** a JSON Schema in `docs/contracts/` with an explicit `schema: "pi.dataset/v2"`
-  version field. Producers (`demo_export`, later the pipeline) and the dashboard validator both
-  test against it.
+  version field. The producers (`demo_export`, later the pipeline), the upload validator
+  (`infra/scripts/publish_dataset.py`) and the dashboard all test against it.
 - **Retailers:** `retailers[]` holds N entries (id = register `source_key`, display name, logo,
   country, status). Offers are keyed by retailer id; the fixed `"u"`/`"s"` slots go away.
 - **Markets:** `markets[]` holds `{country, currency, time_zone, locales}`, and the validator
@@ -303,13 +303,16 @@ silently.
 analytics, export or web-app code outside config, fixtures and contracts.
 
 ### 7. Per-user data scoping (I4): optional, designed now, built on demand
-The pilot has one audience, so data is not scoped per user. If clients start seeing different
-markets or brands, access is scoped as follows:
-- **Claim:** a Firebase custom claim `scopes = {markets: [...], brands: [...], sources: [...]}`,
-  set by an admin tool and mirrored in `user_entitlement`.
-- **Enforcement:** Storage and Firestore rules allow reads only under
-  `datasets/<market>/<scope>/` that the claims cover, and the assistant's tools filter by the same
-  claims.
+The pilot has one audience, so data is not scoped per user. Today (#23) any invited user
+with the `role` claim `admin` or `viewer` may read `datasets/**` (`infra/storage.rules`). If
+clients start seeing different markets or brands, access is scoped as follows:
+- **Claim:** a second Firebase custom claim sits next to `role`:
+  `scopes = {markets: [...], brands: [...], sources: [...]}`. It is set by
+  `infra/scripts/invite_user.py` and mirrored in `user_entitlement`. A user without `scopes` keeps
+  today's access.
+- **Enforcement:** the Storage and Firestore rules narrow `datasets/**` to the
+  `datasets/<market>/<scope>/` paths that the claims cover. The assistant's tools filter by the
+  same claims.
 - **Tests:** emulator tests cover allow and deny for each claim shape.
 
 The v2 dataset layout (§6) is chosen so these rules are path-based and need no reshaping later. The
