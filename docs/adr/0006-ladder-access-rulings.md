@@ -43,9 +43,15 @@ cart/checkout, polite pacing, and every escalation audit-logged.
 | 5 | `residential_proxy` |
 
 ## Consequences
-- `pi_core`'s `LadderRung` and `FetchMethod` follow this table. Open work still names
-  `IMPERSONATED_HTTP`/`STEALTH_BROWSER` and `curl_cffi`/`scrapling`/`camoufox`, and must be
-  renamed or removed before merge.
+- `pi_core` enums follow this table. Required renames:
+  - `LadderRung.IMPERSONATED_HTTP = 1` → `LadderRung.PLAIN_HTTP = 1`.
+  - `LadderRung.STEALTH_BROWSER = 3` is removed. The value 3 stays unassigned (reserved), and
+    `LadderRung(3)` must raise.
+  - `FetchMethod.CURL_CFFI = "curl_cffi"` → `FetchMethod.PLAIN_HTTP = "plain_http"` (rung 1).
+  - `FetchMethod.SCRAPLING`, `FetchMethod.CAMOUFOX` and `FetchMethod.PATCHRIGHT` are removed.
+  - Unchanged: `SITE_DATA`, `BROWSER`, `EGRESS_VARIATION` and `PAID_PROXY` rungs; the `site_api`,
+    `embedded_json`, `sitemap`, `playwright`, `egress_variation` and `residential_proxy`
+    methods.
 - The DB schema adds `CHECK (rung <> 3)` wherever a rung is stored, with a parity test against
   `pi_core`.
 - UAT: SRC-08 accepts that rung 3 is never attempted or recorded and that rung 1 does no TLS

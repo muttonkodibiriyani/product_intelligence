@@ -90,7 +90,7 @@ Ulta's Middle East roll-out has been **store-led**, and no Ulta ME e-commerce st
 flowchart TB
   subgraph S1[1 · Collect]
     REG[Source register] --> SCH[Scheduler]
-    SCH --> LAD[Escalation ladder<br/>site data → plain HTTP → Playwright → egress → proxy (rung 3 disabled)]
+    SCH --> LAD["Escalation ladder<br/>site data → plain HTTP → Playwright → egress → proxy (rung 3 disabled)"]
     LAD --> RAW[(Raw evidence<br/>Cloud Storage)]
     LAD --> IMG[Image fetcher<br/>direct CDN]
     IMG --> IMGS[(Images + thumbnails)]
@@ -283,10 +283,10 @@ parse(evidence) -> ListingRecord[]       # pure; every variant, field, image URL
 |---|---|---|
 | 0 | Site's own JSON/API, embedded data, sitemaps | $0 |
 | 1 | Plain HTTP (httpx), normal headers, session reuse; no TLS/JA3/HTTP2 impersonation (ADR-0006) · `plain_http` | $0 |
-| 2 | Playwright real browser (headless → headed via Xvfb), human pacing | $0 |
+| 2 | Playwright real browser (headless → headed via Xvfb), no stealth patches (ADR-0006), human pacing · `playwright` | $0 |
 | 3 | **Disabled** (ADR-0006): never attempted or recorded. No stealth browsers, fingerprint rotation or cookie reuse; number reserved, refused in `pi_core` and by DB CHECK | — |
 | 4 | Egress variation: our server vs Cloud Run (incl. `me-central1/2`) | $0 |
-| 5 | KSA/UAE residential/mobile proxy, **only after 0–4 fail; owner buys** | $ |
+| 5 | KSA/UAE residential/mobile proxy, **only after rungs 0, 1, 2 and 4 fail, the source is marked blocked and a Proxy Decision Report is sent; owner decides and buys** (ADR-0006) · `residential_proxy` | $ |
 
 - **Memory:** each context remembers its working rung and periodically tries cheaper rungs again.
 - **Block detection:** 403/429, challenge-page signatures (Akamai, Cloudflare, PerimeterX, DataDome), empty or odd payloads, count drops.
@@ -522,7 +522,7 @@ tests/         uat/, e2e/
 | Milestone | PRs |
 |---|---|
 | **M0 Foundation (wk 1)** | PR1 skeleton + CI + docs · PR2 local stack · PR3 `pi_core` models · PR4 DB schema v1 · recon (Sephora data paths KSA/UAE, Ulta ME presence) |
-| **M1 Collection (wk 2–3)** | PR5 `pi_fetch` ladder rungs 0–4 + Proxy Decision Report · PR6 Sephora connector · PR7 Ulta/offline import · PR8 images · PR9 normalisation · PR10 quality gate · PR11 schedules |
+| **M1 Collection (wk 2–3)** | PR5 `pi_fetch` ladder rungs 0, 1, 2 and 4 (rung 3 disabled, ADR-0006) + Proxy Decision Report · PR6 Sephora connector · PR7 Ulta/offline import · PR8 images · PR9 normalisation · PR10 quality gate · PR11 schedules |
 | **M2 Matching (wk 3–5)** | PR12 embeddings + blocking · PR13 Splink + rules · PR14 Gemini judge · PR15 review queue + gold set |
 | **M3 Metrics + web (wk 5–8)** | PR16 dbt + Cube · PR17 app shell · PR18 explorer + product page · PR19 compare board · PR20 studio · PR21 feed + alerts · PR22 coverage/health + review UI |
 | **M4 AI + hardening (wk 8–10)** | PR23 assistant · PR24 evals · PR25 exports · PR26 security + restore drill · PR27 deploy to dev (cost check first) |
