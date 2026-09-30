@@ -143,7 +143,7 @@ def test_render_reports_status_per_requirement() -> None:
     assert "| A-2 | Mod | P0 | Foundation | Title | M2 | pending |" in text
     assert "| A-3 | Mod | P0 | Foundation | Title | — | missing | — |" in text
     assert "implemented 1, pending 1, missing 1" in text
-    assert "Cases also exist for non-pilot requirements: B-1." in text
+    assert "Cases also exist for non-pilot (later or deviation) requirements: B-1." in text
 
 
 def test_report_main_writes_then_checks(

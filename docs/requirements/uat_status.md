@@ -11,12 +11,12 @@ are; *pending* cases are strict xfails until their milestone lands.
 | Milestone | Cases | Implemented | Pending |
 |---|---:|---:|---:|
 | M0 | 27 | 0 | 27 |
-| M1 | 32 | 0 | 32 |
+| M1 | 34 | 0 | 34 |
 | M2 | 13 | 0 | 13 |
 | M3 | 25 | 0 | 25 |
 | M4 | 26 | 0 | 26 |
 | M5 | 4 | 0 | 4 |
-| **Total** | **127** | **0** | **127** |
+| **Total** | **129** | **0** | **129** |
 
 Pilot-scope requirements: **127** — implemented 0, pending 127, missing 0.
 
@@ -151,3 +151,5 @@ Pilot-scope requirements: **127** — implemented 0, pending 127, missing 0.
 | OPS-05 | Reliability and commercial acceptance | P0 | Pilot | No silent truncation | M3 | pending | `tests/uat/cases/test_ops.py::test_ops_05_no_silent_truncation` |
 | OPS-07 | Reliability and commercial acceptance | P0 | Foundation | Change management | M0 | pending | `tests/uat/cases/test_ops.py::test_ops_07_change_management` |
 | OPS-09 | Reliability and commercial acceptance | P0 | Foundation | Operational observability | M4 | pending | `tests/uat/cases/test_ops.py::test_ops_09_operational_observability` |
+
+Cases also exist for non-pilot (later or deviation) requirements: SEC-05, SRC-08.

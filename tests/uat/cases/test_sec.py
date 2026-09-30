@@ -36,6 +36,19 @@ def test_sec_04_tenant_isolation() -> None:
     pending()
 
 
+@uat("SEC-05", "m1")
+def test_sec_05_source_rights_review_replaced_by_audit_logged_method() -> None:
+    """Source rights review — owner deviation, replaced by audit-logged collection (ADR-0003).
+
+    Replacement control: instead of a per-source rights review, the collection method of every
+    observation is recorded: the ladder rung used, and any proxy use for the observation's
+    market (UAE in the pilot).
+    Accept: no stored observation lacks an audit-log link to its collection method and rung,
+    and every proxy request is attributable to an approved Proxy Decision Report.
+    """
+    pending()
+
+
 @uat("SEC-06", "m4")
 def test_sec_06_personal_data_minimization() -> None:
     """Personal-data minimization.

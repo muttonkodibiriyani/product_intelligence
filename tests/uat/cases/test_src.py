@@ -85,6 +85,21 @@ def test_src_07_collection_versus_alerts() -> None:
     pending()
 
 
+@uat("SRC-08", "m1")
+def test_src_08_permitted_access_replaced_by_audited_escalation_ladder() -> None:
+    """Permitted access — owner deviation, replaced by the escalation ladder (ADR-0003).
+
+    Replacement control: a blocked source context (403/429/challenge page) climbs the ladder
+    rungs 0-4 and remembers its working rung instead of stopping; rung 5 (residential proxy
+    for the context's market, UAE in the pilot) is never used without an owner-approved Proxy
+    Decision Report. Hard lines hold on every rung: no logins, paywall bypass or cart/checkout
+    manipulation.
+    Accept: every escalation writes an audit-log entry naming the source context and rung, and
+    a block never records a false out-of-stock or removal while the ladder is climbing.
+    """
+    pending()
+
+
 @uat("SRC-09", "m1")
 def test_src_09_connector_isolation() -> None:
     """Connector isolation.

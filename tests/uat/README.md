@@ -4,10 +4,10 @@ One pytest case per pilot-scope requirement in `docs/requirements/traceability.c
 (127 IDs), grouped by ID prefix in `cases/test_<prefix>.py`.
 
 ```python
-@uat("PRC-01", "m1")              # requirement ID, milestone that delivers it
+@uat("PRC-01", "m1")  # requirement ID, milestone that delivers it
 def test_prc_01_price_types() -> None:
     """Price types. ..."""
-    pending()                     # strict xfail until implemented
+    pending()  # strict xfail until implemented
 ```
 
 - **Implementing a case:** replace `pending()` with the scenario (recorded fixtures only,

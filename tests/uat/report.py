@@ -79,7 +79,12 @@ def render(reqs: dict[str, Requirement], cases: list[UatCase]) -> str:
         )
     extra = sorted({c.req_id for c in cases if c.req_id in reqs and not reqs[c.req_id].in_pilot})
     if extra:
-        lines += ["", "Cases also exist for non-pilot requirements: " + ", ".join(extra) + "."]
+        lines += [
+            "",
+            "Cases also exist for non-pilot (later or deviation) requirements: "
+            + ", ".join(extra)
+            + ".",
+        ]
     return "\n".join(lines) + "\n"
 
 
