@@ -59,6 +59,11 @@ describe("tool definitions", () => {
       body: { ids: ["p1", "p2"], limit: 10 },
     });
     expect(coverageStatus.request({})).toEqual({ method: "GET", path: "/v1/coverage" });
+    expect(reviewsSummary.request(reviewsSummary.input.parse({ ids: ["p1", "p2"] }))).toEqual({
+      method: "GET",
+      path: "/v1/reviews-summary",
+      query: { id: ["p1", "p2"] },
+    });
     expect(toQuery({ a: undefined, b: true, c: [1, 2] })).toEqual({ b: ["true"], c: ["1", "2"] });
     expect(
       indexTrend.request(indexTrend.input.parse({ retailers: { base: "north", other: "south" } })),

@@ -92,7 +92,7 @@ export const compare = defineTool({
   version: "1",
   description:
     "Compare prices between two retailers (default: the first two in the dataset). Pass 2-6 " +
-    "product ids, or brand/category filters. Only exact, reviewed, same-size pairs count. Returns " +
+    "product ids, or brand/category filters. Only exact, approved or locked, same-size pairs count. Returns " +
     "per-product rows with the cheaper retailer. For 5 or more counted pairs it adds the median " +
     "and mean gap %, cheaper-at counts and basket totals.",
   minRole: "viewer",
@@ -114,7 +114,7 @@ export const indexTrend = defineTool({
   name: "index_trend",
   version: "1",
   description:
-    "Price index between two retailers over a fixed basket of exact, reviewed, same-size pairs. " +
+    "Price index between two retailers over a fixed basket of exact, approved or locked, same-size pairs. " +
     "Index = sum of other prices / sum of base prices x 100, over the basket counted on the first " +
     "date; above 100 means other is dearer than base. One point per collection date. A trend needs " +
     "two or more dates of history.",
@@ -209,7 +209,8 @@ export const reviewsSummary = defineTool({
     .refine((value) => !(value.ids && (value.brand || value.category)), {
       message: "use either ids or brand/category filters, not both",
     }),
-  request: (input) => get("/v1/reviews-summary", input),
+  // The endpoint takes a repeated `id` (service-layer §6).
+  request: ({ ids, ...rest }) => get("/v1/reviews-summary", { id: ids, ...rest }),
 });
 
 export const coverageStatus = defineTool({
