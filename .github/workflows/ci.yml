@@ -131,6 +131,19 @@ jobs:
       - name: pytest + coverage (full suite, incl. database)
         run: uv run pytest --cov --cov-report=term
 
+  web:
+    name: Web — build reproduces the deployed dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Syntax check, secret guard, then a byte-for-byte match with apps/web/deployed.sha256.
+      - name: apps/web/build.sh verify
+        run: apps/web/build.sh verify
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
