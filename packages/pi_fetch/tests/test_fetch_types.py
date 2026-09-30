@@ -107,6 +107,39 @@ def test_captured_json_only_from_browser_rungs() -> None:
     assert ok.browser == WEBKIT
 
 
+CAPTURE = CapturedJson(url=HttpUrl("https://shop.example/api"), status=200, body=b"{}")
+
+
+@pytest.mark.parametrize(
+    ("rung", "method"),
+    [
+        (LadderRung.BROWSER, FetchMethod.PLAYWRIGHT),
+        (LadderRung.EGRESS_VARIATION, FetchMethod.EGRESS_VARIATION),
+        (LadderRung.PAID_PROXY, FetchMethod.RESIDENTIAL_PROXY),  # the proxied pinned browser
+    ],
+)
+def test_captured_json_accepted_on_every_browser_rung(
+    rung: LadderRung, method: FetchMethod
+) -> None:
+    ok = result(
+        captured_json=(CAPTURE,), ladder_rung_used=rung, fetch_method=method, browser=WEBKIT
+    )
+    assert ok.captured_json == (CAPTURE,)
+
+
+@pytest.mark.parametrize(
+    ("rung", "method"),
+    [
+        (LadderRung.SITE_DATA, FetchMethod.SITEMAP),
+        (LadderRung.PLAIN_HTTP, FetchMethod.PLAIN_HTTP),
+        (LadderRung.PAID_PROXY, FetchMethod.RESIDENTIAL_PROXY),  # no browser profile: not a browser
+    ],
+)
+def test_captured_json_rejected_without_a_browser(rung: LadderRung, method: FetchMethod) -> None:
+    with pytest.raises(ValidationError, match="captured_json only comes from a browser fetch"):
+        result(captured_json=(CAPTURE,), ladder_rung_used=rung, fetch_method=method)
+
+
 def test_browser_profile_is_recorded_exactly_on_browser_fetches() -> None:
     with pytest.raises(ValidationError, match="must record its browser profile"):
         result(ladder_rung_used=LadderRung.BROWSER, fetch_method=FetchMethod.PLAYWRIGHT)

@@ -975,3 +975,14 @@ def test_prior_bytes_is_required() -> None:
     del fields["prior_bytes"]
     with pytest.raises(ValueError, match="prior_bytes"):
         ResidentialProxy.model_validate(fields)
+
+
+def test_proxied_browser_fetch_keeps_allowed_captured_json(tmp_path: Path) -> None:
+    # Regression (after #26): a rung-5 result with page-loaded JSON failed validation.
+    captured = CapturedJson(url=HttpUrl("https://www.ulta.ae/graphql"), status=200, body=b"{}")
+    page = raw(url=str(PDP)).model_copy(update={"captured_json": (captured,)})
+    f = proxied_fetcher(tmp_path, ProxyFactory(page))
+    request = pdp().model_copy(update={"capture_json": True})
+    result = f.fetch(request, ctx())
+    assert result.ladder_rung_used is LadderRung.PAID_PROXY
+    assert result.captured_json == (captured,)
