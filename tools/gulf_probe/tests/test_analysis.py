@@ -229,8 +229,8 @@ def test_probe_fixtures_carry_no_cookies_or_keys() -> None:
         text = path.read_text(encoding="utf-8").lower()
         for needle in needles:
             assert needle not in text, (path.name, needle)
-    # An Akamai "Reference #18.<hex>..." may encode a client IP in hex (PR #15 review).
-    assert not re.search(r"reference\s*#\s*\d+\.[0-9a-f]{8}", html.unescape(text)), path.name
+        # An Akamai "Reference #18.<hex>..." may encode a client IP in hex (PR #15 review).
+        assert not re.search(r"reference\s*#\s*\d+\.[0-9a-f]{8}", html.unescape(text)), path.name
 
 
 ULTA = "ulta"
