@@ -80,6 +80,17 @@ class ListingRow:
     run_id: int
     run_status: str
     coverage_status: str
+    # Provenance of the price, which can be older than the newest row (a later stock read).
+    price_observed_at: datetime | None = None
+    price_evidence_retrieved_at: datetime | None = None
+    price_run_id: int | None = None
+
+    @property
+    def price_capture(self) -> tuple[datetime, int]:
+        """When and in which run the shown price was captured (the newest row without one)."""
+        if self.price_observed_at is None or self.price_run_id is None:
+            return self.evidence_retrieved_at or self.observed_at, self.run_id
+        return self.price_evidence_retrieved_at or self.price_observed_at, self.price_run_id
 
     @property
     def retailer(self) -> str:
@@ -161,7 +172,8 @@ eligible_runs AS (
 -- availability 'not_observed'; a stock read carries availability with price unknown
 -- (field_state price_current='unknown'). Price and availability therefore each come from their
 -- own newest row that observed them, so a newer stock read never blanks the price and a newer
--- page read never hides the stock state.
+-- page read never hides the stock state. The price row's own time, evidence and run are carried
+-- as price_* so a later stock read never makes the price look fresher than it is.
 obs AS (
   SELECT
     o.source_listing_id,
@@ -219,7 +231,10 @@ latest AS (
     a.crawl_run_id,
     a.run_status,
     a.coverage_status,
-    a.evidence_retrieved_at
+    a.evidence_retrieved_at,
+    p.observed_at AS price_observed_at,
+    p.evidence_retrieved_at AS price_evidence_retrieved_at,
+    p.crawl_run_id AS price_run_id
   FROM latest_any a
   LEFT JOIN latest_price p ON p.source_listing_id = a.source_listing_id
   LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id
@@ -252,7 +267,10 @@ SELECT
   latest.evidence_retrieved_at,
   latest.crawl_run_id AS run_id,
   latest.run_status,
-  latest.coverage_status
+  latest.coverage_status,
+  latest.price_observed_at,
+  latest.price_evidence_retrieved_at,
+  latest.price_run_id
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id
@@ -390,7 +408,7 @@ def promo_pct(price: Decimal, regular: Decimal | None) -> int:
 def offer_for(rows: Sequence[ListingRow], *, early: bool = False) -> dict[str, Any]:
     representative = choose_representative(rows)
     _, representative_size = representative.effective_size
-    captured = representative.evidence_retrieved_at or representative.observed_at
+    captured, price_run_id = representative.price_capture
     shade_values = {row.shade for row in rows if row.shade}
     offer: dict[str, Any] = {
         "sku": representative.source_sku or representative.source_listing_key,
@@ -402,7 +420,7 @@ def offer_for(rows: Sequence[ListingRow], *, early: bool = False) -> dict[str, A
         "evidence": {
             "capturedAt": utc_text(captured),
             "source": f"{representative.source_name} · local pi_db snapshot",
-            "runId": str(representative.run_id),
+            "runId": str(price_run_id),
         },
     }
     if representative.price is not None and representative.regular is not None:

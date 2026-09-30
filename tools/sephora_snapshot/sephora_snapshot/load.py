@@ -411,7 +411,8 @@ class Loader:
                 self.part_complete = False
                 continue
             in_stock = v.get("inStock")
-            if in_stock is None:
+            if in_stock is None:  # no stock state published: no observation, but counted
+                self.bump("trpc_instock_unknown")
                 continue
             low = bool(v.get("isLowStock")) if in_stock else False
             state = "low_stock" if low else ("in_stock" if in_stock else "out_of_stock")

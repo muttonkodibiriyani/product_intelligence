@@ -42,7 +42,7 @@ def pdp_html(d: dict[str, Any]) -> str:
     )
 
 
-def trpc_json(pid: str, *, in_stock: bool = True) -> list[dict[str, Any]]:
+def trpc_json(pid: str, *, in_stock: bool | None = True) -> list[dict[str, Any]]:
     variant = {"product_id": f"{pid[1:]}1", "inStock": in_stock, "isLowStock": False}
     return [{"result": {"data": {"json": {"c_variantsInfo": [variant]}}}}]
 
@@ -65,7 +65,7 @@ def pdp_rec(pid: str, lang: str, d: dict[str, Any] | None = None) -> dict[str, A
     }
 
 
-def trpc_rec(pid: str, *, status: int = 200, in_stock: bool = True) -> dict[str, Any]:
+def trpc_rec(pid: str, *, status: int = 200, in_stock: bool | None = True) -> dict[str, Any]:
     return {
         "url": f"https://www.sephora.me/api/trpc/x?{pid}",
         "locale": "en-AE",

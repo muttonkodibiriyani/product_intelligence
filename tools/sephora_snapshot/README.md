@@ -22,4 +22,8 @@ Env for `run.py`:
 
 `progress.json` records `mode`, `limit` and `trpc`.
 
+Off-peak window: runs are scheduled in the UAE night, 18:00Z-02:00Z (22:00-06:00 Gulf time), and `CUTOFF` must fall inside it. Longer passes are split across nights, and each continuation excludes work already done (`plan.py --done`). The single exception was the owner-approved first snapshot (execution `9drcr`, 2026-09-30/10-01): it ran to its own 03:20Z cutoff.
+
+A stock-read variant with no `inStock` value is not recorded as an observation; it is counted as `trpc_instock_unknown`.
+
 Tests use synthetic payloads only (`tests/sephora_synth.py`).
