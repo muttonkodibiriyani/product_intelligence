@@ -11,6 +11,7 @@ from pi_fetch.pacing import (
     MAX_DEFER_S,
     HostPacer,
     OffPeakWindow,
+    RobotsRules,
     RobotsTag,
     RobotsTagger,
     parse_retry_after,
@@ -135,3 +136,47 @@ def test_robots_tagger() -> None:
     tagger.mark_unavailable("other.example")
     assert tagger.known("other.example")
     assert tagger.tag("other.example", "https://other.example/") is RobotsTag.UNKNOWN
+
+
+ULTA_ROBOTS = """
+User-agent: *
+Disallow: /*?
+Disallow: */?*
+Allow: /*.json?
+Allow: /*media_*?
+Allow: /*?selected*
+Disallow: /checkout$
+
+User-agent: OtherBot
+Disallow: /
+"""
+
+
+@pytest.mark.parametrize(
+    ("url", "allowed"),
+    [
+        ("https://ulta.ae/p/lipstick", True),
+        ("https://ulta.ae/p/lipstick?sort=price", False),
+        ("https://ulta.ae/search/?q=a", False),
+        ("https://ulta.ae/p/lipstick.json?variant=2", True),
+        ("https://ulta.ae/img/media_1234?w=300", True),
+        ("https://ulta.ae/p/lipstick?selected=2", True),
+        ("https://ulta.ae/checkout", False),
+        ("https://ulta.ae/checkout/step", True),
+        ("https://ulta.ae/robots.txt", True),
+    ],
+)
+def test_robots_rfc9309_wildcards_and_longest_match(url: str, allowed: bool) -> None:
+    rules = RobotsRules(ULTA_ROBOTS)
+    assert rules.allows(url) is allowed
+
+
+def test_robots_tie_goes_to_allow_and_agent_groups_merge() -> None:
+    rules = RobotsRules("User-agent: *\nDisallow: /a\nAllow: /a\n")
+    assert rules.allows("https://x.example/a")
+    merged = "User-agent: pibot\nDisallow: /x\n\nUser-agent: pibot\nDisallow: /y\n"
+    mine = RobotsRules(merged + "User-agent: *\nDisallow: /\n", "PIbot")
+    assert not mine.allows("https://x.example/x")
+    assert not mine.allows("https://x.example/y")
+    assert mine.allows("https://x.example/z")
+    assert RobotsRules("# nothing\nSitemap: https://x.example/s.xml\n").allows("https://x.example/")

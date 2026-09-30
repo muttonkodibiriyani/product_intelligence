@@ -345,6 +345,8 @@ def test_audit_log_records_every_fetch(tmp_path: Path, caplog: pytest.LogCapture
         fetcher(tmp_path, factory).fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
     (record,) = caplog.records
     assert record.__dict__["block_vendor"] == "akamai"
+    assert record.__dict__["block_kind"] == "blocked"
+    assert record.__dict__["rate_limited"] is False
     assert record.__dict__["robots"] == "allowed"
     assert record.__dict__["ladder_rung_used"] == 1
     assert record.__dict__["browser_engine"] is None
