@@ -173,7 +173,7 @@ The API also enforces:
    locked; `locked` stays distinct from `approved`, and the v1 exporter's merged `accepted` is
    read as `approved` with a caveat), with equal size and the same currency (otherwise
    `currency_mismatch`). Every row states `counted` and, if not
-   counted, `excludedReason`.
+   counted, `excludedReason` (incl. `size_unknown`: a missing size is never assumed equal).
 2. **Direction.** Direction follows the #39 convention (the reverse of this doc's first draft):
    - `gapAmount = other − base`;
    - `gapPct = (other − base) / base × 100`;
@@ -248,7 +248,7 @@ Results over 16,000 chars are refused with `output_too_large` rather than trunca
 | `get_product` | `GET /v1/products/{id}` | `id` | Offers, `gap {gapAmount, gapPct, cheaper, convention}` or `gapExcludedReason`, evidence |
 | `compare` | `POST /v1/compare` | `ids[2..6]` **or** `brand?/category?`, `retailers? {base, other}`, `limit` | Rows always returned; summary (`medianGapPct`, `meanGapPct`, `cheaperCounts{<retailer>: n}`, `basket {base, other}`) only when n ≥ 5 |
 | `index_trend` | `GET /v1/index` | `retailers? {base, other}` (sent as one form param `retailers=<base>,<other>`, exactly 2, ordered; multi-value filters repeat the key), `brand?`, `category?`, `from?/to?` | `points[{date, index, n}]`; trend needs history, otherwise `capability_off` |
-| `promotions` | `GET /v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?`, `limit` | `promoShare{<retailer>: pct}`, items with `statedPct` |
+| `promotions` | `GET /v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?`, `limit` | `promoShare{<retailer>: pct}`, items with `depthPct` = (regular − price) / regular × 100 |
 | `assortment_gaps` | `GET /v1/assortment-gaps` | `missingAt?`, `presentAt?`, `brand?`, `category?`, `limit` | Absence rules as in §3.2.4 |
 | `launches` | `GET /v1/launches` | `retailer?`, `since?`, `category?`, `limit` | Needs two or more runs, otherwise `capability_off` |
 | `reviews_summary` | `GET /v1/reviews-summary` | `id[]?` (repeated, ≤ 25) **or** `brand?/category?`, `retailer[]?` | `n`, count-weighted `avgRating`, `ratingCount`. Distribution and themes → `field_not_collected` |
