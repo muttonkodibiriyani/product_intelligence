@@ -1,4 +1,5 @@
-"""Database fixtures. DB tests need PI_DATABASE_URL (``make up``) and skip when it is unset."""
+"""Database fixtures. DB tests need PI_DATABASE_URL (``make up``); they skip when it is unset or
+unreachable, except in CI (``CI`` set), where an unreachable database is an error."""
 
 import os
 import uuid
@@ -19,9 +20,16 @@ def _libpq(url: str) -> str:
 
 @pytest.fixture(scope="session")
 def server_url() -> str:
+    """Server for DB tests. Locally they skip when it is unset or down; in CI they must run."""
     url = os.environ.get(DATABASE_URL_ENV)
     if not url:
         pytest.skip(f"{DATABASE_URL_ENV} not set; run `make up` and export it")
+    try:
+        psycopg.connect(_libpq(url), connect_timeout=3).close()
+    except psycopg.OperationalError as exc:
+        if os.environ.get("CI"):
+            raise
+        pytest.skip(f"database at {DATABASE_URL_ENV} unreachable (run `make up`): {exc}")
     return url
 
 

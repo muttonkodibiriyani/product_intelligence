@@ -16,10 +16,48 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
 - **`offer_observation.correction_of` has no FK.** A foreign key into a partitioned table must
   include the partition key (`observed_at`). Corrections are validated in the loader instead.
 - **Deferred to a later migration:** `alert_rule`, `alert_event`, `user_entitlement` (§5.1 alerting
-  and entitlements). They land with the features that use them, together with row-level security by role, brand and market.
+  and entitlements). They land with the features that use them, together with row-level
+  security by role, brand and market (SEC-02).
+
+## Contracts for writers
+
+- **Partitions first (DAT-13, SRC-15).** `offer_observation` has monthly UTC partitions for
+  2026-01..2027-12 and **no default partition**, so a row for any other month fails with
+  "no partition of relation found" instead of being parked where it could never be moved.
+  Before inserting a batch, the loader calls `pi_ensure_offer_observation_partition(month)`
+  for each distinct `observed_at` month. That includes pre-2026 backfill months. `pi_app`
+  may call it: the function is `SECURITY DEFINER` with a fixed `search_path`, and an advisory
+  lock serialises concurrent callers. Creating a partition briefly takes an ACCESS EXCLUSIVE
+  lock on `offer_observation`, so a scheduled job should pre-create upcoming months rather
+  than leaving it to the hot path.
+- **Idempotency (DAT-09, SRC-10).** `idempotency_key` is the pipeline's hash of the logical
+  observation key (DAT-02 grain). `observed_at` must come from the evidence (`retrieved_at`
+  or the source's own timestamp) and must never be re-stamped with `now()` on retry. Then a
+  replay hits `UNIQUE (idempotency_key, observed_at)` and `ON CONFLICT DO NOTHING` is a
+  no-op. A re-stamped `observed_at` would create a duplicate logical observation.
+- **Missing is data (DQ-02).** A NULL `price_current` needs a `field_state` reason
+  (`CHECK (price_current IS NOT NULL OR field_state ? 'price_current')`). Any stated price
+  needs a currency. `quality_status` has no default: the quality gate states it explicitly.
+- **Append-only history (DAT-01, DAT-04).** `pi_app` has only INSERT/SELECT on `evidence`,
+  `listing_content`, `review_summary`, `offer_observation`, `offer_promotion`, `audit_log`
+  and `decision_log`. Owner-level triggers also reject UPDATE, DELETE and TRUNCATE
+  (including `TRUNCATE ... CASCADE` and TRUNCATE of a single partition). The only exception
+  is deleting `evidence` rows past `retention_until` (DAT-10). Corrections are new rows with
+  `correction_of`. The owner can still DROP or DETACH objects; that is a migration, and
+  migrations are reviewed.
+- **Match graph (MAT-05, MAT-07, MAT-08).** There is one current edge (`valid_to IS NULL`)
+  per variant pair, so a rejected or locked verdict cannot be undercut by a new proposal.
+  To supersede an edge, close its `valid_to` and insert the new one.
+- **Ratings** are stored as published, with their `rating_scale` (5, 10, 100 …), and are
+  bounded by it. Normalisation happens downstream.
 
 ## Migration notes
 
 `0001` creates everything on an empty database, so it takes no locks on existing data and
-rewrites nothing. Downgrade drops all objects. Partitions pre-exist for 2026-01..2027-12 plus a
-default partition. `pi_ensure_offer_observation_partition()` creates later months.
+rewrites nothing. Downgrade drops all objects except the `pi_app` role and the `vector`
+extension, which are cluster- or database-wide.
+
+Open follow-up for the evidence retention job: `offer_observation.evidence_id` and
+`promotion.evidence_id` reference `evidence`, so expired rows that are still referenced can't
+be deleted. The retention job will purge the stored payload (`storage_uri`) and keep the row,
+or a later migration will split the payload pointer out.

@@ -49,7 +49,7 @@ def test_upgrade_downgrade_upgrade_on_fresh_db(empty_db: str) -> None:
     assert tables == {*TABLES, "alembic_version"}
     assert len(TABLES) == 24
     assert {"availability_state", "field_state", "source_kind", "image_role"} <= types
-    assert len(functions) == 3
+    assert len(functions) == 4
 
     command.downgrade(config, "base")
     assert _objects(empty_db) == ({"alembic_version"}, set(), set())

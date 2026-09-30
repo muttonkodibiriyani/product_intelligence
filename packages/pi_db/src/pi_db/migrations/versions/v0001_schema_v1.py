@@ -74,11 +74,15 @@ SCHEMA_ENUMS: dict[str, tuple[str, ...]] = {
     "image_role": ("main", "alt", "swatch", "model", "texture"),
 }
 
-# Pre-created monthly partitions of offer_observation (UTC months, inclusive).
+# Pre-created monthly partitions of offer_observation (UTC months, inclusive). There is no
+# default partition: rows outside existing months fail loudly until the loader has called
+# pi_ensure_offer_observation_partition() for them (e.g. SRC-15 backfill before 2026).
 PARTITIONS_FROM = "2026-01-01"
 PARTITIONS_TO = "2027-12-01"
 
-# Tables the app may only INSERT into and SELECT from (history is never rewritten).
+# Tables the app may only INSERT into and SELECT from (history is never rewritten, DAT-01).
+# Each also carries owner-level UPDATE/DELETE/TRUNCATE triggers; evidence alone may be
+# deleted once past retention_until (DAT-10).
 APPEND_ONLY_TABLES = (
     "evidence",
     "listing_content",
@@ -113,10 +117,14 @@ TABLES = MUTABLE_TABLES + APPEND_ONLY_TABLES
 FUNCTIONS = (
     "pi_field_state_valid(jsonb)",
     "pi_reject_mutation()",
+    "pi_reject_evidence_mutation()",
     "pi_ensure_offer_observation_partition(date)",
 )
 
 MONEY = "numeric(18,4)"
+# Ratings are stored as published together with the source's scale (5, 10, 100, ...), so a
+# 4.5/5 and a 90/100 stay distinguishable; comparisons normalise downstream.
+RATING = "numeric(7,2)"
 CURRENCY = "char(3) CHECK ({col} ~ '^[A-Z]{{3}}$')"
 RUNG = f"smallint CHECK ({{col}} BETWEEN 0 AND {LADDER_RUNG_MAX})"
 
@@ -157,26 +165,53 @@ FUNCTIONS_SQL = [
     END
     $$
     """,
+    # Evidence is append-only too, except that rows past retention_until may be deleted by
+    # the retention job (DAT-04, DAT-10). Hashes and URIs are never rewritten.
+    """
+    CREATE FUNCTION pi_reject_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF TG_OP = 'DELETE' AND OLD.retention_until < now() THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'evidence is append-only; only rows past retention_until may be deleted'
+        USING ERRCODE = 'insufficient_privilege';
+    END
+    $$
+    """,
     # Creates the UTC monthly partition containing `month` if missing; returns its name.
+    # SECURITY DEFINER so the pipeline (pi_app, no DDL rights) can extend the table; the fixed
+    # search_path stops callers from substituting objects. The advisory lock serialises
+    # concurrent loaders asking for the same month. Row triggers are cloned to new partitions
+    # by PostgreSQL; the TRUNCATE guard is not, so it is added here.
     """
     CREATE FUNCTION pi_ensure_offer_observation_partition(month date) RETURNS text
-    LANGUAGE plpgsql AS $$
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
     DECLARE
       lower_bound timestamptz := date_trunc('month', month)::timestamp AT TIME ZONE 'UTC';
       upper_bound timestamptz :=
         (date_trunc('month', month) + interval '1 month')::timestamp AT TIME ZONE 'UTC';
       part text := format('offer_observation_p%s', to_char(month, 'YYYYMM'));
     BEGIN
-      IF to_regclass(part) IS NULL THEN
+      PERFORM pg_advisory_xact_lock(hashtext('pi_ensure_offer_observation_partition'),
+                                    hashtext(part));
+      IF to_regclass(format('public.%I', part)) IS NULL THEN
         EXECUTE format(
-          'CREATE TABLE %I PARTITION OF offer_observation FOR VALUES FROM (%L) TO (%L)',
+          'CREATE TABLE public.%I PARTITION OF public.offer_observation'
+          ' FOR VALUES FROM (%L) TO (%L)',
           part, lower_bound, upper_bound
+        );
+        EXECUTE format(
+          'CREATE TRIGGER no_truncate BEFORE TRUNCATE ON public.%I'
+          ' FOR EACH STATEMENT EXECUTE FUNCTION public.pi_reject_mutation()',
+          part
         );
       END IF;
       RETURN part;
     END
     $$
     """,
+    "REVOKE EXECUTE ON FUNCTION pi_ensure_offer_observation_partition(date) FROM PUBLIC",
 ]
 
 TABLES_SQL = [
@@ -256,6 +291,10 @@ TABLES_SQL = [
     )
     """,
     "CREATE INDEX evidence_content_hash_idx ON evidence (content_hash)",
+    """
+    CREATE TRIGGER evidence_append_only BEFORE UPDATE OR DELETE ON evidence
+      FOR EACH ROW EXECUTE FUNCTION pi_reject_evidence_mutation()
+    """,
     # ------------------------------------------------------------ catalogue
     """
     CREATE TABLE brand (
@@ -396,21 +435,24 @@ TABLES_SQL = [
       CHECK (last_seen_at >= first_seen_at)
     )
     """,
-    # No reviewer names or other PII, by design (SEC).
-    """
+    # No reviewer names or other PII, by design (SEC-06).
+    f"""
     CREATE TABLE review (
       id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       listing_id bigint NOT NULL REFERENCES source_listing,
       source_review_id text NOT NULL,
-      rating numeric(4,2) CHECK (rating >= 0),
+      rating {RATING},
+      rating_scale {RATING} CHECK (rating_scale > 0),
       title text,
       body text,
       lang text,
       posted_at timestamptz,
       verified_flag boolean,
       helpful_count integer CHECK (helpful_count >= 0),
-      attributes jsonb NOT NULL DEFAULT '{}',
-      UNIQUE (listing_id, source_review_id)
+      attributes jsonb NOT NULL DEFAULT '{{}}',
+      UNIQUE (listing_id, source_review_id),
+      CHECK ((rating IS NULL) = (rating_scale IS NULL)),
+      CHECK (rating BETWEEN 0 AND rating_scale)
     )
     """,
     """
@@ -449,8 +491,15 @@ TABLES_SQL = [
     )
     """,
     # ------------------------------------------------------------ observations
-    # Append-only, UTC-monthly range partitions. Partition key is part of every unique key.
-    # idempotency_key is the pipeline's hash of the logical key, so replays are no-ops.
+    # Append-only (DAT-01), UTC-monthly range partitions (DAT-13). The partition key is part
+    # of every unique key.
+    # Idempotency contract (DAT-09, SRC-10): idempotency_key is the pipeline's hash of the
+    # logical key (DAT-02 grain), and observed_at must come from the evidence
+    # (evidence.retrieved_at or the source's own timestamp), never re-stamped with now() on
+    # retry. Then a replay hits UNIQUE (idempotency_key, observed_at) and ON CONFLICT DO
+    # NOTHING makes it a no-op; a re-stamped observed_at would create a duplicate.
+    # Missing is data (DQ-02): a NULL price_current needs a field_state reason, and the
+    # quality gate must state quality_status explicitly (no default).
     # correction_of has no FK: FKs into a partitioned table need the partition key too.
     f"""
     CREATE TABLE offer_observation (
@@ -480,14 +529,15 @@ TABLES_SQL = [
       available_variants integer CHECK (available_variants >= 0),
       low_stock_flag boolean,
       delivery_promise text,
-      rating_value numeric(4,2) CHECK (rating_value >= 0),
+      rating_value {RATING},
+      rating_scale {RATING} CHECK (rating_scale > 0),
       rating_count integer CHECK (rating_count >= 0),
       rank_in_category integer CHECK (rank_in_category > 0),
       rank_in_search jsonb,
       badges_at_time text[] NOT NULL DEFAULT '{{}}',
       field_state jsonb NOT NULL DEFAULT '{{}}' CHECK (pi_field_state_valid(field_state)),
       evidence_id bigint REFERENCES evidence,
-      quality_status quality_status NOT NULL DEFAULT 'accepted',
+      quality_status quality_status NOT NULL,
       correction_of bigint,
       PRIMARY KEY (observation_id, observed_at),
       UNIQUE (idempotency_key, observed_at),
@@ -496,6 +546,9 @@ TABLES_SQL = [
           price_current, price_regular_stated, price_promo, price_member, unit_price_derived
         ) = 0
       ),
+      CHECK (price_current IS NOT NULL OR field_state ? 'price_current'),
+      CHECK ((rating_value IS NULL) = (rating_scale IS NULL)),
+      CHECK (rating_value BETWEEN 0 AND rating_scale),
       CHECK (source_effective_to IS NULL OR source_effective_to >= source_effective_from)
     ) PARTITION BY RANGE (observed_at)
     """,
@@ -510,9 +563,10 @@ TABLES_SQL = [
     """
     CREATE INDEX offer_observation_run_idx ON offer_observation (crawl_run_id)
     """,
-    # Rows outside pre-created months land here instead of failing the load; create the month
-    # with pi_ensure_offer_observation_partition() before rows for it arrive.
-    "CREATE TABLE offer_observation_default PARTITION OF offer_observation DEFAULT",
+    """
+    CREATE INDEX offer_observation_correction_idx ON offer_observation (correction_of)
+      WHERE correction_of IS NOT NULL
+    """,
     f"""
     SELECT pi_ensure_offer_observation_partition(m::date)
     FROM generate_series(
@@ -525,6 +579,14 @@ TABLES_SQL = [
       FOR EACH ROW EXECUTE FUNCTION pi_reject_mutation()
     """,
     """
+    CREATE TRIGGER listing_content_append_only BEFORE UPDATE OR DELETE ON listing_content
+      FOR EACH ROW EXECUTE FUNCTION pi_reject_mutation()
+    """,
+    """
+    CREATE TRIGGER review_summary_append_only BEFORE UPDATE OR DELETE ON review_summary
+      FOR EACH ROW EXECUTE FUNCTION pi_reject_mutation()
+    """,
+    """
     CREATE TABLE offer_promotion (
       observation_id bigint NOT NULL,
       observed_at timestamptz NOT NULL,
@@ -534,7 +596,14 @@ TABLES_SQL = [
         REFERENCES offer_observation (observation_id, observed_at)
     )
     """,
+    """
+    CREATE TRIGGER offer_promotion_append_only BEFORE UPDATE OR DELETE ON offer_promotion
+      FOR EACH ROW EXECUTE FUNCTION pi_reject_mutation()
+    """,
     # ------------------------------------------------------------ matching
+    # Versioned match graph (MAT-08) with one current edge per pair: a rejected or locked
+    # verdict (MAT-05, MAT-07) is the pair's current edge, so the matcher cannot add a
+    # competing proposal next to it. Superseding closes valid_to and inserts a new edge.
     """
     CREATE TABLE match_edge (
       id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -554,7 +623,7 @@ TABLES_SQL = [
     )
     """,
     """
-    CREATE UNIQUE INDEX match_edge_current_idx ON match_edge (variant_a, variant_b, match_class)
+    CREATE UNIQUE INDEX match_edge_current_idx ON match_edge (variant_a, variant_b)
       WHERE valid_to IS NULL
     """,
     # ------------------------------------------------------------ reference and governance
@@ -617,6 +686,12 @@ TABLES_SQL = [
     CREATE TRIGGER decision_log_append_only BEFORE UPDATE OR DELETE ON decision_log
       FOR EACH ROW EXECUTE FUNCTION pi_reject_mutation()
     """,
+    # Row triggers do not fire on TRUNCATE (including TRUNCATE ... CASCADE from a parent).
+    *(
+        f"CREATE TRIGGER {table}_no_truncate BEFORE TRUNCATE ON {table}"
+        " FOR EACH STATEMENT EXECUTE FUNCTION pi_reject_mutation()"
+        for table in APPEND_ONLY_TABLES
+    ),
 ]
 
 
@@ -634,6 +709,7 @@ def _grants_sql() -> list[str]:
         f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}",
         f"GRANT SELECT, INSERT, UPDATE ON {', '.join(MUTABLE_TABLES)} TO {APP_ROLE}",
         f"GRANT SELECT, INSERT ON {', '.join(APPEND_ONLY_TABLES)} TO {APP_ROLE}",
+        f"GRANT EXECUTE ON FUNCTION pi_ensure_offer_observation_partition(date) TO {APP_ROLE}",
     ]
 
 

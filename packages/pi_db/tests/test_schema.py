@@ -1,14 +1,17 @@
 """Behaviour of schema v1 against a real PostgreSQL 16 + pgvector database."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
 
 import psycopg
 import pytest
 from psycopg import errors
+from sqlalchemy.engine import make_url
 
 import pi_core
 from pi_db import APP_ROLE, IMAGE_EMBEDDING_DIM, TEXT_EMBEDDING_DIM
+from pi_db.migrations.versions.v0001_schema_v1 import APPEND_ONLY_TABLES
 
 pytestmark = pytest.mark.db
 
@@ -69,8 +72,9 @@ def _observe(
     row = conn.execute(
         "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
         " source_listing_id, observed_at, ingested_at, price_current, price_type, currency,"
-        " availability_state, field_state)"
-        " VALUES (%s, %s, %s, %s, %s, now(), %s, 'full', 'AED', 'in_stock', %s::jsonb)"
+        " availability_state, field_state, quality_status)"
+        " VALUES (%s, %s, %s, %s, %s, now(), %s, 'full', 'AED', 'in_stock', %s::jsonb,"
+        " 'accepted')"
         f" {on_conflict} RETURNING tableoid::regclass::text",
         (
             key,
@@ -83,6 +87,41 @@ def _observe(
         ),
     ).fetchone()
     return None if row is None else row[0]
+
+
+def _history(conn: Conn) -> dict[str, object]:
+    """One row in every append-only table (evidence still inside its retention window)."""
+    seed = _seed(conn)
+    at = datetime(2026, 10, 1, tzinfo=UTC)
+    _observe(conn, seed, at)
+    observation = _one(conn, "SELECT observation_id FROM offer_observation")
+    conn.execute(
+        "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri, retrieved_at,"
+        " retention_until) VALUES (%s, 'u', 'h1', 'gs://b/1', %s, now() + interval '1 year')",
+        (seed["run"], at),
+    )
+    conn.execute(
+        "INSERT INTO listing_content (listing_id, observed_at, content_hash) VALUES (%s, %s, 'c')",
+        (seed["listing"], at),
+    )
+    conn.execute(
+        "INSERT INTO review_summary (listing_id, observed_at) VALUES (%s, %s)",
+        (seed["listing"], at),
+    )
+    promotion = _one(
+        conn,
+        "INSERT INTO promotion (source_context_id, mechanic, first_seen_at, last_seen_at)"
+        " VALUES (%s, 'percent_off', %s, %s) RETURNING id",
+        (seed["context"], at, at),
+    )
+    conn.execute(
+        "INSERT INTO offer_promotion (observation_id, observed_at, promotion_id)"
+        " VALUES (%s, %s, %s)",
+        (observation, at, promotion),
+    )
+    conn.execute("INSERT INTO audit_log (actor, action) VALUES ('pipeline', 'load')")
+    conn.execute("INSERT INTO decision_log (decided_by, subject, decision) VALUES ('o', 's', 'd')")
+    return seed
 
 
 # ------------------------------------------------------------------ enums and types
@@ -142,8 +181,8 @@ def test_price_requires_currency(conn: Conn) -> None:
     with pytest.raises(errors.CheckViolation):
         conn.execute(
             "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
-            " source_listing_id, observed_at, ingested_at, price_current, availability_state)"
-            " VALUES ('x', %s, %s, %s, now(), now(), 1, 'unknown')",
+            " source_listing_id, observed_at, ingested_at, price_current, availability_state,"
+            " quality_status) VALUES ('x', %s, %s, %s, now(), now(), 1, 'unknown', 'accepted')",
             (seed["run"], seed["context"], seed["listing"]),
         )
 
@@ -173,12 +212,69 @@ def test_field_state_rejects_unknown_reasons(conn: Conn, state: str) -> None:
         (datetime(2026, 1, 1, tzinfo=UTC), "offer_observation_p202601"),
         (datetime(2026, 10, 31, 23, 59, 59, tzinfo=UTC), "offer_observation_p202610"),
         (datetime(2027, 12, 15, tzinfo=UTC), "offer_observation_p202712"),
-        (datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC), "offer_observation_default"),
-        (datetime(2028, 1, 1, tzinfo=UTC), "offer_observation_default"),
     ],
 )
 def test_partition_routing(conn: Conn, observed_at: datetime, partition: str) -> None:
     assert _observe(conn, _seed(conn), observed_at) == partition
+
+
+def test_there_is_no_default_partition(conn: Conn) -> None:
+    assert _one(conn, "SELECT count(*) FROM pg_partitioned_table WHERE partdefid <> 0") == 0
+
+
+@pytest.mark.parametrize(
+    "observed_at",
+    [datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC), datetime(2028, 1, 1, tzinfo=UTC)],
+    ids=["before", "after"],
+)
+def test_row_outside_partitions_fails_loudly(conn: Conn, observed_at: datetime) -> None:
+    seed = _seed(conn)
+    with pytest.raises(errors.CheckViolation, match="no partition"):
+        _observe(conn, seed, observed_at)
+
+
+def test_backfill_month_is_created_then_routed(conn: Conn) -> None:
+    """SRC-15: pre-2026 history keeps its real dates in its own month."""
+    seed = _seed(conn)
+    at = datetime(2025, 6, 14, 9, tzinfo=UTC)
+    conn.execute(f"SET ROLE {APP_ROLE}")
+    name = _one(conn, "SELECT pi_ensure_offer_observation_partition(%s::date)", (at,))
+    assert name == "offer_observation_p202506"
+    assert _observe(conn, seed, at) == name
+
+
+def test_new_partition_keeps_history_protection(conn: Conn) -> None:
+    name = _one(conn, "SELECT pi_ensure_offer_observation_partition(date '2028-05-01')")
+    _observe(conn, _seed(conn), datetime(2028, 5, 2, tzinfo=UTC))
+    for statement in (f"UPDATE {name} SET quality_status = 'warning'", f"TRUNCATE {name} CASCADE"):
+        conn.execute("SAVEPOINT s")
+        with pytest.raises(errors.InsufficientPrivilege, match=f"{name} is append-only"):
+            conn.execute(statement)
+        conn.execute("ROLLBACK TO SAVEPOINT s")
+
+
+def test_ensure_partition_is_race_safe(migrated_db: str) -> None:
+    """Two loaders asking for the same new month: the second waits, then reuses it."""
+    url = make_url(migrated_db).set(drivername="postgresql").render_as_string(hide_password=False)
+    ensure = "SELECT pi_ensure_offer_observation_partition(date '2030-03-01')"
+    with psycopg.connect(url) as first, psycopg.connect(url) as second:
+        first.execute(f"SET ROLE {APP_ROLE}")
+        second.execute(f"SET ROLE {APP_ROLE}")
+        first.execute(ensure)  # holds the advisory lock until commit
+        with ThreadPoolExecutor(1) as pool:
+            waiting = pool.submit(lambda: second.execute(ensure).fetchone())
+            with pytest.raises(TimeoutError):
+                waiting.result(timeout=0.5)
+            first.commit()
+            assert waiting.result(timeout=10) == ("offer_observation_p203003",)
+        second.commit()
+
+
+def test_ensure_partition_is_not_public(conn: Conn) -> None:
+    conn.execute("CREATE ROLE pi_test_nobody NOLOGIN")
+    conn.execute("SET ROLE pi_test_nobody")
+    with pytest.raises(errors.InsufficientPrivilege):
+        conn.execute("SELECT pi_ensure_offer_observation_partition(date '2029-01-01')")
 
 
 def test_ensure_partition_creates_new_month(conn: Conn) -> None:
@@ -232,12 +328,84 @@ def test_app_role_can_insert_and_read_observations(conn: Conn) -> None:
     [
         "UPDATE offer_observation SET quality_status = 'corrected'",
         "DELETE FROM offer_observation",
+        "TRUNCATE offer_observation_p202610 CASCADE",
+        "TRUNCATE crawl_run CASCADE",
+        "UPDATE evidence SET content_hash = 'tampered'",
+        "DELETE FROM evidence",
+        "UPDATE listing_content SET description = 'x'",
+        "DELETE FROM review_summary",
+        "DELETE FROM offer_promotion",
+        # Plain TRUNCATE already fails on foreign keys; CASCADE is the real risk.
+        *(f"TRUNCATE {table} CASCADE" for table in APPEND_ONLY_TABLES),
+        "UPDATE audit_log SET actor = 'x'",
+        "DELETE FROM decision_log",
     ],
 )
-def test_owner_cannot_rewrite_observations(conn: Conn, statement: str) -> None:
-    _observe(conn, _seed(conn), datetime(2026, 10, 1, tzinfo=UTC))
+def test_owner_cannot_rewrite_history(conn: Conn, statement: str) -> None:
+    _history(conn)
     with pytest.raises(errors.InsufficientPrivilege, match="append-only"):
         conn.execute(statement)
+
+
+def test_evidence_past_retention_can_be_deleted(conn: Conn) -> None:
+    ids = _history(conn)
+    conn.execute(
+        "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri,"
+        " retrieved_at, retention_until) VALUES (%s, 'u', 'h2', 'gs://b/2',"
+        " now() - interval '2 years', now() - interval '1 day')",
+        (ids["run"],),
+    )
+    deleted = conn.execute("DELETE FROM evidence WHERE retention_until < now()").rowcount
+    assert deleted == 1
+
+
+def test_missing_price_needs_a_reason(conn: Conn) -> None:
+    seed = _seed(conn)
+    sql = (
+        "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
+        " source_listing_id, observed_at, ingested_at, availability_state, quality_status,"
+        " field_state) VALUES (%s, %s, %s, %s, now(), now(), 'blocked', 'accepted', %s::jsonb)"
+    )
+    params = (seed["run"], seed["context"], seed["listing"])
+    conn.execute(sql, ("with-reason", *params, '{"price_current": "blocked"}'))
+    with pytest.raises(errors.CheckViolation):
+        conn.execute(sql, ("silent", *params, "{}"))
+
+
+def test_quality_status_must_be_explicit(conn: Conn) -> None:
+    seed = _seed(conn)
+    with pytest.raises(errors.NotNullViolation):
+        conn.execute(
+            "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
+            " source_listing_id, observed_at, ingested_at, price_current, currency,"
+            " availability_state) VALUES ('q', %s, %s, %s, now(), now(), 1, 'AED', 'in_stock')",
+            (seed["run"], seed["context"], seed["listing"]),
+        )
+
+
+@pytest.mark.parametrize(
+    ("rating", "scale", "ok"),
+    [("4.5", "5", True), ("87", "100", True), ("6", "5", False), ("4.5", None, False)],
+)
+def test_ratings_carry_their_scale(conn: Conn, rating: str, scale: str | None, ok: bool) -> None:
+    listing = _seed(conn)["listing"]
+    sql = (
+        "INSERT INTO review (listing_id, source_review_id, rating, rating_scale)"
+        " VALUES (%s, 'r1', %s::numeric, %s::numeric)"
+    )
+    if ok:
+        conn.execute(sql, (listing, rating, scale))
+    else:
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(sql, (listing, rating, scale))
+
+
+def test_correction_chain_is_indexed(conn: Conn) -> None:
+    definition = _one(
+        conn,
+        "SELECT indexdef FROM pg_indexes WHERE indexname = 'offer_observation_correction_idx'",
+    )
+    assert "(correction_of) WHERE (correction_of IS NOT NULL)" in str(definition)
 
 
 def test_correction_is_a_new_row(conn: Conn) -> None:
@@ -248,14 +416,14 @@ def test_correction_is_a_new_row(conn: Conn) -> None:
     conn.execute(
         "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
         " source_listing_id, observed_at, ingested_at, availability_state, quality_status,"
-        " correction_of) VALUES ('k1-fix', %s, %s, %s, %s, now(), 'out_of_stock',"
-        " 'corrected', %s)",
+        " field_state, correction_of) VALUES ('k1-fix', %s, %s, %s, %s, now(), 'out_of_stock',"
+        " 'corrected', '{\"price_current\": \"not_applicable\"}', %s)",
         (seed["run"], seed["context"], seed["listing"], at, original),
     )
     assert _one(conn, "SELECT count(*) FROM offer_observation") == 2
 
 
-def test_match_edge_is_canonically_ordered(conn: Conn) -> None:
+def _variants(conn: Conn) -> tuple[object, object]:
     brand = _one(conn, "INSERT INTO brand (name) VALUES ('NARS') RETURNING id")
     family = _one(
         conn,
@@ -266,6 +434,29 @@ def test_match_edge_is_canonically_ordered(conn: Conn) -> None:
         _one(conn, "INSERT INTO variant (family_id) VALUES (%s) RETURNING id", (family,))
         for _ in range(2)
     )
+    return a, b
+
+
+def test_one_current_match_edge_per_pair(conn: Conn) -> None:
+    """MAT-07: a rejected pair cannot get a competing current proposal."""
+    a, b = _variants(conn)
+    insert = (
+        "INSERT INTO match_edge (variant_a, variant_b, match_class, algo_version, review_state)"
+        " VALUES (%s, %s, %s, 'v1', %s) RETURNING id"
+    )
+    rejected = _one(conn, insert, (a, b, "exact", "rejected"))
+    conn.execute("SAVEPOINT s")
+    with pytest.raises(errors.UniqueViolation):
+        conn.execute(insert, (a, b, "substitute", "proposed"))
+    conn.execute("ROLLBACK TO SAVEPOINT s")
+    conn.execute(
+        "UPDATE match_edge SET valid_to = now() + interval '1 second' WHERE id = %s", (rejected,)
+    )
+    assert _one(conn, insert, (a, b, "family", "approved"))
+
+
+def test_match_edge_is_canonically_ordered(conn: Conn) -> None:
+    a, b = _variants(conn)
     with pytest.raises(errors.CheckViolation):
         conn.execute(
             "INSERT INTO match_edge (variant_a, variant_b, match_class, algo_version)"
