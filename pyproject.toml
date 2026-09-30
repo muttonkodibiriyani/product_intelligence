@@ -101,6 +101,7 @@ files = [
   "tools/ulta_snapshot",
   "tools/sephora_snapshot",
   "infra/scripts/invite_user.py",
+  "infra/scripts/pg_backup.py",
   "infra/scripts/publish_dataset.py",
   "infra/tests",
 ]
