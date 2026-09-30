@@ -22,8 +22,16 @@ allow, **stop and ask the coordinator**; the owner decides.
   - logins, cookie reuse or WAF-cookie replay;
   - cart and checkout;
   - third-party search APIs that the site's own page does not load.
-- **Proxy:** never, unless the owner has approved and bought it **for this site**, an ADR amendment
-  exists, and the source has been added to `PROXY_SOURCES` in a reviewed PR.
+- **Proxy:** never, unless all of these hold:
+  - the owner has approved and bought it **for this site**;
+  - an ADR amendment exists;
+  - the source has been added to `PROXY_SOURCES` and `APPROVED_DEVIATIONS` in a reviewed PR.
+
+  The same applies to a robots `tag_only` deviation (`APPROVED_DEVIATIONS` only). A YAML edit never
+  approves anything.
+- **Images:** image fetches follow the same rules. The image host's own robots.txt is checked (with
+  the same fail-closed matrix), images have their own per-host pacing, and the stop rules above
+  apply. Images are always fetched direct, never through a proxy.
 - **Classifier refusal:** if a safety classifier or permission guard refuses a step, report it.
   Never route around it.
 - **Secrets:** no secrets in git, fixtures, logs or messages. Keys found in page config are written
@@ -111,7 +119,9 @@ make new-connector SOURCE=<source_key> VERTICAL=<vertical>   # after the ADR-000
 
   ```bash
   make check
-  docker run --rm -v "$PWD/packages/<pkg>:/scan" zricethezav/gitleaks:latest detect --no-git --redact --source /scan
+  # the same pinned image and config as CI
+  docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 \
+    detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
   ```
 
 - Open the connector PR and get the Reviewer's approval. The coordinator merges.
@@ -134,6 +144,10 @@ make new-connector SOURCE=<source_key> VERTICAL=<vertical>   # after the ADR-000
 - Load into `pi_db` through the pipeline: drafts go through `to_canonical`, then the quality gate.
   Quarantined rows stay visible; nothing is dropped silently.
 - Evidence (the raw payload) is stored write-once. Observations are insert-only.
+- A **bounded batch** (the ~20-page trial, a `MAX_PAGES` run, a run stopped by a block or the byte
+  cap, or one category) is loaded as **partial**. The crawl run status and the context's
+  `coverage_status` are `partial`. Listings the batch did not reach stay `not_observed`, never
+  `removed` or `out_of_stock`. Only a complete, reconciled snapshot may set `supported`.
 
 ## 7. Match
 - Run `pi_match` for each source pair in the market (ADR-0007 §5), with the vertical's rules.

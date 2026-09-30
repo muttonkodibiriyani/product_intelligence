@@ -81,28 +81,56 @@ contexts:
 access:
   rung_max_allowed: 5               # 0, 1, 2, 4 or 5; 3 is rejected by pi_core
   browser: {engine: webkit, device: desktop, headless: true}   # pinned; no automatic fallback
-  page_interval_s: 5.0              # floor 1.0 (pi_fetch MIN_INTERVAL_FLOOR_S), plus jitter
+  page_interval_s: 5.0              # floor 1.0 (MIN_INTERVAL_FLOOR_S); >= 5.0 when proxied
   off_peak: {start: "01:00", end: "06:00"}   # local time of the context
-  robots_mode: obey                 # obey (default) | tag_only (needs an approval ref)
-  proxy:                            # null for every other source today
+  robots_mode: obey                 # obey (default) | tag_only (only if APPROVED_DEVIATIONS allows)
+  proxy:                            # null for every source not in PROXY_SOURCES
     approval_ref: ADR-0006 Amendment 2
-    secret_ref: projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/latest
-    byte_cap_gb: 1.8
+    secret_ref: projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/<n>  # pinned, never latest
+    byte_cap_gb: "1.8"              # a Decimal string, never a float
 cadence: on_demand                  # the only accepted value (blueprint §6.4)
-approvals:                          # decision references, never free text
+approvals:                          # informational: decision refs, cross-checked against code (below)
   - ADR-0006 Amendment 1 (WebKit pinned)
   - ADR-0006 Amendment 2 (rung 5, ulta.ae only)
 ```
+
+**Deviations are gated in code, not in YAML.** A YAML edit on its own must never be able to approve
+anything. Every owner-approved deviation from the defaults is recorded in a reviewed, code-level
+table, `pi_fetch.policy.APPROVED_DEVIATIONS: {source_key: {deviation: decision_ref}}`. This uses the
+same reasoning as `PROXY_SOURCES`.
+
+Deviation kinds today:
+- `robots_tag_only`: `sephora_me`, ADR-0005 decision 2;
+- `residential_proxy`: `ulta_ae`, ADR-0006 Amendment 2.
+
+The register may ask for a deviation, but the loader grants it only when **all** of these hold:
+- the source and deviation are in `APPROVED_DEVIATIONS`;
+- the YAML's `approval_ref` (or `approvals` entry) equals the table's `decision_ref`;
+- for a proxy, the source is also in `PROXY_SOURCES`.
+
+A test asserts that the `residential_proxy` entries equal `PROXY_SOURCES`. Tests also assert that
+a register file asking for `tag_only` or a `proxy` for any other source is rejected, even when its
+`approvals` list names a plausible decision. The `approvals` list is documentation and a
+cross-check; it never grants anything.
 
 The loader rejects anything the guardrails forbid, so a config change cannot loosen them. Each rule
 is a test:
 - **Rung 3:** `rung_max_allowed: 3` is rejected, using pi_core `LadderRung.is_permitted` (not
   redefined).
-- **Robots:** `robots_mode: tag_only` is rejected unless an `approvals` entry names the owner
-  decision. Today only Sephora ME has one (ADR-0005).
-- **Proxy fields:** a `proxy` block is rejected unless it has `approval_ref`, `secret_ref` and
-  `byte_cap_gb`, and its `approval_ref` is listed in `approvals`. `rung_max_allowed: 5` without a
-  `proxy` block is rejected.
+- **Robots:** `robots_mode: tag_only` is rejected unless `APPROVED_DEVIATIONS` grants
+  `robots_tag_only` to that source. Today only Sephora ME has it (ADR-0005).
+- **Proxy fields:** a `proxy` block is rejected unless all of these hold:
+  - it has `approval_ref`, `secret_ref` and `byte_cap_gb`;
+  - `APPROVED_DEVIATIONS` grants `residential_proxy` to the source;
+  - `secret_ref` is a **pinned** version: it matches pi_fetch's own `_SECRET_RESOURCE_RE` (imported,
+    never copied) and is not `versions/latest` (#35);
+  - `byte_cap_gb` is a `Decimal` greater than 0;
+  - `page_interval_s` is at least 5.0 (the same rule `FetchPolicy` enforces for residential-proxy
+    sources).
+
+  `rung_max_allowed: 5` without a `proxy` block is rejected. Proxy bytes already used
+  (`prior_bytes`) are **not** a register field: they stay a required runtime input on every run
+  (`ResidentialProxy.prior_bytes`), read from the provider dashboard.
 - **Proxy code gate (C6):** `pi_fetch.proxy.PROXY_SOURCES` **stays a code-level safety gate**. The
   register cannot enable a proxy on its own: a source that is not in `PROXY_SOURCES` is refused
   whatever its YAML says. Adding a proxied source takes all three of:
@@ -308,8 +336,11 @@ with the `role` claim `admin` or `viewer` may read `datasets/**` (`infra/storage
 clients start seeing different markets or brands, access is scoped as follows:
 - **Claim:** a second Firebase custom claim sits next to `role`:
   `scopes = {markets: [...], brands: [...], sources: [...]}`. It is set by
-  `infra/scripts/invite_user.py` and mirrored in `user_entitlement`. A user without `scopes` keeps
-  today's access.
+  `infra/scripts/invite_user.py` and mirrored in `user_entitlement`.
+- **Fail closed:** once PR-F is in force, a `viewer` without a `scopes` claim reads **no** dataset;
+  missing scopes never means full access. Full access is an explicit claim
+  (`scopes = {all: true}`) or the `admin` role. PR-F backfills `scopes` for every existing user
+  before the rules switch, and an emulator test covers the no-claim deny.
 - **Enforcement:** the Storage and Firestore rules narrow `datasets/**` to the
   `datasets/<market>/<scope>/` paths that the claims cover. The assistant's tools filter by the
   same claims.
@@ -322,7 +353,10 @@ trigger for building it is the first second audience whose scope differs (PR-F).
 ADR-0003, ADR-0005 and ADR-0006 (with both amendments) apply exactly as written to every new
 source, vertical and country:
 - the ladder is rungs 0, 1, 2 and 4; rung 3 is never attempted;
-- rung 5 is off (§2 proxy code gate);
+- rung 5 is off for every source **except** those in `PROXY_SOURCES` under an ADR amendment
+  (today only `ulta_ae`, ADR-0006 Amendment 2, which is why §2's example sets it to 5). A new
+  proxied source needs its own amendment, the owner's approval and purchase, and reviewed
+  `PROXY_SOURCES`/`APPROVED_DEVIATIONS` entries (§2);
 - robots.txt is obeyed with the fail-closed status matrix;
 - collection stops at the first challenge: no solving, no retry, and no switch of engine, user
   agent or egress;
@@ -332,8 +366,9 @@ source, vertical and country:
 - cadence is on-demand only;
 - classifier refusals are reported, never routed around.
 
-The owner approvals that exist today are **per source** and do not generalise. The register makes
-each one an explicit, reviewable reference on one source.
+The owner approvals that exist today are **per source** and do not generalise. Each one is a
+code-level entry for one source (`APPROVED_DEVIATIONS`, `PROXY_SOURCES`), and the register
+reference is cross-checked against it (§2).
 
 A new country may bring its own legal or consumer-data constraints. Onboarding a new country records
 them as an owner decision before any collection. Reviews still carry no PII.
@@ -352,14 +387,16 @@ and Sephora connectors give identical parse output on their fixtures.
 | PR-E | `VerticalProfile` plugins (beauty first, then food_menu and apparel) plus `variant.attributes_schema` (append-only migration) and brand aliases as data (§4) | 01a0f47a-9d64 | ADR approved |
 | PR-F | Per-user scope claims (§7) | 01a0f47a-9f9b | Only if a differently scoped audience appears |
 | Dashboard | Pickers driven by the contract | 01a0f47a-a213 | PR-B |
-| Follow-up (not yet filed) | Source register and loader (§2); `FetchPolicy.from_register()`; `tools/ulta_snapshot` reads the register | — | ADR approved |
+| Follow-up (not yet filed) | Source register and loader (§2) with the code-level `APPROVED_DEVIATIONS` table and its tests; `FetchPolicy.from_register()`; `tools/ulta_snapshot` reads the register | — | ADR approved |
 | Follow-up (not yet filed) | Connector kit, template, contract suite and `make new-connector` (§3). Shared code moves out of the Ulta and Sephora connectors with golden-fixture parity | — | Register |
 | Follow-up | First non-beauty source, via the onboarding runbook, own register entry and recon | — | Owner go |
 
 ## Consequences
 - **Adding a site** is a register entry plus a connector from the template, with no change to
-  shared code. Adding a proxied site also needs the `PROXY_SOURCES` code change, an ADR amendment
-  and owner approval, on purpose.
+  shared code. A site that needs a deviation (robots `tag_only`, or a proxy) also needs, on purpose:
+  - a reviewed `APPROVED_DEVIATIONS` entry (and a `PROXY_SOURCES` entry for a proxy);
+  - an ADR amendment;
+  - the owner's approval.
 - **Adding a vertical** is a `VerticalProfile`, with no fork and no change to the core tables.
 - **Adding a country** is register data plus an owner decision on local constraints.
 - **Enforcement:** access rules are enforced when config loads as well as in `pi_fetch`, so a config
