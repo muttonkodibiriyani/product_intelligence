@@ -89,7 +89,7 @@ Ulta's Middle East roll-out has been **store-led**, and no Ulta ME e-commerce st
 ```mermaid
 flowchart TB
   subgraph S1[1 · Collect]
-    REG[Source register] --> SCH[Scheduler]
+    REG[Source register] --> SCH[On-demand run trigger]
     SCH --> LAD["Escalation ladder<br/>site data → plain HTTP → Playwright → egress → proxy (rung 3 disabled)"]
     LAD --> RAW[(Raw evidence<br/>Cloud Storage)]
     LAD --> IMG[Image fetcher<br/>direct CDN]
@@ -476,7 +476,7 @@ packages/
   pi_normalize/   price, tax, size, promo, claims
   pi_quality/     Pandera schemas, anomaly checks
   pi_match/       blocking, Splink, embeddings, Gemini judge
-  pi_pipeline/    Dagster assets, jobs, schedules
+  pi_pipeline/    Dagster assets and jobs (on-demand; no schedules)
 db/            migrations (Alembic), dbt/
 semantic/      Cube metrics
 apps/          web/ (Next.js), assistant/ (Genkit + promptfoo)
