@@ -3,7 +3,7 @@
 - Status: accepted (owner decisions, 30 Sep 2026, relayed by the program coordinator)
 - Date: 2026-09-30
 - Supersedes: ADR-0004 for the pilot scope (KSA dropped for now)
-- Requirement IDs: SCP-02, SCP-08, SCP-11 (decision log), SRC-01, SRC-08, SRC-14
+- Requirement IDs: SCP-02, SCP-08, SCP-11 (decision log), SRC-01, SRC-08, SRC-14 (deferred)
 
 ## Context
 Recon (`docs/recon/sephora_me.md`, `docs/recon/ulta_me.md`) found that Ulta ME has no KSA
@@ -28,8 +28,13 @@ WAF 403). The ladder probe had not been run.
    `docs/recon/sephora_me.md` §8.1). It starts with a normal browser User-Agent and ordinary
    requests, and records exactly what works from Gulf egress. It is built as a separate task
    after this recon PR merges.
-4. **Ulta offline data (SRC-14).** The owner will ask Alshaya for a `ulta.ae` product/price export.
-   The PR7 offline import is built either way.
+4. **Own collection only (owner direction, 30 Sep).** The pilot must prove that our own platform
+   collects the data with no vendor and no Alshaya help: no Alshaya contact, export or allowlisting.
+   The PR7 offline import (SRC-14) is a later option only and is out of the full-crawl scope for now.
+   The order is: probe → full crawl if access works. If a site still blocks ordinary Gulf-egress
+   traffic, a per-site Proxy Decision Report goes to the owner, covering a UAE residential proxy for
+   product-data calls only, with images fetched direct. The owner decides and buys. Agents purchase
+   nothing and sign up for nothing.
 
 ## Consequences
 - Sephora PR6 may prefer BFF JSON over HTML. Pacing and off-peak scheduling are part of the

@@ -228,4 +228,4 @@ by up to a day. Treat it as a **complement** to the BFF (IDs, prices, deep links
 replacement. The application needs a publisher identity (a website and a business owner). That is
 the owner's call, and nothing has been applied for.
 
-The Ulta side (Alshaya `ulta.ae` export, owner to request) is in `ulta_me.md` §5.
+On the Ulta side, the Alshaya export is deferred (no Alshaya contact during the pilot, ADR-0005). See `ulta_me.md` §5.
