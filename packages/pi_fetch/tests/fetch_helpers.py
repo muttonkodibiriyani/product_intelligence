@@ -19,6 +19,7 @@ from pi_core import (
     SourceContext,
 )
 from pi_fetch.cache import LocalEvidenceStore
+from pi_fetch.ladder import robots_key
 from pi_fetch.pacing import HostPacer, RobotsTagger
 from pi_fetch.policy import FetchPlan, FetchPolicy
 from pi_fetch.transports.base import RawResponse, Transport
@@ -137,11 +138,18 @@ def fake_pacer(clock: FakeClock) -> HostPacer:
     return HostPacer(clock=clock, sleep=clock.sleep)
 
 
-def allow_all_robots(*hosts: str) -> RobotsTagger:
-    """A tagger that already knows ``hosts`` allow everything, so no robots.txt is fetched."""
+ROUTE_ENGINES = ("http", "chromium", "firefox", "webkit")
+ROUTE_EGRESSES = ("direct", "gulf", "iproyal_ae")
+
+
+def allow_all_robots(*hosts: str, text: str = "") -> RobotsTagger:
+    """A tagger that already knows robots.txt of ``hosts`` (allow all by default) on every test
+    route, so no robots.txt is fetched."""
     tagger = RobotsTagger()
     for host in hosts or ("shop.example",):
-        tagger.add(host, "")
+        for engine in ROUTE_ENGINES:
+            for egress in ROUTE_EGRESSES:
+                tagger.add(robots_key(host, engine, egress), text)
     return tagger
 
 

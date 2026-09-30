@@ -44,6 +44,7 @@ from pi_fetch.policy import (
     next_rung,
     permitted_rungs,
 )
+from pi_fetch.proxy import ProxyUsage, ResidentialProxy
 from pi_fetch.transports.base import TransportError
 from pi_fetch.types import (
     BlockKind,
@@ -64,6 +65,9 @@ from pi_fetch.types import (
 #: BlockVerdict.kind (challenge | blocked | rate_limited): a 429 is RATE_LIMITED, and only
 #: CHALLENGE and BLOCKED mark a source blocked (PDR, API-route refusal); FetchResult.rate_limited.
 #: robots.txt is matched per RFC 9309 (wildcards, $, longest match).
+#: Runner-side additions that connectors cannot see (no bump): FetchPolicy.residential_proxy
+#: (rung 5 via the pinned browser, ulta.ae only), ProxyUsage, SourceStoppedError; a rung-5
+#: FetchResult may carry the browser profile.
 INTERFACE_VERSION = "0.2"
 
 __all__ = [
@@ -94,6 +98,8 @@ __all__ = [
     "ParseError",
     "ParseOutput",
     "PayloadKind",
+    "ProxyUsage",
+    "ResidentialProxy",
     "RobotsMode",
     "RobotsRefusedError",
     "RobotsTag",

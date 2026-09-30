@@ -5,7 +5,10 @@ are never redefined here. On top of that:
 
 * rung 4 (egress variation) exists only when an egress profile is configured at runtime;
 * rung 5 (paid proxy) exists only when the owner has approved it: the source context's cap must
-  allow it **and** ``FetchPolicy.paid_proxy`` must name the approval. It is off by default;
+  allow it **and** either ``FetchPolicy.residential_proxy`` has an entry for the source (per-source
+  residential proxy through the pinned browser, e.g. ulta.ae) or ``FetchPolicy.paid_proxy`` names
+  the approval (JSON/API over HTTP only). It is off by default. Images are never proxied: they
+  are fetched direct at rung 1;
 * a browser fetch uses the engine pinned for the source in ``FetchPolicy.browsers`` (owner
   config). There is no default engine and no automatic engine fallback;
 * robots.txt is obeyed unless the source is configured ``tag_only`` (Sephora only, ADR-0005);
@@ -13,6 +16,7 @@ are never redefined here. On top of that:
 """
 
 import os
+import re
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import Self
@@ -22,6 +26,7 @@ from pydantic import Field, field_validator, model_validator
 from pi_core import CollectionContext, FetchMethod, LadderRung, PiModel, SourceContext
 from pi_core.types import DbId, NonEmptyStr
 from pi_fetch.pacing import MIN_INTERVAL_FLOOR_S, RobotsMode, product_token
+from pi_fetch.proxy import ResidentialProxy, registrable_domain
 from pi_fetch.types import BrowserProfile, FetchRequest, PayloadKind
 
 #: Egress name recorded on results fetched from the default (direct) network path.
@@ -33,10 +38,23 @@ DEFAULT_USER_AGENT = (
     "Chrome/140.0.0.0 Safari/537.36"
 )
 
+#: ADR-0006 Amendment 2: at most one page per 5-10 s through the residential proxy.
+MIN_PROXY_PAGE_INTERVAL_S = 5.0
+
 #: The only robots.txt group tokens we may select: the product token of our normal browser
 #: User-Agent and our own name. An allowlist, so no configuration can pick another crawler's
-#: (possibly more permissive) group or claim its identity.
+#: (possibly more permissive) robots.txt group.
 OWN_ROBOTS_TOKENS = frozenset({"mozilla", "pibot"})
+#: The User-Agent header may not name another crawler anywhere (e.g. ``compatible; Googlebot``):
+#: known names, plus any ``...bot``/``crawler``/``spider`` word other than our own ``pibot``.
+_OTHER_CRAWLER_RE = re.compile(
+    r"googlebot|mediapartners-google|adsbot|google-extended|googleother|storebot|bingbot|"
+    r"bingpreview|slurp|duckduckbot|baiduspider|yandex|applebot|gptbot|oai-searchbot|"
+    r"chatgpt-user|perplexitybot|claudebot|claude-web|anthropic-ai|ccbot|facebookexternalhit|"
+    r"amazonbot|bytespider|petalbot|semrushbot|ahrefsbot|"
+    r"\b(?!pibot\b)[a-z0-9_-]*(?:bot|crawler|spider)\b",
+    re.IGNORECASE,
+)
 
 _RUNG0_METHOD: dict[PayloadKind, FetchMethod] = {
     PayloadKind.XML: FetchMethod.SITEMAP,
@@ -91,8 +109,11 @@ class FetchPolicy(PiModel):
     timeout_s: float = 30.0
     #: Rung 4: e.g. the Gulf Cloud Run egress. None disables the rung.
     egress_variation: EgressProfile | None = None
-    #: Rung 5: None (the default) disables it.
+    #: Rung 5 over HTTP for JSON/API calls: None (the default) disables it.
     paid_proxy: PaidProxyConfig | None = None
+    #: Rung 5 per source: the owner-approved residential proxy, used through the source's pinned
+    #: browser. Sources without an entry (e.g. Sephora) never use it.
+    residential_proxy: Mapping[DbId, ResidentialProxy] = Field(default_factory=dict)
     #: The browser pinned per source (``SourceContext.source_id``). A source without an entry
     #: cannot use a browser rung.
     browsers: Mapping[DbId, BrowserProfile] = Field(default_factory=dict)
@@ -109,6 +130,26 @@ class FetchPolicy(PiModel):
             msg = f"page_interval_s below {MIN_INTERVAL_FLOOR_S}s for sources {too_fast}"
             raise ValueError(msg)
         return value
+
+    @field_validator("user_agent")
+    @classmethod
+    def _check_user_agent_is_ours(cls, value: str) -> str:
+        found = _OTHER_CRAWLER_RE.search(value)
+        if found:
+            msg = f"user_agent names another crawler ({found.group(0)!r}); it must not"
+            raise ValueError(msg)
+        return value
+
+    @model_validator(mode="after")
+    def _check_proxy_pace(self) -> Self:
+        slow = MIN_PROXY_PAGE_INTERVAL_S
+        too_fast = sorted(
+            k for k in self.residential_proxy if self.page_interval_s.get(k, 0.0) < slow
+        )
+        if too_fast:
+            msg = f"residential-proxy sources {too_fast} need page_interval_s >= {slow}s"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _check_robots_agent_is_ours(self) -> Self:
@@ -132,6 +173,10 @@ class FetchPolicy(PiModel):
         """The source's page interval (at least the 1 s floor)."""
         return self.page_interval_s.get(source_id, MIN_INTERVAL_FLOOR_S)
 
+    def proxy_for(self, source_id: DbId) -> ResidentialProxy | None:
+        """The source's residential proxy config, or None."""
+        return self.residential_proxy.get(source_id)
+
     def browser_for(self, source_id: DbId) -> BrowserProfile:
         """The pinned browser for ``source_id``; raises when the owner has not pinned one."""
         profile = self.browsers.get(source_id)
@@ -150,6 +195,8 @@ class FetchPlan(PiModel):
     egress: EgressProfile
     #: Set exactly when ``engine`` is the browser.
     browser: BrowserProfile | None = None
+    #: Set when the route goes through a source's residential proxy (no credentials in here).
+    proxy: ResidentialProxy | None = None
 
 
 def permitted_rungs(policy: FetchPolicy, source_context: SourceContext) -> tuple[LadderRung, ...]:
@@ -160,7 +207,11 @@ def permitted_rungs(policy: FetchPolicy, source_context: SourceContext) -> tuple
             continue
         if rung is LadderRung.EGRESS_VARIATION and policy.egress_variation is None:
             continue
-        if rung.is_paid and policy.paid_proxy is None:
+        if (
+            rung.is_paid
+            and policy.paid_proxy is None
+            and policy.proxy_for(source_context.source_id) is None
+        ):
             continue
         rungs.append(rung)
     return tuple(rungs)
@@ -181,10 +232,20 @@ def plan(request: FetchRequest, ctx: CollectionContext, policy: FetchPolicy) -> 
     """Resolve the rung, method, engine and egress for ``request`` under ``ctx``.
 
     The rung is the context's ``ladder_rung_used``, raised to the browser rung for a ``render``
-    request and to plain HTTP for an image (rung 0 has no image method). Raises
+    request and to plain HTTP for an image (rung 0 has no image method). On a residential-proxy
+    source an image at rung 5 drops to plain HTTP, direct: images are never proxied. Raises
     ``LadderPolicyError`` when that rung is not permitted.
     """
     rung = ctx.ladder_rung_used
+    residential = policy.proxy_for(ctx.source_context.source_id)
+    if request.kind is PayloadKind.IMAGE and rung is LadderRung.PAID_PROXY and residential:
+        host = (request.url.host or "").lower()
+        if host in {residential.site_domain, f"www.{residential.site_domain}"}:
+            # The page host answers our direct egress with a WAF 403, which would stop the
+            # whole source: such images are skipped, never proxied (ADR-0006 Am.2).
+            msg = f"image on the proxied page host is skipped, not fetched: {request.url}"
+            raise LadderPolicyError(msg)
+        rung = LadderRung.PLAIN_HTTP
     if request.render and rung < LadderRung.BROWSER:
         rung = LadderRung.BROWSER
     if request.kind is PayloadKind.IMAGE and rung is LadderRung.SITE_DATA:
@@ -192,6 +253,20 @@ def plan(request: FetchRequest, ctx: CollectionContext, policy: FetchPolicy) -> 
     if rung not in permitted_rungs(policy, ctx.source_context):
         msg = f"rung {rung.name} is not permitted for this context and policy"
         raise LadderPolicyError(msg)
+    if rung is LadderRung.PAID_PROXY and residential is not None:
+        if registrable_domain(request.url.host or "") != residential.site_domain:
+            msg = f"the residential proxy carries {residential.site_domain} only, not {request.url}"
+            raise LadderPolicyError(msg)
+        # Owner decision: the residential proxy carries the pinned browser (pages, their XHRs,
+        # robots.txt); heavy assets are blocked in the browser and images go direct.
+        return FetchPlan(
+            rung=rung,
+            method=FetchMethod.RESIDENTIAL_PROXY,
+            engine=Engine.BROWSER,
+            egress=EgressProfile(name=residential.egress_name),
+            browser=policy.browser_for(ctx.source_context.source_id),
+            proxy=residential,
+        )
     method, engine, egress = _route(rung, request, policy)
     browser = policy.browser_for(ctx.source_context.source_id) if engine is Engine.BROWSER else None
     return FetchPlan(rung=rung, method=method, engine=engine, egress=egress, browser=browser)

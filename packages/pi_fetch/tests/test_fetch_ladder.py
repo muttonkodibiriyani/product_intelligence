@@ -318,8 +318,28 @@ def test_robots_agent_must_be_our_own_token(token: str) -> None:
     ],
 )
 def test_user_agent_product_token_must_be_ours(user_agent: str) -> None:
-    with pytest.raises(ValueError, match="is not ours"):
+    with pytest.raises(ValueError, match=r"another crawler|is not ours"):
         FetchPolicy(user_agent=user_agent)
+
+
+@pytest.mark.parametrize(
+    "user_agent",
+    [
+        "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        "Mozilla/5.0 (compatible; bingbot/2.0)",
+        "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.1)",
+        "Mozilla/5.0 (compatible; SomeNewCrawler/0.1)",
+        "Mozilla/5.0 (compatible; acme-spider)",
+    ],
+)
+def test_user_agent_header_may_not_name_another_crawler(user_agent: str) -> None:
+    with pytest.raises(ValueError, match="another crawler"):
+        FetchPolicy(user_agent=user_agent)
+
+
+def test_user_agent_may_name_pibot() -> None:
+    policy = FetchPolicy(user_agent="Mozilla/5.0 (compatible; PIBot/0.1)")
+    assert policy.robots_group_agent == "Mozilla"
 
 
 def test_default_robots_token_is_mozilla() -> None:
@@ -327,19 +347,20 @@ def test_default_robots_token_is_mozilla() -> None:
     assert FetchPolicy(robots_agent="PIBot").robots_group_agent == "PIBot"
 
 
-def test_robots_is_read_over_plain_http_even_for_a_browser_fetch(tmp_path: Path) -> None:
+def test_robots_is_read_through_the_same_pinned_browser_route(tmp_path: Path) -> None:
     factory = ScriptedFactory(raw(404, b"missing"), raw())
     f = fetcher(tmp_path, factory, robots=RobotsTagger())
     result = f.fetch(req(render=True), make_ctx(LadderRung.BROWSER))
-    assert [route.engine for route, _, _ in factory.sends] == [Engine.HTTP, Engine.BROWSER]
+    routes = [route for route, _, _ in factory.sends]
+    assert [r.engine for r in routes] == [Engine.BROWSER, Engine.BROWSER]
+    assert routes[0] == routes[1]
     assert result.browser == WEBKIT
 
 
 def test_tag_only_source_fetches_and_records_disallowed(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    robots = RobotsTagger()
-    robots.add("shop.example", ROBOTS)
+    robots = allow_all_robots(text=ROBOTS)
     policy = FetchPolicy(robots_modes={3: RobotsMode.TAG_ONLY})
     factory = ScriptedFactory(raw())
     with caplog.at_level(logging.INFO, logger="pi_fetch.audit"):
