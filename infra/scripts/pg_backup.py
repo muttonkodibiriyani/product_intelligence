@@ -5,9 +5,13 @@
 # ///
 """Nightly PostgreSQL backup: pg_dump -Fc of the local stack, verified, uploaded to a bucket.
 
-    uv run --script infra/scripts/pg_backup.py backup          # dump, verify, upload, prune
+    uv run --script infra/scripts/pg_backup.py backup          # dump, restore-verify, upload
     uv run --script infra/scripts/pg_backup.py check           # exit 1 if failed or stale
-    uv run --script infra/scripts/pg_backup.py restore-test F  # scratch-DB restore + counts
+    uv run --script infra/scripts/pg_backup.py restore-test F  # restore, compare with F's counts
+
+Every nightly dump is restored into a scratch database before upload; the per-table row counts
+of that restore are uploaded next to it (`<dump>.counts.json`), and `restore-test` requires an
+exact match with them.
 
 The upload runs as the uploader service account, which can only create objects in the backup
 bucket. No key for it exists: the credentials already on the host (GOOGLE_APPLICATION_CREDENTIALS)
@@ -37,6 +41,8 @@ STATE_DIR = Path.home() / ".local/state/pi-backup"
 KEEP_LOCAL = 3
 MAX_AGE = timedelta(hours=26)
 SCRATCH_DB = "pi_restore_check"
+VERIFY_DB = "pi_backup_verify"
+ATTENTION = "ATTENTION"
 UPLOAD_URL = "https://storage.googleapis.com/upload/storage/v1/b/{bucket}/o"
 
 Run = Callable[..., subprocess.CompletedProcess[bytes]]
@@ -73,9 +79,14 @@ def docker(container: str, *argv: str, stdin: bool = False) -> list[str]:
 def dump(run: Run, container: str, db: str, target: Path) -> None:
     """pg_dump -Fc inside the container (server-matched version), written atomically."""
     partial = target.with_suffix(".partial")
-    with partial.open("wb") as out:
-        run(docker(container, "pg_dump", "-Fc", "-U", DB_USER, "-d", db), stdout=out, check=True)
-    partial.rename(target)
+    try:
+        with partial.open("wb") as out:
+            run(
+                docker(container, "pg_dump", "-Fc", "-U", DB_USER, "-d", db), stdout=out, check=True
+            )
+        partial.rename(target)
+    finally:
+        partial.unlink(missing_ok=True)
 
 
 def table_data_entries(listing: str) -> int:
@@ -120,10 +131,19 @@ def uploader_token(uploader: str) -> str:
 def upload(
     token: str, bucket: str, name: str, path: Path, metadata: dict[str, str]
 ) -> dict[str, str]:
-    """Create-only multipart upload (ifGenerationMatch=0): an existing object is never replaced."""
+    """Create-only multipart upload (ifGenerationMatch=0): an existing object is never replaced.
+
+    The md5 goes in the resource, so GCS itself rejects a body that arrived corrupted. The body is
+    built in memory: fine at a few MB; switch to a resumable upload if dumps approach ~100 MB.
+    """
     boundary = "pi-backup-" + hashlib.sha256(name.encode()).hexdigest()[:16]
     head = json.dumps(
-        {"name": name, "contentType": "application/octet-stream", "metadata": metadata}
+        {
+            "name": name,
+            "contentType": "application/octet-stream",
+            "md5Hash": digests(path)[1],
+            "metadata": metadata,
+        }
     )
     body = b"".join(
         [
@@ -150,11 +170,12 @@ def upload(
 
 
 def prune(directory: Path, keep: int) -> list[Path]:
-    """Keep the newest `keep` local dumps (names sort by stamp); returns what was removed."""
+    """Keep the newest `keep` local dumps (and their counts files); returns what was removed."""
     dumps = sorted(directory.glob("*.dump"))
     removed = dumps[: max(len(dumps) - keep, 0)]
     for path in removed:
         path.unlink()
+        counts_path(path).unlink(missing_ok=True)
     return removed
 
 
@@ -164,31 +185,55 @@ def write_status(state: Path, status: dict[str, object]) -> None:
     partial.rename(state / "status.json")
 
 
+def counts_path(dump_path: Path) -> Path:
+    return dump_path.with_name(dump_path.name + ".counts.json")
+
+
 def backup(args: argparse.Namespace, run: Run = subprocess.run) -> int:
+    os.umask(0o077)  # the dumps are a full copy of the database on a shared host
     state: Path = args.state_dir
-    state.mkdir(parents=True, exist_ok=True)
+    state.mkdir(mode=0o700, parents=True, exist_ok=True)
+    state.chmod(0o700)
     now = datetime.now(UTC)
     status: dict[str, object] = {"status": "failed", "at": stamp(now)}
     try:
         path = state / f"{args.db}-{stamp(now)}.dump"
         dump(run, args.container, args.db, path)
         entries = verify(run, args.container, path)
-        sha256, md5 = digests(path)
+        sha256, _ = digests(path)
         size = path.stat().st_size
         log(f"dumped {path.name}: {size} bytes, {entries} table-data entries, sha256 {sha256}")
+        counts = restored_counts(run, args.container, VERIFY_DB, path)
+        if not any(counts.values()):
+            raise RuntimeError(f"restored {len(counts)} tables but no rows")
+        rows = sum(counts.values())
+        log(f"restore-verified: {len(counts)} tables, {rows} rows")
         name = object_name(args.db, now)
+        sidecar = counts_path(path)
+        sidecar.write_text(
+            json.dumps({"dump": name, "sha256": sha256, "counts": counts}, indent=1) + "\n"
+        )
         meta = {
             "sha256": sha256,
             "source": f"{args.container}/{args.db}",
             "tableDataEntries": str(entries),
+            "tables": str(len(counts)),
+            "rows": str(rows),
         }
-        result = upload(uploader_token(args.uploader), args.bucket, name, path, meta)
-        if result.get("md5Hash") != md5:
-            raise RuntimeError(f"md5 mismatch after upload: {result.get('md5Hash')} != {md5}")
-        log(f"uploaded gs://{args.bucket}/{name} generation {result.get('generation')}")
+        token = uploader_token(args.uploader)
+        for obj, local in ((name, path), (name + ".counts.json", sidecar)):
+            result = upload(token, args.bucket, obj, local, meta)
+            local_md5 = digests(local)[1]
+            if result.get("md5Hash") != local_md5:
+                raise RuntimeError(
+                    f"md5 mismatch after upload: {result.get('md5Hash')} != {local_md5}"
+                )
+            log(f"uploaded gs://{args.bucket}/{obj} generation {result.get('generation')}")
         for old in prune(state, KEEP_LOCAL):
             log(f"pruned local {old.name}")
-        status.update(status="ok", object=f"gs://{args.bucket}/{name}", bytes=size, sha256=sha256)
+        status.update(
+            status="ok", object=f"gs://{args.bucket}/{name}", bytes=size, sha256=sha256, rows=rows
+        )
         status["lastSuccess"] = stamp(now)
         return 0
     except Exception as exc:  # the cron log and status.json must say why
@@ -226,10 +271,17 @@ def check_status(status: dict[str, object], now: datetime, max_age: timedelta) -
 
 
 def check(args: argparse.Namespace) -> int:
-    problems = check_status(read_status(args.state_dir), datetime.now(UTC), MAX_AGE)
+    """Log the verdict and keep `<state>/ATTENTION` present exactly while something is wrong."""
+    state: Path = args.state_dir
+    problems = check_status(read_status(state), datetime.now(UTC), MAX_AGE)
+    flag = state / ATTENTION
     for problem in problems:
         log(f"ATTENTION {problem}")
-    if not problems:
+    if problems:
+        state.mkdir(mode=0o700, parents=True, exist_ok=True)
+        flag.write_text(f"{stamp(datetime.now(UTC))}\n" + "\n".join(problems) + "\n")
+    else:
+        flag.unlink(missing_ok=True)
         log("backup ok")
     return 1 if problems else 0
 
@@ -268,47 +320,52 @@ def row_counts(run: Run, container: str, db: str) -> dict[str, int]:
     return {name: int(n) for name, n in psql(count_sql(tables))}
 
 
-def compare_counts(live: dict[str, int], restored: dict[str, int]) -> tuple[list[str], bool]:
-    """Markdown rows plus whether the restore is complete (every table present, none larger)."""
-    rows, ok = ["| table | live now | restored | diff |", "|---|---:|---:|---:|"], True
-    for name in sorted(live.keys() | restored.keys()):
-        a, b = live.get(name), restored.get(name)
-        if b is None or (a is not None and b > a):
-            ok = False
-        diff = "missing" if a is None or b is None else f"{b - a:+d}"
-        rows.append(f"| {name} | {'-' if a is None else a} | {'-' if b is None else b} | {diff} |")
+def compare_counts(
+    dumped: dict[str, int], restored: dict[str, int], live: dict[str, int] | None = None
+) -> tuple[list[str], bool]:
+    """Markdown rows plus whether the restore is complete: exactly the tables and row counts
+    recorded when the dump was taken. Live counts are shown for information only."""
+    live = live or {}
+    rows = ["| table | at dump | restored | live now |", "|---|---:|---:|---:|"]
+    ok = bool(dumped) and dumped == restored
+    for name in sorted(dumped.keys() | restored.keys()):
+        cells = [str(d[name]) if name in d else "-" for d in (dumped, restored, live)]
+        mark = "" if dumped.get(name) == restored.get(name) else " **MISMATCH**"
+        rows.append(f"| {name} | {' | '.join(cells)} |{mark}")
     return rows, ok
 
 
+def restored_counts(run: Run, container: str, scratch: str, dump_path: Path) -> dict[str, int]:
+    """Restore the archive into a fresh scratch DB (dropped afterwards) and count every table."""
+    admin = docker(container, "psql", "-U", DB_USER, "-d", "postgres", "-c")
+    run([*admin, f"DROP DATABASE IF EXISTS {scratch}"], check=True)
+    run([*admin, f"CREATE DATABASE {scratch}"], check=True)
+    try:
+        with dump_path.open("rb") as fh:
+            restore = ["pg_restore", "-U", DB_USER, "-d", scratch, "--no-owner", "--exit-on-error"]
+            done = run(docker(container, *restore, stdin=True), stdin=fh, stderr=subprocess.PIPE)
+        if done.returncode:
+            lines = (done.stderr or b"").decode(errors="replace").strip().splitlines()
+            errors = [line for line in lines if "error:" in line] or lines
+            raise RuntimeError(f"pg_restore failed: {errors[0] if errors else done.returncode}")
+        return row_counts(run, container, scratch)
+    finally:
+        run([*admin, f"DROP DATABASE IF EXISTS {scratch}"], check=True)
+
+
 def restore_test(args: argparse.Namespace, run: Run = subprocess.run) -> int:
-    """Restore into a scratch DB in the same container, compare counts with the live DB, drop it."""
+    """Restore into a scratch DB and require the row counts recorded when the dump was taken."""
     sha256, _ = digests(args.dump)
     log(f"restore-test {args.dump.name} sha256 {sha256}")
-    admin = docker(args.container, "psql", "-U", DB_USER, "-d", "postgres", "-c")
-    run([*admin, f"DROP DATABASE IF EXISTS {SCRATCH_DB}"], check=True)
-    run([*admin, f"CREATE DATABASE {SCRATCH_DB}"], check=True)
-    try:
-        with args.dump.open("rb") as fh:
-            run(
-                docker(
-                    args.container,
-                    "pg_restore",
-                    "-U",
-                    DB_USER,
-                    "-d",
-                    SCRATCH_DB,
-                    "--no-owner",
-                    "--exit-on-error",
-                    stdin=True,
-                ),
-                stdin=fh,
-                check=True,
-            )
-        restored = row_counts(run, args.container, SCRATCH_DB)
-        live = row_counts(run, args.container, args.db)
-    finally:
-        run([*admin, f"DROP DATABASE IF EXISTS {SCRATCH_DB}"], check=True)
-    rows, ok = compare_counts(live, restored)
+    counts_file: Path = args.counts or counts_path(args.dump)
+    recorded = json.loads(counts_file.read_text())
+    if recorded.get("sha256") != sha256:
+        log(f"INCOMPLETE {counts_file.name} is for sha256 {recorded.get('sha256')}, not this dump")
+        return 1
+    dumped: dict[str, int] = recorded["counts"]
+    restored = restored_counts(run, args.container, SCRATCH_DB, args.dump)
+    live = row_counts(run, args.container, args.db)
+    rows, ok = compare_counts(dumped, restored, live)
     print("\n".join(rows))
     total = sum(restored.values())
     log(f"restored {len(restored)} tables, {total} rows; {'COMPLETE' if ok else 'INCOMPLETE'}")
@@ -329,6 +386,9 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("check", help="exit 1 if the last run failed or is older than 26 h")
     r = sub.add_parser("restore-test", help="restore a dump into a scratch DB and compare counts")
     r.add_argument("dump", type=Path)
+    r.add_argument(
+        "--counts", type=Path, help="counts recorded at dump time (default: DUMP.counts.json)"
+    )
     return p
 
 

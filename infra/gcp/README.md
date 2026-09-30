@@ -35,4 +35,6 @@ budget already exists, add the missing thresholds with `gcloud billing budgets u
 | pending owner run | bucket `productintelligence-beeb3-pg-backups` | me-central1, uniform access, public access prevention, delete at 14 days | < $0.01/month |
 | pending owner run | SA `pi-db-backup` (no key) | `roles/storage.objectCreator` on that bucket only; `firebase-adminsdk-fbsvc` has `roles/iam.serviceAccountTokenCreator` on this SA only | free |
 
+The uploader cannot read or delete backups, but `firebase-adminsdk-fbsvc` (key on the server) can, through its project role; soft delete (7 days) is the backstop. See the runbook.
+
 Created by `infra/gcp/pg_backup_setup.sh` (idempotent). Runbook: `docs/runbooks/db-backup-restore.md`.
