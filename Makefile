@@ -1,4 +1,4 @@
-.PHONY: install lint format types test uat uat-status check up down db-shell emulators
+.PHONY: install lint format types test uat uat-status check up down db-shell emulators migrate
 
 install:
 	uv sync
@@ -13,6 +13,10 @@ format:
 
 types:
 	uv run mypy
+
+# DB tests run against the local stack (`make up`); override PI_DATABASE_URL to point elsewhere.
+PI_DATABASE_URL ?= postgresql+psycopg://pi:pi_local_only@127.0.0.1:55432/pi
+export PI_DATABASE_URL
 
 test:
 	uv run pytest --cov --cov-report=term
@@ -38,6 +42,9 @@ up:
 
 down:
 	$(COMPOSE) down
+
+migrate:
+	uv run alembic -c packages/pi_db/alembic.ini upgrade head
 
 db-shell:
 	$(COMPOSE) exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'

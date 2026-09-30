@@ -5,7 +5,7 @@ description = "Competitive product and price intelligence platform (workspace ro
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["pi-core"]
+dependencies = ["pi-core", "pi-db"]
 
 [tool.uv]
 package = false
@@ -15,6 +15,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 pi-core = { workspace = true }
+pi-db = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -38,8 +39,10 @@ select = [
 ignore = ["PLR2004"]
 
 [tool.ruff.lint.per-file-ignores]
-"packages/*/tests/**" = ["S101", "PLR2004"]
+"packages/*/tests/**" = ["S101", "PLR2004", "PLR0913", "PLR0917", "S608"]
 "tests/**" = ["S101", "PLR2004"]
+# Migrations are DDL assembled from frozen module constants, never from input.
+"packages/pi_db/src/pi_db/migrations/versions/*" = ["S608"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -52,8 +55,14 @@ quote-style = "double"
 python_version = "3.12"
 strict = true
 warn_unreachable = true
-mypy_path = ["packages/pi_core/src", "tests"]
-files = ["packages/pi_core/src", "packages/pi_core/tests", "tests/uat"]
+mypy_path = ["packages/pi_core/src", "packages/pi_db/src", "tests"]
+files = [
+  "packages/pi_core/src",
+  "packages/pi_core/tests",
+  "packages/pi_db/src",
+  "packages/pi_db/tests",
+  "tests/uat",
+]
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
@@ -70,11 +79,12 @@ markers = [
   "m3: lands in milestone M3 Metrics + web",
   "m4: lands in milestone M4 AI + hardening",
   "m5: lands in milestone M5 Sign-off",
+  "db: needs PostgreSQL + pgvector (PI_DATABASE_URL); skipped when unset",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["pi_core"]
+source = ["pi_core", "pi_db"]
 
 [tool.coverage.report]
 fail_under = 85
