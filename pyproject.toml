@@ -29,7 +29,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["packages/*/src", "packages/*/tests"]
+src = ["packages/*/src", "packages/*/tests", "tests"]
 
 [tool.ruff.lint]
 select = [
@@ -39,6 +39,7 @@ ignore = ["PLR2004"]
 
 [tool.ruff.lint.per-file-ignores]
 "packages/*/tests/**" = ["S101", "PLR2004"]
+"tests/**" = ["S101", "PLR2004"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -51,13 +52,25 @@ quote-style = "double"
 python_version = "3.12"
 strict = true
 warn_unreachable = true
-mypy_path = ["packages/pi_core/src"]
-files = ["packages/pi_core/src", "packages/pi_core/tests"]
+mypy_path = ["packages/pi_core/src", "tests"]
+files = ["packages/pi_core/src", "packages/pi_core/tests", "tests/uat"]
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
-testpaths = ["packages"]
+testpaths = ["packages", "tests/uat"]
+pythonpath = ["tests"]
 addopts = "-q --strict-markers --import-mode=importlib"
+markers = [
+  "uat: UAT scenario mapped to a requirement ID (tests/uat)",
+  "req(id): requirement ID from docs/requirements/traceability.csv",
+  "scenario(id): acceptance scenario UAT-XX from docs/requirements/uat_scenarios.csv",
+  "m0: lands in milestone M0 Foundation",
+  "m1: lands in milestone M1 Collection",
+  "m2: lands in milestone M2 Matching",
+  "m3: lands in milestone M3 Metrics + web",
+  "m4: lands in milestone M4 AI + hardening",
+  "m5: lands in milestone M5 Sign-off",
+]
 
 [tool.coverage.run]
 branch = true
