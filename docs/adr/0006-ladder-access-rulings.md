@@ -59,3 +59,50 @@ cart/checkout, polite pacing, and every escalation audit-logged.
   impersonation. UAT-25 asserts stop, mark blocked and report.
 - Coverage may be lower on bot-protected sources. The Proxy Decision Report is the only path
   past a block.
+
+## Amendment 1 (2026-09-30 UTC): owner rulings from the Gulf probe
+1. **Browser engine choice.** Playwright's stock Chromium, Firefox and WebKit engines are all
+   ordinary rung-2 clients, headless or headed, desktop or mobile profile. Using the engine
+   that a site serves normally is allowed; for ulta.ae that is WebKit, because Chromium and
+   Firefox got a Cloudflare 403. No stealth patches, no cookie reuse, a fresh context per
+   attempt, and no challenge solving. If the working engine starts being challenged, collection
+   stops and is reported; it does not rotate engines or user agents to get past the challenge.
+   To make this boundary mechanical:
+   - The engine and device profile are **pinned per source in configuration** by owner or
+     coordinator decision (for example, ulta.ae uses WebKit).
+   - `pi_fetch` has **no automatic engine fallback**. A blocked engine returns a blocked
+     result.
+   - The engine, headless/headed mode and device profile are recorded in evidence metadata.
+2. **ulta.ae first-party calls.** The data the page itself loads (`/graphql`,
+   `query-index.json`, `promotion-schedule.json`) is read inside the browser session. ulta.ae's
+   `robots.txt` is obeyed, including for those API and JSON paths. The robots override from ADR-0005 applies to Sephora only.
+3. **ulta.ae search via Algolia.**
+   - **(A) Primary route:** read the search and listing responses the page loads inside the
+     browser.
+   - **(B) Approved as complement and fallback:** direct read-only search queries to ulta.ae's
+     Algolia host, using the public search-only key the page embeds. Allowed uses are
+     catalogue enumeration, coverage cross-checks and filling gaps. Conditions:
+     - pacing of at most 1 req/s with jitter, run off-peak;
+     - the same index and parameters as the site frontend;
+     - no admin or write endpoints;
+     - the key is read at runtime from the page or from Secret Manager, is never committed, and
+       is redacted in fixtures.
+
+     Recorded as `FetchMethod.site_api` (rung 0).
+   - **Guardrail:** B is allowed only while ulta.ae itself is reachable by our browser. If
+     ulta.ae blocks us, collection does not quietly switch to Algolia-only. It pauses and is
+     reported, and the owner decides.
+   - **Enforcement (review gates for any Algolia-route PR):**
+     - **Key hygiene:** the key is redacted everywhere: stored request URLs, headers,
+       `x-algolia-api-key` query parameters, captured JSON, logs, exceptions and fixtures. A
+       test asserts that a recorded request never contains the key.
+     - **Provenance:** recorded as `site_api` (rung 0). No new `FetchMethod` value. The
+       evidence request URL must show the Algolia host.
+     - **Mechanical guardrail:** `pi_fetch` refuses the Algolia route for a source context
+       that is blocked or paused, and emits a report or event instead of falling back.
+       Tested: ulta.ae blocked ⇒ Algolia request refused.
+     - **Read-only:** only the query endpoint paths and methods are allowlisted. Settings,
+       keys, batch and other paths are rejected.
+     - **Pacing:** at most 1 req/s with jitter and off-peak, enforced per host in the
+       `pi_fetch` rate limiter.
+4. **Ulta ME mobile app study** (`com.ub.mena`): on hold until the owner says go.
