@@ -90,7 +90,7 @@ def test_draft_fields_are_canonical_fields_minus_persistence_ids() -> None:
     }
     assert set(OfferDraft.model_fields) - {"source_listing_key"} == set(
         OfferObservation.model_fields
-    ) - {"source_listing_id", "evidence_id"}
+    ) - {"source_listing_id", "evidence_id", "ingested_at"}
 
 
 def test_mapping_is_replay_deterministic_and_uses_stable_variant_keys() -> None:
@@ -110,7 +110,13 @@ def test_mapping_is_replay_deterministic_and_uses_stable_variant_keys() -> None:
 def test_to_canonical_performs_full_validated_construction() -> None:
     output = map_product(_product(), _result(), CONTEXT)
     listing = to_canonical(output.listings[0], source_id=2, evidence_id=7)
-    offer = to_canonical(output.offers[0], source_listing_id=5, evidence_id=7)
+    offer = to_canonical(
+        output.offers[0],
+        source_listing_id=5,
+        evidence_id=7,
+        ingested_at=NOW,
+        context=CONTEXT,
+    )
     assert isinstance(listing, ListingRecord)
     assert listing.source_id == 2
     assert isinstance(offer, OfferObservation)
@@ -138,7 +144,12 @@ def test_non_single_prices_have_null_current_with_reason(price_type: PriceType) 
     payload = _payload()
     prices = payload["variants"][0]["prices"]
     prices["price_type"] = price_type.value
-    prices["current"] = {"amount": None, "currency": "AED", "reason": price_type.value}
+    prices["current"] = {
+        "amount": None,
+        "currency": "AED",
+        "field_state": "not_applicable",
+        "reason": price_type.value,
+    }
     if price_type is PriceType.RANGE:
         prices["range_min"] = {"amount": "80", "currency": "AED"}
         prices["range_max"] = {"amount": "120", "currency": "AED"}
@@ -155,6 +166,75 @@ def test_zero_price_is_rejected_before_mapping() -> None:
     payload["variants"][0]["prices"]["current"]["amount"] = "0"
     with pytest.raises(ValidationError, match="greater than 0"):
         _product(payload)
+
+
+def test_missing_price_states_are_never_guessed_from_free_text() -> None:
+    baseline = map_product(_product(), _result(), CONTEXT)
+    assert baseline.offers[0].field_state["price_member"] is FieldState.NOT_PUBLISHED
+    assert baseline.offers[1].field_state["price_promo"] is FieldState.NOT_APPLICABLE
+
+    payload = _payload()
+    payload["variants"][1]["prices"]["promo"] = {
+        "amount": None,
+        "currency": "AED",
+        "field_state": "parse_failure",
+        "reason": "could not parse price",
+    }
+    output = map_product(_product(payload), _result(), CONTEXT)
+    assert output.offers[1].field_state["price_promo"] is FieldState.PARSE_FAILURE
+
+
+def test_unknown_stock_does_not_assert_low_stock_or_available_variant_count() -> None:
+    offer = map_product(_product(), _result(), CONTEXT).offers[0]
+    assert offer.low_stock_flag is None
+    assert offer.field_state["low_stock_flag"] is FieldState.NOT_PUBLISHED
+    assert offer.available_variants == 1
+    assert "available_variants" not in offer.field_state
+
+
+def test_available_variant_count_uses_only_observed_in_stock_variants() -> None:
+    payload = _payload()
+    payload["variants"][1]["stock"] = {
+        "state": "out_of_stock",
+        "quantity": 0,
+        "source_field_observed": True,
+    }
+    offers = map_product(_product(payload), _result(), CONTEXT).offers
+    assert all(offer.available_variants == 1 for offer in offers)
+
+
+def test_absent_shade_and_concentration_are_not_assumed_inapplicable() -> None:
+    payload = _payload()
+    payload["variants"][1]["shade"] = None
+    output = map_product(_product(payload), _result(), CONTEXT)
+    assert output.listings[0].field_state["concentration"] is FieldState.NOT_PUBLISHED
+    assert output.listings[1].field_state["shade"] is FieldState.NOT_PUBLISHED
+
+
+def test_to_canonical_checks_context_currency() -> None:
+    output = map_product(_product(), _result(), CONTEXT)
+    ksa = CollectionContext(
+        source_context=SourceContext(
+            id=1,
+            source_id=2,
+            country=Market.KSA,
+            locale=Locale.EN,
+            time_zone=Market.KSA.time_zone,
+            valid_from=NOW - timedelta(days=1),
+        ),
+        crawl_run_id=3,
+        connector_version="ulta_ae@0.1.0",
+        ladder_rung_used=LadderRung.PLAIN_HTTP,
+        fetch_method=FetchMethod.PLAIN_HTTP,
+    )
+    with pytest.raises(ValueError, match="differs from context SAR"):
+        to_canonical(
+            output.offers[0],
+            source_listing_id=5,
+            evidence_id=7,
+            ingested_at=NOW,
+            context=ksa,
+        )
 
 
 def test_fetch_evidence_requires_a_permitted_matching_method() -> None:

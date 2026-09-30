@@ -102,7 +102,6 @@ class OfferFields(FieldStateModel):
     # None means the retailer sells first-party; marketplace sellers keep their source id (CAT-11).
     seller_id: NonEmptyStr | None = None
     observed_at: UtcDatetime
-    ingested_at: UtcDatetime
     # Set when the row is written; parse output has none yet.
     recorded_at: UtcDatetime | None = None
     source_effective_from: UtcDatetime | None = None
@@ -137,13 +136,7 @@ class OfferFields(FieldStateModel):
     correction_of: DbId | None = None
 
     @model_validator(mode="after")
-    def _check_invariants(self) -> Self:
-        if self.ingested_at < self.observed_at:
-            msg = "ingested_at is before observed_at"
-            raise ValueError(msg)
-        if self.recorded_at is not None and self.recorded_at < self.ingested_at:
-            msg = "recorded_at is before ingested_at"
-            raise ValueError(msg)
+    def _check_shared_invariants(self) -> Self:
         if (
             self.source_effective_from is not None
             and self.source_effective_to is not None
@@ -237,6 +230,17 @@ class OfferObservation(OfferFields):
 
     source_listing_id: DbId
     evidence_id: DbId
+    ingested_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def _check_ingestion_timestamps(self) -> Self:
+        if self.ingested_at < self.observed_at:
+            msg = "ingested_at is before observed_at"
+            raise ValueError(msg)
+        if self.recorded_at is not None and self.recorded_at < self.ingested_at:
+            msg = "recorded_at is before ingested_at"
+            raise ValueError(msg)
+        return self
 
     @property
     def idempotency_key(self) -> str:

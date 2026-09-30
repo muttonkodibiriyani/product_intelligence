@@ -40,7 +40,7 @@
         "current": {"amount": "90.00", "currency": "AED"},
         "regular": {"amount": "100.00", "currency": "AED"},
         "promo": {"amount": "90.00", "currency": "AED"},
-        "member": {"amount": null, "currency": "AED", "reason": "not published"}
+        "member": {"amount": null, "currency": "AED", "field_state": "not_published", "reason": "not published"}
       },
       "promotions": [],
       "stock": {"state": "in_stock", "quantity": 4},
@@ -55,8 +55,8 @@
       "prices": {
         "current": {"amount": "100.00", "currency": "AED"},
         "regular": {"amount": "100.00", "currency": "AED"},
-        "promo": {"amount": null, "currency": "AED", "reason": "no active promotion"},
-        "member": {"amount": null, "currency": "AED", "reason": "not published"}
+        "promo": {"amount": null, "currency": "AED", "field_state": "not_applicable", "reason": "no active promotion"},
+        "member": {"amount": null, "currency": "AED", "field_state": "not_published", "reason": "not published"}
       },
       "promotions": [],
       "stock": {"state": "unknown", "reason": "availability absent from payload"},

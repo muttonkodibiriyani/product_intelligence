@@ -26,7 +26,7 @@ from pi_core import (
     PiModel,
 )
 from pi_core.context import check_rung
-from pi_core.types import DbId, NonEmptyStr
+from pi_core.types import DbId, NonEmptyStr, UtcDatetime
 
 INTERFACE_VERSION = "0.2"
 
@@ -146,6 +146,8 @@ def to_canonical(
     source_id: DbId,
     evidence_id: DbId,
     source_listing_id: None = None,
+    ingested_at: None = None,
+    context: None = None,
 ) -> ListingRecord: ...
 
 
@@ -156,30 +158,46 @@ def to_canonical(
     source_id: None = None,
     evidence_id: DbId,
     source_listing_id: DbId,
+    ingested_at: UtcDatetime,
+    context: CollectionContext,
 ) -> OfferObservation: ...
 
 
-def to_canonical(
+def to_canonical(  # noqa: PLR0913 - one typed adapter for both v0.2 draft variants
     draft: ListingDraft | OfferDraft,
     *,
     source_id: DbId | None = None,
     evidence_id: DbId,
     source_listing_id: DbId | None = None,
+    ingested_at: UtcDatetime | None = None,
+    context: CollectionContext | None = None,
 ) -> ListingRecord | OfferObservation:
     """Pipeline-only validated conversion after evidence/listing persistence."""
     values = draft.model_dump(mode="python")
     if isinstance(draft, ListingDraft):
-        if source_id is None or source_listing_id is not None:
+        if (
+            source_id is None
+            or source_listing_id is not None
+            or ingested_at is not None
+            or context is not None
+        ):
             raise ValueError("listing conversion requires source_id only")
         return ListingRecord.model_validate(
             values | {"source_id": source_id, "evidence_id": evidence_id}
         )
-    if source_id is not None or source_listing_id is None:
-        raise ValueError("offer conversion requires source_listing_id only")
+    if source_id is not None or source_listing_id is None or ingested_at is None or context is None:
+        raise ValueError("offer conversion requires source_listing_id, ingested_at, and context")
     values.pop("source_listing_key")
-    return OfferObservation.model_validate(
-        values | {"source_listing_id": source_listing_id, "evidence_id": evidence_id}
+    observation = OfferObservation.model_validate(
+        values
+        | {
+            "source_listing_id": source_listing_id,
+            "evidence_id": evidence_id,
+            "ingested_at": ingested_at,
+        }
     )
+    observation.check_context(context)
+    return observation
 
 
 class ParseOutput(_TemporaryPiModel):

@@ -12,6 +12,7 @@ from pi_connector_ulta.models import (
     Stock,
     StockState,
 )
+from pi_core import FieldState
 
 
 @given(st.decimals(min_value="0.01", max_value="100000", allow_nan=False, allow_infinity=False))
@@ -27,11 +28,21 @@ def test_non_positive_prices_are_rejected(amount: Decimal) -> None:
         PriceValue(amount=amount)
 
 
-def test_missing_price_requires_reason_and_never_becomes_zero() -> None:
-    with pytest.raises(ValidationError, match="missing price requires a reason"):
+def test_missing_price_requires_structured_state_and_never_becomes_zero() -> None:
+    with pytest.raises(ValidationError, match="missing price requires a field_state"):
         PriceValue(amount=None)
-    missing = PriceValue(amount=None, reason="not published")
+    missing = PriceValue(
+        amount=None,
+        field_state=FieldState.NOT_PUBLISHED,
+        reason="not published",
+    )
     assert missing.amount is None
+    assert missing.field_state is FieldState.NOT_PUBLISHED
+
+
+def test_observed_is_not_a_missing_price_reason() -> None:
+    with pytest.raises(ValidationError, match="observed is not"):
+        PriceValue(amount=None, field_state=FieldState.OBSERVED)
 
 
 def test_present_price_rejects_missing_reason() -> None:
@@ -74,7 +85,15 @@ def test_ratings_are_complete_or_explained() -> None:
         Ratings(average=Decimal("4"), count=None)
     with pytest.raises(ValidationError, match="missing ratings require"):
         Ratings()
-    assert Ratings(average=None, count=None, reason="not published").average is None
+    assert (
+        Ratings(
+            average=None,
+            count=None,
+            field_state=FieldState.NOT_PUBLISHED,
+            reason="not published",
+        ).average
+        is None
+    )
 
 
 def test_ratings_carry_and_enforce_the_published_scale() -> None:

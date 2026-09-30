@@ -16,7 +16,6 @@ from pi_connector_ulta._pi_fetch_stub import (
 from pi_connector_ulta.models import (
     Image,
     LocalizedText,
-    PriceValue,
     ProductRecord,
     Stock,
     StockState,
@@ -29,7 +28,6 @@ from pi_core import (
     ImageRef,
     ImageRole,
     Locale,
-    PriceType,
     TaxStatus,
     is_valid_gtin,
 )
@@ -82,7 +80,7 @@ def _listing_draft(
         "mpn": FieldState.NOT_PUBLISHED,
         "shade_code": FieldState.NOT_PUBLISHED,
         "pack_count": FieldState.NOT_PUBLISHED,
-        "concentration": FieldState.NOT_APPLICABLE,
+        "concentration": FieldState.NOT_PUBLISHED,
     }
     if variant.sku is None:
         field_state["source_sku"] = FieldState.NOT_PUBLISHED
@@ -93,7 +91,7 @@ def _listing_draft(
             FieldState.PARSE_FAILURE if variant.barcode else FieldState.NOT_PUBLISHED
         )
     if variant.shade is None:
-        field_state["shade"] = FieldState.NOT_APPLICABLE
+        field_state["shade"] = FieldState.NOT_PUBLISHED
     if size_value is None:
         field_state["size_value"] = FieldState.NOT_PUBLISHED
     if images is None:
@@ -123,18 +121,16 @@ def _listing_draft(
     )
 
 
-def _missing_state(value: PriceValue) -> FieldState:
-    return (
-        FieldState.NOT_APPLICABLE if value.reason and "not " in value.reason else FieldState.UNKNOWN
-    )
-
-
 def _availability(stock: Stock) -> tuple[AvailabilityState, FieldState | None]:
     if stock.state is StockState.IN_STOCK:
         return AvailabilityState.IN_STOCK, None
     if stock.state is StockState.OUT_OF_STOCK:
         return AvailabilityState.OUT_OF_STOCK, FieldState.OBSERVED
     return AvailabilityState.UNKNOWN, FieldState.UNKNOWN
+
+
+def _available_variants(product: ProductRecord) -> int:
+    return sum(variant.stock.state is StockState.IN_STOCK for variant in product.variants)
 
 
 def _offer_draft(
@@ -145,9 +141,11 @@ def _offer_draft(
 ) -> OfferDraft:
     prices = variant.prices
     availability, availability_reason = _availability(variant.stock)
+    available_variants = _available_variants(product)
     rating = product.ratings
     field_state: dict[str, FieldState] = {
         "installment": FieldState.NOT_PUBLISHED,
+        "low_stock_flag": FieldState.NOT_PUBLISHED,
         "delivery_promise": FieldState.NOT_PUBLISHED,
         "rank_in_category": FieldState.NOT_PUBLISHED,
     }
@@ -159,14 +157,16 @@ def _offer_draft(
     }
     for field, value in price_values.items():
         if value.amount is None:
-            field_state[field] = _missing_state(value)
-    if prices.price_type in {PriceType.RANGE, PriceType.QUOTE_ONLY}:
-        field_state["price_current"] = FieldState.NOT_APPLICABLE
+            if value.field_state is None:
+                raise ValueError(f"{field} is missing without a field_state")
+            field_state[field] = value.field_state
     if rating.average is None:
+        if rating.field_state is None:
+            raise ValueError("ratings are missing without a field_state")
         field_state.update(
             {
-                "rating_value": FieldState.NOT_PUBLISHED,
-                "rating_count": FieldState.NOT_PUBLISHED,
+                "rating_value": rating.field_state,
+                "rating_count": rating.field_state,
             }
         )
     if availability_reason is not None:
@@ -177,7 +177,6 @@ def _offer_draft(
         crawl_run_id=ctx.crawl_run_id,
         source_context_id=ctx.source_context.id,
         observed_at=result.retrieved_at,
-        ingested_at=result.retrieved_at,
         price_current=prices.current.amount,
         price_regular_stated=prices.regular.amount,
         price_promo=prices.promo.amount,
@@ -189,8 +188,8 @@ def _offer_draft(
         installment=None,
         tax_status=TaxStatus.UNKNOWN,
         availability_state=availability,
-        available_variants=len(product.variants),
-        low_stock_flag=False,
+        available_variants=available_variants,
+        low_stock_flag=None,
         delivery_promise=None,
         rating_value=rating.average,
         rating_scale=rating.rating_scale,

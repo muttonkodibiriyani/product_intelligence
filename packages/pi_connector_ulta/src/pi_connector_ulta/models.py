@@ -11,7 +11,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
-from pi_core import PriceType
+from pi_core import FieldState, PriceType
 
 PositiveDecimal = Annotated[Decimal, Field(gt=0, allow_inf_nan=False)]
 NonNegativeDecimal = Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
@@ -48,14 +48,17 @@ class PriceValue(FrozenModel):
 
     amount: PositiveDecimal | None
     currency: Literal["AED"] = "AED"
+    field_state: FieldState | None = None
     reason: str | None = None
 
     @model_validator(mode="after")
     def explain_missing_value(self) -> Self:
-        if self.amount is None and not self.reason:
-            raise ValueError("a missing price requires a reason; missing is never zero")
-        if self.amount is not None and self.reason is not None:
-            raise ValueError("a present price cannot have a missing reason")
+        if self.amount is None and self.field_state is None:
+            raise ValueError("a missing price requires a field_state; missing is never zero")
+        if self.field_state is FieldState.OBSERVED:
+            raise ValueError("observed is not a missing-price reason")
+        if self.amount is not None and (self.field_state is not None or self.reason is not None):
+            raise ValueError("a present price cannot have a missing field_state or reason")
         return self
 
 
@@ -68,10 +71,14 @@ class Prices(FrozenModel):
     promo: PriceValue
     member: PriceValue
     range_min: PriceValue = Field(
-        default_factory=lambda: PriceValue(amount=None, reason="not a range")
+        default_factory=lambda: PriceValue(
+            amount=None, field_state=FieldState.NOT_APPLICABLE, reason="not a range"
+        )
     )
     range_max: PriceValue = Field(
-        default_factory=lambda: PriceValue(amount=None, reason="not a range")
+        default_factory=lambda: PriceValue(
+            amount=None, field_state=FieldState.NOT_APPLICABLE, reason="not a range"
+        )
     )
 
     @model_validator(mode="after")
@@ -79,6 +86,8 @@ class Prices(FrozenModel):
         if self.price_type is PriceType.RANGE:
             if self.current.amount is not None:
                 raise ValueError("range price cannot have a single current amount")
+            if self.current.field_state is not FieldState.NOT_APPLICABLE:
+                raise ValueError("range current price must be explicitly not applicable")
             if self.range_min.amount is None or self.range_max.amount is None:
                 raise ValueError("range price requires minimum and maximum amounts")
             if self.range_min.amount > self.range_max.amount:
@@ -86,6 +95,8 @@ class Prices(FrozenModel):
         elif self.price_type is PriceType.QUOTE_ONLY:
             if self.current.amount is not None:
                 raise ValueError("quote-only price cannot have a current amount")
+            if self.current.field_state is not FieldState.NOT_APPLICABLE:
+                raise ValueError("quote-only current price must be explicitly not applicable")
         elif self.current.amount is None:
             raise ValueError("a numeric price type requires a current amount")
         return self
@@ -143,6 +154,7 @@ class Ratings(FrozenModel):
     average: NonNegativeDecimal | None = None
     count: Annotated[int, Field(ge=0)] | None = None
     rating_scale: PositiveDecimal | None = None
+    field_state: FieldState | None = None
     reason: str | None = None
 
     @model_validator(mode="after")
@@ -150,10 +162,12 @@ class Ratings(FrozenModel):
         present = (self.average is not None, self.count is not None, self.rating_scale is not None)
         if len(set(present)) != 1:
             raise ValueError("rating average, count, and scale must all be present or absent")
-        if self.average is None and not self.reason:
-            raise ValueError("missing ratings require a reason")
-        if self.average is not None and self.reason is not None:
-            raise ValueError("present ratings cannot have a missing reason")
+        if self.average is None and self.field_state is None:
+            raise ValueError("missing ratings require a field_state")
+        if self.field_state is FieldState.OBSERVED:
+            raise ValueError("observed is not a missing-ratings reason")
+        if self.average is not None and (self.field_state is not None or self.reason is not None):
+            raise ValueError("present ratings cannot have a missing field_state or reason")
         if (
             self.average is not None
             and self.rating_scale is not None
