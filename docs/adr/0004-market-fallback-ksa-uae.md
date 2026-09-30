@@ -1,6 +1,6 @@
 # ADR-0004: Market fallback KSA → UAE
 
-- Status: accepted (owner decision)
+- Status: accepted (owner decision); partly superseded by ADR-0005 (pilot scope is UAE only, KSA dropped for now)
 - Date: 2026-09-30
 
 ## Context

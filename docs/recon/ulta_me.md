@@ -77,8 +77,8 @@ Caveats if Algolia is found:
 That is a Cloudflare **WAF block page**, not a JS/Turnstile challenge (verified from the body). Even
 `robots.txt` is blocked, which points to an IP/ASN or geo rule against our IN datacenter egress
 rather than fingerprinting (**inferred**). Rungs 1–4 were not run in this session (same
-tool-permission limit as the Sephora recon; see `sephora_me.md` §2). How the probe is run is a
-approved probe (§8) will test this. Sample: `samples/ulta_ae_cloudflare_block_head.html`. `ulta.com.kw`
+tool-permission limit as the Sephora recon; see `sephora_me.md` §2). The approved Gulf-egress
+probe (§8) will test this. Sample: `samples/ulta_ae_cloudflare_block_head.html`. `ulta.com.kw`
 was not requested.
 
 ## 4. Field-availability matrix (expected, all unverified)
