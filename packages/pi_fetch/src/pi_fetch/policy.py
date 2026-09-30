@@ -80,6 +80,8 @@ class FetchPolicy(PiModel):
     """Runtime fetch configuration. The defaults allow rungs 0, 1 and 2 only."""
 
     user_agent: NonEmptyStr = DEFAULT_USER_AGENT
+    #: The robots.txt group token (RFC 9309 §2.2.1). None: the product token of ``user_agent``.
+    robots_agent: NonEmptyStr | None = None
     timeout_s: float = 30.0
     #: Rung 4: e.g. the Gulf Cloud Run egress. None disables the rung.
     egress_variation: EgressProfile | None = None

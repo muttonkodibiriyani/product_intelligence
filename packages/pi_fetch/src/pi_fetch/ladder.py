@@ -104,7 +104,9 @@ class Fetcher:
         self._evidence = evidence
         self._pacer = pacer or HostPacer()
         self._cache = cache
-        self._robots = robots or RobotsTagger(product_token(self._policy.user_agent))
+        self._robots = robots or RobotsTagger(
+            self._policy.robots_agent or product_token(self._policy.user_agent)
+        )
         self._factory = transport_factory
         self._clock = clock
         self._transports: dict[tuple[Engine, str, BrowserProfile | None], Transport] = {}
