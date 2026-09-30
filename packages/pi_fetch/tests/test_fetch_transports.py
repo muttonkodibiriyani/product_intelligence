@@ -10,7 +10,7 @@ from pi_core import Locale
 from pi_fetch.transports.base import TransportError
 from pi_fetch.transports.browser import BrowserTransport, is_json_response
 from pi_fetch.transports.http import HttpTransport
-from pi_fetch.types import FetchRequest, PayloadKind
+from pi_fetch.types import BrowserEngine, BrowserProfile, FetchRequest, PayloadKind
 
 PAGE = b"""<html><body><div id="out">loading</div><script>
 fetch('/api/product').then(r => r.json()).then(d => {
@@ -48,6 +48,20 @@ def test_http_transport_follows_redirects_and_keeps_raw_headers() -> None:
     assert srv.requests[0][1]["X-T"] == "1"
 
 
+def test_http_transport_carries_no_cookie_between_requests() -> None:
+    # A WAF cookie (cf_clearance, _abck) set by one response must never ride on the next request.
+    with local_server() as srv:
+        srv.static("/set", b"ok", "text/plain", ("Set-Cookie", "cf_clearance=abc; Path=/"))
+        srv.static("/next", b"ok", "text/plain")
+        transport = HttpTransport(timeout_s=5)
+        try:
+            transport.send(req(f"{srv.base}/set"), {})
+            transport.send(req(f"{srv.base}/next"), {})
+        finally:
+            transport.close()
+    assert "Cookie" not in srv.requests[1][1]
+
+
 def test_http_transport_error_is_not_a_block() -> None:
     transport = HttpTransport(timeout_s=2)
     with pytest.raises(TransportError, match="failed"):
@@ -69,24 +83,27 @@ def test_is_json_response(content_type: str | None, resource_type: str, expected
     assert is_json_response(content_type, resource_type) is expected
 
 
-@pytest.fixture(scope="module")
-def browser_available() -> None:
+@pytest.fixture(scope="module", params=list(BrowserEngine), ids=lambda e: e.value)
+def profile(request: pytest.FixtureRequest) -> BrowserProfile:
+    """Each stock engine a source can be pinned to; skipped where it can't launch."""
     from playwright.sync_api import Error, sync_playwright  # noqa: PLC0415
 
+    engine: BrowserEngine = request.param
     try:
         with sync_playwright() as p:
-            p.chromium.launch().close()
+            getattr(p, engine.value).launch().close()
     except Error as exc:
-        pytest.skip(f"Playwright Chromium not installed: {exc.message.splitlines()[0]}")
+        pytest.skip(f"Playwright {engine.value} cannot launch: {exc.message.splitlines()[0]}")
+    return BrowserProfile(engine=engine)
 
 
-@pytest.mark.usefixtures("browser_available")
-def test_browser_renders_and_captures_page_json() -> None:
+@pytest.mark.browser
+def test_browser_renders_and_captures_page_json(profile: BrowserProfile) -> None:
     with local_server() as srv:
         srv.static("/p", PAGE, "text/html")
         srv.static("/api/product", json.dumps({"name": "Rouge"}).encode(), "application/json")
         srv.static("/api/text", b"plain", "text/plain")
-        transport = BrowserTransport(timeout_s=15)
+        transport = BrowserTransport(profile=profile, timeout_s=15)
         try:
             response = transport.send(
                 req(f"{srv.base}/p", render=True, capture_json=True),
@@ -101,14 +118,14 @@ def test_browser_renders_and_captures_page_json() -> None:
     assert json.loads(response.captured_json[0].body) == {"name": "Rouge"}
     assert json.loads(second.body) == {"name": "Rouge"}
     page_request = next(h for p, h, _ in srv.requests if p == "/p")
-    assert page_request["Accept-Language"] == "en-AE,en;q=0.9"
+    assert page_request["Accept-Language"].startswith("en-AE")
     # Stock browser identity: the fetch layer's User-Agent is not injected (no spoofing).
     assert page_request["User-Agent"] != "ignored"
 
 
-@pytest.mark.usefixtures("browser_available")
-def test_browser_failure_raises_transport_error() -> None:
-    transport = BrowserTransport(timeout_s=5)
+@pytest.mark.browser
+def test_browser_failure_raises_transport_error(profile: BrowserProfile) -> None:
+    transport = BrowserTransport(profile=profile, timeout_s=5)
     try:
         with pytest.raises(TransportError):
             transport.send(req("http://127.0.0.1:9/"), {})

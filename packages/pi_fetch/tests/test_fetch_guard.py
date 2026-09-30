@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import pi_fetch
 from fetch_helpers import make_ctx
 from pi_core import LadderRung
 from pi_fetch.guard import NetworkForbiddenError, forbid_network, network_imports
@@ -57,6 +58,26 @@ def test_guard_finds_every_import_form(tmp_path: Path) -> None:
         (7, "requests"),
         (8, "socket"),
     ]
+
+
+def test_guard_finds_fetch_entry_points_however_they_are_reached(tmp_path: Path) -> None:
+    pkg = tmp_path / "pi_connector_sneaky" / "src"
+    pkg.mkdir(parents=True)
+    (pkg / "a.py").write_text(
+        "import pi_fetch\n"
+        "from pi_fetch import Fetcher\n"
+        "from pi_fetch import default_transport as dt\n"
+        "f = pi_fetch.Fetcher\n"
+        "g = getattr(pi_fetch, 'HttpTransport')\n"
+        "h = pi_fetch.ladder.BrowserTransport\n"
+    )
+    assert [f.line for f in network_imports(pkg)] == [2, 3, 4, 5, 6]
+
+
+def test_package_root_does_not_export_the_fetcher() -> None:
+    for name in ("Fetcher", "HttpTransport", "BrowserTransport", "default_transport"):
+        assert not hasattr(pi_fetch, name), name
+        assert name not in pi_fetch.__all__
 
 
 def test_forbid_network_blocks_sockets_and_dns() -> None:

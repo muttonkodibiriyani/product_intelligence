@@ -68,10 +68,40 @@ def test_defer_honours_retry_after_capped() -> None:
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    [("120", 120.0), (" 5 ", 5.0), (None, None), ("Wed, 21 Oct 2026 07:28:00 GMT", None)],
+    [
+        ("120", 120.0),
+        (" 5 ", 5.0),
+        (None, None),
+        ("soon", None),
+        ("-3", None),
+        ("Thu, 01 Oct 2026 00:10:00 GMT", 600.0),
+        ("Wed, 30 Sep 2026 23:00:00 GMT", 0.0),
+    ],
 )
 def test_parse_retry_after(value: str | None, expected: float | None) -> None:
-    assert parse_retry_after(value) == expected
+    now = datetime(2026, 10, 1, 0, 0, tzinfo=UTC)
+    assert parse_retry_after(value, now) == expected
+
+
+def test_back_off_doubles_until_success_and_reports_the_cap() -> None:
+    clock = FakeClock()
+    pacer = HostPacer(clock=clock, sleep=clock.sleep, jitter_s=0)
+    assert pacer.back_off("a.example", None) == (60.0, False)
+    assert pacer.back_off("A.example", 30) == (120.0, False)
+    assert pacer.back_off("a.example", 900) == (900.0, False)
+    pacer.succeeded("a.example")
+    assert pacer.back_off("a.example", None) == (60.0, False)
+    assert pacer.back_off("b.example", 7200) == (MAX_DEFER_S, True)
+
+
+def test_wait_uses_the_longer_of_pacer_and_source_interval() -> None:
+    clock = FakeClock()
+    pacer = HostPacer(clock=clock, sleep=clock.sleep, jitter_s=0)
+    pacer.wait("a.example", 5.0)
+    pacer.wait("a.example", 5.0)
+    pacer.wait("a.example", 0.2)  # the slot was reserved 5 s out by the previous call
+    pacer.wait("a.example", 0.2)  # below the 1 s floor, so the floor applies
+    assert clock.slept == [5.0, 5.0, 1.0]
 
 
 def test_off_peak_window_wrapping_midnight() -> None:
@@ -99,4 +129,9 @@ def test_robots_tagger() -> None:
     tagger.add("Shop.example", "User-agent: *\nDisallow: /api/\n")
     assert tagger.tag("shop.example", "https://shop.example/api/v1/p") is RobotsTag.DISALLOWED
     assert tagger.tag("shop.example", "https://shop.example/p/1") is RobotsTag.ALLOWED
+    assert tagger.tag("other.example", "https://other.example/") is RobotsTag.UNKNOWN
+    assert tagger.known("SHOP.example")
+    assert not tagger.known("other.example")
+    tagger.mark_unavailable("other.example")
+    assert tagger.known("other.example")
     assert tagger.tag("other.example", "https://other.example/") is RobotsTag.UNKNOWN

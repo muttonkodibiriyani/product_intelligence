@@ -3,11 +3,13 @@ from typing import Any
 import pytest
 from pydantic import HttpUrl, ValidationError
 
-from fetch_helpers import NOW
-from pi_core import FetchMethod, LadderRung, Locale
+from fetch_helpers import NOW, WEBKIT
+from pi_core import Device, FetchMethod, LadderRung, Locale
 from pi_fetch.types import (
     BlockVendor,
     BlockVerdict,
+    BrowserEngine,
+    BrowserProfile,
     CapturedJson,
     FetchRequest,
     FetchResult,
@@ -96,8 +98,35 @@ def test_captured_json_only_from_browser_rungs() -> None:
         captured_json=(capture,),
         ladder_rung_used=LadderRung.BROWSER,
         fetch_method=FetchMethod.PLAYWRIGHT,
+        browser=WEBKIT,
     )
     assert ok.captured_json == (capture,)
+    assert ok.browser == WEBKIT
+
+
+def test_browser_profile_is_recorded_exactly_on_browser_fetches() -> None:
+    with pytest.raises(ValidationError, match="must record its browser profile"):
+        result(ladder_rung_used=LadderRung.BROWSER, fetch_method=FetchMethod.PLAYWRIGHT)
+    with pytest.raises(ValidationError, match="only a browser fetch"):
+        result(browser=WEBKIT)
+    egress_browser = result(
+        ladder_rung_used=LadderRung.EGRESS_VARIATION,
+        fetch_method=FetchMethod.EGRESS_VARIATION,
+        browser=BrowserProfile(engine=BrowserEngine.FIREFOX, headless=False),
+    )
+    assert egress_browser.browser is not None
+    assert egress_browser.model_dump(mode="json")["browser"] == {
+        "engine": "firefox",
+        "headless": False,
+        "device": "desktop",
+        "viewport_width": 1366,
+        "viewport_height": 768,
+    }
+
+
+def test_browser_profile_is_desktop_only_for_now() -> None:
+    with pytest.raises(ValidationError, match="not supported yet"):
+        BrowserProfile(engine=BrowserEngine.CHROMIUM, device=Device.MOBILE)
 
 
 def test_redact_headers_drops_cookies_and_joins_repeats() -> None:

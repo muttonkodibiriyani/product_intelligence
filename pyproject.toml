@@ -89,6 +89,7 @@ testpaths = ["packages", "tests/uat"]
 pythonpath = ["tests", "packages/pi_fetch/tests"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
+  "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",
   "uat: UAT scenario mapped to a requirement ID (tests/uat)",
   "req(id): requirement ID from docs/requirements/traceability.csv",
   "scenario(id): acceptance scenario UAT-XX from docs/requirements/uat_scenarios.csv",

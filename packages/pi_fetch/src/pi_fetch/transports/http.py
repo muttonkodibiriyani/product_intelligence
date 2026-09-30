@@ -1,9 +1,9 @@
 """Rungs 0, 1, 4 and 5: plain HTTP over httpx (ADR-0006 decision 1).
 
-Normal headers and session reuse, nothing else: HTTP/1.1 via httpx's default TLS stack, with no
-TLS/JA3 or HTTP/2 fingerprint impersonation (``http2=False`` explicitly). Session cookies live
-in memory for this transport's lifetime only, like any HTTP client; they are never exported,
-persisted or injected, and results never carry them.
+Normal headers and connection reuse, nothing else: HTTP/1.1 via httpx's default TLS stack, with
+no TLS/JA3 or HTTP/2 fingerprint impersonation (``http2=False`` explicitly). Cookies set during
+one request (e.g. across its redirects) are dropped when it ends, so nothing, including a WAF
+cookie, is carried to the next attempt; results never carry them either.
 """
 
 import time
@@ -41,6 +41,8 @@ class HttpTransport:
         except httpx.HTTPError as exc:
             msg = f"GET {request.url} failed: {type(exc).__name__}: {exc}"
             raise TransportError(msg) from exc
+        finally:
+            self._client.cookies.clear()
         return RawResponse(
             final_url=str(response.url),
             status=response.status_code,

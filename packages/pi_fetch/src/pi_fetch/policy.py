@@ -5,15 +5,23 @@ are never redefined here. On top of that:
 
 * rung 4 (egress variation) exists only when an egress profile is configured at runtime;
 * rung 5 (paid proxy) exists only when the owner has approved it: the source context's cap must
-  allow it **and** ``FetchPolicy.paid_proxy`` must name the approval. It is off by default.
+  allow it **and** ``FetchPolicy.paid_proxy`` must name the approval. It is off by default;
+* a browser fetch uses the engine pinned for the source in ``FetchPolicy.browsers`` (owner
+  config). There is no default engine and no automatic engine fallback;
+* robots.txt is obeyed unless the source is configured ``tag_only`` (Sephora only, ADR-0005);
+* a source may set a page interval longer than the 1 s floor (e.g. ulta.ae: 5 s).
 """
 
 import os
+from collections.abc import Mapping
 from enum import StrEnum
 
+from pydantic import Field, field_validator
+
 from pi_core import CollectionContext, FetchMethod, LadderRung, PiModel, SourceContext
-from pi_core.types import NonEmptyStr
-from pi_fetch.types import FetchRequest, PayloadKind
+from pi_core.types import DbId, NonEmptyStr
+from pi_fetch.pacing import MIN_INTERVAL_FLOOR_S, RobotsMode
+from pi_fetch.types import BrowserProfile, FetchRequest, PayloadKind
 
 #: Egress name recorded on results fetched from the default (direct) network path.
 DIRECT_EGRESS = "direct"
@@ -77,6 +85,38 @@ class FetchPolicy(PiModel):
     egress_variation: EgressProfile | None = None
     #: Rung 5: None (the default) disables it.
     paid_proxy: PaidProxyConfig | None = None
+    #: The browser pinned per source (``SourceContext.source_id``). A source without an entry
+    #: cannot use a browser rung.
+    browsers: Mapping[DbId, BrowserProfile] = Field(default_factory=dict)
+    #: Sources that only tag robots.txt instead of obeying it. Owner decision per source.
+    robots_modes: Mapping[DbId, RobotsMode] = Field(default_factory=dict)
+    #: Minimum seconds between page requests to a source's host, when longer than the floor.
+    page_interval_s: Mapping[DbId, float] = Field(default_factory=dict)
+
+    @field_validator("page_interval_s")
+    @classmethod
+    def _check_intervals(cls, value: Mapping[DbId, float]) -> Mapping[DbId, float]:
+        too_fast = sorted(k for k, v in value.items() if v < MIN_INTERVAL_FLOOR_S)
+        if too_fast:
+            msg = f"page_interval_s below {MIN_INTERVAL_FLOOR_S}s for sources {too_fast}"
+            raise ValueError(msg)
+        return value
+
+    def robots_mode_for(self, source_id: DbId) -> RobotsMode:
+        """OBEY unless the source is explicitly configured otherwise."""
+        return self.robots_modes.get(source_id, RobotsMode.OBEY)
+
+    def interval_for(self, source_id: DbId) -> float:
+        """The source's page interval (at least the 1 s floor)."""
+        return self.page_interval_s.get(source_id, MIN_INTERVAL_FLOOR_S)
+
+    def browser_for(self, source_id: DbId) -> BrowserProfile:
+        """The pinned browser for ``source_id``; raises when the owner has not pinned one."""
+        profile = self.browsers.get(source_id)
+        if profile is None:
+            msg = f"no browser engine is pinned for source {source_id} (owner config)"
+            raise LadderPolicyError(msg)
+        return profile
 
 
 class FetchPlan(PiModel):
@@ -86,6 +126,8 @@ class FetchPlan(PiModel):
     method: FetchMethod
     engine: Engine
     egress: EgressProfile
+    #: Set exactly when ``engine`` is the browser.
+    browser: BrowserProfile | None = None
 
 
 def permitted_rungs(policy: FetchPolicy, source_context: SourceContext) -> tuple[LadderRung, ...]:
@@ -128,31 +170,28 @@ def plan(request: FetchRequest, ctx: CollectionContext, policy: FetchPolicy) -> 
     if rung not in permitted_rungs(policy, ctx.source_context):
         msg = f"rung {rung.name} is not permitted for this context and policy"
         raise LadderPolicyError(msg)
+    method, engine, egress = _route(rung, request, policy)
+    browser = policy.browser_for(ctx.source_context.source_id) if engine is Engine.BROWSER else None
+    return FetchPlan(rung=rung, method=method, engine=engine, egress=egress, browser=browser)
+
+
+def _route(
+    rung: LadderRung, request: FetchRequest, policy: FetchPolicy
+) -> tuple[FetchMethod, Engine, EgressProfile]:
     direct = EgressProfile(name=DIRECT_EGRESS)
     match rung:
         case LadderRung.SITE_DATA:
-            return FetchPlan(
-                rung=rung, method=_RUNG0_METHOD[request.kind], engine=Engine.HTTP, egress=direct
-            )
+            return _RUNG0_METHOD[request.kind], Engine.HTTP, direct
         case LadderRung.PLAIN_HTTP:
-            return FetchPlan(
-                rung=rung, method=FetchMethod.PLAIN_HTTP, engine=Engine.HTTP, egress=direct
-            )
+            return FetchMethod.PLAIN_HTTP, Engine.HTTP, direct
         case LadderRung.BROWSER:
-            return FetchPlan(
-                rung=rung, method=FetchMethod.PLAYWRIGHT, engine=Engine.BROWSER, egress=direct
-            )
+            return FetchMethod.PLAYWRIGHT, Engine.BROWSER, direct
         case LadderRung.EGRESS_VARIATION:
             if policy.egress_variation is None:  # pragma: no cover - permitted_rungs checked it
                 msg = "rung 4 needs an egress profile"
                 raise LadderPolicyError(msg)
             engine = Engine.BROWSER if request.render else Engine.HTTP
-            return FetchPlan(
-                rung=rung,
-                method=FetchMethod.EGRESS_VARIATION,
-                engine=engine,
-                egress=policy.egress_variation,
-            )
+            return FetchMethod.EGRESS_VARIATION, engine, policy.egress_variation
         case LadderRung.PAID_PROXY:
             if policy.paid_proxy is None:  # pragma: no cover - permitted_rungs checked it
                 msg = "rung 5 needs an owner-approved paid proxy config"
@@ -161,12 +200,7 @@ def plan(request: FetchRequest, ctx: CollectionContext, policy: FetchPolicy) -> 
                 # Blueprint §6.3: only JSON/API calls go through the paid proxy.
                 msg = "the paid proxy carries JSON/API requests only"
                 raise LadderPolicyError(msg)
-            return FetchPlan(
-                rung=rung,
-                method=FetchMethod.RESIDENTIAL_PROXY,
-                engine=Engine.HTTP,
-                egress=policy.paid_proxy.egress,
-            )
+            return FetchMethod.RESIDENTIAL_PROXY, Engine.HTTP, policy.paid_proxy.egress
         case _:  # pragma: no cover - forbidden rungs never reach here (permitted_rungs)
             msg = f"rung {rung.name} is forbidden"
             raise LadderPolicyError(msg)

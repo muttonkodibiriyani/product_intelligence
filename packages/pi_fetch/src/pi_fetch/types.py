@@ -11,7 +11,7 @@ from typing import Self
 
 from pydantic import Field, HttpUrl, field_validator, model_validator
 
-from pi_core import FetchMethod, LadderRung, Locale, PiModel
+from pi_core import Device, FetchMethod, LadderRung, Locale, PiModel
 from pi_core.context import check_rung
 from pi_core.types import NonEmptyStr, UtcDatetime
 
@@ -31,6 +31,37 @@ class PayloadKind(StrEnum):
     JSON = "json"
     XML = "xml"
     IMAGE = "image"
+
+
+class BrowserEngine(StrEnum):
+    """Stock Playwright browser builds. Which one a source uses is pinned by config (owner)."""
+
+    CHROMIUM = "chromium"
+    FIREFOX = "firefox"
+    WEBKIT = "webkit"
+
+
+class BrowserProfile(PiModel):
+    """The browser a source is fetched with, recorded on every browser result as evidence.
+
+    Pinned per source by the owner (e.g. ulta.ae = webkit). The fetch layer never switches
+    engine on its own: a block on the pinned engine is returned as blocked.
+    """
+
+    engine: BrowserEngine
+    headless: bool = True
+    #: Desktop only for now: a mobile profile would need device emulation (not built yet).
+    device: Device = Device.DESKTOP
+    viewport_width: int = Field(default=1366, ge=320, le=3840)
+    viewport_height: int = Field(default=768, ge=320, le=2160)
+
+    @field_validator("device")
+    @classmethod
+    def _check_device(cls, value: Device) -> Device:
+        if value is not Device.DESKTOP:
+            msg = f"browser device profile {value.value!r} is not supported yet (desktop only)"
+            raise ValueError(msg)
+        return value
 
 
 class BlockVendor(StrEnum):
@@ -108,6 +139,8 @@ class FetchResult(PiModel):
     ladder_rung_used: LadderRung
     fetch_method: FetchMethod
     egress: NonEmptyStr
+    #: The browser that made a browser-engine fetch; None for plain HTTP.
+    browser: BrowserProfile | None = None
     retrieved_at: UtcDatetime
     elapsed_ms: int = Field(ge=0)
     #: True when a 304 revalidation returned the stored payload.
@@ -124,6 +157,18 @@ class FetchResult(PiModel):
         leaked = sorted(k for k in self.headers if k.lower() in REDACTED_RESPONSE_HEADERS)
         if leaked:
             msg = f"result headers must be redacted: {leaked}"
+            raise ValueError(msg)
+        if self.fetch_method is FetchMethod.PLAYWRIGHT and self.browser is None:
+            msg = "a browser fetch must record its browser profile"
+            raise ValueError(msg)
+        if self.browser is not None and self.ladder_rung_used not in {
+            LadderRung.BROWSER,
+            LadderRung.EGRESS_VARIATION,
+        }:
+            msg = "only a browser fetch has a browser profile"
+            raise ValueError(msg)
+        if self.captured_json and self.browser is None:
+            msg = "captured_json only comes from a browser fetch"
             raise ValueError(msg)
         if self.captured_json and self.ladder_rung_used not in {
             LadderRung.BROWSER,

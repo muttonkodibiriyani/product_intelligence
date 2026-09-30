@@ -1,10 +1,11 @@
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from pydantic import HttpUrl
+from pydantic import HttpUrl, ValidationError
 
-from fetch_helpers import make_ctx, make_source_context
+from fetch_helpers import PINNED, WEBKIT, make_ctx, make_source_context
 from pi_core import FetchMethod, LadderRung, Locale
+from pi_fetch.pacing import RobotsMode
 from pi_fetch.policy import (
     DIRECT_EGRESS,
     EgressProfile,
@@ -129,12 +130,40 @@ def test_image_at_rung_0_goes_plain_http() -> None:
 
 
 def test_render_starts_at_browser() -> None:
-    route = plan(req(render=True), make_ctx(LadderRung.PLAIN_HTTP), FetchPolicy())
-    assert (route.rung, route.method, route.engine) == (
+    route = plan(req(render=True), make_ctx(LadderRung.PLAIN_HTTP), FetchPolicy(browsers=PINNED))
+    assert (route.rung, route.method, route.engine, route.browser) == (
         LadderRung.BROWSER,
         FetchMethod.PLAYWRIGHT,
         Engine.BROWSER,
+        WEBKIT,
     )
+
+
+def test_browser_rung_needs_an_engine_pinned_for_the_source() -> None:
+    with pytest.raises(LadderPolicyError, match="no browser engine is pinned for source 3"):
+        plan(req(render=True), make_ctx(LadderRung.BROWSER), FetchPolicy())
+    other = FetchPolicy(browsers={99: WEBKIT})
+    with pytest.raises(LadderPolicyError, match="pinned"):
+        plan(req(), make_ctx(LadderRung.BROWSER), other)
+
+
+def test_http_rungs_record_no_browser() -> None:
+    assert (
+        plan(req(), make_ctx(LadderRung.PLAIN_HTTP), FetchPolicy(browsers=PINNED)).browser is None
+    )
+
+
+def test_source_settings_default_to_obey_and_the_pacing_floor() -> None:
+    policy = FetchPolicy(robots_modes={9: RobotsMode.TAG_ONLY}, page_interval_s={9: 5.0})
+    assert policy.robots_mode_for(3) is RobotsMode.OBEY
+    assert policy.robots_mode_for(9) is RobotsMode.TAG_ONLY
+    assert policy.interval_for(3) == 1.0
+    assert policy.interval_for(9) == 5.0
+
+
+def test_page_interval_below_one_second_is_refused() -> None:
+    with pytest.raises(ValidationError, match=r"below 1\.0s for sources \[3\]"):
+        FetchPolicy(page_interval_s={3: 0.5})
 
 
 def test_render_refused_when_cap_below_browser() -> None:
@@ -144,11 +173,12 @@ def test_render_refused_when_cap_below_browser() -> None:
 
 
 def test_rung_4_uses_egress_profile_and_engine_by_render() -> None:
-    policy = FetchPolicy(egress_variation=GULF)
+    policy = FetchPolicy(egress_variation=GULF, browsers=PINNED)
     ctx = make_ctx(LadderRung.EGRESS_VARIATION)
     http = plan(req(), ctx, policy)
     browser = plan(req(render=True), ctx, policy)
     assert (http.engine, browser.engine) == (Engine.HTTP, Engine.BROWSER)
+    assert (http.browser, browser.browser) == (None, WEBKIT)
     assert http.egress == GULF
     assert http.method is FetchMethod.EGRESS_VARIATION
 

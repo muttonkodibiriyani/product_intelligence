@@ -19,12 +19,15 @@ from pi_core import (
     SourceContext,
 )
 from pi_fetch.cache import LocalEvidenceStore
-from pi_fetch.pacing import HostPacer
+from pi_fetch.pacing import HostPacer, RobotsTagger
 from pi_fetch.policy import FetchPlan, FetchPolicy
 from pi_fetch.transports.base import RawResponse, Transport
-from pi_fetch.types import FetchRequest
+from pi_fetch.types import BrowserEngine, BrowserProfile, FetchRequest
 
 NOW = datetime(2026, 9, 30, 22, 0, tzinfo=UTC)
+#: The browser the owner pinned for the test source (source_id 3).
+WEBKIT = BrowserProfile(engine=BrowserEngine.WEBKIT)
+PINNED = {3: WEBKIT}
 
 #: A method for each rung a context may record.
 METHOD_FOR_RUNG = {
@@ -132,6 +135,14 @@ class FakeClock:
 
 def fake_pacer(clock: FakeClock) -> HostPacer:
     return HostPacer(clock=clock, sleep=clock.sleep)
+
+
+def allow_all_robots(*hosts: str) -> RobotsTagger:
+    """A tagger that already knows ``hosts`` allow everything, so no robots.txt is fetched."""
+    tagger = RobotsTagger()
+    for host in hosts or ("shop.example",):
+        tagger.add(host, "")
+    return tagger
 
 
 def evidence_store(tmp_path: Path) -> LocalEvidenceStore:
