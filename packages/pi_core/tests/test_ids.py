@@ -1,51 +1,50 @@
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import UUID
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import TypeAdapter, ValidationError
 
-from pi_core import content_hash_of, stable_id
+from pi_core import content_hash_of, logical_key
 from pi_core.types import Amount, Size
 
 parts = st.lists(st.one_of(st.none(), st.text(), st.integers(), st.uuids()), max_size=4)
 
 
 @given(st.text(), parts)
-def test_stable_id_is_deterministic(kind: str, values: list[object]) -> None:
-    assert stable_id(kind, *values) == stable_id(kind, *values)
+def test_logical_key_is_deterministic(kind: str, values: list[object]) -> None:
+    assert logical_key(kind, *values) == logical_key(kind, *values)
 
 
 @given(st.text(), st.text())
 def test_part_boundaries_cannot_collide(a: str, b: str) -> None:
     # "ab" + "" must not equal "a" + "b": parts are length-prefixed.
     if b:
-        assert stable_id("k", a, b) != stable_id("k", a + b, "")
+        assert logical_key("k", a, b) != logical_key("k", a + b, "")
 
 
 def test_none_differs_from_empty_string() -> None:
-    assert stable_id("k", None) != stable_id("k", "")
-    assert stable_id("k", None) != stable_id("k", "-")
+    assert logical_key("k", None) != logical_key("k", "")
+    assert logical_key("k", None) != logical_key("k", "-")
 
 
 @given(st.integers(min_value=-14, max_value=14))
 def test_same_instant_same_id_in_any_offset(hours: int) -> None:
     instant = datetime(2026, 9, 30, 12, tzinfo=UTC)
     shifted = instant.astimezone(timezone(timedelta(hours=hours)))
-    assert stable_id("k", instant) == stable_id("k", shifted)
+    assert logical_key("k", instant) == logical_key("k", shifted)
 
 
 def test_naive_datetime_rejected() -> None:
     with pytest.raises(ValueError, match="naive"):
-        stable_id("k", datetime(2026, 1, 1))  # noqa: DTZ001
+        logical_key("k", datetime(2026, 1, 1))  # noqa: DTZ001
 
 
 def test_id_is_pinned() -> None:
-    # Guards the namespace and encoding: changing either would re-key all stored history.
-    assert stable_id("source_listing", "sephora", "P123") == UUID(
-        "6e111104-25f8-5982-91d4-6893f658e887"
+    # Guards the encoding: changing either would re-key all stored history.
+    assert logical_key("offer_observation", 1, 5, None) == (
+        "264dfd9eb188d8120ec68bfd35bf71bfc43a6af083bb42f6d5b181c5b22cd6c2"
     )
 
 

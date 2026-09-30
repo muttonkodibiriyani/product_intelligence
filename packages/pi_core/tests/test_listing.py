@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
 
 import pytest
 from hypothesis import given
@@ -17,7 +16,6 @@ from pi_core import (
     Locale,
     gtin14,
     is_valid_gtin,
-    listing_id_for,
 )
 from pi_core.listing import gtin_check_digit
 
@@ -27,7 +25,7 @@ GTIN = "3614273069540"  # a real EAN-13
 
 def listing_data(**overrides: Any) -> dict[str, Any]:
     data: dict[str, Any] = {
-        "source_id": UUID(int=2),
+        "source_id": 2,
         "source_listing_key": "P123-50ML",
         "source_sku": "123456",
         "url": "https://www.sephora.me/sa-en/p/P123",
@@ -48,7 +46,7 @@ def listing_data(**overrides: Any) -> dict[str, Any]:
             {"source_url": "https://cdn.sephora.me/p123-1.jpg", "role": "main", "position": 0},
             {"source_url": "https://cdn.sephora.me/p123-2.jpg", "role": "alt", "position": 0},
         ),
-        "evidence_id": UUID(int=7),
+        "evidence_id": 7,
         "observed_at": T0,
         "field_state": {
             "mpn": FieldState.NOT_PUBLISHED,
@@ -72,13 +70,13 @@ def test_valid_listing() -> None:
         role=ImageRole.MAIN,
         position=0,
     )
-    assert rec.listing_id == listing_id_for(UUID(int=2), "P123-50ML")
+    assert rec.natural_key == (2, "P123-50ML")
 
 
-def test_listing_id_ignores_locale_and_content() -> None:
+def test_natural_key_ignores_locale_and_content() -> None:
     ar = listing(lang=Locale.AR, name_original="ليبر", url="https://www.sephora.me/sa-ar/p/P123")
-    assert ar.listing_id == listing().listing_id
-    assert listing(source_listing_key="P123-90ML").listing_id != listing().listing_id
+    assert ar.natural_key == listing().natural_key
+    assert listing(source_listing_key="P123-90ML").natural_key != listing().natural_key
 
 
 @pytest.mark.parametrize(
@@ -175,6 +173,6 @@ def test_listing_round_trip(
     )
     again = ListingRecord.model_validate_json(rec.model_dump_json())
     assert again == rec
-    assert again.listing_id == rec.listing_id
+    assert again.natural_key == rec.natural_key
     assert again.size_value is not None
     assert again.size_value.as_tuple() == size.as_tuple()

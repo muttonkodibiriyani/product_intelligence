@@ -6,6 +6,7 @@ Each type encodes one storage rule so every model enforces it the same way:
 * ``UtcDatetime``: timezone-aware, normalised to UTC so ids and comparisons are stable (DAT-03).
 * ``CurrencyCode``: an ISO 4217 code listed in ``CURRENCY_EXPONENTS``.
 * ``Size``: exact positive ``Decimal`` pack size; floats refused, the unit is kept alongside.
+* ``DbId``: a positive ``bigint`` identity id assigned by the database.
 * ``ContentHash``: lowercase SHA-256 hex digest (DAT-04).
 """
 
@@ -25,7 +26,7 @@ _AMOUNT_QUANTUM = Decimal(1).scaleb(-AMOUNT_SCALE)
 _AMOUNT_LIMIT = Decimal(10) ** AMOUNT_INTEGER_DIGITS
 
 
-def _refuse_float(value: object) -> object:
+def refuse_float(value: object) -> object:
     if isinstance(value, bool | float):
         msg = f"{type(value).__name__} is not accepted; pass a str, int or Decimal"
         raise TypeError(msg)
@@ -55,13 +56,15 @@ def _check_currency(value: str) -> str:
 
 
 # pydantic's Decimal already refuses NaN and infinity.
-Amount = Annotated[Decimal, BeforeValidator(_refuse_float), AfterValidator(_check_amount)]
-Size = Annotated[Decimal, BeforeValidator(_refuse_float), Field(gt=0, allow_inf_nan=False)]
+Amount = Annotated[Decimal, BeforeValidator(refuse_float), AfterValidator(_check_amount)]
+Size = Annotated[Decimal, BeforeValidator(refuse_float), Field(gt=0, allow_inf_nan=False)]
 UtcDatetime = Annotated[AwareDatetime, AfterValidator(_to_utc)]
 CurrencyCode = Annotated[str, AfterValidator(_check_currency)]
 ContentHash = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 # Kept verbatim (never stripped) so source keys and names stay as published.
 NonEmptyStr = Annotated[str, StringConstraints(pattern=r"\S")]
+#: A database row id (``bigint GENERATED ALWAYS AS IDENTITY``).
+DbId = Annotated[int, Field(ge=1)]
 
 
 def content_hash_of(payload: bytes) -> str:

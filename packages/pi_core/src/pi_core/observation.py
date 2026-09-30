@@ -5,7 +5,7 @@ get them as ``Money``. Every tracked null carries a reason in ``field_state``.
 
 | Field | Requirements |
 |---|---|
-| ``observation_id`` (derived), ``correction_of`` | DAT-01, DAT-09 |
+| ``idempotency_key`` (derived), ``correction_of`` | DAT-01, DAT-09 |
 | ``source_context_id``, ``source_listing_id``, ``variant_id``, ``seller_id`` | DAT-02 |
 | ``observed_at``, ``ingested_at``, ``recorded_at``, ``source_effective_from/to`` | DAT-03 |
 | ``price_current/regular_stated/promo/member``, ``installment`` | PRC-01, PRC-02 |
@@ -23,20 +23,22 @@ get them as ``Money``. Every tracked null carries a reason in ``field_state``.
 
 from decimal import Decimal
 from typing import Annotated, ClassVar, Literal, Self
-from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import BeforeValidator, Field, model_validator
 
 from pi_core.base import FieldStateModel, PiModel
 from pi_core.context import CollectionContext
 from pi_core.enums import AvailabilityState, PriceType, QualityStatus, TaxStatus
-from pi_core.ids import stable_id
+from pi_core.ids import logical_key
 from pi_core.money import Money
-from pi_core.types import Amount, CurrencyCode, NonEmptyStr, UtcDatetime
+from pi_core.types import Amount, CurrencyCode, DbId, NonEmptyStr, UtcDatetime, refuse_float
 
 PriceField = Literal["price_current", "price_regular_stated", "price_promo", "price_member"]
 
-Rating = Annotated[Amount, Field(ge=0)]
+#: ``numeric(4,2)``, e.g. 4.60 out of 5.
+Rating = Annotated[
+    Decimal, BeforeValidator(refuse_float), Field(ge=0, max_digits=4, decimal_places=2)
+]
 
 
 class InstallmentPlan(PiModel):
@@ -67,12 +69,12 @@ class OfferObservation(FieldStateModel):
         }
     )
 
-    crawl_run_id: UUID
-    source_context_id: UUID
-    source_listing_id: UUID
-    variant_id: UUID | None = None
-    # None means the retailer sells first-party; marketplace sellers get an id (CAT-11).
-    seller_id: UUID | None = None
+    crawl_run_id: DbId
+    source_context_id: DbId
+    source_listing_id: DbId
+    variant_id: DbId | None = None
+    # None means the retailer sells first-party; marketplace sellers keep their source id (CAT-11).
+    seller_id: NonEmptyStr | None = None
     observed_at: UtcDatetime
     ingested_at: UtcDatetime
     # Set when the row is written; parse output has none yet.
@@ -98,11 +100,11 @@ class OfferObservation(FieldStateModel):
     rank_in_category: Annotated[int, Field(ge=1)] | None
     rank_in_search: dict[str, Annotated[int, Field(ge=1)]] = Field(default_factory=dict)
     badges_at_time: tuple[NonEmptyStr, ...] = ()
-    promotion_ids: tuple[UUID, ...] = ()
-    evidence_id: UUID
+    promotion_ids: tuple[DbId, ...] = ()
+    evidence_id: DbId
     # None until the quality gate has run.
     quality_status: QualityStatus | None = None
-    correction_of: UUID | None = None
+    correction_of: DbId | None = None
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
@@ -140,13 +142,13 @@ class OfferObservation(FieldStateModel):
             raise ValueError(msg)
 
     @property
-    def observation_id(self) -> UUID:
-        """Stable id from the logical key, so replays are idempotent (DAT-02, DAT-09).
+    def idempotency_key(self) -> str:
+        """``offer_observation.idempotency_key``: replays of the same fact collide (DAT-02, DAT-09).
 
         The crawl run is deliberately excluded: a retried run re-observing the same instant is
         the same fact. A correction differs from its original through ``correction_of``.
         """
-        return stable_id(
+        return logical_key(
             "offer_observation",
             self.source_context_id,
             self.source_listing_id,

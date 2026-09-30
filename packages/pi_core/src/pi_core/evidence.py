@@ -6,21 +6,19 @@ a run can escalate part-way through and every observation must trace to the meth
 
 from datetime import datetime
 from typing import Self
-from uuid import UUID
 
 from pydantic import Field, HttpUrl, model_validator
 
 from pi_core.base import PiModel
 from pi_core.context import CollectionContext, check_rung
 from pi_core.enums import FetchMethod, LadderRung
-from pi_core.ids import stable_id
-from pi_core.types import ContentHash, NonEmptyStr, UtcDatetime, content_hash_of
+from pi_core.types import ContentHash, DbId, NonEmptyStr, UtcDatetime, content_hash_of
 
 
 class Evidence(PiModel):
     """One retrieved payload: where it came from, when, how, and its content hash."""
 
-    crawl_run_id: UUID
+    crawl_run_id: DbId
     url: HttpUrl
     content_hash: ContentHash
     storage_uri: NonEmptyStr
@@ -37,11 +35,6 @@ class Evidence(PiModel):
             msg = "retention_until must be after retrieved_at"
             raise ValueError(msg)
         return self
-
-    @property
-    def id(self) -> UUID:
-        """Stable id: the same bytes from the same URL in the same run are one evidence row."""
-        return stable_id("evidence", self.crawl_run_id, self.url, self.content_hash)
 
     @classmethod
     def from_payload(  # noqa: PLR0913 - keyword-only, mirrors the evidence columns

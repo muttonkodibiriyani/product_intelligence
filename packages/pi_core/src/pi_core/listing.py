@@ -5,7 +5,7 @@ shade/size. Matching to canonical variants happens later and never edits these r
 
 | Field | Blueprint 5.1 | Requirements |
 |---|---|---|
-| ``source_id``, ``source_listing_key``, ``listing_id`` | ``source_listing`` | CAT-01, DAT-09 |
+| ``source_id``, ``source_listing_key`` (natural key) | ``source_listing`` | CAT-01, DAT-09 |
 | ``source_sku``, ``gtin``, ``mpn`` | ``source_listing.source_sku``, ``variant.gtin/mpn`` | CAT-02 |
 | ``name_original``, ``name_ar``, ``lang`` | ``source_listing`` | CAT-06, SCP-06 |
 | ``brand`` | ``brand.name`` (raw, unresolved) | CAT-01 |
@@ -18,14 +18,12 @@ shade/size. Matching to canonical variants happens later and never edits these r
 """
 
 from typing import Annotated, ClassVar, Self
-from uuid import UUID
 
 from pydantic import AfterValidator, Field, HttpUrl, model_validator
 
 from pi_core.base import FieldStateModel, PiModel
 from pi_core.enums import Concentration, ImageRole, Locale
-from pi_core.ids import stable_id
-from pi_core.types import NonEmptyStr, Size, UtcDatetime
+from pi_core.types import DbId, NonEmptyStr, Size, UtcDatetime
 
 GTIN_LENGTHS = frozenset({8, 12, 13, 14})
 
@@ -90,7 +88,7 @@ class ListingRecord(FieldStateModel):
         }
     )
 
-    source_id: UUID
+    source_id: DbId
     source_listing_key: NonEmptyStr
     source_sku: NonEmptyStr | None
     url: HttpUrl
@@ -109,7 +107,7 @@ class ListingRecord(FieldStateModel):
     category_path_source: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)] | None
     images: Annotated[tuple[ImageRef, ...], Field(min_length=1)] | None
     attributes: dict[str, str] = Field(default_factory=dict)
-    evidence_id: UUID
+    evidence_id: DbId
     observed_at: UtcDatetime
 
     @model_validator(mode="after")
@@ -125,11 +123,6 @@ class ListingRecord(FieldStateModel):
         return self
 
     @property
-    def listing_id(self) -> UUID:
-        """Stable id of the source listing; independent of locale, market and time."""
-        return listing_id_for(self.source_id, self.source_listing_key)
-
-
-def listing_id_for(source_id: UUID, source_listing_key: str) -> UUID:
-    """Id of the ``source_listing`` row for a source's listing key."""
-    return stable_id("source_listing", source_id, source_listing_key)
+    def natural_key(self) -> tuple[int, str]:
+        """``UNIQUE (source_id, source_listing_key)``: independent of locale, market and time."""
+        return (self.source_id, self.source_listing_key)

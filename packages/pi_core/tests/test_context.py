@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
 
 import pytest
 from hypothesis import given
@@ -25,8 +24,8 @@ T0 = datetime(2026, 9, 30, tzinfo=UTC)
 
 def source_context(**overrides: Any) -> SourceContext:
     data: dict[str, Any] = {
-        "id": UUID(int=1),
-        "source_id": UUID(int=2),
+        "id": 1,
+        "source_id": 2,
         "country": Market.KSA,
         "locale": Locale.EN,
         "time_zone": "Asia/Riyadh",
@@ -38,7 +37,7 @@ def source_context(**overrides: Any) -> SourceContext:
 def collection_context(method: FetchMethod = FetchMethod.SITE_API, **ctx: Any) -> CollectionContext:
     return CollectionContext(
         source_context=source_context(**ctx),
-        crawl_run_id=UUID(int=3),
+        crawl_run_id=3,
         connector_version="sephora_me@0.1.0",
         ladder_rung_used=method.rung,
         fetch_method=method,
@@ -81,7 +80,7 @@ def test_method_must_match_rung() -> None:
     with pytest.raises(ValidationError, match="belongs to rung"):
         CollectionContext(
             source_context=source_context(),
-            crawl_run_id=uuid4(),
+            crawl_run_id=42,
             connector_version="x",
             ladder_rung_used=LadderRung.SITE_DATA,
             fetch_method=FetchMethod.PLAYWRIGHT,
@@ -93,10 +92,11 @@ def test_method_must_match_rung() -> None:
     [
         ({"ladder_rung_current": LadderRung.PAID_PROXY}, "exceeds ladder_rung_max_allowed"),
         ({"valid_to": T0}, "valid_to must be after"),
-        ({"fallback_of": UUID(int=1)}, "own fallback"),
+        ({"fallback_of": 1}, "own fallback"),
         ({"time_zone": "Mars/Olympus"}, "unknown time zone"),
         ({"valid_from": datetime(2026, 1, 1)}, "timezone"),  # noqa: DTZ001
         ({"currency": "SAR"}, "Extra inputs"),
+        ({"id": 0}, "greater than or equal"),
     ],
 )
 def test_source_context_invariants(overrides: dict[str, Any], error: str) -> None:
@@ -105,9 +105,7 @@ def test_source_context_invariants(overrides: dict[str, Any], error: str) -> Non
 
 
 def test_uae_fallback_context() -> None:
-    uae = source_context(
-        id=UUID(int=9), country=Market.UAE, time_zone="Asia/Dubai", fallback_of=UUID(int=1)
-    )
+    uae = source_context(id=9, country=Market.UAE, time_zone="Asia/Dubai", fallback_of=1)
     assert uae.currency == "AED"
 
 
@@ -124,7 +122,7 @@ def test_models_are_frozen() -> None:
 
 
 def test_source() -> None:
-    src = Source(id=uuid4(), name="Sephora ME", kind=SourceKind.WEB, base_url="https://sephora.me")  # type: ignore[arg-type]
+    src = Source(id=42, name="Sephora ME", kind=SourceKind.WEB, base_url="https://sephora.me")  # type: ignore[arg-type]
     assert str(src.base_url) == "https://sephora.me/"
 
 
@@ -157,11 +155,6 @@ def test_evidence_from_payload() -> None:
     assert ev.ladder_rung_used is LadderRung.IMPERSONATED_HTTP
     assert ev.fetch_method is FetchMethod.CURL_CFFI
     assert Evidence.model_validate_json(ev.model_dump_json()) == ev
-    assert Evidence.model_validate_json(ev.model_dump_json()).id == ev.id
-
-
-def test_evidence_id_depends_on_content() -> None:
-    assert evidence().id != evidence(content_hash="0" * 64).id
 
 
 @pytest.mark.parametrize(

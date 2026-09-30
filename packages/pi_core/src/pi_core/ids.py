@@ -1,15 +1,13 @@
-"""Deterministic identifiers.
+"""Deterministic logical keys.
 
-Ids are UUIDv5 values derived from a record's natural key, so re-parsing or replaying the same
-input yields the same id and ingestion is logically exactly-once (DAT-09). The namespace is
-fixed forever: changing it would re-key all history.
+Rows get ``bigint`` identity ids from the database; what makes ingestion logically exactly-once
+is the logical key, a SHA-256 over a record's natural key (``offer_observation.idempotency_key``,
+DAT-09). Re-parsing or replaying the same input yields the same key. The encoding is fixed
+forever: changing it would re-key all history.
 """
 
+import hashlib
 from datetime import UTC, datetime
-from uuid import UUID, uuid5
-
-#: Namespace for every pi_core id. Never change this value.
-PI_NAMESPACE = UUID("6f1d3c2e-8a4b-5c7d-9e0f-1a2b3c4d5e6f")
 
 
 def _encode(part: object) -> str:
@@ -17,7 +15,7 @@ def _encode(part: object) -> str:
         return "-"
     if isinstance(part, datetime):
         if part.tzinfo is None:
-            msg = "naive datetimes cannot be part of an id"
+            msg = "naive datetimes cannot be part of a key"
             raise ValueError(msg)
         text = part.astimezone(UTC).isoformat()
     else:
@@ -26,10 +24,11 @@ def _encode(part: object) -> str:
     return f"{len(text)}:{text}"
 
 
-def stable_id(kind: str, *parts: object) -> UUID:
-    """UUIDv5 over ``kind`` and ``parts``.
+def logical_key(kind: str, *parts: object) -> str:
+    """Lowercase SHA-256 hex over ``kind`` and ``parts``.
 
     ``None`` is encoded distinctly from ``""``. Datetimes must be timezone-aware and are encoded
-    in UTC, so the same instant written in any offset produces the same id.
+    in UTC, so the same instant written in any offset produces the same key.
     """
-    return uuid5(PI_NAMESPACE, "|".join([_encode(kind), *(_encode(p) for p in parts)]))
+    encoded = "|".join([_encode(kind), *(_encode(p) for p in parts)])
+    return hashlib.sha256(encoded.encode()).hexdigest()

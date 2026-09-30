@@ -11,10 +11,9 @@
 """
 
 from typing import Self
-from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import HttpUrl, field_validator, model_validator
+from pydantic import Field, HttpUrl, JsonValue, field_validator, model_validator
 
 from pi_core.base import PiModel
 from pi_core.enums import (
@@ -27,7 +26,7 @@ from pi_core.enums import (
     Market,
     SourceKind,
 )
-from pi_core.types import NonEmptyStr, UtcDatetime
+from pi_core.types import DbId, NonEmptyStr, UtcDatetime
 
 
 def check_rung(rung: LadderRung, method: FetchMethod) -> None:
@@ -40,7 +39,7 @@ def check_rung(rung: LadderRung, method: FetchMethod) -> None:
 class Source(PiModel):
     """A retailer or data provider, e.g. Sephora Middle East (``source``)."""
 
-    id: UUID
+    id: DbId
     name: NonEmptyStr
     kind: SourceKind
     base_url: HttpUrl | None
@@ -54,21 +53,21 @@ class SourceContext(PiModel):
     state prices in a currency its market does not use.
     """
 
-    id: UUID
-    source_id: UUID
+    id: DbId
+    source_id: DbId
     country: Market
     locale: Locale
     channel: Channel = Channel.ONLINE
-    location_context: NonEmptyStr | None = None
+    location_context: dict[str, JsonValue] = Field(default_factory=dict)
     time_zone: str
     device: Device = Device.DESKTOP
-    cohort: NonEmptyStr | None = None
-    refresh_policy: NonEmptyStr | None = None
+    cohort_id: DbId | None = None
+    refresh_policy: dict[str, JsonValue] = Field(default_factory=dict)
     ladder_rung_current: LadderRung = LadderRung.SITE_DATA
     # Paid rungs are opt-in: raising this to PAID_PROXY is the owner's decision (ADR-0003).
     ladder_rung_max_allowed: LadderRung = LadderRung.EGRESS_VARIATION
     coverage_status: CoverageStatus = CoverageStatus.PENDING
-    fallback_of: UUID | None = None
+    fallback_of: DbId | None = None
     history_start_at: UtcDatetime | None = None
     valid_from: UtcDatetime
     valid_to: UtcDatetime | None = None
@@ -110,7 +109,7 @@ class CollectionContext(PiModel):
     """
 
     source_context: SourceContext
-    crawl_run_id: UUID
+    crawl_run_id: DbId
     connector_version: NonEmptyStr
     ladder_rung_used: LadderRung
     fetch_method: FetchMethod

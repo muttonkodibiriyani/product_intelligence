@@ -27,8 +27,8 @@ from pi_core.enums import (
     TaxStatus,
 )
 from pi_core.evidence import Evidence
-from pi_core.ids import stable_id
-from pi_core.listing import ImageRef, ListingRecord, gtin14, is_valid_gtin, listing_id_for
+from pi_core.ids import logical_key
+from pi_core.listing import ImageRef, ListingRecord, gtin14, is_valid_gtin
 from pi_core.money import CURRENCY_EXPONENTS, CurrencyMismatchError, Money
 from pi_core.observation import InstallmentPlan, OfferObservation
 from pi_core.promotion import PromotionRecord
@@ -70,8 +70,7 @@ __all__ = [
     "content_hash_of",
     "gtin14",
     "is_valid_gtin",
-    "listing_id_for",
-    "stable_id",
+    "logical_key",
 ]
 
 __version__ = "0.1.0"

@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
 
 import pytest
 from hypothesis import given
@@ -26,15 +25,15 @@ from pi_core import (
 )
 
 T0 = datetime(2026, 9, 30, 6, tzinfo=UTC)
-CTX_ID = UUID(int=1)
-RUN_ID = UUID(int=3)
+CTX_ID = 1
+RUN_ID = 3
 
 
 def context(market: Market = Market.KSA) -> CollectionContext:
     return CollectionContext(
         source_context=SourceContext(
             id=CTX_ID,
-            source_id=UUID(int=2),
+            source_id=2,
             country=market,
             locale=Locale.EN,
             time_zone=market.time_zone,
@@ -51,7 +50,7 @@ def obs_data(**overrides: Any) -> dict[str, Any]:
     data: dict[str, Any] = {
         "crawl_run_id": RUN_ID,
         "source_context_id": CTX_ID,
-        "source_listing_id": UUID(int=5),
+        "source_listing_id": 5,
         "observed_at": T0,
         "ingested_at": T0 + timedelta(minutes=1),
         "price_current": "345.00",
@@ -71,7 +70,7 @@ def obs_data(**overrides: Any) -> dict[str, Any]:
         "rank_in_category": 4,
         "rank_in_search": {"perfume": 2},
         "badges_at_time": ("Bestseller",),
-        "evidence_id": UUID(int=7),
+        "evidence_id": 7,
         "field_state": {
             "price_promo": FieldState.NOT_APPLICABLE,
             "price_member": FieldState.NOT_PUBLISHED,
@@ -104,23 +103,24 @@ def test_check_context_rejects_foreign_currency_run_and_context() -> None:
     with pytest.raises(ValueError, match="differs from context AED"):
         observation().check_context(context(Market.UAE))
     with pytest.raises(ValueError, match="different crawl run"):
-        observation(crawl_run_id=UUID(int=99)).check_context(context())
+        observation(crawl_run_id=99).check_context(context())
     with pytest.raises(ValueError, match="different source context"):
-        observation(source_context_id=UUID(int=99)).check_context(context())
+        observation(source_context_id=99).check_context(context())
 
 
-def test_observation_id_is_the_logical_key() -> None:
+def test_idempotency_key_is_the_logical_key() -> None:
     base = observation()
     # A retried run re-observing the same instant is the same fact (DAT-09).
-    assert observation(crawl_run_id=UUID(int=4)).observation_id == base.observation_id
-    assert observation(price_current="300.00").observation_id == base.observation_id
+    assert observation(crawl_run_id=4).idempotency_key == base.idempotency_key
+    assert observation(price_current="300.00").idempotency_key == base.idempotency_key
     # Different grain or instant is a different fact (DAT-02).
-    assert observation(seller_id=UUID(int=8)).observation_id != base.observation_id
-    assert observation(observed_at=T0 + timedelta(seconds=1)).observation_id != (
-        base.observation_id
+    assert observation(seller_id="seller-8").idempotency_key != base.idempotency_key
+    assert observation(observed_at=T0 + timedelta(seconds=1)).idempotency_key != (
+        base.idempotency_key
     )
-    correction = observation(correction_of=base.observation_id, price_current="300.00")
-    assert correction.observation_id != base.observation_id
+    # A correction points at the original row id and is a new fact.
+    correction = observation(correction_of=123, price_current="300.00")
+    assert correction.idempotency_key != base.idempotency_key
 
 
 def test_failed_crawl_is_blocked_not_out_of_stock() -> None:
@@ -156,6 +156,9 @@ def test_failed_crawl_is_blocked_not_out_of_stock() -> None:
         ({"price_type": PriceType.MEMBER}, "requires price_member"),
         ({"price_type": PriceType.QUOTE_ONLY}, "quote-only"),
         ({"rating_value": "-1"}, "greater than or equal"),
+        ({"rating_value": "4.567"}, "decimal places"),
+        ({"rating_value": 4.5}, "float"),
+        ({"source_listing_id": 0}, "greater than or equal"),
         ({"rank_in_search": {"perfume": 0}}, "greater than or equal"),
         (
             {"installment": {"provider": "tabby", "instalment_count": 1, "instalment_amount": "1"}},
@@ -200,8 +203,8 @@ def test_observation_round_trip_and_money_consistency(
     )
     again = OfferObservation.model_validate_json(obs.model_dump_json())
     assert again == obs
-    assert again.observation_id == obs.observation_id
-    assert again.observation_id == observation().observation_id  # same instant, any offset
+    assert again.idempotency_key == obs.idempotency_key
+    assert again.idempotency_key == observation().idempotency_key  # same instant, any offset
     for field in ("price_current", "price_regular_stated"):
         money = again.money(field)
         assert money is not None
@@ -216,12 +219,12 @@ def promotion(**overrides: Any) -> PromotionRecord:
         "terms_original": "20% off fragrance, min spend SAR 300",
         "rule": {"percent": 20, "scope": ["fragrance"]},
         "min_spend": "300",
-        "currency": "SAR",
+        "min_spend_currency": "SAR",
         "advertised_from": T0,
         "advertised_to": T0 + timedelta(days=7),
         "first_seen_at": T0,
         "last_seen_at": T0 + timedelta(days=1),
-        "evidence_id": UUID(int=7),
+        "evidence_id": 7,
     }
     return PromotionRecord.model_validate(data | overrides)
 
@@ -229,17 +232,14 @@ def promotion(**overrides: Any) -> PromotionRecord:
 def test_promotion() -> None:
     promo = promotion()
     assert promo.min_spend_money == Money.of("300", "SAR")
-    assert promotion(min_spend=None, currency=None).min_spend_money is None
+    assert promotion(min_spend=None, min_spend_currency=None).min_spend_money is None
     assert PromotionRecord.model_validate_json(promo.model_dump_json()) == promo
-    # Reclassifying the mechanic later must not re-key the promotion.
-    assert promotion(mechanic=PromotionMechanic.UNCLASSIFIED).promotion_id == promo.promotion_id
-    assert promotion(code="SAVE20").promotion_id != promo.promotion_id
 
 
 @pytest.mark.parametrize(
     ("overrides", "error"),
     [
-        ({"currency": None}, "min_spend and currency"),
+        ({"min_spend_currency": None}, "min_spend and min_spend_currency"),
         ({"last_seen_at": T0 - timedelta(seconds=1)}, "last_seen_at is before"),
         ({"advertised_to": T0 - timedelta(days=1)}, "advertised_to is before"),
         ({"min_qty": 0}, "greater than or equal"),

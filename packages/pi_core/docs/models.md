@@ -24,26 +24,31 @@ is the source of truth for names; each module's docstring maps its fields to req
 | Rung and fetch method always agree; the rung may not exceed the context's cap (paid is opt-in) | `context.check_rung` | ADR-0003 |
 | Unknown keys are rejected; records are immutable | `base.PiModel` | DAT-01 |
 
-## Ids
+## Ids and logical keys
 
-Ids are UUIDv5 from the natural key (`pi_core.ids.stable_id`, fixed namespace), exposed as
-properties rather than fields, so a record cannot carry an id that contradicts its key.
+Row ids are `bigint` identity values assigned by the database (`types.DbId`, always ≥ 1); the
+models carry foreign ids but never invent their own. Idempotency comes from logical keys
+(`pi_core.ids.logical_key`, SHA-256 hex over a length-prefixed, UTC-normalised encoding):
 
-| Id | Natural key |
-|---|---|
-| `ListingRecord.listing_id` | `source_id`, `source_listing_key` |
-| `OfferObservation.observation_id` | `source_context_id`, `source_listing_id`, `seller_id`, `observed_at`, `correction_of` |
-| `Evidence.id` | `crawl_run_id`, `url`, `content_hash` |
-| `PromotionRecord.promotion_id` | `source_context_id`, `terms_original`, `code`, `advertised_from` |
+| Key | Natural key | DB |
+|---|---|---|
+| `OfferObservation.idempotency_key` | `source_context_id`, `source_listing_id`, `seller_id`, `observed_at`, `correction_of` | `UNIQUE (idempotency_key, observed_at)` |
+| `ListingRecord.natural_key` | `source_id`, `source_listing_key` | `UNIQUE (source_id, source_listing_key)` |
 
 The crawl run is not part of the observation key: a retried run that re-observes the same
 instant is the same fact (DAT-09). `source_context` covers channel, location and cohort.
 
-## Notes for the DB schema (PR4)
+## Differences from the DB schema (PR4)
 
-- Store the derived ids above as `uuid` primary keys, computed with `pi_core.ids`.
-- `evidence` gains `ladder_rung_used smallint` and `fetch_method text`: a run can escalate
-  part-way, so the method is recorded per evidence row, not only per `crawl_run`.
-- `promotion` gains `currency char(3)`, required when `min_spend` is set.
-- `source_context` has no currency column; it is derived from `country` (`SA`→SAR, `AE`→AED).
-- `offer_observation.quality_status` is null until the quality gate runs.
+Names match `pi_db` migration 0001. Where they deliberately differ:
+
+- `Evidence.ladder_rung_used` / `fetch_method` have no column yet. A run can escalate part-way,
+  so the method belongs on each evidence row (ADR-0003); proposed for a follow-up migration.
+- `Evidence.retention_until` is optional here; the pipeline fills it from the retention policy
+  before insert (the column is `NOT NULL`).
+- `OfferObservation.quality_status` is `None` until the quality gate runs; the pipeline must set
+  it explicitly rather than rely on the column default.
+- `ListingRecord.category_path_source` is a tuple; the column is `text`, so it is joined on write
+  unless the column becomes `text[]`.
+- Prices may be negative here so the quality gate can see and quarantine them; the table's
+  `CHECK (>= 0)` is the last line of defence.
