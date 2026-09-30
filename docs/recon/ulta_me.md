@@ -5,12 +5,17 @@
 - Date: 2026-09-30
 - Requirement IDs: SRC-01 (access method, rights basis, field contract), SRC-03 (discovery and count
   reconciliation), SRC-08 (permitted access; deviation recorded in ADR-0003), SRC-14 (offline imports
-  for Ulta KSA), SCP-02 / SCP-08 (coverage register; Ulta KSA `pending`), SCP-11 (decision log).
-- Blueprint refs: §1.1, §1.2 (discovery item), §1.4, §13; ADR-0003, ADR-0004
-- **Owner decision (2026-09-30, relayed by the program coordinator): pilot market = UAE.** In the
-  owner's words: "do UAE if KSA doesn't work". The Ulta ↔ Sephora head-to-head therefore runs on
-  UAE (`ulta.ae` vs Sephora `en-AE`/`ar-AE`). Ulta KSA stays `pending` (SCP-02/SCP-08). This still
-  has to be entered in the decision log (SCP-11) and blueprint §1.2 in a follow-up.
+  and the Alshaya export), SCP-02 / SCP-08 (coverage register; KSA out of pilot scope), SCP-11
+  (decision log: ADR-0005).
+- Blueprint refs: §1.1, §1.2 (discovery item), §1.4, §13; ADR-0003, ADR-0005
+- **Owner decisions of 30 Sep 2026 (ADR-0005, relayed by the program coordinator):**
+  1. Pilot = **UAE only**: Ulta `ulta.ae` vs Sephora `ae-en`/`ae-ar`, EN + AR. KSA is dropped for now
+     (the owner's earlier words: "do UAE if KSA doesn't work").
+  2. A Gulf-egress **probe of `ulta.ae` is approved** (Cloud Run job, `me-central1`/`me-central2`,
+     < $1, cost line in `sephora_me.md` §8.1). It runs as a separate task after this PR.
+  3. The owner will ask Alshaya for a **`ulta.ae` product/price export**. The PR7 offline import
+     (SRC-14) is built either way.
+  4. Blueprint §1.2 still has to be updated to match in a follow-up.
 - **Rights basis / terms of use (SRC-01):** public, logged-out catalogue pages only. No account,
   cart or checkout. Neither site's terms of use nor its `robots.txt` has been read, because both were
   blocked or not requested (§3). They must be read and recorded before any connector goes live.
@@ -39,11 +44,10 @@ Third-party listings on noon (`noon.com/uae-en/ulta_beauty/`, `/saudi-en/ulta_be
 ubuy are Ulta-brand products resold by marketplaces. They are **not** Ulta ME's own offer and cannot
 be used as Ulta ME prices.
 
-**Recommendation (for the owner to confirm into blueprint §1.2):** case **(c) mix**. That means a
-full connector for **UAE** (and Kuwait if wanted), and for **KSA**, Alshaya price files or store
-audits (SRC-14) until a KSA storefront appears. Ulta KSA stays `pending` with the reason "no KSA
-storefront; store-only" and is retried weekly. Whether to ask Alshaya for KSA price files is a
-**pending owner decision**. The UAE part is already decided (header).
+**Outcome for blueprint §1.2:** case **(c) mix**, now settled by the owner (ADR-0005). The pilot
+is **UAE**: an online connector for `ulta.ae` if the probe can read it, plus the Alshaya `ulta.ae`
+export via the PR7 offline import (SRC-14). KSA (and Kuwait) are out of pilot scope. The coverage
+register shows them as such (SCP-08), not as blocked.
 
 ## 2. Platform (inferred, to confirm)
 
@@ -74,12 +78,12 @@ That is a Cloudflare **WAF block page**, not a JS/Turnstile challenge (verified 
 `robots.txt` is blocked, which points to an IP/ASN or geo rule against our IN datacenter egress
 rather than fingerprinting (**inferred**). Rungs 1–4 were not run in this session (same
 tool-permission limit as the Sephora recon; see `sephora_me.md` §2). How the probe is run is a
-pending owner decision (§8). Sample: `samples/ulta_ae_cloudflare_block_head.html`. `ulta.com.kw`
+approved probe (§8) will test this. Sample: `samples/ulta_ae_cloudflare_block_head.html`. `ulta.com.kw`
 was not requested.
 
 ## 4. Field-availability matrix (expected, all unverified)
 
-| Field | Algolia index (if present; needs owner approval) | PDP HTML / JSON-LD | Sitemap | Alshaya price file (SRC-14) | Store audit (SRC-14) |
+| Field | Algolia index (if present; needs owner approval) | PDP HTML / JSON-LD | Sitemap | Alshaya `ulta.ae` export (SRC-14) | Store audit (SRC-14) |
 |---|---|---|---|---|---|
 | Product / variant IDs, SKU | ◐ | ◐ | ◐ URL only | ◐ | ✗ |
 | Brand, name, category | ◐ | ◐ | ✗ | ◐ | ◐ |
@@ -91,14 +95,18 @@ was not requested.
 | Images | ◐ URLs | ◐ URLs | ✗ | ✗ | photo |
 | EN + AR | ◐ (per-locale index) | ◐ | ◐ | ? | ✗ |
 
-## 5. Fallback (for KSA, or if UAE stays blocked)
+## 5. Licensed / offline sources and fallback
 
 1. **Brand list:** build the "brands Ulta stocks" list from the Ulta ME app/storefront brand pages
    once they can be reached. Until then, seed it from the launch coverage (300+ brands, for example
    Ôrəbella, Morphe, Polite Society, LolaVie, Sacheu, Kiko Milano, Peter Thomas Roth, Bex Beauty,
    Asteri, Nadine Njeim Beauty). Sephora is then benchmarked on those brands.
-2. **Alshaya price files / store audits (SRC-14):** the importable offline channel (§1.1). This is the
-   only KSA route until a KSA storefront exists. Requesting them is a pending owner decision.
+2. **Alshaya `ulta.ae` product/price export (SRC-14), the owner is requesting it.** This is the
+   cleanest rights basis (SRC-01): first-party data from the franchise owner, with no page collection.
+   Ask for: SKU / variant ID, EAN/barcode (for matching), brand, name EN + AR, category path, current
+   price, original price, promo label, in-stock flag, image URL, product URL. Also ask for the
+   refresh cadence (daily is ideal) and the delivery method (SFTP/CSV). The PR7 offline import is
+   built either way. Store audits remain the fallback channel.
 3. **Ulta US (`ulta.com`)** as a reference catalogue labelled **non-ME**. It is for matching and
    content only, never for ME price analytics.
 
@@ -127,18 +135,14 @@ Cloudflare block. If a proxy is ever needed (blueprint §13 proxy line: **$10–
 
 ## 8. Next steps
 
-Pending owner decisions (nothing below runs until they are answered): **(a)** ladder probe method
-(Cloud Run job or otherwise), **(b)** Alshaya price files for Ulta KSA, **(c)** whether Algolia may
-be used if it is found (§2).
-
-1. By the approved method, one probe of `ulta.ae` `robots.txt`, home and one PLP. If readable,
-   record robots and terms, and look for sitemaps and any search configuration.
-   A one-off Cloud Run job in `me-central1`/`me-central2` would cost cents, but it **requires owner
-   approval before creation** (blueprint §13). A recurring daily job is costed in `sephora_me.md` §8.1
-   (≈ $5–8/month, unverified).
-2. Same probe against `ulta.com.kw`, if Kuwait is wanted.
-3. Record the UAE pilot decision in the decision log (SCP-11), blueprint §1.2 and the coverage register.
-4. If the owner approves (b): ask Alshaya for price files for Ulta KSA (Red Sea Mall).
+1. **Probe (approved, separate task):** the same Cloud Run job as Sephora (`sephora_me.md` §9), with
+   a normal browser User-Agent and ordinary requests: `ulta.ae` `robots.txt`, terms page, `/en/` and
+   `/ar/` home, one PLP, one PDP. If readable, record robots and terms, and look for sitemaps and any
+   search configuration. Report exactly what works from Gulf egress.
+2. The owner requests the Alshaya `ulta.ae` export (§5). PR7 offline import proceeds regardless.
+3. Pending owner decision: whether Ulta's Algolia may be used if found (§2). ADR-0005's robots
+   approval is Sephora-specific.
+4. Update blueprint §1.2 and the coverage register to match ADR-0005.
 
 ## Sources
 
