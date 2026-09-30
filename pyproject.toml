@@ -5,7 +5,7 @@ description = "Competitive product and price intelligence platform (workspace ro
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match"]
+dependencies = ["pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-metrics"]
 
 [tool.uv]
 package = false
@@ -17,6 +17,7 @@ members = ["packages/*"]
 pi-connector-ulta = { workspace = true }
 pi-core = { workspace = true }
 pi-dataset = { workspace = true }
+pi-metrics = { workspace = true }
 pi-db = { workspace = true }
 pi-fetch = { workspace = true }
 pi-match = { workspace = true }
@@ -67,9 +68,11 @@ mypy_path = [
   "packages/pi_core/src",
   "packages/pi_connector_ulta/src",
   "packages/pi_dataset/src",
+  "packages/pi_metrics/src",
   "packages/pi_db/src",
   "packages/pi_fetch/src",
   "packages/pi_fetch/tests",
+  "packages/pi_metrics/tests",
   "packages/pi_match/src",
   "scripts/demo_export",
   "tests",
@@ -87,6 +90,8 @@ files = [
   "packages/pi_connector_ulta/tests",
   "packages/pi_dataset/src",
   "packages/pi_dataset/tests",
+  "packages/pi_metrics/src",
+  "packages/pi_metrics/tests",
   "packages/pi_db/src",
   "packages/pi_db/tests",
   "packages/pi_fetch/src",
@@ -119,7 +124,7 @@ warn_required_dynamic_aliases = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["packages", "apps/assistant/pytests", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "tools/sephora_snapshot/tests", "scripts/demo_export", "infra/tests"]
-pythonpath = ["tests", "packages/pi_fetch/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "infra/scripts"]
+pythonpath = ["tests", "packages/pi_fetch/tests", "packages/pi_metrics/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "infra/scripts"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",
@@ -138,7 +143,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe", "pi_match"]
+source = ["pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe", "pi_match", "pi_metrics"]
 omit = ["*/gulf_probe/run.py"]  # network entry point; runs only in the Cloud Run probe job
 
 [tool.coverage.report]
