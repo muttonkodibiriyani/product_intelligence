@@ -37,3 +37,18 @@ uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3
   `gcloud secrets add-iam-policy-binding pi-proxy-iproyal-ae --member=serviceAccount:<sa> --role=roles/secretmanager.secretAccessor`
   Caveat: project-level `roles/owner` (this SA and the owner) still implies access; a dedicated crawl SA
   without Owner would make this binding the only path.
+
+## Rules parity (checked 2026-09-30 via firebaserules.googleapis.com releases)
+
+| Release | Deployed ruleset | Updated (UTC) | sha256[:16] live | sha256[:16] repo |
+| --- | --- | --- | --- | --- |
+| `cloud.firestore` | `rulesets/4000bcde-2291-4089-bca9-2d49ca04b800` | 2026-09-30 21:15:46 | `021f754d901855c2` | `021f754d901855c2` (`firestore.rules`) |
+| `firebase.storage/productintelligence-beeb3.firebasestorage.app` | `rulesets/fbab556b-8abb-44d9-bccc-448a5afc5cd2` | 2026-09-30 21:15:43 | `798b55374f6d9dfb` | `798b55374f6d9dfb` (`storage.rules`) |
+
+After this PR merges, rules are redeployed only from `main` (`firebase deploy --only firestore:rules,storage`).
+
+## Follow-ups (after the demo)
+
+- Dedicated crawl service account without Owner, holding only the resource-level
+  `secretAccessor` on `pi-proxy-iproyal-ae` (approved by the Coordinator; no IAM churn before the demo).
+- Emulator rules test (deny unauthenticated, deny no-role, deny non-`demo_` collections, deny writes) before this PR merges.
