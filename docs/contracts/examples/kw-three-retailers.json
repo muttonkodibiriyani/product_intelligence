@@ -1,0 +1,234 @@
+{
+  "schema": "pi.dataset/v2",
+  "meta": {
+    "kind": "snapshot",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "generatedAt": "2026-09-30T01:00:00Z",
+    "scope": "fragrance",
+    "vertical": "beauty",
+    "markets": [
+      {
+        "country": "KW",
+        "currency": "KWD",
+        "timeZone": "Asia/Kuwait",
+        "locales": [
+          "ar",
+          "en"
+        ]
+      }
+    ],
+    "retailers": [
+      {
+        "id": "example_alpha_kw",
+        "name": "Example Alpha",
+        "country": "KW",
+        "status": "supported",
+        "since": "2026-09-20",
+        "note": null,
+        "logo": null,
+        "earlyExamples": false
+      },
+      {
+        "id": "example_beta_kw",
+        "name": "Example Beta",
+        "country": "KW",
+        "status": "partial",
+        "since": "2026-09-20",
+        "note": {
+          "en": "Fragrance only.",
+          "ar": "العطور فقط."
+        },
+        "logo": null,
+        "earlyExamples": false
+      },
+      {
+        "id": "example_gamma_kw",
+        "name": "Example Gamma",
+        "country": "KW",
+        "status": "blocked",
+        "since": null,
+        "note": {
+          "en": "Blocked by the site; no data.",
+          "ar": "محجوب؛ لا بيانات."
+        },
+        "logo": null,
+        "earlyExamples": false
+      }
+    ],
+    "dates": [
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30"
+    ],
+    "matchStage": "reviewed",
+    "capabilities": {
+      "history": true,
+      "promotions": true,
+      "campaigns": false,
+      "stock": true,
+      "sizes": true,
+      "shades": true,
+      "coverage": true,
+      "images": false,
+      "ratings": true
+    },
+    "fields": {
+      "price": "ok",
+      "regular": "ok",
+      "promo": "ok",
+      "stock": "partial",
+      "size": "ok",
+      "shades": "ok",
+      "rating": "ok",
+      "gtin": "not_published",
+      "image": "not_collected"
+    },
+    "producer": {
+      "name": "pi_dataset.examples",
+      "version": "1",
+      "commit": null
+    },
+    "test": true
+  },
+  "products": [
+    {
+      "id": "k-0001",
+      "brand": "Example Parfums",
+      "name": "Oud Nuit EDP",
+      "category": [
+        "fragrance"
+      ],
+      "unit": "ml",
+      "offers": {
+        "example_alpha_kw": {
+          "currency": "KWD",
+          "sku": "EX-EXAMPLE_ALPHA_KW-329250",
+          "url": null,
+          "size": {
+            "value": "100",
+            "unit": "ml"
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.25",
+            "count": 12
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "32.500",
+                "minor": 32500,
+                "currency": "KWD"
+              },
+              {
+                "amount": "32.500",
+                "minor": 32500,
+                "currency": "KWD"
+              },
+              {
+                "amount": "29.250",
+                "minor": 29250,
+                "currency": "KWD"
+              }
+            ],
+            "regular": null,
+            "promo": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "example:example_alpha_kw",
+            "runId": null
+          },
+          "image": null
+        },
+        "example_beta_kw": {
+          "currency": "KWD",
+          "sku": "EX-EXAMPLE_BETA_KW-333000",
+          "url": null,
+          "size": {
+            "value": "100",
+            "unit": "ml"
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.25",
+            "count": 12
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "33.000",
+                "minor": 33000,
+                "currency": "KWD"
+              },
+              {
+                "amount": "33.000",
+                "minor": 33000,
+                "currency": "KWD"
+              },
+              {
+                "amount": "33.000",
+                "minor": 33000,
+                "currency": "KWD"
+              }
+            ],
+            "regular": null,
+            "promo": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "example:example_beta_kw",
+            "runId": null
+          },
+          "image": null
+        }
+      },
+      "matches": [
+        {
+          "a": "example_alpha_kw",
+          "b": "example_beta_kw",
+          "matchClass": "exact",
+          "reviewState": "proposed",
+          "decidedBy": null,
+          "confidence": "0.97",
+          "method": "brand_line_size",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {
+        "concentration": "edp"
+      },
+      "image": null
+    }
+  ],
+  "notObserved": [
+    {
+      "retailer": "example_beta_kw",
+      "start": "2026-09-28",
+      "end": "2026-09-30",
+      "categories": [
+        "skincare",
+        "makeup"
+      ],
+      "why": {
+        "en": "Outside the collected categories.",
+        "ar": "خارج الفئات المجمعة."
+      }
+    },
+    {
+      "retailer": "example_gamma_kw",
+      "start": "2026-09-28",
+      "end": "2026-09-30",
+      "categories": null,
+      "why": {
+        "en": "Blocked.",
+        "ar": "محجوب."
+      }
+    }
+  ]
+}

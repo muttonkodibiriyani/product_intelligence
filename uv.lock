@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "pi-connector-ulta",
     "pi-core",
+    "pi-dataset",
     "pi-db",
     "pi-fetch",
     "pi-match",
@@ -728,6 +729,21 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2.9" }]
 
 [[package]]
+name = "pi-dataset"
+version = "0.1.0"
+source = { editable = "packages/pi_dataset" }
+dependencies = [
+    { name = "pi-core" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pydantic", specifier = ">=2.11" },
+]
+
+[[package]]
 name = "pi-db"
 version = "0.1.0"
 source = { editable = "packages/pi_db" }
@@ -813,6 +829,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "pi-connector-ulta" },
     { name = "pi-core" },
+    { name = "pi-dataset" },
     { name = "pi-db" },
     { name = "pi-fetch" },
     { name = "pi-match" },
@@ -831,6 +848,7 @@ dev = [
 requires-dist = [
     { name = "pi-connector-ulta", editable = "packages/pi_connector_ulta" },
     { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pi-dataset", editable = "packages/pi_dataset" },
     { name = "pi-db", editable = "packages/pi_db" },
     { name = "pi-fetch", editable = "packages/pi_fetch" },
     { name = "pi-match", editable = "packages/pi_match" },
