@@ -206,6 +206,34 @@ def test_robots_real_sephora_file(path: str, allowed: bool) -> None:
     assert RobotsRules(SEPHORA_ROBOTS).allows(f"https://www.sephora.me{path}") is allowed
 
 
+# Provenance: docs/recon/samples/probe/ulta_ae_robots.txt (Crawl Engineer, 2026-09-30, WebKit
+# plain-text view; content exact). No live fetch in tests.
+ULTA_AE_ROBOTS = (Path(__file__).parent / "fixtures" / "robots" / "ulta_ae.txt").read_text()
+
+
+@pytest.mark.parametrize(
+    ("path", "allowed"),
+    [
+        ("/en/search?keywords=lipstick", False),  # /*? (3) beats Allow: / (1)
+        ("/en/p/some-lipstick-12345", True),
+        ("/en/p/some-lipstick?selected=2", True),  # Allow /*?selected* is longest
+        ("/en/api/product.json?id=1", True),  # Allow /*.json?
+        ("/assets/media_1234?w=400", True),  # Allow /*media_*?
+        ("/en/--promo", False),  # */--*
+        ("/en/p/red--matte", True),  # */--* needs "/--"
+        ("/en/cart/", False),
+        ("/en/user/login", False),
+        ("/en/fragments/nav", False),
+        ("/en/footer", False),
+        ("/en/system/404?referer=x", False),
+        ("/sitemap.xml", True),
+        ("/robots.txt", True),
+    ],
+)
+def test_robots_real_ulta_ae_file(path: str, allowed: bool) -> None:
+    assert RobotsRules(ULTA_AE_ROBOTS).allows(f"https://www.ulta.ae{path}") is allowed
+
+
 def test_robots_percent_encoding_is_normalised() -> None:
     rules = RobotsRules(
         "User-agent: *\nDisallow: /caf\u00e9\nDisallow: /%7euser\nDisallow: /a%2fb\n"
