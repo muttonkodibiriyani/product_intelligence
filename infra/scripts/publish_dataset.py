@@ -1,12 +1,21 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["firebase-admin>=6.5"]
+# dependencies = ["firebase-admin>=6.5", "pi-dataset", "pi-core"]
+#
+# [tool.uv.sources]
+# pi-dataset = { path = "../../packages/pi_dataset", editable = true }
+# pi-core = { path = "../../packages/pi_core", editable = true }
 # ///
-"""Publish a pi.dataset/v1 JSON file to the demo app (Storage + a Firestore meta mirror).
+"""Publish a pi.dataset JSON file to the demo app (Storage + a Firestore meta mirror).
 
 Validates the contract, refuses anything that looks like an Algolia credential, then uploads
-gzipped to datasets/uae/latest.json plus an immutable copy named after the cutoff (for
-rollback), and mirrors meta to Firestore demo_meta/current.
+gzipped to ``<prefix>/latest.json`` plus an immutable copy named after the cutoff (for rollback),
+and mirrors meta to Firestore.
+
+- v1 (the dashboard's current input): prefix datasets/uae, meta in demo_meta/current.
+- v2 (ADR-0007 §6): checked by pi_dataset's strict ``load_dataset``; prefix
+  ``datasets/<country>/<scope>`` (e.g. datasets/ae/beauty), meta in demo_meta/v2_<country>_<scope>.
+  v1 stays readable until the dashboard moves to v2, so both are published side by side.
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
         --project productintelligence-beeb3 dataset.json [--dry-run] [--allow-test]
@@ -23,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "pi.dataset/v1"
+SCHEMA_V2 = "pi.dataset/v2"
 PRECONDITION_FAILED = 412  # google.api_core PreconditionFailed.code (if_generation_match)
 # Never ship Algolia credentials: header/param names, or a 32-hex key next to an Algolia hint.
 FORBIDDEN = [
@@ -58,6 +68,52 @@ def validate(doc: dict[str, Any], raw: str, *, allow_test: bool) -> list[str]:
         f"forbidden credential-like content: /{p.pattern}/" for p in FORBIDDEN if p.search(raw)
     ]
     return errors
+
+
+def validate_v2(raw: str, *, allow_test: bool) -> tuple[Any, list[str]]:
+    """The contract's own strict load (floats, credentials, every rule); never a partial copy."""
+    from pi_dataset import DatasetError, load_dataset  # noqa: PLC0415 (v1 runs without it)
+
+    try:
+        return load_dataset(raw, allow_test=allow_test), []
+    except DatasetError as exc:
+        return None, list(exc.errors)
+
+
+def package_v2(dataset: Any) -> tuple[bytes, list[str], dict[str, Any], str]:
+    """v2 body (canonical dump), paths under datasets/<country>/<scope>, summary, Firestore doc."""
+    from pi_dataset import dump_dataset  # noqa: PLC0415
+
+    meta = dataset.meta
+    if len(meta.markets) != 1:
+        raise ValueError("a multi-market dataset needs a layout decision first (ADR-0007 §6)")
+    country = meta.markets[0].country.lower()
+    prefix = f"datasets/{country}/{meta.scope}"
+    body = gzip.compress(dump_dataset(dataset), mtime=0)
+    cutoff = meta.cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = re.sub(r"[^0-9TZ]", "", cutoff)
+    paths = [f"{prefix}/{stamp}.json", f"{prefix}/latest.json"]
+    summary = {
+        "schema": SCHEMA_V2,
+        "kind": meta.kind,
+        "test": meta.test,
+        "cutoff": cutoff,
+        "generatedAt": meta.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "market": meta.markets[0].country,
+        "scope": meta.scope,
+        "products": len(dataset.products),
+        "retailers": [
+            {
+                "id": r.id,
+                "name": r.name,
+                "status": str(r.status),
+                "since": r.since.isoformat() if r.since else None,
+            }
+            for r in meta.retailers
+        ],
+        "storagePath": paths[-1],
+    }
+    return body, paths, summary, f"v2_{country}_{meta.scope}"
 
 
 def blob_md5(body: bytes) -> str:
@@ -125,19 +181,29 @@ def main() -> int:
     parser.add_argument("path", type=Path)
     parser.add_argument("--project", required=True)
     parser.add_argument("--bucket", default=None, help="default: <project>.firebasestorage.app")
-    parser.add_argument("--prefix", default="datasets/uae", help="Storage folder (contract path)")
+    parser.add_argument(
+        "--prefix", default="datasets/uae", help="v1 Storage folder (v2 derives its own)"
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-test", action="store_true")
     args = parser.parse_args()
 
     raw = args.path.read_text(encoding="utf-8")
     doc = json.loads(raw)
-    errors = validate(doc, raw, allow_test=args.allow_test)
+    is_v2 = isinstance(doc, dict) and doc.get("schema") == SCHEMA_V2
+    if is_v2:
+        dataset, errors = validate_v2(raw, allow_test=args.allow_test)
+    else:
+        errors = validate(doc, raw, allow_test=args.allow_test)
     if errors:
         for err in errors[:50]:
             print(f"INVALID: {err}", file=sys.stderr)
         return 1
-    body, paths, summary = package(doc, args.prefix)
+    if is_v2:
+        body, paths, summary, meta_doc = package_v2(dataset)
+    else:
+        body, paths, summary = package(doc, args.prefix)
+        meta_doc = "current"
     print(json.dumps(summary, ensure_ascii=False), f"gzip={len(body)}B", sep="\n")
     if args.dry_run:
         return 0
@@ -150,8 +216,8 @@ def main() -> int:
     bucket = storage.bucket()
     if upload(bucket, paths, body) != 0:
         return 1
-    firestore.client().collection("demo_meta").document("current").set(summary)
-    print("wrote firestore demo_meta/current")
+    firestore.client().collection("demo_meta").document(meta_doc).set(summary)
+    print(f"wrote firestore demo_meta/{meta_doc}")
     return 0
 
 

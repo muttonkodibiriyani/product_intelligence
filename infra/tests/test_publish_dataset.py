@@ -4,6 +4,7 @@ import copy
 import gzip
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import publish_dataset
@@ -159,3 +160,41 @@ def test_other_upload_errors_propagate() -> None:
     bucket = Bucket(fail=ServerError("unavailable"))
     with pytest.raises(ServerError):
         publish_dataset.upload(bucket, PATHS, BODY)
+
+
+# ------------------------------------------------------------------ pi.dataset/v2
+EXAMPLE = Path(__file__).parents[2] / "docs/contracts/examples/ae-pilot.json"
+
+
+def test_v2_uses_the_contract_loader_and_honours_allow_test() -> None:
+    raw = EXAMPLE.read_text(encoding="utf-8")  # a test fixture: meta.test is true
+    dataset, errors = publish_dataset.validate_v2(raw, allow_test=False)
+    assert dataset is None
+    assert any("meta.test" in e for e in errors)
+    dataset, errors = publish_dataset.validate_v2(raw, allow_test=True)
+    assert errors == []
+    assert dataset is not None
+
+
+def test_v2_float_money_is_refused() -> None:
+    raw = EXAMPLE.read_text(encoding="utf-8").replace('"minor": 12900', '"minor": 12900.0', 1)
+    assert '"minor": 12900.0' in raw
+    _, errors = publish_dataset.validate_v2(raw, allow_test=True)
+    assert any("float" in e for e in errors)
+
+
+def test_v2_is_published_under_country_and_scope_with_its_own_meta_doc() -> None:
+    dataset, _ = publish_dataset.validate_v2(EXAMPLE.read_text(encoding="utf-8"), allow_test=True)
+    body, paths, summary, meta_doc = publish_dataset.package_v2(dataset)
+    assert paths == [
+        "datasets/ae/pilot/20260930T000000Z.json",
+        "datasets/ae/pilot/latest.json",
+    ]
+    assert meta_doc == "v2_ae_pilot"
+    assert summary["schema"] == "pi.dataset/v2"
+    assert summary["storagePath"] == "datasets/ae/pilot/latest.json"
+    assert summary["cutoff"] == "2026-09-30T00:00:00Z"
+    assert summary["products"] == len(dataset.products)
+    # What is uploaded re-loads under the same strict rules, and packaging is deterministic.
+    publish_dataset.validate_v2(gzip.decompress(body).decode(), allow_test=True)
+    assert publish_dataset.package_v2(dataset)[0] == body

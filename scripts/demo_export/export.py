@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Export a local pi_db snapshot as the frontend's ``pi.dataset/v1`` JSON.
+"""Export a local pi_db snapshot as the frontend's ``pi.dataset/v1`` JSON (and, with
+``--output-v2``, the ``pi.dataset/v2`` snapshot built by ``v2.py``).
 
 This is deliberately a read-only producer. It never fetches retailer data and it only adds
 Ulta early examples when an explicitly supplied, committed/redacted probe fixture is given.
@@ -130,6 +131,8 @@ class MatchRow:
     score: Decimal | None
     algo_version: str
     review_state: str
+    #: A reviewer is recorded (the identity itself is never read or published, SEC-06).
+    human: bool = False
 
 
 # Owner decision for the pilot (2026-09-30): ulta.ae is blocked; the status line is data (CLI).
@@ -318,7 +321,8 @@ ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 """
 
 MATCHES_SQL = """
-SELECT variant_a, variant_b, match_class::text, score, algo_version, review_state::text
+SELECT variant_a, variant_b, match_class::text, score, algo_version, review_state::text,
+       reviewer IS NOT NULL AS human
 FROM match_edge
 WHERE valid_to IS NULL
   AND review_state <> 'rejected'
@@ -490,9 +494,11 @@ def product_for_group(key: GroupKey, rows: Sequence[ListingRow]) -> dict[str, An
     return product
 
 
-def matched_products(
+def pair_groups(
     groups: Mapping[GroupKey, Sequence[ListingRow]], matches: Sequence[MatchRow]
-) -> list[dict[str, Any]]:
+) -> tuple[list[tuple[GroupKey, GroupKey, MatchRow]], list[GroupKey]]:
+    """Exact, same-size Ulta/Sephora pairs (best score first, each group used once), and the
+    groups left unpaired in stable-token order. Shared by the v1 and v2 builders."""
     by_variant = {row.variant_id: key for key, rows in groups.items() for row in rows}
     candidates: dict[tuple[GroupKey, GroupKey], MatchRow] = {}
     for match in matches:
@@ -515,7 +521,7 @@ def matched_products(
             candidates[pair] = match
 
     used: set[GroupKey] = set()
-    products: list[dict[str, Any]] = []
+    pairs: list[tuple[GroupKey, GroupKey, MatchRow]] = []
     ordered = sorted(
         candidates.items(),
         key=lambda item: (
@@ -527,6 +533,20 @@ def matched_products(
     for (ulta_key, sephora_key), match in ordered:
         if ulta_key in used or sephora_key in used:
             continue
+        pairs.append((ulta_key, sephora_key, match))
+        used.update((ulta_key, sephora_key))
+    unpaired = [
+        key for key in sorted(groups, key=lambda item: item.stable_token) if key not in used
+    ]
+    return pairs, unpaired
+
+
+def matched_products(
+    groups: Mapping[GroupKey, Sequence[ListingRow]], matches: Sequence[MatchRow]
+) -> list[dict[str, Any]]:
+    pairs, unpaired = pair_groups(groups, matches)
+    products: list[dict[str, Any]] = []
+    for ulta_key, sephora_key, match in pairs:
         ulta_rows = groups[ulta_key]
         sephora_rows = groups[sephora_key]
         base = product_for_group(sephora_key, sephora_rows)
@@ -540,13 +560,8 @@ def matched_products(
             "reviewState": review_state_for_ui(match.review_state),
         }
         products.append(base)
-        used.update((ulta_key, sephora_key))
 
-    products.extend(
-        product_for_group(key, groups[key])
-        for key in sorted(groups, key=lambda item: item.stable_token)
-        if key not in used
-    )
+    products.extend(product_for_group(key, groups[key]) for key in unpaired)
     return sorted(products, key=lambda product: product["id"])
 
 
@@ -817,6 +832,16 @@ def write_json(path: Path, dataset: Mapping[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def write_bytes(path: Path, body: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "wb", dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as handle:
+        handle.write(body)
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -836,15 +861,18 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--ulta-recon-source")
     result.add_argument("--generated-at")
     result.add_argument("--ulta-blocked-since", default="2026-09-30T20:55:00Z")
+    result.add_argument("--ulta-blocked-note", help="Ulta status line while blocked (EN)")
+    result.add_argument("--ulta-blocked-note-ar", help="the same line in Arabic (required with EN)")
     result.add_argument(
-        "--ulta-blocked-note", default=ULTA_BLOCKED_NOTE, help="Ulta status line while blocked"
+        "--output-v2", type=Path, help="also write the pi.dataset/v2 snapshot (ADR-0007 §6)"
     )
-    result.add_argument("--ulta-blocked-note-ar", default=ULTA_BLOCKED_NOTE_AR)
+    result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
+    result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
 
 
-def main() -> None:
-    args = parser().parse_args()
+def check_args(args: argparse.Namespace) -> None:
+    """Reject argument combinations that would publish a contradictory or half-translated note."""
     fixture_args = (args.ulta_early_fixture, args.ulta_captured_at, args.ulta_fixture_commit)
     if any(value is not None for value in fixture_args) and not all(
         value is not None for value in fixture_args
@@ -853,6 +881,21 @@ def main() -> None:
             "--ulta-early-fixture, --ulta-captured-at and --ulta-fixture-commit "
             "must be supplied together"
         )
+    if args.ulta_early_fixture is not None and args.ulta_recon_observed_count is None:
+        # The status line says "0 products"; recon samples need the recon sentence next to it.
+        raise SystemExit(
+            "--ulta-early-fixture needs --ulta-recon-observed-count and --ulta-recon-source"
+        )
+    notes = (args.ulta_blocked_note, args.ulta_blocked_note_ar)
+    if (notes[0] is None) != (notes[1] is None):
+        raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must be supplied together")
+    if any(note is not None and not note.strip() for note in notes):
+        raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must not be empty")
+
+
+def main() -> None:
+    args = parser().parse_args()
+    check_args(args)
     rows, matches = load_rows(args.database_url)
     early: list[dict[str, Any]] = []
     if args.ulta_early_fixture is not None:
@@ -873,15 +916,38 @@ def main() -> None:
             blocked_since=parse_utc(args.ulta_blocked_since),
             recon_observed_count=args.ulta_recon_observed_count,
             recon_source=args.ulta_recon_source,
-            blocked_note=args.ulta_blocked_note,
-            blocked_note_ar=args.ulta_blocked_note_ar,
+            blocked_note=args.ulta_blocked_note or ULTA_BLOCKED_NOTE,
+            blocked_note_ar=args.ulta_blocked_note_ar or ULTA_BLOCKED_NOTE_AR,
         ),
     )
+    if args.output_v2 is not None:
+        # Build v2 first: if the contract refuses the data, neither file is written.
+        from pi_dataset import dump_dataset, load_dataset  # noqa: PLC0415
+        from scripts.demo_export.v2 import build_dataset_v2  # noqa: PLC0415
+
+        v2 = build_dataset_v2(
+            rows,
+            matches,
+            generated_at=generated_at,
+            ulta=UltaContext(blocked_since=parse_utc(args.ulta_blocked_since)),
+            ulta_note=dataset["meta"]["retailers"][0]["note"],
+            ulta_early=early,
+            scope=args.scope,
+            producer_commit=args.producer_commit,
+        )
+        body = dump_dataset(v2)
+        load_dataset(body)  # the publisher's strict load, credential scan included
     write_json(args.output, dataset)
     print(
         f"wrote {len(dataset['products'])} products to {args.output} "
         f"sha256={sha256(args.output)} cutoff={dataset['meta']['cutoff']}"
     )
+    if args.output_v2 is not None:
+        write_bytes(args.output_v2, body)
+        print(
+            f"wrote v2 {len(v2.products)} products to {args.output_v2} "
+            f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)}"
+        )
 
 
 if __name__ == "__main__":

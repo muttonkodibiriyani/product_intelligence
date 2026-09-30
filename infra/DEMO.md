@@ -17,7 +17,10 @@ Enabled APIs: firestore, firebasestorage, identitytoolkit, firebasehosting, fire
 ```sh
 # rules + hosting (from infra/, with the web build in infra/web-dist/)
 firebase deploy --project productintelligence-beeb3 --only firestore:rules,storage,hosting
-# publish a dataset (validate first with --dry-run)
+# publish a dataset (validate first with --dry-run). The schema picks the layout:
+#   pi.dataset/v1 -> datasets/uae/ + demo_meta/current (what the dashboard reads today)
+#   pi.dataset/v2 -> datasets/<country>/<scope>/ + demo_meta/v2_<country>_<scope> (ADR-0007 §6)
+# Until the dashboard moves to v2, publish both files from the same export.
 uv run --script infra/scripts/publish_dataset.py --project productintelligence-beeb3 <file.json>
 # invite users: emails on stdin, one per line; add --no-email to create without sending
 uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3 --role viewer < emails.txt
