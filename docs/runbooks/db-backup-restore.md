@@ -88,9 +88,10 @@ is actually stored.
 
 `public.pi_field_state_valid` names the `field_state` enum without its schema. pg_restore runs
 with an empty `search_path`, so a plain restore stops at the first `ATTACH PARTITION` with
-`type "field_state" does not exist`. The dump itself is complete. Until the pi_db migration that
-qualifies the type is merged, **and for any dump taken before it**, restore through SQL with that
-one reference qualified:
+`type "field_state" does not exist`. The dump itself is complete. pi_db migration 0002
+([#49](https://github.com/muttonkodibiriyani/product_intelligence/pull/49)) qualifies the type;
+dumps taken after `alembic upgrade head` restore with plain `pg_restore`. For any dump taken
+before it, restore through SQL with that one reference qualified:
 
 ```bash
 docker exec -i product-intelligence-postgres-1 pg_restore -f - --no-owner < pi.dump \
@@ -120,4 +121,4 @@ Row counts from that test (all tables not listed had 0 rows in both live and res
 | public.source_listing | 5,967 | 5,967 |
 
 Next entry: the first nightly object downloaded from GCS and restored with `restore-test`, once
-the setup has run and the pi_db fix is merged.
+the setup has run and migration 0002 (#49) is applied (plain `pg_restore`, no workaround).
