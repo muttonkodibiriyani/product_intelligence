@@ -45,8 +45,9 @@ cart/checkout, polite pacing, and every escalation audit-logged.
 ## Consequences
 - `pi_core` enums follow this table. Required renames:
   - `LadderRung.IMPERSONATED_HTTP = 1` → `LadderRung.PLAIN_HTTP = 1`.
-  - `LadderRung.STEALTH_BROWSER = 3` is removed. The value 3 stays unassigned (reserved), and
-    `LadderRung(3)` must raise.
+  - `LadderRung.STEALTH_BROWSER = 3` stays only as a **forbidden** member, so the number is
+    reserved. `pi_core` refuses to select or record it (forbidden-rung policy), and
+    `CHECK (rung <> 3)` rejects it in the database.
   - `FetchMethod.CURL_CFFI = "curl_cffi"` → `FetchMethod.PLAIN_HTTP = "plain_http"` (rung 1).
   - `FetchMethod.SCRAPLING`, `FetchMethod.CAMOUFOX` and `FetchMethod.PATCHRIGHT` are removed.
   - Unchanged: `SITE_DATA`, `BROWSER`, `EGRESS_VARIATION` and `PAID_PROXY` rungs; the `site_api`,
