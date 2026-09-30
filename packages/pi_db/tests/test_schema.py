@@ -39,7 +39,7 @@ def _seed(conn: Conn) -> dict[str, object]:
     context = _one(
         conn,
         "INSERT INTO source_context (source_id, country, channel, locale, time_zone)"
-        " VALUES (%s, 'SA', 'online', 'en-SA', 'Asia/Riyadh') RETURNING id",
+        " VALUES (%s, 'AE', 'online', 'en-AE', 'Asia/Dubai') RETURNING id",
         (source,),
     )
     run = _one(
@@ -70,7 +70,7 @@ def _observe(
         "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
         " source_listing_id, observed_at, ingested_at, price_current, price_type, currency,"
         " availability_state, field_state)"
-        " VALUES (%s, %s, %s, %s, %s, now(), %s, 'full', 'SAR', 'in_stock', %s::jsonb)"
+        " VALUES (%s, %s, %s, %s, %s, now(), %s, 'full', 'AED', 'in_stock', %s::jsonb)"
         f" {on_conflict} RETURNING tableoid::regclass::text",
         (
             key,
