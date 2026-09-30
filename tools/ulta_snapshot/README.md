@@ -15,3 +15,12 @@ It uses the same loader contract as `sephora_snapshot`.
 python -m ulta_snapshot.load <local-dir> <gs://bucket/prefix>            # load new parts
 python -m ulta_snapshot.load <local-dir> <gs://bucket/prefix> --finish   # close the run
 ```
+
+## Proxy secret version
+
+`SECRET_RESOURCE` is pinned to an explicit version:
+`projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1`.
+There is no runtime fallback to the newest enabled version, and the job never calls
+`versions.list`. When the credential is rotated, update this pin and the one in
+`docs/runbooks/ulta-proxy-test.md` together. A disabled or destroyed version fails before any
+request with `secret version not accessible (disabled/destroyed?) — pin an enabled version`.

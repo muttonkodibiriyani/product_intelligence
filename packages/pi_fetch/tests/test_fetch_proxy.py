@@ -189,11 +189,48 @@ def test_proxy_is_refused_for_any_source_but_ulta() -> None:
         )
 
 
-def test_secret_resource_must_be_latest() -> None:
-    with pytest.raises(ValueError, match="versions/latest"):
-        ULTA.model_copy(update={"secret_resource": RESOURCE.replace("latest", "3")}).model_validate(
-            {**ULTA.model_dump(), "secret_resource": RESOURCE.replace("latest", "3")}
+@pytest.mark.parametrize("version", ["1", "12", "latest"])
+def test_secret_resource_accepts_a_pinned_version_or_latest(version: str) -> None:
+    resource = RESOURCE.replace("latest", version)
+    got = ULTA.model_validate({**ULTA.model_dump(), "secret_resource": resource})
+    assert got.secret_resource == resource
+
+
+@pytest.mark.parametrize("version", ["0", "01", "-1", "v1", "latest/x", ""])
+def test_secret_resource_rejects_other_versions(version: str) -> None:
+    with pytest.raises(ValueError, match="versions/<n or latest>"):
+        ULTA.model_validate(
+            {**ULTA.model_dump(), "secret_resource": RESOURCE.replace("latest", version)}
         )
+
+
+@pytest.mark.parametrize(
+    "resource",
+    [
+        "projects/other-project/secrets/pi-proxy-iproyal-ae/versions/1",
+        "projects/productintelligence-beeb3/secrets/other-secret/versions/1",
+        "projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae-x/versions/latest",
+        "projects/productintelligence-beeb3x/secrets/pi-proxy-iproyal-ae/versions/latest",
+        " projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1",
+    ],
+)
+def test_secret_resource_rejects_other_secrets_and_projects(resource: str) -> None:
+    with pytest.raises(ValueError, match="pi-proxy-iproyal-ae/versions/<n or latest>"):
+        ULTA.model_validate({**ULTA.model_dump(), "secret_resource": resource})
+
+
+@pytest.mark.parametrize(("status", "hint"), [(400, True), (404, True), (403, False), (500, False)])
+def test_inaccessible_secret_version_says_pin_an_enabled_version(status: int, hint: bool) -> None:
+    body = {"error": {"status": "FAILED_PRECONDITION", "message": PASSWORD}}
+    reader = SecretManagerReader(
+        token=lambda: "tok", client=_mock_client(lambda _: httpx.Response(status, json=body))
+    )
+    with pytest.raises(ProxyConfigError) as err:
+        reader.read(RESOURCE.replace("latest", "2"))
+    text = str(err.value)
+    assert f"HTTP {status}" in text
+    assert ("pin an enabled version" in text) is hint
+    assert PASSWORD not in text
 
 
 def test_proxied_source_must_pace_at_least_5s() -> None:

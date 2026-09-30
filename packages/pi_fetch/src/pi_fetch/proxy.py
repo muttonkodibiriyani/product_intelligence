@@ -1,7 +1,8 @@
 """Rung 5: the owner-approved residential proxy (ADR-0006 decision 5; owner decision for ulta.ae).
 
 Credentials never live in git, config or logs. They are read at runtime from Secret Manager
-(``.../versions/latest``, so a rotation takes effect on the next run), held in ``SecretStr`` and
+(an explicitly pinned ``.../versions/<n>``, so the credential in use is auditable; a rotation
+updates the pin; ``latest`` is still accepted), held in ``SecretStr`` and
 kept out of every repr, audit event and exception message (``redact``). Nothing is cached to disk.
 
 The proxy is metered: ``ProxyMeter`` counts request and response bytes through the proxy for the
@@ -36,7 +37,11 @@ _BYTES_PER_GB = Decimal(1000**3)
 PROXY_SOURCES: dict[str, str] = {"ulta_ae": "ulta.ae"}
 REDACTED = "REDACTED"
 
-_SECRET_RESOURCE_RE = re.compile(r"^projects/[a-z0-9-]+/secrets/[A-Za-z0-9_-]+/versions/latest$")
+_SECRET_RESOURCE_RE = re.compile(
+    r"^projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/(?:latest|[1-9][0-9]*)$"
+)
+#: Secret Manager answers a disabled/destroyed version with 400 FAILED_PRECONDITION or 404.
+_VERSION_INACCESSIBLE = frozenset({400, 404})
 _SM_ACCESS_URL = "https://secretmanager.googleapis.com/v1/{resource}:access"
 _METADATA_SA_URL = (
     "http://metadata.google.internal/computeMetadata/v1/instance/service-account/token"
@@ -97,7 +102,10 @@ class ResidentialProxy(PiModel):
     @classmethod
     def _check_resource(cls, value: str) -> str:
         if not _SECRET_RESOURCE_RE.fullmatch(value):
-            msg = "secret_resource must be projects/<p>/secrets/<name>/versions/latest"
+            msg = (
+                "secret_resource must be projects/productintelligence-beeb3/secrets/"
+                "pi-proxy-iproyal-ae/versions/<n or latest>"
+            )
             raise ValueError(msg)
         return value
 
@@ -177,7 +185,7 @@ def gcloud_token() -> str:
 
 
 class SecretManagerReader:
-    """Secret Manager over its REST API (``versions/latest:access``); in memory only."""
+    """Secret Manager over its REST API (``versions/<n>:access``); in memory only."""
 
     def __init__(
         self, token: TokenProvider = metadata_token, client: httpx.Client | None = None
@@ -197,6 +205,11 @@ class SecretManagerReader:
             )
             if response.status_code != httpx.codes.OK:
                 msg = f"secret {resource}: HTTP {response.status_code}"
+                if response.status_code in _VERSION_INACCESSIBLE:
+                    msg += (
+                        ": secret version not accessible (disabled/destroyed?)"
+                        " — pin an enabled version"
+                    )
                 raise ProxyConfigError(msg)
             return base64.b64decode(response.json()["payload"]["data"])
         except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
