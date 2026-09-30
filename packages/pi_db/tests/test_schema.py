@@ -169,21 +169,10 @@ def _history(conn: Conn) -> dict[str, object]:
 # ------------------------------------------------------------------ enums and types
 
 
-def _pi_core_values(enum: type[StrEnum]) -> tuple[str, ...]:
-    """pi_core's values, plus those pi_db already carries ahead of pi_core #6.
-
-    FieldState.OBSERVED lands in #6, appended last; drop this shim once it has merged.
-    """
-    values = tuple(m.value for m in enum)
-    if enum is pi_core.FieldState and "observed" not in values:
-        values += ("observed",)
-    return values
-
-
 @pytest.mark.parametrize(("pg_type", "enum"), PI_CORE_ENUMS.items())
 def test_db_enum_matches_pi_core(conn: Conn, pg_type: str, enum: type[StrEnum]) -> None:
     labels = _one(conn, f"SELECT enum_range(NULL::{pg_type})::text[]")
-    assert labels == list(_pi_core_values(enum))
+    assert labels == [m.value for m in enum]
 
 
 @pytest.mark.parametrize(
