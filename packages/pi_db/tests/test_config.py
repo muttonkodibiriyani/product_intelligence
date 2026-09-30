@@ -49,7 +49,20 @@ def test_alembic_config_escapes_percent_in_url() -> None:
 
 def test_single_linear_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0001"]
+    assert script.get_heads() == ["0002"]
+    assert [r.revision for r in script.walk_revisions()] == ["0002", "0001"]
+
+
+def test_0002_only_qualifies_the_enum() -> None:
+    from pi_db.migrations.versions.v0002_qualify_field_state_enum import (  # noqa: PLC0415
+        FIELD_STATE_VALID_SQL,
+    )
+
+    assert "NULL::public.field_state" in FIELD_STATE_VALID_SQL
+    assert "NULL::field_state" not in FIELD_STATE_VALID_SQL
+    # Still inlinable: plain SQL, no SET clause.
+    assert "LANGUAGE sql STABLE AS" in FIELD_STATE_VALID_SQL
+    assert "SET search_path" not in FIELD_STATE_VALID_SQL
 
 
 # Schema enums whose pi_core class lands in PR3 (#6); checked as soon as pi_core exports it.
