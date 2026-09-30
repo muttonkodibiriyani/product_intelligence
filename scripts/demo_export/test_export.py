@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from scripts.demo_export.export import (
+    ULTA_BLOCKED_NOTE,
+    ULTA_BLOCKED_NOTE_AR,
     ListingRow,
     MatchRow,
     UltaContext,
@@ -20,6 +22,7 @@ from scripts.demo_export.export import (
     offer_for,
     parse_size_label,
     parse_ulta_early_fixture,
+    parser,
     psycopg_database_url,
 )
 
@@ -275,6 +278,35 @@ def test_recon_count_requires_a_source_and_is_cited() -> None:
     note = dataset["meta"]["retailers"][0]["note"]["en"]
     assert "3 products" in note
     assert "gulf_probe_results.md @ abc123" in note
+
+    assert note.endswith(ULTA_BLOCKED_NOTE)
+
+
+def test_blocked_ulta_without_recon_is_the_owner_status_line_only() -> None:
+    dataset = build_dataset([row()], [], generated_at=NOW, ulta=UltaContext(blocked_since=NOW))
+    ulta = dataset["meta"]["retailers"][0]
+    assert ulta["status"] == "blocked"
+    assert ulta["note"] == {"en": ULTA_BLOCKED_NOTE, "ar": ULTA_BLOCKED_NOTE_AR}
+    assert ULTA_BLOCKED_NOTE == (
+        "ulta.ae: blocked by site security (Cloudflare) via Gulf datacenter and UAE residential; "
+        "0 products"
+    )
+    assert not [p for p in dataset["products"] if "u" in p["offers"] and p["offers"]["u"]]
+
+
+def test_blocked_note_is_data_from_the_cli() -> None:
+    args = parser().parse_args(
+        ["--database-url", "x", "--output", "o.json", "--ulta-blocked-note", "custom"]
+    )
+    assert args.ulta_blocked_note == "custom"
+    assert args.ulta_blocked_note_ar == ULTA_BLOCKED_NOTE_AR
+    dataset = build_dataset(
+        [row()],
+        [],
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=NOW, blocked_note="custom", blocked_note_ar="مخصص"),
+    )
+    assert dataset["meta"]["retailers"][0]["note"] == {"en": "custom", "ar": "مخصص"}
 
 
 def test_real_ulta_rows_are_partial_not_early() -> None:

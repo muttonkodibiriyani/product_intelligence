@@ -13,10 +13,13 @@ Run from the repository root:
 ```sh
 uv run python scripts/demo_export/export.py \
   --database-url "$PI_DATABASE_URL" \
-  --output "$OUTPUT_PATH" \
-  --ulta-recon-observed-count 3 \
-  --ulta-recon-source 'docs/recon/gulf_probe_results.md (PR #15 @ 1056679)'
+  --output "$OUTPUT_PATH"
 ```
+
+For the pilot, ulta.ae is blocked (owner decision, 2026-09-30): the Ulta status line is
+`--ulta-blocked-note` / `--ulta-blocked-note-ar`, defaulting to "ulta.ae: blocked by site security
+(Cloudflare) via Gulf datacenter and UAE residential; 0 products". No recon products or recon
+sentence are exported unless the recon arguments below are passed.
 
 Inputs are the read-only local `pi_db` URL plus optional reviewed Ulta recon metadata. The single
 output is the plain JSON file at `OUTPUT_PATH`; use a scratch path outside the repository. This is

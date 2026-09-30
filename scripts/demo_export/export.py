@@ -132,11 +132,24 @@ class MatchRow:
     review_state: str
 
 
+# Owner decision for the pilot (2026-09-30): ulta.ae is blocked; the status line is data (CLI).
+ULTA_BLOCKED_NOTE = (
+    "ulta.ae: blocked by site security (Cloudflare) via Gulf datacenter and UAE residential; "
+    "0 products"
+)
+ULTA_BLOCKED_NOTE_AR = (
+    "ulta.ae: محجوب بواسطة أمان الموقع (Cloudflare) عبر مركز بيانات خليجي وعنوان سكني إماراتي؛ "
+    "0 منتجات"
+)
+
+
 @dataclass(frozen=True)
 class UltaContext:
     blocked_since: datetime
     recon_observed_count: int | None = None
     recon_source: str | None = None
+    blocked_note: str = ULTA_BLOCKED_NOTE
+    blocked_note_ar: str = ULTA_BLOCKED_NOTE_AR
 
 
 LATEST_LISTINGS_SQL = """
@@ -673,28 +686,34 @@ def build_dataset(
     series = [offer["series"] for offer in offers]
     if (ulta.recon_observed_count is None) != (ulta.recon_source is None):
         raise ValueError("Ulta recon count and source must be supplied together")
-    recon_note = "Recon examples are excluded from database coverage and comparisons."
-    recon_note_ar = "عينات الاستطلاع مستبعدة من تغطية قاعدة البيانات والمقارنات."
+    # The recon sentence appears only when recon metadata is supplied (E6); no recon, no mention.
+    recon_note = recon_note_ar = ""
     if ulta.recon_observed_count is not None and ulta.recon_source is not None:
         if ulta.recon_observed_count < 0:
             raise ValueError("Ulta recon observed count cannot be negative")
         recon_note = (
             f"{ulta.recon_observed_count} products were observed only during recon "
             f"(30 Sep 20:33-20:58 UTC); 0 Ulta products are in the database. "
-            f"Source: {ulta.recon_source}."
+            f"Source: {ulta.recon_source}. "
         )
         recon_note_ar = (
             f"تمت ملاحظة {ulta.recon_observed_count} منتجات أثناء الاستطلاع فقط؛ لا توجد "
-            f"منتجات استطلاع في قاعدة البيانات. المصدر: {ulta.recon_source}."
+            f"منتجات استطلاع في قاعدة البيانات. المصدر: {ulta.recon_source}. "
         )
     ulta_status = retailer_status(rows, "u")
     sephora_status = retailer_status(rows, "s")
-    ulta_status_note = (
-        "Access is blocked by a Cloudflare challenge and the source is in cool-off."
+    ulta_status_note, ulta_status_note_ar = (
+        (ulta.blocked_note, ulta.blocked_note_ar)
         if ulta_status == "blocked"
-        else "A partial Ulta snapshot is loaded from pi_db; coverage is incomplete."
+        else (
+            "A partial Ulta snapshot is loaded from pi_db; coverage is incomplete.",
+            "تم تحميل لقطة جزئية لألتا من قاعدة البيانات؛ التغطية غير مكتملة.",
+        )
         if ulta_status == "partial"
-        else "The Ulta snapshot is loaded from pi_db."
+        else (
+            "The Ulta snapshot is loaded from pi_db.",
+            "تم تحميل لقطة ألتا من قاعدة البيانات.",
+        )
     )
     ulta_retailer: dict[str, Any] = {
         "id": "u",
@@ -702,13 +721,7 @@ def build_dataset(
         "name": "Ulta UAE",
         "status": ulta_status,
         "earlyExamples": bool(ulta_early),
-        "note": {
-            "en": f"{recon_note} {ulta_status_note}",
-            "ar": (
-                f"{recon_note_ar} الوصول محجوب بتحدّي Cloudflare أو موضح كتغطية "
-                "جزئية حسب حالة المصدر."
-            ),
-        },
+        "note": {"en": recon_note + ulta_status_note, "ar": recon_note_ar + ulta_status_note_ar},
     }
     if ulta_status == "blocked":
         ulta_retailer["since"] = utc_text(ulta.blocked_since)
@@ -808,6 +821,10 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--ulta-recon-source")
     result.add_argument("--generated-at")
     result.add_argument("--ulta-blocked-since", default="2026-09-30T20:55:00Z")
+    result.add_argument(
+        "--ulta-blocked-note", default=ULTA_BLOCKED_NOTE, help="Ulta status line while blocked"
+    )
+    result.add_argument("--ulta-blocked-note-ar", default=ULTA_BLOCKED_NOTE_AR)
     return result
 
 
@@ -841,6 +858,8 @@ def main() -> None:
             blocked_since=parse_utc(args.ulta_blocked_since),
             recon_observed_count=args.ulta_recon_observed_count,
             recon_source=args.ulta_recon_source,
+            blocked_note=args.ulta_blocked_note,
+            blocked_note_ar=args.ulta_blocked_note_ar,
         ),
     )
     write_json(args.output, dataset)
