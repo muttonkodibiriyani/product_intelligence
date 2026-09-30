@@ -41,7 +41,7 @@ docker run --rm -i --name ulta-test --user "$(id -u):$(id -g)" \
   -e GOOGLE_OAUTH_ACCESS_TOKEN \
   -e PRIOR_GB="$PRIOR_GB" -e MAX_PAGES=20 -e CAPTURE_JSON=0 \
   -e OWNER_APPROVAL_REF="ADR-0006 Amendment 2 (owner decision 2026-09-30: IPRoyal AE, ulta.ae only)" \
-  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/latest \
+  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-test/$TS/"
 echo "UPLOADED gs://pi-sephora-e631eaba/ulta-test/$TS/"
@@ -69,7 +69,7 @@ get a token, or the build failed), there is no such line: paste the last few lin
 | `stopped_at_challenge` | The site showed a bot challenge or a 401/403. The job stopped at once, with no retry, and `challenge=yes`. | Paste the line. Do not re-run. |
 | `cap_reached` | Another page could have crossed the 1.8 GB allowance, so the job stopped before sending it. | Paste the line. Do not re-run. |
 | `stopped_by_operator` | You stopped it (see below). | Paste the line. |
-| `stopped_error` | A proxy or login error, e.g. the secret could not be read. `detail=` says which. | Paste the line. Do not re-run. |
+| `stopped_error` | A proxy or login error, e.g. the secret could not be read. `detail=` says which. | Paste the line. If `proxy_bytes=0` **and** `challenge=no`, nothing reached ulta.ae (for example `secret version not accessible`): it is safe to re-run once the config is fixed. If `proxy_bytes` is above 0 or `challenge=yes`, do **not** re-run. |
 
 In the summary line and in the per-page lines:
 - `robots_refused=N` counts pages that robots.txt disallowed. They were skipped, never sent, and
@@ -88,6 +88,16 @@ In the summary line and in the per-page lines:
 - The last command uploads the whole folder to `gs://pi-sephora-e631eaba/ulta-test/<UTC time>/`
   and prints `UPLOADED ...`. The team copies it from there within a day, because that bucket
   deletes files after 1 day.
+
+## Proxy secret version
+
+The block pins `SECRET_RESOURCE` to one secret version (`.../versions/1`), not `latest`. The job
+reads exactly the credential named there and never lists or picks versions itself, so the
+credential in use is auditable. **When the IPRoyal credential is rotated** (a new secret version
+is added and the old one disabled), update the version number in the block, and in
+`tools/ulta_snapshot/README.md`, in the same change. A disabled or destroyed version ends the run
+at once with `status=stopped_error proxy_bytes=0 challenge=no` and `detail=` containing
+`secret version not accessible (disabled/destroyed?) — pin an enabled version`.
 
 ## Stopping early
 

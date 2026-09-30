@@ -17,7 +17,8 @@ Writes to ``OUT_DIR`` (the loader's input layout, see ``load.py``):
 
 Env: ``OUT_DIR``, ``URLS_FILE`` (one product URL per line), ``PRIOR_GB`` or ``PRIOR_BYTES``
 (required; already used from the allowance, rounded up), ``OWNER_APPROVAL_REF``,
-``SECRET_RESOURCE``, ``CAPTURE_JSON`` (default off), ``MAX_PAGES`` (default 20),
+``SECRET_RESOURCE`` (a pinned ``.../versions/<n>``), ``CAPTURE_JSON`` (default off),
+``MAX_PAGES`` (default 20),
 ``GOOGLE_OAUTH_ACCESS_TOKEN`` (the operator's own short-lived token, e.g.
 ``gcloud auth print-access-token`` in Cloud Shell; used only to read the secret, removed from the
 environment before the browser starts, never printed).

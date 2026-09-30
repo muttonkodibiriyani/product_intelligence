@@ -32,7 +32,7 @@ SECRET = json.dumps(
         "provider": "t",
     }
 ).encode()
-RESOURCE = "projects/p/secrets/s/versions/latest"
+RESOURCE = "projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1"
 BASE = "https://www.ulta.ae"
 URLS = [f"{BASE}/en/buy-a", f"{BASE}/en/buy-b", f"{BASE}/en/buy-c", f"{BASE}/en/buy-d"]
 
