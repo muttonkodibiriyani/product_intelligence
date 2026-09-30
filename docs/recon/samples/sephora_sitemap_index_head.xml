@@ -15,5 +15,5 @@
 <sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-7.xml</loc></sitemap>
 <sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-6.xml</loc></sitemap>
 <sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-1.xml</loc></sitemap>
-<sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-5.xml</loc></sitemap>
-<sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catal<!-- trimmed: first entries only; full index lists en-SA/ar-SA (8 product + 2 category files each), en-AE/ar-AE (40 product + 10 category files each) and sitemap-app-routes.xml -->
+<!-- trimmed at a </sitemap> boundary: first entries only; the full index lists en-SA/ar-SA (8 product + 2 category files each), en-AE/ar-AE (40 product + 10 category files each) and sitemap-app-routes.xml -->
+</sitemapindex>

@@ -1,9 +1,20 @@
 # Recon: Sephora Middle East (`www.sephora.me`)
 
-- Status: **partial**. Rung 0 done; rungs 1–4 installed but **not executed** (see §2).
+- Status: **partial**. Rung 0 partly done (`robots.txt` and the sitemap index fetched; child
+  sitemaps **not** fetched). Rungs 1–4 installed but **not executed** (see §2).
 - Date: 2026-09-30
-- Blueprint refs: §1.1, §1.4, §6; ADR-0003 (ladder), ADR-0004 (KSA → UAE fallback)
-- Egress used: our server, `AS134926 Micro Hosting Private Limited`, Bengaluru (IN), datacenter IP.
+- Requirement IDs: SRC-01 (access method, rights basis, field contract), SRC-03 (discovery and count
+  reconciliation, §3), SRC-08 (permitted access; deviation recorded in ADR-0003), SCP-02 / SCP-08
+  (coverage register and explicit limits), SCP-11 (decision log).
+- Blueprint refs: §1.1, §1.4, §6, §13; ADR-0003 (ladder), ADR-0004 (KSA → UAE fallback)
+- Egress used: our server, an Indian (IN) datacenter IP.
+- **Pilot market: UAE.** Owner decision, relayed by the program coordinator on 2026-09-30: Ulta ME
+  has no KSA storefront (see `ulta_me.md` §1), so the Ulta ↔ Sephora pilot runs on UAE. Sephora UAE
+  (`en-AE`, `ar-AE`) comes first. Sephora KSA (`en-SA`, `ar-SA`) stays in scope where it can be
+  collected. This still has to be entered in the decision log (SCP-11).
+- **Rights basis / terms of use (SRC-01):** public, logged-out catalogue pages only. No account,
+  cart or checkout. The site's terms of use have **not been reviewed**: the terms page sits behind
+  the same Akamai page rule (§2). Someone must read and record them before PR6 goes live.
 
 Every statement below is labelled **verified** (we saw it) or **inferred** (a reasonable reading of
 what we saw, still to be confirmed).
@@ -12,12 +23,12 @@ what we saw, still to be confirmed).
 
 | Market / locale | Discovery (sitemaps) | Product / category pages | Working rung |
 |---|---|---|---|
-| KSA `en-SA`, `ar-SA` | **Open at rung 0** with a browser User-Agent (verified) | **403 Akamai** at rung 0 (verified) | none yet; rungs 1–4 not run |
-| UAE `en-AE`, `ar-AE` | **Open at rung 0** (verified) | Same Akamai edge; assumed 403 (not tested separately) | none yet |
+| UAE `en-AE`, `ar-AE` (pilot) | Sitemap index **open at rung 0** (verified); child files not fetched | Same Akamai edge; assumed 403 (not tested separately) | none yet |
+| KSA `en-SA`, `ar-SA` | Sitemap index **open at rung 0** with a browser User-Agent (verified); child files not fetched | **403 Akamai** at rung 0 (verified) | none yet; rungs 1–4 not run |
 
-Discovery is free and works. Product data is behind Akamai Bot Manager/edge rules from our egress.
-Whether a free rung beats it is **still unknown**. The next step (§8) is a supervised run of
-rungs 1–4, with rung 4 from Cloud Run `me-central2` (Dammam, KSA) as the most informative single test.
+The sitemap index can be read for free. From our egress, product pages sit behind Akamai edge rules.
+It is **still unknown** whether any free rung gets past them. Two open owner decisions gate the next
+step (§9): the probe method, and whether robots-disallowed paths may be used.
 
 ## 2. What was tried
 
@@ -30,21 +41,20 @@ rungs 1–4, with rung 4 from Cloud Run `me-central2` (Dammam, KSA) as the most 
 | 5 | 0 | bulk fetch of the 60 SA + en-AE child sitemaps at ~1 req/s | **not run**: blocked by this session's tool-permission policy |
 | 6 | 1–4 | curl_cffi, Playwright (headless/Xvfb), Scrapling/Camoufox/patchright, Cloud Run egress | **not run**: same policy; tools installed in a throwaway venv only |
 
-Rows 1–4 show that Akamai rejects the bare `curl` UA on every path, but lets a browser UA through on
-sitemaps/robots only. HTML routes need more than a UA string. That fits an Akamai Bot Manager policy
-scoring TLS/HTTP2 fingerprint and IP reputation (datacenter ASN, non-GCC geo) on page routes
-(**inferred**). This is what rungs 1 (TLS impersonation) and 4 (GCC egress) are designed to separate.
+Rows 1–4: Akamai rejects the bare `curl` UA on every path. A browser UA gets through, but only on
+`robots.txt` and the sitemaps; HTML routes need more than a UA string. One reading (**inferred**) is
+an Akamai Bot Manager policy that scores the TLS/HTTP2 fingerprint and IP reputation (datacenter
+ASN, non-GCC location) on page routes.
 
 No proxy, Tor, login, cart or checkout was used. Total requests to `sephora.me`: 7.
 
 **Why rungs 1–4 were not run:** the agent's permission layer classified automated bulk fetching and
-bot-evasion against this third-party site as disallowed for an unattended session. The owner has
-approved the ladder in ADR-0003, but the ladder has to be run by a session the operator explicitly
-permits (or by the Cloud Run job itself). It was not worked around.
+bot-evasion against this third-party site as disallowed for an unattended session. They were not
+worked around. How the ladder probe is run is a pending owner decision (§9).
 
-## 3. Discovery (rung 0, verified)
+## 3. Discovery (rung 0, index only)
 
-`/sitemap.xml` is an index of **locale-specific slug sitemaps** plus an app-routes file:
+`/sitemap.xml` is an index of **locale-specific slug sitemaps** plus an app-routes file (verified):
 
 | Locale | Product sitemap files | Category sitemap files |
 |---|---|---|
@@ -57,39 +67,44 @@ permits (or by the Cloud Run job itself). It was not worked around.
 Counts from the coordinator's earlier pass (not re-counted here): `en-SA` ≈ **32.9k** product URLs,
 `en-AE` ≈ **170.6k** entries.
 
-**Reconciliation (open):** the 5× gap between SA and AE is too large to be assortment alone. Likely
-causes, still to check: AE entries include `<image:image>` children or `hreflang` alternates counted
-as entries; AE lists one URL per variant/shade and SA one per product; or AE still carries
-discontinued slugs. The connector's trial run (§6.1 step 5) must count **distinct product IDs** and
-**distinct variant IDs** per locale, not `<loc>`/`<url>` elements. Sample: `samples/sephora_sitemap_index_head.xml`.
+**Reconciliation (open, SRC-03):** a 5× gap between SA and AE is too large to be explained by
+assortment alone. Possible causes, not yet checked: AE entries count `<image:image>` children or
+`hreflang` alternates as entries; AE lists one URL per variant/shade where SA lists one per
+product; or AE still carries discontinued slugs. The trial run must count **distinct product IDs**
+and **distinct variant IDs** per locale, not `<loc>`/`<url>` elements. Because UAE is the pilot,
+this count decides the UAE volume in §6. Sample: `samples/sephora_sitemap_index_head.xml`.
 
-## 4. Platform signals (inferred from `robots.txt`)
+## 4. Platform signals and robots status (inferred from `robots.txt`)
 
-Sample: `samples/sephora_robots.txt`.
+Sample: `samples/sephora_robots.txt` (as served 2026-09-30).
 
-| Signal | Reading |
-|---|---|
-| `/on/demandware.store/*`, `Product-Show`, `Product-Variation?pid=`, `Search-Show?cgid=`, `cart?dwcont`, `mastercatalog_sephora` | **Salesforce Commerce Cloud (SFCC)** back end, master catalogue `mastercatalog_sephora`. Variants addressed by `pid` |
-| `productSlugs`/`categorySlugs` sitemaps, `sitemap-app-routes.xml`, `Disallow: */api/v1*` | Probably a **headless front end** (SFCC Composable Storefront/PWA or custom) calling its own BFF at `/{locale}/api/v1/...`. That BFF is the richest rung-0 JSON candidate |
-| `bvrrp=`, `bvstate=`, `bvroute=Reviews`, `rev=BVSpotlights` | Reviews and ratings are served by **Bazaarvoice** |
-| `Disallow: /catalogs/mastercatalog_sephora/default/images` | Product images served from SFCC's static image path on `www.sephora.me` (maybe also a DIS/CDN host). Whether they are reachable outside Akamai page rules is untested |
-| `search?q=`, `?sz=`, `prefn/prefv`, `pmin/pmax`, `srule` disallowed | Search/listing paging exists (`sz` = page size, `srule` = sort rule), usable for daily price sweeps |
+| Signal | Reading | Robots status |
+|---|---|---|
+| `/on/demandware.store/*`, `Product-Show`, `Product-Variation?pid=`, `Search-Show?cgid=`, `mastercatalog_sephora` | **Salesforce Commerce Cloud (SFCC)** back end, master catalogue `mastercatalog_sephora`, with variants addressed by `pid` | **Disallowed** |
+| `productSlugs`/`categorySlugs` sitemaps, `sitemap-app-routes.xml` | Probably a **headless front end** on slug routes | Sitemaps and slug routes **allowed** |
+| `Disallow: */api/v1*` | That front end probably calls its own BFF at `/{locale}/api/v1/...`, the richest JSON candidate | **Disallowed** |
+| `bvrrp=`, `bvstate=`, `bvroute=Reviews` | Reviews and ratings are served by **Bazaarvoice** | Those `sephora.me` routes are **disallowed**; the third-party Bazaarvoice host is unchecked |
+| `/catalogs/mastercatalog_sephora/default/images` | Product images on SFCC's static image path (there may also be a separate CDN host) | That path is **disallowed**; any other image host is unchecked |
+| `search?q=`, `?sz=`, `prefn/prefv`, `pmin/pmax`, `srule`, `Search-Show?cgid=` | Search and listing paging exist (`sz` = page size, `srule` = sort rule) | **Disallowed** |
 
-**Robots note for the owner:** `robots.txt` disallows `*/api/v1*`, `/on/demandware.store/*`,
-`Product-Variation` and the search/listing parameters. The richest JSON sources are therefore
-robots-disallowed. ADR-0003 records the owner's choice of coverage over SRC-08. Robots compliance is
-a separate line, and it should be decided explicitly and written into the traceability matrix
-before PR6 uses those paths.
+**Robots decision (pending, owner):** the richest sources (BFF JSON, listing paging, variation
+calls, Bazaarvoice review routes, the SFCC image path) are all robots-disallowed. ADR-0003 records
+the owner's choice of the ladder over SRC-08. It does **not** decide robots compliance. This doc
+therefore treats the **robots-compliant path as the baseline** (§6–§8). The disallowed paths appear
+only as a labelled alternative that applies **only if the owner approves a robots deviation (not yet
+decided)**. If approved, the deviation goes into the decision log (SCP-11) and the traceability
+matrix before PR6 uses any of those paths.
 
 ## 5. Field-availability matrix
 
 Legend: ✅ verified · ◐ expected (inferred, unverified) · ✗ not available · ? unknown.
 "Rung" is the lowest rung expected to deliver the source, not a tested result. Only the sitemap
-row has actually been observed.
+index has actually been observed. Columns marked **(R)** are robots-disallowed and depend on the
+pending owner decision.
 
-| Field | Sitemap (r0) | PDP HTML: JSON-LD / embedded state (r1–3) | BFF `/api/v1` JSON (r1–3) | Listing/search grid (r1–3) | Bazaarvoice API | Image host |
+| Field | Sitemap (r0) | PDP slug page: JSON-LD / embedded state (r1–3) | BFF `/api/v1` JSON **(R)** | Listing grid with paging **(R)** | Bazaarvoice API **(R/unchecked)** | Image host |
 |---|---|---|---|---|---|---|
-| Product URL / slug | ✅ | ◐ | ◐ | ◐ | ✗ | ✗ |
+| Product URL / slug | ✅ (index) / ◐ (children) | ◐ | ◐ | ◐ | ✗ | ✗ |
 | Locale EN/AR | ✅ (separate files) | ◐ | ◐ | ◐ | ◐ (`locale`) | ✗ |
 | `lastmod` | ? (not yet checked) | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Product ID / SKU | ? (slug may embed ID) | ◐ | ◐ | ◐ | ◐ (external ID) | ✗ |
@@ -103,74 +118,106 @@ row has actually been observed.
 | Rating, review count | ✗ | ◐ (JSON-LD `aggregateRating`) | ? | ◐ | ◐ | ✗ |
 | Review texts | ✗ | ✗ | ✗ | ✗ | ◐ (paged) | ✗ |
 | Image URLs (main/alt/swatch) | ◐ if `image:image` present | ◐ | ◐ | ◐ (main) | ✗ | — |
-| Image bytes | ✗ | ✗ | ✗ | ✗ | ✗ | ? (open CDN untested) |
+| Image bytes | ✗ | ✗ | ✗ | ✗ | ✗ | ? (SFCC path is (R); any other CDN host unchecked) |
 | Search rank | ✗ | ✗ | ◐ | ◐ | ✗ | ✗ |
+
+On the robots-compliant baseline, **review texts** and **search rank** are not available (SCP-08:
+show them as unavailable). Variant-level price and stock depend on the PDP carrying the full
+variation model in embedded state. JSON-LD alone often lists only the selected variant.
 
 ## 6. Volume estimate (planning numbers, to be replaced after the trial run)
 
-Assumptions: `en-SA` 32.9k sitemap URLs ≈ ~10k products / ~33k variants; one PDP returns all
-variants; listing grid pages hold 48 products; HTML PDP ≈ 400 KB, JSON ≈ 20 KB, grid page ≈ 150 KB.
+Assumptions: ~10k products / ~33k variants per market (from `en-SA` 32.9k URLs, unreconciled);
+one PDP returns all variants; HTML PDP ≈ 400 KB, BFF JSON ≈ 20 KB. At 1 req/s, 10k requests
+take ≈ 2.8 h.
 
-| Job | Requests per market-locale | At 1 req/s | Transfer |
-|---|---|---|---|
-| Daily price/stock/promo via listing grid | ~250–400 | ~5–7 min | ~50 MB |
-| Daily price/stock via PDP/BFF (variant-accurate) | ~10k | ~2.8 h | 0.2 GB (JSON) / 4 GB (HTML) |
-| Weekly discovery (sitemaps) | ~12 (SA) / ~52 (AE) | < 1 min | ~20 MB |
-| Weekly content (PDP, EN + AR) | ~20k | ~5.6 h | 0.4 GB (JSON) / 8 GB (HTML) |
-| Weekly reviews (Bazaarvoice, incremental) | ~1–3k | < 1 h | ~0.1 GB |
-| Images (first sight; then on change only) | ~50k once, few k/week | — | ~10 GB once |
+### 6.1 Baseline: robots-compliant (sitemaps + PDP slug pages), one market
 
-**KSA only, recommended mix** (daily grid sweep + daily PDP refresh on changed/at-risk items only +
-weekly full PDP): ≈ **12–15k requests/day**, **~120k/week**, **~2–4 GB/week** if JSON is reachable,
-~20–30 GB/week if only HTML is. UAE adds ~1–1.5× on top.
+| Job | Requests | Transfer (HTML) |
+|---|---|---|
+| Weekly discovery (sitemaps) | ~12 files (SA) / ~52 (AE) per week | ~20 MB/week |
+| **Option A:** full daily PDP pass, EN | 10k/day → 70k/week | 4 GB/day → 28 GB/week |
+| **Option B (recommended):** daily PDP for ~3k priority / changed items, EN | 3k/day → 21k/week | 1.2 GB/day → 8.4 GB/week |
+| + weekly full PDP pass, EN (Option B only) | 10k/week | 4 GB/week |
+| Weekly AR content pass (both options) | 10k/week | 4 GB/week |
+
+Totals per market:
+- Option A: 70k + 10k = **80k requests/week ≈ 11.4k/day**, ≈ 32 GB/week, ≈ 3.2 h/day at 1 req/s.
+- Option B: 21k + 10k + 10k = **41k requests/week ≈ 5.9k/day**, ≈ 16.4 GB/week, ≈ 1.6 h/day.
+
+Images are not included: they are gated on the image-host question in §4.
+
+**UAE (pilot):** the product count is unknown until §3 is reconciled. If UAE ≈ KSA in distinct
+products, the same numbers apply. If UAE really has ~5× the products, Option A (≈ 14 h/day at
+1 req/s) cannot run, and Option B's priority set has to be capped. KSA, when enabled, adds its
+own figures on top.
+
+### 6.2 Alternative: only if the owner approves a robots deviation (not yet decided)
+
+Daily price and stock via listing grid paging (`?sz=`, ~250–400 requests) plus a BFF JSON PDP
+refresh (10k × 20 KB = 0.2 GB/day). Weekly JSON content EN + AR is 20k requests (0.4 GB). Bazaarvoice
+reviews are ~1–3k incremental requests per week (~0.1 GB). Per market: 10k + ~0.4k + 20k/7 + ~0.3k ≈ **13.5k requests/day**;
+transfer 1.4 (BFF) + 0.35 (grid, ~50 MB/day) + 0.4 (content) + 0.1 (reviews) ≈ 2.3 GB/week.
 
 ## 7. Proxy Decision Report (provisional)
 
-Rung 5 is **not** requested yet. Rungs 1–4 have not been run, and ADR-0003 requires them first. If
-the supervised run fails on all of them, these are the numbers for the owner:
+Rung 5 is **not** requested. Rungs 1–4 have not been run, and ADR-0003 requires them first. If the
+supervised run fails on all of them, these are the numbers for the owner (one market; blueprint §13
+proxy line is **$10–30/month**):
 
-| Scenario | GB/month through proxy | At $3–8/GB residential |
-|---|---|---|
-| JSON only (BFF/embedded), KSA, recommended mix | ~8–15 | **~$25–120** |
-| Listing grid only daily + JSON weekly (minimum viable) | ~3–6 | **~$10–50** |
-| HTML PDPs through proxy | ~80–120 | $250+: not viable within the $25 budget |
+| Scenario | GB/month through proxy | At $3–8/GB residential | vs. $10–30 budget line |
+|---|---|---|---|
+| Baseline Option B (HTML PDPs) | ~70 | ~$210–560 | **exceeds**, not viable |
+| Baseline Option A (HTML PDPs) | ~140 | ~$420–1,100 | **exceeds**, not viable |
+| Alternative 6.2, JSON + grid (needs robots deviation) | ~10 | ~$30–80 | **exceeds** at all but the lowest price |
+| Alternative: grid daily + JSON weekly only (needs robots deviation) | ~3–6 | ~$10–50 | fits at the low end only |
 
-Keeping to the budget requires: proxy only for the JSON/grid calls, images and sitemaps direct (both
-appear open or are untested), ETag/`If-Modified-Since`, and PDP refresh only on changed items.
+Conclusion: a proxy only fits the budget if the owner approves the robots deviation **and** traffic
+is limited to JSON/grid calls. On the robots-compliant baseline, a proxy is not affordable. In that
+case the fallback is SCP-08: mark the context `blocked` and show the limits. Any proxy use also
+needs ETag/`If-Modified-Since` and PDP refresh on changed items only.
 
-## 8. Recommendation for PR6 (Sephora connector) on Firebase / Google Cloud
+## 8. Recommendation for PR6 (Sephora connector)
 
-Project `productintelligence-beeb3`.
-
-1. **Runtime:** one **Cloud Run job** per source context (`sephora_me × {SA, AE} × {en, ar}`),
-   triggered by **Cloud Scheduler** (daily price, weekly discovery/content, weekly reviews). Region
-   **`me-central2` (Dammam)** for KSA and `me-central1` (Doha) as an alternative. Raw evidence goes
-   to Cloud Storage, parsed records to Cloud SQL. Secrets such as a future proxy credential go in
-   Secret Manager, never in the repo.
-2. **`discover()`:** sitemap index → locale child sitemaps (rung 0, verified open with a browser UA).
-   Use `lastmod` where present to limit weekly work. Also walk `categorySlugs` for category tree and rank.
-3. **`fetch()` ladder order:** try rung 1 (curl_cffi `chrome` impersonation, session and cookie reuse)
-   first, from `me-central2`. Then Camoufox/patchright with a persistent profile to obtain Akamai
-   `_abck`/`bm_sz` cookies, and reuse those cookies in curl_cffi for the bulk JSON calls. That is the
-   cheapest stable pattern against Akamai when it works. Record the working rung per context (ADR-0003).
-4. **Source preference:** BFF `/api/v1` product/search JSON (subject to the robots decision in §4) >
-   PDP embedded state + JSON-LD > listing grid. Variant walking uses the `pid` list from the
-   product's variation model, not `Product-Variation` calls one by one.
-5. **Reviews:** Bazaarvoice display API with the public passkey embedded in the PDP. Full pass
-   once, then incremental by `SubmissionTime`.
-6. **Images:** fetch direct from the image host with no proxy, deduped by SHA-256 (§6.5).
+1. **Runtime:** run from **our server** first (blueprint §13: crawling from our server, $0–3/month).
+   A GCC-egress runtime (Cloud Run job + Cloud Scheduler in `me-central1` Doha or `me-central2`
+   Dammam) is an option **that requires owner approval before any resource is created**. Rough cost
+   (unverified; check against current GCP pricing first): Middle East regions are not Tier-1 and are
+   priced higher. The free tier may not apply the same way. Cloud Run **jobs** availability in
+   `me-central2` must be confirmed. A daily ~1.6 h job at 1 vCPU / 1 GiB ≈ 175k vCPU-s + 175k GiB-s
+   per month ≈ **$5–8/month** before any free tier. Cloud Scheduler: first 3 jobs per billing
+   account free, then ~$0.10/job/month. Cloud SQL is already budgeted in §13 ($0–10). A one-off probe
+   job costs cents but still needs approval. Build and enable **`AE` first** (pilot), then `SA`.
+2. **`discover()`:** sitemap index → locale child sitemaps (rung 0). Count distinct product and
+   variant IDs (SRC-03). Use `lastmod` where present. Walk `categorySlugs` for the category tree.
+3. **`fetch()`:** ladder order per ADR-0003. The working rung is chosen from recorded evidence of
+   the supervised probe and stored per context. Any Akamai-specific handling needs its own explicit
+   owner decision in the decision log (SCP-11) that cites the SRC-08 deviation.
+4. **Source preference (baseline):** sitemaps + PDP slug pages (JSON-LD + embedded state). The BFF
+   `/api/v1`, listing paging, `Product-Variation` and demandware routes are used **only if** the
+   owner approves a robots deviation (§4, §6.2).
+5. **Reviews:** baseline = `aggregateRating` from JSON-LD. Review texts via Bazaarvoice only after
+   an owner decision, and after that host's robots/terms have been checked. The passkey is read at
+   runtime from the page and **never committed**. Drop reviewer nickname, location, user ID and
+   profile fields before storage (blueprint §12: no PII).
+6. **Images:** the SFCC image path is robots-disallowed. If PDP image URLs point to a separate CDN
+   host, check that host's robots before fetching; otherwise this needs an owner decision. Dedupe
+   by SHA-256 (§6.5).
 7. **Block detection:** `server: AkamaiGHost` + 403 + body `Access Denied` / `errors.edgesuite.net`
-   reference (see `samples/sephora_akamai_403.html`). On block, back off, climb one rung, and apply
-   the ADR-0004 fallback if KSA stays blocked.
-8. **Gate before coding PR6:** run the supervised ladder test (next steps) and replace every ◐ above
-   with ✅/✗ from real fixtures.
+   reference (see `samples/sephora_akamai_403.html`). On block, back off. Affected listings are
+   marked `blocked`/`not_observed` and the run is marked `partial` (blueprint §15.3). A blocked or
+   partial run must **never** produce stock-outs or removals.
+8. **Gate before coding PR6:** the two owner decisions (§9), then the supervised ladder test,
+   replacing every ◐ above with ✅/✗ from real fixtures.
 
 ## 9. Next steps (in order)
 
-1. The operator runs (or grants permission for) the rung-1..3 probe from this server: ~20 requests total,
-   1 req/s. Target: `/sa-en/` home, 3 PDPs from `productSlugsCO-0.xml`, 1 category, the matching
-   `/api/v1` calls seen in the browser network log, and 1 image URL.
-2. Run the same probe as a one-off Cloud Run job in `me-central2`, which covers rung 4 and GCC egress.
-3. Count distinct products/variants in all SA and AE sitemaps to close §3.
-4. Owner decides on robots-disallowed JSON paths (§4).
-5. Only then, if everything free fails: a final Proxy Decision Report and the owner's purchase decision.
+Pending owner decisions (nothing below runs until they are answered): **(a)** ladder probe method
+(Cloud Run job or otherwise), **(b)** whether robots-disallowed paths may be used (§4).
+
+1. Probe by the approved method: ~20 requests total, 1 req/s, **UAE first** (`/ae-en/` home, 3 PDPs
+   from an en-AE product sitemap, 1 category slug page, 1 image URL), then the same for `/sa-en/`.
+   `/api/v1` calls only if (b) allows them.
+2. Count distinct products/variants in all SA and AE sitemaps to close §3.
+3. Read and record the site's terms of use (SRC-01).
+4. Only then, if everything free fails: a final Proxy Decision Report and the owner's purchase decision.
