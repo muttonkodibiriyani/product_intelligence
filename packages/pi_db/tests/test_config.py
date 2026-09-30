@@ -70,27 +70,14 @@ def _pi_core_str_enums() -> dict[str, type[StrEnum]]:
     }
 
 
-def _pi_core_values(enum: type[StrEnum]) -> tuple[str, ...]:
-    """pi_core's values, plus those pi_db already carries ahead of pi_core #6.
-
-    FieldState.OBSERVED lands in #6, appended last; drop this shim once it has merged.
-    """
-    values = tuple(m.value for m in enum)
-    if enum is pi_core.FieldState and "observed" not in values:
-        values += ("observed",)
-    return values
-
-
 @pytest.mark.parametrize(("pg_type", "enum"), PI_CORE_ENUM_TYPES.items())
 def test_migration_enum_values_match_pi_core(pg_type: str, enum: type[StrEnum]) -> None:
-    assert migration_0001().PI_CORE_ENUMS[pg_type] == _pi_core_values(enum)
+    assert migration_0001().PI_CORE_ENUMS[pg_type] == tuple(m.value for m in enum)
 
 
 @pytest.mark.parametrize(("pg_type", "class_name"), SCHEMA_ENUM_CLASSES.items())
 def test_schema_enum_values_match_pi_core(pg_type: str, class_name: str) -> None:
-    enum = _pi_core_str_enums().get(class_name)
-    if enum is None:
-        pytest.skip(f"pi_core does not export {class_name} yet")
+    enum = _pi_core_str_enums()[class_name]
     assert migration_0001().SCHEMA_ENUMS[pg_type] == tuple(m.value for m in enum)
 
 
@@ -105,22 +92,15 @@ def test_migration_covers_every_pi_core_str_enum() -> None:
 def test_fetch_method_rungs_match_pi_core() -> None:
     module = migration_0001()
     assert set(module.FETCH_METHOD_RUNG) == set(module.SCHEMA_ENUMS["fetch_method"])
-    methods = _pi_core_str_enums().get("FetchMethod")
-    if methods is None:
-        pytest.skip("pi_core does not export FetchMethod yet")
-    assert {m.value: int(m.rung) for m in methods} == module.FETCH_METHOD_RUNG  # type: ignore[attr-defined]
+    assert {m.value: int(m.rung) for m in pi_core.FetchMethod} == module.FETCH_METHOD_RUNG
 
 
 def test_forbidden_rungs_match_pi_core_policy() -> None:
     """Rung 3 (stealth browsers) is disabled program-wide; pi_core and the schema must agree."""
     forbidden = set(migration_0001().FORBIDDEN_RUNGS)
     assert forbidden == {3}
-    policy = getattr(pi_core, "FORBIDDEN_RUNGS", None)
-    if policy is None and hasattr(pi_core.LadderRung, "is_permitted"):
-        policy = {r for r in pi_core.LadderRung if not getattr(r, "is_permitted")}  # noqa: B009
-    if policy is None:
-        pytest.skip("pi_core has no rung policy yet")
-    assert {int(r) for r in policy} == forbidden
+    assert {int(r) for r in pi_core.FORBIDDEN_RUNGS} == forbidden
+    assert {int(r) for r in pi_core.LadderRung if not r.is_permitted} == forbidden
 
 
 def test_migration_constants_match_package() -> None:
