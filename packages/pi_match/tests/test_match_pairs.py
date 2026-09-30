@@ -61,6 +61,29 @@ def test_different_valid_gtins_never_match() -> None:
     assert score_pair(left, right) is None
 
 
+def test_concentration_known_on_one_side_caps_at_probable() -> None:
+    left = prepare(rec("a", "Sauvage Eau de Parfum 50 ml"))
+    right = prepare(rec("b", "Sauvage 50 ml"))
+    result = score_pair(left, right)
+    assert result is not None
+    bucket, score, reasons = result
+    assert score >= Decimal("0.85")  # a name that would otherwise be exact
+    assert bucket is Bucket.PROBABLE
+    assert "concentration_unknown_one_side" in reasons
+    both = score_pair(left, prepare(rec("c", "Sauvage EDP 50 ml")))
+    assert both is not None
+    assert both[0] is Bucket.EXACT
+    assert "concentration_unknown_one_side" not in both[2]
+
+
+def test_equal_gtin_with_concentration_on_one_side_stays_exact() -> None:
+    left = prepare(rec("a", "Sauvage Eau de Parfum 50 ml", gtin="4006381333931"))
+    right = prepare(rec("b", "Sauvage 50 ml", gtin="4006381333931"))
+    result = score_pair(left, right)
+    assert result is not None
+    assert result[0] is Bucket.EXACT
+
+
 def test_size_differs_is_family_only() -> None:
     left = prepare(rec("a", "Hydra Cream 50 ml"))
     right = prepare(rec("b", "Hydra Cream 100 ml"))
@@ -225,3 +248,11 @@ def test_cli_rejects_a_bad_line(tmp_path: Path) -> None:
     bad.write_text('{"source": "s"}\n\n', encoding="utf-8")
     with pytest.raises(SystemExit, match=r"bad\.jsonl:1"):
         load_jsonl(bad)
+
+
+def test_brands_in_different_case_still_pair() -> None:
+    left = [rec("u", "Matte Lip Kit 3 ml", brand="KYLIE COSMETICS", source="ulta_ae")]
+    right = [rec("s", "Matte Lip Kit 3 ml", brand="Kylie Cosmetics", source="sephora_me")]
+    (pair,) = match(left, right)
+    assert (pair.brand_key, pair.bucket) == ("kylie", Bucket.EXACT)
+    assert brand_overlap(left, right).both == ("kylie",)

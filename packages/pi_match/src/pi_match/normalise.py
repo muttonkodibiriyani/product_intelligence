@@ -29,6 +29,9 @@ BRAND_ALIASES: dict[str, str] = {
     "rare": "rare beauty",
     "huda": "huda beauty",
     "hudabeauty": "huda beauty",
+    "kylie cosmetics by kylie jenner": "kylie",
+    "kylie jenner": "kylie",
+    "fenty beauty by rihanna": "fenty beauty",
 }
 
 #: Trailing words dropped from a brand when something remains, e.g. "Nars Cosmetics".

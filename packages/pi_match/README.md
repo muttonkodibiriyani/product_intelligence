@@ -41,7 +41,9 @@ Identical inputs give byte-identical outputs. `--cutoff` is a label, never a clo
    only considered within the same brand key.
 2. **Hard rules** (§8.4):
    - Kind (regular / mini / refill / set) must agree.
-   - A known concentration (EDP / EDT / parfum / EDC / body mist) must agree.
+   - A known concentration (EDP / EDT / parfum / EDC / body mist) must agree. Known on one side
+     only, it caps the pair at `probable` (reason `concentration_unknown_one_side`), unless the
+     GTINs are equal.
    - GTINs (check digit verified, padded to 14). Two valid GTINs that differ never match. Two
      valid, equal GTINs make an exact match only when the rules above and size/shade agree;
      otherwise the pair is kept as `candidate` with reasons `gtin_equal`, `gtin_conflict` and
