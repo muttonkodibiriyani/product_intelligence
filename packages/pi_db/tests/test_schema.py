@@ -11,7 +11,7 @@ from sqlalchemy.engine import make_url
 
 import pi_core
 from pi_db import APP_ROLE, IMAGE_EMBEDDING_DIM, TEXT_EMBEDDING_DIM
-from pi_db.migrations.versions.v0001_schema_v1 import APPEND_ONLY_TABLES
+from pi_db.migrations.versions.v0001_schema_v1 import APPEND_ONLY_TABLES, SCHEMA_ENUMS
 
 pytestmark = pytest.mark.db
 
@@ -89,6 +89,46 @@ def _observe(
     return None if row is None else row[0]
 
 
+OBS_DEFAULTS: dict[str, object] = {
+    "price_current": Decimal("129.5000"),
+    "price_type": "full",
+    "currency": "AED",
+    "availability_state": "in_stock",
+    "field_state": "{}",
+    "quality_status": "accepted",
+}
+
+
+def _obs(conn: Conn, seed: dict[str, object], **cols: object) -> object:
+    """Insert one observation, overriding OBS_DEFAULTS; a None override omits the column.
+
+    Returns the new observation_id."""
+    values = {
+        "idempotency_key": f"k-{sorted(cols.items())}",
+        "crawl_run_id": seed["run"],
+        "source_context_id": seed["context"],
+        "source_listing_id": seed["listing"],
+        "observed_at": datetime(2026, 10, 1, tzinfo=UTC),
+        "ingested_at": datetime(2026, 10, 1, tzinfo=UTC),
+        **OBS_DEFAULTS,
+        **cols,
+    }
+    values = {k: v for k, v in values.items() if v is not None}
+    names = ", ".join(values)
+    marks = ", ".join("%s::jsonb" if k == "field_state" else "%s" for k in values)
+    sql = f"INSERT INTO offer_observation ({names}) VALUES ({marks}) RETURNING observation_id"
+    return _one(conn, sql, tuple(values.values()))
+
+
+def _rejected(
+    conn: Conn, error: type[Exception], sql: str, params: tuple[object, ...] = ()
+) -> None:
+    conn.execute("SAVEPOINT s")
+    with pytest.raises(error):
+        conn.execute(sql, params)
+    conn.execute("ROLLBACK TO SAVEPOINT s")
+
+
 def _history(conn: Conn) -> dict[str, object]:
     """One row in every append-only table (evidence still inside its retention window)."""
     seed = _seed(conn)
@@ -97,7 +137,8 @@ def _history(conn: Conn) -> dict[str, object]:
     observation = _one(conn, "SELECT observation_id FROM offer_observation")
     conn.execute(
         "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri, retrieved_at,"
-        " retention_until) VALUES (%s, 'u', 'h1', 'gs://b/1', %s, now() + interval '1 year')",
+        " ladder_rung_used, fetch_method, retention_until)"
+        " VALUES (%s, 'u', 'h1', 'gs://b/1', %s, 0, 'site_api', now() + interval '1 year')",
         (seed["run"], at),
     )
     conn.execute(
@@ -172,6 +213,8 @@ def test_money_columns_are_numeric_18_4(conn: Conn) -> None:
         "price_regular_stated",
         "price_promo",
         "price_member",
+        "price_range_low",
+        "price_range_high",
     }
     assert {(r[1], r[2]) for r in rows} == {(18, 4)}
 
@@ -256,7 +299,8 @@ def test_new_partition_keeps_history_protection(conn: Conn) -> None:
 def test_ensure_partition_is_race_safe(migrated_db: str) -> None:
     """Two loaders asking for the same new month: the second waits, then reuses it."""
     url = make_url(migrated_db).set(drivername="postgresql").render_as_string(hide_password=False)
-    ensure = "SELECT pi_ensure_offer_observation_partition(date '2030-03-01')"
+    # A backfill month: never pre-created, and always inside the permitted window.
+    ensure = "SELECT pi_ensure_offer_observation_partition(date '2003-03-01')"
     with psycopg.connect(url) as first, psycopg.connect(url) as second:
         first.execute(f"SET ROLE {APP_ROLE}")
         second.execute(f"SET ROLE {APP_ROLE}")
@@ -266,7 +310,7 @@ def test_ensure_partition_is_race_safe(migrated_db: str) -> None:
             with pytest.raises(TimeoutError):
                 waiting.result(timeout=0.5)
             first.commit()
-            assert waiting.result(timeout=10) == ("offer_observation_p203003",)
+            assert waiting.result(timeout=10) == ("offer_observation_p200303",)
         second.commit()
 
 
@@ -350,9 +394,9 @@ def test_owner_cannot_rewrite_history(conn: Conn, statement: str) -> None:
 def test_evidence_past_retention_can_be_deleted(conn: Conn) -> None:
     ids = _history(conn)
     conn.execute(
-        "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri,"
-        " retrieved_at, retention_until) VALUES (%s, 'u', 'h2', 'gs://b/2',"
-        " now() - interval '2 years', now() - interval '1 day')",
+        "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri, retrieved_at,"
+        " ladder_rung_used, fetch_method, retention_until) VALUES (%s, 'u', 'h2', 'gs://b/2',"
+        " now() - interval '2 years', 2, 'playwright', now() - interval '1 day')",
         (ids["run"],),
     )
     deleted = conn.execute("DELETE FROM evidence WHERE retention_until < now()").rowcount
@@ -372,15 +416,15 @@ def test_missing_price_needs_a_reason(conn: Conn) -> None:
         conn.execute(sql, ("silent", *params, "{}"))
 
 
-def test_quality_status_must_be_explicit(conn: Conn) -> None:
-    seed = _seed(conn)
-    with pytest.raises(errors.NotNullViolation):
-        conn.execute(
-            "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
-            " source_listing_id, observed_at, ingested_at, price_current, currency,"
-            " availability_state) VALUES ('q', %s, %s, %s, now(), now(), 1, 'AED', 'in_stock')",
-            (seed["run"], seed["context"], seed["listing"]),
-        )
+def test_quality_status_is_null_until_gated(conn: Conn) -> None:
+    """No default: an ungated row is NULL, never silently 'accepted' (PR10 sets it)."""
+    observation = _obs(conn, _seed(conn), quality_status=None)
+    status = _one(
+        conn,
+        "SELECT quality_status FROM offer_observation WHERE observation_id = %s",
+        (observation,),
+    )
+    assert status is None
 
 
 @pytest.mark.parametrize(
@@ -463,3 +507,161 @@ def test_match_edge_is_canonically_ordered(conn: Conn) -> None:
             " VALUES (%s, %s, 'exact', 'v1')",
             (b, a),
         )
+
+
+# ------------------------------------------------------------------ cross-PR contract (#5/#6)
+
+
+@pytest.mark.parametrize(
+    "column",
+    ["price_current", "price_regular_stated", "price_promo", "price_member", "unit_price_derived"],
+)
+def test_prices_are_never_zero(conn: Conn, column: str) -> None:
+    """Missing is NULL plus a reason, never 0."""
+    seed = _seed(conn)
+    with pytest.raises(errors.CheckViolation):
+        _obs(conn, seed, **{column: Decimal(0)})
+
+
+def test_min_spend_is_positive_and_has_currency(conn: Conn) -> None:
+    context = _seed(conn)["context"]
+    sql = (
+        "INSERT INTO promotion (source_context_id, mechanic, min_spend, min_spend_currency,"
+        " first_seen_at, last_seen_at) VALUES (%s, 'spend_get', %s, %s, now(), now())"
+    )
+    conn.execute(sql, (context, Decimal(200), "AED"))
+    _rejected(conn, errors.CheckViolation, sql, (context, Decimal(0), "AED"))
+    _rejected(conn, errors.CheckViolation, sql, (context, Decimal(200), None))
+
+
+@pytest.mark.parametrize(
+    ("price_type", "low", "high", "ok"),
+    [
+        ("range", "10", "20", True),
+        ("range", "15", "15", True),
+        ("range", "20", "10", False),
+        ("range", "0", "10", False),
+        ("range", None, None, False),
+        ("range", "10", None, False),
+        ("full", "10", "20", False),
+    ],
+)
+def test_range_price_bounds(
+    conn: Conn, price_type: str, low: str | None, high: str | None, ok: bool
+) -> None:
+    """PRC-13: a range keeps both bounds, 0 < low <= high, and only for price_type range."""
+    seed = _seed(conn)
+    cols = {
+        "price_type": price_type,
+        "price_range_low": None if low is None else Decimal(low),
+        "price_range_high": None if high is None else Decimal(high),
+    }
+    if ok:
+        assert _obs(conn, seed, **cols)
+    else:
+        with pytest.raises(errors.CheckViolation):
+            _obs(conn, seed, **cols)
+
+
+@pytest.mark.parametrize(
+    ("state", "reason", "ok"),
+    [
+        ("out_of_stock", None, True),
+        ("out_of_stock", "blocked", False),
+        ("out_of_stock", "unknown", False),
+        ("blocked", "blocked", True),
+        ("unknown", "unknown", True),
+    ],
+)
+def test_no_false_stock_outs(conn: Conn, state: str, reason: str | None, ok: bool) -> None:
+    seed = _seed(conn)
+    field_state = "{}" if reason is None else f'{{"availability_state": "{reason}"}}'
+    cols = {"availability_state": state, "field_state": field_state}
+    if ok:
+        assert _obs(conn, seed, **cols)
+    else:
+        with pytest.raises(errors.CheckViolation):
+            _obs(conn, seed, **cols)
+
+
+@pytest.mark.parametrize(
+    ("state", "flag", "ok"),
+    [
+        ("low_stock", True, True),
+        ("in_stock", False, True),
+        ("out_of_stock", False, True),
+        ("in_stock", None, True),
+        ("low_stock", False, False),
+        ("in_stock", True, False),
+    ],
+)
+def test_low_stock_flag_agrees(conn: Conn, state: str, flag: bool | None, ok: bool) -> None:
+    seed = _seed(conn)
+    cols = {"availability_state": state, "low_stock_flag": flag}
+    if ok:
+        assert _obs(conn, seed, **cols)
+    else:
+        with pytest.raises(errors.CheckViolation):
+            _obs(conn, seed, **cols)
+
+
+@pytest.mark.parametrize(
+    ("rung", "method", "ok"),
+    [
+        (0, "site_api", True),
+        (1, "plain_http", True),
+        (2, "playwright", True),
+        (4, "egress_variation", True),
+        (5, "residential_proxy", True),
+        (1, "playwright", False),
+        (3, "playwright", False),
+        (2, "egress_variation", False),
+    ],
+)
+def test_evidence_records_rung_and_method(conn: Conn, rung: int, method: str, ok: bool) -> None:
+    """ADR-0003: per-request rung and method agree, and rung 3 is never usable."""
+    run = _seed(conn)["run"]
+    sql = (
+        "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri, retrieved_at,"
+        " ladder_rung_used, fetch_method, retention_until)"
+        " VALUES (%s, 'u', 'h', 's', now(), %s, %s, now() + interval '1 year')"
+    )
+    if ok:
+        conn.execute(sql, (run, rung, method))
+    else:
+        _rejected(conn, errors.CheckViolation, sql, (run, rung, method))
+
+
+def test_forbidden_rung_is_rejected_everywhere(conn: Conn) -> None:
+    seed = _seed(conn)
+    _rejected(
+        conn,
+        errors.CheckViolation,
+        "INSERT INTO crawl_run (source_context_id, connector_version, ladder_rung_used,"
+        " started_at) VALUES (%s, '0.1.0', 3, now())",
+        (seed["context"],),
+    )
+    _rejected(
+        conn,
+        errors.CheckViolation,
+        "UPDATE source_context SET ladder_rung_current = 3, ladder_rung_max_allowed = 4"
+        " WHERE id = %s",
+        (seed["context"],),
+    )
+    # The cap may sit above the forbidden rung; escalation skips it.
+    conn.execute(
+        "UPDATE source_context SET ladder_rung_current = 4, ladder_rung_max_allowed = 4"
+        " WHERE id = %s",
+        (seed["context"],),
+    )
+
+
+def test_fetch_method_enum_matches_migration(conn: Conn) -> None:
+    labels = _one(conn, "SELECT enum_range(NULL::fetch_method)::text[]")
+    assert tuple(labels) == SCHEMA_ENUMS["fetch_method"]  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("month", ["1999-12-01", "2099-01-01"])
+def test_ensure_partition_refuses_implausible_months(conn: Conn, month: str) -> None:
+    with pytest.raises(errors.InvalidParameterValue, match="outside"):
+        conn.execute("SELECT pi_ensure_offer_observation_partition(%s::date)", (month,))

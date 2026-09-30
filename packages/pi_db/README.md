@@ -35,9 +35,18 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
   or the source's own timestamp) and must never be re-stamped with `now()` on retry. Then a
   replay hits `UNIQUE (idempotency_key, observed_at)` and `ON CONFLICT DO NOTHING` is a
   no-op. A re-stamped `observed_at` would create a duplicate logical observation.
-- **Missing is data (DQ-02).** A NULL `price_current` needs a `field_state` reason
-  (`CHECK (price_current IS NOT NULL OR field_state ? 'price_current')`). Any stated price
-  needs a currency. `quality_status` has no default: the quality gate states it explicitly.
+- **Missing is data (DQ-02); money is never zero (cross-PR contract with pi_core #6).** Every
+  price (`price_current`, `price_regular_stated`, `price_promo`, `price_member`,
+  `unit_price_derived`, `promotion.min_spend`) is NULL or strictly > 0. A NULL `price_current`
+  needs a `field_state` reason (`CHECK (price_current IS NOT NULL OR field_state ?
+  'price_current')`). Any stated price needs a currency, and `min_spend` needs
+  `min_spend_currency`. `price_type = 'range'` if and only if `price_range_low` and
+  `price_range_high` are both set, with 0 < low <= high (PRC-13).
+- **Quality gate.** `quality_status` is nullable with no default: NULL means "not yet
+  quality-gated". The gate (PR10) sets it, so nothing is silently published as `accepted`.
+- **No false stock-outs (DAT-06).** `availability_state = 'out_of_stock'` is rejected when
+  `field_state->>'availability_state'` is `blocked`, `partial` or `unknown`. `low_stock_flag`,
+  when set, must equal `availability_state = 'low_stock'`.
 - **Append-only history (DAT-01, DAT-04).** `pi_app` has only INSERT/SELECT on `evidence`,
   `listing_content`, `review_summary`, `offer_observation`, `offer_promotion`, `audit_log`
   and `decision_log`. Owner-level triggers also reject UPDATE, DELETE and TRUNCATE
@@ -48,8 +57,25 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
 - **Match graph (MAT-05, MAT-07, MAT-08).** There is one current edge (`valid_to IS NULL`)
   per variant pair, so a rejected or locked verdict cannot be undercut by a new proposal.
   To supersede an edge, close its `valid_to` and insert the new one.
+- **Ladder audit (ADR-0003).** Every `evidence` row records `ladder_rung_used` and
+  `fetch_method`, per request, because the ladder escalates request by request and the rung
+  can vary within a `crawl_run`. The method determines the rung (enforced by CHECK, and equal
+  to `pi_core.FetchMethod.rung`). Rung 3 (stealth browsers) is disabled program-wide: it stays
+  in the numbering for audit but is rejected on `evidence`, `crawl_run` and
+  `source_context.ladder_rung_current`. `ladder_rung_max_allowed` may still be 4, and
+  escalation skips 3. No fetch method maps to rung 3, and rung 1 is `plain_http` (normal
+  headers, no fingerprint impersonation).
+- **Partition window.** `pi_ensure_offer_observation_partition()` refuses months before
+  2000-01 or 24+ months ahead, so a garbled timestamp cannot mint a stray partition.
 - **Ratings** are stored as published, with their `rating_scale` (5, 10, 100 …), and are
   bounded by it. Normalisation happens downstream.
+
+## Deviations from blueprint §5.1 (additive)
+
+- `evidence.ladder_rung_used`, `evidence.fetch_method` (+ `fetch_method` enum): per-request
+  ladder audit, see above.
+- `offer_observation.price_range_low` / `price_range_high`: range prices (PRC-13).
+- `review.rating_scale`, `offer_observation.rating_scale`: ratings keep their source scale.
 
 ## Migration notes
 

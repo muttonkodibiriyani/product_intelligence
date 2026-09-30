@@ -22,6 +22,11 @@ depends_on = None
 IMAGE_EMBEDDING_DIM = 768  # SigLIP ViT-B/16
 TEXT_EMBEDDING_DIM = 1024  # BGE-M3 dense
 LADDER_RUNG_MAX = 5  # pi_core.LadderRung.PAID_PROXY
+# Rungs kept in the numbering for audit and history but never usable (owner guardrail:
+# rung 3 = stealth browsers, fingerprint rotation, cookie reuse is disabled program-wide).
+# Applies to rungs used or current, not to ladder_rung_max_allowed: the cap may sit above a
+# forbidden rung, and escalation skips it.
+FORBIDDEN_RUNGS: tuple[int, ...] = (3,)
 APP_ROLE = "pi_app"
 
 # Postgres enum type -> values, in pi_core declaration order.
@@ -68,10 +73,33 @@ PI_CORE_ENUMS: dict[str, tuple[str, ...]] = {
     "coverage_status": ("supported", "partial", "pending", "paused", "unsupported", "retired"),
 }
 
-# Schema-only vocabularies (blueprint §5.1), not modelled in pi_core yet.
+# Vocabularies pi_core models in PR3 (#6); the parity tests check them as soon as pi_core
+# exports the matching class (SourceKind, ImageRole, FetchMethod).
 SCHEMA_ENUMS: dict[str, tuple[str, ...]] = {
     "source_kind": ("web", "app", "feed", "aggregator", "offline"),
     "image_role": ("main", "alt", "swatch", "model", "texture"),
+    "fetch_method": (
+        "site_api",
+        "embedded_json",
+        "sitemap",
+        "plain_http",
+        "playwright",
+        "egress_variation",
+        "residential_proxy",
+    ),
+}
+
+# Each fetch method belongs to exactly one ladder rung (pi_core FetchMethod.rung, ADR-0003).
+# No method maps to a forbidden rung; values are locked with pi_core (#6). Adding an enum
+# value later is cheap (ALTER TYPE ... ADD VALUE), removing one is not.
+FETCH_METHOD_RUNG: dict[str, int] = {
+    "site_api": 0,
+    "embedded_json": 0,
+    "sitemap": 0,
+    "plain_http": 1,
+    "playwright": 2,
+    "egress_variation": 4,
+    "residential_proxy": 5,
 }
 
 # Pre-created monthly partitions of offer_observation (UTC months, inclusive). There is no
@@ -79,6 +107,10 @@ SCHEMA_ENUMS: dict[str, tuple[str, ...]] = {
 # pi_ensure_offer_observation_partition() for them (e.g. SRC-15 backfill before 2026).
 PARTITIONS_FROM = "2026-01-01"
 PARTITIONS_TO = "2027-12-01"
+# pi_ensure_offer_observation_partition() refuses months outside [floor, now + horizon), so a
+# garbled timestamp (bad clock, parse error) cannot mint a partition for 1970 or 2099.
+PARTITION_FLOOR = "2000-01-01"
+PARTITION_HORIZON_MONTHS = 24
 
 # Tables the app may only INSERT into and SELECT from (history is never rewritten, DAT-01).
 # Each also carries owner-level UPDATE/DELETE/TRUNCATE triggers; evidence alone may be
@@ -137,6 +169,22 @@ def _rung(col: str) -> str:
     return f"{col} {RUNG.format(col=col)}"
 
 
+def _used_rung(col: str) -> str:
+    """A rung actually used: in range and not forbidden."""
+    forbidden = ", ".join(str(r) for r in FORBIDDEN_RUNGS)
+    return f"{_rung(col)} CHECK ({col} NOT IN ({forbidden}))"
+
+
+def _positive_money(col: str) -> str:
+    """Prices are NULL (with a field_state reason) or strictly positive; missing is never 0."""
+    return f"{col} {MONEY} CHECK ({col} IS NULL OR {col} > 0)"
+
+
+def _method_rung_check() -> str:
+    cases = " ".join(f"WHEN '{m}' THEN {r}" for m, r in FETCH_METHOD_RUNG.items())
+    return f"CHECK (ladder_rung_used = CASE fetch_method::text {cases} END)"
+
+
 def _enum_sql(name: str, values: tuple[str, ...]) -> str:
     labels = ", ".join(f"'{v}'" for v in values)
     return f"CREATE TYPE {name} AS ENUM ({labels})"
@@ -184,7 +232,7 @@ FUNCTIONS_SQL = [
     # search_path stops callers from substituting objects. The advisory lock serialises
     # concurrent loaders asking for the same month. Row triggers are cloned to new partitions
     # by PostgreSQL; the TRUNCATE guard is not, so it is added here.
-    """
+    f"""
     CREATE FUNCTION pi_ensure_offer_observation_partition(month date) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
     DECLARE
@@ -193,6 +241,12 @@ FUNCTIONS_SQL = [
         (date_trunc('month', month) + interval '1 month')::timestamp AT TIME ZONE 'UTC';
       part text := format('offer_observation_p%s', to_char(month, 'YYYYMM'));
     BEGIN
+      IF month < date '{PARTITION_FLOOR}'
+         OR month >= date_trunc('month', now()) + interval '{PARTITION_HORIZON_MONTHS} months' THEN
+        RAISE EXCEPTION 'observation month % is outside [%, now + % months)',
+          month, date '{PARTITION_FLOOR}', {PARTITION_HORIZON_MONTHS}
+          USING ERRCODE = 'invalid_parameter_value';
+      END IF;
       PERFORM pg_advisory_xact_lock(hashtext('pi_ensure_offer_observation_partition'),
                                     hashtext(part));
       IF to_regclass(format('public.%I', part)) IS NULL THEN
@@ -246,7 +300,7 @@ TABLES_SQL = [
       device text NOT NULL DEFAULT 'desktop',
       cohort_id bigint REFERENCES cohort,
       refresh_policy jsonb NOT NULL DEFAULT '{{}}',
-      {_rung("ladder_rung_current")} NOT NULL DEFAULT 0,
+      {_used_rung("ladder_rung_current")} NOT NULL DEFAULT 0,
       {_rung("ladder_rung_max_allowed")} NOT NULL DEFAULT {LADDER_RUNG_MAX - 1},
       coverage_status coverage_status NOT NULL DEFAULT 'pending',
       fallback_of bigint REFERENCES source_context,
@@ -262,7 +316,7 @@ TABLES_SQL = [
       id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       source_context_id bigint NOT NULL REFERENCES source_context,
       connector_version text NOT NULL,
-      {_rung("ladder_rung_used")} NOT NULL,
+      {_used_rung("ladder_rung_used")} NOT NULL,
       started_at timestamptz NOT NULL,
       finished_at timestamptz,
       status text NOT NULL DEFAULT 'running'
@@ -278,7 +332,9 @@ TABLES_SQL = [
       CHECK (finished_at IS NULL OR finished_at >= started_at)
     )
     """,
-    """
+    # ladder_rung_used and fetch_method are per request, not per run: the ladder escalates
+    # request by request, so the rung can vary within a crawl_run (ADR-0003 audit trail).
+    f"""
     CREATE TABLE evidence (
       id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       crawl_run_id bigint NOT NULL REFERENCES crawl_run,
@@ -287,7 +343,10 @@ TABLES_SQL = [
       storage_uri text NOT NULL,
       retrieved_at timestamptz NOT NULL,
       http_status smallint,
-      retention_until timestamptz NOT NULL
+      {_used_rung("ladder_rung_used")} NOT NULL,
+      fetch_method fetch_method NOT NULL,
+      retention_until timestamptz NOT NULL,
+      {_method_rung_check()}
     )
     """,
     "CREATE INDEX evidence_content_hash_idx ON evidence (content_hash)",
@@ -472,7 +531,7 @@ TABLES_SQL = [
       mechanic text NOT NULL,
       rule jsonb NOT NULL DEFAULT '{{}}',
       qualifying jsonb NOT NULL DEFAULT '{{}}',
-      min_spend {MONEY} CHECK (min_spend >= 0),
+      {_positive_money("min_spend")},
       {_currency("min_spend_currency")},
       min_qty integer CHECK (min_qty > 0),
       eligibility jsonb NOT NULL DEFAULT '{{}}',
@@ -498,8 +557,10 @@ TABLES_SQL = [
     # (evidence.retrieved_at or the source's own timestamp), never re-stamped with now() on
     # retry. Then a replay hits UNIQUE (idempotency_key, observed_at) and ON CONFLICT DO
     # NOTHING makes it a no-op; a re-stamped observed_at would create a duplicate.
-    # Missing is data (DQ-02): a NULL price_current needs a field_state reason, and the
-    # quality gate must state quality_status explicitly (no default).
+    # Missing is data (DQ-02): prices are NULL or > 0, never 0, and a NULL price_current needs
+    # a field_state reason. quality_status is NULL until the quality gate has run (no default).
+    # No false stock-outs: out_of_stock is not allowed when availability itself was blocked or
+    # unknown. A range price (PRC-13) keeps both bounds instead of inventing a single price.
     # correction_of has no FK: FKs into a partitioned table need the partition key too.
     f"""
     CREATE TABLE offer_observation (
@@ -515,15 +576,17 @@ TABLES_SQL = [
       recorded_at timestamptz NOT NULL DEFAULT now(),
       source_effective_from timestamptz,
       source_effective_to timestamptz,
-      price_current {MONEY} CHECK (price_current >= 0),
-      price_regular_stated {MONEY} CHECK (price_regular_stated >= 0),
-      price_promo {MONEY} CHECK (price_promo >= 0),
-      price_member {MONEY} CHECK (price_member >= 0),
+      {_positive_money("price_current")},
+      {_positive_money("price_regular_stated")},
+      {_positive_money("price_promo")},
+      {_positive_money("price_member")},
+      {_positive_money("price_range_low")},
+      {_positive_money("price_range_high")},
       price_type price_type,
       {_currency("currency")},
       installment jsonb,
       tax_status tax_status NOT NULL DEFAULT 'unknown',
-      unit_price_derived {MONEY} CHECK (unit_price_derived >= 0),
+      {_positive_money("unit_price_derived")},
       unit_basis text,
       availability_state availability_state NOT NULL,
       available_variants integer CHECK (available_variants >= 0),
@@ -537,15 +600,25 @@ TABLES_SQL = [
       badges_at_time text[] NOT NULL DEFAULT '{{}}',
       field_state jsonb NOT NULL DEFAULT '{{}}' CHECK (pi_field_state_valid(field_state)),
       evidence_id bigint REFERENCES evidence,
-      quality_status quality_status NOT NULL,
+      quality_status quality_status,
       correction_of bigint,
       PRIMARY KEY (observation_id, observed_at),
       UNIQUE (idempotency_key, observed_at),
       CHECK (
         currency IS NOT NULL OR num_nonnulls(
-          price_current, price_regular_stated, price_promo, price_member, unit_price_derived
+          price_current, price_regular_stated, price_promo, price_member, unit_price_derived,
+          price_range_low, price_range_high
         ) = 0
       ),
+      CHECK ((price_range_low IS NULL) = (price_range_high IS NULL)),
+      CHECK (price_range_low <= price_range_high),
+      CHECK ((price_type IS NOT DISTINCT FROM 'range') = (price_range_low IS NOT NULL)),
+      CHECK (
+        availability_state <> 'out_of_stock'
+        OR coalesce(field_state ->> 'availability_state', '') NOT IN
+          ('blocked', 'partial', 'unknown')
+      ),
+      CHECK (low_stock_flag IS NULL OR low_stock_flag = (availability_state = 'low_stock')),
       CHECK (price_current IS NOT NULL OR field_state ? 'price_current'),
       CHECK ((rating_value IS NULL) = (rating_scale IS NULL)),
       CHECK (rating_value BETWEEN 0 AND rating_scale),

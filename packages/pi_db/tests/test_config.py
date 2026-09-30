@@ -52,19 +52,64 @@ def test_single_linear_head() -> None:
     assert script.get_heads() == ["0001"]
 
 
+# Schema enums whose pi_core class lands in PR3 (#6); checked as soon as pi_core exports it.
+SCHEMA_ENUM_CLASSES = {
+    "source_kind": "SourceKind",
+    "image_role": "ImageRole",
+    "fetch_method": "FetchMethod",
+}
+# pi_core vocabularies stored as text or char(n) and validated in pi_core, not Postgres enums.
+TEXT_ENUM_CLASSES = {"Market", "Locale", "Device", "Concentration", "PromotionMechanic"}
+
+
+def _pi_core_str_enums() -> dict[str, type[StrEnum]]:
+    return {
+        name: obj
+        for name in pi_core.__all__
+        if isinstance(obj := getattr(pi_core, name), type) and issubclass(obj, StrEnum)
+    }
+
+
 @pytest.mark.parametrize(("pg_type", "enum"), PI_CORE_ENUM_TYPES.items())
 def test_migration_enum_values_match_pi_core(pg_type: str, enum: type[StrEnum]) -> None:
     assert migration_0001().PI_CORE_ENUMS[pg_type] == tuple(m.value for m in enum)
 
 
+@pytest.mark.parametrize(("pg_type", "class_name"), SCHEMA_ENUM_CLASSES.items())
+def test_schema_enum_values_match_pi_core(pg_type: str, class_name: str) -> None:
+    enum = _pi_core_str_enums().get(class_name)
+    if enum is None:
+        pytest.skip(f"pi_core does not export {class_name} yet")
+    assert migration_0001().SCHEMA_ENUMS[pg_type] == tuple(m.value for m in enum)
+
+
 def test_migration_covers_every_pi_core_str_enum() -> None:
-    exported = {
-        obj
-        for name in pi_core.__all__
-        if isinstance(obj := getattr(pi_core, name), type) and issubclass(obj, StrEnum)
-    }
-    assert exported == set(PI_CORE_ENUM_TYPES.values())
-    assert set(migration_0001().PI_CORE_ENUMS) == set(PI_CORE_ENUM_TYPES)
+    module = migration_0001()
+    mapped = {e.__name__ for e in PI_CORE_ENUM_TYPES.values()} | set(SCHEMA_ENUM_CLASSES.values())
+    assert set(_pi_core_str_enums()) - TEXT_ENUM_CLASSES <= mapped
+    assert set(module.PI_CORE_ENUMS) == set(PI_CORE_ENUM_TYPES)
+    assert set(module.SCHEMA_ENUMS) == set(SCHEMA_ENUM_CLASSES)
+
+
+def test_fetch_method_rungs_match_pi_core() -> None:
+    module = migration_0001()
+    assert set(module.FETCH_METHOD_RUNG) == set(module.SCHEMA_ENUMS["fetch_method"])
+    methods = _pi_core_str_enums().get("FetchMethod")
+    if methods is None:
+        pytest.skip("pi_core does not export FetchMethod yet")
+    assert {m.value: int(m.rung) for m in methods} == module.FETCH_METHOD_RUNG  # type: ignore[attr-defined]
+
+
+def test_forbidden_rungs_match_pi_core_policy() -> None:
+    """Rung 3 (stealth browsers) is disabled program-wide; pi_core and the schema must agree."""
+    forbidden = set(migration_0001().FORBIDDEN_RUNGS)
+    assert forbidden == {3}
+    policy = getattr(pi_core, "FORBIDDEN_RUNGS", None)
+    if policy is None and hasattr(pi_core.LadderRung, "is_permitted"):
+        policy = {r for r in pi_core.LadderRung if not getattr(r, "is_permitted")}  # noqa: B009
+    if policy is None:
+        pytest.skip("pi_core has no rung policy yet")
+    assert {int(r) for r in policy} == forbidden
 
 
 def test_migration_constants_match_package() -> None:
