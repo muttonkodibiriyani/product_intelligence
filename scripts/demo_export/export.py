@@ -53,7 +53,7 @@ SECRET_KEYS = {
 @dataclass(frozen=True)
 class ListingRow:
     source_name: str
-    family_id: int
+    family_id: str
     variant_id: int
     source_listing_key: str
     source_sku: str | None
@@ -67,6 +67,7 @@ class ListingRow:
     shade_hex: str | None
     size_value: Decimal | None
     size_unit: str | None
+    size_label: str | None
     price: Decimal | None
     regular: Decimal | None
     price_type: str | None
@@ -77,6 +78,8 @@ class ListingRow:
     observed_at: datetime
     evidence_retrieved_at: datetime | None
     run_id: int
+    run_status: str
+    coverage_status: str
 
     @property
     def retailer(self) -> str:
@@ -86,11 +89,18 @@ class ListingRow:
             return "u"
         raise ValueError(f"unsupported source {self.source_name!r}")
 
+    @property
+    def effective_size(self) -> tuple[str | None, Decimal | None]:
+        unit = normalise_unit(self.size_unit)
+        if unit is not None and self.size_value is not None:
+            return unit, self.size_value
+        return parse_size_label(self.size_label)
+
 
 @dataclass(frozen=True)
 class GroupKey:
     retailer: str
-    family_id: int
+    family_id: str
     size_unit: str | None
     size_value: Decimal | None
 
@@ -105,12 +115,31 @@ class GroupKey:
 class MatchRow:
     variant_a: int
     variant_b: int
+    match_class: str
     score: Decimal | None
     algo_version: str
+    review_state: str
+
+
+@dataclass(frozen=True)
+class UltaContext:
+    blocked_since: datetime
+    recon_observed_count: int | None = None
+    recon_source: str | None = None
 
 
 LATEST_LISTINGS_SQL = """
-WITH latest AS (
+WITH current_runs AS (
+  SELECT DISTINCT ON (cr.source_context_id) cr.id
+  FROM crawl_run cr
+  JOIN source_context sc ON sc.id = cr.source_context_id
+  JOIN source s ON s.id = sc.source_id
+  WHERE sc.country = 'AE'
+    AND sc.locale = 'en-AE'
+    AND (s.name LIKE 'sephora%' OR s.name LIKE 'ulta%')
+  ORDER BY cr.source_context_id, cr.started_at DESC, cr.id DESC
+),
+latest AS (
   SELECT DISTINCT ON (o.source_listing_id)
     o.source_listing_id,
     o.variant_id,
@@ -123,29 +152,34 @@ WITH latest AS (
     o.rating_count,
     o.observed_at,
     o.crawl_run_id,
+    cr.status AS run_status,
+    sc.coverage_status::text,
     e.retrieved_at AS evidence_retrieved_at
   FROM offer_observation o
+  JOIN current_runs current ON current.id = o.crawl_run_id
+  JOIN crawl_run cr ON cr.id = o.crawl_run_id
   JOIN source_context sc ON sc.id = o.source_context_id
   LEFT JOIN evidence e ON e.id = o.evidence_id
-  WHERE o.currency = 'AED' AND sc.country = 'AE'
+  WHERE (o.currency = 'AED' OR o.currency IS NULL) AND sc.country = 'AE'
   ORDER BY o.source_listing_id, o.observed_at DESC, o.observation_id DESC
 )
 SELECT
   s.name AS source_name,
-  pf.id AS family_id,
-  v.id AS variant_id,
+  COALESCE(pf.id::text, lc.labels ->> 'master_id', sl.source_listing_key) AS family_id,
+  COALESCE(v.id, -sl.id) AS variant_id,
   sl.source_listing_key,
   sl.source_sku,
   sl.url,
-  pf.name_normalized AS name,
-  b.name AS brand,
+  COALESCE(pf.name_normalized, lc.labels ->> 'product_name', sl.name_original) AS name,
+  COALESCE(b.name, lc.labels ->> 'brand_name', lc.labels ->> 'brand') AS brand,
   t.code AS category,
   sl.category_path_source AS category_path,
-  v.shade,
+  COALESCE(v.shade, lc.labels ->> 'shade') AS shade,
   v.shade_family,
   v.shade_hex,
   v.size_value,
   v.size_unit,
+  lc.labels ->> 'size' AS size_label,
   latest.price_current AS price,
   latest.price_regular_stated AS regular,
   latest.price_type,
@@ -155,23 +189,33 @@ SELECT
   latest.rating_count,
   latest.observed_at,
   latest.evidence_retrieved_at,
-  latest.crawl_run_id AS run_id
+  latest.crawl_run_id AS run_id,
+  latest.run_status,
+  latest.coverage_status
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id
-JOIN variant v ON v.id = COALESCE(latest.variant_id, sl.variant_id)
-JOIN product_family pf ON pf.id = v.family_id
-JOIN brand b ON b.id = pf.brand_id
+LEFT JOIN variant v ON v.id = COALESCE(latest.variant_id, sl.variant_id)
+LEFT JOIN product_family pf ON pf.id = v.family_id
+LEFT JOIN brand b ON b.id = pf.brand_id
 LEFT JOIN taxonomy t ON t.id = pf.category_universal_id
+LEFT JOIN LATERAL (
+  SELECT content.labels
+  FROM listing_content content
+  WHERE content.listing_id = sl.id
+  ORDER BY content.observed_at DESC
+  LIMIT 1
+) lc ON true
 WHERE s.name LIKE 'sephora%' OR s.name LIKE 'ulta%'
 ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 """
 
 MATCHES_SQL = """
-SELECT variant_a, variant_b, score, algo_version
+SELECT variant_a, variant_b, match_class::text, score, algo_version, review_state::text
 FROM match_edge
 WHERE valid_to IS NULL
   AND review_state <> 'rejected'
+  AND match_class = 'exact'
 ORDER BY score DESC NULLS LAST, id
 """
 
@@ -187,6 +231,15 @@ def json_number(value: Decimal | None) -> int | float | None:
     if value == value.to_integral_value():
         return int(value)
     return float(value)
+
+
+def json_money(value: Decimal | None) -> int | float | None:
+    """Convert AED Decimal to a JSON number only when it has at most two decimal places."""
+    if value is None:
+        return None
+    if value != value.quantize(Decimal("0.01")):
+        raise ValueError(f"AED amount has more than two decimal places: {value}")
+    return json_number(value)
 
 
 def utc_text(value: datetime) -> str:
@@ -211,13 +264,23 @@ def normalise_unit(value: str | None) -> str | None:
     return unit if unit in KNOWN_UNITS else None
 
 
+def parse_size_label(value: str | None) -> tuple[str | None, Decimal | None]:
+    """Parse a simple published metric size without guessing sets or conversions."""
+    if value is None:
+        return None, None
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(ml|g|pc)\s*", value, flags=re.IGNORECASE)
+    if match is None:
+        return None, None
+    return match.group(2).lower(), Decimal(match.group(1))
+
+
 def psycopg_database_url(value: str) -> str:
     """Accept the workspace's SQLAlchemy-style psycopg URL as well as a native DSN."""
     return value.replace("postgresql+psycopg://", "postgresql://", 1)
 
 
-def category_for(row: ListingRow) -> str:
-    text = " ".join(filter(None, (row.category, row.category_path))).lower()
+def category_from_text(text: str) -> str:
+    lowered = text.lower()
     rules = (
         ("conceal", "concealer"),
         ("foundation", "foundation"),
@@ -230,16 +293,19 @@ def category_for(row: ListingRow) -> str:
         ("skin", "skincare"),
         ("body", "body"),
     )
+    return next((result for needle, result in rules if needle in lowered), "other")
+
+
+def category_for(row: ListingRow) -> str:
     if row.category and row.category.lower() in ALLOWED_CATEGORIES:
         return row.category.lower()
-    return next((result for needle, result in rules if needle in text), "other")
+    return category_from_text(" ".join(filter(None, (row.category, row.category_path))))
 
 
 def group_rows(rows: Iterable[ListingRow]) -> dict[GroupKey, list[ListingRow]]:
     groups: dict[GroupKey, list[ListingRow]] = defaultdict(list)
     for row in rows:
-        unit = normalise_unit(row.size_unit)
-        size = row.size_value if unit is not None else None
+        unit, size = row.effective_size
         groups[GroupKey(row.retailer, row.family_id, unit, size)].append(row)
     return dict(groups)
 
@@ -262,31 +328,34 @@ def promo_pct(price: Decimal, regular: Decimal | None) -> int:
 
 def offer_for(rows: Sequence[ListingRow], *, early: bool = False) -> dict[str, Any]:
     representative = choose_representative(rows)
+    _, representative_size = representative.effective_size
     captured = representative.evidence_retrieved_at or representative.observed_at
     shade_values = {row.shade for row in rows if row.shade}
     offer: dict[str, Any] = {
         "sku": representative.source_sku or representative.source_listing_key,
         "url": representative.url,
-        "size": json_number(representative.size_value),
+        "size": json_number(representative_size),
         "shadeCount": len(shade_values),
         "rating": None,
-        "series": {"price": [json_number(representative.price)]},
+        "series": {"price": [json_money(representative.price)]},
         "evidence": {
             "capturedAt": utc_text(captured),
             "source": f"{representative.source_name} · local pi_db snapshot",
             "runId": str(representative.run_id),
         },
     }
-    if representative.price is not None:
-        offer["evidence"]["rawPrice"] = f"AED {representative.price:.2f}"
     if representative.price is not None and representative.regular is not None:
-        offer["series"]["regular"] = [json_number(representative.regular)]
+        offer["series"]["regular"] = [json_money(representative.regular)]
         offer["series"]["promo"] = [promo_pct(representative.price, representative.regular)]
-    if representative.rating is not None and representative.rating_scale is not None:
+    if (
+        representative.rating is not None
+        and representative.rating_scale is not None
+        and representative.rating_count is not None
+    ):
         rating = representative.rating * Decimal(5) / representative.rating_scale
         offer["rating"] = [
             json_number(rating.quantize(Decimal("0.01"))),
-            representative.rating_count or 0,
+            representative.rating_count,
         ]
     if early:
         offer["early"] = True
@@ -306,7 +375,7 @@ def product_for_group(key: GroupKey, rows: Sequence[ListingRow]) -> dict[str, An
         "match": None,
         "offers": {"u": None, "s": None},
     }
-    product["offers"][key.retailer] = offer_for(rows, early=key.retailer == "u")
+    product["offers"][key.retailer] = offer_for(rows)
     if shades:
         product["shades"] = shades
     if shade_families:
@@ -320,11 +389,20 @@ def matched_products(
     by_variant = {row.variant_id: key for key, rows in groups.items() for row in rows}
     candidates: dict[tuple[GroupKey, GroupKey], MatchRow] = {}
     for match in matches:
+        if match.match_class != "exact":
+            continue
         left = by_variant.get(match.variant_a)
         right = by_variant.get(match.variant_b)
         if left is None or right is None or left.retailer == right.retailer:
             continue
         pair = (left, right) if left.retailer == "u" else (right, left)
+        if (
+            pair[0].size_unit is None
+            or pair[0].size_value is None
+            or pair[0].size_unit != pair[1].size_unit
+            or pair[0].size_value != pair[1].size_value
+        ):
+            continue
         current = candidates.get(pair)
         if current is None or (match.score or Decimal(-1)) > (current.score or Decimal(-1)):
             candidates[pair] = match
@@ -346,11 +424,13 @@ def matched_products(
         sephora_rows = groups[sephora_key]
         base = product_for_group(sephora_key, sephora_rows)
         base["id"] = f"m-{ulta_key.stable_token}-{sephora_key.stable_token}"
-        base["offers"]["u"] = offer_for(ulta_rows, early=True)
+        base["offers"]["u"] = offer_for(ulta_rows)
         base["match"] = {
             "method": match.algo_version,
             "confidence": json_number(match.score),
             "stage": "first-pass",
+            "matchClass": match.match_class,
+            "reviewState": review_state_for_ui(match.review_state),
         }
         products.append(base)
         used.update((ulta_key, sephora_key))
@@ -361,6 +441,18 @@ def matched_products(
         if key not in used
     )
     return sorted(products, key=lambda product: product["id"])
+
+
+def review_state_for_ui(value: str) -> str:
+    mapping = {
+        "proposed": "proposed",
+        "approved": "accepted",
+        "locked": "accepted",
+    }
+    try:
+        return mapping[value]
+    except KeyError as error:
+        raise ValueError(f"unsupported non-rejected review state {value!r}") from error
 
 
 def load_rows(database_url: str) -> tuple[list[ListingRow], list[MatchRow]]:
@@ -377,15 +469,25 @@ def load_rows(database_url: str) -> tuple[list[ListingRow], list[MatchRow]]:
     )
 
 
-def parse_ulta_early_fixture(path: Path, captured_at: datetime) -> dict[str, Any]:
+def parse_ulta_early_fixture(
+    path: Path, captured_at: datetime, fixture_commit: str
+) -> dict[str, Any]:
     """Parse the redacted PDP JSON-LD fixture without accepting network input."""
     text = path.read_text(encoding="utf-8")
-    match = re.search(r'<script type="application/ld\+json">(.*?)</script>', text, flags=re.DOTALL)
-    if match is None:
+    blocks = re.findall(
+        r'<script type="application/ld\+json">(.*?)</script>', text, flags=re.DOTALL
+    )
+    payloads = [json.loads(block) for block in blocks]
+    products = [payload for payload in payloads if payload.get("@type") == "Product"]
+    if not products:
         raise ValueError(f"no Product JSON-LD found in {path}")
-    payload = json.loads(match.group(1))
-    if payload.get("@type") != "Product":
-        raise ValueError(f"first JSON-LD block in {path} is not a Product")
+    payload = products[0]
+    breadcrumbs: dict[str, Any] = next(
+        (payload for payload in payloads if payload.get("@type") == "BreadcrumbList"), {}
+    )
+    category_text = " ".join(
+        str(item.get("item", {}).get("name", "")) for item in breadcrumbs.get("itemListElement", [])
+    )
     offers = payload.get("offers") or []
     if not offers:
         raise ValueError(f"Product JSON-LD in {path} has no offer")
@@ -404,7 +506,7 @@ def parse_ulta_early_fixture(path: Path, captured_at: datetime) -> dict[str, Any
         "id": product_id,
         "brand": payload["brand"]["name"],
         "name": payload["name"],
-        "category": "cheek",
+        "category": category_from_text(category_text),
         "unit": None,
         "match": None,
         "offers": {
@@ -415,12 +517,11 @@ def parse_ulta_early_fixture(path: Path, captured_at: datetime) -> dict[str, Any
                 "shadeCount": 0,
                 "rating": rating,
                 "early": True,
-                "series": {"price": [json_number(price)]},
+                "series": {"price": [json_money(price)]},
                 "evidence": {
                     "capturedAt": utc_text(captured_at),
-                    "source": "ulta_ae · committed redacted probe fixture",
+                    "source": f"ulta_ae · recon fixture {path.name} @ {fixture_commit}",
                     "runId": "gulf-probe-early",
-                    "rawPrice": f"AED {price:.2f}",
                 },
             },
             "s": None,
@@ -453,13 +554,24 @@ def contains_secret(value: Any) -> bool:
     return False
 
 
+def retailer_status(rows: Sequence[ListingRow], retailer: str) -> str:
+    source_rows = [row for row in rows if row.retailer == retailer]
+    if not source_rows:
+        return "blocked" if retailer == "u" else "pending"
+    coverage = {row.coverage_status for row in source_rows}
+    runs = {row.run_status for row in source_rows}
+    if coverage <= {"supported"} and runs <= {"succeeded"}:
+        return "ok"
+    return "partial"
+
+
 def build_dataset(
     rows: Sequence[ListingRow],
     matches: Sequence[MatchRow],
     *,
     generated_at: datetime,
     ulta_early: Sequence[dict[str, Any]] = (),
-    ulta_blocked_since: datetime,
+    ulta: UltaContext,
 ) -> dict[str, Any]:
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
@@ -480,6 +592,47 @@ def build_dataset(
         offer for product in products for offer in product["offers"].values() if offer is not None
     ]
     series = [offer["series"] for offer in offers]
+    if (ulta.recon_observed_count is None) != (ulta.recon_source is None):
+        raise ValueError("Ulta recon count and source must be supplied together")
+    recon_note = "Recon examples are excluded from database coverage and comparisons."
+    recon_note_ar = "عينات الاستطلاع مستبعدة من تغطية قاعدة البيانات والمقارنات."
+    if ulta.recon_observed_count is not None and ulta.recon_source is not None:
+        if ulta.recon_observed_count < 0:
+            raise ValueError("Ulta recon observed count cannot be negative")
+        recon_note = (
+            f"{ulta.recon_observed_count} products were observed only during recon "
+            f"(30 Sep 20:33-20:58 UTC); 0 Ulta products are in the database. "
+            f"Source: {ulta.recon_source}."
+        )
+        recon_note_ar = (
+            f"تمت ملاحظة {ulta.recon_observed_count} منتجات أثناء الاستطلاع فقط؛ لا توجد "
+            f"منتجات استطلاع في قاعدة البيانات. المصدر: {ulta.recon_source}."
+        )
+    ulta_status = retailer_status(rows, "u")
+    sephora_status = retailer_status(rows, "s")
+    ulta_status_note = (
+        "Access is blocked by a Cloudflare challenge and the source is in cool-off."
+        if ulta_status == "blocked"
+        else "A partial Ulta snapshot is loaded from pi_db; coverage is incomplete."
+        if ulta_status == "partial"
+        else "The Ulta snapshot is loaded from pi_db."
+    )
+    ulta_retailer: dict[str, Any] = {
+        "id": "u",
+        "key": "ulta_ae",
+        "name": "Ulta UAE",
+        "status": ulta_status,
+        "earlyExamples": bool(ulta_early),
+        "note": {
+            "en": f"{recon_note} {ulta_status_note}",
+            "ar": (
+                f"{recon_note_ar} الوصول محجوب بتحدّي Cloudflare أو موضح كتغطية "
+                "جزئية حسب حالة المصدر."
+            ),
+        },
+    }
+    if ulta_status == "blocked":
+        ulta_retailer["since"] = utc_text(ulta.blocked_since)
     dataset: dict[str, Any] = {
         "schema": DATASET_SCHEMA,
         "meta": {
@@ -491,36 +644,17 @@ def build_dataset(
             "matchStage": "first-pass",
             "dates": [cutoff.date().isoformat()],
             "retailers": [
-                {
-                    "id": "u",
-                    "key": "ulta_ae",
-                    "name": "Ulta UAE",
-                    "status": "blocked",
-                    "since": utc_text(ulta_blocked_since),
-                    "earlyExamples": bool(ulta_early),
-                    "note": {
-                        "en": (
-                            "3 products were observed only during recon (30 Sep 20:33-20:58 UTC); "
-                            "0 Ulta products are in the database. Access is blocked by a "
-                            "Cloudflare challenge and the source is in cool-off."
-                        ),
-                        "ar": (
-                            "تمت ملاحظة 3 منتجات أثناء الاستطلاع فقط (30 سبتمبر، 20:33-20:58 "
-                            "UTC)؛ لا توجد منتجات من ألتا في قاعدة البيانات. الوصول محجوب "
-                            "بتحدّي Cloudflare والمصدر في فترة تهدئة."
-                        ),
-                    },
-                },
+                ulta_retailer,
                 {
                     "id": "s",
                     "key": "sephora_me",
                     "name": "Sephora UAE",
-                    "status": "ok" if any(row.retailer == "s" for row in rows) else "pending",
+                    "status": sephora_status,
                 },
             ],
             "capabilities": {
                 "history": False,
-                "promotions": True,
+                "promotions": any("promo" in item for item in series),
                 "campaigns": False,
                 "stock": False,
                 "sizes": has_size,
@@ -546,19 +680,20 @@ def build_dataset(
             "matchCheck": None,
         },
         "products": products,
-        "notObserved": [
+    }
+    if ulta_status == "blocked":
+        dataset["notObserved"] = [
             {
                 "retailer": "u",
-                "start": ulta_blocked_since.date().isoformat(),
-                "end": cutoff.date().isoformat(),
+                "start": ulta.blocked_since.date().isoformat(),
+                "end": max(ulta.blocked_since.date(), cutoff.date()).isoformat(),
                 "categories": None,
                 "why": {
                     "en": "Cloudflare challenge; no blocked result is treated as out of stock.",
                     "ar": "تحدّي Cloudflare؛ لا تُعامل النتيجة المحجوبة على أنها نفاد مخزون.",
                 },
             }
-        ],
-    }
+        ]
     if contains_secret(dataset):
         raise ValueError("refusing to write a dataset containing secret-like Algolia material")
     return dataset
@@ -589,6 +724,9 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--output", type=Path, required=True)
     result.add_argument("--ulta-early-fixture", type=Path)
     result.add_argument("--ulta-captured-at")
+    result.add_argument("--ulta-fixture-commit")
+    result.add_argument("--ulta-recon-observed-count", type=int)
+    result.add_argument("--ulta-recon-source")
     result.add_argument("--generated-at")
     result.add_argument("--ulta-blocked-since", default="2026-09-30T20:55:00Z")
     return result
@@ -596,13 +734,23 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = parser().parse_args()
-    if (args.ulta_early_fixture is None) != (args.ulta_captured_at is None):
-        raise SystemExit("--ulta-early-fixture and --ulta-captured-at must be supplied together")
+    fixture_args = (args.ulta_early_fixture, args.ulta_captured_at, args.ulta_fixture_commit)
+    if any(value is not None for value in fixture_args) and not all(
+        value is not None for value in fixture_args
+    ):
+        raise SystemExit(
+            "--ulta-early-fixture, --ulta-captured-at and --ulta-fixture-commit "
+            "must be supplied together"
+        )
     rows, matches = load_rows(args.database_url)
     early: list[dict[str, Any]] = []
     if args.ulta_early_fixture is not None:
         early.append(
-            parse_ulta_early_fixture(args.ulta_early_fixture, parse_utc(args.ulta_captured_at))
+            parse_ulta_early_fixture(
+                args.ulta_early_fixture,
+                parse_utc(args.ulta_captured_at),
+                args.ulta_fixture_commit,
+            )
         )
     generated_at = parse_utc(args.generated_at) if args.generated_at else datetime.now(UTC)
     dataset = build_dataset(
@@ -610,7 +758,11 @@ def main() -> None:
         matches,
         generated_at=generated_at,
         ulta_early=early,
-        ulta_blocked_since=parse_utc(args.ulta_blocked_since),
+        ulta=UltaContext(
+            blocked_since=parse_utc(args.ulta_blocked_since),
+            recon_observed_count=args.ulta_recon_observed_count,
+            recon_source=args.ulta_recon_source,
+        ),
     )
     write_json(args.output, dataset)
     print(
