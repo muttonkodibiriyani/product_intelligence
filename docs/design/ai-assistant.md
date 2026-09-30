@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **Proposed**. Needs Reviewer approval before any code, API enablement or deploy |
+| Status | **Proposed**. Needs Reviewer approval before any API enablement or deploy. Stage 1a ($0, no model calls) is cleared to start |
 | Task | M5 · AI assistant: Gemini chat + tools + PPT/PDF/XLSX reports |
 | Blueprint | §11 (assistant), §12 (security), §13 (cost), §15.2 (CI gates) |
 | Requirements | AIG-01…AIG-08, EXP-08, EXP-11, EXP-12, SCP-04, SCP-08, SCP-10, SEC-02, SEC-07, SEC-10, OPS-04 |
@@ -90,7 +90,7 @@ flowchart LR
 
 | Path | What |
 |---|---|
-| `apps/assistant/` | Node 22 + TypeScript package (blueprint §14). `pnpm`, `tsc --strict`, ESLint, Prettier, Vitest |
+| `apps/assistant/` | Node 20+ TypeScript package (blueprint §14). `npm` (ships with the runner's Node, lockfile committed), `tsc --strict`, ESLint, Prettier, Vitest, `npm audit` |
 | `apps/assistant/src/flows/chat.ts` | `assistantChat` flow: system prompt, history, tools, streaming |
 | `apps/assistant/src/tools/*.ts` | One file per tool: zod input/output schema, handler, role requirement |
 | `apps/assistant/src/data/` | `DataSource` interface. `SnapshotSource` (stage 1), `MetricServiceSource` (later) |
@@ -103,8 +103,7 @@ flowchart LR
 Region: the functions run in **me-central1**, next to Firestore and Storage. The Vertex model
 endpoint is set in config. Before stage 1 we check which Gemini Flash versions are served in
 me-central1/me-central2. If neither serves the pinned model, we use the nearest supported
-region and record it as a SEC-07 residency decision in the decision log. Owner sign-off is
-needed if data would be processed outside the Gulf (see §11, Q1).
+region, as allowed by the residency ruling in §11.1.
 
 ## 3. Data access path
 
@@ -133,14 +132,14 @@ schema `pi.dataset/v1`, published by `infra/scripts/publish_dataset.py` (PR #23)
   - `notObserved[]`: blocked windows per retailer
 - **Gap: images.** `pi.dataset/v1` has no image URL. Until the exporter adds one (an owned
   change for the data/frontend owners), `get_product.image` is `null` and the UI shows no
-  thumbnail. The assistant never invents image URLs. Requested as a schema addition, see §11 Q3.
+  thumbnail. The assistant never invents image URLs. The schema addition is tracked separately (§11.3).
 
 ### 3.2 Later: pi_db through the metric service
 
 `MetricServiceSource` implements the same `DataSource` interface against the metric service
 (Cube REST, or a read-only Cloud SQL role with RLS keyed on the user's claims). Tool schemas do
 not change, so evals and the UI do not change. Tools that need history (`index_trend`,
-`launches`, promotions over time) return `not_enough_data` with reason
+`launches`) return `not_enough_data` with reason
 `capability_off:history` on the snapshot. They light up automatically when
 `capabilities.history` becomes true.
 
@@ -414,18 +413,22 @@ owner's OK via the Coordinator.
 
 Nothing in this PR enables an API, creates a resource or deploys.
 
-## 11. Open questions
+## 11. Rulings on the open questions
 
-1. **Residency (SEC-07).** If the pinned Flash model is not served from a Gulf region, may
-   prompts and tool results (public product data, no PII) be processed in the nearest
-   supported region? Recommendation: yes for public catalogue data, recorded in the decision
-   log.
-2. **Allocation.** Is $5/month (including CI evals) the right assistant slice of the $25?
-3. **Images.** Ask the data/frontend owners to add `image` (thumbnail URL on our own Storage/CDN,
-   not the retailer CDN) to `pi.dataset/v1` products or offers.
-4. **Chat hosting of the UI.** The Frontend Builder owns the chat panel. Callable streaming
-   (`httpsCallable().stream()`) is the proposed contract. The UI work starts after this
-   design is approved.
+Coordinator rulings, 2026-09-30, under authority delegated by the owner (logged in the decision log):
+
+1. **Residency (SEC-07).** Public catalogue data may be processed in the nearest Vertex region
+   that serves the pinned Flash model if me-central1 does not. Prompts carry no user PII
+   beyond the Firebase uid, and the uid is not sent to the model.
+2. **Allocation.** A **$5/month hard slice** for all assistant Gemini use, CI evals included,
+   enforced by the meter and the kill switch (§9): **approved**.
+3. **Images.** Out of scope for stage 1. The Coordinator files the `image` field for the
+   exporter. Until then `get_product.image` is `null`.
+4. **APIs, SA, WIF (§10).** Approved in principle. They are executed only after this doc is
+   approved **and** the Coordinator gives an explicit go.
+
+Still open: the chat panel contract (`httpsCallable().stream()`) is to be confirmed with the
+Frontend Builder once this design is approved.
 
 ## 12. Stage timeline
 
