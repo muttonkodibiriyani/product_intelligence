@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -17,9 +17,24 @@ from pi_connector_ulta._pi_fetch_stub import (
     Locale,
     PayloadKind,
 )
+from pi_core import Market, SourceContext
 
 FIXTURES = Path(__file__).parent / "fixtures"
-CONTEXT = CollectionContext(collection_id="synthetic")
+NOW = datetime(2026, 9, 30, tzinfo=UTC)
+CONTEXT = CollectionContext(
+    source_context=SourceContext(
+        id=1,
+        source_id=2,
+        country=Market.UAE,
+        locale=Locale.EN,
+        time_zone=Market.UAE.time_zone,
+        valid_from=NOW - timedelta(days=1),
+    ),
+    crawl_run_id=3,
+    connector_version="ulta_ae@0.1.0",
+    ladder_rung_used=LadderRung.PLAIN_HTTP,
+    fetch_method=FetchMethod.PLAIN_HTTP,
+)
 
 
 def _fetch_result(
@@ -44,7 +59,7 @@ def _fetch_result(
         ladder_rung_used=LadderRung.PLAIN_HTTP,
         fetch_method=FetchMethod.PLAIN_HTTP,
         egress="fixture",
-        retrieved_at=datetime.now(UTC),
+        retrieved_at=NOW,
         elapsed_ms=1,
         from_cache=False,
         block=block,
@@ -74,7 +89,7 @@ def test_connector_parses_to_temporary_output(
 ) -> None:
     body = (FIXTURES / fixture).read_bytes()
     output = UltaConnector().parse(_fetch_result(body=body, kind=kind), CONTEXT)
-    assert len(output.listings) == 1
+    assert len(output.listings) == offer_count
     assert len(output.offers) == offer_count
 
 

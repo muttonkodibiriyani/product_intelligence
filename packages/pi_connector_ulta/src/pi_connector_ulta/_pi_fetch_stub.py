@@ -8,58 +8,53 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import datetime
-from enum import IntEnum, StrEnum
-from typing import ClassVar, Protocol, runtime_checkable
+from enum import StrEnum
+from typing import ClassVar, Protocol, overload, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import Field, HttpUrl, model_validator
 
-INTERFACE_VERSION = "0.1"
+from pi_core import (
+    CollectionContext,
+    FetchMethod,
+    FieldState,
+    LadderRung,
+    ListingFields,
+    ListingRecord,
+    Locale,
+    OfferFields,
+    OfferObservation,
+    PiModel,
+)
+from pi_core.context import check_rung
+from pi_core.types import DbId, NonEmptyStr
 
+INTERFACE_VERSION = "0.2"
 
-class _TemporaryPiModel(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-
-
-# TEMPORARY pi_core stand-ins; names and roles match PR #6's interface sketch.
-class Locale(StrEnum):
-    EN = "en"
-    AR = "ar"
-
-
-class LadderRung(IntEnum):
-    SITE_DATA = 0
-    PLAIN_HTTP = 1
-    BROWSER = 2
-    STEALTH_BROWSER = 3  # Represented by pi_core but forbidden by collection policy.
-    EGRESS_VARIATION = 4
-    PAID_PROXY = 5
-
-
-class FetchMethod(StrEnum):
-    PLAIN_HTTP = "plain_http"
-    PLAYWRIGHT = "playwright"
-    SITEMAP = "sitemap"
-    SITE_API = "site_api"
-    EMBEDDED_JSON = "embedded_json"
-    EGRESS_VARIATION = "egress_variation"
-    RESIDENTIAL_PROXY = "residential_proxy"
-
-
-class FieldState(StrEnum):
-    NOT_PUBLISHED = "not_published"
-    PARSE_FAILURE = "parse_failure"
-
-
-class CollectionContext(_TemporaryPiModel):
-    collection_id: str
-
-
-class ListingRecord(_TemporaryPiModel):
-    source_listing_key: str
+__all__ = [
+    "INTERFACE_VERSION",
+    "BlockVendor",
+    "BlockVerdict",
+    "CapturedJson",
+    "CollectionContext",
+    "Connector",
+    "DiscoveredItem",
+    "FetchMethod",
+    "FetchRequest",
+    "FetchResult",
+    "FieldState",
+    "LadderRung",
+    "ListingDraft",
+    "Locale",
+    "OfferDraft",
+    "ParseError",
+    "ParseOutput",
+    "PayloadKind",
+    "to_canonical",
+]
 
 
-class OfferObservation(_TemporaryPiModel):
-    source_offer_key: str
+class _TemporaryPiModel(PiModel):
+    """TEMPORARY base only for pi_fetch-owned transport records."""
 
 
 class PayloadKind(StrEnum):
@@ -115,6 +110,11 @@ class FetchResult(_TemporaryPiModel):
     block: BlockVerdict | None
     evidence_uri: str
 
+    @model_validator(mode="after")
+    def validate_fetch_audit(self) -> FetchResult:
+        check_rung(self.ladder_rung_used, self.fetch_method)
+        return self
+
     @property
     def ok(self) -> bool:
         return 200 <= self.http_status < 300 and self.block is None
@@ -129,9 +129,62 @@ class DiscoveredItem(_TemporaryPiModel):
     render: bool = False
 
 
+class ListingDraft(ListingFields):
+    """Source-keyed listing without persistence-assigned IDs (v0.2)."""
+
+
+class OfferDraft(OfferFields):
+    """Source-keyed observation without persistence-assigned IDs (v0.2)."""
+
+    source_listing_key: NonEmptyStr
+
+
+@overload
+def to_canonical(
+    draft: ListingDraft,
+    *,
+    source_id: DbId,
+    evidence_id: DbId,
+    source_listing_id: None = None,
+) -> ListingRecord: ...
+
+
+@overload
+def to_canonical(
+    draft: OfferDraft,
+    *,
+    source_id: None = None,
+    evidence_id: DbId,
+    source_listing_id: DbId,
+) -> OfferObservation: ...
+
+
+def to_canonical(
+    draft: ListingDraft | OfferDraft,
+    *,
+    source_id: DbId | None = None,
+    evidence_id: DbId,
+    source_listing_id: DbId | None = None,
+) -> ListingRecord | OfferObservation:
+    """Pipeline-only validated conversion after evidence/listing persistence."""
+    values = draft.model_dump(mode="python")
+    if isinstance(draft, ListingDraft):
+        if source_id is None or source_listing_id is not None:
+            raise ValueError("listing conversion requires source_id only")
+        return ListingRecord.model_validate(
+            values | {"source_id": source_id, "evidence_id": evidence_id}
+        )
+    if source_id is not None or source_listing_id is None:
+        raise ValueError("offer conversion requires source_listing_id only")
+    values.pop("source_listing_key")
+    return OfferObservation.model_validate(
+        values | {"source_listing_id": source_listing_id, "evidence_id": evidence_id}
+    )
+
+
 class ParseOutput(_TemporaryPiModel):
-    listings: tuple[ListingRecord, ...]
-    offers: tuple[OfferObservation, ...]
+    listings: tuple[ListingDraft, ...]
+    offers: tuple[OfferDraft, ...]
     follow: tuple[DiscoveredItem, ...] = ()
     field_gaps: Mapping[str, FieldState] = Field(default_factory=dict)
 

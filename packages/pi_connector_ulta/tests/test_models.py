@@ -44,7 +44,7 @@ def test_models_are_strict_and_frozen() -> None:
         PriceValue(amount=1.5)  # type: ignore[arg-type]
     price = PriceValue(amount=Decimal("1"))
     with pytest.raises(ValidationError):
-        price.amount = Decimal("2")
+        price.amount = Decimal("2")  # type: ignore[misc]
 
 
 def test_localized_text_needs_a_non_empty_locale() -> None:

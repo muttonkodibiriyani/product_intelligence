@@ -11,6 +11,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
+from pi_core import PriceType
+
 PositiveDecimal = Annotated[Decimal, Field(gt=0, allow_inf_nan=False)]
 NonNegativeDecimal = Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
 
@@ -60,10 +62,33 @@ class PriceValue(FrozenModel):
 class Prices(FrozenModel):
     """All price concepts exposed by the source."""
 
+    price_type: PriceType = PriceType.FULL
     current: PriceValue
     regular: PriceValue
     promo: PriceValue
     member: PriceValue
+    range_min: PriceValue = Field(
+        default_factory=lambda: PriceValue(amount=None, reason="not a range")
+    )
+    range_max: PriceValue = Field(
+        default_factory=lambda: PriceValue(amount=None, reason="not a range")
+    )
+
+    @model_validator(mode="after")
+    def validate_price_shape(self) -> Self:
+        if self.price_type is PriceType.RANGE:
+            if self.current.amount is not None:
+                raise ValueError("range price cannot have a single current amount")
+            if self.range_min.amount is None or self.range_max.amount is None:
+                raise ValueError("range price requires minimum and maximum amounts")
+            if self.range_min.amount > self.range_max.amount:
+                raise ValueError("range minimum cannot exceed maximum")
+        elif self.price_type is PriceType.QUOTE_ONLY:
+            if self.current.amount is not None:
+                raise ValueError("quote-only price cannot have a current amount")
+        elif self.current.amount is None:
+            raise ValueError("a numeric price type requires a current amount")
+        return self
 
 
 class Promotion(FrozenModel):
@@ -178,8 +203,3 @@ class ProductRecord(FrozenModel):
         if not self.variants:
             raise ValueError("a product must contain at least one variant")
         return self
-
-
-# TODO(pi-core#6): map ProductRecord/VariantRecord into canonical pi_core records once PR #6 lands.
-# Canonical price mapping must explicitly handle PriceType.RANGE and PriceType.QUOTE_ONLY; neither
-# may be inferred as a numeric zero or silently collapsed into the four published source slots.

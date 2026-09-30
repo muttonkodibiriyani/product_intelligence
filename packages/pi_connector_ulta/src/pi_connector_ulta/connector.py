@@ -11,13 +11,12 @@ from pi_connector_ulta._pi_fetch_stub import (
     DiscoveredItem,
     FetchRequest,
     FetchResult,
-    ListingRecord,
     Locale,
-    OfferObservation,
     ParseError,
     ParseOutput,
     PayloadKind,
 )
+from pi_connector_ulta.mapping import map_product
 from pi_connector_ulta.parse import parse_product_html, parse_product_json
 
 
@@ -52,7 +51,6 @@ class UltaConnector:
 
     def parse(self, result: FetchResult, ctx: CollectionContext) -> ParseOutput:
         """Parse one successful fixture-backed fetch result deterministically."""
-        del ctx
         if result.block is not None:
             raise ParseError("blocked fetch results must never be parsed")
         if not result.ok:
@@ -70,12 +68,4 @@ class UltaConnector:
         else:
             raise ParseError(f"unsupported product payload kind: {result.request.kind.value}")
 
-        # TEMPORARY: these minimal constructors are replaced by the pi_core #6 mapping.
-        listing = ListingRecord(source_listing_key=record.source_product_id)
-        offers = tuple(
-            OfferObservation(
-                source_offer_key=f"{record.source_product_id}:{variant.source_variant_id}"
-            )
-            for variant in record.variants
-        )
-        return ParseOutput(listings=(listing,), offers=offers)
+        return map_product(record, result, ctx)
