@@ -116,3 +116,37 @@ cart/checkout, polite pacing, and every escalation audit-logged.
      - **Pacing:** at most 1 req/s with jitter and off-peak, enforced per host in the
        `pi_fetch` rate limiter.
 4. **Ulta ME mobile app study** (`com.ub.mena`): on hold until the owner says go.
+
+## Amendment 2 (2026-09-30 UTC): owner approves rung 5 for ulta.ae
+The owner has answered the ulta.ae Proxy Decision Report: he bought a UAE residential proxy
+(IPRoyal, AE exit) and approved rung 5 for **ulta.ae only**. This supersedes the 48 h cool-off.
+Rung 5 is the rung-2 browser (Amendment 1: pinned stock WebKit, no stealth) sending its traffic
+through the proxy. It does not add any new client technique. Conditions:
+
+1. **Scope:** ulta.ae only. Sephora and every other source stay without a proxy. The proxy is
+   enabled per source in configuration and recorded as `FetchMethod.residential_proxy` (rung 5),
+   with the engine, device profile and egress in the evidence metadata.
+2. **Same page and robots transport:** `robots.txt` is fetched through the same pinned engine and
+   the same proxy egress as the pages. The fail-closed status matrix applies, and HTML or a challenge served with a 2xx
+   means unreadable, which refuses the host. There is no fallback to another transport, engine or egress.
+3. **Stop at the first challenge:** a Cloudflare challenge, 401 or 403 stops the whole run and marks
+   ulta.ae blocked. There is no solving, no retry and no switch of engine, user agent or egress.
+   A 429 backs off per host as usual. If the ~20-page test is challenged, Ulta stays blocked and
+   no further proxy spend is made.
+4. **Sequence and volume:** a ~20-page test first. Then, if the test is clean, **one** full-catalogue snapshot, stored permanently.
+   There is no recurring Ulta crawl (on-demand cadence, blueprint §6.4). The pace is at most 1 page per 5–10 s, off-peak.
+5. **Minimal proxy traffic:** heavy assets (images, media, fonts, third-party trackers) are
+   blocked in the proxied browser, and images are fetched directly from the CDN, not through the proxy.
+   A per-run proxy byte counter is recorded in the run manifest, with a **hard stop at 2 GB**
+   unless the owner approves more.
+6. **Credentials:** they are read at runtime from Secret Manager
+   (`pi-proxy-iproyal-ae`, latest version). They are never printed, logged, committed or put in
+   fixtures, and they are redacted in reprs, audit events and exceptions. The secret must be rotatable
+   without code changes. The owner rotates the password after the demo, because it was briefly visible in the owner chat.
+7. **Unchanged:** logins, cookie reuse, checkout, stealth (rung 3), TLS impersonation and
+   challenge solving remain prohibited. Classifier refusals are never routed around.
+
+**Recorded concern (Reviewer, owner-accepted risk):** using a residential proxy while the site's
+WAF is actively challenging our other egresses sits uneasily with "not permission to bypass
+access controls". The owner accepted this risk with the stop-at-first-challenge condition above.
+No legal/ToS review by counsel has been done; this is recorded as an open item for the owner.
