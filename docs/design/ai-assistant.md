@@ -109,7 +109,7 @@ such literals appear in `src/`.
 
 ## 3. Data access path: the service layer (#39)
 
-The owner's ruling: the **service-layer read API** (Cloud Run, designed in #39) is the single
+The Coordinator's ruling (under the owner's delegation): the **service-layer read API** (Cloud Run, designed in #39) is the single
 source for the dashboard, exports and the assistant. It computes every metric in one Python
 implementation (`pi_metrics`), tested once:
 
@@ -119,7 +119,7 @@ implementation (`pi_metrics`), tested once:
 The API also enforces:
 
 - Decimal money;
-- accepted-only pairs;
+- counted pairs only (exact, `approved|locked`);
 - the n ≥ 5 cohort rule;
 - the `not_enough_data` and `retailer_partial` states.
 
@@ -228,7 +228,7 @@ type ToolEnvelope = {
   };
   caveats: { en: string; ar: string }[];             // ≤ 20
   evidence: { productId: string; retailer: string; url: string | null;
-              capturedAt: string; runId?: string; source?: string }[]; // ≤ 50; runId/source admin only
+              capturedAt: string; runId?: string; source?: string }[]; // ≤ 20 (the API's cap); runId/source admin only
 };
 ```
 
@@ -236,7 +236,7 @@ Common input limits:
 
 - `limit` ≤ 25 (default 10), so the assistant never pages.
 - Free text ≤ 120 chars.
-- Retailer ids match `^[a-z][a-z0-9_]{0,31}$`.
+- Retailer ids match #39's `^[a-z][a-z0-9_]{1,62}$`; stage 1b generates the input schemas' patterns from the OpenAPI contract so they cannot drift.
 - Money inputs are decimal text.
 - Unknown keys are rejected (`.strict()`).
 
@@ -451,12 +451,13 @@ reaches the model through tool output.
   meter as production (§9), with label `ci`. The meter reserves the per-case ceiling in
   Firestore before each Vertex call and refuses the call once the `ci` month total would pass
   $1.50, which fails the job with "CI eval budget exhausted". There is no unmetered path: the
-  CI service account can only reach Vertex, and the eval code has no other client. It runs only when
-  `apps/assistant/**` changes, plus a manual dispatch, with promptfoo caching on. Estimate:
-  about 100 cases × ~$0.006 ≈ **$0.60 per full run**, capped at 15 runs/month (≈ $9 worst
-  case). That is too much for the budget, so **the default CI model-eval run uses Flash-Lite
-  or the smoke subset (25 cases, ≈ $0.15)**. The full suite runs on merge-candidate PRs only.
-  See §9.
+  CI service account can only reach Vertex, and the eval code has no other client.
+- **Run policy.** The model-backed suite runs only when `apps/assistant/**` changes, plus a
+  manual dispatch, with promptfoo caching on. A full run is about 100 cases × ~$0.006 ≈
+  **$0.60**, and the smoke subset (25 cases, Flash-Lite or Flash) ≈ **$0.15**. PRs run the
+  smoke subset; the full suite runs on merge-candidate PRs only. **The $1.50/month meter cap
+  above is binding**: at most about 10 smoke runs or 2 full runs a month, whichever comes first.
+  After that, the job fails until next month or an owner-approved raise. See §9.
 - **Also in CI:** Genkit's own eval (faithfulness) is optional later. Not in stage 1.
 
 ## 9. Cost model
@@ -510,7 +511,7 @@ Worst-case chat alone would use too much of the $25 shared with Cloud SQL and cr
   3. *Settle.* Compute the actual cost from `usageMetadata` (prompt, candidates, thinking and
      cached tokens), then move `reserved → spent` with the actual amount. A reservation that is
      never settled (a crash) stays counted as spent at the ceiling, so errors fail closed.
-  - **Money in the meter is integer micro-USD (`BigInt`).** The price table is a committed
+  - **Money in the meter is integer micro-USD (`BigInt`).** Each usage row records the **price-table version** used to cost it, so reconciliation can re-cost it. The price table is a committed
     config of decimal strings per model and token kind (USD per 1 M tokens), parsed to
     micro-USD. There is no float arithmetic. Cost per call = Σ tokens × price ÷ 1 M, rounded up
     to the next micro-USD.
