@@ -66,8 +66,10 @@ def _rec(fixture: str | None, lang: str, html: str = "") -> dict[str, Any]:
     }
 
 
-def _snapshot(root: Path, records: list[dict[str, Any]]) -> Path:
-    snap = root / "snap"
+def _snapshot(
+    root: Path, records: list[dict[str, Any]], name: str = "snap", snapshot_id: str | None = None
+) -> Path:
+    snap = root / name
     (snap / "pdp").mkdir(parents=True)
     with gzip.open(snap / "pdp/part-0000.jsonl.gz", "wt", encoding="utf-8") as fh:
         for rec in records:
@@ -78,6 +80,7 @@ def _snapshot(root: Path, records: list[dict[str, Any]]) -> Path:
                 "started": AT,
                 "updated": AT,
                 "stopped": "complete",
+                "snapshot_id": snapshot_id,
                 "counts": {
                     "en": {"discovered": 3, "pdp_ok": 2, "pdp_parsed": 2, "block_cloudflare": 1},
                     "ar": {"discovered": 1, "pdp_ok": 1, "pdp_parsed": 1},
@@ -149,3 +152,14 @@ def test_load_is_idempotent_and_never_invents_stock_or_prices(db: str, tmp_path:
         assert q("SELECT count(*) FROM evidence WHERE content_hash=%s", (empty,)).fetchone() == (0,)
         method = q("SELECT DISTINCT fetch_method FROM evidence").fetchall()
         assert method == [("residential_proxy",)]
+
+
+def test_cumulative_uploads_of_one_snapshot_load_each_part_once(db: str, tmp_path: Path) -> None:
+    recs = [_rec("ulta_ae_pdp_en_morphe_trio.html", "en")]
+    first = _snapshot(tmp_path, recs, "up1", snapshot_id="ulta-ae-1")
+    second = _snapshot(tmp_path, recs, "up2", snapshot_id="ulta-ae-1")  # a later upload
+    with psycopg.connect(db) as conn:
+        loaded = Loader(conn, first, "gs://test/ulta/up1").load()
+        assert loaded["pdp"] > 0
+        assert Loader(conn, second, "gs://test/ulta/up2").load() == {}
+    assert (tmp_path / ".loaded-ulta-ae-1.json").exists()

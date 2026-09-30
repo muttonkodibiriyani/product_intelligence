@@ -145,10 +145,28 @@ With `URL_SOURCE=sitemap` the job:
 | `MAX_PAGES=all` | The whole list, within the byte cap. |
 | `START_INDEX=auto` | Continue from where the last run in the same folder stopped. `urls_full_en.txt` is reused, so no sitemap is fetched again. |
 
-The output folder is fixed (`~/ulta-full`) so that a stopped run can be continued. Each run adds
-its own `pdp/part-<start>.jsonl.gz` and keeps the earlier `progress`/`manifest` files as
-`*-before-<time>.json`. **Before each run, set `PRIOR_GB` again from the IPRoyal dashboard,
-rounded up.** The byte cap counts everything already used.
+The output folder is fixed (`~/ulta-full`) so that a stopped run can be continued. Each run
+adds its own `pdp/part-<start>-<time>.jsonl.gz` (a new file every run, even from the same
+index) and keeps copies of the earlier `progress`/`manifest` files as `*-before-<time>.json`.
+If a run fails before it starts (for example a bad token or a missing `PRIOR_GB`), nothing in
+the folder is moved, and `START_INDEX=auto` still continues from the right place.
+
+**Before each run, set `PRIOR_GB` again from the IPRoyal dashboard, rounded up.** The byte cap
+counts everything already used. The job also never uses less than what the earlier runs in
+`~/ulta-full` recorded (their prior + proxy bytes). If your figure is lower, it uses the folder's
+figure and says so on a `PRIOR:` line.
+
+The status in the last line:
+- `complete`: this one run covered the **whole** list from index 0.
+- `batch_complete`: this run finished its `MAX_PAGES` batch, or a resumed tail, without a stop.
+  Run again with `START_INDEX=auto` for the rest. The loader records such a batch as a partial
+  crawl, so nothing that was not fetched is ever taken as removed.
+- `enumerated`: the list was built with `MAX_PAGES=0`.
+- The stop statuses (`stopped_at_challenge`, `cap_reached`, `stopped_by_operator`,
+  `stopped_error`) and the re-run rules are the same as for the test above.
+
+Every upload holds the whole folder so far. The loader keys on the snapshot id in
+`snapshot.json`, so a part that is already loaded is never loaded twice.
 
 ```bash
 # ==== EDIT 1: commit (from the coordinator) ====
@@ -176,14 +194,14 @@ docker run --rm -i --name ulta-full --user "$(id -u):$(id -g)" \
   -e EST_BYTES_PER_PAGE="$EST_BYTES_PER_PAGE" \
   -e PRIOR_GB="$PRIOR_GB" -e CAPTURE_JSON=0 \
   -e OWNER_APPROVAL_REF="ADR-0006 Amendment 2 (owner decision 2026-09-30: IPRoyal AE, ulta.ae only)" \
-  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/latest \
+  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console-$TS.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-full/$TS/"
 echo "UPLOADED gs://pi-sephora-e631eaba/ulta-full/$TS/"
 )
 ```
 
-Paste back three lines: `SITEMAP: ...`, `ULTA TEST RESULT: ...` and `UPLOADED ...`. With
-`MAX_PAGES=0` the status is `enumerated`. To stop early, press Ctrl-C or run
+Paste back four lines: `PRIOR: ...`, `SITEMAP: ...`, `ULTA TEST RESULT: ...` and
+`UPLOADED ...`. To stop early, press Ctrl-C or run
 `docker stop ulta-full`. The files stay in `~/ulta-full`, and the next run with
 `START_INDEX=auto` continues from there. The bucket keeps uploads for one day only.

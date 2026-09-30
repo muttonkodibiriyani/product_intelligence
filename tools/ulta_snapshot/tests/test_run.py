@@ -19,6 +19,8 @@ from ulta_snapshot.run import (
     archive_previous,
     audit_log,
     context,
+    floored_prior,
+    main,
     make_run,
     policy,
     prior_bytes,
@@ -213,7 +215,8 @@ def test_runner_stops_at_first_challenge_and_writes_loader_input(tmp_path: Path)
     assert "p-fake" not in (out / "progress.json").read_text()
     # The robots.txt obeyed in this run is saved for the loader.
     assert "Disallow: /*?" in (out / "robots.txt").read_text()
-    with gzip.open(out / "pdp/part-000000.jsonl.gz", "rt") as fh:
+    (part,) = (out / "pdp").glob("part-000000-*.jsonl.gz")
+    with gzip.open(part, "rt") as fh:
         recs: list[dict[str, Any]] = [json.loads(line) for line in fh]
     assert [r["status"] for r in recs] == [200, 200, 403]
     assert recs[2]["html"] == ""  # a block is recorded, never parsed
@@ -318,10 +321,12 @@ def test_sitemap_mode_enumerates_estimates_then_crawls_up_to_max_pages(tmp_path:
     assert "SITEMAP: 3 urls, est 0.0-0.0 h, est 0.000900 GB" in text
     assert text.index("SITEMAP:") < text.index("page 1:")  # the estimate comes before crawling
     progress = json.loads((out / "progress.json").read_text())
-    assert progress["stopped"] == "complete"
+    # A bounded batch is never "complete": the loader must not take it as a full baseline.
+    assert progress["stopped"] == "batch_complete"
     assert progress["next_index"] == 2
     assert progress["urls_total"] == 3
-    assert "status=complete pages_ok=2/2" in text
+    assert progress["snapshot_id"].startswith("ulta-ae-")
+    assert "status=batch_complete pages_ok=2/2" in text
 
 
 def test_max_pages_zero_enumerates_only(tmp_path: Path) -> None:
@@ -364,7 +369,7 @@ def test_resume_from_next_index_reuses_the_list_without_refetching(tmp_path: Pat
     first.finish()
     audit_log.removeHandler(first.audit)
 
-    # main(): options first (START_INDEX=auto reads next_index), then the old files are archived.
+    # main(): options first (START_INDEX=auto reads next_index); old files are copied aside.
     options = run_options({"URL_SOURCE": "sitemap", "MAX_PAGES": "all", "START_INDEX": "auto"}, out)
     assert options["start"] == 2
     archive_previous(out)
@@ -377,10 +382,13 @@ def test_resume_from_next_index_reuses_the_list_without_refetching(tmp_path: Pat
 
     assert factory.requested == [f"{BASE}/robots.txt", URLS[2]]  # no sitemap, no earlier page
     assert "reusing urls_full_en.txt (3 urls)" in console.getvalue()
-    assert (out / "pdp/part-000000.jsonl.gz").exists()
-    assert (out / "pdp/part-000002.jsonl.gz").exists()
-    assert json.loads((out / "progress.json").read_text())["next_index"] == 3
-    assert list(out.glob("progress-before-*.json"))
+    assert len(list((out / "pdp").glob("part-000000-*.jsonl.gz"))) == 1
+    assert len(list((out / "pdp").glob("part-000002-*.jsonl.gz"))) == 1
+    progress = json.loads((out / "progress.json").read_text())
+    assert progress["next_index"] == 3
+    assert progress["stopped"] == "batch_complete"  # resumed: not one run over the whole list
+    (before,) = out.glob("progress-before-*.json")
+    assert json.loads(before.read_text())["snapshot_id"] == progress["snapshot_id"]
     assert list(out.glob("manifest-before-*.json"))
 
 
@@ -399,3 +407,58 @@ def test_run_options_parse_and_auto_resume(tmp_path: Path) -> None:
         run_options({"URL_SOURCE": "api"}, tmp_path)
     with pytest.raises(SystemExit):
         run_options({"START_INDEX": "-1"}, tmp_path)
+
+
+def test_only_one_run_over_the_whole_list_from_zero_is_complete(tmp_path: Path) -> None:
+    whole = _run(tmp_path / "a", [], 0, Factory(), io.StringIO(), url_source="sitemap")
+    with whole.fetcher:
+        whole.run(context(datetime.now(UTC)))
+    assert whole.stopped == "complete"
+    audit_log.removeHandler(whole.audit)
+
+    tail = _run(tmp_path / "b", [], 0, Factory(), io.StringIO(), url_source="sitemap", start=1)
+    with tail.fetcher:
+        tail.run(context(datetime.now(UTC)))
+    assert tail.stopped == "batch_complete"
+    assert tail.next_index == 3
+
+
+def test_a_repeated_start_index_writes_a_new_part(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    for _ in range(2):
+        run = _run(out, [], 0, Factory(), io.StringIO(), url_source="sitemap", max_pages=1)
+        with run.fetcher:
+            run.run(context(datetime.now(UTC)))
+        run.finish()
+        audit_log.removeHandler(run.audit)
+    assert len(list((out / "pdp").glob("part-000000-*.jsonl.gz"))) == 2
+
+
+def test_failed_setup_keeps_the_resume_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "progress.json").write_text(json.dumps({"next_index": 7}))
+    for key in ("PRIOR_GB", "PRIOR_BYTES"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("OUT_DIR", str(tmp_path))
+    monkeypatch.setenv("URL_SOURCE", "sitemap")
+    monkeypatch.setenv("START_INDEX", "auto")
+    with pytest.raises(SystemExit, match="PRIOR_GB"):
+        main()
+    # Nothing was moved: the next START_INDEX=auto still resumes at 7.
+    assert json.loads((tmp_path / "progress.json").read_text())["next_index"] == 7
+    assert run_options({"START_INDEX": "auto"}, tmp_path)["start"] == 7
+    archive_previous(tmp_path)
+    assert (tmp_path / "progress.json").exists()  # archiving copies, never moves
+
+
+def test_prior_is_floored_at_what_this_folder_already_used(tmp_path: Path) -> None:
+    assert floored_prior({"PRIOR_GB": "0.001"}, tmp_path)[0] == 1_000_000
+    (tmp_path / "progress.json").write_text(json.dumps({"proxy": {"allowance_used": 3_000_000}}))
+    (tmp_path / "progress-before-x.json").write_text(
+        json.dumps({"proxy": {"allowance_used": 5_000_000}})
+    )
+    prior, note = floored_prior({"PRIOR_GB": "0.001"}, tmp_path)
+    assert prior == 5_000_000
+    assert "below this folder's record" in note
+    assert floored_prior({"PRIOR_GB": "0.01"}, tmp_path)[0] == 10_000_000

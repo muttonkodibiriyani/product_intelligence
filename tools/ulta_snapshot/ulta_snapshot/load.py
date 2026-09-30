@@ -138,12 +138,15 @@ class Loader:
         self.c = conn
         self.root = root
         self.uri = uri.rstrip("/")
-        self.ledger = root.parent / f".loaded-{root.name}.json"  # snapshot dir may be read-only
+        progress = root / "progress.json"
+        self.progress = json.loads(progress.read_text()) if progress.exists() else {}
+        #: Keyed by the snapshot id when there is one, so later cumulative uploads of the same
+        #: snapshot (copied beside this one) skip the parts already loaded.
+        key = self.progress.get("snapshot_id") or root.name
+        self.ledger = root.parent / f".loaded-{key}.json"  # snapshot dir may be read-only
         self.done: set[str] = (
             set(json.loads(self.ledger.read_text())) if self.ledger.exists() else set()
         )
-        progress = root / "progress.json"
-        self.progress = json.loads(progress.read_text()) if progress.exists() else {}
         self.source_id = self._source()
         self.ctx = {lang: self._context(lang) for lang in LANGS}
         self.run_id = {lang: self._run(lang) for lang in LANGS}

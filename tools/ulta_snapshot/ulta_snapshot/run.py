@@ -37,6 +37,7 @@ import logging
 import math
 import os
 import random
+import shutil
 import signal
 import sys
 import time
@@ -79,6 +80,11 @@ SITE = "www.ulta.ae"
 BASE = f"https://{SITE}"
 SITEMAP_INDEX = f"{BASE}/sitemap.xml"
 URLS_FULL = "urls_full_en.txt"
+#: Written with ``URLS_FULL``: the id the loader keys its ledger on across cumulative uploads.
+SNAPSHOT = "snapshot.json"
+#: Statuses that end a run normally (exit 0). Only ``complete`` means the whole URL list was
+#: covered in one run from index 0; the loader marks a crawl_run succeeded only for that.
+DONE = frozenset({"complete", "batch_complete", "enumerated"})
 PAGE_INTERVAL_S = 5.0  # the pacer's floor; a random 0-5 s is added: one page per 5-10 s
 _BYTES_PER_GB = Decimal(1000**3)
 audit_log = logging.getLogger("pi_fetch.audit")
@@ -230,7 +236,11 @@ class Run:
         #: no captures. Rung 5 accepts them since #31 when the coordinator asks for page JSON.
         self.capture_json: bool = extra.get("capture_json", False)
         self.counts: Counter[str] = Counter()
-        self.started = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC)
+        self.started = now.isoformat()
+        #: Part names are unique per run, so a run repeating a start index never appends to a
+        #: part the loader has already marked done.
+        self.stamp = now.strftime("%Y%m%dT%H%M%S%fZ")
         self.stopped = "running"
         self.challenged = False  # set only by a block that stopped the source (challenge/401/403)
         self.console = extra.get("console", sys.stdout)
@@ -262,6 +272,7 @@ class Run:
             "graphql": dict(self.graphql.counts),
             "stopped_sources": {str(k): v for k, v in self.fetcher.stopped_sources().items()},
             "url_source": self.url_source,
+            "snapshot_id": self.snapshot_id(),
             "urls_total": len(self.urls),
             "start_index": self.start,
             #: Resume here (START_INDEX=auto): every URL before it was fetched or robots-refused.
@@ -277,7 +288,7 @@ class Run:
                 (self.out / "robots.txt").write_text(text)
 
     def emit(self, rec: dict[str, Any]) -> None:
-        part = self.out / f"pdp/part-{self.start:06d}.jsonl.gz"  # one part per (resumed) run
+        part = self.out / f"pdp/part-{self.start:06d}-{self.stamp}.jsonl.gz"  # one per run
         with gzip.open(part, "at", encoding="utf-8") as fh:
             fh.write(json.dumps(rec) + "\n")
 
@@ -334,7 +345,7 @@ class Run:
         """The one line the operator pastes back: status, pages, bytes, GB, USD, challenges."""
         use = self.usage()
         challenged = self.challenged
-        if self.stopped in {"complete", "enumerated"}:
+        if self.stopped in DONE:
             status = self.stopped
         elif challenged:
             status = "stopped_at_challenge"
@@ -400,6 +411,10 @@ class Run:
             return None
         return result.body.decode("utf-8", "replace")
 
+    def snapshot_id(self) -> str | None:
+        path = self.out / SNAPSHOT
+        return str(json.loads(path.read_text())["snapshot_id"]) if path.exists() else None
+
     def rules(self) -> RobotsRules | None:
         text = next((t for k, t in self.robots.texts.items() if k.startswith(SITE)), None)
         return None if text is None else RobotsRules(text, self.robots.agent)
@@ -442,6 +457,12 @@ class Run:
         tmp = saved.with_suffix(".tmp")
         tmp.write_text("".join(f"{u}\n" for u in urls))
         tmp.replace(saved)
+        snapshot = {
+            "snapshot_id": f"ulta-ae-{self.stamp}",
+            "created": self.started,
+            "urls": len(urls),
+        }
+        (self.out / SNAPSHOT).write_text(json.dumps(snapshot, indent=1))
         return urls
 
     def estimate(self, n: int) -> str:
@@ -481,7 +502,8 @@ class Run:
             self.progress()
             if not go_on:
                 return
-        self.stopped = "complete"
+        whole = self.start == 0 and self.next_index >= len(self.urls)
+        self.stopped = "complete" if whole else "batch_complete"
 
 
 def make_run(  # noqa: PLR0913 - keyword-only test seams
@@ -559,11 +581,32 @@ def run_options(env: Mapping[str, str], out: Path) -> dict[str, Any]:
 
 
 def archive_previous(out: Path) -> None:
-    """Keep an earlier run's status and manifest when a run resumes in the same folder."""
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    """Copy an earlier run's status and manifest aside when a run resumes in the same folder.
+
+    A copy, not a move: if this run then fails before it writes its own status, the earlier
+    ``progress.json`` (and its ``next_index``) is still in place for ``START_INDEX=auto``.
+    """
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     for name in ("progress.json", "manifest.json"):
         if (out / name).exists():
-            (out / name).replace(out / f"{Path(name).stem}-before-{stamp}.json")
+            shutil.copy2(out / name, out / f"{Path(name).stem}-before-{stamp}.json")
+
+
+def folder_allowance_used(out: Path) -> int:
+    """The highest ``prior_bytes + bytes_via_proxy`` recorded by any earlier run in ``out``."""
+    used = [0]
+    for path in out.glob("progress*.json"):
+        proxy = json.loads(path.read_text()).get("proxy") or {}
+        used.append(int(proxy.get("allowance_used", 0)))
+    return max(used)
+
+
+def floored_prior(env: Mapping[str, str], out: Path) -> tuple[int, str]:
+    """``prior_bytes(env)``, but never below what earlier runs in this folder already used."""
+    given, floor = prior_bytes(env), folder_allowance_used(out)
+    if floor > given:
+        return floor, f"PRIOR: PRIOR_GB is below this folder's record; using {floor} bytes"
+    return given, f"PRIOR: {given} bytes (folder record {floor})"
 
 
 def prior_bytes(env: Mapping[str, str]) -> int:
@@ -581,13 +624,13 @@ def main() -> int:
     out = Path(os.environ["OUT_DIR"])
     out.mkdir(parents=True, exist_ok=True)
     options = run_options(os.environ, out)
-    archive_previous(out)
+    prior, prior_note = floored_prior(os.environ, out)
     urls = []
     if options["url_source"] == "file":
         text = Path(os.environ["URLS_FILE"]).read_text()
         urls = [u.strip() for u in text.splitlines() if u.strip()]
     pol = policy(
-        prior_bytes(os.environ),
+        prior,
         os.environ["OWNER_APPROVAL_REF"],
         os.environ["SECRET_RESOURCE"],
     )
@@ -606,6 +649,8 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
+    archive_previous(out)  # only once setup has succeeded
+    run.say(prior_note)
     run.say(
         f"ulta.ae proxied run: source={options['url_source']} start={options['start']}"
         f" max_pages={options['max_pages']} prior_bytes={pol_prior(pol)} out={out}"
@@ -615,7 +660,7 @@ def main() -> int:
             run.run(context(datetime.now(UTC)))
     finally:
         run.finish()
-    return 0 if run.stopped == "complete" else 2
+    return 0 if run.stopped in DONE else 2
 
 
 def pol_prior(pol: FetchPolicy) -> int:
