@@ -16,8 +16,8 @@ and the AI assistant. Today the dashboard and the assistant would each read `pi.
 compute gaps and indexes themselves, so the same question could get two different answers.
 
 **Coordinator ruling (binding):** the service layer computes every metric: price index and gaps,
-promotions, assortment, availability and coverage. It uses Decimal money, counts only accepted
-pairs, applies the n ≥ 5 rule, and returns explicit `not_enough_data` states (such as
+promotions, assortment, availability and coverage. It uses Decimal money, counts only reviewed
+pairs (§7.2), applies the n ≥ 5 rule, and returns explicit `not_enough_data` states (such as
 `retailer_partial`). Everything else is a thin client:
 - the dashboard;
 - exports;
@@ -83,7 +83,9 @@ versioned snapshots.
   so readers see either the old dataset or the new one, never a mix. `meta.generation` and
   `meta.cutoff` are on every response.
 - **ETag cache.** A response's `ETag` is the hash of the dataset generation, the API version and
-  the canonical request. Clients send `If-None-Match` and get `304` while nothing has changed.
+  the canonical request, **and the caller's role and a digest of their scope claims**, so two
+  users who may see different fields or datasets never share a validator. Clients send
+  `If-None-Match` and get `304` while nothing has changed.
   `Cache-Control: private, max-age=60`, never `public`, because responses depend on the user.
 - **Size.** Today's pilot dataset is a few MB. The budget is ≤ 50 MB of JSON per instance; beyond
   that, history moves to the fact extracts and is read lazily per product. The instance has
@@ -97,7 +99,7 @@ versioned snapshots.
 
   ```python
   class DataSource(Protocol):
-      def dataset(self, market: CountryCode, scope: str) -> LoadedDataset: ...   # validated, indexed
+      def dataset(self, market: CountryCode, scope: str) -> LoadedDataset: ...  # validated, indexed
       def scopes(self) -> Sequence[ScopeRef]: ...
       def generation(self, market: CountryCode, scope: str) -> str: ...
   ```
@@ -123,7 +125,7 @@ versioned snapshots.
   |---|---|---|
   | All read endpoints | ✓ | ✓ |
   | Admin-only fields: `evidence[].runId`, `evidence[].source`, coverage internals (rungs, run ids, block counts) | stripped | ✓ |
-  | `/v1/matches?reviewState=proposed\|pending` (the review queue view) | – | ✓ |
+  | `/v1/matches?reviewState=proposed\|rejected` (the review queue view) | – | ✓ |
 
   Admin-only fields live in **separate response models**; they are not filtered out after the
   fact. A viewer response model does not have the field, so it cannot leak.
@@ -137,7 +139,9 @@ versioned snapshots.
 - **Revocation.** `check_revoked` is **off** by default. It would cost an extra Auth call per
   request, and ID tokens live one hour. Admin-only routes turn it on.
 - **Abuse limits.** Each instance has a per-uid token bucket (default 10 req/s, burst 30; config).
-  Cloud Run `max-instances` bounds the total. App Check can be added in front later if the owner
+  The bucket is **per instance**, so a user's effective ceiling is the limit × `max-instances`
+  (2 → 20 req/s). That is accepted for the pilot; a global limit would need shared state
+  (Firestore or Redis) and is not proposed. App Check can be added in front later if the owner
   enables it (as in the assistant design).
 - **CORS.** Same-origin through a Firebase Hosting rewrite (`/api/**` → the Cloud Run service), so
   the dashboard's CSP `connect-src 'self'` is unchanged. See §11 Q1 for the region caveat.
@@ -152,7 +156,7 @@ versioned snapshots.
   "data": { ... },                       // present when ok (and on partial rows; see compare)
   "reason": "cohort_too_small",          // when not_enough_data
   "detail": {"en": "...", "ar": "..."},  // human text for the reason
-  "cohort": {"description": "exact accepted pairs, same size, both priced", "n": 12},
+  "cohort": {"description": "exact approved/locked pairs, same size, both priced", "n": 12},
   "caveats": [{"en": "Retailer X partial: 412 products loaded", "ar": "..."}],
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
@@ -174,7 +178,7 @@ versioned snapshots.
 - `matches_unreviewed`
 - `no_match`
 - `not_in_scope`
-- `currency_mismatch` (new: sides in different currencies with no pinned FX rate, ADR-0007 §6)
+- `currency_mismatch` (new: sides in different currencies, ADR-0007 §6; see §7.2)
 
 An empty result is `ok` with `total: 0` only when the data was complete. Otherwise it is one of
 these reasons. A missing value is never a zero.
@@ -187,6 +191,7 @@ these reasons. A missing value is never a zero.
 | 401 | `unauthenticated` |
 | 403 | `forbidden` / `out_of_scope` |
 | 404 | `not_found` |
+| 409 | `stale_cursor` (the cursor's generation is no longer loaded; restart paging) |
 | 429 | `rate_limited` (with `Retry-After`) |
 | 503 | `data_unavailable` |
 
@@ -291,27 +296,47 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   Needs `capabilities.promotions`.
 - **`/v1/assortment-gaps`:** `missingAt`, `presentAt`, `brand`, `category`. Returns `{total,
   byBrand[{brand, count}], items: ProductCard[]}`, with the absence rules (§7).
-- **`/v1/availability`:** `retailer[]`, `brand`, `category`. Returns `{inStock, outOfStock,
-  lowStock, unknown}` counts and shares per retailer. `unknown`, `blocked` and `not_observed` are
-  never folded into out-of-stock.
+- **`/v1/availability`:** `retailer[]`, `brand`, `category`, `date` (default: the latest).
+  Returns, per retailer, a count for **every** blueprint state (`pi_core.AvailabilityState`):
+  `inStock`, `lowStock`, `outOfStock`, `notDeliverable`, `removed`, `notObserved`, `blocked`,
+  `unknown`. Shares use only the observed states (`AvailabilityState.is_known`) as the
+  denominator, and the response states that denominator.
+  - `notObserved`, `blocked` and `unknown` are never folded into out-of-stock or removed.
+  - `removed` is reported only when the retailer's crawl for that date was **complete**
+    (`status = supported`, no `notObserved` window covering the date and category). After a
+    partial or blocked run the product is `notObserved`, and a caveat names the run.
+  - A retailer that is `partial` or `blocked` for the date gets its counts plus
+    `not_enough_data` / `retailer_partial` or `retailer_blocked` for the shares.
 - **`/v1/launches`:** `retailer`, `since`, `category`. Returns `items[{id, name, retailer,
   firstSeen}]`. Needs two or more runs (`capability_off:history`).
+  - A product is a launch on date *d* only if it was **not** seen at that retailer on the
+    previous date *and* that previous run was **complete** for its category (`supported`, no
+    `notObserved` window covering it). First-seen after a partial or blocked run is not a launch:
+    the retailer's catalogue simply wasn't observed. Those items are withheld and counted in a
+    caveat ("n items first seen after an incomplete run").
+  - First-seen on the first date of the dataset is never a launch.
 - **`/v1/reviews-summary`:** `id | brand | category`. Returns `{n, avgRating, ratingCount}` per
   retailer. The rating distribution and themes → `field_not_collected`. There is no review text.
 - **`/v1/coverage`:** `retailer[]`. Returns `retailers[{id, name, status, since, note,
   productCount, matchedCount, freshness}]`, `capabilities`, `fields` and `notObserved`. Admins also
   get rungs, run ids and block counts.
 - **`/v1/matches`:** `class`, `reviewState`, `retailers`, `brand`, `limit`, `cursor`. Returns
-  edges with confidence and rationale. Viewers see `accepted|auto_accepted|locked`; admins see all
-  states. **`locked` stays distinct from `accepted`** all the way from `pi_db` through v2 to here
-  (the v1 exporter merges them; the v1 adapter marks that with a caveat).
+  edges with confidence and rationale. The review states are the canonical `pi_core.ReviewState`
+  set: `proposed`, `approved`, `rejected`, `locked` (there is no `accepted`, `auto_accepted` or
+  `pending` state; "accepted" was the v1 UI label). Viewers see `approved|locked`; admins see all
+  states. **`locked` stays distinct from `approved`** all the way from `pi_db` through v2 to here.
+  The v1 exporter merged both into `accepted`; the v1 adapter maps that to `approved` and adds a
+  caveat that locked edges can't be told apart in v1.
 - **`/v1/export/{view}`:** `view ∈ {products, compare, index, promotions, assortment-gaps,
   coverage}`, `format=csv|jsonl`, plus that view's filters.
   - It streams exactly the rows the view's endpoint returns, from the same `pi_metrics` call.
   - Row cap 50 k.
   - A manifest header row (or `#` comment for CSV) gives the cutoff, generation, filters and
     apiVersion.
-  - Each export is audited.
+  - Each export is audited: one structured Cloud Logging entry (`pi_api.export`) with the uid,
+    role, view, filters, row count, generation and apiVersion, and never row content. It goes to
+    the project's default `_Default` bucket (30-day retention, within the free allotment). A
+    longer retention sink needs the owner's approval and is not proposed.
 
 ## 7. Metric rules (owned by `pi_metrics`)
 
@@ -321,14 +346,18 @@ client.
 1. **Money** is Decimal throughout, and rounds once at the edge (§5).
 2. **Counted pairs.** Price gaps and indexes count a pair only if **all** of these hold:
    - `matchClass = exact`;
-   - `reviewState ∈ {accepted, auto_accepted}`;
+   - `reviewState ∈ {approved, locked}` (both are human-confirmed; `locked` is also frozen
+     against re-matching);
    - the same normalised size;
    - both sides priced;
    - neither side `early` (recon samples);
-   - the same currency, or a pinned FX rate for the date (labelled). Otherwise the reason is
-     `currency_mismatch`.
+   - the same currency. Otherwise the reason is `currency_mismatch`. **There is no FX path in
+     v1 of the API:** neither contract carries rates, and no rate source is approved. Adding one
+     means a dated, sourced rate table in the contract (`meta.fx[]`, with the rate's date and
+     source) and a `metricVersion` bump; converted values would then be labelled. Until then a
+     cross-currency pair is never converted.
 
-   `proposed`, `pending`, `rejected` and `locked` edges are never counted. Every excluded row
+   `proposed` and `rejected` edges are never counted. Every excluded row
    carries `excludedReason`.
 3. **Absence claims (assortment gaps).**
    - If the "missing at" retailer is `partial` → `not_enough_data` / `retailer_partial`.
@@ -342,8 +371,11 @@ client.
 5. **Gap convention.** `gapAmount = other − base`, `gapPct = (other − base) / base × 100`,
    `cheaper ∈ {base, other, equal}`. `convention` is stated in the response.
 6. **Index.** Σ other / Σ base × 100 over a **fixed basket**: the pairs counted on the first date
-   of the window, and still counted on each later date. Each point reports its own `n`. A single
-   date gives one point and `trendAvailable: false`. There is no extrapolation.
+   of the window, and still counted on each later date. Each point reports its own `n`, and the
+   cohort rule applies **per point**: a point with n < 5 has `index: null` and
+   `reason: cohort_too_small`, and the line has a gap there, not an interpolated value. If the
+   first date's basket has n < 5, the whole response is `not_enough_data` / `cohort_too_small`.
+   A single date gives one point and `trendAvailable: false`. There is no extrapolation.
 7. **Markets are data.** Currency and exponents come from `pi_core`, and retailers from the
    dataset. There are no literals.
 
@@ -373,11 +405,24 @@ and is recorded in `docs/decision-log.md`.
   3.12, uvicorn, one worker) from Artifact Registry in the same region.
 - **Scaling.** `min-instances=0` (scales to zero), `max-instances=2`, concurrency 40,
   1 vCPU / 512 MiB, request-based billing (CPU only during requests), timeout 30 s.
-- **Identity.** A dedicated runtime service account `pi-api@` with `roles/storage.objectViewer`
-  limited to the `datasets/` prefix (IAM condition). It has **no** Secret Manager or DB roles, and
-  no Firebase admin roles. Token verification needs only public certificates.
+- **Identity.** A dedicated runtime service account `pi-api@` that can **read objects** under
+  `datasets/` and nothing else. It has **no** Secret Manager or DB roles, and no Firebase admin
+  roles. Token verification needs only public certificates.
+  - IAM conditions on object names work only with **uniform bucket-level access (UBLA)** on the
+    bucket; Infra confirms it is on (or enables it) before granting.
+  - A `resource.name.startsWith("projects/_/buckets/<bucket>/objects/datasets/")` condition
+    covers `objects.get`, but **not** `objects.list`, which is checked against the bucket. The API
+    therefore never lists: it reads the configured `PI_API_DATASETS` paths, and the generation
+    check is an object metadata GET. The grant is a custom role with `storage.objects.get` only
+    (not `objectViewer`, whose list permission would be denied by the condition anyway).
 - **Deploy.** Infra deploys it, with a Cloud Build or GitHub Actions workflow that Infra owns.
-  This design adds no paid resources beyond the Cloud Run service and its image.
+- **Approval first.** The Cloud Run service `pi-api` and its Artifact Registry repository are
+  **new standing billable resources** (small, see below, but not zero). They fall within the
+  owner's $25/month GCP delegation to the Program Coordinator. Neither is created until a
+  **coordinator approval entry is recorded in `docs/decision-log.md`**, naming both resources, the
+  region and scaling limits, and citing the cost estimate below against the remaining budget. If
+  the estimate exceeds the remaining budget, the decision escalates to the owner. S4's deploy
+  handoff is gated on that entry.
 
 **Estimate** (verify against the GCP price list on the day; me-central1 is a Tier 2 region):
 
@@ -399,8 +444,12 @@ Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of
   - index scale: multiplying all "other" prices by k multiplies the index by k;
   - the basket stays fixed across dates;
   - only permitted pairs are counted;
-  - n < 5 → `cohort_too_small`;
+  - n < 5 → `cohort_too_small`, including per index point;
+  - only `exact` + `approved|locked` edges count, and a locked edge stays `locked` end to end;
   - partial or blocked → the absence rules;
+  - no launch and no `removed` after a partial or blocked prior run;
+  - every `AvailabilityState` appears in `/v1/availability`, with only known states as the
+    denominator;
   - rounding is half away from zero, at each currency's exponent;
   - no float ever reaches the output.
 - **Fixture datasets** (synthetic, committed, no retailer data):
@@ -414,7 +463,8 @@ Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of
   - scope claims with enforcement on and off;
   - viewer responses contain no admin-only field (a schema walk);
   - strict inputs return `422`;
-  - `ETag`/`304`, and a stale cursor returns `409`;
+  - `ETag`/`304`, with different ETags for a viewer and an admin (and for different scope
+    claims) on the same request, and a stale cursor returns `409`;
   - the `503` path on an invalid dataset;
   - the atomic reload on a generation change (fake storage client).
 - **Contract tests:**
