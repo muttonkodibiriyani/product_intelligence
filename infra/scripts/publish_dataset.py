@@ -13,7 +13,9 @@ rollback), and mirrors meta to Firestore demo_meta/current.
 """
 
 import argparse
+import base64
 import gzip
+import hashlib
 import json
 import re
 import sys
@@ -22,6 +24,7 @@ from typing import Any
 
 import firebase_admin
 from firebase_admin import firestore, storage
+from google.api_core.exceptions import PreconditionFailed
 
 SCHEMA = "pi.dataset/v1"
 # Never ship Algolia credentials: header/param names, or a 32-hex key next to an Algolia hint.
@@ -60,6 +63,11 @@ def validate(doc: dict[str, Any], raw: str, *, allow_test: bool) -> list[str]:
     return errors
 
 
+def blob_md5(body: bytes) -> str:
+    """MD5 in the base64 form GCS reports as blob.md5_hash."""
+    return base64.b64encode(hashlib.md5(body).digest()).decode()  # noqa: S324 (GCS checksum)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("path", type=Path)
@@ -78,9 +86,12 @@ def main() -> int:
             print(f"INVALID: {err}", file=sys.stderr)
         return 1
     meta = doc["meta"]
-    body = gzip.compress(json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode())
+    body = gzip.compress(
+        json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode(), mtime=0
+    )
     stamp = re.sub(r"[^0-9TZ]", "", str(meta["cutoff"]))
-    paths = [f"{args.prefix}/latest.json", f"{args.prefix}/{stamp}.json"]
+    # Snapshot first: if that cutoff was already published differently, latest.json stays untouched.
+    paths = [f"{args.prefix}/{stamp}.json", f"{args.prefix}/latest.json"]
     summary = {
         "schema": SCHEMA,
         "kind": meta["kind"],
@@ -93,7 +104,7 @@ def main() -> int:
             {k: r.get(k) for k in ("id", "key", "name", "status", "since")}
             for r in meta["retailers"]
         ],
-        "storagePath": paths[0],
+        "storagePath": paths[-1],
     }
     print(json.dumps(summary, ensure_ascii=False), f"gzip={len(body)}B", sep="\n")
     if args.dry_run:
@@ -106,7 +117,23 @@ def main() -> int:
         blob = bucket.blob(path)
         blob.content_encoding = "gzip"
         blob.cache_control = "private, no-cache"
-        blob.upload_from_string(body, content_type="application/json; charset=utf-8")
+        if path.endswith("/latest.json"):
+            blob.upload_from_string(body, content_type="application/json; charset=utf-8")
+        else:
+            # A cutoff snapshot is immutable: create-only, identical re-publish is a no-op.
+            try:
+                blob.upload_from_string(
+                    body, content_type="application/json; charset=utf-8", if_generation_match=0
+                )
+            except PreconditionFailed:
+                existing = bucket.get_blob(path)
+                if existing is None or existing.md5_hash != blob_md5(body):
+                    print(
+                        f"refusing: {path} already exists with different content", file=sys.stderr
+                    )
+                    return 1
+                print(f"unchanged gs://{bucket_name}/{path}")
+                continue
         print(f"uploaded gs://{bucket_name}/{path}")
     firestore.client().collection("demo_meta").document("current").set(summary)
     print("wrote firestore demo_meta/current")
