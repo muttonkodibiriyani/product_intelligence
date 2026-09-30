@@ -290,3 +290,32 @@ def test_non_stock_states_never_override_a_known_stock_state(conn: Conn, state: 
     world.observe(refresh, "A", 5, None, availability=state, field_state=STOCK_ONLY)
 
     assert _row(world, "A")["availability"] == "in_stock"
+
+
+@pytest.mark.parametrize("reason", ["unknown", "blocked", "parse_failure"])
+def test_price_non_observation_keeps_the_baseline_price(conn: Conn, reason: str) -> None:
+    world = World(conn)
+    baseline = world.run("succeeded", 1)
+    world.observe(baseline, "A", 1, "10", availability="in_stock")
+    refresh = world.run("partial", 5)
+    world.observe(
+        refresh, "A", 5, None, availability="not_observed",
+        field_state=f'{{"price_current": "{reason}"}}',
+    )  # fmt: skip
+
+    a = _row(world, "A")
+    assert (a["price"], a["price_run_id"]) == (Decimal("10"), baseline)
+
+
+def test_not_published_price_is_an_observation(conn: Conn) -> None:
+    world = World(conn)
+    baseline = world.run("succeeded", 1)
+    world.observe(baseline, "A", 1, "10", availability="in_stock")
+    refresh = world.run("partial", 5)
+    world.observe(
+        refresh, "A", 5, None, availability="not_observed",
+        field_state='{"price_current": "not_published"}',
+    )  # fmt: skip
+
+    a = _row(world, "A")
+    assert (a["price"], a["price_run_id"]) == (None, refresh)

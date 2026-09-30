@@ -231,13 +231,16 @@ latest_any AS (
 latest_price AS (
   SELECT DISTINCT ON (source_listing_id) *
   FROM obs
-  WHERE (field_state ->> 'price_current') IS DISTINCT FROM 'unknown'
+  -- Not a price observation: field_state price_current unknown, blocked or parse_failure.
+  -- not_published, restricted and not_applicable are observations and do win.
+  WHERE COALESCE(field_state ->> 'price_current', '') NOT IN ('unknown', 'blocked', 'parse_failure')
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
 latest_stock AS (
   SELECT DISTINCT ON (source_listing_id) source_listing_id, availability_state
   FROM obs
-  -- not_observed, unknown and blocked are not stock states: they never replace a known one.
+  -- Not a stock observation: availability not_observed, unknown or blocked; never replaces a
+  -- known state.
   WHERE availability_state NOT IN ('not_observed', 'unknown', 'blocked')
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
