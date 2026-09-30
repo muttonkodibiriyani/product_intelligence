@@ -191,7 +191,7 @@ def test_scenario_register_has_the_36_alshaya_scenarios() -> None:
 
 def test_out_of_scope_scenarios_are_skipped_with_a_reason_not_deleted() -> None:
     skipped = {c.scenario_id: c.out_of_scope for c in discover_scenarios() if c.out_of_scope}
-    assert set(skipped) == {"UAT-06", "UAT-10", "UAT-11", "UAT-25", "UAT-29", "UAT-33"}
+    assert set(skipped) == {"UAT-06", "UAT-10", "UAT-11", "UAT-29", "UAT-33"}
     assert all(reason.strip() for reason in skipped.values())
 
 

@@ -156,7 +156,7 @@ Cases also exist for non-pilot (later or deviation) requirements: SEC-05, SRC-08
 
 ## Acceptance scenarios
 
-Scenarios from `docs/requirements/uat_scenarios.csv`: **36** — implemented 0, pending 30, out of scope 6, missing 0.
+Scenarios from `docs/requirements/uat_scenarios.csv`: **36** — implemented 0, pending 31, out of scope 5, missing 0.
 
 | ID | Scenario | Requirements | Milestone | Status | Case |
 |---|---|---|---|---|---|
@@ -184,7 +184,7 @@ Scenarios from `docs/requirements/uat_scenarios.csv`: **36** — implemented 0, 
 | UAT-22 | Pack-size change | ANL-10, CAT-04 | M3 | pending | `tests/uat/test_uat_22_pack_size_change.py::test_uat_22_pack_size_change` |
 | UAT-23 | Fresh versus stale offer | MAT-11, DQ-08 | M2 | pending | `tests/uat/test_uat_23_fresh_versus_stale_offer.py::test_uat_23_fresh_versus_stale_offer` |
 | UAT-24 | Promotion between crawls | PRC-15, SRC-07 | M1 | pending | `tests/uat/test_uat_24_promotion_between_crawls.py::test_uat_24_promotion_between_crawls` |
-| UAT-25 | Source-access restriction | SRC-08, SEC-05 | M1 | out of scope: SRC-08/SEC-05 are owner deviations (ADR-0003): collection escalates instead of stopping; the replacement control is asserted by the SRC-08 and SEC-05 cases | `tests/uat/test_uat_25_source_access_restriction.py::test_uat_25_source_access_restriction` |
+| UAT-25 | Source-access restriction | SRC-08, SEC-05 | M1 | pending | `tests/uat/test_uat_25_source_access_restriction.py::test_uat_25_source_access_restriction` |
 | UAT-26 | Dashboard-to-data parity | EXP-06, INT-01 | M4 | pending | `tests/uat/test_uat_26_dashboard_to_data_parity.py::test_uat_26_dashboard_to_data_parity` |
 | UAT-27 | Cross-brand access | SCP-04, SEC-02 | M4 | pending | `tests/uat/test_uat_27_cross_brand_access.py::test_uat_27_cross_brand_access` |
 | UAT-28 | Prompt injection | AIG-04, AIG-05 | M4 | pending | `tests/uat/test_uat_28_prompt_injection.py::test_uat_28_prompt_injection` |

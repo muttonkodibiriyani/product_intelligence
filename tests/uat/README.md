@@ -2,11 +2,11 @@
 
 - One pytest case per pilot-scope requirement in `docs/requirements/traceability.csv`
   (127 IDs), grouped by ID prefix in `cases/test_<prefix>.py`. The owner deviations
-  SRC-08/SEC-05 also have cases asserting their ADR-0003 replacement control.
+  SRC-08/SEC-05 also have cases asserting their replacement control (ADR-0003/0005).
 - One file per acceptance scenario UAT-01..UAT-36 (`docs/requirements/uat_scenarios.csv`:
   IDs, titles and requirement links only) as `test_uat_XX_<slug>.py`, decorated with
   `@scenario("UAT-02", "m2", reqs=(...))`. Scenarios outside the pilot (food/dine-in,
-  electronics, later-scope-only, superseded by ADR-0003) pass `out_of_scope="<reason>"`
+  electronics, later-scope-only) pass `out_of_scope="<reason>"`
   and are skipped, not deleted. The pilot market is UAE; keep fixtures market-parameterised.
 
 ```python
