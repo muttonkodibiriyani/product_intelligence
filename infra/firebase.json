@@ -5,13 +5,94 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "hosting": {
+    "public": "web-dist",
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(), microphone=(), geolocation=()"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(html|json)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  },
   "emulators": {
-    "auth": { "host": "127.0.0.1", "port": 59099 },
-    "firestore": { "host": "127.0.0.1", "port": 58080 },
-    "storage": { "host": "127.0.0.1", "port": 59199 },
-    "hub": { "host": "127.0.0.1", "port": 54400 },
-    "logging": { "host": "127.0.0.1", "port": 54500 },
-    "ui": { "enabled": true, "host": "127.0.0.1", "port": 54000 },
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 59099
+    },
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 58080
+    },
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 59199
+    },
+    "hub": {
+      "host": "127.0.0.1",
+      "port": 54400
+    },
+    "logging": {
+      "host": "127.0.0.1",
+      "port": 54500
+    },
+    "ui": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 54000
+    },
     "singleProjectMode": true
   }
 }

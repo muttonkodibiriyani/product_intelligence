@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://productintelligence-beeb3.web.app", "https://productintelligence-beeb3.firebaseapp.com"],
+    "method": ["GET"],
+    "responseHeader": ["Content-Type", "Authorization", "Content-Encoding"],
+    "maxAgeSeconds": 3600
+  }
+]

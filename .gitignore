@@ -41,3 +41,5 @@ images/
 .idea/
 .vscode/
 .DS_Store
+# Static web build copied in at deploy time (never committed)
+infra/web-dist/
