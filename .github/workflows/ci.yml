@@ -53,11 +53,38 @@ jobs:
       - name: mypy (strict)
         run: uv run mypy
       - name: pytest + coverage (no database, no browser)
-        run: uv run pytest -m "not db and not browser" --cov=pi_core --cov-report=term
+        run: uv run pytest -m "not db and not browser and not emulator" --cov=pi_core --cov-report=term
       - name: pytest real-browser tests (0 skips allowed)
         run: |
           uv run pytest -m browser -rs --junitxml="$RUNNER_TEMP/browser.xml"
           python3 .github/scripts/assert_no_skips.py "$RUNNER_TEMP/browser.xml"
+
+  firebase-rules:
+    name: Firebase rules — Firestore/Storage emulators
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install
+        run: uv sync --locked
+      # demo- project: the emulators never reach real Firebase and need no credentials. The rules
+      # module skips itself without the emulators, so CI refuses any skip.
+      - name: pytest -m emulator against infra/firebase.json rules (0 skips allowed)
+        run: |
+          npx -y firebase-tools@14 emulators:exec --config infra/firebase.json --project demo-pi \
+            --only firestore,storage \
+            "uv run pytest infra/tests -m emulator -rs --junitxml=$RUNNER_TEMP/emulator.xml"
+          python3 .github/scripts/assert_no_skips.py "$RUNNER_TEMP/emulator.xml"
 
   audit:
     name: Dependency audit (pip-audit, locked deps)
