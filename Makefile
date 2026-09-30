@@ -1,4 +1,4 @@
-.PHONY: install lint format types test check up down db-shell emulators
+.PHONY: install lint format types test uat uat-status check up down db-shell emulators
 
 install:
 	uv sync
@@ -16,6 +16,14 @@ types:
 
 test:
 	uv run pytest --cov --cov-report=term
+
+# UAT scenarios only; filter by milestone with e.g. `make uat M=m1`.
+uat:
+	uv run pytest tests/uat -m "uat$(if $(M), and $(M))" -rxX
+
+# Regenerate docs/requirements/uat_status.md after adding or implementing UAT cases.
+uat-status:
+	PYTHONPATH=tests uv run python -m uat.report
 
 # Everything CI runs. Must pass before any PR is merged.
 check: lint types test
