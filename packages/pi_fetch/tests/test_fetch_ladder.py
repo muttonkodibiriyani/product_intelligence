@@ -231,13 +231,25 @@ def test_obeyed_robots_refuses_disallowed_url_before_any_page_request(
         raw(500, b"err"),
         raw(401, b"auth"),
         raw(403, b"denied"),
+        raw(400, b"bad"),
         raw(418, b"teapot"),
         raw(429, b"slow"),
         raw(200, b"<html>Just a moment...</html>"),
         raw(200, b"\n<!DOCTYPE html><title>x</title>", (("content-type", "text/plain"),)),
         None,
     ],
-    ids=["503", "500", "401", "403", "418", "429", "html-2xx", "html-body-2xx", "transport-error"],
+    ids=[
+        "503",
+        "500",
+        "401",
+        "403",
+        "400",
+        "418",
+        "429",
+        "html-2xx",
+        "html-body-2xx",
+        "transport-error",
+    ],
 )
 def test_unreadable_robots_refuses_every_url(
     tmp_path: Path, robots_response: RawResponse | None
@@ -277,6 +289,42 @@ def test_default_robots_groups_use_the_user_agent_product_token(tmp_path: Path) 
     f = fetcher(tmp_path, factory, robots=None)
     with pytest.raises(RobotsRefusedError):
         f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
+
+
+def test_policy_robots_agent_selects_the_group(tmp_path: Path) -> None:
+    text = (("content-type", "text/plain"),)
+    robots_txt = b"User-agent: *\nAllow: /\n\nUser-agent: PIBot\nDisallow: /p/\n"
+    policy = FetchPolicy(browsers=PINNED, robots_agent="pibot")
+    factory = ScriptedFactory(raw(200, robots_txt, text))
+    f = fetcher(tmp_path, factory, robots=None, policy=policy)
+    with pytest.raises(RobotsRefusedError):
+        f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
+
+
+@pytest.mark.parametrize(
+    "token", ["Googlebot", "bingbot", "GPTBot", "Mediapartners-Google", "OAI-SearchBot", "*"]
+)
+def test_robots_agent_must_be_our_own_token(token: str) -> None:
+    with pytest.raises(ValueError, match="is not ours"):
+        FetchPolicy(robots_agent=token)
+
+
+@pytest.mark.parametrize(
+    "user_agent",
+    [
+        "Googlebot/2.1 (+http://www.google.com/bot.html)",
+        "Mediapartners-Google",
+        "PerplexityBot/1.0",
+    ],
+)
+def test_user_agent_product_token_must_be_ours(user_agent: str) -> None:
+    with pytest.raises(ValueError, match="is not ours"):
+        FetchPolicy(user_agent=user_agent)
+
+
+def test_default_robots_token_is_mozilla() -> None:
+    assert FetchPolicy().robots_group_agent == "Mozilla"
+    assert FetchPolicy(robots_agent="PIBot").robots_group_agent == "PIBot"
 
 
 def test_robots_is_read_over_plain_http_even_for_a_browser_fetch(tmp_path: Path) -> None:

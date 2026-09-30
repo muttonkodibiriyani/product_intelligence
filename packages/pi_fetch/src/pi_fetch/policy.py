@@ -15,12 +15,13 @@ are never redefined here. On top of that:
 import os
 from collections.abc import Mapping
 from enum import StrEnum
+from typing import Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from pi_core import CollectionContext, FetchMethod, LadderRung, PiModel, SourceContext
 from pi_core.types import DbId, NonEmptyStr
-from pi_fetch.pacing import MIN_INTERVAL_FLOOR_S, RobotsMode
+from pi_fetch.pacing import MIN_INTERVAL_FLOOR_S, RobotsMode, product_token
 from pi_fetch.types import BrowserProfile, FetchRequest, PayloadKind
 
 #: Egress name recorded on results fetched from the default (direct) network path.
@@ -31,6 +32,11 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/140.0.0.0 Safari/537.36"
 )
+
+#: The only robots.txt group tokens we may select: the product token of our normal browser
+#: User-Agent and our own name. An allowlist, so no configuration can pick another crawler's
+#: (possibly more permissive) group or claim its identity.
+OWN_ROBOTS_TOKENS = frozenset({"mozilla", "pibot"})
 
 _RUNG0_METHOD: dict[PayloadKind, FetchMethod] = {
     PayloadKind.XML: FetchMethod.SITEMAP,
@@ -80,6 +86,8 @@ class FetchPolicy(PiModel):
     """Runtime fetch configuration. The defaults allow rungs 0, 1 and 2 only."""
 
     user_agent: NonEmptyStr = DEFAULT_USER_AGENT
+    #: The robots.txt group token (RFC 9309 §2.2.1). None: the product token of ``user_agent``.
+    robots_agent: NonEmptyStr | None = None
     timeout_s: float = 30.0
     #: Rung 4: e.g. the Gulf Cloud Run egress. None disables the rung.
     egress_variation: EgressProfile | None = None
@@ -101,6 +109,20 @@ class FetchPolicy(PiModel):
             msg = f"page_interval_s below {MIN_INTERVAL_FLOOR_S}s for sources {too_fast}"
             raise ValueError(msg)
         return value
+
+    @model_validator(mode="after")
+    def _check_robots_agent_is_ours(self) -> Self:
+        token = self.robots_group_agent
+        if token.lower() not in OWN_ROBOTS_TOKENS:
+            allowed = sorted(OWN_ROBOTS_TOKENS)
+            msg = f"robots token {token!r} (robots_agent or user_agent) is not ours: {allowed}"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def robots_group_agent(self) -> str:
+        """The effective robots.txt group token: ``robots_agent``, else the UA product token."""
+        return self.robots_agent or product_token(self.user_agent)
 
     def robots_mode_for(self, source_id: DbId) -> RobotsMode:
         """OBEY unless the source is explicitly configured otherwise."""
