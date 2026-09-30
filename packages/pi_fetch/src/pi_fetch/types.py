@@ -146,6 +146,11 @@ class CapturedJson(PiModel):
     body: bytes
 
 
+#: Rungs whose fetch is made by a browser: rung 2, rung 4 (egress variation) and rung 5 (the
+#: residential proxy carries the pinned browser).
+BROWSER_RUNGS = frozenset({LadderRung.BROWSER, LadderRung.EGRESS_VARIATION, LadderRung.PAID_PROXY})
+
+
 class FetchResult(PiModel):
     """Outcome of one fetch, with the audit of how it was made. Never raised; check ``ok``."""
 
@@ -183,20 +188,11 @@ class FetchResult(PiModel):
         if self.fetch_method is FetchMethod.PLAYWRIGHT and self.browser is None:
             msg = "a browser fetch must record its browser profile"
             raise ValueError(msg)
-        if self.browser is not None and self.ladder_rung_used not in {
-            LadderRung.BROWSER,
-            LadderRung.EGRESS_VARIATION,
-            LadderRung.PAID_PROXY,  # the residential proxy carries the pinned browser
-        }:
+        if self.browser is not None and self.ladder_rung_used not in BROWSER_RUNGS:
             msg = "only a browser fetch has a browser profile"
             raise ValueError(msg)
+        # A browser profile implies a browser rung (above), so this covers rung 5 too.
         if self.captured_json and self.browser is None:
-            msg = "captured_json only comes from a browser fetch"
-            raise ValueError(msg)
-        if self.captured_json and self.ladder_rung_used not in {
-            LadderRung.BROWSER,
-            LadderRung.EGRESS_VARIATION,
-        }:
             msg = "captured_json only comes from a browser fetch"
             raise ValueError(msg)
         return self
