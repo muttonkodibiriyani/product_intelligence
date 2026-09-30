@@ -14,6 +14,17 @@ from pi_connector_ulta._pi_fetch_stub import (
 )
 
 
+def test_ladder_rungs_exactly_mirror_pi_core() -> None:
+    assert [(rung.name, rung.value) for rung in LadderRung] == [
+        ("SITE_DATA", 0),
+        ("PLAIN_HTTP", 1),
+        ("BROWSER", 2),
+        ("STEALTH_BROWSER", 3),
+        ("EGRESS_VARIATION", 4),
+        ("PAID_PROXY", 5),
+    ]
+
+
 def _result(*, status: int = 200, blocked: bool = False) -> FetchResult:
     request = FetchRequest(
         url=HttpUrl("https://www.ulta.ae/en/product/example/P1"),

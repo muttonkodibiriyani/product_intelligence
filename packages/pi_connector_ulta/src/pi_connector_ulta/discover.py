@@ -61,6 +61,6 @@ def discover_category(document: str) -> tuple[ListingKey, ...]:
             continue
         url = item.get("url")
         product_id = item.get("id")
-        if isinstance(url, str) and _is_ulta_product_url(url):
+        if isinstance(url, str) and _is_ulta_product_url(url) and "/product/" in urlparse(url).path:
             found[url] = ListingKey(url, str(product_id) if product_id is not None else None)
     return tuple(found[url] for url in sorted(found))

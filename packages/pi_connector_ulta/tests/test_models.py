@@ -52,25 +52,33 @@ def test_localized_text_needs_a_non_empty_locale() -> None:
         LocalizedText(en="", ar=None)
 
 
-def test_unknown_and_blocked_stock_require_reasons() -> None:
-    for state in (StockState.UNKNOWN, StockState.BLOCKED):
-        with pytest.raises(ValidationError, match="requires a reason"):
-            Stock(state=state)
-
-
-def test_blocked_stock_cannot_claim_quantity() -> None:
-    with pytest.raises(ValidationError, match="cannot carry a quantity"):
-        Stock(state=StockState.BLOCKED, quantity=0, reason="403")
+def test_unknown_stock_requires_a_reason() -> None:
+    with pytest.raises(ValidationError, match="requires a reason"):
+        Stock(state=StockState.UNKNOWN)
 
 
 def test_out_of_stock_rejects_positive_quantity() -> None:
     with pytest.raises(ValidationError, match="quantity must be zero"):
-        Stock(state=StockState.OUT_OF_STOCK, quantity=2)
+        Stock(state=StockState.OUT_OF_STOCK, quantity=2, source_field_observed=True)
+
+
+def test_out_of_stock_requires_an_explicit_source_field() -> None:
+    with pytest.raises(ValidationError, match="explicitly observed"):
+        Stock(state=StockState.OUT_OF_STOCK, quantity=0)
+    stock = Stock(state=StockState.OUT_OF_STOCK, quantity=0, source_field_observed=True)
+    assert stock.state is StockState.OUT_OF_STOCK
 
 
 def test_ratings_are_complete_or_explained() -> None:
-    with pytest.raises(ValidationError, match="both be present"):
+    with pytest.raises(ValidationError, match="all be present"):
         Ratings(average=Decimal("4"), count=None)
     with pytest.raises(ValidationError, match="missing ratings require"):
         Ratings()
     assert Ratings(average=None, count=None, reason="not published").average is None
+
+
+def test_ratings_carry_and_enforce_the_published_scale() -> None:
+    rating = Ratings(average=Decimal("7.5"), count=4, rating_scale=Decimal("10"))
+    assert rating.rating_scale == Decimal("10")
+    with pytest.raises(ValidationError, match="cannot exceed"):
+        Ratings(average=Decimal("7.5"), count=4, rating_scale=Decimal("5"))

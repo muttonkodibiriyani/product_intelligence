@@ -29,7 +29,14 @@ def test_invalid_category_raises(document: str) -> None:
 
 def test_category_ignores_malformed_and_insecure_urls() -> None:
     document = json.dumps(
-        {"items": [None, {"url": 3}, {"url": "http://www.ulta.ae/en/product/no"}]}
+        {
+            "items": [
+                None,
+                {"url": 3},
+                {"url": "http://www.ulta.ae/en/product/no"},
+                {"url": "https://www.ulta.ae/en/category/makeup"},
+            ]
+        }
     )
     assert discover_category(document) == ()
 

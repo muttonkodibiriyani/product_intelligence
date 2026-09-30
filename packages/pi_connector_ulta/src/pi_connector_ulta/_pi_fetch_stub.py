@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import datetime
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import ClassVar, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
@@ -26,12 +26,13 @@ class Locale(StrEnum):
     AR = "ar"
 
 
-class LadderRung(StrEnum):
-    PLAIN_HTTP = "plain_http"
-    BROWSER_HEADERS = "browser_headers"
-    PLAYWRIGHT = "playwright"
-    EGRESS_VARIATION = "egress_variation"
-    RESIDENTIAL_PROXY = "residential_proxy"
+class LadderRung(IntEnum):
+    SITE_DATA = 0
+    PLAIN_HTTP = 1
+    BROWSER = 2
+    STEALTH_BROWSER = 3  # Represented by pi_core but forbidden by collection policy.
+    EGRESS_VARIATION = 4
+    PAID_PROXY = 5
 
 
 class FetchMethod(StrEnum):

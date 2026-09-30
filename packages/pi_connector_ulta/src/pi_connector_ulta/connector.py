@@ -55,6 +55,10 @@ class UltaConnector:
         del ctx
         if result.block is not None:
             raise ParseError("blocked fetch results must never be parsed")
+        if not result.ok:
+            raise ParseError(
+                f"unsuccessful fetch status {result.http_status}: not observed; no records emitted"
+            )
         try:
             document = result.body.decode("utf-8")
         except UnicodeDecodeError as exc:

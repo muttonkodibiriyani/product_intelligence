@@ -13,7 +13,7 @@
     "ingredients": {"en": "Wax, oil", "ar": "شمع، زيت"},
     "directions": {"en": "Apply to lips", "ar": "يوضع على الشفاه"}
   },
-  "ratings": {"average": "4.5", "count": 12},
+  "ratings": {"average": "4.5", "count": 12, "rating_scale": "5"},
   "promotions": [
     {
       "promotion_id": "PROMO10",

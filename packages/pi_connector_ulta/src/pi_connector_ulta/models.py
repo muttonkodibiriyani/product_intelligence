@@ -76,12 +76,11 @@ class Promotion(FrozenModel):
 
 
 class StockState(StrEnum):
-    """Source stock state. Access failures remain unknown or blocked."""
+    """Source stock state. Access failures remain unknown."""
 
     IN_STOCK = "in_stock"
     OUT_OF_STOCK = "out_of_stock"
     UNKNOWN = "unknown"
-    BLOCKED = "blocked"
 
 
 class Stock(FrozenModel):
@@ -90,15 +89,16 @@ class Stock(FrozenModel):
     state: StockState
     quantity: Annotated[int, Field(ge=0)] | None = None
     reason: str | None = None
+    source_field_observed: bool = False
 
     @model_validator(mode="after")
     def validate_state_details(self) -> Self:
-        if self.state in {StockState.UNKNOWN, StockState.BLOCKED} and not self.reason:
-            raise ValueError("unknown or blocked stock requires a reason")
-        if self.state is StockState.BLOCKED and self.quantity is not None:
-            raise ValueError("blocked stock cannot carry a quantity")
+        if self.state is StockState.UNKNOWN and not self.reason:
+            raise ValueError("unknown stock requires a reason")
         if self.state is StockState.OUT_OF_STOCK and self.quantity not in {None, 0}:
             raise ValueError("out-of-stock quantity must be zero or absent")
+        if self.state is StockState.OUT_OF_STOCK and not self.source_field_observed:
+            raise ValueError("out-of-stock requires an explicitly observed source field")
         return self
 
 
@@ -115,18 +115,26 @@ class Content(FrozenModel):
 class Ratings(FrozenModel):
     """Aggregate source ratings."""
 
-    average: Annotated[Decimal, Field(ge=0, le=5, allow_inf_nan=False)] | None = None
+    average: NonNegativeDecimal | None = None
     count: Annotated[int, Field(ge=0)] | None = None
+    rating_scale: PositiveDecimal | None = None
     reason: str | None = None
 
     @model_validator(mode="after")
     def complete_or_explain(self) -> Self:
-        if (self.average is None) != (self.count is None):
-            raise ValueError("rating average and count must both be present or absent")
+        present = (self.average is not None, self.count is not None, self.rating_scale is not None)
+        if len(set(present)) != 1:
+            raise ValueError("rating average, count, and scale must all be present or absent")
         if self.average is None and not self.reason:
             raise ValueError("missing ratings require a reason")
         if self.average is not None and self.reason is not None:
             raise ValueError("present ratings cannot have a missing reason")
+        if (
+            self.average is not None
+            and self.rating_scale is not None
+            and self.average > self.rating_scale
+        ):
+            raise ValueError("rating average cannot exceed its scale")
         return self
 
 
@@ -173,3 +181,5 @@ class ProductRecord(FrozenModel):
 
 
 # TODO(pi-core#6): map ProductRecord/VariantRecord into canonical pi_core records once PR #6 lands.
+# Canonical price mapping must explicitly handle PriceType.RANGE and PriceType.QUOTE_ONLY; neither
+# may be inferred as a numeric zero or silently collapsed into the four published source slots.

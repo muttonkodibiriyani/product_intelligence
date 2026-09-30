@@ -20,10 +20,11 @@ def test_parse_complete_synthetic_json() -> None:
     assert record.variants[1].stock.state is StockState.UNKNOWN
 
 
-def test_parse_synthetic_html_and_preserve_blocked_stock() -> None:
+def test_parse_synthetic_html_preserves_blocked_access_as_unknown_stock() -> None:
     record = parse_product_html((FIXTURES / "product_page_SYNTHETIC.html").read_text())
     assert record.source_product_id == "P200"
-    assert record.variants[0].stock.state is StockState.BLOCKED
+    assert record.variants[0].stock.state is StockState.UNKNOWN
+    assert record.variants[0].stock.reason == "source access blocked"
 
 
 @pytest.mark.parametrize("document", ["{", "null", '{"source_product_id": "P1"}', "NaN"])

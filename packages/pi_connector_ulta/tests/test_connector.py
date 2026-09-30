@@ -23,7 +23,11 @@ CONTEXT = CollectionContext(collection_id="synthetic")
 
 
 def _fetch_result(
-    *, body: bytes, kind: PayloadKind, block: BlockVerdict | None = None
+    *,
+    body: bytes,
+    kind: PayloadKind,
+    block: BlockVerdict | None = None,
+    status: int = 200,
 ) -> FetchResult:
     request = FetchRequest(
         url=HttpUrl("https://www.ulta.ae/en/product/example/P1"),
@@ -33,7 +37,7 @@ def _fetch_result(
     return FetchResult(
         request=request,
         final_url=request.url,
-        http_status=403 if block else 200,
+        http_status=403 if block else status,
         content_type="application/json" if kind is PayloadKind.JSON else "text/html",
         body=body,
         headers={},
@@ -78,6 +82,14 @@ def test_connector_never_parses_blocked_result() -> None:
     block = BlockVerdict(vendor=BlockVendor.CLOUDFLARE, reason="403", http_status=403)
     result = _fetch_result(body=b"", kind=PayloadKind.HTML, block=block)
     with pytest.raises(ParseError, match="must never be parsed"):
+        UltaConnector().parse(result, CONTEXT)
+
+
+@pytest.mark.parametrize("status", [300, 302, 399, 404, 410, 500, 503, 599])
+def test_connector_emits_nothing_for_unsuccessful_fetch(status: int) -> None:
+    body = (FIXTURES / "product_SYNTHETIC.json").read_bytes()
+    result = _fetch_result(body=body, kind=PayloadKind.JSON, status=status)
+    with pytest.raises(ParseError, match=rf"status {status}: not observed; no records emitted"):
         UltaConnector().parse(result, CONTEXT)
 
 
