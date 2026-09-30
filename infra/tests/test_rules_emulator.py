@@ -121,7 +121,9 @@ def test_firestore_demo_collections_are_readable_only_by_invited_roles(who: str)
 # The assistant's meter and config are written only by its service account (Admin SDK).
 ASSISTANT_PATHS = [
     "assistant_config/current",
-    "assistant_usage_counters/total|2026-09",
+    # Real ids look like "total|2026-09"; rules match the collection, and a raw "|" in the
+    # emulator REST path hangs the request, so a plain id stands in.
+    "assistant_usage_counters/total-2026-09",
     "assistant_reservations/r1",
 ]
 
