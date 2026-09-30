@@ -165,15 +165,26 @@ WITH scoped_runs AS (
 -- The baseline is the newest SUCCEEDED run per context: a running, failed or partial refresh
 -- must never hide it (that would publish false removals).
 current_runs AS (
-  SELECT DISTINCT ON (source_context_id) id, source_context_id
+  SELECT DISTINCT ON (source_context_id) id, source_context_id, started_at
   FROM scoped_runs
   WHERE status = 'succeeded'
   ORDER BY source_context_id, started_at DESC, id DESC
 ),
+-- Incremental refreshes are partial runs by design. Rows of partial runs started after the
+-- baseline are read too, so their newer prices and stock states reach the export. Absence
+-- never does: a listing a partial run did not see keeps its baseline row, and only an
+-- explicit observation (e.g. availability 'removed' from a page check) changes it. Failed and
+-- aborted runs (integrity unknown) and running ones (a half-loaded pass) are left out; a
+-- running run counts once --finish closes it as partial.
 -- Contexts with no succeeded run yet fall back to the latest observation per listing across
 -- all of their runs.
 eligible_runs AS (
   SELECT id FROM current_runs
+  UNION ALL
+  SELECT r.id
+  FROM scoped_runs r
+  JOIN current_runs c ON c.source_context_id = r.source_context_id
+  WHERE r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
   UNION ALL
   SELECT r.id
   FROM scoped_runs r

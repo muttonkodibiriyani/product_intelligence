@@ -137,18 +137,68 @@ class World:
         return {str(r["source_listing_key"]): (r["run_id"], r["price"]) for r in rows}
 
 
-@pytest.mark.parametrize("refresh_status", ["running", "failed", "partial", "aborted"])
-def test_unfinished_refresh_never_hides_the_succeeded_baseline(
-    conn: Conn, refresh_status: str
-) -> None:
+@pytest.mark.parametrize("refresh_status", ["running", "failed", "aborted"])
+def test_unfinished_or_failed_refresh_is_ignored(conn: Conn, refresh_status: str) -> None:
     world = World(conn)
     baseline = world.run("succeeded", 1)
     world.observe(baseline, "A", 1, "10")
     world.observe(baseline, "B", 1, "20")
     refresh = world.run(refresh_status, 5)
-    world.observe(refresh, "A", 5, "11")  # B not (yet) seen: must not read as removed
+    world.observe(refresh, "A", 5, "11")
+    world.observe(refresh, "C", 5, "30")
 
     assert world.latest() == {"A": (baseline, Decimal("10")), "B": (baseline, Decimal("20"))}
+
+
+def test_later_partial_refresh_updates_but_never_hides_the_baseline(conn: Conn) -> None:
+    world = World(conn)
+    baseline = world.run("succeeded", 1)
+    world.observe(baseline, "A", 1, "10")
+    world.observe(baseline, "B", 1, "20")
+    refresh = world.run("partial", 5)
+    world.observe(refresh, "A", 5, "11")
+    world.observe(refresh, "C", 5, "30")  # new since the baseline: shown
+    # B not seen by the refresh: keeps its baseline row, never reads as removed
+
+    assert world.latest() == {
+        "A": (refresh, Decimal("11")),
+        "B": (baseline, Decimal("20")),
+        "C": (refresh, Decimal("30")),
+    }
+
+
+def test_partial_runs_before_the_baseline_are_ignored(conn: Conn) -> None:
+    world = World(conn)
+    old = world.run("partial", 1)
+    world.observe(old, "A", 1, "9")
+    world.observe(old, "B", 1, "19")
+    baseline = world.run("succeeded", 3)
+    world.observe(baseline, "A", 3, "10")
+
+    assert world.latest() == {"A": (baseline, Decimal("10"))}
+
+
+def test_later_partial_stock_read_updates_stock_and_keeps_the_baseline_price(conn: Conn) -> None:
+    world = World(conn)
+    baseline = world.run("succeeded", 1)
+    world.observe(baseline, "A", 1, "10", availability="in_stock")
+    refresh = world.run("partial", 5)
+    world.observe(refresh, "A", 5, None, availability="out_of_stock", field_state=STOCK_ONLY)
+
+    a = _row(world, "A")
+    assert (a["price"], a["availability"]) == (Decimal("10"), "out_of_stock")
+    assert (a["price_run_id"], a["run_id"]) == (baseline, refresh)
+
+
+def test_explicit_removed_observation_from_a_later_page_check_flows_through(conn: Conn) -> None:
+    world = World(conn)
+    baseline = world.run("succeeded", 1)
+    world.observe(baseline, "A", 1, "10", availability="in_stock")
+    check = world.run("partial", 5)
+    world.observe(check, "A", 5, None, availability="removed", field_state=STOCK_ONLY)
+
+    a = _row(world, "A")
+    assert (a["price"], a["availability"]) == (Decimal("10"), "removed")
 
 
 def test_newest_succeeded_run_wins(conn: Conn) -> None:
