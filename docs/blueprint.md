@@ -21,7 +21,7 @@ A competitive product and price intelligence platform. It collects **complete pu
 
 **Five stations**
 
-1. **Collect.** Robots capture everything on a schedule, escalating their method automatically when a site resists.
+1. **Collect.** Robots capture a baseline snapshot once, then refresh only on demand. Within a run, the method escalates automatically through rungs 0–4 when a site resists; rung 5 only by owner decision (§6.3).
 2. **Check.** Values are cleaned and tested; suspicious data goes to quarantine, never to reports.
 3. **Match.** Identical and comparable products are linked; uncertain cases go to a person.
 4. **Calculate.** One set of tested formulas produces every number.
@@ -42,7 +42,7 @@ A competitive product and price intelligence platform. It collects **complete pu
 | Markets | KSA (SAR, VAT 15%) first; UAE (AED, VAT 5%) as fallback and second market |
 | Coverage | Full catalogue: every category and variant, all visible fields, all images |
 | Channel | Online (web/app); offline store audits importable |
-| Cadence | Prices, stock and promotions **daily**. Catalogue, content and images **weekly**. Images re-fetched only on change |
+| Cadence | **One-time baseline snapshot per source, then on-demand refreshes only** (owner decision 2026-09-30, cost). No automatic daily/weekly schedules. Images fetched once per distinct URL/content hash, never re-downloaded |
 
 ### 1.2 Discovery item (week 1)
 
@@ -62,7 +62,7 @@ Ulta's Middle East roll-out has been **store-led**, and no Ulta ME e-commerce st
 
 - Every source is tried for **KSA first**, through all free ladder rungs.
 - If KSA can't be collected reliably, the source **switches to UAE automatically** and the pilot continues.
-- KSA stays `pending` with its reason on the coverage screen and is retried weekly.
+- KSA stays `pending` with its reason on the coverage screen and is retried on demand (no recurring retry).
 - Where both work, both are collected, and KSA vs UAE analytics are enabled.
 
 ---
@@ -125,7 +125,7 @@ flowchart TB
 | # | Component | Responsibility | Runs on |
 |---|---|---|---|
 | C1 | Source register | Source contexts, cadence, current ladder rung, coverage status, first-history date | PostgreSQL + admin UI |
-| C2 | Orchestrator | Schedules, retries, per-source isolation, run manifests | Dagster |
+| C2 | Orchestrator | On-demand runs (no schedules enabled), retries, per-source isolation, run manifests | Dagster |
 | C3 | Connectors + ladder | One package per source; automatic method escalation (§6.3) | Our server first; Cloud Run jobs |
 | C4 | Evidence store | Raw responses/snapshots with hash (90 days) | Cloud Storage |
 | C5 | Image pipeline | Download, dedupe, resize, embeddings, swatch colour | Job + Cloud Storage |
@@ -267,7 +267,7 @@ Shade, shade code/family/hex, finish, coverage, skin type/concern, SPF, size val
 ### 6.2 Connector interface
 
 ```
-discover(context) -> listing refs        # weekly: sitemaps, category trees, search paging, brand pages
+discover(context) -> listing refs        # per run (baseline or on-demand): sitemaps, category trees, search paging, brand pages
 fetch(ref, context, rung) -> evidence    # raw bytes + metadata; rung chosen by the ladder
 parse(evidence) -> ListingRecord[]       # pure; every variant, field, image URL, review page
 ```
@@ -297,13 +297,21 @@ parse(evidence) -> ListingRecord[]       # pure; every variant, field, image URL
 
 ### 6.4 Cadence
 
+Owner decision 2026-09-30 (cost): collection is **one-time and on-demand**, not scheduled.
+
 | Job | Frequency |
 |---|---|
-| Price/stock/promo refresh | Daily, off-peak |
-| Full discovery + content | Weekly |
-| Images | First sight + on change |
-| Reviews | Weekly incremental |
-| Search ranks | Daily for a fixed keyword list |
+| Baseline snapshot | Once per source. Sephora UAE: 30 Sep 2026 full snapshot. Ulta UAE: blocked; **only if** the owner approves rung 5 via the Proxy Decision Report (#19), after the legal/ToS review and an ADR-0006 amendment (rung 5 is JSON/API only today), a ~20-page test and then one full-catalogue snapshot |
+| Price/stock/promo refresh | **On demand only**, when the owner asks, for a chosen site or category |
+| Full discovery + content | On demand only |
+| Images | Fetched once per distinct URL/content hash, never re-downloaded; a changed image (new URL or hash) is fetched and recorded, so image changes stay observable |
+| Reviews | On demand only |
+| Search ranks | On demand only |
+
+- **No Cloud Scheduler jobs** (disabled or absent). No recurring crawl of any source.
+- **On-demand trigger:** a `make`/CLI command (later an admin button) runs a refresh for a chosen site or category and records the run's cost in its run manifest.
+- **Storage:** every snapshot is kept, append-only, in the DB and in the Firebase demo export, so history grows only when the owner chooses to refresh. Data is reused without re-crawling.
+- **If rung 5 is ever approved, proxy traffic is kept minimal:** heavy assets are blocked in the browser, and images are fetched directly from the CDN, never through the proxy.
 
 ### 6.5 Images
 
@@ -445,14 +453,14 @@ A Google budget alerts but does not cap spending. Controls: alerts at 50/90/100%
 
 | Item | Est. monthly |
 |---|---|
-| Crawling from our server first | $0–3 |
+| Crawling: one baseline snapshot per source, then on-demand refreshes only (no schedules; each run records its cost) | $0–3 |
 | Dev + CI | $0 |
 | Auth / Firestore / Hosting | ~$0–1 |
 | Storage (images + evidence) | ~$0.5 |
 | Cloud SQL (smallest / trial; stopped when idle) | ~$0–10 |
 | Gemini (Flash, cached) | ~$1–5 |
 | **Subtotal without proxy** | **≈ $3–20** |
-| Proxy (rung 5, owner buys after report) | ~$10–30 if needed |
+| Proxy (rung 5, only if approved via the report + ADR-0006 amendment): one ~20-page test + one full Ulta snapshot, heavy assets blocked, images direct | pay-as-you-go GB; one-off, estimate in the Proxy Decision Report |
 
 ---
 
@@ -522,7 +530,7 @@ tests/         uat/, e2e/
 | Milestone | PRs |
 |---|---|
 | **M0 Foundation (wk 1)** | PR1 skeleton + CI + docs · PR2 local stack · PR3 `pi_core` models · PR4 DB schema v1 · recon (Sephora data paths KSA/UAE, Ulta ME presence) |
-| **M1 Collection (wk 2–3)** | PR5 `pi_fetch` ladder rungs 0, 1, 2 and 4 (rung 3 disabled, ADR-0006) + Proxy Decision Report · PR6 Sephora connector · PR7 Ulta/offline import · PR8 images · PR9 normalisation · PR10 quality gate · PR11 schedules |
+| **M1 Collection (wk 2–3)** | PR5 `pi_fetch` ladder rungs 0, 1, 2 and 4 (rung 3 disabled, ADR-0006) + Proxy Decision Report · PR6 Sephora connector · PR7 Ulta/offline import · PR8 images · PR9 normalisation · PR10 quality gate · PR11 on-demand refresh trigger (no schedules) |
 | **M2 Matching (wk 3–5)** | PR12 embeddings + blocking · PR13 Splink + rules · PR14 Gemini judge · PR15 review queue + gold set |
 | **M3 Metrics + web (wk 5–8)** | PR16 dbt + Cube · PR17 app shell · PR18 explorer + product page · PR19 compare board · PR20 studio · PR21 feed + alerts · PR22 coverage/health + review UI |
 | **M4 AI + hardening (wk 8–10)** | PR23 assistant · PR24 evals · PR25 exports · PR26 security + restore drill · PR27 deploy to dev (cost check first) |
