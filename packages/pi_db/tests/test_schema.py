@@ -795,7 +795,7 @@ def test_plain_dump_restores_into_a_fresh_database(empty_db: str, server_url: st
             [pg_dump, "-Fc", f"--dbname={_libpq(empty_db)}"], check=True, capture_output=True
         )
         restore = subprocess.run(  # noqa: S603
-            [pg_restore, "--exit-on-error", f"--dbname={_libpq(target_url)}"],
+            [pg_restore, "--exit-on-error", "--no-owner", f"--dbname={_libpq(target_url)}"],
             input=dump.stdout,
             capture_output=True,
             check=False,
