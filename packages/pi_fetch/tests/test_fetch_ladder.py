@@ -231,10 +231,13 @@ def test_obeyed_robots_refuses_disallowed_url_before_any_page_request(
         raw(500, b"err"),
         raw(401, b"auth"),
         raw(403, b"denied"),
+        raw(418, b"teapot"),
         raw(429, b"slow"),
+        raw(200, b"<html>Just a moment...</html>"),
+        raw(200, b"\n<!DOCTYPE html><title>x</title>", (("content-type", "text/plain"),)),
         None,
     ],
-    ids=["503", "500", "401", "403", "429", "transport-error"],
+    ids=["503", "500", "401", "403", "418", "429", "html-2xx", "html-body-2xx", "transport-error"],
 )
 def test_unreadable_robots_refuses_every_url(
     tmp_path: Path, robots_response: RawResponse | None
@@ -257,6 +260,23 @@ def test_missing_robots_allows_and_is_read_once(tmp_path: Path, status: int) -> 
     assert f.fetch(req(), ctx).ok
     assert f.fetch(req(), ctx).ok
     assert len(factory.sends) == 3
+
+
+def test_robots_with_bom_is_obeyed(tmp_path: Path) -> None:
+    text = (("content-type", "text/plain"),)
+    factory = ScriptedFactory(raw(200, b"\xef\xbb\xbfUser-agent: *\nDisallow: /p/\n", text))
+    f = fetcher(tmp_path, factory, robots=RobotsTagger())
+    with pytest.raises(RobotsRefusedError):
+        f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
+
+
+def test_default_robots_groups_use_the_user_agent_product_token(tmp_path: Path) -> None:
+    text = (("content-type", "text/plain"),)
+    robots_txt = b"User-agent: *\nAllow: /\n\nUser-agent: Mozilla\nDisallow: /p/\n"
+    factory = ScriptedFactory(raw(200, robots_txt, text))
+    f = fetcher(tmp_path, factory, robots=None)
+    with pytest.raises(RobotsRefusedError):
+        f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
 
 
 def test_robots_is_read_over_plain_http_even_for_a_browser_fetch(tmp_path: Path) -> None:

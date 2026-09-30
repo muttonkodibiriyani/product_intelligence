@@ -16,6 +16,7 @@ from pi_fetch.pacing import (
     RobotsTag,
     RobotsTagger,
     parse_retry_after,
+    product_token,
 )
 
 
@@ -218,3 +219,14 @@ def test_robots_percent_encoding_is_normalised() -> None:
 def test_robots_empty_disallow_allows_all() -> None:
     rules = RobotsRules("User-agent: *\nDisallow:\n")
     assert rules.allows("https://x.example/anything?at=all")
+
+
+def test_robots_bom_does_not_drop_the_first_group() -> None:
+    assert not RobotsRules("\ufeffUser-agent: *\nDisallow: /private\n").allows(
+        "https://x.example/private/1"
+    )
+
+
+def test_product_token() -> None:
+    assert product_token("Mozilla/5.0 (X11; Linux x86_64) Chrome/140") == "Mozilla"
+    assert product_token("   ") == "*"

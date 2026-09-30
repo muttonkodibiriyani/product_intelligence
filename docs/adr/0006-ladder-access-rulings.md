@@ -62,9 +62,10 @@ cart/checkout, polite pacing, and every escalation audit-logged.
 - robots.txt is matched per RFC 9309 (wildcards, `$`, longest match, Allow wins ties). Every
   source obeys it except those configured `tag_only` (Sephora, ADR-0005). The status of the
   robots.txt fetch decides what happens when there is no usable file (coordinator decision,
-  2026-09-30). This is deliberately stricter than RFC 9309 §2.3.1.3 for 401/403/429:
+  2026-09-30). This is deliberately stricter than RFC 9309 §2.3.1.3 for 4xx other than 404/410:
   - 404/410: no robots.txt; all allowed, per RFC.
-  - 401/403/429: refuse every URL on the host. We are being blocked or throttled, and policy is
+  - A 2xx HTML page instead of robots.txt: unreadable; refuse every URL on the host.
+  - 401/403/429 and every other 4xx: refuse every URL on the host. We are being blocked or throttled, and policy is
     to stop, not to assume allow.
   - 5xx or unreachable: refuse every URL on the host.
   See `packages/pi_fetch/README.md` (runbook).

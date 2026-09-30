@@ -235,7 +235,7 @@ class RobotsRules:
         groups: list[tuple[list[str], list[_Rule]]] = []
         agents: list[str] = []
         rules: list[_Rule] = []
-        for raw_line in robots_txt.splitlines():
+        for raw_line in robots_txt.removeprefix("\ufeff").splitlines():
             line = raw_line.split("#", 1)[0].strip()
             key, sep, value = line.partition(":")
             if not sep:
@@ -267,6 +267,12 @@ class RobotsRules:
             if best is None or (len(rule.pattern), rule.allow) > (len(best.pattern), best.allow):
                 best = rule
         return best is None or best.allow
+
+
+def product_token(user_agent: str) -> str:
+    """The product token of a User-Agent for robots.txt group matching (RFC 9309 §2.2.1)."""
+    token = user_agent.split("/", 1)[0].split(maxsplit=1)
+    return token[0] if token else "*"
 
 
 class RobotsTagger:

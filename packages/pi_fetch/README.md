@@ -8,7 +8,10 @@ calls `pi_fetch.ladder.Fetcher`.
 - Read once per host before its first request, paced like any other request, over the same
   egress.
 - Matched per RFC 9309: `*` wildcards, a `$` end anchor, merged user-agent groups, the longest
-  match wins, Allow wins ties.
+  match wins, Allow wins ties. Paths and patterns are percent-encoding normalised (UTF-8,
+  upper-case hex). A UTF-8 BOM is stripped. Groups are chosen by the product token of our
+  User-Agent (`Mozilla`), else `*`. A group that has only an empty `Disallow:` falls back to `*`
+  (fails closed).
 - Mode per source, set in `FetchPolicy.robots_modes`:
   - `obey` is the default.
   - `tag_only` records the tag but fetches anyway. It is only for Sephora (ADR-0005). Never set it
@@ -17,9 +20,10 @@ calls `pi_fetch.ladder.Fetcher`.
 
   | robots.txt response | Effect on the host's URLs |
   |---|---|
-  | 2xx | Rules applied; a disallowed URL raises `RobotsRefusedError` and nothing is sent |
+  | 2xx text | Rules applied; a disallowed URL raises `RobotsRefusedError` and nothing is sent |
+  | 2xx HTML page | **All refused**: treated as unreadable (a soft 404, block or challenge page) |
   | 404 / 410 | No robots.txt: all allowed (RFC 9309) |
-  | 401 / 403 / 429 | **All refused.** Stricter than the RFC: we are blocked or throttled and stop |
+  | 401 / 403 / 429 / any other 4xx | **All refused.** Stricter than the RFC: we are blocked or throttled and stop |
   | 5xx or unreachable | **All refused** |
 
 - The runner records a refused URL as `not_observed`, never as out of stock or removed.
