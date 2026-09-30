@@ -210,3 +210,11 @@ def test_blocked_run_is_partial(db: str, tmp_path: Path) -> None:
             "SELECT blocked_count FROM crawl_run WHERE manifest_uri LIKE 'gs://test-bucket/blocked/%'"
         ).fetchone()
         assert blocked == (1,)
+
+
+def test_variant_without_a_stock_state_is_counted_not_observed(db: str, tmp_path: Path) -> None:
+    root = _folder(tmp_path / "nostate", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec("P700", "en")])
+    write_part(root, "trpc", [trpc_rec("P700", in_stock=None)])
+    with psycopg.connect(db) as conn:
+        assert _load(conn, root) == {"pdp_en": 1, "trpc": 0, "trpc_instock_unknown": 1}

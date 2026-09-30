@@ -17,6 +17,7 @@ from scripts.demo_export.export import (
     group_rows,
     json_money,
     matched_products,
+    offer_for,
     parse_size_label,
     parse_ulta_early_fixture,
     psycopg_database_url,
@@ -283,3 +284,13 @@ def test_real_ulta_rows_are_partial_not_early() -> None:
     assert dataset["meta"]["retailers"][0]["status"] == "partial"
     assert "early" not in dataset["products"][0]["offers"]["u"]
     assert "notObserved" not in dataset
+
+
+def test_offer_evidence_dates_the_price_not_a_newer_stock_read() -> None:
+    page_time = datetime(2026, 9, 30, 18, 0, tzinfo=UTC)
+    listing = row(availability="in_stock")
+    price_row = {"price_observed_at": page_time, "price_run_id": 5}
+    listing = ListingRow(**(listing.__dict__ | price_row))
+    evidence = offer_for([listing])["evidence"]
+    assert (evidence["capturedAt"], evidence["runId"]) == ("2026-09-30T18:00:00Z", "5")
+    assert offer_for([row()])["evidence"]["runId"] == "7"  # no price row: the newest row

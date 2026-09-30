@@ -194,6 +194,18 @@ def test_newer_stock_read_keeps_the_page_price(conn: Conn) -> None:
     assert (b["price"], b["availability"]) == (Decimal("90"), "not_observed")
 
 
+def test_price_provenance_is_the_price_row_not_a_newer_stock_read(conn: Conn) -> None:
+    world = World(conn)
+    page = world.run("partial", 1)
+    world.observe(page, "A", 1, "80", availability="not_observed")
+    stock = world.run("partial", 3)
+    world.observe(stock, "A", 3, None, availability="in_stock", field_state=STOCK_ONLY)
+
+    a = _row(world, "A")
+    assert (a["observed_at"], a["run_id"]) == (T0.replace(hour=3), stock)
+    assert (a["price_observed_at"], a["price_run_id"]) == (T0.replace(hour=1), page)
+
+
 def test_newer_page_read_keeps_the_stock_state(conn: Conn) -> None:
     world = World(conn)
     stock = world.run("partial", 1)
