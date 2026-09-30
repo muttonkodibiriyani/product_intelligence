@@ -98,6 +98,8 @@ def test_src_08_permitted_access_replaced_by_audited_escalation_ladder() -> None
     or cart/checkout manipulation.
     Accept: every escalation writes an audit-log entry naming the source context and rung, and
     a block never records a false out-of-stock or removal.
+    Accept: rung 3 (stealth) is never recorded; rung 1 is plain HTTP with no TLS impersonation
+    (owner ruling, 30 Sep 2026).
     """
     pending()
 
