@@ -1,0 +1,1367 @@
+{
+ "data": {
+  "products": [
+   {
+    "__typename": "ComplexProductView",
+    "id": "VUIwMDAwMDIxMTU5AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+    "sku": "UB0000021159",
+    "name": "Skin Tint Blurring Elixir",
+    "urlKey": "buy-skin-tint-blurring-elixir",
+    "shortDescription": null,
+    "inStock": true,
+    "addToCartAllowed": true,
+    "externalId": "116499",
+    "images": [],
+    "attributes": [
+     {
+      "name": "brand",
+      "label": "Brand",
+      "value": "KYLIE COSMETICS",
+      "roles": [
+       "visible_in_pdp",
+       "visible_in_plp",
+       "visible_in_search"
+      ]
+     },
+     {
+      "name": "end_user_url",
+      "label": "null",
+      "value": "buy-skin-tint-blurring-elixir",
+      "roles": []
+     },
+     {
+      "name": "gtm_attributes",
+      "label": "null",
+      "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"UB0000021159\",\"price\":155,\"brand\":\"KYLIE COSMETICS\",\"category\":\"Makeup & Nails\\/Face\\/Foundation\",\"dimension2\":\"configurable\",\"dimension3\":\"Regular Product\",\"dimension4\":68,\"color_label\":\"\"}",
+      "roles": []
+     },
+     {
+      "name": "is_free_sample",
+      "label": "Is Free Sample",
+      "value": "no",
+      "roles": [
+       "visible_in_pdp",
+       "visible_in_plp"
+      ]
+     },
+     {
+      "name": "is_sale",
+      "label": "Is Sale",
+      "value": "0",
+      "roles": [
+       "visible_in_pdp",
+       "visible_in_plp"
+      ]
+     },
+     {
+      "name": "member_price",
+      "label": "null",
+      "value": "",
+      "roles": []
+     },
+     {
+      "name": "product_labels",
+      "label": "null",
+      "value": "[]",
+      "roles": []
+     },
+     {
+      "name": "promotions",
+      "label": "null",
+      "value": "[{\"rule_id\":\"210\",\"name\":\"GWP-Kylie Jenner EDP\",\"description\":\"Kylie Jenner Cosmic Eau De Parfum\\r\\n\",\"label\":\"Free Gift with purchase\",\"type\":\"cart_rule\",\"url\":\"promotion\\/gwpkylie-jenner-edp\",\"coupon_code\":\"\",\"context\":[\"web\",\"app\",\"asst_app\"],\"action\":\"ampromo_cart\",\"discount_step\":\"1\",\"discount_amount\":\"1.0000\",\"banner_title\":\"Shop Kylie Jenner and enjoy a free Cosmic EDP with every purchase.\",\"banner_description\":null}]",
+      "roles": []
+     }
+    ],
+    "priceRange": {
+     "maximum": {
+      "regular": {
+       "amount": {
+        "currency": "AED",
+        "value": 160
+       }
+      },
+      "final": {
+       "amount": {
+        "currency": "AED",
+        "value": 160
+       }
+      },
+      "roles": [
+       "visible"
+      ]
+     },
+     "minimum": {
+      "regular": {
+       "amount": {
+        "currency": "AED",
+        "value": 155
+       }
+      },
+      "final": {
+       "amount": {
+        "currency": "AED",
+        "value": 155
+       }
+      },
+      "roles": [
+       "visible"
+      ]
+     }
+    },
+    "variants": {
+     "variants": [
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny80MzE4Mg=="
+       ],
+       "product": {
+        "id": "MzQ2NzE0MDI2AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "346714026",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:194401d4-b88e-4c41-8267-3b336d2b2e23/as/SK-346714026_1.png",
+          "label": "",
+          "roles": [
+           "image",
+           "swatch_image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136583"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "8.5W"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"346714026\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"8.5W\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny80MzE3Mw=="
+       ],
+       "product": {
+        "id": "MzQ2NzI1MzMyAGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "346725332",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:3a4c435e-5acd-4cf6-be3a-a325c7d6df42/as/SK-346725332_1.png",
+          "label": "",
+          "roles": [
+           "image",
+           "swatch_image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136699"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "8WN"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"346725332\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"8WN\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny80MzE4NQ=="
+       ],
+       "product": {
+        "id": "MzQ2NzI1MzM0AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "346725334",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:22329f13-2746-4c35-9ca7-2486899bf453/as/SK-346725334_1.png",
+          "label": "",
+          "roles": [
+           "image",
+           "swatch_image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136750"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "10W"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir-346725334"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"346725334\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"10W\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny8yNDM3NQ=="
+       ],
+       "product": {
+        "id": "MzQ2NzUxOTczAGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "346751973",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:3039efad-c61d-46e2-9b1e-cd3bb086b59e/as/SK-346751973_1.png",
+          "label": "",
+          "roles": [
+           "image",
+           "swatch_image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136576"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "9W"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"346751973\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"9W\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny81NTc1"
+       ],
+       "product": {
+        "id": "MzQ2NzY4Mzc5AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "346768379",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:d10eeda5-af59-449c-aba2-28005861024f/as/SK-346768379_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136637"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "5N"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir-346768379"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"346768379\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"Most Popular\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"5N\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny82MDQ="
+       ],
+       "product": {
+        "id": "MzQ2NzgwMTc2AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "346780176",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:2834bd0c-873a-49f3-897c-912eb8e50bc1/as/SK-346780176_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136620"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "7W"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"346780176\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"7W\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "ulta_type",
+          "label": "Ulta Type",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "Foundation"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny81MzUz"
+       ],
+       "product": {
+        "id": "MzQ2OTAwMzM4AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir Foundation",
+        "sku": "346900338",
+        "inStock": false,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:99c47f92-11c8-49d5-8d21-f28ff69d35ef/as/SK-346900338_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136644"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "4W"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir-foundation"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir Foundation\",\"variant\":\"346900338\",\"price\":155,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"4W\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny81NTg0"
+       ],
+       "product": {
+        "id": "MzQ2OTA5OTUxAGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir Foundation",
+        "sku": "346909951",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:10731913-c6aa-4572-9c06-d76448321d94/as/SK-346909951_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136668"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "5W"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir-foundation-346909951"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir Foundation\",\"variant\":\"346909951\",\"price\":155,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"5W\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny81MzM4NQ=="
+       ],
+       "product": {
+        "id": "MzQ2OTA5OTU4AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "346909958",
+        "inStock": false,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:5eaaa90b-c899-40a6-b755-1ed402e7f6a5/as/SK-346909958_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136705"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "4.5WM - Medium with Warm Neutral Undertones"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"346909958\",\"price\":155,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"4.5WM - Medium with Warm Neutral Undertones\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny81NTk="
+       ],
+       "product": {
+        "id": "MzQ2OTEzNTE2AGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir Foundation",
+        "sku": "346913516",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:bffc762a-d4e3-43ae-bcd8-548e62abb576/as/SK-346913516_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 155
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136712"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "6N"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir-foundation"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir Foundation\",\"variant\":\"346913516\",\"price\":155,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"6N\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny81MzQxMg=="
+       ],
+       "product": {
+        "id": "MzQ3MjI4MzIxAGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "347228321",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:49cf9dd9-f4ac-46b0-a4ff-496813d99b6e/as/SK-347228321_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136729"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "6.5WN - Tan with Warm Neutral Undertones"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"347228321\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"6.5WN - Tan with Warm Neutral Undertones\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      },
+      {
+       "selections": [
+        "Y29uZmlndXJhYmxlLzI3Ny81MzM4Mg=="
+       ],
+       "product": {
+        "id": "MzQ3MjMzMTIxAGFyZV9lbgAwNmRlMDQ2Zi0zOGFhLTRjZGQtOTMwYS00NjExYzg3YTYzNzcAdW5pdGVkX2FyYWJfZW1pcmF0ZXNfc3RvcmUAYXJl",
+        "name": "Skin Tint Blurring Elixir",
+        "sku": "347233121",
+        "inStock": true,
+        "images": [
+         {
+          "url": "https://media.alshaya.com/adobe/assets/urn:aaid:aem:16579c59-e76a-4ef0-b356-d62480a43e94/as/SK-347233121_1.png",
+          "label": "",
+          "roles": [
+           "image"
+          ]
+         }
+        ],
+        "price": {
+         "final": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         },
+         "regular": {
+          "amount": {
+           "currency": "AED",
+           "value": 160
+          }
+         }
+        },
+        "attributes": [
+         {
+          "name": "aims_barcode",
+          "label": "Aims Barcode Number",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "4064941136552"
+         },
+         {
+          "name": "brand",
+          "label": "Brand",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp",
+           "visible_in_search"
+          ],
+          "value": "KYLIE COSMETICS"
+         },
+         {
+          "name": "color",
+          "label": "Color",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_compare_list"
+          ],
+          "value": "2C - Fair with Cool Pink Undertones"
+         },
+         {
+          "name": "end_user_url",
+          "label": "null",
+          "roles": [],
+          "value": "skin-tint-blurring-elixir"
+         },
+         {
+          "name": "gtm_attributes",
+          "label": "null",
+          "roles": [],
+          "value": "{\"id\":\"UB0000021159\",\"name\":\"Skin Tint Blurring Elixir\",\"variant\":\"347233121\",\"price\":160,\"brand\":\"KYLIE COSMETICS\",\"category\":\"\",\"dimension2\":\"simple\",\"dimension3\":\"Regular Product\",\"dimension4\":0,\"color_label\":\"2C - Fair with Cool Pink Undertones\"}"
+         },
+         {
+          "name": "is_sale",
+          "label": "Is Sale",
+          "roles": [
+           "visible_in_pdp",
+           "visible_in_plp"
+          ],
+          "value": "0"
+         },
+         {
+          "name": "member_price",
+          "label": "null",
+          "roles": [],
+          "value": ""
+         },
+         {
+          "name": "product_labels",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         },
+         {
+          "name": "promotions",
+          "label": "null",
+          "roles": [],
+          "value": "[]"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}
