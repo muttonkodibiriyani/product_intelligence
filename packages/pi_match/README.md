@@ -9,7 +9,7 @@ replace it. It has no network and no model calls.
 ```sh
 # 1. Export each snapshot from the local pi_db (or supply JSONL from a loader directly)
 psql "$PI_DATABASE_URL" -v source=ulta_ae    -At -f packages/pi_match/sql/export_snapshot.sql > ulta.jsonl
-psql "$PI_DATABASE_URL" -v source=sephora_ae -At -f packages/pi_match/sql/export_snapshot.sql > sephora.jsonl
+psql "$PI_DATABASE_URL" -v source=sephora_me -At -f packages/pi_match/sql/export_snapshot.sql > sephora.jsonl
 # 2. Match
 uv run pi-match --left ulta.jsonl --right sephora.jsonl --out out/match --cutoff 2026-09-30
 ```

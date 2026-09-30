@@ -1,14 +1,17 @@
 -- Export one source's snapshot from pi_db as pi_match JSONL (one ProductRecord per line).
 -- Usage (local stack):
---   psql "$PI_DATABASE_URL" -v source=sephora_ae -At -f packages/pi_match/sql/export_snapshot.sql > sephora.jsonl
+--   psql "$PI_DATABASE_URL" -v source=sephora_me -At -f packages/pi_match/sql/export_snapshot.sql > sephora.jsonl
 -- Brand, size, shade and GTIN come from the linked variant when the loader set one, else from
 -- listing_content.labels (brand/size/shade/gtin keys) of the latest content row. Price is the
--- latest observation's price_current. Nothing is inferred: missing values are omitted (null).
+-- latest observation with a price_current (any locale context: prices do not vary by
+-- language). Nothing is inferred: missing values are omitted (null).
 -- Rows without any brand are skipped: they cannot be blocked by brand.
 WITH latest_offer AS (
   SELECT DISTINCT ON (o.source_listing_id)
     o.source_listing_id, o.price_current, o.currency
   FROM offer_observation o
+  -- Stock-only rows (e.g. Sephora tRPC) carry no price: take the latest row that has one.
+  WHERE o.price_current IS NOT NULL
   ORDER BY o.source_listing_id, o.observed_at DESC, o.observation_id DESC
 ),
 latest_content AS (
