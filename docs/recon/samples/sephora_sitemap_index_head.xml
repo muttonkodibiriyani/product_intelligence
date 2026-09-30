@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-4.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-2.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-7.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-6.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-1.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-5.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-0.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-3.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/categorySlugsCO-1.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/en-SA/catalog/categorySlugsCO-0.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-4.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-2.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-7.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-6.xml</loc></sitemap>
+<sitemap><loc>https://www.sephora.me/sitemap/ar-SA/catalog/productSlugsCO-1.xml</loc></sitemap>
+<!-- trimmed at a </sitemap> boundary: first entries only; the full index lists en-SA/ar-SA (8 product + 2 category files each), en-AE/ar-AE (40 product + 10 category files each) and sitemap-app-routes.xml -->
+</sitemapindex>
