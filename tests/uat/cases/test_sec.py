@@ -49,7 +49,7 @@ def test_sec_05_source_rights_review_replaced_by_audit_logged_method() -> None:
     pending()
 
 
-@uat("SEC-06", "m4")
+@uat("SEC-06", "m1")
 def test_sec_06_personal_data_minimization() -> None:
     """Personal-data minimization.
 

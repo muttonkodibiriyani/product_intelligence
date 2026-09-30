@@ -10,11 +10,11 @@ are; *pending* cases are strict xfails until their milestone lands.
 
 | Milestone | Cases | Implemented | Pending |
 |---|---:|---:|---:|
-| M0 | 27 | 0 | 27 |
-| M1 | 34 | 0 | 34 |
+| M0 | 24 | 0 | 24 |
+| M1 | 36 | 0 | 36 |
 | M2 | 13 | 0 | 13 |
-| M3 | 25 | 0 | 25 |
-| M4 | 26 | 0 | 26 |
+| M3 | 28 | 0 | 28 |
+| M4 | 24 | 0 | 24 |
 | M5 | 4 | 0 | 4 |
 | **Total** | **129** | **0** | **129** |
 
@@ -64,7 +64,7 @@ Pilot-scope requirements: **127** — implemented 0, pending 127, missing 0.
 | PRC-04 | Price and promotion normalization | P0 | Pilot | Tax basis | M1 | pending | `tests/uat/cases/test_prc.py::test_prc_04_tax_basis` |
 | PRC-05 | Price and promotion normalization | P0 | Pilot | Unit normalization | M1 | pending | `tests/uat/cases/test_prc.py::test_prc_05_unit_normalization` |
 | PRC-06 | Price and promotion normalization | P0 | Foundation | Dimension compatibility | M1 | pending | `tests/uat/cases/test_prc.py::test_prc_06_dimension_compatibility` |
-| PRC-07 | Price and promotion normalization | P0 | Pilot | FX conversion | M1 | pending | `tests/uat/cases/test_prc.py::test_prc_07_fx_conversion` |
+| PRC-07 | Price and promotion normalization | P0 | Pilot | FX conversion | M3 | pending | `tests/uat/cases/test_prc.py::test_prc_07_fx_conversion` |
 | PRC-09 | Price and promotion normalization | P0 | Pilot | Promotion conditions | M1 | pending | `tests/uat/cases/test_prc.py::test_prc_09_promotion_conditions` |
 | PRC-13 | Price and promotion normalization | P0 | Pilot | Price ranges | M1 | pending | `tests/uat/cases/test_prc.py::test_prc_13_price_ranges` |
 | PRC-14 | Price and promotion normalization | P0 | Pilot | Channel separation | M1 | pending | `tests/uat/cases/test_prc.py::test_prc_14_channel_separation` |
@@ -85,11 +85,11 @@ Pilot-scope requirements: **127** — implemented 0, pending 127, missing 0.
 | DAT-01 | Historical storage and lineage | P0 | Foundation | Immutable observations | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_01_immutable_observations` |
 | DAT-02 | Historical storage and lineage | P0 | Foundation | Observation grain | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_02_observation_grain` |
 | DAT-03 | Historical storage and lineage | P0 | Foundation | Temporal semantics | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_03_temporal_semantics` |
-| DAT-04 | Historical storage and lineage | P0 | Foundation | Evidence storage | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_04_evidence_storage` |
-| DAT-05 | Historical storage and lineage | P0 | Foundation | Layered data | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_05_layered_data` |
+| DAT-04 | Historical storage and lineage | P0 | Foundation | Evidence storage | M1 | pending | `tests/uat/cases/test_dat.py::test_dat_04_evidence_storage` |
+| DAT-05 | Historical storage and lineage | P0 | Foundation | Layered data | M3 | pending | `tests/uat/cases/test_dat.py::test_dat_05_layered_data` |
 | DAT-06 | Historical storage and lineage | P0 | Foundation | Absence states | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_06_absence_states` |
 | DAT-07 | Historical storage and lineage | P0 | Pilot | History availability | M1 | pending | `tests/uat/cases/test_dat.py::test_dat_07_history_availability` |
-| DAT-08 | Historical storage and lineage | P0 | Foundation | Point-in-time queries | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_08_point_in_time_queries` |
+| DAT-08 | Historical storage and lineage | P0 | Foundation | Point-in-time queries | M3 | pending | `tests/uat/cases/test_dat.py::test_dat_08_point_in_time_queries` |
 | DAT-09 | Historical storage and lineage | P0 | Foundation | Idempotency | M0 | pending | `tests/uat/cases/test_dat.py::test_dat_09_idempotency` |
 | DAT-10 | Historical storage and lineage | P0 | Foundation | Retention policy | M4 | pending | `tests/uat/cases/test_dat.py::test_dat_10_retention_policy` |
 | DAT-11 | Historical storage and lineage | P0 | Pilot | Export and exit | M4 | pending | `tests/uat/cases/test_dat.py::test_dat_11_export_and_exit` |
@@ -140,7 +140,7 @@ Pilot-scope requirements: **127** — implemented 0, pending 127, missing 0.
 | SEC-02 | Security and responsible collection | P0 | Foundation | Fine-grained access | M4 | pending | `tests/uat/cases/test_sec.py::test_sec_02_fine_grained_access` |
 | SEC-03 | Security and responsible collection | P0 | Foundation | Encryption | M4 | pending | `tests/uat/cases/test_sec.py::test_sec_03_encryption` |
 | SEC-04 | Security and responsible collection | P0 | Foundation | Tenant isolation | M4 | pending | `tests/uat/cases/test_sec.py::test_sec_04_tenant_isolation` |
-| SEC-06 | Security and responsible collection | P0 | Foundation | Personal-data minimization | M4 | pending | `tests/uat/cases/test_sec.py::test_sec_06_personal_data_minimization` |
+| SEC-06 | Security and responsible collection | P0 | Foundation | Personal-data minimization | M1 | pending | `tests/uat/cases/test_sec.py::test_sec_06_personal_data_minimization` |
 | SEC-07 | Security and responsible collection | P0 | Foundation | Residency and retention | M4 | pending | `tests/uat/cases/test_sec.py::test_sec_07_residency_and_retention` |
 | SEC-10 | Security and responsible collection | P0 | Foundation | Audit trail | M4 | pending | `tests/uat/cases/test_sec.py::test_sec_10_audit_trail` |
 | SEC-11 | Security and responsible collection | P0 | Foundation | Vulnerability management | M0 | pending | `tests/uat/cases/test_sec.py::test_sec_11_vulnerability_management` |
@@ -150,7 +150,7 @@ Pilot-scope requirements: **127** — implemented 0, pending 127, missing 0.
 | OPS-03 | Reliability and commercial acceptance | P0 | Pilot | Service targets | M5 | pending | `tests/uat/cases/test_ops.py::test_ops_03_service_targets` |
 | OPS-05 | Reliability and commercial acceptance | P0 | Pilot | No silent truncation | M3 | pending | `tests/uat/cases/test_ops.py::test_ops_05_no_silent_truncation` |
 | OPS-07 | Reliability and commercial acceptance | P0 | Foundation | Change management | M0 | pending | `tests/uat/cases/test_ops.py::test_ops_07_change_management` |
-| OPS-09 | Reliability and commercial acceptance | P0 | Foundation | Operational observability | M4 | pending | `tests/uat/cases/test_ops.py::test_ops_09_operational_observability` |
+| OPS-09 | Reliability and commercial acceptance | P0 | Foundation | Operational observability | M1 | pending | `tests/uat/cases/test_ops.py::test_ops_09_operational_observability` |
 
 Cases also exist for non-pilot (later or deviation) requirements: SEC-05, SRC-08.
 
@@ -168,7 +168,7 @@ Scenarios from `docs/requirements/uat_scenarios.csv`: **36** — implemented 0, 
 | UAT-06 | Unknown basket fee | PRC-08 | M1 | out of scope: PRC-08 total payable basket (delivery/service fees) is later scope (Scale gate) | `tests/uat/test_uat_06_unknown_basket_fee.py::test_uat_06_unknown_basket_fee` |
 | UAT-07 | Tax mismatch | PRC-04 | M1 | pending | `tests/uat/test_uat_07_tax_mismatch.py::test_uat_07_tax_mismatch` |
 | UAT-08 | Currency and decimals | PRC-03, DQ-03 | M1 | pending | `tests/uat/test_uat_08_currency_and_decimals.py::test_uat_08_currency_and_decimals` |
-| UAT-09 | Historical FX reproducibility | PRC-07, DAT-08 | M1 | pending | `tests/uat/test_uat_09_historical_fx_reproducibility.py::test_uat_09_historical_fx_reproducibility` |
+| UAT-09 | Historical FX reproducibility | PRC-07, DAT-08 | M3 | pending | `tests/uat/test_uat_09_historical_fx_reproducibility.py::test_uat_09_historical_fx_reproducibility` |
 | UAT-10 | Pickup is not dine-in | PRC-14 | M1 | out of scope: food/dine-in (restaurant pickup vs dine-in menus) is not in the beauty pilot | `tests/uat/test_uat_10_pickup_is_not_dine_in.py::test_uat_10_pickup_is_not_dine_in` |
 | UAT-11 | Menu item identity | MAT-01, MAT-02 | M2 | out of scope: food (burger menu item identity) is not in the beauty pilot | `tests/uat/test_uat_11_menu_item_identity.py::test_uat_11_menu_item_identity` |
 | UAT-12 | Fragrance concentration | CAT-03, MAT-02 | M2 | pending | `tests/uat/test_uat_12_fragrance_concentration.py::test_uat_12_fragrance_concentration` |
@@ -177,7 +177,7 @@ Scenarios from `docs/requirements/uat_scenarios.csv`: **36** — implemented 0, 
 | UAT-15 | Incomplete source | SRC-03, DQ-04 | M1 | pending | `tests/uat/test_uat_15_incomplete_source.py::test_uat_15_incomplete_source` |
 | UAT-16 | First history date | SRC-15, DAT-07 | M1 | pending | `tests/uat/test_uat_16_first_history_date.py::test_uat_16_first_history_date` |
 | UAT-17 | Idempotent replay | DAT-09, INT-02 | M4 | pending | `tests/uat/test_uat_17_idempotent_replay.py::test_uat_17_idempotent_replay` |
-| UAT-18 | Late correction | DAT-03, DAT-08, DQ-09 | M1 | pending | `tests/uat/test_uat_18_late_correction.py::test_uat_18_late_correction` |
+| UAT-18 | Late correction | DAT-03, DAT-08, DQ-09 | M3 | pending | `tests/uat/test_uat_18_late_correction.py::test_uat_18_late_correction` |
 | UAT-19 | Locked match | MAT-05, MAT-07 | M2 | pending | `tests/uat/test_uat_19_locked_match.py::test_uat_19_locked_match` |
 | UAT-20 | False transitivity | MAT-09 | M2 | pending | `tests/uat/test_uat_20_false_transitivity.py::test_uat_20_false_transitivity` |
 | UAT-21 | Fixed basket stability | ANL-02, MAT-10 | M3 | pending | `tests/uat/test_uat_21_fixed_basket_stability.py::test_uat_21_fixed_basket_stability` |

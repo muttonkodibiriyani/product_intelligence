@@ -36,7 +36,7 @@ def test_dat_03_temporal_semantics() -> None:
     pending()
 
 
-@uat("DAT-04", "m0")
+@uat("DAT-04", "m1")
 def test_dat_04_evidence_storage() -> None:
     """Evidence storage.
 
@@ -47,7 +47,7 @@ def test_dat_04_evidence_storage() -> None:
     pending()
 
 
-@uat("DAT-05", "m0")
+@uat("DAT-05", "m3")
 def test_dat_05_layered_data() -> None:
     """Layered data.
 
@@ -80,7 +80,7 @@ def test_dat_07_history_availability() -> None:
     pending()
 
 
-@uat("DAT-08", "m0")
+@uat("DAT-08", "m3")
 def test_dat_08_point_in_time_queries() -> None:
     """Point-in-time queries.
 

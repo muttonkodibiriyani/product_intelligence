@@ -69,7 +69,7 @@ def test_prc_06_dimension_compatibility() -> None:
     pending()
 
 
-@uat("PRC-07", "m1")
+@uat("PRC-07", "m3")
 def test_prc_07_fx_conversion() -> None:
     """FX conversion.
 

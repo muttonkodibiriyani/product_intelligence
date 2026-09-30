@@ -59,7 +59,7 @@ def test_ops_07_change_management() -> None:
     pending()
 
 
-@uat("OPS-09", "m4")
+@uat("OPS-09", "m1")
 def test_ops_09_operational_observability() -> None:
     """Operational observability.
 

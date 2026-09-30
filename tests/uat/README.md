@@ -23,5 +23,7 @@ def test_prc_01_price_types() -> None:
   cases (`make uat M=m1`).
 - **Traceability gate** (`test_traceability.py`, part of the normal `pytest` run): fails if
   a pilot-scope ID has no case, a case cites an unknown ID or milestone, a register
-  scenario has no `test_uat_XX_*.py` (or its `reqs` differ from the register links), or
+  scenario has no `test_uat_XX_*.py` (or its `reqs` differ from the register links), a
+  scenario's milestone is earlier than its linked requirement cases, a pilot case's
+  docstring no longer contains its CSV requirement/acceptance text (whitespace-insensitive), or
   `docs/requirements/uat_status.md` is stale. Regenerate it with `make uat-status`.

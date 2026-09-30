@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import ast
 import csv
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, TypeVar, get_args
@@ -70,6 +70,7 @@ class UatCase:
     name: str
     path: Path
     lineno: int
+    doc: str = ""
 
     @property
     def nodeid(self) -> str:
@@ -269,7 +270,8 @@ def discover_cases(cases_dir: Path = CASES_DIR) -> list[UatCase]:
     cases: list[UatCase] = []
     for path, node, deco in _decorated(sorted(cases_dir.rglob("test_*.py")), "uat"):
         req_id, milestone, implemented = _parse_uat_call(deco)
-        cases.append(UatCase(req_id, milestone, implemented, node.name, path, node.lineno))
+        doc = ast.get_docstring(node) or ""
+        cases.append(UatCase(req_id, milestone, implemented, node.name, path, node.lineno, doc))
     return cases
 
 
@@ -301,6 +303,15 @@ def check_traceability(reqs: dict[str, Requirement], cases: list[UatCase]) -> li
             problems.append(f"{where}: cites unknown requirement id {case.req_id!r}")
         if case.milestone not in MILESTONES:
             problems.append(f"{where}: unknown milestone {case.milestone!r}")
+        req = reqs.get(case.req_id)
+        if req is not None and req.in_pilot:
+            doc = _squash(case.doc)
+            for label, text in (
+                ("requirement", req.requirement.split(".", 1)[-1]),
+                ("acceptance criterion", req.acceptance_criterion),
+            ):
+                if _squash(text) not in doc:
+                    problems.append(f"{where}: docstring {label} drifted from traceability.csv")
     covered = {c.req_id for c in cases}
     problems.extend(
         f"{req.id}: pilot-scope requirement has no UAT case"
@@ -310,12 +321,21 @@ def check_traceability(reqs: dict[str, Requirement], cases: list[UatCase]) -> li
     return problems
 
 
+def _squash(text: str) -> str:
+    """Whitespace-insensitive form, so re-wrapped docstrings still match the CSV."""
+    return "".join(text.split())
+
+
 def check_scenarios(
     reqs: dict[str, Requirement],
     scenarios: dict[str, Scenario],
     cases: list[ScenarioCase],
+    req_cases: Sequence[UatCase] = (),
 ) -> list[str]:
-    """Every register scenario has exactly one test citing exactly its requirement links."""
+    """Every register scenario has exactly one test citing exactly its requirement links.
+
+    A scenario may not land before the requirement cases it depends on (``req_cases``).
+    """
     problems = [
         f"{sc.id}: register links unknown requirement id {link!r}"
         for sc in scenarios.values()
@@ -340,6 +360,19 @@ def check_scenarios(
         problems.extend(
             f"{where}: cites unknown requirement id {r!r}" for r in case.reqs if r not in reqs
         )
+        latest = max(
+            (
+                MILESTONES.index(c.milestone)
+                for c in req_cases
+                if c.req_id in case.reqs and c.milestone in MILESTONES
+            ),
+            default=0,
+        )
+        if case.milestone in MILESTONES and MILESTONES.index(case.milestone) < latest:
+            problems.append(
+                f"{where}: milestone {case.milestone} is before its linked requirements "
+                f"({MILESTONES[latest]})"
+            )
         if sorted(case.reqs) != sorted(sc.requirement_links):
             problems.append(
                 f"{where}: reqs {list(case.reqs)} differ from register links "

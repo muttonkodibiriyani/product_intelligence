@@ -3,7 +3,7 @@
 from uat.registry import pending, scenario
 
 
-@scenario("UAT-09", "m1", reqs=("PRC-07", "DAT-08"))
+@scenario("UAT-09", "m3", reqs=("PRC-07", "DAT-08"))
 def test_uat_09_historical_fx_reproducibility() -> None:
     """Historical FX reproducibility.
 

@@ -74,7 +74,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_core", "uat"]
+source = ["pi_core"]
 
 [tool.coverage.report]
 fail_under = 85

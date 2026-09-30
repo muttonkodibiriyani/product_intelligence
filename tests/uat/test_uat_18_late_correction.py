@@ -3,7 +3,7 @@
 from uat.registry import pending, scenario
 
 
-@scenario("UAT-18", "m1", reqs=("DAT-03", "DAT-08", "DQ-09"))
+@scenario("UAT-18", "m3", reqs=("DAT-03", "DAT-08", "DQ-09"))
 def test_uat_18_late_correction() -> None:
     """Late correction.
 

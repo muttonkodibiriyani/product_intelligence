@@ -31,7 +31,7 @@ def _req(req_id: str, scope: str = "pilot") -> Requirement:
 
 
 def _case(req_id: str, milestone: str = "m0", *, implemented: bool = False) -> UatCase:
-    return UatCase(req_id, milestone, implemented, "test_x", Path(__file__), 1)
+    return UatCase(req_id, milestone, implemented, "test_x", Path(__file__), 1, "T. Body.\nAccept.")
 
 
 def test_every_pilot_requirement_has_a_case_and_no_case_cites_an_unknown_id() -> None:
@@ -68,6 +68,18 @@ def test_checker_flags_unknown_id_bad_milestone_and_missing_case() -> None:
     assert "cites unknown requirement id 'ZZZ-99'" in problems[0]
     assert "unknown milestone 'm9'" in problems[1]
     assert problems[2] == "AAA-02: pilot-scope requirement has no UAT case"
+
+
+def test_checker_flags_docstrings_that_drift_from_the_register() -> None:
+    reqs = {"A-1": _req("A-1"), "B-1": _req("B-1", "deviation")}
+    rewrapped = UatCase("A-1", "m0", False, "t", Path(__file__), 1, "Title.\n  Body.\n Accept.")
+    stale = UatCase("A-1", "m0", False, "t", Path(__file__), 2, "Title. Old body. Accept.")
+    custom = UatCase("B-1", "m0", False, "t", Path(__file__), 3, "Replacement control.")
+    assert check_traceability(reqs, [rewrapped, custom]) == []
+    problems = check_traceability(reqs, [stale])
+    assert problems == [
+        f"{stale.nodeid} (line 2): docstring requirement drifted from traceability.csv"
+    ]
 
 
 def test_load_requirements_rejects_duplicate_ids(tmp_path: Path) -> None:
@@ -181,7 +193,9 @@ def _scase(
 
 
 def test_every_register_scenario_has_one_case_citing_its_links() -> None:
-    problems = check_scenarios(load_requirements(), load_scenarios(), discover_scenarios())
+    problems = check_scenarios(
+        load_requirements(), load_scenarios(), discover_scenarios(), discover_cases()
+    )
     assert problems == [], "\n".join(problems)
 
 
@@ -231,6 +245,17 @@ def test_check_scenarios_flags_every_mismatch() -> None:
     ):
         assert fragment in joined
     assert len(problems) == 8
+
+
+def test_scenario_may_not_land_before_its_requirements() -> None:
+    reqs = {"A-1": _req("A-1"), "A-2": _req("A-2")}
+    scenarios = {"UAT-01": Scenario("UAT-01", "One", ("A-1", "A-2"))}
+    req_cases = [_case("A-1", "m1"), _case("A-2", "m3"), _case("A-9", "m9")]
+    early = check_scenarios(reqs, scenarios, [_scase("UAT-01", ("A-1", "A-2"))], req_cases)
+    assert len(early) == 1
+    assert early[0].endswith("milestone m1 is before its linked requirements (m3)")
+    ok = [_scase("UAT-01", ("A-1", "A-2"), milestone="m4")]
+    assert check_scenarios(reqs, scenarios, ok, req_cases) == []
 
 
 def test_load_scenarios_rejects_duplicate_ids(tmp_path: Path) -> None:
