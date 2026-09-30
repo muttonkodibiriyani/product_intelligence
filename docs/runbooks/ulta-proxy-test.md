@@ -118,7 +118,7 @@ never put real values in the repo or a chat):
 | Key | Type | Rule |
 |---|---|---|
 | `host` | string | not empty; the proxy host name only, no `http://` and no port |
-| `port` | integer | 1-65535, a JSON number, not a string |
+| `port` | integer | 1-65535 |
 | `username` | string | the proxy login |
 | `password` | string | the proxy password **including the country-targeting suffix** exactly as the IPRoyal dashboard generates it for AE. Country targeting lives only here. |
 | `provider` | string | not empty, e.g. `iproyal` |
