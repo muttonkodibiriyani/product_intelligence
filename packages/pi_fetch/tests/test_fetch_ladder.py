@@ -30,7 +30,7 @@ from pi_fetch.policy import EgressProfile, Engine, FetchPlan, FetchPolicy, Ladde
 from pi_fetch.transports.base import RawResponse, Transport, TransportError
 from pi_fetch.transports.browser import BrowserTransport
 from pi_fetch.transports.http import HttpTransport
-from pi_fetch.types import BlockVendor, FetchRequest, PayloadKind
+from pi_fetch.types import BlockKind, BlockVendor, FetchRequest, PayloadKind
 
 URL = HttpUrl("https://shop.example/p/1")
 GULF = EgressProfile(name="gulf", proxy_url_env="PI_TEST_GULF_PROXY")
@@ -128,7 +128,7 @@ def test_non_2xx_is_not_ok(tmp_path: Path) -> None:
     assert result.block is None
 
 
-def test_429_backs_off_and_returns_not_observed_without_retry(tmp_path: Path) -> None:
+def test_429_is_rate_limited_backs_off_and_is_not_retried(tmp_path: Path) -> None:
     clock = FakeClock()
     factory = ScriptedFactory(
         raw(429, b"slow", (("Retry-After", "30"),)),
@@ -142,7 +142,9 @@ def test_429_backs_off_and_returns_not_observed_without_retry(tmp_path: Path) ->
     ctx = make_ctx(LadderRung.PLAIN_HTTP)
     first = f.fetch(req(), ctx)
     assert first.block is not None
-    assert (first.block.vendor, first.block.http_status) == (BlockVendor.GENERIC, 429)
+    assert (first.block.kind, first.block.vendor) == (BlockKind.RATE_LIMITED, BlockVendor.GENERIC)
+    assert not first.block.marks_source_blocked
+    assert first.rate_limited
     assert not first.ok
     assert len(factory.sends) == 1
     for _ in range(5):

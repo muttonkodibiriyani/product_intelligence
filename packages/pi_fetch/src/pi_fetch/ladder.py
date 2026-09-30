@@ -10,9 +10,10 @@ The browser engine is pinned per source (``FetchPolicy.browsers``) and never swi
 Before any request to a URL the fetcher reads the host's robots.txt (once, paced) and, unless
 the source is configured ``tag_only``, refuses a disallowed URL, or any URL when robots.txt is
 unavailable, with ``RobotsRefusedError``. A 429 backs the host off (``HostPacer.back_off``) and
-is returned as a blocked result, so its listings are recorded not observed.
-When that returns None the source is marked blocked and a Proxy Decision Report is written
-(ADR-0006 decision 4).
+is returned with a RATE_LIMITED verdict (``rate_limited``): its listings are recorded not
+observed, but it does not mark the source blocked (only CHALLENGE and BLOCKED verdicts do).
+When ``next_rung`` returns None after real blocks, the source is marked blocked and a Proxy
+Decision Report is written (ADR-0006 decision 4).
 """
 
 import logging
@@ -37,6 +38,7 @@ from pi_fetch.transports.base import RawResponse, Transport, TransportError
 from pi_fetch.transports.browser import BrowserTransport
 from pi_fetch.transports.http import HttpTransport
 from pi_fetch.types import (
+    TOO_MANY_REQUESTS,
     BrowserProfile,
     FetchRequest,
     FetchResult,
@@ -53,7 +55,6 @@ _ACCEPT: dict[PayloadKind, str] = {
     PayloadKind.IMAGE: "image/avif,image/webp,image/png,image/*;q=0.8,*/*;q=0.5",
 }
 _NOT_MODIFIED = 304
-_TOO_MANY_REQUESTS = 429
 #: robots.txt statuses that mean "no robots.txt": everything allowed (RFC 9309 §2.3.1.3).
 _ROBOTS_ABSENT = frozenset({404, 410})
 _ROBOTS_ACCEPT = "text/plain,*/*;q=0.8"
@@ -162,7 +163,7 @@ class Fetcher:
 
     def _pace_after(self, host: str, raw: RawResponse, now: datetime) -> None:
         retry_after = parse_retry_after(redact_headers(raw.headers).get("retry-after"), now)
-        if raw.status != _TOO_MANY_REQUESTS:
+        if raw.status != TOO_MANY_REQUESTS:
             self._pacer.succeeded(host)
             if retry_after is not None:
                 self._pacer.defer(host, retry_after)

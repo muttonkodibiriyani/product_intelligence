@@ -6,6 +6,7 @@ from pydantic import HttpUrl, ValidationError
 from fetch_helpers import NOW, WEBKIT
 from pi_core import Device, FetchMethod, LadderRung, Locale
 from pi_fetch.types import (
+    BlockKind,
     BlockVendor,
     BlockVerdict,
     BrowserEngine,
@@ -71,7 +72,9 @@ def test_ok_only_for_2xx_without_block() -> None:
     assert not result(http_status=404).ok
     assert not result(http_status=500).ok
     assert not result(http_status=304).ok
-    verdict = BlockVerdict(vendor=BlockVendor.AKAMAI, reason="challenge", http_status=200)
+    verdict = BlockVerdict(
+        kind=BlockKind.CHALLENGE, vendor=BlockVendor.AKAMAI, reason="challenge", http_status=200
+    )
     assert not result(block=verdict).ok
 
 

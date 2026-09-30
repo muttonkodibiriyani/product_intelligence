@@ -20,6 +20,7 @@ from pi_core.types import NonEmptyStr, UtcDatetime
 FORBIDDEN_REQUEST_HEADERS = frozenset(
     {"authorization", "cookie", "host", "proxy-authorization", "user-agent"}
 )
+TOO_MANY_REQUESTS = 429
 #: Headers never kept on a result, so evidence and logs hold no session cookies.
 REDACTED_RESPONSE_HEADERS = frozenset({"cookie", "set-cookie", "set-cookie2"})
 
@@ -74,12 +75,32 @@ class BlockVendor(StrEnum):
     GENERIC = "generic"
 
 
-class BlockVerdict(PiModel):
-    """Why a response is a block or challenge. It is recorded, never solved or retried."""
+class BlockKind(StrEnum):
+    """What kind of refusal a verdict records.
 
+    Only CHALLENGE and BLOCKED feed a source's blocked state, and with it the Proxy Decision
+    Report and the API-route refusal. RATE_LIMITED (any 429 without a challenge) backs the host
+    off and leaves its listings not observed, but never marks the source blocked.
+    """
+
+    CHALLENGE = "challenge"
+    BLOCKED = "blocked"
+    RATE_LIMITED = "rate_limited"
+
+
+class BlockVerdict(PiModel):
+    """Why a response was refused: challenge, block or rate limit. Recorded, never solved or
+    retried; ``ok`` is false for every verdict."""
+
+    kind: BlockKind
     vendor: BlockVendor
     reason: NonEmptyStr
     http_status: int = Field(ge=100, le=599)
+
+    @property
+    def marks_source_blocked(self) -> bool:
+        """True for a challenge or block; false for a rate limit."""
+        return self.kind is not BlockKind.RATE_LIMITED
 
 
 def redact_headers(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
@@ -182,3 +203,9 @@ class FetchResult(PiModel):
     def ok(self) -> bool:
         """2xx and not blocked: the only results a connector may parse."""
         return 200 <= self.http_status < 300 and self.block is None
+
+    @property
+    def rate_limited(self) -> bool:
+        """A 429 without a challenge (``BlockKind.RATE_LIMITED``): not parsed, listings not
+        observed, and the source is not marked blocked."""
+        return self.block is not None and self.block.kind is BlockKind.RATE_LIMITED

@@ -46,6 +46,7 @@ from pi_fetch.policy import (
 )
 from pi_fetch.transports.base import TransportError
 from pi_fetch.types import (
+    BlockKind,
     BlockVendor,
     BlockVerdict,
     BrowserEngine,
@@ -59,11 +60,14 @@ from pi_fetch.types import (
 #: Version of the connector-facing interface. Bump on any change connectors can see, and tell
 #: the connector owners. 0.2: ParseOutput carries source-keyed drafts (coordinator ruling);
 #: FetchResult records the pinned BrowserProfile of a browser fetch; FetchPolicy pins engines,
-#: robots modes and page intervals per source; the Fetcher lives only in ``pi_fetch.ladder``.
+#: robots modes and page intervals per source; the Fetcher lives only in ``pi_fetch.ladder``;
+#: BlockVerdict.kind (challenge | blocked | rate_limited): a 429 is RATE_LIMITED, and only
+#: CHALLENGE and BLOCKED mark a source blocked (PDR, API-route refusal).
 INTERFACE_VERSION = "0.2"
 
 __all__ = [
     "INTERFACE_VERSION",
+    "BlockKind",
     "BlockVendor",
     "BlockVerdict",
     "BrowserEngine",

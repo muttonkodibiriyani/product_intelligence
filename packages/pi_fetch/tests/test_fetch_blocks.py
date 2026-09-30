@@ -3,7 +3,7 @@
 import pytest
 
 from pi_fetch.blocks import detect, detect_response
-from pi_fetch.types import BlockVendor, PayloadKind
+from pi_fetch.types import BlockKind, BlockVendor, PayloadKind
 from test_fetch_types import result
 
 HTML = PayloadKind.HTML
@@ -52,7 +52,6 @@ VENDOR_CASES: list[tuple[str, int, Headers, bytes, BlockVendor]] = [
         b"<div id='px-captcha'></div><script>window._pxAppId='PX0'</script>",
         BlockVendor.PERIMETERX,
     ),
-    ("perimeterx cookie on 429", 429, (("set-cookie", "_px3=1"),), b"slow", BlockVendor.PERIMETERX),
     (
         "datadome captcha page",
         403,
@@ -69,7 +68,13 @@ VENDOR_CASES: list[tuple[str, int, Headers, bytes, BlockVendor]] = [
     ),
     ("datadome server on 403", 403, (("server", "DataDome"),), b"x", BlockVendor.DATADOME),
     ("plain 403", 403, (("server", "nginx"),), b"Forbidden", BlockVendor.GENERIC),
-    ("plain 429", 429, (), b"Too many", BlockVendor.GENERIC),
+    (
+        "cloudflare challenge on 429",
+        429,
+        (),
+        b"<script>cf_chl_opt={}</script>",
+        BlockVendor.CLOUDFLARE,
+    ),
     ("plain 401", 401, (), b"auth", BlockVendor.GENERIC),
     ("empty 200 html", 200, (), b"  \n", BlockVendor.GENERIC),
 ]
@@ -111,8 +116,34 @@ def test_reason_names_cookie_not_its_value() -> None:
     assert "_abck" in verdict.reason
 
 
+@pytest.mark.parametrize(
+    ("status", "headers", "body", "kind", "vendor"),
+    [
+        (429, (), b"Too many requests", BlockKind.RATE_LIMITED, BlockVendor.GENERIC),
+        (429, (("cf-ray", "8a-DXB"),), b"slow", BlockKind.RATE_LIMITED, BlockVendor.CLOUDFLARE),
+        (429, (), b"<script>cf_chl_opt={}</script>", BlockKind.CHALLENGE, BlockVendor.CLOUDFLARE),
+        (403, (), b"Forbidden", BlockKind.BLOCKED, BlockVendor.GENERIC),
+    ],
+    ids=["plain-429", "429-cloudflare-header", "429-challenge-marker", "403"],
+)
+def test_block_kind(
+    status: int,
+    headers: tuple[tuple[str, str], ...],
+    body: bytes,
+    kind: BlockKind,
+    vendor: BlockVendor,
+) -> None:
+    verdict = detect_response(status, headers, body, HTML)
+    assert verdict is not None
+    assert (verdict.kind, verdict.vendor) == (kind, vendor)
+    assert verdict.marks_source_blocked is (kind is not BlockKind.RATE_LIMITED)
+    fetched = result(http_status=status, body=body, block=verdict)
+    assert not fetched.ok
+    assert fetched.rate_limited is (kind is BlockKind.RATE_LIMITED)
+
+
 def test_detect_on_a_stored_result() -> None:
-    blocked = result(http_status=429, body=b"slow down")
+    blocked = result(http_status=403, body=b"denied")
     verdict = detect(blocked)
     assert verdict is not None
     assert verdict.vendor is BlockVendor.GENERIC

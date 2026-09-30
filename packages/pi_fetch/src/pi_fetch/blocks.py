@@ -8,13 +8,23 @@ Two kinds of signal:
 * **vendor hints** (server header, vendor cookie names): name the vendor of a 401/403/429/503,
   but never make a 2xx page a block on their own, since CDNs also serve ordinary pages.
 
-A 401/403/429 with no vendor signal is a GENERIC block, as is an empty 2xx text payload. Other
-failures (404, 500, …) are not blocks; ``FetchResult.ok`` is false for them anyway.
+Every verdict has a ``BlockKind``. A challenge marker gives CHALLENGE whatever the status, a 429
+included. Any other 429 is RATE_LIMITED, keeping the vendor for audit. A 401/403 (GENERIC with no
+vendor signal), a vendor-hinted 503 and an empty 2xx text payload are BLOCKED. Only CHALLENGE and
+BLOCKED mark a source blocked (``BlockVerdict.marks_source_blocked``). Other failures (404, 500,
+…) get no verdict; ``FetchResult.ok`` is false for them anyway.
 """
 
 from collections.abc import Iterable
 
-from pi_fetch.types import BlockVendor, BlockVerdict, FetchResult, PayloadKind
+from pi_fetch.types import (
+    TOO_MANY_REQUESTS,
+    BlockKind,
+    BlockVendor,
+    BlockVerdict,
+    FetchResult,
+    PayloadKind,
+)
 
 #: Only the head of a body is scanned; challenge pages are small.
 SCAN_BYTES = 256 * 1024
@@ -109,20 +119,31 @@ def detect_response(
     marker = _challenge_marker(pairs, head)
     if marker is not None:
         vendor, reason = marker
-        return BlockVerdict(vendor=vendor, reason=reason, http_status=status)
+        return BlockVerdict(
+            kind=BlockKind.CHALLENGE, vendor=vendor, reason=reason, http_status=status
+        )
+    refusal = BlockKind.RATE_LIMITED if status == TOO_MANY_REQUESTS else BlockKind.BLOCKED
     if status in BLOCK_STATUSES:
         hint = _vendor_hint(pairs)
         if hint is not None:
             vendor, reason = hint
             return BlockVerdict(
-                vendor=vendor, reason=f"http {status}, {reason}", http_status=status
+                kind=refusal, vendor=vendor, reason=f"http {status}, {reason}", http_status=status
             )
         if status in GENERIC_BLOCK_STATUSES:
             return BlockVerdict(
-                vendor=BlockVendor.GENERIC, reason=f"http {status}", http_status=status
+                kind=refusal,
+                vendor=BlockVendor.GENERIC,
+                reason=f"http {status}",
+                http_status=status,
             )
     if 200 <= status < 300 and kind is not PayloadKind.IMAGE and not body.strip():
-        return BlockVerdict(vendor=BlockVendor.GENERIC, reason="empty payload", http_status=status)
+        return BlockVerdict(
+            kind=BlockKind.BLOCKED,
+            vendor=BlockVendor.GENERIC,
+            reason="empty payload",
+            http_status=status,
+        )
     return None
 
 
