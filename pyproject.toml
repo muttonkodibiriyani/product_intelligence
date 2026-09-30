@@ -56,10 +56,17 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["packages/pi_core/src", "packages/pi_db/src", "tests"]
+mypy_path = [
+  "packages/pi_core/src",
+  "packages/pi_connector_ulta/src",
+  "packages/pi_db/src",
+  "tests",
+]
 files = [
   "packages/pi_core/src",
   "packages/pi_core/tests",
+  "packages/pi_connector_ulta/src",
+  "packages/pi_connector_ulta/tests",
   "packages/pi_db/src",
   "packages/pi_db/tests",
   "tests/uat",
@@ -90,7 +97,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_core", "pi_db"]
+source = ["pi_core", "pi_connector_ulta", "pi_db"]
 
 [tool.coverage.report]
 fail_under = 85
