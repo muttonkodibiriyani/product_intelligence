@@ -17,6 +17,7 @@ COPY tools/ulta_snapshot/urls ./urls
 ENV PYTHONUNBUFFERED=1 \
     HOME=/tmp \
     OUT_DIR=/out \
+    URL_SOURCE=file \
     URLS_FILE=/app/urls/test20_en.txt \
     MAX_PAGES=20 \
     CAPTURE_JSON=0

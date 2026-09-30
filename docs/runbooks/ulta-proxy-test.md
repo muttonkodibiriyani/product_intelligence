@@ -116,3 +116,74 @@ at once with `status=stopped_error proxy_bytes=0 challenge=no` and `detail=` con
   before the browser starts, and it expires by itself within the hour. While the job runs it is
   still visible to you via `docker inspect ulta-test` in your own Cloud Shell. It is never
   printed or saved to the result files.
+
+## Full snapshot (after the ~20-page test)
+
+Run this only after the ~20-page test has finished and its `ULTA TEST RESULT` line has been
+pasted, and only when the coordinator sends you a commit for it. It uses the same image, the same
+pinned WebKit, the same proxy and the same stop rules as the test. It stops at the first challenge,
+at a second 429 in a row, or when the 1.8 GB allowance would be crossed. Nothing is retried, and
+nothing switches engine or route.
+
+With `URL_SOURCE=sitemap` the job:
+
+1. Fetches `robots.txt`. If it is missing or unreadable, the job stops (fail closed).
+2. Fetches `/sitemap.xml`, then `product-sitemap-ae.xml`. Each sitemap URL is checked against
+   robots.txt first.
+3. Keeps only robots-allowed English `/en/buy-...` product URLs, removes duplicates, and writes
+   them to `urls_full_en.txt` in the output folder.
+4. Prints `SITEMAP: N urls, est A-B h, est G GB` **before** it fetches any product page. Hours
+   assume 5-10 s per page. GB is `N x EST_BYTES_PER_PAGE`; the coordinator sends you that value,
+   taken from the test's result.
+5. Fetches up to `MAX_PAGES` product pages from `START_INDEX`, and records in `progress.json`
+   (`next_index`) how far it got.
+
+| Setting | Meaning |
+|---|---|
+| `MAX_PAGES=0` | List and estimate only; no product page is fetched. **Do this first.** |
+| `MAX_PAGES=500` | At most 500 pages this run. |
+| `MAX_PAGES=all` | The whole list, within the byte cap. |
+| `START_INDEX=auto` | Continue from where the last run in the same folder stopped. `urls_full_en.txt` is reused, so no sitemap is fetched again. |
+
+The output folder is fixed (`~/ulta-full`) so that a stopped run can be continued. Each run adds
+its own `pdp/part-<start>.jsonl.gz` and keeps the earlier `progress`/`manifest` files as
+`*-before-<time>.json`. **Before each run, set `PRIOR_GB` again from the IPRoyal dashboard,
+rounded up.** The byte cap counts everything already used.
+
+```bash
+# ==== EDIT 1: commit (from the coordinator) ====
+COMMIT=PASTE_COMMIT_HERE
+# ==== EDIT 2: GB already used, from the IPRoyal dashboard NOW, ROUNDED UP ====
+PRIOR_GB=PASTE_GB_HERE
+# ==== EDIT 3: 0 = list + estimate only (first time); then a number or all ====
+MAX_PAGES=0
+# ==== EDIT 4: bytes per page (from the coordinator; leave empty if not sent yet) ====
+EST_BYTES_PER_PAGE=
+# ==== nothing below needs editing ====
+(
+set -e
+test "$COMMIT" != PASTE_COMMIT_HERE || { echo "EDIT 1 first: set COMMIT"; exit 1; }
+test "$PRIOR_GB" != PASTE_GB_HERE || { echo "EDIT 2 first: set PRIOR_GB"; exit 1; }
+cd ~ && rm -rf pi-ulta-test && git clone -q https://github.com/muttonkodibiriyani/product_intelligence.git pi-ulta-test
+cd ~/pi-ulta-test && git checkout -q "$COMMIT" && git log --oneline -1
+docker build -q -f tools/ulta_snapshot/Dockerfile -t pi-ulta-fetch .
+TS=$(date -u +%Y%m%dT%H%M%SZ); OUT=~/ulta-full; mkdir -p "$OUT"; echo "files go to $OUT"
+TOKEN="$(gcloud auth print-access-token)"; export GOOGLE_OAUTH_ACCESS_TOKEN="$TOKEN"
+docker run --rm -i --name ulta-full --user "$(id -u):$(id -g)" \
+  -v "$OUT":/out \
+  -e GOOGLE_OAUTH_ACCESS_TOKEN \
+  -e URL_SOURCE=sitemap -e START_INDEX=auto -e MAX_PAGES="$MAX_PAGES" \
+  -e EST_BYTES_PER_PAGE="$EST_BYTES_PER_PAGE" \
+  -e PRIOR_GB="$PRIOR_GB" -e CAPTURE_JSON=0 \
+  -e OWNER_APPROVAL_REF="ADR-0006 Amendment 2 (owner decision 2026-09-30: IPRoyal AE, ulta.ae only)" \
+  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/latest \
+  pi-ulta-fetch 2>&1 | tee "$OUT/console-$TS.log"
+gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-full/$TS/"
+echo "UPLOADED gs://pi-sephora-e631eaba/ulta-full/$TS/"
+)
+```
+
+Paste back three lines: `SITEMAP: ...`, `ULTA TEST RESULT: ...` and `UPLOADED ...`. With
+`MAX_PAGES=0` the status is `enumerated`. To stop early, press Ctrl-C or run
+`docker stop ulta-full`. The files stay in `~/ulta-full`, and the next run with
+`START_INDEX=auto` continues from there. The bucket keeps uploads for one day only.

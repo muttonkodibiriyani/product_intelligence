@@ -9,7 +9,9 @@ second 429 in a row stops the source (``SourceStoppedError``) and the run ends.
 
 Writes to ``OUT_DIR`` (the loader's input layout, see ``load.py``):
 
-* ``pdp/part-0000.jsonl.gz``: one record per page load (``html`` + robots-allowed ``captures``);
+* ``pdp/part-<start>.jsonl.gz``: one record per page load (``html`` + robots-allowed
+  ``captures``), one part per (resumed) run;
+* ``urls_full_en.txt`` (``URL_SOURCE=sitemap``): the enumerated robots-allowed EN product URLs;
 * ``robots.txt``: the robots.txt the fetcher obeyed for www.ulta.ae (read through the same route);
 * ``progress.json``: the status file, rewritten after every page (counts, proxy bytes, GB, USD);
 * ``audit.jsonl``: the fetcher's audit events (per-page proxy bytes and abort reasons);
@@ -48,6 +50,7 @@ from urllib.parse import urlsplit
 
 from pydantic import HttpUrl
 
+from pi_connector_ulta.discover import DiscoveryError, child_sitemaps, discover_sitemap
 from pi_core import CollectionContext, FetchMethod, LadderRung, Locale, Market, SourceContext
 from pi_fetch.cache import LocalEvidenceStore
 from pi_fetch.ladder import (
@@ -56,7 +59,7 @@ from pi_fetch.ladder import (
     SourceStoppedError,
     default_proxy_transport,
 )
-from pi_fetch.pacing import HostPacer, RobotsRefusedError, RobotsTagger
+from pi_fetch.pacing import HostPacer, RobotsRefusedError, RobotsRules, RobotsTagger
 from pi_fetch.policy import FetchPlan, FetchPolicy
 from pi_fetch.proxy import (
     ProxyBudgetExceededError,
@@ -73,6 +76,9 @@ from pi_fetch.types import BrowserEngine, BrowserProfile, FetchRequest, FetchRes
 SOURCE_ID = 1  # placeholder id: fetch only, nothing is written to pi_db by this job
 EGRESS = "iproyal_ae"
 SITE = "www.ulta.ae"
+BASE = f"https://{SITE}"
+SITEMAP_INDEX = f"{BASE}/sitemap.xml"
+URLS_FULL = "urls_full_en.txt"
 PAGE_INTERVAL_S = 5.0  # the pacer's floor; a random 0-5 s is added: one page per 5-10 s
 _BYTES_PER_GB = Decimal(1000**3)
 audit_log = logging.getLogger("pi_fetch.audit")
@@ -83,6 +89,7 @@ class RecordingTagger(RobotsTagger):
 
     def __init__(self, user_agent: str = "*") -> None:
         super().__init__(user_agent)
+        self.agent = user_agent
         self.texts: dict[str, str] = {}
 
     def add(self, host: str, robots_txt: str) -> None:
@@ -227,6 +234,14 @@ class Run:
         self.stopped = "running"
         self.challenged = False  # set only by a block that stopped the source (challenge/401/403)
         self.console = extra.get("console", sys.stdout)
+        #: ``file`` (the given URLs) or ``sitemap`` (enumerate on this route, then crawl).
+        self.url_source: str = extra.get("url_source", "file")
+        #: Resume point in the URL list and the upper bound on pages this run (None: all).
+        self.start: int = extra.get("start", 0)
+        self.max_pages: int | None = extra.get("max_pages")
+        self.est_bytes_per_page: int | None = extra.get("est_bytes_per_page")
+        self.next_index = self.start
+        self.batch: list[str] = []
         (out / "pdp").mkdir(parents=True, exist_ok=True)
 
     def usage(self) -> dict[str, Any]:
@@ -246,6 +261,11 @@ class Run:
             "proxy": self.usage(),
             "graphql": dict(self.graphql.counts),
             "stopped_sources": {str(k): v for k, v in self.fetcher.stopped_sources().items()},
+            "url_source": self.url_source,
+            "urls_total": len(self.urls),
+            "start_index": self.start,
+            #: Resume here (START_INDEX=auto): every URL before it was fetched or robots-refused.
+            "next_index": self.next_index,
         }
         tmp = self.out / "progress.json.tmp"
         tmp.write_text(json.dumps(body, indent=1))
@@ -257,7 +277,8 @@ class Run:
                 (self.out / "robots.txt").write_text(text)
 
     def emit(self, rec: dict[str, Any]) -> None:
-        with gzip.open(self.out / "pdp/part-0000.jsonl.gz", "at", encoding="utf-8") as fh:
+        part = self.out / f"pdp/part-{self.start:06d}.jsonl.gz"  # one part per (resumed) run
+        with gzip.open(part, "at", encoding="utf-8") as fh:
             fh.write(json.dumps(rec) + "\n")
 
     def one(self, url: str, ctx: CollectionContext) -> bool:
@@ -313,8 +334,8 @@ class Run:
         """The one line the operator pastes back: status, pages, bytes, GB, USD, challenges."""
         use = self.usage()
         challenged = self.challenged
-        if self.stopped == "complete":
-            status = "complete"
+        if self.stopped in {"complete", "enumerated"}:
+            status = self.stopped
         elif challenged:
             status = "stopped_at_challenge"
         elif "proxy_byte_cap" in self.stopped or "ProxyBudgetExceeded" in self.stopped:
@@ -324,7 +345,7 @@ class Run:
         else:
             status = "stopped_error"
         return (
-            f"ULTA TEST RESULT: status={status} pages_ok={self.counts['pdp_ok']}/{len(self.urls)}"
+            f"ULTA TEST RESULT: status={status} pages_ok={self.counts['pdp_ok']}/{len(self.batch)}"
             f" robots_refused={self.counts['robots_refused_page']}"
             f" proxy_bytes={use['bytes_via_proxy']} gb={use['gb']} usd={use.get('usd', '0.00')}"
             f" challenge={'yes' if challenged else 'no'} detail={self.stopped!r}"
@@ -348,13 +369,115 @@ class Run:
         )
         self.say(self.summary())
 
+    def document(self, url: str, ctx: CollectionContext) -> str | None:
+        """One sitemap through the same route (robots-checked by the fetcher); None: stopped."""
+        request = FetchRequest(
+            url=HttpUrl(url), kind=PayloadKind.XML, locale=Locale.EN, render=True
+        )
+        try:
+            result = self.fetcher.fetch(request, ctx)
+        except RobotsRefusedError:
+            self.stopped = f"stopped: sitemap refused by robots: {url}"
+            return None
+        except (
+            SourceStoppedError,
+            ProxyBudgetExceededError,
+            ProxyConfigError,
+            TransportError,
+        ) as exc:
+            self.stopped = f"stopped: {type(exc).__name__}: {exc}"
+            return None
+        finally:
+            self.save_robots()
+        self.counts["sitemap_fetched"] += 1
+        if result.block is not None:
+            self.counts[f"block_{result.block.kind.value}"] += 1
+            self.challenged = self.challenged or result.block.marks_source_blocked
+            self.stopped = f"stopped: sitemap {result.block.kind.value} {result.block.http_status}"
+            return None
+        if result.http_status != 200:
+            self.stopped = f"stopped: sitemap http {result.http_status}: {url}"
+            return None
+        return result.body.decode("utf-8", "replace")
+
+    def rules(self) -> RobotsRules | None:
+        text = next((t for k, t in self.robots.texts.items() if k.startswith(SITE)), None)
+        return None if text is None else RobotsRules(text, self.robots.agent)
+
+    def sitemap_urls(self, ctx: CollectionContext) -> list[str] | None:  # noqa: PLR0911
+        """Robots-allowed EN product URLs from the sitemap index and its product sitemaps,
+        written to ``urls_full_en.txt``; reused (never re-fetched) when that file exists."""
+        saved = self.out / URLS_FULL
+        if saved.exists():
+            urls = [u for u in saved.read_text().splitlines() if u.strip()]
+            self.say(f"SITEMAP: reusing {URLS_FULL} ({len(urls)} urls), nothing re-fetched")
+            return urls
+        index = self.document(SITEMAP_INDEX, ctx)
+        rules = self.rules()
+        if index is None or rules is None:
+            if index is not None:
+                self.stopped = "stopped: robots.txt unavailable (fail closed)"
+            return None
+        try:
+            children = [u for u in child_sitemaps(index, rules) if "product" in u]
+        except DiscoveryError as exc:
+            self.stopped = f"stopped: sitemap index unreadable: {exc}"
+            return None
+        if not children:
+            self.stopped = "stopped: no robots-allowed product sitemap in the index"
+            return None
+        found: set[str] = set()
+        for child in children:
+            self.sleep(random.uniform(0.0, 5.0))  # noqa: S311 - pacing jitter, not crypto
+            doc = self.document(child, ctx)
+            if doc is None:
+                return None
+            try:
+                keys = discover_sitemap(doc, rules)
+            except DiscoveryError as exc:
+                self.stopped = f"stopped: product sitemap unreadable: {child}: {exc}"
+                return None
+            found.update(k.product_url for k in keys if k.product_url.startswith(f"{BASE}/en/"))
+        urls = sorted(found)
+        tmp = saved.with_suffix(".tmp")
+        tmp.write_text("".join(f"{u}\n" for u in urls))
+        tmp.replace(saved)
+        return urls
+
+    def estimate(self, n: int) -> str:
+        low, high = n * PAGE_INTERVAL_S / 3600, n * 2 * PAGE_INTERVAL_S / 3600
+        per = self.est_bytes_per_page
+        size = f"est {gb(n * per)} GB" if per else "est ? GB (set EST_BYTES_PER_PAGE)"
+        return f"est {low:.1f}-{high:.1f} h, {size}"
+
     def run(self, ctx: CollectionContext) -> None:
+        if self.url_source == "sitemap":
+            urls = self.sitemap_urls(ctx)
+            if urls is None:
+                self.progress()
+                return
+            self.urls = urls
+            self.say(f"SITEMAP: {len(urls)} urls, {self.estimate(len(urls))}")
+            if not urls:
+                self.stopped = "stopped: sitemap gave no robots-allowed EN product URLs"
+                return
+        end = len(self.urls) if self.max_pages is None else self.start + self.max_pages
+        self.batch = self.urls[self.start : end]
         self.counts["discovered"] = len(self.urls)
+        if self.max_pages == 0:
+            self.stopped = "enumerated"
+            return
+        self.say(
+            f"this run: {len(self.batch)} pages from index {self.start}, "
+            f"{self.estimate(len(self.batch))}"
+        )
         self.progress()
-        for i, url in enumerate(self.urls):
+        for i, url in enumerate(self.batch):
             if i:
                 self.sleep(random.uniform(0.0, 5.0))  # noqa: S311 - pacing jitter, not crypto
             go_on = self.one(url, ctx)
+            if go_on:
+                self.next_index = self.start + i + 1
             self.progress()
             if not go_on:
                 return
@@ -372,6 +495,7 @@ def make_run(  # noqa: PLR0913 - keyword-only test seams
     sleep: Callable[[float], None] = time.sleep,
     capture_json: bool = False,
     console: TextIO = sys.stdout,
+    **options: Any,
 ) -> Run:
     """The fetcher on main's rung-5 route, with robots text, graphql and audit recording."""
     out.mkdir(parents=True, exist_ok=True)
@@ -398,7 +522,48 @@ def make_run(  # noqa: PLR0913 - keyword-only test seams
         sleep=sleep,
         capture_json=capture_json,
         console=console,
+        **options,
     )
+
+
+def run_options(env: Mapping[str, str], out: Path) -> dict[str, Any]:
+    """URL source, resume point, page bound and estimate input from the environment.
+
+    ``URL_SOURCE`` ``file`` (default: ``URLS_FILE``) or ``sitemap``; ``MAX_PAGES`` a number
+    (``0``: enumerate only) or ``all``; ``START_INDEX`` a number or ``auto`` (the previous run's
+    ``next_index`` in ``OUT_DIR/progress.json``); ``EST_BYTES_PER_PAGE`` from the test manifest.
+    """
+    source = env.get("URL_SOURCE", "file")
+    if source not in {"file", "sitemap"}:
+        msg = f"URL_SOURCE must be file or sitemap, not {source!r}"
+        raise SystemExit(msg)
+    raw_max = env.get("MAX_PAGES", "20").strip().lower()
+    start_raw = env.get("START_INDEX", "0").strip().lower()
+    previous = out / "progress.json"
+    if start_raw == "auto":
+        start = (
+            int(json.loads(previous.read_text()).get("next_index", 0)) if previous.exists() else 0
+        )
+    else:
+        start = int(start_raw)
+    est = env.get("EST_BYTES_PER_PAGE", "").strip()
+    if start < 0 or (raw_max != "all" and int(raw_max) < 0):
+        msg = "START_INDEX and MAX_PAGES must not be negative"
+        raise SystemExit(msg)
+    return {
+        "url_source": source,
+        "start": start,
+        "max_pages": None if raw_max == "all" else int(raw_max),
+        "est_bytes_per_page": int(est) if est else None,
+    }
+
+
+def archive_previous(out: Path) -> None:
+    """Keep an earlier run's status and manifest when a run resumes in the same folder."""
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    for name in ("progress.json", "manifest.json"):
+        if (out / name).exists():
+            (out / name).replace(out / f"{Path(name).stem}-before-{stamp}.json")
 
 
 def prior_bytes(env: Mapping[str, str]) -> int:
@@ -415,8 +580,12 @@ def prior_bytes(env: Mapping[str, str]) -> int:
 def main() -> int:
     out = Path(os.environ["OUT_DIR"])
     out.mkdir(parents=True, exist_ok=True)
-    urls = [u.strip() for u in Path(os.environ["URLS_FILE"]).read_text().splitlines() if u.strip()]
-    urls = urls[: int(os.environ.get("MAX_PAGES", "20"))]
+    options = run_options(os.environ, out)
+    archive_previous(out)
+    urls = []
+    if options["url_source"] == "file":
+        text = Path(os.environ["URLS_FILE"]).read_text()
+        urls = [u.strip() for u in text.splitlines() if u.strip()]
     pol = policy(
         prior_bytes(os.environ),
         os.environ["OWNER_APPROVAL_REF"],
@@ -428,6 +597,7 @@ def main() -> int:
         pol,
         SecretManagerReader(token=operator_token()),
         capture_json=os.environ.get("CAPTURE_JSON") == "1",
+        **options,
     )
 
     def on_signal(signum: int, _frame: object) -> None:
@@ -436,7 +606,10 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
-    run.say(f"ulta.ae proxy test: {len(urls)} pages, prior_bytes={pol_prior(pol)}, out={out}")
+    run.say(
+        f"ulta.ae proxied run: source={options['url_source']} start={options['start']}"
+        f" max_pages={options['max_pages']} prior_bytes={pol_prior(pol)} out={out}"
+    )
     try:
         with run.fetcher:
             run.run(context(datetime.now(UTC)))
