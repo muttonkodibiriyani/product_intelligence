@@ -1,5 +1,7 @@
 """Tests for the pure probe helpers, using the recon block samples as ground truth."""
 
+import html
+import re
 from pathlib import Path
 
 import pytest
@@ -227,3 +229,37 @@ def test_probe_fixtures_carry_no_cookies_or_keys() -> None:
         text = path.read_text(encoding="utf-8").lower()
         for needle in needles:
             assert needle not in text, (path.name, needle)
+    # An Akamai "Reference #18.<hex>..." may encode a client IP in hex (PR #15 review).
+    assert not re.search(r"reference\s*#\s*\d+\.[0-9a-f]{8}", html.unescape(text)), path.name
+
+
+ULTA = "ulta"
+
+
+@pytest.mark.parametrize(
+    ("site", "path", "has_rules", "status", "expected"),
+    [
+        # Sephora is tag_only (ADR-0005): never gated.
+        ("sephora", "/ae-en/api/v1/x", False, None, None),
+        # robots.txt itself may always be requested.
+        (ULTA, "/robots.txt", False, None, None),
+        # Fail closed: no parsed rules and robots.txt not yet fetched / 403 / 429 / 5xx / error.
+        (ULTA, "/en/search?keywords=lipstick", False, None, "robots_unavailable"),
+        (ULTA, "/en/buy-x", False, 403, "robots_unavailable"),
+        (ULTA, "/en/buy-x", False, 429, "robots_unavailable"),
+        (ULTA, "/en/buy-x", False, 503, "robots_unavailable"),
+        (ULTA, "/en/buy-x", False, 200, "robots_unavailable"),  # 200 challenge page, no rules
+        # 404/410 = allow-all.
+        (ULTA, "/en/search?keywords=lipstick", False, 404, None),
+        (ULTA, "/en/buy-x", False, 410, None),
+        # Parsed rules decide.
+        (ULTA, "/en/search?keywords=lipstick", True, 200, "robots_disallowed"),
+        (ULTA, "/en/buy-signature-lip-pencil", True, 200, None),
+    ],
+)
+def test_robots_gate_fails_closed(
+    site: str, path: str, has_rules: bool, status: int | None, expected: str | None
+) -> None:
+    robots = (PROBE / "ulta_ae_robots.txt").read_text(encoding="utf-8")
+    rules = analysis.robots_rules(robots) if has_rules else None
+    assert analysis.robots_gate(site, path, rules, status) == expected

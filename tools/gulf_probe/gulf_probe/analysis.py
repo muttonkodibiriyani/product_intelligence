@@ -209,8 +209,37 @@ def trim_for_fixture(html: str, limit: int = 60_000) -> str:
     return redact_text("\n".join(parts))[:limit]
 
 
+ROBOTS_ALLOW_ALL_STATUSES = frozenset({404, 410})
+
+
+def robots_gate(
+    site: str,
+    path_and_query: str,
+    rules: list[tuple[bool, str]] | None,
+    robots_status: int | None,
+) -> str | None:
+    """Decide whether a probe URL may be requested. Returns a skip reason, or None to proceed.
+
+    Fails CLOSED (PR #15 review): for any host other than Sephora (tag_only, ADR-0005), a URL is
+    requested only if robots.txt was parsed and allows it, or robots.txt answered 404/410
+    (allow-all). Any other robots outcome (not fetched yet, 401/403/429/5xx, challenge,
+    transport error) refuses everything except ``/robots.txt`` itself.
+    """
+    if site == "sephora" or path_and_query == "/robots.txt":
+        return None
+    if rules is not None:
+        return None if robots_allowed(rules, path_and_query) else "robots_disallowed"
+    if robots_status in ROBOTS_ALLOW_ALL_STATUSES:
+        return None
+    return "robots_unavailable"
+
+
 def robots_rules(robots_txt: str, agent: str = "*") -> list[tuple[bool, str]]:
-    """(allow, pattern) rules of the group for ``agent`` (falls back to ``*``)."""
+    """(allow, pattern) rules of the group for ``agent`` (falls back to ``*``).
+
+    Frozen with this one-off probe: no BOM strip or percent normalisation. Do not reuse;
+    production code uses ``pi_fetch.pacing.RobotsRules`` (RFC 9309, #16).
+    """
     groups: dict[str, list[tuple[bool, str]]] = {}
     current: list[str] = []
     in_rules = False

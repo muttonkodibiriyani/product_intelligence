@@ -5,11 +5,29 @@ Run 2026-09-30, 20:24–21:00 UTC (off-peak Gulf). Tool: `tools/gulf_probe` (ima
 
 **Access used: ordinary only.** Plain `httpx` with normal browser headers (rung 1) and stock
 Playwright Chromium/Firefox/WebKit, headless or headed (Xvfb), desktop or built-in mobile descriptors
-(rung 2), from several egresses (rung 4). Every attempt got a fresh browser context, pacing was ~1 req/s
-with jitter (5 s per page for ulta.* in the last run), and three consecutive blocks per (site, client)
-stopped that client. No TLS/HTTP2 impersonation, stealth patches, fingerprint rotation, challenge
-solving or cookie reuse. Sephora's robots-disallowed paths are owner-approved (ADR-0005). ulta.ae and
-ulta.com.kw robots.txt are **obeyed** through a per-host robots gate.
+(rung 2), from several egresses (rung 4). Every attempt got a fresh browser context, and three
+consecutive blocks per (site, client) stopped that client. No TLS/HTTP2 impersonation, stealth
+patches, fingerprint rotation, challenge solving or cookie reuse. Sephora's robots-disallowed paths
+are owner-approved (ADR-0005).
+
+Corrections after review (PR #15):
+- **Pacing.** `PROBE_PACE` defaulted to 1 s (+0–60 % jitter). Only the last run (stage x,
+  20:55–21:00) used 5 s per page for ulta.*. The earlier ulta.ae runs (stages 1, 2, 4 and our server,
+  20:24–20:44) ran at ~1 req/s, **below the decision-log floor of ≥5 s per page** for ulta.ae.
+- **Mobile descriptors change the User-Agent.** Playwright's built-in `iPhone 14` / `Pixel 7`
+  descriptors send a mobile Safari/Chrome UA from a Linux engine, which is UA impersonation in
+  effect. That is recorded here as a recon observation only. pi_fetch is desktop-only (ADR-0006
+  Amendment 1), so it is not carried forward.
+- **The robots gate failed open for ulta.*.** Rules were loaded only after a 200 robots.txt. httpx
+  got a Cloudflare 403 on robots.txt, so ulta.* URLs requested before a browser fetched a usable
+  robots.txt in the same run went **ungated**. One of them was robots-disallowed:
+  `https://www.ulta.ae/en/search?keywords=lipstick` (Chromium, 20:28, Cloudflare 403). See
+  [Robots gate incident](#robots-gate-incident-fail-open). The gate now fails closed (`analysis.robots_gate`, tested).
+- **No cross-egress retry.** After our server got the 429 managed challenge (20:42), ulta.ae was
+  requested again from me-central1, europe-west1 and asia-south1 (20:55–21:00). Egress comparison was
+  the probe's purpose, but a host-level back-off must hold across egresses. Production rule
+  (decision log, #17): pacing and back-off are **per host, independent of egress**, with no
+  cross-egress retry after a 429 or challenge. pi_fetch's `HostPacer` is keyed by host.
 
 ## Verdict
 
@@ -52,7 +70,7 @@ solve any challenge.
 
 Outcome counts per egress × site × client × entry point. `usable` = the page yielded a price.
 `skip:after_blocks` = the client was stopped after three consecutive blocks.
-`skip:robots_disallowed` never fired, because every URL probed on ulta.* was robots-allowed.
+`skip:robots_disallowed` never fired. That is **not** because every URL was allowed: the gate failed open (see [Robots gate incident](#robots-gate-incident-fail-open)).
 
 | egress | site | client | entry | outcomes (count) |
 |---|---|---|---|---|
@@ -154,6 +172,70 @@ Outcome counts per egress × site × client × entry point. `usable` = the page 
 | our-server | sephora | plain_http | stab_sitemap_product | skip:after_blocks ×2 |
 | our-server | sephora | plain_http | stab_image | skip:after_blocks ×1 |
 | our-server | sephora | firefox-headless-desktop | stab_pdp_browser | 200 usable ×1 |
+
+## Robots gate incident (fail-open)
+
+`run.py` loaded a host's rules only after a 200 robots.txt and let every URL through while no
+rules were loaded. httpx got a Cloudflare 403 on ulta.ae/ulta.com.kw robots.txt, so each run
+requested the ulta.* URLs below before a usable robots.txt was parsed (or never had one). Rules
+are per process, so each run starts ungated. The "disallowed" column is judged against the ulta.ae
+robots.txt the probe fetched (`samples/probe/ulta_ae_robots.txt`). It is used for ulta.com.kw
+too, whose robots.txt was never readable (403). **44 URLs were requested ungated; 1 is
+disallowed** (the search URL), and it got a Cloudflare 403. `HTTP None` = transport error (e.g.
+m.ulta.ae does not resolve).
+
+Fix (this PR): `analysis.robots_gate` fails closed. For any non-Sephora host, a URL is requested
+only if robots.txt was parsed and allows it, or robots.txt answered 404/410. Not fetched,
+401/403/429/5xx, a challenge page or an error means refuse everything except `/robots.txt`. A 200
+challenge page is no longer parsed as robots.txt. Tested in `test_robots_gate_fails_closed`.
+The incident is recorded in the decision log (#17).
+
+| UTC | run | client | HTTP | disallowed by ulta.ae robots.txt | URL |
+|---|---|---|---|---|---|
+| 2026-09-30T20:27:11 | stage1-me-central1-20260930T202453Z | plain_http | 403 | no | https://www.ulta.ae/sitemap.xml |
+| 2026-09-30T20:27:13 | stage1-me-central1-20260930T202453Z | plain_http | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:27:57 | stage1-me-central1-20260930T202453Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:27:59 | stage1-me-central1-20260930T202453Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/makeup |
+| 2026-09-30T20:28:00 | stage1-me-central1-20260930T202453Z | chromium-headless-desktop | 403 | yes | https://www.ulta.ae/en/search?keywords=lipstick |
+| 2026-09-30T20:32:47 | stage2-me-central1-20260930T203224Z | firefox-headless-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:32:51 | stage2-me-central1-20260930T203224Z | firefox-headless-desktop | 403 | no | https://www.ulta.ae/en/makeup |
+| 2026-09-30T20:33:15 | stage2-me-central1-20260930T203224Z | webkit-headless-desktop | 200 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:33:34 | stage2-me-central1-20260930T203224Z | webkit-headless-desktop | 200 | no | https://www.ulta.ae/en/makeup |
+| 2026-09-30T20:33:40 | stage2-me-central1-20260930T203224Z | chromium-headed-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:33:44 | stage2-me-central1-20260930T203224Z | chromium-headed-desktop | 403 | no | https://www.ulta.ae/en/makeup |
+| 2026-09-30T20:33:49 | stage2-me-central1-20260930T203224Z | firefox-headed-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:33:57 | stage2-me-central1-20260930T203224Z | firefox-headed-desktop | 403 | no | https://www.ulta.ae/en/makeup |
+| 2026-09-30T20:34:06 | stage2-me-central1-20260930T203224Z | chromium-headless-mobile | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:34:08 | stage2-me-central1-20260930T203224Z | chromium-headless-mobile | 403 | no | https://www.ulta.ae/en/makeup |
+| 2026-09-30T20:34:29 | stage2-me-central1-20260930T203224Z | webkit-headless-mobile | 200 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:34:50 | stage2-me-central1-20260930T203224Z | webkit-headless-mobile | 200 | no | https://www.ulta.ae/en/makeup |
+| 2026-09-30T20:35:21 | stage2-me-central1-20260930T203224Z | webkit-headless-mobile | 200 | no | https://www.ulta.ae/ar/ |
+| 2026-09-30T20:56:21 | stagex-me-central1-20260930T205558Z | webkit-headed-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:56:27 | stagex-me-central1-20260930T205558Z | webkit-headed-desktop | 403 | no | https://www.ulta.ae/en/shop-makeup-nails |
+| 2026-09-30T20:56:35 | stagex-me-central1-20260930T205558Z | webkit-headed-desktop | 403 | no | https://www.ulta.ae/en/buy-signature-lip-pencil |
+| 2026-09-30T20:56:43 | stagex-me-central1-20260930T205558Z | plain_http | 403 | no | https://www.ulta.com.kw/sitemap.xml |
+| 2026-09-30T20:56:49 | stagex-me-central1-20260930T205558Z | plain_http | 403 | no | https://www.ulta.com.kw/en/ |
+| 2026-09-30T20:56:52 | stagex-asia-south1-20260930T205629Z | plain_http | 403 | no | https://www.ulta.ae/sitemap.xml |
+| 2026-09-30T20:56:56 | stagex-me-central1-20260930T205558Z | webkit-headless-desktop | 403 | no | https://www.ulta.com.kw/en/ |
+| 2026-09-30T20:56:57 | stagex-asia-south1-20260930T205629Z | plain_http | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:57:01 | stagex-me-central1-20260930T205558Z | webkit-headless-desktop | 403 | no | https://www.ulta.com.kw/en/shop-makeup-nails |
+| 2026-09-30T20:57:04 | stagex-asia-south1-20260930T205629Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:57:08 | stagex-me-central1-20260930T205558Z | webkit-headless-desktop | 403 | no | https://www.ulta.com.kw/en/buy-signature-lip-pencil |
+| 2026-09-30T20:57:33 | stagex-europe-west1-20260930T205712Z | plain_http | 403 | no | https://www.ulta.ae/sitemap.xml |
+| 2026-09-30T20:57:38 | stagex-europe-west1-20260930T205712Z | plain_http | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:57:45 | stagex-europe-west1-20260930T205712Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:57:54 | stagex-europe-west1-20260930T205712Z | webkit-headless-desktop | 403 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:58:00 | stagex-europe-west1-20260930T205712Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/shop-makeup-nails |
+| 2026-09-30T20:58:07 | stagex-asia-south1-20260930T205629Z | webkit-headless-desktop | 200 | no | https://www.ulta.ae/en/ |
+| 2026-09-30T20:58:09 | stagex-asia-south1-20260930T205629Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/shop-makeup-nails |
+| 2026-09-30T20:58:19 | stagex-asia-south1-20260930T205629Z | webkit-headless-desktop | 403 | no | https://www.ulta.ae/en/shop-makeup-nails |
+| 2026-09-30T20:58:20 | stagex-asia-south1-20260930T205629Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/buy-signature-lip-pencil |
+| 2026-09-30T20:58:24 | stagex-europe-west1-20260930T205712Z | webkit-headless-desktop | 200 | no | https://www.ulta.ae/en/shop-makeup-nails |
+| 2026-09-30T20:58:25 | stagex-europe-west1-20260930T205712Z | chromium-headless-desktop | 403 | no | https://www.ulta.ae/en/buy-signature-lip-pencil |
+| 2026-09-30T20:58:29 | stagex-asia-south1-20260930T205629Z | webkit-headless-desktop | 403 | no | https://www.ulta.ae/en/buy-signature-lip-pencil |
+| 2026-09-30T20:58:32 | stagex-asia-south1-20260930T205629Z | webkit-headless-mobile | None | no | https://m.ulta.ae/ |
+| 2026-09-30T20:58:55 | stagex-europe-west1-20260930T205712Z | webkit-headless-desktop | 200 | no | https://www.ulta.ae/en/buy-signature-lip-pencil |
+| 2026-09-30T20:58:56 | stagex-europe-west1-20260930T205712Z | webkit-headless-mobile | None | no | https://m.ulta.ae/ |
 
 ## Where the data lives
 

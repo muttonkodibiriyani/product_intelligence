@@ -54,6 +54,7 @@ class Probe:
         # Hosts whose robots.txt we obey, keyed by netloc. Sephora is exempt (its disallowed
         # paths are owner-approved: ADR-0005); every other site's robots.txt is obeyed.
         self.robots: dict[str, list[tuple[bool, str]]] = {}
+        self.robots_status: dict[str, int | None] = {}
 
     # ------------------------------------------------------------------ plumbing
     def pace(self) -> None:
@@ -93,16 +94,30 @@ class Probe:
     def fetch(self, t: plan.Target, c: plan.Client) -> Rec | None:
         split = urlsplit(t.url)
         path = split.path + (f"?{split.query}" if split.query else "")
-        rules = self.robots.get(split.netloc)
-        if rules is not None and not analysis.robots_allowed(rules, path):
-            self.records.append({**self.base(t, c), "skipped": "robots_disallowed"})
+        skip = analysis.robots_gate(
+            t.site, path, self.robots.get(split.netloc), self.robots_status.get(split.netloc)
+        )
+        if skip is not None:
+            self.records.append({**self.base(t, c), "skipped": skip})
             return None
         if self.blocks.get((t.site, c.label), 0) >= BLOCK_LIMIT:
             self.records.append({**self.base(t, c), "skipped": "after_blocks"})
             return None
         self.pace()
         rec = self.http(t) if c.engine == "http" else self.browser(t, c)
-        if t.site != "sephora" and split.path == "/robots.txt" and rec.get("status") == 200:
+        # Keep the best robots outcome seen for the host (a 200 from any client wins).
+        if (
+            t.site != "sephora"
+            and split.path == "/robots.txt"
+            and self.robots_status.get(split.netloc) != 200
+        ):
+            self.robots_status[split.netloc] = rec.get("status")
+        if (
+            t.site != "sephora"
+            and split.path == "/robots.txt"
+            and rec.get("status") == 200
+            and not rec.get("block")  # a 200 challenge page is not a robots.txt
+        ):
             text = rec.get("_text", "")
             pre = re.search(r"<pre[^>]*>(.*)</pre>", text, re.DOTALL)  # browsers wrap text in <pre>
             robots = html.unescape(pre.group(1)) if pre else text
