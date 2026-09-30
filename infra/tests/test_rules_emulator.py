@@ -118,14 +118,24 @@ def test_firestore_demo_collections_are_readable_only_by_invited_roles(who: str)
     assert firestore_get("demo_meta/current", who) == (ALLOWED if who in INVITED else DENIED)
 
 
+# The assistant's meter and config are written only by its service account (Admin SDK).
+ASSISTANT_PATHS = [
+    "assistant_config/current",
+    "assistant_usage_counters/total|2026-09",
+    "assistant_reservations/r1",
+]
+
+
 @pytest.mark.parametrize("who", list(USERS))
-@pytest.mark.parametrize("path", ["users/u1", "demometa/current", "x_demo_meta/current"])
+@pytest.mark.parametrize(
+    "path", ["users/u1", "demometa/current", "x_demo_meta/current", *ASSISTANT_PATHS]
+)
 def test_firestore_non_demo_collections_are_denied_to_everyone(path: str, who: str) -> None:
     assert firestore_get(path, who) == DENIED
 
 
 @pytest.mark.parametrize("who", list(USERS))
-@pytest.mark.parametrize("path", ["demo_meta/current", "users/u1"])
+@pytest.mark.parametrize("path", ["demo_meta/current", "users/u1", *ASSISTANT_PATHS])
 def test_firestore_clients_never_write(path: str, who: str) -> None:
     assert firestore_write(path, who) == DENIED
 

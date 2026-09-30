@@ -350,10 +350,19 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
     - Client rule: read if `request.auth.uid == uid` and the role claim is valid.
     - **Retention: 90 days.** Every document carries `expireAt`, with a Firestore TTL policy on
       it. The user can delete a thread at any time.
-  - `assistant_usage/{yyyy-mm}/days/{dd}` and `…/users/{uid}`: token and cost counters
-    (functions only). Admin read.
-  - `assistant_config/current`: `enabled`, `model`, `caps`, `promptVersion`. Admin read.
+  - `assistant_usage_counters/{key}`: integer micro-USD `spent` and `reserved`, and question
+    counts. One flat document per key, so a reservation touches a fixed set of documents in
+    one transaction. Keys (each segment URI-encoded, joined with `|`): `total|{yyyy-mm}`,
+    `label|{label}|{yyyy-mm}`, `label|{label}|{yyyy-mm-dd}`, `user|{uid}|{yyyy-mm-dd}`.
+  - `assistant_reservations/{id}`: one per model call, `reserved` → `settled`, holding the
+    ceiling, the actual cost, token usage and the price-table version. A call whose settle
+    fails stays `reserved`, so its ceiling keeps counting against the caps.
+  - `assistant_config/current`: `enabled`, `model`, `promptVersion`, `priceTableVersion`,
+    `caps`, `limits`. A missing or invalid document means **disabled** (fail closed).
     Writes only through the audited admin callable.
+  - All three are functions-only: the rules deny every client read and write
+    (`infra/tests/test_rules_emulator.py`). Admins see usage through a callable in stage 2.
+    Counter and reservation documents carry `expireAt` (+90 days) for the TTL policy.
 - **Storage** (stage 2): `reports/{uid}/{reportId}.{xlsx,pdf,pptx}`. No client read rule. Access
   is only by **V4 signed URL (1 h)**, issued by a callable that checks ownership. Needs
   `iam.serviceAccounts.signBlob` on the runtime service account (a self-binding of
