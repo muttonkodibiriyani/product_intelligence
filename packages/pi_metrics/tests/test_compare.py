@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+import time
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
+from metrics_fixture import (
+    DATES,
+    A,
+    B,
+    C,
+    D,
+    edge,
+    metrics_dataset,
+    rebuild,
+    scaled,
+    with_saudi_shop,
+)
 from pi_dataset import Dataset, DecidedBy, MoneyValue, RetailerStatus
 from pi_metrics import EVERYTHING, Cheaper, GroupBy, ProductFilter, compare, gap
-from pi_metrics.fixtures import DATES, A, B, C, D, edge, metrics_dataset, rebuild, with_saudi_shop
 from pi_metrics.model import CaveatCode, Excluded, Reason, Status
 from pi_metrics.view import UnknownInput
 
@@ -175,3 +187,24 @@ def test_a_locked_edge_counts_and_a_proposed_one_does_not(ds: Dataset) -> None:
 def test_bad_input_is_a_request_error(ds: Dataset, base: str, other: str, on: date | None) -> None:
     with pytest.raises(UnknownInput):
         compare(ds, base, other, EVERYTHING, on=on)
+
+
+def test_an_unknown_size_is_never_assumed_equal(ds: Dataset) -> None:
+    p01 = ds.products[0]
+    offers = {rid: o.model_copy(update={"size": None}) for rid, o in p01.offers.items()}
+    changed = ds.model_copy(
+        update={"products": (p01.model_copy(update={"offers": offers}), *ds.products[1:])}
+    )
+    row = compare(rebuild(changed), A, B, ProductFilter(ids=("p01",))).data.rows[0]
+    assert row.excluded_reason is Excluded.SIZE_UNKNOWN
+    assert not row.counted
+
+
+def test_compare_scales_linearly(ds: Dataset) -> None:
+    big = scaled(ds, 500)  # 8k products; the quadratic version took ~10 s here
+    started = time.perf_counter()
+    result = compare(big, A, B, EVERYTHING, group_by=GroupBy.BRAND)
+    assert time.perf_counter() - started < 3
+    assert result.cohort is not None
+    assert result.cohort.n == 6 * 500
+    assert result.data.sides.base.only_here == 500

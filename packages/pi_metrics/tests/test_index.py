@@ -4,9 +4,18 @@ from datetime import date
 
 import pytest
 
+from metrics_fixture import (
+    DATES,
+    A,
+    B,
+    D,
+    metrics_dataset,
+    with_capabilities,
+    with_dates,
+    with_saudi_shop,
+)
 from pi_dataset import Dataset
 from pi_metrics import EVERYTHING, ProductFilter, price_index
-from pi_metrics.fixtures import DATES, A, B, D, metrics_dataset, with_capabilities, with_dates
 from pi_metrics.model import Reason, Status
 from pi_metrics.view import UnknownInput
 
@@ -41,10 +50,18 @@ def test_a_thin_point_is_null_not_interpolated(ds: Dataset) -> None:
 
 
 def test_a_small_basket_is_not_enough_data(ds: Dataset) -> None:
-    result = price_index(ds, A, D, EVERYTHING)
+    result = price_index(ds, A, B, ProductFilter(ids=("p01", "p02")))
     assert result.status is Status.NOT_ENOUGH_DATA
     assert result.reason is Reason.COHORT_TOO_SMALL
     assert all(p.index is None for p in result.data.points)
+
+
+def test_a_blocked_side_or_other_currency_has_no_index(ds: Dataset) -> None:
+    blocked = price_index(ds, A, D, EVERYTHING)
+    assert blocked.reason is Reason.RETAILER_BLOCKED
+    assert blocked.data.points == ()
+    saudi = price_index(with_saudi_shop(ds), A, "shop_e", EVERYTHING)
+    assert saudi.reason is Reason.CURRENCY_MISMATCH
 
 
 def test_history_off_allows_only_one_date(ds: Dataset) -> None:

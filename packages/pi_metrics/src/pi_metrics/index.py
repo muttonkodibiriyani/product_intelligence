@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from pi_dataset import ContractModel, Dataset
 from pi_metrics import view
-from pi_metrics.compare import COHORT_DESCRIPTION, pair_row
+from pi_metrics.compare import COHORT_DESCRIPTION, pair_block, pair_row
 from pi_metrics.model import (
     MIN_COHORT,
     Cohort,
@@ -77,6 +77,14 @@ def price_index(  # noqa: PLR0913 -- the endpoint filters; window bounds are key
             status=Status.NOT_ENOUGH_DATA,
             data=PriceIndex(base=base, other=other, points=(), trend_available=False),
             reason=Reason.CAPABILITY_OFF,
+            as_of=as_of,
+        )
+    blocked = pair_block(ds, base, other)
+    if blocked is not None:
+        return Metric[PriceIndex](
+            status=Status.NOT_ENOUGH_DATA,
+            data=PriceIndex(base=base, other=other, points=(), trend_available=False),
+            reason=blocked,
             as_of=as_of,
         )
     candidates = [p for p in view.products(ds, where) if base in p.offers and other in p.offers]

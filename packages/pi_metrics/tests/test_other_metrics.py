@@ -4,6 +4,18 @@ from decimal import Decimal
 
 import pytest
 
+from metrics_fixture import (
+    DATES,
+    A,
+    B,
+    C,
+    D,
+    metrics_dataset,
+    rebuild,
+    with_capabilities,
+    with_dates,
+    with_fields,
+)
 from pi_core import AvailabilityState
 from pi_dataset import Dataset, FieldStatus
 from pi_metrics import (
@@ -16,18 +28,6 @@ from pi_metrics import (
     launches,
     promotions,
     reviews_summary,
-)
-from pi_metrics.fixtures import (
-    DATES,
-    A,
-    B,
-    C,
-    D,
-    metrics_dataset,
-    rebuild,
-    with_capabilities,
-    with_dates,
-    with_fields,
 )
 from pi_metrics.model import CaveatCode, Reason, Status
 from pi_metrics.view import UnknownInput
@@ -47,7 +47,7 @@ def test_promo_share_and_items_deepest_first(ds: Dataset) -> None:
     shares = {s.retailer: s.model_dump(mode="json") for s in result.data.retailers}
     assert (shares[A]["n"], shares[A]["onPromo"], shares[A]["share"]) == (6, 3, "50.0")
     assert shares[B]["share"] == "0.0"
-    assert [(i.id, i.model_dump(mode="json")["statedPct"]) for i in result.data.items] == [
+    assert [(i.id, i.model_dump(mode="json")["depthPct"]) for i in result.data.items] == [
         ("p05", "33.3"),
         ("p04", "20.4"),
         ("p01", "10.0"),

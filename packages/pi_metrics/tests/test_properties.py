@@ -11,6 +11,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import BaseModel
 
+from metrics_fixture import A, B, metrics_dataset
 from pi_dataset import MoneyValue
 from pi_metrics import (
     EVERYTHING,
@@ -30,7 +31,6 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.compare import summarise
-from pi_metrics.fixtures import A, B, metrics_dataset
 from pi_metrics.model import fixed
 
 cents = st.integers(min_value=1, max_value=10_000_000)

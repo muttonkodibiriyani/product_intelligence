@@ -35,7 +35,7 @@ class PromoItem(ContractModel):
     retailer: str
     price: MoneyValue
     regular: MoneyValue
-    stated_pct: Pct
+    depth_pct: Pct
 
 
 class RetailerPromo(ContractModel):
@@ -112,11 +112,11 @@ def promotions(
                             retailer=shop.id,
                             price=price,
                             regular=regular,
-                            stated_pct=pct,
+                            depth_pct=pct,
                         )
                     )
         shares.append(_share(ds, shop.id, n, on_promo))
-    items.sort(key=lambda item: (-item.stated_pct, item.retailer, item.id))
+    items.sort(key=lambda item: (-item.depth_pct, item.retailer, item.id))
     reason = next((s.reason for s in shares if s.reason is not None), None)
     caveats = tuple(
         Caveat(code=CaveatCode.RETAILER_PARTIAL, params={"retailer": s.retailer})

@@ -62,7 +62,7 @@ def _money(prices: Prices) -> tuple[MoneyValue | None, ...]:
     return tuple(None if p is None else MoneyValue.of(Decimal(p), "AED") for p in prices)
 
 
-def offer(  # noqa: PLR0913 -- keyword-only fixture builder
+def offer(
     retailer: str,
     prices: Prices,
     *,
@@ -327,3 +327,11 @@ def with_dates(ds: Dataset, count: int) -> Dataset:
     )
     cut = ds.model_copy(update={"products": tuple(products), "not_observed": windows})
     return rebuild(cut, dates=ds.meta.dates[keep])
+
+
+def scaled(ds: Dataset, copies: int) -> Dataset:
+    """``ds`` with its products repeated ``copies`` times under new ids, unvalidated for speed."""
+    products = tuple(
+        p.model_copy(update={"id": f"{p.id}x{k}"}) for k in range(copies) for p in ds.products
+    )
+    return ds.model_copy(update={"products": products})

@@ -145,6 +145,8 @@ def _exclusion(  # noqa: PLR0911 -- one ordered decision ladder, first match win
         return Excluded.MATCH_UNREVIEWED
     if edge.match_class is not MatchClass.EXACT:
         return Excluded.MATCH_NOT_EXACT
+    if a.size is None or b.size is None:
+        return Excluded.SIZE_UNKNOWN
     if not view.same_size(a, b):
         return Excluded.SIZE_MISMATCH
     if a.series.price[i] is None or b.series.price[i] is None:
@@ -201,15 +203,20 @@ def summarise(rows: tuple[PairRow, ...], base: str, other: str) -> CompareSummar
     )
 
 
-def _headline(
-    ds: Dataset, rows: tuple[PairRow, ...], base: str, other: str, n: int
-) -> Reason | None:
+def pair_block(ds: Dataset, base: str, other: str) -> Reason | None:
+    """A reason no pair between the two retailers can be counted, whatever the rows."""
     statuses = {view.retailer(ds, r).status for r in (base, other)}
     if RetailerStatus.BLOCKED in statuses:
         return Reason.RETAILER_BLOCKED
     if view.market_currency(ds, base) != view.market_currency(ds, other):
         return Reason.CURRENCY_MISMATCH
-    return _cohort_reason(rows, n)
+    return None
+
+
+def _headline(
+    ds: Dataset, rows: tuple[PairRow, ...], base: str, other: str, n: int
+) -> Reason | None:
+    return pair_block(ds, base, other) or _cohort_reason(rows, n)
 
 
 def _cohort_reason(rows: tuple[PairRow, ...], n: int) -> Reason | None:
@@ -232,9 +239,16 @@ def _cohort_reason(rows: tuple[PairRow, ...], n: int) -> Reason | None:
     return Reason.COHORT_TOO_SMALL
 
 
-def _side(ds: Dataset, retailer: str, other: str, rows: tuple[PairRow, ...], i: int) -> Side:
+def _side(  # noqa: PLR0913 -- one side of the pair plus the shared rows and products
+    ds: Dataset,
+    retailer: str,
+    other: str,
+    *,
+    rows: tuple[PairRow, ...],
+    offered: list[Product],
+    i: int,
+) -> Side:
     status = view.retailer(ds, retailer).status
-    offered = [p for p in ds.products if p.id in {r.id for r in rows}]
     observed = sum(
         1
         for p in offered
@@ -309,7 +323,9 @@ def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are k
     reason = _headline(ds, rows, base, other, n)
     summary = summarise(rows, base, other) if reason is None else None
     # A blocked side or a currency mismatch withholds every group; the cohort rule is per group.
-    blocked = reason if reason in {Reason.RETAILER_BLOCKED, Reason.CURRENCY_MISMATCH} else None
+    blocked = pair_block(ds, base, other)
+    ids = {r.id for r in rows}
+    offered = [p for p in ds.products if p.id in ids]
     groups = () if group_by is None else _groups(rows, base, other, group_by, blocked)
     caveats = [
         Caveat(code=CaveatCode.RETAILER_PARTIAL, params={"retailer": r})
@@ -325,7 +341,8 @@ def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are k
             base=base,
             other=other,
             sides=Sides(
-                base=_side(ds, base, other, rows, i), other=_side(ds, other, base, rows, i)
+                base=_side(ds, base, other, rows=rows, offered=offered, i=i),
+                other=_side(ds, other, base, rows=rows, offered=offered, i=i),
             ),
             rows=rows,
             summary=summary,

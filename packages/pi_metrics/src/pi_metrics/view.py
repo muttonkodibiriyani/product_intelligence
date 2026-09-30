@@ -101,8 +101,9 @@ def edge_between(product: Product, a: str, b: str) -> MatchEdge | None:
 
 
 def same_size(a: Offer, b: Offer) -> bool:
+    """Both sizes known and equal; the caller handles an unknown size separately."""
     if a.size is None or b.size is None:
-        return a.size is None and b.size is None
+        return False
     return (
         Decimal(a.size.value) == Decimal(b.size.value)
         and a.size.unit.casefold() == b.size.unit.casefold()

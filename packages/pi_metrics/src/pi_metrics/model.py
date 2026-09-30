@@ -75,6 +75,8 @@ class Excluded(StrEnum):
     UNPRICED = "unpriced"
     CURRENCY_MISMATCH = "currency_mismatch"
     SIZE_MISMATCH = "size_mismatch"
+    #: A size missing on either side: "same size" can't be shown, so the pair isn't counted.
+    SIZE_UNKNOWN = "size_unknown"
 
 
 class Cheaper(StrEnum):

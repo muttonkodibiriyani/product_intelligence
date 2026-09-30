@@ -316,7 +316,7 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 - **`/v1/index`:** `retailers {base, other}`, `brand`, `category`, `from`, `to`. Returns
   `{points: [{date, index, n}], trendAvailable, definition}`.
 - **`/v1/promotions`:** `retailer[]`, `brand`, `category`, `minPct`. Returns
-  `{promoShare{<source_key>: pct}, items[{id, name, retailer, price, regular, statedPct}]}`.
+  `{promoShare{<source_key>: pct}, items[{id, name, retailer, price, regular, depthPct}]}`.
   Needs `capabilities.promotions`.
 - **`/v1/assortment-gaps`:** `missingAt`, `presentAt`, `brand`, `category`. Returns `{total,
   byBrand[{brand, count}], items: ProductCard[]}`, with the absence rules (§7).
@@ -374,7 +374,8 @@ client.
    - `matchClass = exact`;
    - `reviewState ∈ {approved, locked}` (`approved` is decided by a human or by auto-accept,
      §8.3; `locked` is human-confirmed and also frozen against re-matching);
-   - the same normalised size;
+   - the same normalised size, known on both sides (a size missing on either side excludes the
+     pair as `size_unknown`; it is never assumed equal);
    - both sides priced;
    - neither side `early` (recon samples);
    - the same currency. Otherwise the reason is `currency_mismatch`. **There is no FX path in
