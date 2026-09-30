@@ -22,3 +22,12 @@ uv run --script infra/scripts/publish_dataset.py --project productintelligence-b
 # invite users: emails on stdin, one per line; add --no-email to create without sending
 uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3 --role viewer < emails.txt
 ```
+
+## Also applied 2026-09-30
+
+- Bucket CORS from `storage.cors.json` (GET from the two Hosting origins):
+  `gcloud storage buckets update gs://productintelligence-beeb3.firebasestorage.app --cors-file=infra/storage.cors.json`
+- Browser API key ("auto created by Firebase", 27 Firebase API targets) restricted to HTTP referrers
+  `https://productintelligence-beeb3.web.app/*` and `https://productintelligence-beeb3.firebaseapp.com/*`
+  (apikeys.googleapis.com enabled for this).
+- Hashed `*.js`/`*.css` served with `max-age=31536000, immutable`; `*.html`/`*.json` with `no-cache`.
