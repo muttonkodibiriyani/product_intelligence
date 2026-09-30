@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import subprocess
+import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -188,7 +189,7 @@ def test_upload_is_create_only_and_sends_the_md5_for_server_side_checking(
         seen.append(request)
         return Response(b'{"md5Hash": "m", "generation": "1"}')
 
-    monkeypatch.setattr(pg_backup.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     assert pg_backup.upload("t", "b", "o", path, {"k": "v"})["generation"] == "1"
     (request,) = seen
     assert "ifGenerationMatch=0" in request.full_url
