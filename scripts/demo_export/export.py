@@ -129,15 +129,33 @@ class UltaContext:
 
 
 LATEST_LISTINGS_SQL = """
-WITH current_runs AS (
-  SELECT DISTINCT ON (cr.source_context_id) cr.id
+WITH scoped_runs AS (
+  SELECT cr.id, cr.source_context_id, cr.status, cr.started_at
   FROM crawl_run cr
   JOIN source_context sc ON sc.id = cr.source_context_id
   JOIN source s ON s.id = sc.source_id
   WHERE sc.country = 'AE'
     AND sc.locale = 'en-AE'
     AND (s.name LIKE 'sephora%' OR s.name LIKE 'ulta%')
-  ORDER BY cr.source_context_id, cr.started_at DESC, cr.id DESC
+),
+-- The baseline is the newest SUCCEEDED run per context: a running, failed or partial refresh
+-- must never hide it (that would publish false removals).
+current_runs AS (
+  SELECT DISTINCT ON (source_context_id) id, source_context_id
+  FROM scoped_runs
+  WHERE status = 'succeeded'
+  ORDER BY source_context_id, started_at DESC, id DESC
+),
+-- Contexts with no succeeded run yet fall back to the latest observation per listing across
+-- all of their runs.
+eligible_runs AS (
+  SELECT id FROM current_runs
+  UNION ALL
+  SELECT r.id
+  FROM scoped_runs r
+  WHERE NOT EXISTS (
+    SELECT 1 FROM current_runs c WHERE c.source_context_id = r.source_context_id
+  )
 ),
 latest AS (
   SELECT DISTINCT ON (o.source_listing_id)
@@ -156,7 +174,7 @@ latest AS (
     sc.coverage_status::text,
     e.retrieved_at AS evidence_retrieved_at
   FROM offer_observation o
-  JOIN current_runs current ON current.id = o.crawl_run_id
+  JOIN eligible_runs eligible ON eligible.id = o.crawl_run_id
   JOIN crawl_run cr ON cr.id = o.crawl_run_id
   JOIN source_context sc ON sc.id = o.source_context_id
   LEFT JOIN evidence e ON e.id = o.evidence_id

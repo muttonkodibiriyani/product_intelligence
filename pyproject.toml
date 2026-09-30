@@ -98,7 +98,7 @@ warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
-testpaths = ["packages", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests"]
+testpaths = ["packages", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "scripts/demo_export"]
 pythonpath = ["tests", "packages/pi_fetch/tests", "tools/gulf_probe", "tools/ulta_snapshot"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
