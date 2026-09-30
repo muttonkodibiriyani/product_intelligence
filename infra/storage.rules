@@ -1,0 +1,10 @@
+rules_version = '2';
+// Deny-all baseline for the local Storage emulator. Evidence and images are written by
+// server-side jobs with admin credentials, which bypass rules.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
