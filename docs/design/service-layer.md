@@ -142,7 +142,9 @@ versioned snapshots.
   The bucket is **per instance**, so a user's effective ceiling is the limit × `max-instances`
   (2 → 20 req/s). That is accepted for the pilot; a global limit would need shared state
   (Firestore or Redis) and is not proposed. App Check can be added in front later if the owner
-  enables it (as in the assistant design).
+  enables it (as in the assistant design). Sizing: an assistant turn makes about 6 tool calls in
+  a few seconds, well inside the burst of 30; a user running several turns back to back refills at
+  10/s. A `429` carries `Retry-After`, and the assistant surfaces it rather than retrying in a loop.
 - **CORS.** Same-origin through a Firebase Hosting rewrite (`/api/**` → the Cloud Run service), so
   the dashboard's CSP `connect-src 'self'` is unchanged. See §11 Q1 for the region caveat.
 
@@ -153,7 +155,7 @@ versioned snapshots.
 ```jsonc
 {
   "status": "ok" | "not_enough_data",
-  "data": { ... },                       // present when ok (and on partial rows; see compare)
+  "data": { ... },                       // always present when ok; MAY be present on not_enough_data
   "reason": "cohort_too_small",          // when not_enough_data
   "detail": {"en": "...", "ar": "..."},  // human text for the reason
   "cohort": {"description": "exact approved/locked pairs, same size, both priced", "n": 12},
@@ -168,6 +170,13 @@ versioned snapshots.
   }
 }
 ```
+
+- `status`, `meta` and every `meta` field shown (including `metricVersion`) are **required** on
+  every response. `reason` and `detail` are required exactly when `status = not_enough_data`.
+- **`data` on `not_enough_data`.** The schema allows `data` with either status. When a summary is
+  withheld but rows exist (compare rows with n < 5, index points, availability counts for a
+  partial retailer), the response is `not_enough_data` **with** `data`, and the withheld part is
+  `null`. Clients read `status` for the headline and `data` for the rows.
 
 **The `not_enough_data` reasons** form a closed enum:
 - `capability_off`
@@ -216,8 +225,9 @@ No stack traces or dataset internals appear in messages.
   Internal sums use unrounded Decimals.
 
 **Source text:**
-- Retailer text (brand, name, SKU, shade names, category labels, promo text) is returned **raw**,
-  with only control characters (C0/C1 except `\t\n`) stripped.
+- Retailer text (brand, name, SKU, shade names, category labels, promo text) and text written
+  by operators or the matcher (retailer `note`, `notObserved.why`, match `rationale`) are returned
+  **raw**, with only control characters (C0/C1 except `\t\n`) stripped.
 - Each such schema property carries the OpenAPI extension `x-pi-source-text: true`.
 - The assistant treats every string not on its trusted list as untrusted, and escapes it.
 - Evidence URLs are returned raw. Clients filter them to https plus their host allowlist.
@@ -230,7 +240,20 @@ No stack traces or dataset internals appear in messages.
 - cursor paging (`cursor` is opaque and bound to the generation, so a stale cursor gives `409
   stale_cursor`);
 - dates are ISO-8601;
-- enums are closed.
+- enums are closed, in requests and responses: every enum is a JSON Schema `enum` list in the
+  OpenAPI (reasons, statuses, review states, match classes, availability states, `cheaper`,
+  `sort`, `format`, `view`). A new value is a minor `apiVersion` bump, announced to clients.
+
+**Query encoding (pinned in the OpenAPI):**
+- **An ordered pair** is `retailers=<base>,<other>`: one parameter, `style: form`,
+  `explode: false`, exactly 2 items, order significant (first is the base). Source keys can't
+  contain commas (`^[a-z][a-z0-9_]{1,62}$`). `POST /v1/compare` uses the body object
+  `retailers: {base, other}` instead.
+- **Multi-value filters** (`brand`, `category`, `retailer`, `id`) repeat the key:
+  `brand=A&brand=B` (`style: form`, `explode: true`), ≤ 25 values. Brand and category values may
+  contain commas, so they are never comma-joined.
+- **N-retailer endpoints** (coverage, availability, assortment) take the repeated `retailer`
+  filter; they have no base/other.
 
 **Parameters are data (ADR-0007):**
 - `market` (ISO country), `scope`, `retailers` (register `source_key`s), `brand` and `category`
@@ -263,7 +286,8 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 | `/healthz`, `/readyz` | – | Liveness; readiness means a validated dataset is loaded. No auth, no data |
 
 **Common filters** on the list and metric endpoints: `market`, `scope`, `retailers`
-(`base,other`, or N for coverage and assortment), `brand[]`, `category[]`, `from`, `to`.
+(`<base>,<other>`) or `retailer[]` (N retailers, for coverage, availability and assortment),
+`brand[]`, `category[]`, `from`, `to`. The encodings are pinned in §5.
 
 - **`/v1/products`:** `q`, `brand[]`, `category[]`, `retailer[]`, `matched`, `priceMin`,
   `priceMax` (decimal strings, in `meta.currency`), `sort=name|price_asc|price_desc|gap`,
@@ -315,7 +339,7 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
     the retailer's catalogue simply wasn't observed. Those items are withheld and counted in a
     caveat ("n items first seen after an incomplete run").
   - First-seen on the first date of the dataset is never a launch.
-- **`/v1/reviews-summary`:** `id | brand | category`. Returns `{n, avgRating, ratingCount}` per
+- **`/v1/reviews-summary`:** one of `id[]` (repeated, ≤ 25), `brand` or `category`. Returns `{n, avgRating, ratingCount}` per
   retailer. The rating distribution and themes → `field_not_collected`. There is no review text.
 - **`/v1/coverage`:** `retailer[]`. Returns `retailers[{id, name, status, since, note,
   productCount, matchedCount, freshness}]`, `capabilities`, `fields` and `notObserved`. Admins also
@@ -369,7 +393,10 @@ client.
    - Below that → `cohort_too_small`, and the rows are still returned.
    - If n is 0 because no candidate pair was reviewed → `matches_unreviewed`.
 5. **Gap convention.** `gapAmount = other − base`, `gapPct = (other − base) / base × 100`,
-   `cheaper ∈ {base, other, equal}`. `convention` is stated in the response.
+   `cheaper ∈ {base, other, equal}`. A positive gap means **other is dearer** than base. Every
+   gap-bearing response carries `cheaper` explicitly on each row and a `convention` string, and
+   `/v1/index` carries its `definition`, so no client ever infers the direction from a sign.
+   (This direction supersedes the one in the #32 draft, agreed with the AI Assistant Engineer.)
 6. **Index.** Σ other / Σ base × 100 over a **fixed basket**: the pairs counted on the first date
    of the window, and still counted on each later date. Each point reports its own `n`, and the
    cohort rule applies **per point**: a point with n < 5 has `index: null` and
