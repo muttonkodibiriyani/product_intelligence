@@ -8,10 +8,11 @@ useDefault = true
 # Algolia keys ship in retailer page config (e.g. Ulta's search) as a bare `apiKey` next to an
 # `appId` (or as algoliasearch(appId, key)), which the default `algolia-api-key` rule misses because the word "algolia" is not on
 # the same line. Search-only keys are 32 hex chars; secured keys are long base64 strings.
-# The `algolia` keyword limits this rule to files/patches that mention Algolia at all.
+# Keywords limit the rule to files/patches that mention Algolia or use its key names; a bare
+# `apiKey` is deliberately not a keyword (it would flag every vendor's keys).
 [[rules]]
 id = "pi-algolia-api-key"
 description = "Algolia API key (search-only, admin or secured) in Algolia client config, header or query string"
-regex = '''(?i)(?:(?:x-algolia-api-key|algolia[\w.-]{0,30}?key|\bapi[_-]?key|\bsearch[_-]?(?:only[_-]?)?(?:api[_-]?)?key)["']?\s*(?:[:=]|=>|%3d)|algoliasearch(?:lite)?\s*\(\s*["'`][\w-]+["'`]\s*,)\s*["'`]?([a-f0-9]{32}|[a-z0-9+/]{60,}={0,2})(?:["'`\s&;,)}]|$)'''
+regex = '''(?i)(?:(?:x-algolia-api-key|algolia[\w.-]{0,30}?key|\bapi[_-]?key|\bsearch[_-]?(?:only[_-]?)?(?:api[_-]?)?key|\bsecured[_-]?api[_-]?key)["']?\s*(?:[:=]|=>|%3d)|algoliasearch(?:lite)?\s*\(\s*["'`][\w-]+["'`]\s*,)\s*["'`]?([a-f0-9]{32}|[a-z0-9+/]{60,}={0,2})(?:["'`\s&;,)}]|$)'''
 secretGroup = 1
-keywords = ["algolia"]
+keywords = ["algolia", "searchonlyapikey", "search_only_api_key", "securedapikey", "secured_api_key"]

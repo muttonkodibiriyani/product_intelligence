@@ -1,7 +1,8 @@
 # GCP project state (productintelligence-beeb3)
 
 Record of every change made to the live project outside a deploy workflow. Append; never rewrite.
-Billing account: `01B406-EF5690-CCF2FD`. Budget: $25/month.
+Budget: $25/month. The billing account ID is kept out of this public repo; get it with
+`gcloud billing projects describe productintelligence-beeb3`.
 
 ## Enabled APIs (beyond Firebase defaults)
 
@@ -17,11 +18,12 @@ and 100% of actual spend. The deploy service account has no billing-account role
 creates it (from Cloud Shell, as a billing account admin):
 
 ```sh
-gcloud billing budgets create --billing-account=01B406-EF5690-CCF2FD \
+BILLING_ACCOUNT=$(gcloud billing projects describe productintelligence-beeb3 --format='value(billingAccountName.basename())')
+gcloud billing budgets create --billing-account="$BILLING_ACCOUNT" \
   --display-name="pi-monthly-25usd" --budget-amount=25USD \
   --filter-projects=projects/productintelligence-beeb3 \
   --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0
 ```
 
-Check first with `gcloud billing budgets list --billing-account=01B406-EF5690-CCF2FD`; if a
+Check first with `gcloud billing budgets list --billing-account="$BILLING_ACCOUNT"`; if a
 budget already exists, add the missing thresholds with `gcloud billing budgets update` instead.
