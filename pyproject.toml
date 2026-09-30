@@ -32,7 +32,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["packages/*/src", "packages/*/tests", "tests"]
+src = ["packages/*/src", "packages/*/tests", "tests", "tools/gulf_probe"]
 
 [tool.ruff.lint]
 select = [
@@ -43,6 +43,7 @@ ignore = ["PLR2004"]
 [tool.ruff.lint.per-file-ignores]
 "packages/*/tests/**" = ["S101", "PLR2004", "PLR0913", "PLR0917", "S608"]
 "tests/**" = ["S101", "PLR2004"]
+"tools/*/tests/**" = ["S101", "PLR2004"]
 # Migrations are DDL assembled from frozen module constants, never from input.
 "packages/pi_db/src/pi_db/migrations/versions/*" = ["S608"]
 
@@ -65,6 +66,7 @@ mypy_path = [
   "packages/pi_fetch/src",
   "packages/pi_fetch/tests",
   "tests",
+  "tools/gulf_probe",
 ]
 files = [
   "packages/pi_core/src",
@@ -76,6 +78,9 @@ files = [
   "packages/pi_fetch/src",
   "packages/pi_fetch/tests",
   "tests/uat",
+  "tools/gulf_probe/gulf_probe/analysis.py",
+  "tools/gulf_probe/gulf_probe/plan.py",
+  "tools/gulf_probe/tests",
 ]
 
 [tool.pydantic-mypy]
@@ -85,8 +90,8 @@ warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
-testpaths = ["packages", "tests/uat"]
-pythonpath = ["tests", "packages/pi_fetch/tests"]
+testpaths = ["packages", "tests/uat", "tools/gulf_probe/tests"]
+pythonpath = ["tests", "packages/pi_fetch/tests", "tools/gulf_probe"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",
@@ -104,7 +109,8 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_core", "pi_connector_ulta", "pi_db", "pi_fetch"]
+source = ["pi_core", "pi_connector_ulta", "pi_db", "pi_fetch", "gulf_probe"]
+omit = ["*/gulf_probe/run.py"]  # network entry point; runs only in the Cloud Run probe job
 
 [tool.coverage.report]
 fail_under = 85
