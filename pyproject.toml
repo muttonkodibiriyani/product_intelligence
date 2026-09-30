@@ -63,6 +63,7 @@ addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "uat: UAT scenario mapped to a requirement ID (tests/uat)",
   "req(id): requirement ID from docs/requirements/traceability.csv",
+  "scenario(id): acceptance scenario UAT-XX from docs/requirements/uat_scenarios.csv",
   "m0: lands in milestone M0 Foundation",
   "m1: lands in milestone M1 Collection",
   "m2: lands in milestone M2 Matching",

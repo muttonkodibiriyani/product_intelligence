@@ -14,9 +14,13 @@ from uat.registry import (
     MILESTONES,
     STATUS_MD,
     Requirement,
+    Scenario,
+    ScenarioCase,
     UatCase,
     discover_cases,
+    discover_scenarios,
     load_requirements,
+    load_scenarios,
 )
 
 
@@ -24,7 +28,12 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|")
 
 
-def render(reqs: dict[str, Requirement], cases: list[UatCase]) -> str:
+def render(
+    reqs: dict[str, Requirement],
+    cases: list[UatCase],
+    scenarios: dict[str, Scenario] | None = None,
+    scenario_cases: list[ScenarioCase] | None = None,
+) -> str:
     by_req: dict[str, list[UatCase]] = {}
     for case in cases:
         by_req.setdefault(case.req_id, []).append(case)
@@ -85,14 +94,45 @@ def render(reqs: dict[str, Requirement], cases: list[UatCase]) -> str:
             + ", ".join(extra)
             + ".",
         ]
+    if scenarios is not None:
+        lines += _render_scenarios(scenarios, scenario_cases or [])
     return "\n".join(lines) + "\n"
+
+
+def _render_scenarios(scenarios: dict[str, Scenario], cases: list[ScenarioCase]) -> list[str]:
+    by_id = {c.scenario_id: c for c in cases}
+    counts = Counter(c.status for c in by_id.values())
+    missing = sum(sid not in by_id for sid in scenarios)
+    lines = [
+        "",
+        "## Acceptance scenarios",
+        "",
+        f"Scenarios from `docs/requirements/uat_scenarios.csv`: **{len(scenarios)}** — "
+        f"implemented {counts['implemented']}, pending {counts['pending']}, "
+        f"out of scope {counts['out of scope']}, missing {missing}.",
+        "",
+        "| ID | Scenario | Requirements | Milestone | Status | Case |",
+        "|---|---|---|---|---|---|",
+    ]
+    for sc in scenarios.values():
+        case = by_id.get(sc.id)
+        milestone = case.milestone.upper() if case else "—"
+        status = case.status if case else "missing"
+        if case and case.out_of_scope:
+            status += f": {_cell(case.out_of_scope)}"
+        where = f"`{case.nodeid}`" if case else "—"
+        lines.append(
+            f"| {sc.id} | {_cell(sc.title)} | {', '.join(sc.requirement_links)} "
+            f"| {milestone} | {status} | {where} |"
+        )
+    return lines
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="exit 1 if the file is stale")
     args = parser.parse_args(argv)
-    text = render(load_requirements(), discover_cases())
+    text = render(load_requirements(), discover_cases(), load_scenarios(), discover_scenarios())
     if args.check:
         current = STATUS_MD.read_text(encoding="utf-8") if STATUS_MD.exists() else ""
         if current != text:

@@ -153,3 +153,46 @@ Pilot-scope requirements: **127** — implemented 0, pending 127, missing 0.
 | OPS-09 | Reliability and commercial acceptance | P0 | Foundation | Operational observability | M4 | pending | `tests/uat/cases/test_ops.py::test_ops_09_operational_observability` |
 
 Cases also exist for non-pilot (later or deviation) requirements: SEC-05, SRC-08.
+
+## Acceptance scenarios
+
+Scenarios from `docs/requirements/uat_scenarios.csv`: **36** — implemented 0, pending 30, out of scope 6, missing 0.
+
+| ID | Scenario | Requirements | Milestone | Status | Case |
+|---|---|---|---|---|---|
+| UAT-01 | Same item, different sellers | CAT-01, CAT-11, DAT-02 | M0 | pending | `tests/uat/test_uat_01_same_item_different_sellers.py::test_uat_01_same_item_different_sellers` |
+| UAT-02 | Candle size comparability | CAT-03, PRC-05, MAT-01 | M2 | pending | `tests/uat/test_uat_02_candle_size_comparability.py::test_uat_02_candle_size_comparability` |
+| UAT-03 | Buy-one-get-one condition | PRC-09, PRC-10 | M1 | pending | `tests/uat/test_uat_03_buy_one_get_one_condition.py::test_uat_03_buy_one_get_one_condition` |
+| UAT-04 | Installment confusion | PRC-01, PRC-13 | M1 | pending | `tests/uat/test_uat_04_installment_confusion.py::test_uat_04_installment_confusion` |
+| UAT-05 | Member versus public | PRC-01, PRC-09 | M1 | pending | `tests/uat/test_uat_05_member_versus_public.py::test_uat_05_member_versus_public` |
+| UAT-06 | Unknown basket fee | PRC-08 | M1 | out of scope: PRC-08 total payable basket (delivery/service fees) is later scope (Scale gate) | `tests/uat/test_uat_06_unknown_basket_fee.py::test_uat_06_unknown_basket_fee` |
+| UAT-07 | Tax mismatch | PRC-04 | M1 | pending | `tests/uat/test_uat_07_tax_mismatch.py::test_uat_07_tax_mismatch` |
+| UAT-08 | Currency and decimals | PRC-03, DQ-03 | M1 | pending | `tests/uat/test_uat_08_currency_and_decimals.py::test_uat_08_currency_and_decimals` |
+| UAT-09 | Historical FX reproducibility | PRC-07, DAT-08 | M1 | pending | `tests/uat/test_uat_09_historical_fx_reproducibility.py::test_uat_09_historical_fx_reproducibility` |
+| UAT-10 | Pickup is not dine-in | PRC-14 | M1 | out of scope: food/dine-in (restaurant pickup vs dine-in menus) is not in the beauty pilot | `tests/uat/test_uat_10_pickup_is_not_dine_in.py::test_uat_10_pickup_is_not_dine_in` |
+| UAT-11 | Menu item identity | MAT-01, MAT-02 | M2 | out of scope: food (burger menu item identity) is not in the beauty pilot | `tests/uat/test_uat_11_menu_item_identity.py::test_uat_11_menu_item_identity` |
+| UAT-12 | Fragrance concentration | CAT-03, MAT-02 | M2 | pending | `tests/uat/test_uat_12_fragrance_concentration.py::test_uat_12_fragrance_concentration` |
+| UAT-13 | Apparel counting | ANL-05, ANL-07 | M3 | pending | `tests/uat/test_uat_13_apparel_counting.py::test_uat_13_apparel_counting` |
+| UAT-14 | Unknown versus stock-out | DAT-06, DQ-02 | M1 | pending | `tests/uat/test_uat_14_unknown_versus_stock_out.py::test_uat_14_unknown_versus_stock_out` |
+| UAT-15 | Incomplete source | SRC-03, DQ-04 | M1 | pending | `tests/uat/test_uat_15_incomplete_source.py::test_uat_15_incomplete_source` |
+| UAT-16 | First history date | SRC-15, DAT-07 | M1 | pending | `tests/uat/test_uat_16_first_history_date.py::test_uat_16_first_history_date` |
+| UAT-17 | Idempotent replay | DAT-09, INT-02 | M4 | pending | `tests/uat/test_uat_17_idempotent_replay.py::test_uat_17_idempotent_replay` |
+| UAT-18 | Late correction | DAT-03, DAT-08, DQ-09 | M1 | pending | `tests/uat/test_uat_18_late_correction.py::test_uat_18_late_correction` |
+| UAT-19 | Locked match | MAT-05, MAT-07 | M2 | pending | `tests/uat/test_uat_19_locked_match.py::test_uat_19_locked_match` |
+| UAT-20 | False transitivity | MAT-09 | M2 | pending | `tests/uat/test_uat_20_false_transitivity.py::test_uat_20_false_transitivity` |
+| UAT-21 | Fixed basket stability | ANL-02, MAT-10 | M3 | pending | `tests/uat/test_uat_21_fixed_basket_stability.py::test_uat_21_fixed_basket_stability` |
+| UAT-22 | Pack-size change | ANL-10, CAT-04 | M3 | pending | `tests/uat/test_uat_22_pack_size_change.py::test_uat_22_pack_size_change` |
+| UAT-23 | Fresh versus stale offer | MAT-11, DQ-08 | M2 | pending | `tests/uat/test_uat_23_fresh_versus_stale_offer.py::test_uat_23_fresh_versus_stale_offer` |
+| UAT-24 | Promotion between crawls | PRC-15, SRC-07 | M1 | pending | `tests/uat/test_uat_24_promotion_between_crawls.py::test_uat_24_promotion_between_crawls` |
+| UAT-25 | Source-access restriction | SRC-08, SEC-05 | M1 | out of scope: SRC-08/SEC-05 are owner deviations (ADR-0003): collection escalates instead of stopping; the replacement control is asserted by the SRC-08 and SEC-05 cases | `tests/uat/test_uat_25_source_access_restriction.py::test_uat_25_source_access_restriction` |
+| UAT-26 | Dashboard-to-data parity | EXP-06, INT-01 | M4 | pending | `tests/uat/test_uat_26_dashboard_to_data_parity.py::test_uat_26_dashboard_to_data_parity` |
+| UAT-27 | Cross-brand access | SCP-04, SEC-02 | M4 | pending | `tests/uat/test_uat_27_cross_brand_access.py::test_uat_27_cross_brand_access` |
+| UAT-28 | Prompt injection | AIG-04, AIG-05 | M4 | pending | `tests/uat/test_uat_28_prompt_injection.py::test_uat_28_prompt_injection` |
+| UAT-29 | Unsafe source URL | SEC-08 | M4 | out of scope: SEC-08 safe URL ingestion is later scope (no user-submitted URLs in the pilot) | `tests/uat/test_uat_29_unsafe_source_url.py::test_uat_29_unsafe_source_url` |
+| UAT-30 | AI numerical answer | AIG-01, AIG-02 | M4 | pending | `tests/uat/test_uat_30_ai_numerical_answer.py::test_uat_30_ai_numerical_answer` |
+| UAT-31 | Unsupported causal claim | ANL-16, AIG-03 | M4 | pending | `tests/uat/test_uat_31_unsupported_causal_claim.py::test_uat_31_unsupported_causal_claim` |
+| UAT-32 | Backup and restore | DAT-12, OPS-03 | M5 | pending | `tests/uat/test_uat_32_backup_and_restore.py::test_uat_32_backup_and_restore` |
+| UAT-33 | New category onboarding | SCP-01, SCP-12, CAT-05 | M0 | out of scope: electronics category is not in the beauty pilot; SCP-01 keeps its own case | `tests/uat/test_uat_33_new_category_onboarding.py::test_uat_33_new_category_onboarding` |
+| UAT-34 | Contract exit | DAT-11, INT-09 | M4 | pending | `tests/uat/test_uat_34_contract_exit.py::test_uat_34_contract_exit` |
+| UAT-35 | Arabic right-to-left experience | SCP-06, EXP-10 | M3 | pending | `tests/uat/test_uat_35_arabic_right_to_left_experience.py::test_uat_35_arabic_right_to_left_experience` |
+| UAT-36 | Alert deduplication | SRC-10, EXP-07 | M3 | pending | `tests/uat/test_uat_36_alert_deduplication.py::test_uat_36_alert_deduplication` |

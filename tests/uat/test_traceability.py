@@ -11,11 +11,17 @@ from uat.registry import (
     MILESTONES,
     PENDING_REASON,
     Requirement,
+    Scenario,
+    ScenarioCase,
     UatCase,
+    check_scenarios,
     check_traceability,
     discover_cases,
+    discover_scenarios,
     load_requirements,
+    load_scenarios,
     pending,
+    scenario,
     uat,
 )
 
@@ -155,3 +161,152 @@ def test_report_main_writes_then_checks(
     assert "is stale" in capsys.readouterr().err
     assert report.main([]) == 0
     assert report.main(["--check"]) == 0
+
+
+# ------------------------------------------------------------------ acceptance scenarios
+
+
+def _scase(
+    sid: str,
+    reqs: tuple[str, ...],
+    *,
+    milestone: str = "m1",
+    out_of_scope: str | None = None,
+    implemented: bool = False,
+) -> ScenarioCase:
+    name = f"test_uat_{sid.removeprefix('UAT-')}_x.py"
+    return ScenarioCase(
+        sid, milestone, reqs, out_of_scope, implemented, "test_x", Path(__file__).parent / name, 1
+    )
+
+
+def test_every_register_scenario_has_one_case_citing_its_links() -> None:
+    problems = check_scenarios(load_requirements(), load_scenarios(), discover_scenarios())
+    assert problems == [], "\n".join(problems)
+
+
+def test_scenario_register_has_the_36_alshaya_scenarios() -> None:
+    assert list(load_scenarios()) == [f"UAT-{n:02d}" for n in range(1, 37)]
+
+
+def test_out_of_scope_scenarios_are_skipped_with_a_reason_not_deleted() -> None:
+    skipped = {c.scenario_id: c.out_of_scope for c in discover_scenarios() if c.out_of_scope}
+    assert set(skipped) == {"UAT-06", "UAT-10", "UAT-11", "UAT-25", "UAT-29", "UAT-33"}
+    assert all(reason.strip() for reason in skipped.values())
+
+
+def test_check_scenarios_flags_every_mismatch() -> None:
+    reqs = {"A-1": _req("A-1"), "A-2": _req("A-2")}
+    scenarios = {
+        "UAT-01": Scenario("UAT-01", "One", ("A-1", "A-2")),
+        "UAT-02": Scenario("UAT-02", "Two", ("A-1",)),
+        "UAT-03": Scenario("UAT-03", "Three", ("Z-9",)),
+    }
+    cases = [
+        _scase("UAT-01", ("A-2", "A-1")),  # order-insensitive: fine
+        _scase("UAT-01", ("A-1", "A-2")),
+        ScenarioCase(
+            "UAT-02",
+            "m9",
+            ("A-1", "Q-1"),
+            None,
+            False,
+            "t",
+            Path(__file__).parent / "test_uat_2.py",
+            1,
+        ),
+        _scase("UAT-99", ("A-1",)),
+    ]
+    problems = check_scenarios(reqs, scenarios, cases)
+    assert problems[0] == "UAT-03: register links unknown requirement id 'Z-9'"
+    joined = "\n".join(problems)
+    for fragment in (
+        "duplicate case for UAT-01",
+        "file name should start with test_uat_02_",
+        "unknown milestone 'm9'",
+        "cites unknown requirement id 'Q-1'",
+        "reqs ['A-1', 'Q-1'] differ from register links ['A-1']",
+        "cites unknown scenario id 'UAT-99'",
+        "UAT-03: scenario has no test_uat_*.py case",
+    ):
+        assert fragment in joined
+    assert len(problems) == 8
+
+
+def test_load_scenarios_rejects_duplicate_ids(tmp_path: Path) -> None:
+    csv_path = tmp_path / "s.csv"
+    csv_path.write_text("id,title,requirement_links\n" + "UAT-01,t,A-1\n" * 2, encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate scenario id 'UAT-01'"):
+        load_scenarios(csv_path)
+
+
+def test_discover_scenarios_reads_arguments(tmp_path: Path) -> None:
+    (tmp_path / "test_uat_01_a.py").write_text(
+        "@scenario('UAT-01', 'm1', reqs=('A-1', 'A-2'))\n"
+        "def test_a() -> None: ...\n"
+        "@registry.scenario(scenario_id='UAT-02', milestone='m2', reqs=('B-1',),\n"
+        "    out_of_scope='food', implemented=False)\n"
+        "def test_b() -> None: ...\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "test_other.py").write_text("@scenario('UAT-09', 'm1', reqs=())\n")
+    got = [(c.scenario_id, c.milestone, c.reqs, c.status) for c in discover_scenarios(tmp_path)]
+    assert got == [
+        ("UAT-01", "m1", ("A-1", "A-2"), "pending"),
+        ("UAT-02", "m2", ("B-1",), "out of scope"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ("'UAT-01', reqs=()", "needs string id and milestone"),
+        ("'UAT-01', 'm1', reqs=['A-1']", "must be a tuple of str"),
+        ("'UAT-01', 'm1', reqs=(), out_of_scope=1", "out_of_scope=...\\) must be a str"),
+        ("'UAT-01', 'm1', reqs=(), implemented=1", "implemented=...\\) must be a bool"),
+    ],
+)
+def test_discover_scenarios_rejects_malformed_decorators(
+    tmp_path: Path, args: str, message: str
+) -> None:
+    (tmp_path / "test_uat_01_x.py").write_text(f"@scenario({args})\ndef test_a() -> None: ...\n")
+    with pytest.raises(ValueError, match=message):
+        discover_scenarios(tmp_path)
+
+
+def test_scenario_decorator_marks() -> None:
+    def a() -> None: ...
+
+    def b() -> None: ...
+
+    def c() -> None: ...
+
+    pend = {m.name: m for m in scenario("UAT-01", "m2", reqs=("A-1", "A-2"))(a).pytestmark}  # type: ignore[attr-defined]
+    assert pend["scenario"].args == ("UAT-01",)
+    assert pend["xfail"].kwargs["strict"] is True
+    assert {m.args for m in a.pytestmark if m.name == "req"} == {("A-1",), ("A-2",)}  # type: ignore[attr-defined]
+    oos = {m.name: m for m in scenario("UAT-01", "m2", reqs=(), out_of_scope="food")(b).pytestmark}  # type: ignore[attr-defined]
+    assert oos["skip"].kwargs["reason"] == "out of pilot scope: food"
+    assert "xfail" not in oos
+    done = {m.name for m in scenario("UAT-01", "m2", reqs=(), implemented=True)(c).pytestmark}  # type: ignore[attr-defined]
+    assert not done & {"xfail", "skip"}
+    with pytest.raises(ValueError, match="unknown milestone"):
+        scenario("UAT-01", "m9", reqs=())  # type: ignore[arg-type]
+
+
+def test_render_lists_scenarios_with_status() -> None:
+    scenarios = {
+        "UAT-01": Scenario("UAT-01", "One", ("A-1",)),
+        "UAT-02": Scenario("UAT-02", "Two", ("A-1",)),
+        "UAT-03": Scenario("UAT-03", "Three", ("A-1",)),
+        "UAT-04": Scenario("UAT-04", "Four", ("A-1",)),
+    }
+    cases = [
+        _scase("UAT-01", ("A-1",), implemented=True),
+        _scase("UAT-02", ("A-1",)),
+        _scase("UAT-03", ("A-1",), out_of_scope="food | dine-in"),
+    ]
+    text = report.render({"A-1": _req("A-1")}, [], scenarios, cases)
+    assert "implemented 1, pending 1, out of scope 1, missing 1." in text
+    assert "| UAT-03 | Three | A-1 | M1 | out of scope: food \\| dine-in |" in text
+    assert "| UAT-04 | Four | A-1 | — | missing | — |" in text
