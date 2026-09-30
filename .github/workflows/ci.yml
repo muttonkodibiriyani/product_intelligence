@@ -16,7 +16,7 @@ jobs:
   python:
     name: Python — lint, types, tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -24,14 +24,53 @@ jobs:
           enable-cache: true
       - name: Install
         run: uv sync --locked
+      # Real-browser tests (pytest -m browser) need all three engines; each skips itself when its
+      # browser cannot launch, so CI installs them and then refuses any skip. Browser binaries are
+      # cached per locked Playwright version; the apt system deps are reinstalled every run.
+      - name: Playwright version
+        id: playwright
+        run: |
+          version=$(uv run --no-sync python -c "import importlib.metadata as m; print(m.version('playwright'))" 2>/dev/null || true)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        if: steps.playwright.outputs.version != ''
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Playwright browsers + system deps
+        if: steps.playwright.outputs.version != '' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: uv run --no-sync playwright install --with-deps chromium firefox webkit
+      - name: Install Playwright system deps (browsers cached)
+        if: steps.playwright.outputs.version != '' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: uv run --no-sync playwright install-deps chromium firefox webkit
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format
         run: uv run ruff format --check .
       - name: mypy (strict)
         run: uv run mypy
-      - name: pytest + coverage (no database)
-        run: uv run pytest -m "not db" --cov=pi_core --cov-report=term
+      - name: pytest + coverage (no database, no browser)
+        run: uv run pytest -m "not db and not browser" --cov=pi_core --cov-report=term
+      - name: pytest real-browser tests (0 skips allowed)
+        if: steps.playwright.outputs.version != ''
+        run: |
+          uv run pytest -m browser -rs --junitxml="$RUNNER_TEMP/browser.xml"
+          python3 .github/scripts/assert_no_skips.py "$RUNNER_TEMP/browser.xml"
+
+  audit:
+    name: Dependency audit (pip-audit, locked deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # Audits exactly what uv.lock pins (hashes required); workspace packages are ours, not PyPI's.
+      - name: pip-audit
+        run: |
+          uv export --locked --no-emit-workspace --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off
 
   database:
     name: Database — migrations up/down, schema tests
@@ -76,4 +115,4 @@ jobs:
       - name: gitleaks
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
-            detect --source /repo --redact --no-banner --exit-code 1
+            detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
