@@ -163,6 +163,7 @@ def context(now: datetime) -> CollectionContext:
             source_id=SOURCE_ID,
             country=Market.UAE,
             locale=Locale.EN,
+            currency="AED",
             time_zone="Asia/Dubai",
             ladder_rung_current=LadderRung.PAID_PROXY,
             ladder_rung_max_allowed=LadderRung.PAID_PROXY,

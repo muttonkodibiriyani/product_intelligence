@@ -22,8 +22,8 @@ from typing import Annotated, ClassVar, Self
 from pydantic import AfterValidator, Field, HttpUrl, model_validator
 
 from pi_core.base import FieldStateModel, PiModel
-from pi_core.enums import Concentration, ImageRole, Locale
-from pi_core.types import DbId, NonEmptyStr, Size, UtcDatetime
+from pi_core.enums import Concentration, ImageRole
+from pi_core.types import DbId, LocaleTag, NonEmptyStr, Size, UtcDatetime
 
 GTIN_LENGTHS = frozenset({8, 12, 13, 14})
 
@@ -91,7 +91,7 @@ class ListingFields(FieldStateModel):
     source_listing_key: NonEmptyStr
     source_sku: NonEmptyStr | None
     url: HttpUrl
-    lang: Locale
+    lang: LocaleTag
     name_original: NonEmptyStr
     name_ar: NonEmptyStr | None
     brand: NonEmptyStr | None

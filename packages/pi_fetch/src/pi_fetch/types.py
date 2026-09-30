@@ -11,7 +11,7 @@ from typing import Self
 
 from pydantic import Field, HttpUrl, field_validator, model_validator
 
-from pi_core import Device, FetchMethod, LadderRung, Locale, PiModel
+from pi_core import Device, FetchMethod, LadderRung, LocaleTag, PiModel
 from pi_core.context import check_rung
 from pi_core.types import NonEmptyStr, UtcDatetime
 
@@ -120,7 +120,7 @@ class FetchRequest(PiModel):
     url: HttpUrl
     kind: PayloadKind
     #: Sets Accept-Language together with the context's market.
-    locale: Locale
+    locale: LocaleTag
     #: Extra non-auth headers only; see ``FORBIDDEN_REQUEST_HEADERS``.
     headers: Mapping[str, str] = Field(default_factory=dict)
     #: The page needs JavaScript: the ladder starts at the browser rung.

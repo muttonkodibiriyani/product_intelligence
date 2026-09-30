@@ -13,7 +13,7 @@ from typing import Annotated, ClassVar, Protocol, Self, runtime_checkable
 
 from pydantic import AfterValidator, Field, HttpUrl, model_validator
 
-from pi_core import CollectionContext, FieldState, ListingFields, Locale, OfferFields, PiModel
+from pi_core import CollectionContext, FieldState, ListingFields, LocaleTag, OfferFields, PiModel
 from pi_core.types import NonEmptyStr, UtcDatetime
 from pi_fetch.types import FetchRequest, FetchResult, PayloadKind
 
@@ -68,7 +68,7 @@ class DiscoveredItem(PiModel):
 
     url: HttpUrl
     kind: PayloadKind
-    locale: Locale
+    locale: LocaleTag
     #: Stable product key when the discovery source publishes one.
     source_listing_key: SourceListingKey | None = None
     lastmod: UtcDatetime | None = None

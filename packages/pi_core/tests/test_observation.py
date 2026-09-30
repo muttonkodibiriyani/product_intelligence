@@ -37,6 +37,7 @@ def context(market: Market = Market.KSA) -> CollectionContext:
             source_id=2,
             country=market,
             locale=Locale.EN,
+            currency=market.currency,
             time_zone=market.time_zone,
             valid_from=T0 - timedelta(days=30),
         ),

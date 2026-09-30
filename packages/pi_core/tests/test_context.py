@@ -29,6 +29,7 @@ def source_context(**overrides: Any) -> SourceContext:
         "source_id": 2,
         "country": Market.KSA,
         "locale": Locale.EN,
+        "currency": "SAR",
         "time_zone": "Asia/Riyadh",
         "valid_from": T0,
     }
@@ -75,11 +76,30 @@ def test_escalation_skips_rung_three() -> None:
     ]
 
 
-@pytest.mark.parametrize(("market", "currency"), [(Market.KSA, "SAR"), (Market.UAE, "AED")])
-def test_currency_comes_from_market(market: Market, currency: str) -> None:
-    ctx = source_context(country=market, time_zone=market.time_zone)
+@pytest.mark.parametrize(
+    ("country", "currency", "locale", "time_zone"),
+    [
+        (Market.KSA, "SAR", Locale.EN, "Asia/Riyadh"),
+        (Market.UAE, "AED", Locale.AR, "Asia/Dubai"),
+        ("KW", "KWD", "ar-KW", "Asia/Kuwait"),  # 3-decimal currency
+        ("FR", "EUR", "fr-FR", "Europe/Paris"),  # a non-Gulf market
+        ("US", "USD", "en", "America/New_York"),
+    ],
+)
+def test_market_is_data(country: str, currency: str, locale: str, time_zone: str) -> None:
+    ctx = collection_context(country=country, currency=currency, locale=locale, time_zone=time_zone)
+    assert ctx.country == ctx.market == country
     assert ctx.currency == currency
-    assert collection_context(country=market).currency == currency
+    assert ctx.locale == locale
+    assert ctx.source_context.time_zone == time_zone
+    assert CollectionContext.model_validate_json(ctx.model_dump_json()) == ctx
+
+
+def test_enum_values_are_accepted_as_data() -> None:
+    # Market/Locale stay as deprecated aliases: no AE behaviour change.
+    ctx = source_context(country=Market.UAE, currency="AED", time_zone="Asia/Dubai")
+    assert ctx.country == "AE"
+    assert ctx.locale == "en"
 
 
 def test_locale_direction() -> None:
@@ -99,8 +119,8 @@ def test_paid_rung_allowed_only_when_owner_raised_the_cap() -> None:
         FetchMethod.RESIDENTIAL_PROXY, ladder_rung_max_allowed=LadderRung.PAID_PROXY
     )
     assert ctx.ladder_rung_used.is_paid
-    assert ctx.market is Market.KSA
-    assert ctx.locale is Locale.EN
+    assert ctx.market == Market.KSA
+    assert ctx.locale == Locale.EN
 
 
 def test_method_must_match_rung() -> None:
@@ -122,7 +142,13 @@ def test_method_must_match_rung() -> None:
         ({"fallback_of": 1}, "own fallback"),
         ({"time_zone": "Mars/Olympus"}, "unknown time zone"),
         ({"valid_from": datetime(2026, 1, 1)}, "timezone"),  # noqa: DTZ001
-        ({"currency": "SAR"}, "Extra inputs"),
+        ({"market": "SA"}, "Extra inputs"),
+        ({"currency": "sar"}, "String should match|currency"),
+        ({"currency": "XYZ"}, "currency"),
+        ({"country": "XX"}, "unknown ISO 3166-1"),
+        ({"country": "sa"}, "unknown ISO 3166-1"),
+        ({"locale": "en_US"}, "canonical BCP 47"),
+        ({"locale": "en-XX"}, "unknown ISO 3166-1"),
         ({"id": 0}, "greater than or equal"),
     ],
 )
@@ -132,7 +158,9 @@ def test_source_context_invariants(overrides: dict[str, Any], error: str) -> Non
 
 
 def test_uae_fallback_context() -> None:
-    uae = source_context(id=9, country=Market.UAE, time_zone="Asia/Dubai", fallback_of=1)
+    uae = source_context(
+        id=9, country=Market.UAE, currency="AED", time_zone="Asia/Dubai", fallback_of=1
+    )
     assert uae.currency == "AED"
 
 
@@ -159,7 +187,13 @@ def test_source() -> None:
     method=st.sampled_from([m for m in FetchMethod if not m.rung.is_paid]),
 )
 def test_collection_context_round_trip(market: Market, locale: Locale, method: FetchMethod) -> None:
-    ctx = collection_context(method, country=market, locale=locale, time_zone=market.time_zone)
+    ctx = collection_context(
+        method,
+        country=market,
+        currency=market.currency,
+        locale=locale,
+        time_zone=market.time_zone,
+    )
     again = CollectionContext.model_validate_json(ctx.model_dump_json())
     assert again == ctx
     assert again.currency == market.currency

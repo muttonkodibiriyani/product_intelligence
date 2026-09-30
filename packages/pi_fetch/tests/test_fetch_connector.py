@@ -83,7 +83,7 @@ def offer_fields(**changes: Any) -> dict[str, Any]:
 
 
 def test_interface_version() -> None:
-    assert pi_fetch.INTERFACE_VERSION == "0.2"
+    assert pi_fetch.INTERFACE_VERSION == "0.3"
 
 
 def test_drafts_share_pi_core_bases() -> None:

@@ -48,6 +48,7 @@ def make_source_context(
         source_id=3,
         country=Market.UAE,
         locale=locale,
+        currency="AED",
         time_zone="Asia/Dubai",
         ladder_rung_max_allowed=max_allowed,
         valid_from=NOW,

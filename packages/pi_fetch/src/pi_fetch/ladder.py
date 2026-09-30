@@ -38,13 +38,13 @@ for the run manifest and ``Fetcher.stopped_sources()`` the stop reasons.
 import html
 import logging
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 from pydantic import HttpUrl
 
-from pi_core import CollectionContext, Locale, Market
+from pi_core import CollectionContext, language_of, region_of
 from pi_core.types import DbId
 from pi_fetch.blocks import detect_response
 from pi_fetch.cache import EvidenceStore, ValidatorCache, entry_from_headers
@@ -168,10 +168,22 @@ def robots_text_from_viewer(document: str) -> str | None:
     return html.unescape(found.group("text"))
 
 
-def accept_language(locale: Locale, market: Market) -> str:
-    """e.g. ``ar-AE,ar;q=0.9,en;q=0.8`` for Arabic in the UAE."""
-    primary = f"{locale.value}-{market.value},{locale.value};q=0.9"
-    return primary if locale is Locale.EN else f"{primary},en;q=0.8"
+def accept_language(locale: str, country: str, fallbacks: Sequence[str] = ()) -> str:
+    """The ``Accept-Language`` for a BCP 47 ``locale`` collected in ``country``.
+
+    e.g. ``ar-AE,ar;q=0.9,en;q=0.8`` for ``ar`` in AE with fallback ``en``. A tag without a region
+    takes the context's country; fallback languages (``FetchPolicy.accept_language_fallbacks``)
+    follow in order at decreasing quality, skipping the locale's own language.
+    """
+    language = language_of(locale)
+    tag = locale if region_of(locale) is not None else f"{locale}-{country}"
+    parts = [tag, f"{language};q=0.9"]
+    quality = 8
+    for fallback in dict.fromkeys(language_of(f) for f in fallbacks):
+        if fallback != language and quality > 0:
+            parts.append(f"{fallback};q=0.{quality}")
+            quality -= 1
+    return ",".join(parts)
 
 
 class Fetcher:
@@ -303,7 +315,9 @@ class Fetcher:
         headers = {
             "User-Agent": self._policy.user_agent,
             "Accept": _ACCEPT[request.kind],
-            "Accept-Language": accept_language(request.locale, ctx.market),
+            "Accept-Language": accept_language(
+                request.locale, ctx.country, self._policy.accept_language_fallbacks
+            ),
         }
         headers.update(request.headers)
         if self._cache is not None:

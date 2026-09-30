@@ -22,11 +22,9 @@ from pi_core.enums import (
     Device,
     FetchMethod,
     LadderRung,
-    Locale,
-    Market,
     SourceKind,
 )
-from pi_core.types import DbId, NonEmptyStr, UtcDatetime
+from pi_core.types import CountryCode, CurrencyCode, DbId, LocaleTag, NonEmptyStr, UtcDatetime
 
 
 def check_permitted(rung: LadderRung) -> None:
@@ -57,14 +55,15 @@ class Source(PiModel):
 class SourceContext(PiModel):
     """One market/locale/channel slice of a source; the unit of coverage and replay (SRC-02).
 
-    The currency is derived from the market, never configured separately, so a context cannot
-    state prices in a currency its market does not use.
+    Markets are data (ADR-0007): the country, currency and time zone are all stated on the
+    context, with no defaults, so a new market needs no code change and nothing is assumed.
     """
 
     id: DbId
     source_id: DbId
-    country: Market
-    locale: Locale
+    country: CountryCode
+    locale: LocaleTag
+    currency: CurrencyCode
     channel: Channel = Channel.ONLINE
     location_context: dict[str, JsonValue] = Field(default_factory=dict)
     time_zone: str
@@ -105,11 +104,6 @@ class SourceContext(PiModel):
             raise ValueError(msg)
         return self
 
-    @property
-    def currency(self) -> str:
-        """Currency of every price collected in this context."""
-        return self.country.currency
-
 
 class CollectionContext(PiModel):
     """Everything a connector needs to fetch and parse under one context, plus the audit of how.
@@ -136,12 +130,17 @@ class CollectionContext(PiModel):
         return self
 
     @property
-    def market(self) -> Market:
-        """Market being collected."""
+    def country(self) -> str:
+        """ISO 3166-1 alpha-2 country being collected."""
         return self.source_context.country
 
     @property
-    def locale(self) -> Locale:
+    def market(self) -> str:
+        """Deprecated alias of ``country``."""
+        return self.country
+
+    @property
+    def locale(self) -> str:
         """Locale being collected."""
         return self.source_context.locale
 

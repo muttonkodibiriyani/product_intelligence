@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
 
-from pi_core import Locale, PiModel, content_hash_of
+from pi_core import PiModel, content_hash_of
 from pi_core.types import NonEmptyStr
 
 
@@ -143,24 +143,24 @@ def entry_from_headers(
 class ValidatorCache(Protocol):
     """Where the fetcher keeps ``CacheEntry`` per (URL, locale)."""
 
-    def get(self, url: str, locale: Locale) -> CacheEntry | None: ...
+    def get(self, url: str, locale: str) -> CacheEntry | None: ...
 
-    def put(self, url: str, locale: Locale, entry: CacheEntry) -> None: ...
+    def put(self, url: str, locale: str, entry: CacheEntry) -> None: ...
 
 
 class MemoryValidatorCache:
     """In-process ``ValidatorCache``."""
 
     def __init__(self) -> None:
-        self._entries: dict[tuple[str, Locale], CacheEntry] = {}
+        self._entries: dict[tuple[str, str], CacheEntry] = {}
         self._lock = threading.Lock()
 
-    def get(self, url: str, locale: Locale) -> CacheEntry | None:
+    def get(self, url: str, locale: str) -> CacheEntry | None:
         """The entry for (url, locale), if any."""
         with self._lock:
             return self._entries.get((url, locale))
 
-    def put(self, url: str, locale: Locale, entry: CacheEntry) -> None:
+    def put(self, url: str, locale: str, entry: CacheEntry) -> None:
         """Replace the entry for (url, locale)."""
         with self._lock:
             self._entries[(url, locale)] = entry

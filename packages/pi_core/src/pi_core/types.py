@@ -7,6 +7,8 @@ Each type encodes one storage rule so every model enforces it the same way:
   missing is never zero, it is ``None`` plus a ``field_state`` reason (DQ-02).
 * ``UtcDatetime``: timezone-aware, normalised to UTC so ids and comparisons are stable (DAT-03).
 * ``CurrencyCode``: an ISO 4217 code listed in ``CURRENCY_EXPONENTS``.
+* ``CountryCode``: an assigned ISO 3166-1 alpha-2 code (markets are data, ADR-0007).
+* ``LocaleTag``: a canonical BCP 47 ``language[-Script][-REGION]`` tag, e.g. ``ar-AE``.
 * ``Size``: exact positive ``Decimal`` pack size; floats refused, the unit is kept alongside.
 * ``DbId``: a positive ``bigint`` identity id assigned by the database.
 * ``ContentHash``: lowercase SHA-256 hex digest (DAT-04).
@@ -19,6 +21,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, AwareDatetime, BeforeValidator, Field, StringConstraints
 
+from pi_core.markets import check_country, check_locale
 from pi_core.money import CURRENCY_EXPONENTS
 
 #: ``numeric(18,4)``: at most 14 integer digits and 4 fractional digits.
@@ -63,6 +66,8 @@ PositiveAmount = Annotated[Amount, Field(gt=0)]
 Size = Annotated[Decimal, BeforeValidator(refuse_float), Field(gt=0, allow_inf_nan=False)]
 UtcDatetime = Annotated[AwareDatetime, AfterValidator(_to_utc)]
 CurrencyCode = Annotated[str, AfterValidator(_check_currency)]
+CountryCode = Annotated[str, AfterValidator(check_country)]
+LocaleTag = Annotated[str, AfterValidator(check_locale)]
 ContentHash = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 # Kept verbatim (never stripped) so source keys and names stay as published.
 NonEmptyStr = Annotated[str, StringConstraints(pattern=r"\S")]

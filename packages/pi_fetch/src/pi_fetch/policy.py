@@ -24,7 +24,7 @@ from typing import Self
 from pydantic import Field, field_validator, model_validator
 
 from pi_core import CollectionContext, FetchMethod, LadderRung, PiModel, SourceContext
-from pi_core.types import DbId, NonEmptyStr
+from pi_core.types import DbId, LocaleTag, NonEmptyStr
 from pi_fetch.pacing import MIN_INTERVAL_FLOOR_S, RobotsMode, product_token
 from pi_fetch.proxy import ResidentialProxy, registrable_domain
 from pi_fetch.types import BrowserProfile, FetchRequest, PayloadKind
@@ -119,6 +119,9 @@ class FetchPolicy(PiModel):
     browsers: Mapping[DbId, BrowserProfile] = Field(default_factory=dict)
     #: Sources that only tag robots.txt instead of obeying it. Owner decision per source.
     robots_modes: Mapping[DbId, RobotsMode] = Field(default_factory=dict)
+    #: Languages appended to every ``Accept-Language`` after the request's own, in order
+    #: (e.g. ``("en",)`` so an Arabic request still accepts English). Config, not code.
+    accept_language_fallbacks: tuple[LocaleTag, ...] = ("en",)
     #: Minimum seconds between page requests to a source's host, when longer than the floor.
     page_interval_s: Mapping[DbId, float] = Field(default_factory=dict)
 
