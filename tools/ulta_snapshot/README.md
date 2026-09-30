@@ -19,8 +19,38 @@ python -m ulta_snapshot.load <local-dir> <gs://bucket/prefix> --finish   # close
 ## Proxy secret version
 
 `SECRET_RESOURCE` is pinned to an explicit version:
-`projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1`.
+`projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4`
+(the current credential; `latest` is also accepted but not used).
 There is no runtime fallback to the newest enabled version, and the job never calls
 `versions.list`. When the credential is rotated, update this pin and the one in
 `docs/runbooks/ulta-proxy-test.md` together. A disabled or destroyed version fails before any
 request with `secret version not accessible (disabled/destroyed?) — pin an enabled version`.
+
+### Secret JSON schema
+
+The secret payload is one JSON object with **exactly these five keys** (placeholders shown,
+never put real values in the repo or a chat):
+
+```json
+{
+  "host": "PROXY_HOST",
+  "port": 12345,
+  "username": "PROXY_USERNAME",
+  "password": "PROXY_PASSWORD_WITH_COUNTRY_SUFFIX",
+  "provider": "iproyal"
+}
+```
+
+| Key | Type | Rule |
+|---|---|---|
+| `host` | string | not empty; the proxy host name only, no `http://` and no port |
+| `port` | integer | 1-65535, a JSON number, not a string |
+| `username` | string | the proxy login |
+| `password` | string | the proxy password **including the country-targeting suffix** exactly as the IPRoyal dashboard generates it for AE. Country targeting lives only here. |
+| `provider` | string | not empty, e.g. `iproyal` |
+
+Any other key (for example `country`) is rejected. The run then ends at once, before any request,
+with `status=stopped_error proxy_bytes=0 challenge=no` and
+`detail=` containing `not valid proxy credentials (fields: ['country'])`. The error names only the
+offending field names, never a value. Fix the secret by adding a new version, then pin that version
+(runbook: `docs/runbooks/ulta-proxy-test.md`).

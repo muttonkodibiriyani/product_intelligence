@@ -41,7 +41,7 @@ docker run --rm -i --name ulta-test --user "$(id -u):$(id -g)" \
   -e GOOGLE_OAUTH_ACCESS_TOKEN \
   -e PRIOR_GB="$PRIOR_GB" -e MAX_PAGES=20 -e CAPTURE_JSON=0 \
   -e OWNER_APPROVAL_REF="ADR-0006 Amendment 2 (owner decision 2026-09-30: IPRoyal AE, ulta.ae only)" \
-  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1 \
+  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-test/$TS/"
 echo "UPLOADED gs://pi-sephora-e631eaba/ulta-test/$TS/"
@@ -91,13 +91,42 @@ In the summary line and in the per-page lines:
 
 ## Proxy secret version
 
-The block pins `SECRET_RESOURCE` to one secret version (`.../versions/1`), not `latest`. The job
+The blocks pin `SECRET_RESOURCE` to one secret version (`.../versions/4`, the current
+credential; `latest` is also accepted but not used). The job
 reads exactly the credential named there and never lists or picks versions itself, so the
 credential in use is auditable. **When the IPRoyal credential is rotated** (a new secret version
 is added and the old one disabled), update the version number in the block, and in
 `tools/ulta_snapshot/README.md`, in the same change. A disabled or destroyed version ends the run
 at once with `status=stopped_error proxy_bytes=0 challenge=no` and `detail=` containing
 `secret version not accessible (disabled/destroyed?) — pin an enabled version`.
+
+### Secret JSON schema
+
+The secret payload is one JSON object with **exactly these five keys** (placeholders shown,
+never put real values in the repo or a chat):
+
+```json
+{
+  "host": "PROXY_HOST",
+  "port": 12345,
+  "username": "PROXY_USERNAME",
+  "password": "PROXY_PASSWORD_WITH_COUNTRY_SUFFIX",
+  "provider": "iproyal"
+}
+```
+
+| Key | Type | Rule |
+|---|---|---|
+| `host` | string | not empty; the proxy host name only, no `http://` and no port |
+| `port` | integer | 1-65535, a JSON number, not a string |
+| `username` | string | the proxy login |
+| `password` | string | the proxy password **including the country-targeting suffix** exactly as the IPRoyal dashboard generates it for AE. Country targeting lives only here. |
+| `provider` | string | not empty, e.g. `iproyal` |
+
+Any other key (for example `country`) is rejected. The run then ends at once, before any request,
+with `status=stopped_error proxy_bytes=0 challenge=no` and
+`detail=` containing `not valid proxy credentials (fields: ['country'])`. The error names only the
+offending field names, never a value. Fix the secret by adding a new version, then pin that version.
 
 ## Stopping early
 
@@ -194,7 +223,7 @@ docker run --rm -i --name ulta-full --user "$(id -u):$(id -g)" \
   -e EST_BYTES_PER_PAGE="$EST_BYTES_PER_PAGE" \
   -e PRIOR_GB="$PRIOR_GB" -e CAPTURE_JSON=0 \
   -e OWNER_APPROVAL_REF="ADR-0006 Amendment 2 (owner decision 2026-09-30: IPRoyal AE, ulta.ae only)" \
-  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/1 \
+  -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console-$TS.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-full/$TS/"
 echo "UPLOADED gs://pi-sephora-e631eaba/ulta-full/$TS/"
