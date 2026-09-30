@@ -90,7 +90,7 @@ Ulta's Middle East roll-out has been **store-led**, and no Ulta ME e-commerce st
 flowchart TB
   subgraph S1[1 · Collect]
     REG[Source register] --> SCH[Scheduler]
-    SCH --> LAD[Escalation ladder<br/>site data → curl_cffi → Playwright → stealth → egress → proxy]
+    SCH --> LAD[Escalation ladder<br/>site data → plain HTTP → Playwright → egress → proxy (rung 3 disabled)]
     LAD --> RAW[(Raw evidence<br/>Cloud Storage)]
     LAD --> IMG[Image fetcher<br/>direct CDN]
     IMG --> IMGS[(Images + thumbnails)]
@@ -159,9 +159,9 @@ flowchart TB
 |---|---|
 | Languages | Python 3.12 (data, crawling, matching); TypeScript (web, AI) |
 | Packaging | uv workspace; pnpm |
-| Fetch | httpx, curl_cffi (browser impersonation) |
+| Fetch | httpx (plain HTTP, no impersonation; ADR-0006) |
 | Browser | Playwright (Chromium/Firefox/WebKit), Crawlee for Python |
-| Stealth | Scrapling (StealthyFetcher), Camoufox, patchright / rebrowser-patches |
+| Stealth | Not used: rung 3 is disabled (ADR-0006) |
 | Proxy | KSA/UAE residential/mobile, only after free rungs fail (owner buys) |
 | Extraction | extruct, selectolax, parsel, jmespath; Gemini structured output as fallback |
 | App data | mitmproxy on our own device/emulator, when the web lacks data |
@@ -277,14 +277,14 @@ parse(evidence) -> ListingRecord[]       # pure; every variant, field, image URL
 - Category and search rank are captured.
 - Both EN and AR locales are collected.
 
-### 6.3 Escalation ladder (ADR-0003)
+### 6.3 Escalation ladder (ADR-0003, amended by ADR-0006)
 
 | Rung | Method | Cost |
 |---|---|---|
 | 0 | Site's own JSON/API, embedded data, sitemaps | $0 |
-| 1 | curl_cffi impersonation, realistic headers, session reuse | $0 |
+| 1 | Plain HTTP (httpx), normal headers, session reuse; no TLS/JA3/HTTP2 impersonation (ADR-0006) · `plain_http` | $0 |
 | 2 | Playwright real browser (headless → headed via Xvfb), human pacing | $0 |
-| 3 | Scrapling StealthyFetcher / Camoufox / patchright, fingerprint rotation, persistent profiles, cookie reuse | $0 |
+| 3 | **Disabled** (ADR-0006): never attempted or recorded. No stealth browsers, fingerprint rotation or cookie reuse; number reserved, refused in `pi_core` and by DB CHECK | — |
 | 4 | Egress variation: our server vs Cloud Run (incl. `me-central1/2`) | $0 |
 | 5 | KSA/UAE residential/mobile proxy, **only after 0–4 fail; owner buys** | $ |
 
