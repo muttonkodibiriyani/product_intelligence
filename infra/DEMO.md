@@ -31,3 +31,9 @@ uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3
   `https://productintelligence-beeb3.web.app/*` and `https://productintelligence-beeb3.firebaseapp.com/*`
   (apikeys.googleapis.com enabled for this).
 - Hashed `*.js`/`*.css` served with `max-age=31536000, immutable`; `*.html`/`*.json` with `no-cache`.
+- Secret `pi-proxy-iproyal-ae` (created by the owner; value never read): resource-level binding
+  `roles/secretmanager.secretAccessor` for `serviceAccount:firebase-adminsdk-fbsvc@productintelligence-beeb3.iam.gserviceaccount.com`
+  only (the crawl identity). No project-level secretAccessor binding exists.
+  `gcloud secrets add-iam-policy-binding pi-proxy-iproyal-ae --member=serviceAccount:<sa> --role=roles/secretmanager.secretAccessor`
+  Caveat: project-level `roles/owner` (this SA and the owner) still implies access; a dedicated crawl SA
+  without Owner would make this binding the only path.
