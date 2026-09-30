@@ -157,8 +157,13 @@ eligible_runs AS (
     SELECT 1 FROM current_runs c WHERE c.source_context_id = r.source_context_id
   )
 ),
-latest AS (
-  SELECT DISTINCT ON (o.source_listing_id)
+-- One source may split an offer across rows: a page read carries price and rating with
+-- availability 'not_observed'; a stock read carries availability with price unknown
+-- (field_state price_current='unknown'). Price and availability therefore each come from their
+-- own newest row that observed them, so a newer stock read never blanks the price and a newer
+-- page read never hides the stock state.
+obs AS (
+  SELECT
     o.source_listing_id,
     o.variant_id,
     o.price_current,
@@ -169,6 +174,8 @@ latest AS (
     o.rating_scale,
     o.rating_count,
     o.observed_at,
+    o.observation_id,
+    o.field_state,
     o.crawl_run_id,
     cr.status AS run_status,
     sc.coverage_status::text,
@@ -179,7 +186,43 @@ latest AS (
   JOIN source_context sc ON sc.id = o.source_context_id
   LEFT JOIN evidence e ON e.id = o.evidence_id
   WHERE (o.currency = 'AED' OR o.currency IS NULL) AND sc.country = 'AE'
-  ORDER BY o.source_listing_id, o.observed_at DESC, o.observation_id DESC
+),
+latest_any AS (
+  SELECT DISTINCT ON (source_listing_id) *
+  FROM obs
+  ORDER BY source_listing_id, observed_at DESC, observation_id DESC
+),
+latest_price AS (
+  SELECT DISTINCT ON (source_listing_id) *
+  FROM obs
+  WHERE (field_state ->> 'price_current') IS DISTINCT FROM 'unknown'
+  ORDER BY source_listing_id, observed_at DESC, observation_id DESC
+),
+latest_stock AS (
+  SELECT DISTINCT ON (source_listing_id) source_listing_id, availability_state
+  FROM obs
+  WHERE availability_state <> 'not_observed'
+  ORDER BY source_listing_id, observed_at DESC, observation_id DESC
+),
+latest AS (
+  SELECT
+    a.source_listing_id,
+    COALESCE(p.variant_id, a.variant_id) AS variant_id,
+    COALESCE(p.price_current, a.price_current) AS price_current,
+    COALESCE(p.price_regular_stated, a.price_regular_stated) AS price_regular_stated,
+    COALESCE(p.price_type, a.price_type) AS price_type,
+    COALESCE(st.availability_state, a.availability_state) AS availability_state,
+    COALESCE(p.rating_value, a.rating_value) AS rating_value,
+    COALESCE(p.rating_scale, a.rating_scale) AS rating_scale,
+    COALESCE(p.rating_count, a.rating_count) AS rating_count,
+    a.observed_at,
+    a.crawl_run_id,
+    a.run_status,
+    a.coverage_status,
+    a.evidence_retrieved_at
+  FROM latest_any a
+  LEFT JOIN latest_price p ON p.source_listing_id = a.source_listing_id
+  LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id
 )
 SELECT
   s.name AS source_name,
