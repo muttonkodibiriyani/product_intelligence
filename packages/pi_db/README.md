@@ -40,13 +40,20 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
   `unit_price_derived`, `promotion.min_spend`) is NULL or strictly > 0. A NULL `price_current`
   needs a `field_state` reason (`CHECK (price_current IS NOT NULL OR field_state ?
   'price_current')`). Any stated price needs a currency, and `min_spend` needs
-  `min_spend_currency`. `price_type = 'range'` if and only if `price_range_low` and
-  `price_range_high` are both set, with 0 < low <= high (PRC-13).
+  `min_spend_currency`. `price_type = 'range'` if and only if `price_range_min` and
+  `price_range_max` are both set, with 0 < min <= max (PRC-13). `price_current` is NULL
+  (with a `field_state` reason, e.g. `not_applicable`) when `price_type` is `range` or
+  `quote_only`.
 - **Quality gate.** `quality_status` is nullable with no default: NULL means "not yet
   quality-gated". The gate (PR10) sets it, so nothing is silently published as `accepted`.
-- **No false stock-outs (DAT-06).** `availability_state = 'out_of_stock'` is rejected when
-  `field_state->>'availability_state'` is `blocked`, `partial` or `unknown`. `low_stock_flag`,
-  when set, must equal `availability_state = 'low_stock'`.
+- **No false stock-outs (DAT-06, contract point 2 v2).** A negative availability claim
+  (`out_of_stock`, `removed`, `not_deliverable`) requires
+  `field_state->>'availability_state' = 'observed'`: availability was actually seen on the
+  page. It is rejected under `blocked`, `parse_failure`, `unknown`, any other state, or no
+  entry. Other fields' states do not gate availability; a page-level block must set
+  availability's own state to `blocked` (the connector/normaliser owns that).
+  `observed` is valid only on qualified fields (`availability_state`), never as a null
+  reason. `(availability_state = 'low_stock') = (low_stock_flag IS TRUE)`.
 - **Append-only history (DAT-01, DAT-04).** `pi_app` has only INSERT/SELECT on `evidence`,
   `listing_content`, `review_summary`, `offer_observation`, `offer_promotion`, `audit_log`
   and `decision_log`. Owner-level triggers also reject UPDATE, DELETE and TRUNCATE
@@ -74,7 +81,7 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
 
 - `evidence.ladder_rung_used`, `evidence.fetch_method` (+ `fetch_method` enum): per-request
   ladder audit, see above.
-- `offer_observation.price_range_low` / `price_range_high`: range prices (PRC-13).
+- `offer_observation.price_range_min` / `price_range_max`: range prices (PRC-13).
 - `review.rating_scale`, `offer_observation.rating_scale`: ratings keep their source scale.
 
 ## Migration notes

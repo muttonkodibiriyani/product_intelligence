@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
+from enum import StrEnum
 
 import psycopg
 import pytest
@@ -168,10 +169,21 @@ def _history(conn: Conn) -> dict[str, object]:
 # ------------------------------------------------------------------ enums and types
 
 
+def _pi_core_values(enum: type[StrEnum]) -> tuple[str, ...]:
+    """pi_core's values, plus those pi_db already carries ahead of pi_core #6.
+
+    FieldState.OBSERVED lands in #6, appended last; drop this shim once it has merged.
+    """
+    values = tuple(m.value for m in enum)
+    if enum is pi_core.FieldState and "observed" not in values:
+        values += ("observed",)
+    return values
+
+
 @pytest.mark.parametrize(("pg_type", "enum"), PI_CORE_ENUMS.items())
-def test_db_enum_matches_pi_core(conn: Conn, pg_type: str, enum: type[pi_core.FieldState]) -> None:
+def test_db_enum_matches_pi_core(conn: Conn, pg_type: str, enum: type[StrEnum]) -> None:
     labels = _one(conn, f"SELECT enum_range(NULL::{pg_type})::text[]")
-    assert labels == [m.value for m in enum]
+    assert labels == list(_pi_core_values(enum))
 
 
 @pytest.mark.parametrize(
@@ -213,8 +225,8 @@ def test_money_columns_are_numeric_18_4(conn: Conn) -> None:
         "price_regular_stated",
         "price_promo",
         "price_member",
-        "price_range_low",
-        "price_range_high",
+        "price_range_min",
+        "price_range_max",
     }
     assert {(r[1], r[2]) for r in rows} == {(18, 4)}
 
@@ -461,7 +473,8 @@ def test_correction_is_a_new_row(conn: Conn) -> None:
         "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
         " source_listing_id, observed_at, ingested_at, availability_state, quality_status,"
         " field_state, correction_of) VALUES ('k1-fix', %s, %s, %s, %s, now(), 'out_of_stock',"
-        " 'corrected', '{\"price_current\": \"not_applicable\"}', %s)",
+        ' \'corrected\', \'{"price_current": "not_applicable",'
+        ' "availability_state": "observed"}\', %s)',
         (seed["run"], seed["context"], seed["listing"], at, original),
     )
     assert _one(conn, "SELECT count(*) FROM offer_observation") == 2
@@ -534,6 +547,9 @@ def test_min_spend_is_positive_and_has_currency(conn: Conn) -> None:
     _rejected(conn, errors.CheckViolation, sql, (context, Decimal(200), None))
 
 
+NO_CURRENT = '{"price_current": "not_applicable"}'
+
+
 @pytest.mark.parametrize(
     ("price_type", "low", "high", "ok"),
     [
@@ -549,13 +565,15 @@ def test_min_spend_is_positive_and_has_currency(conn: Conn) -> None:
 def test_range_price_bounds(
     conn: Conn, price_type: str, low: str | None, high: str | None, ok: bool
 ) -> None:
-    """PRC-13: a range keeps both bounds, 0 < low <= high, and only for price_type range."""
+    """PRC-13: a range keeps both bounds, 0 < min <= max, and only for price_type range."""
     seed = _seed(conn)
     cols = {
         "price_type": price_type,
-        "price_range_low": None if low is None else Decimal(low),
-        "price_range_high": None if high is None else Decimal(high),
+        "price_range_min": None if low is None else Decimal(low),
+        "price_range_max": None if high is None else Decimal(high),
     }
+    if price_type == "range":
+        cols |= {"price_current": None, "field_state": NO_CURRENT}
     if ok:
         assert _obs(conn, seed, **cols)
     else:
@@ -564,24 +582,87 @@ def test_range_price_bounds(
 
 
 @pytest.mark.parametrize(
-    ("state", "reason", "ok"),
+    ("price_type", "current", "ok"),
     [
-        ("out_of_stock", None, True),
-        ("out_of_stock", "blocked", False),
-        ("out_of_stock", "unknown", False),
-        ("blocked", "blocked", True),
-        ("unknown", "unknown", True),
+        ("range", None, True),
+        ("quote_only", None, True),
+        ("range", "129.5", False),
+        ("quote_only", "129.5", False),
+        ("full", "129.5", True),
     ],
 )
-def test_no_false_stock_outs(conn: Conn, state: str, reason: str | None, ok: bool) -> None:
+def test_range_and_quote_only_have_no_current_price(
+    conn: Conn, price_type: str, current: str | None, ok: bool
+) -> None:
+    """Contract (b): price_current IS NULL for range and quote_only prices."""
     seed = _seed(conn)
-    field_state = "{}" if reason is None else f'{{"availability_state": "{reason}"}}'
-    cols = {"availability_state": state, "field_state": field_state}
+    cols: dict[str, object] = {
+        "price_type": price_type,
+        "price_current": None if current is None else Decimal(current),
+        "field_state": NO_CURRENT if current is None else "{}",
+    }
+    if price_type == "range":
+        cols |= {"price_range_min": Decimal(10), "price_range_max": Decimal(20)}
     if ok:
         assert _obs(conn, seed, **cols)
     else:
         with pytest.raises(errors.CheckViolation):
             _obs(conn, seed, **cols)
+
+
+SEEN = '"availability_state": "observed"'
+
+
+@pytest.mark.parametrize(
+    ("state", "field_state", "ok"),
+    [
+        # Negative claims are allowed only when availability itself was observed.
+        ("out_of_stock", f"{{{SEEN}}}", True),
+        ("removed", f"{{{SEEN}}}", True),
+        ("not_deliverable", f"{{{SEEN}}}", True),
+        ("out_of_stock", "{}", False),
+        ("out_of_stock", '{"availability_state": "blocked"}', False),
+        ("out_of_stock", '{"availability_state": "parse_failure"}', False),
+        ("out_of_stock", '{"availability_state": "unknown"}', False),
+        ("out_of_stock", '{"availability_state": "restricted"}', False),
+        ("removed", '{"availability_state": "blocked"}', False),
+        ("not_deliverable", '{"availability_state": "unknown"}', False),
+        # Other fields' states do not gate availability: the page loaded, the price widget
+        # failed.
+        ("out_of_stock", f'{{{SEEN}, "price_current": "blocked"}}', True),
+        ("out_of_stock", '{"price_current": "blocked"}', False),
+        # Non-negative states need no observation qualifier.
+        ("in_stock", "{}", True),
+        ("blocked", '{"availability_state": "blocked"}', True),
+        ("unknown", '{"availability_state": "unknown"}', True),
+    ],
+)
+def test_no_false_stock_outs(conn: Conn, state: str, field_state: str, ok: bool) -> None:
+    """DAT-06, contract point 2 v2: negative state => availability field_state = observed."""
+    seed = _seed(conn)
+    cols: dict[str, object] = {"availability_state": state, "field_state": field_state}
+    if "price_current" in field_state:
+        cols["price_current"] = None
+    if ok:
+        assert _obs(conn, seed, **cols)
+    else:
+        with pytest.raises(errors.CheckViolation):
+            _obs(conn, seed, **cols)
+
+
+@pytest.mark.parametrize(
+    "field_state",
+    [
+        '{"price_current": "observed"}',
+        '{"price_member": "observed"}',
+        '{"rating_value": "observed"}',
+    ],
+)
+def test_observed_is_never_a_null_reason(conn: Conn, field_state: str) -> None:
+    """'observed' qualifies availability_state only; it never explains a NULL."""
+    seed = _seed(conn)
+    with pytest.raises(errors.CheckViolation):
+        _obs(conn, seed, price_current=None, field_state=field_state)
 
 
 @pytest.mark.parametrize(
@@ -589,13 +670,14 @@ def test_no_false_stock_outs(conn: Conn, state: str, reason: str | None, ok: boo
     [
         ("low_stock", True, True),
         ("in_stock", False, True),
-        ("out_of_stock", False, True),
         ("in_stock", None, True),
+        ("low_stock", None, False),
         ("low_stock", False, False),
         ("in_stock", True, False),
     ],
 )
 def test_low_stock_flag_agrees(conn: Conn, state: str, flag: bool | None, ok: bool) -> None:
+    """Contract (c): (availability_state = 'low_stock') = (low_stock_flag IS TRUE)."""
     seed = _seed(conn)
     cols = {"availability_state": state, "low_stock_flag": flag}
     if ok:

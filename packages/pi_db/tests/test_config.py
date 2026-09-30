@@ -70,9 +70,20 @@ def _pi_core_str_enums() -> dict[str, type[StrEnum]]:
     }
 
 
+def _pi_core_values(enum: type[StrEnum]) -> tuple[str, ...]:
+    """pi_core's values, plus those pi_db already carries ahead of pi_core #6.
+
+    FieldState.OBSERVED lands in #6, appended last; drop this shim once it has merged.
+    """
+    values = tuple(m.value for m in enum)
+    if enum is pi_core.FieldState and "observed" not in values:
+        values += ("observed",)
+    return values
+
+
 @pytest.mark.parametrize(("pg_type", "enum"), PI_CORE_ENUM_TYPES.items())
 def test_migration_enum_values_match_pi_core(pg_type: str, enum: type[StrEnum]) -> None:
-    assert migration_0001().PI_CORE_ENUMS[pg_type] == tuple(m.value for m in enum)
+    assert migration_0001().PI_CORE_ENUMS[pg_type] == _pi_core_values(enum)
 
 
 @pytest.mark.parametrize(("pg_type", "class_name"), SCHEMA_ENUM_CLASSES.items())

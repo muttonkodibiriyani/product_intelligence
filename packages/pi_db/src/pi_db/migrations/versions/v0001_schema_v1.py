@@ -48,6 +48,7 @@ PI_CORE_ENUMS: dict[str, tuple[str, ...]] = {
         "parse_failure",
         "blocked",
         "unknown",
+        "observed",
     ),
     "price_type": (
         "full",
@@ -153,6 +154,10 @@ FUNCTIONS = (
     "pi_ensure_offer_observation_partition(date)",
 )
 
+# field_state keys whose column is never null; field_state only qualifies how they were
+# determined, so only these may carry 'observed' (pi_core QUALIFIED_FIELDS).
+QUALIFIED_FIELDS: tuple[str, ...] = ("availability_state",)
+
 MONEY = "numeric(18,4)"
 # Ratings are stored as published together with the source's scale (5, 10, 100, ...), so a
 # 4.5/5 and a 90/100 stay distinguishable; comparisons normalise downstream.
@@ -185,21 +190,28 @@ def _method_rung_check() -> str:
     return f"CHECK (ladder_rung_used = CASE fetch_method::text {cases} END)"
 
 
+def _sql_list(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{v}'" for v in values)
+
+
 def _enum_sql(name: str, values: tuple[str, ...]) -> str:
-    labels = ", ".join(f"'{v}'" for v in values)
-    return f"CREATE TYPE {name} AS ENUM ({labels})"
+    return f"CREATE TYPE {name} AS ENUM ({_sql_list(values)})"
 
 
 FUNCTIONS_SQL = [
     # Every value of a field_state map must be a FieldState (DQ-02: missing is data).
-    """
+    # 'observed' qualifies how a never-null field was determined; it is never a null reason,
+    # so it is valid only on the qualified fields.
+    f"""
     CREATE FUNCTION pi_field_state_valid(fs jsonb) RETURNS boolean
     LANGUAGE sql STABLE AS $$
       SELECT jsonb_typeof(fs) = 'object'
          AND NOT EXISTS (
            SELECT 1 FROM jsonb_each(fs) AS e(key, value)
            WHERE jsonb_typeof(e.value) <> 'string'
-              OR NOT (e.value #>> '{}') = ANY (enum_range(NULL::field_state)::text[])
+              OR NOT (e.value #>> '{{}}') = ANY (enum_range(NULL::field_state)::text[])
+              OR (e.value #>> '{{}}' = 'observed'
+                  AND e.key NOT IN ({_sql_list(QUALIFIED_FIELDS)}))
          )
     $$
     """,
@@ -580,8 +592,8 @@ TABLES_SQL = [
       {_positive_money("price_regular_stated")},
       {_positive_money("price_promo")},
       {_positive_money("price_member")},
-      {_positive_money("price_range_low")},
-      {_positive_money("price_range_high")},
+      {_positive_money("price_range_min")},
+      {_positive_money("price_range_max")},
       price_type price_type,
       {_currency("currency")},
       installment jsonb,
@@ -607,18 +619,20 @@ TABLES_SQL = [
       CHECK (
         currency IS NOT NULL OR num_nonnulls(
           price_current, price_regular_stated, price_promo, price_member, unit_price_derived,
-          price_range_low, price_range_high
+          price_range_min, price_range_max
         ) = 0
       ),
-      CHECK ((price_range_low IS NULL) = (price_range_high IS NULL)),
-      CHECK (price_range_low <= price_range_high),
-      CHECK ((price_type IS NOT DISTINCT FROM 'range') = (price_range_low IS NOT NULL)),
+      CHECK ((price_range_min IS NULL) = (price_range_max IS NULL)),
+      CHECK (price_range_min <= price_range_max),
+      CHECK ((price_type IS NOT DISTINCT FROM 'range') = (price_range_min IS NOT NULL)),
+      CHECK (price_current IS NULL OR price_type NOT IN ('range', 'quote_only')),
+      -- DAT-06, contract point 2 v2: a negative availability claim needs availability itself
+      -- to have been observed on the page. Other fields' states do not gate availability.
       CHECK (
-        availability_state <> 'out_of_stock'
-        OR coalesce(field_state ->> 'availability_state', '') NOT IN
-          ('blocked', 'partial', 'unknown')
+        availability_state NOT IN ('out_of_stock', 'removed', 'not_deliverable')
+        OR field_state ->> 'availability_state' IS NOT DISTINCT FROM 'observed'
       ),
-      CHECK (low_stock_flag IS NULL OR low_stock_flag = (availability_state = 'low_stock')),
+      CHECK ((availability_state = 'low_stock') = (low_stock_flag IS TRUE)),
       CHECK (price_current IS NOT NULL OR field_state ? 'price_current'),
       CHECK ((rating_value IS NULL) = (rating_scale IS NULL)),
       CHECK (rating_value BETWEEN 0 AND rating_scale),
