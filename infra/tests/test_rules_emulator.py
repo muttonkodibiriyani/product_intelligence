@@ -19,15 +19,19 @@ from urllib.parse import quote
 import httpx
 import pytest
 
-pytestmark = pytest.mark.emulator
-
 PROJECT = os.environ.get("GCLOUD_PROJECT", "demo-pi")
 BUCKET = f"{PROJECT}.appspot.com"
 FIRESTORE = os.environ.get("FIRESTORE_EMULATOR_HOST")
 STORAGE = os.environ.get("FIREBASE_STORAGE_EMULATOR_HOST")
 
-if not (FIRESTORE and STORAGE):
-    pytest.skip("Firebase emulators not running (see module docstring)", allow_module_level=True)
+# A skip mark, not a module-level skip: `-m "not emulator"` / `-m browser` then deselect these
+# tests instead of reporting a collection skip (CI refuses skips in those runs).
+pytestmark = [
+    pytest.mark.emulator,
+    pytest.mark.skipif(
+        not (FIRESTORE and STORAGE), reason="Firebase emulators not running (see module docstring)"
+    ),
+]
 
 ALLOWED = 404  # rules allowed the read; the object just doesn't exist
 DENIED = 403
