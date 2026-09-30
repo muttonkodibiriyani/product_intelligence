@@ -4,9 +4,10 @@ Prices are positive ``Decimal`` amounts sharing the observation's single ``curre
 ``money`` to get them as ``Money``. Every tracked null carries a reason in ``field_state``; a
 missing price is never zero.
 
-Availability rules (DAT-06): when ``field_state["availability_state"]`` says the stock could not
-be read (``NO_STOCK_CLAIM_REASONS``), the state cannot be ``out_of_stock``; and
-``availability_state == low_stock`` exactly when ``low_stock_flag`` is true.
+Availability rules (DAT-06): a negative claim (``NEGATIVE_AVAILABILITY``: out of stock, removed,
+not deliverable) needs ``field_state["availability_state"] == observed``, i.e. it was actually
+read from the page; other fields' states do not gate it. And ``availability_state == low_stock``
+exactly when ``low_stock_flag`` is true.
 
 | Field | Requirements |
 |---|---|
@@ -56,9 +57,9 @@ PriceField = Literal[
     "unit_price_derived",
 ]
 
-#: Availability reasons under which no stock-out may be recorded (DAT-06).
-NO_STOCK_CLAIM_REASONS = frozenset(
-    {FieldState.BLOCKED, FieldState.PARSE_FAILURE, FieldState.UNKNOWN}
+#: Availability states that claim the offer can't be bought; they must be observed (DAT-06).
+NEGATIVE_AVAILABILITY = frozenset(
+    {AvailabilityState.OUT_OF_STOCK, AvailabilityState.REMOVED, AvailabilityState.NOT_DELIVERABLE}
 )
 
 #: ``numeric(7,2)``: a rating value or the scale it is out of (e.g. 4.60 of 5).
@@ -171,12 +172,10 @@ class OfferObservation(FieldStateModel):
         return self
 
     def _check_availability(self) -> None:
+        state = self.availability_state
         reason = self.field_state.get("availability_state")
-        if (
-            reason in NO_STOCK_CLAIM_REASONS
-            and self.availability_state is AvailabilityState.OUT_OF_STOCK
-        ):
-            msg = f"availability marked {reason}: cannot record out_of_stock (DAT-06)"
+        if state in NEGATIVE_AVAILABILITY and reason is not FieldState.OBSERVED:
+            msg = f"availability not observed ({reason}): cannot record {state} (DAT-06)"
             raise ValueError(msg)
         if (self.availability_state is AvailabilityState.LOW_STOCK) != (
             self.low_stock_flag is True

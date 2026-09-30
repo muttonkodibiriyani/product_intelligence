@@ -20,7 +20,8 @@ is the source of truth for names; each module's docstring maps its fields to req
 | Amounts are `Decimal`, fit `numeric(18,4)`; floats, bools, NaN and infinity are refused | `types.Amount` | PRC-03, DQ-03 |
 | Every price (`price_*`, `unit_price_derived`, `min_spend`, instalment) is `None` or `> 0`; missing is never zero | `types.PositiveAmount` | DQ-02, PRC-16 |
 | `price_type=range` ⇔ `price_range_min`/`max` set, `0 < min <= max`, and no `price_current` | `observation` | PRC-01, PRC-13 |
-| `field_state["availability_state"]` in {blocked, parse_failure, unknown} ⇒ not `out_of_stock` | `observation.NO_STOCK_CLAIM_REASONS` | DAT-06 |
+| Negative availability (`out_of_stock`, `removed`, `not_deliverable`) ⇒ `field_state["availability_state"] = observed`; other fields' states don't gate it | `observation.NEGATIVE_AVAILABILITY` | DAT-06 |
+| `observed` qualifies a never-null field (availability); it is never a null reason | `base.FieldStateModel` | DQ-02 |
 | `(availability_state = low_stock) = (low_stock_flag IS TRUE)` | `observation` | DAT-06 |
 | `rating_value`/`rating_scale` both set or both null, `numeric(7,2)`, `0 <= value <= scale` | `observation` | — |
 | Rung 3 (`STEALTH_BROWSER`) is forbidden regardless of any cap; rung 1 is plain HTTP, normal headers | `enums.FORBIDDEN_RUNGS` | ADR-0003, owner ruling |

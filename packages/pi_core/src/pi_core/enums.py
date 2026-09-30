@@ -30,7 +30,11 @@ class AvailabilityState(StrEnum):
 
 
 class FieldState(StrEnum):
-    """Why a field is null. Missing is data, never zero (DQ-02)."""
+    """Why a field is null. Missing is data, never zero (DQ-02).
+
+    ``OBSERVED`` is the one positive member: it qualifies a never-null field (availability) as
+    actually read from the page. It is never a reason for a null.
+    """
 
     NOT_PUBLISHED = "not_published"
     NOT_APPLICABLE = "not_applicable"
@@ -38,6 +42,7 @@ class FieldState(StrEnum):
     PARSE_FAILURE = "parse_failure"
     BLOCKED = "blocked"
     UNKNOWN = "unknown"
+    OBSERVED = "observed"
 
 
 class PriceType(StrEnum):

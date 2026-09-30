@@ -20,7 +20,8 @@ class FieldStateModel(PiModel):
     a reason for it. A null without a reason and a reason next to a value are both rejected.
 
     ``QUALIFIED_FIELDS`` are never null, but ``field_state`` may qualify how their value was
-    determined (e.g. availability recorded as ``unknown`` because the page was blocked).
+    determined (e.g. availability recorded as ``unknown`` because the page was blocked, or
+    ``observed`` because it was read from the page). ``observed`` is never a null reason.
     """
 
     TRACKED_FIELDS: ClassVar[frozenset[str]] = frozenset()
@@ -37,6 +38,9 @@ class FieldStateModel(PiModel):
         for name in sorted(self.TRACKED_FIELDS):
             is_null = getattr(self, name) is None
             has_reason = name in self.field_state
+            if self.field_state.get(name) is FieldState.OBSERVED:
+                msg = f"{name}: observed is not a null reason"
+                raise ValueError(msg)
             if is_null and not has_reason:
                 msg = f"{name} is null without a field_state reason"
                 raise ValueError(msg)

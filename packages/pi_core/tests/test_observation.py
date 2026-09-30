@@ -23,7 +23,7 @@ from pi_core import (
     SourceContext,
     TaxStatus,
 )
-from pi_core.observation import NO_STOCK_CLAIM_REASONS
+from pi_core.observation import NEGATIVE_AVAILABILITY
 
 T0 = datetime(2026, 9, 30, 6, tzinfo=UTC)
 CTX_ID = 1
@@ -305,18 +305,57 @@ def test_low_stock_agrees_with_flag() -> None:
 
 
 @given(
-    reason=st.sampled_from(FieldState),
+    reason=st.none() | st.sampled_from(FieldState),
     state=st.sampled_from([s for s in AvailabilityState if s is not AvailabilityState.LOW_STOCK]),
 )
-def test_no_false_stock_outs(reason: FieldState, state: AvailabilityState) -> None:
-    # DAT-06: when availability could not be read, a stock-out is never recorded.
-    fs = obs_data()["field_state"] | {"availability_state": reason}
-    forbidden = reason in NO_STOCK_CLAIM_REASONS and state is AvailabilityState.OUT_OF_STOCK
-    if forbidden:
-        with pytest.raises(ValidationError, match="cannot record out_of_stock"):
+def test_no_false_stock_outs(reason: FieldState | None, state: AvailabilityState) -> None:
+    # DAT-06: a negative availability claim is recorded only when it was observed on the page.
+    fs = dict(obs_data()["field_state"])
+    if reason is not None:
+        fs["availability_state"] = reason
+    if state in NEGATIVE_AVAILABILITY and reason is not FieldState.OBSERVED:
+        with pytest.raises(ValidationError, match=f"cannot record {state}"):
             observation(availability_state=state, field_state=fs)
     else:
         assert observation(availability_state=state, field_state=fs).availability_state is state
+
+
+@pytest.mark.parametrize(
+    ("state", "reason"),
+    [
+        (AvailabilityState.REMOVED, FieldState.BLOCKED),
+        (AvailabilityState.NOT_DELIVERABLE, FieldState.UNKNOWN),
+        (AvailabilityState.OUT_OF_STOCK, FieldState.PARSE_FAILURE),
+        (AvailabilityState.OUT_OF_STOCK, None),
+    ],
+)
+def test_negative_availability_needs_observation(
+    state: AvailabilityState, reason: FieldState | None
+) -> None:
+    fs = dict(obs_data()["field_state"])
+    if reason is not None:
+        fs["availability_state"] = reason
+    with pytest.raises(ValidationError, match=f"availability not observed \\({reason}\\)"):
+        observation(availability_state=state, field_state=fs)
+
+
+def test_blocked_price_with_observed_stock_out_is_accepted() -> None:
+    # The page loaded and showed "out of stock"; only the price widget failed.
+    fs = obs_data()["field_state"] | {
+        "price_current": FieldState.BLOCKED,
+        "availability_state": FieldState.OBSERVED,
+    }
+    obs = observation(
+        price_current=None, availability_state=AvailabilityState.OUT_OF_STOCK, field_state=fs
+    )
+    assert obs.availability_state is AvailabilityState.OUT_OF_STOCK
+    assert obs.price_current is None
+
+
+def test_observed_is_not_a_null_reason() -> None:
+    fs = obs_data()["field_state"] | {"price_current": FieldState.OBSERVED}
+    with pytest.raises(ValidationError, match="observed is not a null reason"):
+        observation(price_current=None, field_state=fs)
 
 
 def test_availability_qualifier_is_the_only_extra_field_state_key() -> None:
