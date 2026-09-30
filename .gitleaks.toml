@@ -16,3 +16,13 @@ description = "Algolia API key (search-only, admin or secured) in Algolia client
 regex = '''(?i)(?:(?:x-algolia-api-key|algolia[\w.-]{0,30}?key|\bapi[_-]?key|\bsearch[_-]?(?:only[_-]?)?(?:api[_-]?)?key|\bsecured[_-]?api[_-]?key)["']?\s*(?:[:=]|=>|%3d)|algoliasearch(?:lite)?\s*\(\s*["'`][\w-]+["'`]\s*,)\s*["'`]?([a-f0-9]{32}|[a-z0-9+/]{60,}={0,2})(?:["'`\s&;,)}]|$)'''
 secretGroup = 1
 keywords = ["algolia", "searchonlyapikey", "search_only_api_key", "securedapikey", "secured_api_key"]
+
+# A synthetic, key-shaped test fixture was committed once in infra/tests/test_publish_dataset.py
+# (PR #23, commit f9c09ba) and rewritten away; it stays allowlisted by exact commit AND path so a
+# stale ref or re-fetched history cannot turn every PR's full-history scan red. Nothing else is
+# exempt: the same path in any other commit, or any other file in that commit, is still scanned.
+[[allowlists]]
+description = "PR #23 synthetic Algolia-like fixture (rewritten commit f9c09ba)"
+condition = "AND"
+commits = ["f9c09baf93b0b1733b423f84b0704b32eb333a5b"]
+paths = ['''^infra/tests/test_publish_dataset\.py$''']
