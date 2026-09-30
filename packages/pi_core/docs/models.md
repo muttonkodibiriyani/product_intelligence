@@ -18,10 +18,17 @@ is the source of truth for names; each module's docstring maps its fields to req
 | Rule | Where | Requirements |
 |---|---|---|
 | Amounts are `Decimal`, fit `numeric(18,4)`; floats, bools, NaN and infinity are refused | `types.Amount` | PRC-03, DQ-03 |
+| Every price (`price_*`, `unit_price_derived`, `min_spend`, instalment) is `None` or `> 0`; missing is never zero | `types.PositiveAmount` | DQ-02, PRC-16 |
+| `price_type=range` ⇔ `price_range_min`/`max` set, `0 < min <= max`, and no `price_current` | `observation` | PRC-01, PRC-13 |
+| `field_state["availability_state"]` in {blocked, parse_failure, unknown} ⇒ not `out_of_stock` | `observation.NO_STOCK_CLAIM_REASONS` | DAT-06 |
+| `(availability_state = low_stock) = (low_stock_flag IS TRUE)` | `observation` | DAT-06 |
+| `rating_value`/`rating_scale` both set or both null, `numeric(7,2)`, `0 <= value <= scale` | `observation` | — |
+| Rung 3 (`STEALTH_BROWSER`) is forbidden regardless of any cap; rung 1 is plain HTTP, normal headers | `enums.FORBIDDEN_RUNGS` | ADR-0003, owner ruling |
 | One `currency` per record; `money()` returns `Money` in it; the context's currency comes from its market | `observation`, `context` | PRC-03, PRC-07 |
 | Datetimes must be timezone-aware and are normalised to UTC | `types.UtcDatetime` | DAT-03 |
 | A tracked field is `None` exactly when `field_state` gives a reason | `base.FieldStateModel` | DQ-02, DAT-06 |
 | Rung and fetch method always agree; the rung may not exceed the context's cap (paid is opt-in) | `context.check_rung` | ADR-0003 |
+| `field_state` keys are tracked fields, plus `availability_state` as a qualifier | `base.FieldStateModel` | DQ-02 |
 | Unknown keys are rejected; records are immutable | `base.PiModel` | DAT-01 |
 
 ## Ids and logical keys
@@ -38,17 +45,18 @@ models carry foreign ids but never invent their own. Idempotency comes from logi
 The crawl run is not part of the observation key: a retried run that re-observes the same
 instant is the same fact (DAT-09). `source_context` covers channel, location and cohort.
 
-## Differences from the DB schema (PR4)
+## Contract with the DB schema (pi_db, #5)
 
-Names match `pi_db` migration 0001. Where they deliberately differ:
+Names and constraints match `pi_db` migration 0001 per the coordinator's cross-PR contract:
+positive prices, range bounds, no false stock-outs, low-stock agreement, evidence
+`ladder_rung_used`/`fetch_method` (`NOT NULL`, per request), `promotion.min_spend_currency`,
+nullable `quality_status` with no default, rating `numeric(7,2)` + `rating_scale`, rung 3
+refused. `FetchMethod` values are locked: `site_api`, `embedded_json`, `sitemap` (0),
+`plain_http` (1), `playwright` (2), `egress_variation` (4), `residential_proxy` (5).
 
-- `Evidence.ladder_rung_used` / `fetch_method` have no column yet. A run can escalate part-way,
-  so the method belongs on each evidence row (ADR-0003); proposed for a follow-up migration.
+Deliberate model-only differences:
+
 - `Evidence.retention_until` is optional here; the pipeline fills it from the retention policy
-  before insert (the column is `NOT NULL`).
-- `OfferObservation.quality_status` is `None` until the quality gate runs; the pipeline must set
-  it explicitly rather than rely on the column default.
-- `ListingRecord.category_path_source` is a tuple; the column is `text`, so it is joined on write
-  unless the column becomes `text[]`.
-- Prices may be negative here so the quality gate can see and quarantine them; the table's
-  `CHECK (>= 0)` is the last line of defence.
+  before insert.
+- `ListingRecord.category_path_source` is a tuple; it is joined on write while the column is
+  `text`.

@@ -3,6 +3,8 @@
 Each type encodes one storage rule so every model enforces it the same way:
 
 * ``Amount``: exact ``Decimal`` that fits ``numeric(18,4)``; floats and bools are refused (PRC-03).
+* ``PositiveAmount``: an ``Amount`` strictly above zero. Every price is ``None`` or positive;
+  missing is never zero, it is ``None`` plus a ``field_state`` reason (DQ-02).
 * ``UtcDatetime``: timezone-aware, normalised to UTC so ids and comparisons are stable (DAT-03).
 * ``CurrencyCode``: an ISO 4217 code listed in ``CURRENCY_EXPONENTS``.
 * ``Size``: exact positive ``Decimal`` pack size; floats refused, the unit is kept alongside.
@@ -57,6 +59,7 @@ def _check_currency(value: str) -> str:
 
 # pydantic's Decimal already refuses NaN and infinity.
 Amount = Annotated[Decimal, BeforeValidator(refuse_float), AfterValidator(_check_amount)]
+PositiveAmount = Annotated[Amount, Field(gt=0)]
 Size = Annotated[Decimal, BeforeValidator(refuse_float), Field(gt=0, allow_inf_nan=False)]
 UtcDatetime = Annotated[AwareDatetime, AfterValidator(_to_utc)]
 CurrencyCode = Annotated[str, AfterValidator(_check_currency)]

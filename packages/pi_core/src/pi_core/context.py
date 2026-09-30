@@ -29,8 +29,16 @@ from pi_core.enums import (
 from pi_core.types import DbId, NonEmptyStr, UtcDatetime
 
 
+def check_permitted(rung: LadderRung) -> None:
+    """Raise if ``rung`` is forbidden program-wide (``FORBIDDEN_RUNGS``)."""
+    if not rung.is_permitted:
+        msg = f"rung {rung.name} is forbidden"
+        raise ValueError(msg)
+
+
 def check_rung(rung: LadderRung, method: FetchMethod) -> None:
-    """Raise unless ``method`` belongs to ``rung`` (the audit trail must not contradict itself)."""
+    """Raise unless ``rung`` is permitted and ``method`` belongs to it (a consistent audit)."""
+    check_permitted(rung)
     if method.rung is not rung:
         msg = f"fetch method {method} belongs to rung {method.rung.name}, not {rung.name}"
         raise ValueError(msg)
@@ -65,6 +73,7 @@ class SourceContext(PiModel):
     refresh_policy: dict[str, JsonValue] = Field(default_factory=dict)
     ladder_rung_current: LadderRung = LadderRung.SITE_DATA
     # Paid rungs are opt-in: raising this to PAID_PROXY is the owner's decision (ADR-0003).
+    # The cap never permits a forbidden rung: escalation skips STEALTH_BROWSER.
     ladder_rung_max_allowed: LadderRung = LadderRung.EGRESS_VARIATION
     coverage_status: CoverageStatus = CoverageStatus.PENDING
     fallback_of: DbId | None = None
@@ -84,6 +93,7 @@ class SourceContext(PiModel):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
+        check_permitted(self.ladder_rung_current)
         if self.ladder_rung_current > self.ladder_rung_max_allowed:
             msg = "ladder_rung_current exceeds ladder_rung_max_allowed"
             raise ValueError(msg)

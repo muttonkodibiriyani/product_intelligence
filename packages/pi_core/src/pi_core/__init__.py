@@ -7,6 +7,7 @@ runtime dependency is pydantic, used for the frozen record models.
 from pi_core.base import FieldStateModel, PiModel
 from pi_core.context import CollectionContext, Source, SourceContext
 from pi_core.enums import (
+    FORBIDDEN_RUNGS,
     AvailabilityState,
     Channel,
     Concentration,
@@ -36,6 +37,7 @@ from pi_core.types import content_hash_of
 
 __all__ = [
     "CURRENCY_EXPONENTS",
+    "FORBIDDEN_RUNGS",
     "AvailabilityState",
     "Channel",
     "CollectionContext",

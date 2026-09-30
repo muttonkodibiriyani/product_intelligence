@@ -11,7 +11,7 @@ from pydantic import Field, JsonValue, model_validator
 from pi_core.base import PiModel
 from pi_core.enums import PromotionMechanic
 from pi_core.money import Money
-from pi_core.types import Amount, CurrencyCode, DbId, NonEmptyStr, UtcDatetime
+from pi_core.types import CurrencyCode, DbId, NonEmptyStr, PositiveAmount, UtcDatetime
 
 
 class PromotionRecord(PiModel):
@@ -22,7 +22,7 @@ class PromotionRecord(PiModel):
     terms_original: NonEmptyStr
     code: NonEmptyStr | None = None
     rule: dict[str, JsonValue] = Field(default_factory=dict)
-    min_spend: Amount | None = None
+    min_spend: PositiveAmount | None = None
     min_spend_currency: CurrencyCode | None = None
     min_qty: int | None = Field(default=None, ge=1)
     advertised_from: UtcDatetime | None = None

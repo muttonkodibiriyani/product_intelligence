@@ -23,6 +23,7 @@ from pi_core import (
     SourceContext,
     TaxStatus,
 )
+from pi_core.observation import NO_STOCK_CLAIM_REASONS
 
 T0 = datetime(2026, 9, 30, 6, tzinfo=UTC)
 CTX_ID = 1
@@ -66,6 +67,7 @@ def obs_data(**overrides: Any) -> dict[str, Any]:
         "low_stock_flag": False,
         "delivery_promise": None,
         "rating_value": "4.6",
+        "rating_scale": "5",
         "rating_count": 812,
         "rank_in_category": 4,
         "rank_in_search": {"perfume": 2},
@@ -128,6 +130,7 @@ def test_failed_crawl_is_blocked_not_out_of_stock() -> None:
     reasons = dict.fromkeys(OfferObservation.TRACKED_FIELDS, FieldState.BLOCKED)
     obs = observation(
         **dict.fromkeys(OfferObservation.TRACKED_FIELDS),
+        rating_scale=None,
         availability_state=AvailabilityState.BLOCKED,
         tax_status=TaxStatus.UNKNOWN,
         rank_in_search={},
@@ -154,9 +157,17 @@ def test_failed_crawl_is_blocked_not_out_of_stock() -> None:
         ({"unit_price_derived": "69.00"}, "unit_price_derived and unit_basis"),
         ({"price_type": PriceType.PROMOTIONAL}, "requires price_promo"),
         ({"price_type": PriceType.MEMBER}, "requires price_member"),
-        ({"price_type": PriceType.QUOTE_ONLY}, "quote-only"),
+        ({"price_type": PriceType.QUOTE_ONLY}, "quote_only offer has no single current price"),
         ({"rating_value": "-1"}, "greater than or equal"),
         ({"rating_value": "4.567"}, "decimal places"),
+        ({"rating_value": "5.5"}, "exceeds rating_scale"),
+        ({"rating_scale": None}, "rating_value and rating_scale"),
+        ({"rating_scale": "0"}, "greater than 0"),
+        ({"unit_price_derived": "-1", "unit_basis": "100ml"}, "greater than 0"),
+        ({"price_type": PriceType.RANGE}, "no single current price"),
+        ({"price_range_min": "10"}, "only set for price_type range"),
+        ({"availability_state": AvailabilityState.LOW_STOCK}, "must agree"),
+        ({"low_stock_flag": True}, "must agree"),
         ({"rating_value": 4.5}, "float"),
         ({"source_listing_id": 0}, "greater than or equal"),
         ({"rank_in_search": {"perfume": 0}}, "greater than or equal"),
@@ -243,8 +254,71 @@ def test_promotion() -> None:
         ({"last_seen_at": T0 - timedelta(seconds=1)}, "last_seen_at is before"),
         ({"advertised_to": T0 - timedelta(days=1)}, "advertised_to is before"),
         ({"min_qty": 0}, "greater than or equal"),
+        ({"min_spend": "0"}, "greater than 0"),
+        ({"min_spend": "-1"}, "greater than 0"),
     ],
 )
 def test_promotion_invariants(overrides: dict[str, Any], error: str) -> None:
     with pytest.raises(ValidationError, match=error):
         promotion(**overrides)
+
+
+PRICE_FIELDS = ("price_current", "price_regular_stated", "price_promo", "price_member")
+
+
+@pytest.mark.parametrize("field", PRICE_FIELDS)
+@pytest.mark.parametrize("value", ["0", "0.00", "-10.00"])
+def test_prices_are_strictly_positive(field: str, value: str) -> None:
+    # Missing is never zero (DQ-02): a price is None plus a reason, or > 0.
+    fs = {k: v for k, v in obs_data()["field_state"].items() if k != field}
+    with pytest.raises(ValidationError, match="greater than 0"):
+        observation(**{field: value}, field_state=fs)
+
+
+def test_range_price() -> None:
+    fs = obs_data()["field_state"] | {"price_current": FieldState.NOT_APPLICABLE}
+    obs = observation(
+        price_type=PriceType.RANGE,
+        price_current=None,
+        price_range_min="120",
+        price_range_max="345",
+        field_state=fs,
+    )
+    assert obs.money("price_range_min") == Money.of("120", "SAR")
+    with pytest.raises(ValidationError, match="requires price_range_min"):
+        observation(price_type=PriceType.RANGE, price_current=None, field_state=fs)
+    with pytest.raises(ValidationError, match="exceeds price_range_max"):
+        observation(
+            price_type=PriceType.RANGE,
+            price_current=None,
+            price_range_min="400",
+            price_range_max="345",
+            field_state=fs,
+        )
+
+
+def test_low_stock_agrees_with_flag() -> None:
+    obs = observation(availability_state=AvailabilityState.LOW_STOCK, low_stock_flag=True)
+    assert obs.low_stock_flag is True
+    unknown_flag = obs_data()["field_state"] | {"low_stock_flag": FieldState.NOT_PUBLISHED}
+    assert observation(low_stock_flag=None, field_state=unknown_flag).low_stock_flag is None
+
+
+@given(
+    reason=st.sampled_from(FieldState),
+    state=st.sampled_from([s for s in AvailabilityState if s is not AvailabilityState.LOW_STOCK]),
+)
+def test_no_false_stock_outs(reason: FieldState, state: AvailabilityState) -> None:
+    # DAT-06: when availability could not be read, a stock-out is never recorded.
+    fs = obs_data()["field_state"] | {"availability_state": reason}
+    forbidden = reason in NO_STOCK_CLAIM_REASONS and state is AvailabilityState.OUT_OF_STOCK
+    if forbidden:
+        with pytest.raises(ValidationError, match="cannot record out_of_stock"):
+            observation(availability_state=state, field_state=fs)
+    else:
+        assert observation(availability_state=state, field_state=fs).availability_state is state
+
+
+def test_availability_qualifier_is_the_only_extra_field_state_key() -> None:
+    with pytest.raises(ValidationError, match="untracked"):
+        observation(field_state=obs_data()["field_state"] | {"tax_status": FieldState.UNKNOWN})

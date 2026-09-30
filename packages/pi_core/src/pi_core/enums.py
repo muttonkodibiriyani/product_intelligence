@@ -116,10 +116,17 @@ class CoverageStatus(StrEnum):
 
 
 class LadderRung(IntEnum):
-    """Collection escalation ladder (blueprint section 6.3). Higher rungs cost more."""
+    """Collection escalation ladder (blueprint section 6.3). Higher rungs cost more.
+
+    Values are persisted and never change. STEALTH_BROWSER (3) is forbidden by the owner's
+    guardrail: it stays for audit and history but no context, run or evidence may use it, so
+    escalation goes 2 -> 4. PLAIN_HTTP (1) is plain HTTP with normal headers; TLS/JA3/HTTP2
+    fingerprint impersonation is not allowed (owner ruling). If a real browser (2) from Gulf egress
+    (4) is still blocked, the source is marked blocked and a Proxy Decision Report is written.
+    """
 
     SITE_DATA = 0
-    IMPERSONATED_HTTP = 1
+    PLAIN_HTTP = 1
     BROWSER = 2
     STEALTH_BROWSER = 3
     EGRESS_VARIATION = 4
@@ -130,21 +137,30 @@ class LadderRung(IntEnum):
         """Paid rungs require an explicit owner decision before use."""
         return self is LadderRung.PAID_PROXY
 
+    @property
+    def is_permitted(self) -> bool:
+        """False for rungs the program forbids outright, whatever a context's cap says."""
+        return self not in FORBIDDEN_RUNGS
+
+
+#: Rungs no collection may use (owner guardrail): stealth browsers, fingerprint rotation, cookie
+#: reuse. Mirrored by CHECK constraints in pi_db.
+FORBIDDEN_RUNGS: frozenset[LadderRung] = frozenset({LadderRung.STEALTH_BROWSER})
+
 
 class FetchMethod(StrEnum):
     """Concrete collection method, recorded for audit on every evidence row (ADR-0003).
 
     Each method belongs to exactly one ladder rung, so the rung can never contradict the method.
+    There is deliberately no method for the forbidden STEALTH_BROWSER rung.
     """
 
     SITE_API = "site_api"
     EMBEDDED_JSON = "embedded_json"
     SITEMAP = "sitemap"
-    CURL_CFFI = "curl_cffi"
+    # Plain HTTP (httpx), normal headers.
+    PLAIN_HTTP = "plain_http"
     PLAYWRIGHT = "playwright"
-    SCRAPLING = "scrapling"
-    CAMOUFOX = "camoufox"
-    PATCHRIGHT = "patchright"
     EGRESS_VARIATION = "egress_variation"
     RESIDENTIAL_PROXY = "residential_proxy"
 
@@ -158,11 +174,8 @@ _METHOD_RUNG: dict[FetchMethod, LadderRung] = {
     FetchMethod.SITE_API: LadderRung.SITE_DATA,
     FetchMethod.EMBEDDED_JSON: LadderRung.SITE_DATA,
     FetchMethod.SITEMAP: LadderRung.SITE_DATA,
-    FetchMethod.CURL_CFFI: LadderRung.IMPERSONATED_HTTP,
+    FetchMethod.PLAIN_HTTP: LadderRung.PLAIN_HTTP,
     FetchMethod.PLAYWRIGHT: LadderRung.BROWSER,
-    FetchMethod.SCRAPLING: LadderRung.STEALTH_BROWSER,
-    FetchMethod.CAMOUFOX: LadderRung.STEALTH_BROWSER,
-    FetchMethod.PATCHRIGHT: LadderRung.STEALTH_BROWSER,
     FetchMethod.EGRESS_VARIATION: LadderRung.EGRESS_VARIATION,
     FetchMethod.RESIDENTIAL_PROXY: LadderRung.PAID_PROXY,
 }

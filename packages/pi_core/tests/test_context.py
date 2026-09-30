@@ -7,6 +7,7 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from pi_core import (
+    FORBIDDEN_RUNGS,
     CollectionContext,
     Evidence,
     FetchMethod,
@@ -44,8 +45,34 @@ def collection_context(method: FetchMethod = FetchMethod.SITE_API, **ctx: Any) -
     )
 
 
-def test_every_method_has_a_rung_and_every_rung_a_method() -> None:
-    assert {m.rung for m in FetchMethod} == set(LadderRung)
+def test_every_permitted_rung_has_a_method_and_no_forbidden_one_does() -> None:
+    assert {m.rung for m in FetchMethod} == {r for r in LadderRung if r.is_permitted}
+    assert {LadderRung.STEALTH_BROWSER} == FORBIDDEN_RUNGS
+    # Values are persisted and mirrored by pi_db CHECKs; they never change.
+    assert [int(r) for r in LadderRung] == [0, 1, 2, 3, 4, 5]
+
+
+def test_forbidden_rung_refused_regardless_of_cap() -> None:
+    with pytest.raises(ValidationError, match="STEALTH_BROWSER is forbidden"):
+        source_context(ladder_rung_current=LadderRung.STEALTH_BROWSER)
+    with pytest.raises(ValidationError, match="STEALTH_BROWSER is forbidden"):
+        CollectionContext.model_validate(
+            collection_context().model_dump() | {"ladder_rung_used": LadderRung.STEALTH_BROWSER}
+        )
+    with pytest.raises(ValidationError, match="STEALTH_BROWSER is forbidden"):
+        Evidence.model_validate(
+            evidence().model_dump() | {"ladder_rung_used": LadderRung.STEALTH_BROWSER}
+        )
+
+
+def test_escalation_skips_rung_three() -> None:
+    permitted = [r for r in LadderRung if r.is_permitted and not r.is_paid]
+    assert permitted == [
+        LadderRung.SITE_DATA,
+        LadderRung.PLAIN_HTTP,
+        LadderRung.BROWSER,
+        LadderRung.EGRESS_VARIATION,
+    ]
 
 
 @pytest.mark.parametrize(("market", "currency"), [(Market.KSA, "SAR"), (Market.UAE, "AED")])
@@ -140,7 +167,7 @@ def test_collection_context_round_trip(market: Market, locale: Locale, method: F
 
 def evidence(**overrides: Any) -> Evidence:
     return Evidence.from_payload(
-        collection_context(FetchMethod.CURL_CFFI),
+        collection_context(FetchMethod.PLAIN_HTTP),
         url="https://www.sephora.me/sa-en/p/P123",
         payload=b"<html>ok</html>",
         storage_uri="gs://bucket/raw/abc",
@@ -152,8 +179,8 @@ def evidence(**overrides: Any) -> Evidence:
 def test_evidence_from_payload() -> None:
     ev = evidence()
     assert ev.content_hash == content_hash_of(b"<html>ok</html>")
-    assert ev.ladder_rung_used is LadderRung.IMPERSONATED_HTTP
-    assert ev.fetch_method is FetchMethod.CURL_CFFI
+    assert ev.ladder_rung_used is LadderRung.PLAIN_HTTP
+    assert ev.fetch_method is FetchMethod.PLAIN_HTTP
     assert Evidence.model_validate_json(ev.model_dump_json()) == ev
 
 

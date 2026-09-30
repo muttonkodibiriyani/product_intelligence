@@ -18,15 +18,19 @@ class FieldStateModel(PiModel):
 
     For every name in ``TRACKED_FIELDS``: the value is ``None`` exactly when ``field_state`` holds
     a reason for it. A null without a reason and a reason next to a value are both rejected.
+
+    ``QUALIFIED_FIELDS`` are never null, but ``field_state`` may qualify how their value was
+    determined (e.g. availability recorded as ``unknown`` because the page was blocked).
     """
 
     TRACKED_FIELDS: ClassVar[frozenset[str]] = frozenset()
+    QUALIFIED_FIELDS: ClassVar[frozenset[str]] = frozenset()
 
     field_state: dict[str, FieldState] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _check_field_state(self) -> Self:
-        unknown = sorted(set(self.field_state) - self.TRACKED_FIELDS)
+        unknown = sorted(set(self.field_state) - self.TRACKED_FIELDS - self.QUALIFIED_FIELDS)
         if unknown:
             msg = f"field_state names untracked fields: {unknown}"
             raise ValueError(msg)
