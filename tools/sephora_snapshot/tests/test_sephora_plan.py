@@ -15,7 +15,8 @@ def _snapshot(root: Path) -> Path:
     (root / "seed.json").write_bytes(gzip.compress(json.dumps(seed).encode()))
     brands = {"P103": "Brand Ümlaut", "P107": "Other"}
     write_part(root, "pdp_en", [pdp_rec(p, "en", details(p, brands.get(p, "Acme"))) for p in PIDS])
-    write_part(root, "trpc", [trpc_rec("P100"), trpc_rec("P101", status=500)])
+    garbled = {**trpc_rec("P105"), "json": None, "text": "<html>"}  # 200 but unreadable
+    write_part(root, "trpc", [trpc_rec("P100"), trpc_rec("P101", status=500), garbled])
     write_part(root, "pdp_ar", [pdp_rec("P102", "ar")])
     return root
 
@@ -25,6 +26,7 @@ def test_stock_phase_skips_read_stock_and_has_no_ar(tmp_path: Path) -> None:
     out = plan.build(root, "stock", plan.done_pids([root], "stock"))
     assert "P100" not in out["order"]  # stock already read
     assert "P101" in out["order"]  # HTTP 500 is not a read: planned again
+    assert "P105" in out["order"]  # a 200 the loader cannot parse is not a read either
     assert "P999" in out["order"]
     assert all(set(v) == {"en"} for v in out["seed"].values())
     assert out["meta"]["already_done"] == 1

@@ -34,9 +34,29 @@ METHOD_RUNG = {"site_api": 0, "plain_http": 1}
 
 
 def _money(v: Any) -> Decimal | None:
-    if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+    if isinstance(v, (int, float, Decimal)) and not isinstance(v, bool) and v > 0:
         return Decimal(str(v))
     return None
+
+
+def _num(v: Any) -> bool:
+    return isinstance(v, (int, float, Decimal)) and not isinstance(v, bool)
+
+
+def _json_default(v: Any) -> Any:
+    if isinstance(v, Decimal):  # records are parsed with parse_float=Decimal
+        return int(v) if v == v.to_integral_value() else float(v)
+    raise TypeError(f"not JSON serialisable: {type(v).__name__}")
+
+
+def _jsonb(v: Any) -> Jsonb:
+    return Jsonb(v, dumps=lambda o: json.dumps(o, default=_json_default))
+
+
+# A full run is 'succeeded' only if nothing was skipped: every seeded page and stock read was
+# attempted and came back 200 and parsed. Any of these counters > 0 makes the run 'partial'.
+_SKIP_PREFIXES = ("block_", "transport_error", "sitemap_fail", "pdp_en_http_", "pdp_ar_http_")
+_SKIP_SUFFIXES = ("_parse_error",)
 
 
 def _sha(*parts: str) -> str:
@@ -73,6 +93,11 @@ class Loader:
         self._runs: dict[str, int] = {}  # crawl_run per lang, created on first row
         self.brands: dict[str, int] = {}
         self.listings: dict[str, int] = {}
+        self.stats: dict[str, int] = {}  # data-quality counters, printed after a load
+        self.part_complete = True
+
+    def bump(self, key: str) -> None:
+        self.stats[key] = self.stats.get(key, 0) + 1
 
     # ------------------------------------------------------------ reference rows
     def _one(self, sql: str, args: tuple[Any, ...]) -> int | None:
@@ -113,7 +138,7 @@ class Loader:
                 self.source_id,
                 locale,
                 TZ,
-                Jsonb({"mode": "on_demand", "note": "owner: baseline + on-demand refresh"}),
+                _jsonb({"mode": "on_demand", "note": "owner: baseline + on-demand refresh"}),
             ),
         )
 
@@ -170,6 +195,7 @@ class Loader:
             rec.get("extract") or rec.get("json") or rec.get("text"),
             sort_keys=True,
             ensure_ascii=False,
+            default=_json_default,
         )
         at = datetime.fromisoformat(rec["at"])
         existing = self._one("SELECT id FROM evidence WHERE storage_uri=%s", (uri,))
@@ -233,7 +259,7 @@ class Loader:
         rating = d.get("c_bvAverageRating")
         count = d.get("c_bvReviewCount")
         scale = d.get("c_bvRatingRange") or 5
-        has_rating = isinstance(rating, (int, float)) and isinstance(count, int) and count > 0
+        has_rating = _num(rating) and isinstance(count, int) and count > 0
         n = 0
         for v in d.get("c_variantsInfo") or []:
             key = str(v["product_id"])
@@ -298,7 +324,9 @@ class Loader:
                 "evidence_uri": uri,
             }
             desc = ld.get("description") if isinstance(ld, dict) else None
-            content = json.dumps(labels, sort_keys=True, ensure_ascii=False) + (desc or "")
+            content = json.dumps(
+                labels, sort_keys=True, ensure_ascii=False, default=_json_default
+            ) + (desc or "")
             self.c.execute(
                 "INSERT INTO listing_content (listing_id, observed_at, description,"
                 " description_ar, badges, labels,"
@@ -309,7 +337,7 @@ class Loader:
                     desc if lang == "en" else None,
                     desc if lang == "ar" else None,
                     [f.get("text1") for f in v.get("c_productFlags") or [] if f.get("text1")],
-                    Jsonb(labels),
+                    _jsonb(labels),
                     _sha(content),
                 ),
             )
@@ -318,7 +346,13 @@ class Loader:
             promo = sale is not None and regular is not None and sale < regular
             fs: dict[str, str] = {}
             price = sale if promo else regular
-            if price is None:
+            currency = d.get("currency")
+            if price is not None and not currency:  # never assume AED
+                price = regular = sale = None
+                promo = False
+                fs["price_current"] = "unknown"
+                self.bump("price_without_currency")
+            elif price is None:
                 fs["price_current"] = "not_published"
             if not has_rating:
                 fs["rating_value"] = "not_published"
@@ -342,12 +376,12 @@ class Loader:
                     regular if promo else None,
                     sale if promo else None,
                     ("promotional" if promo else "full") if price is not None else None,
-                    d.get("currency") or "AED" if price is not None else None,
+                    currency if price is not None else None,
                     Decimal(str(rating)) if has_rating else None,
                     Decimal(str(scale)) if has_rating else None,
                     count if has_rating else None,
                     [f.get("text1") for f in v.get("c_productFlags") or [] if f.get("text1")],
-                    Jsonb(fs),
+                    _jsonb(fs),
                     ev,
                 ),
             )
@@ -359,6 +393,9 @@ class Loader:
         try:
             data = rec["json"][0]["result"]["data"]["json"]
         except (KeyError, IndexError, TypeError):
+            if rec.get("status") == 200:  # a 200 we cannot read: never a complete run
+                self.bump("trpc_unparsed")
+                self.part_complete = False
             return 0
         at = datetime.fromisoformat(rec["at"])
         ev = self._evidence("en", rec, uri, "site_api")
@@ -369,8 +406,10 @@ class Loader:
                 "SELECT id FROM source_listing WHERE source_id=%s AND source_listing_key=%s",
                 (self.source_id, key),
             )
-            if lid is None:
-                continue  # stock for a variant whose PDP was not observed: no listing to attach to
+            if lid is None:  # its PDP is not loaded (yet): keep the part unledgered, retry later
+                self.bump("trpc_missing_listing")
+                self.part_complete = False
+                continue
             in_stock = v.get("inStock")
             if in_stock is None:
                 continue
@@ -392,7 +431,7 @@ class Loader:
                     state,
                     low,
                     f"{days} day(s)" if isinstance(days, int) else None,
-                    Jsonb({"availability_state": "observed", "price_current": "unknown"}),
+                    _jsonb({"availability_state": "observed", "price_current": "unknown"}),
                     ev,
                 ),
             )
@@ -412,18 +451,46 @@ class Loader:
                 rel = f"{stream}/{part.name}"
                 if rel in self.done:
                     continue
+                self.part_complete = True
                 with gzip.open(part, "rt", encoding="utf-8") as fh:
                     for i, line in enumerate(fh):
-                        rec = json.loads(line)
+                        rec = json.loads(line, parse_float=Decimal)
                         uri = f"{self.gcs}/{rel}#L{i + 1}"
                         if stream.startswith("pdp_"):
                             stats[stream] = stats.get(stream, 0) + self.pdp(stream[-2:], rec, uri)
                         else:
                             stats[stream] = stats.get(stream, 0) + self.trpc(rec, uri)
                 self.c.commit()
+                if not self.part_complete:
+                    continue
                 self.done.add(rel)
                 self.ledger.write_text(json.dumps(sorted(self.done)))
-        return stats
+        return stats | self.stats
+
+    def complete_full_run(self) -> bool:
+        """True only for an unlimited full run, stock pass on, that skipped nothing.
+
+        Runs written before mode/limit/trpc were recorded in progress.json never qualify.
+        """
+        p = self.progress
+        c: dict[str, int] = p.get("counts", {})
+        recorded = (p.get("stopped"), p.get("mode"), p.get("limit"), p.get("trpc"))
+        if recorded != ("complete", "full", 0, True):
+            return False
+        for k, v in c.items():
+            skipped = k.startswith(_SKIP_PREFIXES) or k.endswith(_SKIP_SUFFIXES)
+            if v and (skipped or (k.startswith("trpc_http_") and k != "trpc_http_200")):
+                return False
+        seeded = c.get("seed_pids", 0)
+        return (
+            seeded > 0
+            and c.get("sitemap_ok", 0) > 0
+            and c.get("pdp_en_ok", 0) == c.get("seed_en", -1)
+            and c.get("pdp_ar_ok", 0) == c.get("seed_ar", -1)
+            and c.get("trpc_http_200", 0) == seeded
+            and not self.stats.get("trpc_missing_listing")
+            and not self.stats.get("trpc_unparsed")
+        )
 
     def finish(self) -> None:
         """Close this folder's crawl_runs. Only a complete full run is 'succeeded'.
@@ -432,8 +499,7 @@ class Loader:
         'partial': absence from it must never read as removal.
         """
         counts = self.progress.get("counts", {})
-        full = self.progress.get("stopped") == "complete" and "plan_pids" not in counts
-        status = "succeeded" if full else "partial"
+        status = "succeeded" if self.complete_full_run() else "partial"
         for lang in ("en", "ar"):
             rid = self._runs.get(lang) or self._existing_run(lang)
             if rid is None:  # nothing loaded in this lang

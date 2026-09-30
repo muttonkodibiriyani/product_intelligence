@@ -79,15 +79,33 @@ class World:
         )
         self.listings: dict[str, object] = {}
 
-    def run(self, status: str, hour: int) -> object:
+    def run(self, status: str, hour: int, context: object = None) -> object:
         return _id(
             self.conn,
             "INSERT INTO crawl_run (source_context_id, connector_version, ladder_rung_used,"
             " started_at, status) VALUES (%s, '0.1.0', 0, %s, %s) RETURNING id",
-            (self.context, T0.replace(hour=hour), status),
+            (context or self.context, T0.replace(hour=hour), status),
         )
 
-    def observe(self, run: object, key: str, hour: int, price: str) -> None:
+    def ar_context(self) -> object:
+        return _id(
+            self.conn,
+            "INSERT INTO source_context (source_id, country, channel, locale, time_zone)"
+            " VALUES (%s, 'AE', 'online', 'ar-AE', 'Asia/Dubai') RETURNING id",
+            (self.source,),
+        )
+
+    def observe(  # noqa: PLR0913 - one column per argument
+        self,
+        run: object,
+        key: str,
+        hour: int,
+        price: str | None,
+        *,
+        availability: str = "in_stock",
+        field_state: str = "{}",
+        context: object = None,
+    ) -> None:
         if key not in self.listings:
             self.listings[key] = _id(
                 self.conn,
@@ -99,16 +117,18 @@ class World:
             "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
             " source_listing_id, observed_at, ingested_at, price_current, price_type, currency,"
             " availability_state, field_state, quality_status)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, 'full', 'AED', 'in_stock', '{}'::jsonb,"
-            " 'accepted')",
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted')",
             (
                 f"{run}-{key}",
                 run,
-                self.context,
+                context or self.context,
                 self.listings[key],
                 T0.replace(hour=hour),
                 T0.replace(hour=hour),
-                Decimal(price),
+                Decimal(price) if price is not None else None,
+                "full" if price is not None else None,
+                availability,
+                field_state,
             ),
         )
 
@@ -151,3 +171,49 @@ def test_without_a_succeeded_run_latest_observation_per_listing_across_runs(conn
     world.observe(second, "A", 4, "11")
 
     assert world.latest() == {"A": (second, Decimal("11")), "B": (first, Decimal("20"))}
+
+
+STOCK_ONLY = '{"price_current": "unknown", "availability_state": "observed"}'
+
+
+def _row(world: World, key: str) -> dict[str, object]:
+    rows = world.conn.execute(LATEST_LISTINGS_SQL).fetchall()
+    return next(dict(r) for r in rows if r["source_listing_key"] == key)
+
+
+def test_newer_stock_read_keeps_the_page_price(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("partial", 1)
+    world.observe(run, "A", 1, "80", availability="not_observed")  # page: price, no stock
+    world.observe(run, "B", 1, "90", availability="not_observed")
+    stock = world.run("partial", 3)
+    world.observe(stock, "A", 3, None, availability="out_of_stock", field_state=STOCK_ONLY)
+
+    a, b = _row(world, "A"), _row(world, "B")
+    assert (a["price"], a["availability"]) == (Decimal("80"), "out_of_stock")
+    assert (b["price"], b["availability"]) == (Decimal("90"), "not_observed")
+
+
+def test_newer_page_read_keeps_the_stock_state(conn: Conn) -> None:
+    world = World(conn)
+    stock = world.run("partial", 1)
+    world.observe(stock, "A", 1, "80", availability="not_observed")
+    later = world.run("partial", 2)
+    world.observe(later, "A", 2, None, availability="out_of_stock", field_state=STOCK_ONLY)
+    page = world.run("partial", 4)
+    world.observe(page, "A", 4, "75", availability="not_observed")
+
+    a = _row(world, "A")
+    assert (a["price"], a["availability"], a["run_id"]) == (Decimal("75"), "out_of_stock", page)
+
+
+def test_arabic_context_rows_never_override_the_english_baseline(conn: Conn) -> None:
+    world = World(conn)
+    en = world.run("partial", 1)
+    world.observe(en, "A", 1, "80", availability="in_stock")
+    ar_ctx = world.ar_context()
+    ar = world.run("partial", 6, context=ar_ctx)
+    world.observe(ar, "A", 6, "70", availability="not_observed", context=ar_ctx)
+
+    a = _row(world, "A")
+    assert (a["price"], a["availability"], a["run_id"]) == (Decimal("80"), "in_stock", en)

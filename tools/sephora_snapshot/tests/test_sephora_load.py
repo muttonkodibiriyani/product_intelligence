@@ -14,7 +14,7 @@ import psycopg
 import pytest
 from alembic import command
 from sephora_snapshot.load import Loader
-from sephora_synth import pdp_rec, trpc_rec, write_part
+from sephora_synth import details, pdp_rec, trpc_rec, write_part
 from sqlalchemy.engine import make_url
 
 from pi_db import DATABASE_URL_ENV, alembic_config
@@ -70,9 +70,32 @@ def _runs(conn: psycopg.Connection[Any], name: str) -> dict[str, str]:
     return {uri.rsplit("=", 1)[1]: status for uri, status in rows}
 
 
+FULL: dict[str, Any] = {
+    "stopped": "complete",
+    "mode": "full",
+    "limit": 0,
+    "trpc": True,
+    "counts": {
+        "sitemap_ok": 80,
+        "seed_pids": 2,
+        "seed_en": 2,
+        "seed_ar": 0,
+        "pdp_en_ok": 2,
+        "trpc_http_200": 2,
+    },
+}
+
+
+def _full_folder(root: Path, **changes: Any) -> Path:
+    counts = {**FULL["counts"], **changes.pop("counts", {})}
+    root = _folder(root, {**FULL, **changes, "counts": counts})
+    write_part(root, "pdp_en", [pdp_rec("P100", "en"), pdp_rec("P101", "en")])
+    write_part(root, "trpc", [trpc_rec("P100"), trpc_rec("P101", in_stock=False)])
+    return root
+
+
 def test_full_run_loads_prices_then_stock_and_replays_idempotently(db: str, tmp_path: Path) -> None:
-    done = {"stopped": "complete", "updated": "2026-09-30T23:00:00+00:00"}
-    root = _folder(tmp_path / "full", {**done, "counts": {"seed_en": 2, "pdp_en_ok": 2}})
+    root = _full_folder(tmp_path / "full")
     write_part(root, "pdp_en", [pdp_rec("P100", "en"), pdp_rec("P101", "en")])
     write_part(root, "trpc", [trpc_rec("P100"), trpc_rec("P101", in_stock=False)])
     with psycopg.connect(db) as conn:
@@ -96,6 +119,75 @@ def test_full_run_loads_prices_then_stock_and_replays_idempotently(db: str, tmp_
         _load(conn, root)
         n = conn.execute("SELECT count(*) FROM offer_observation").fetchone()
         assert n == (4,)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"limit": 50},  # LIMIT run
+        {"trpc": False},  # no stock pass
+        {"mode": None, "limit": None, "trpc": None},  # written before these were recorded
+        {"stopped": "sigterm"},
+        {"stopped": "cutoff"},
+        {"counts": {"sitemap_fail": 1}},
+        {"counts": {"transport_error": 1}},
+        {"counts": {"block_rate_limited": 1}},  # a 429 backoff skipped an item
+        {"counts": {"pdp_en_http_404": 1}},
+        {"counts": {"pdp_en_parse_error": 1}},
+        {"counts": {"trpc_http_500": 1}},
+        {"counts": {"seed_en": 3}},  # a seeded page never fetched
+        {"counts": {"trpc_http_200": 1}},  # a stock read missing
+    ],
+)
+def test_succeeded_is_strict(db: str, tmp_path: Path, changes: dict[str, Any]) -> None:
+    name = f"strict-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name, **changes)
+    with psycopg.connect(db) as conn:
+        _load(conn, root)
+        assert _runs(conn, name) == {"en": "partial"}
+
+
+def test_stock_for_an_unloaded_listing_keeps_the_part_for_a_retry(db: str, tmp_path: Path) -> None:
+    root = _folder(tmp_path / "late", {"stopped": "cutoff"})
+    write_part(root, "trpc", [trpc_rec("P400")])
+    with psycopg.connect(db) as conn:
+        assert _load(conn, root, finish=False) == {"trpc": 0, "trpc_missing_listing": 1}
+        ledger = root.parent / ".loaded-late.json"
+        assert not ledger.exists() or "trpc/part-0000.jsonl.gz" not in ledger.read_text()
+        write_part(root, "pdp_en", [pdp_rec("P400", "en")])
+        assert _load(conn, root) == {"pdp_en": 1, "trpc": 1}
+        assert "trpc/part-0000.jsonl.gz" in ledger.read_text()
+
+
+def test_price_without_currency_is_unknown_not_aed(db: str, tmp_path: Path) -> None:
+    d = details("P500")
+    del d["currency"]
+    d["c_variantsInfo"][0]["c_price"] = 99.95
+    root = _folder(tmp_path / "nocur", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec("P500", "en", d)])
+    with psycopg.connect(db) as conn:
+        assert _load(conn, root)["price_without_currency"] == 1
+        row = conn.execute(
+            "SELECT o.price_current, o.currency, o.field_state ->> 'price_current'"
+            " FROM offer_observation o JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key = '5001'"
+        ).fetchone()
+        assert row == (None, None, "unknown")
+
+
+def test_prices_are_read_as_exact_decimals(db: str, tmp_path: Path) -> None:
+    d = details("P600")
+    d["c_variantsInfo"][0] |= {"c_price": 1234.5678, "c_salesPrice": None}
+    root = _folder(tmp_path / "dec", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec("P600", "en", d)])
+    with psycopg.connect(db) as conn:
+        _load(conn, root)
+        row = conn.execute(
+            "SELECT o.price_current FROM offer_observation o JOIN source_listing l"
+            " ON l.id = o.source_listing_id WHERE l.source_listing_key = '6001'"
+        ).fetchone()
+        assert row is not None
+        assert str(row[0]) == "1234.5678"
 
 
 def test_plan_run_is_partial_even_when_complete(db: str, tmp_path: Path) -> None:

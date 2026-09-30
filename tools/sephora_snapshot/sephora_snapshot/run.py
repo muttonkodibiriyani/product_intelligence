@@ -33,6 +33,7 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 )
 BATCH = 200
+MIN_PACE_S = 1.0
 
 
 class Stop(Exception):  # noqa: N818
@@ -55,6 +56,13 @@ class Job:
         self.prefix = os.environ["PREFIX"]
         self.cutoff = datetime.fromisoformat(os.environ["CUTOFF"])
         self.pace_s = float(os.environ.get("PACE", "1.0"))
+        if self.pace_s < MIN_PACE_S:
+            raise ValueError(f"PACE must be >= {MIN_PACE_S} s (politeness floor, ADR-0005)")
+        # Recorded in progress.json: the loader only marks a run 'succeeded' for an unlimited
+        # full run with the stock pass on (see load.Loader.finish).
+        self.mode = "plan" if os.environ.get("PLAN") else "full"
+        self.limit = int(os.environ.get("LIMIT", "0"))
+        self.trpc_on = os.environ.get("TRPC", "1") == "1"
         self.local = (
             self.bucket_name.removeprefix("file:") if self.bucket_name.startswith("file:") else None
         )
@@ -104,6 +112,9 @@ class Job:
             "started": self.started.isoformat(),
             "updated": datetime.now(UTC).isoformat(),
             "cutoff": self.cutoff.isoformat(),
+            "mode": self.mode,
+            "limit": self.limit,
+            "trpc": self.trpc_on,
             "counts": self.counts,
             "stopped": self.stopped,
         }
@@ -185,6 +196,7 @@ class Job:
         return ids
 
     def pdp(self, pid: str, lang: str, url: str) -> None:
+        self.count(f"pdp_{lang}_attempted")
         locale = f"{lang}-AE"
         got = self.get(url, locale, "html")
         if got is None:
@@ -209,6 +221,7 @@ class Job:
         self.emit(f"pdp_{lang}", rec)
 
     def trpc(self, pid: str) -> None:
+        self.count("trpc_attempted")
         url = extract.trpc_availability_url("en-AE", pid)
         got = self.get(url, "en-AE", "json")
         if got is None:
@@ -237,7 +250,7 @@ class Job:
         order, ids = self.load_plan(plan_name)
         self.counts["plan_pids"] = len(order)
         self.progress()
-        if os.environ.get("TRPC", "1") == "1":  # TRPC=0: AR-only plan run
+        if self.trpc_on:  # TRPC=0: AR-only plan run
             for pid in order:
                 self.trpc(pid)
             self.flush("trpc")
@@ -251,7 +264,7 @@ class Job:
             self.run_stock(plan)
             return
         ids = self.seed()
-        limit = int(os.environ.get("LIMIT", "0")) or None
+        limit = self.limit or None
         order = sorted(ids)
         # spread categories so a cutoff is a fair sample; plan.py reuses this order
         random.Random(20260930).shuffle(order)  # noqa: S311 - ordering, not crypto
@@ -260,7 +273,7 @@ class Job:
             if "en" in ids[pid]:
                 self.pdp(pid, "en", ids[pid]["en"])
         self.flush("pdp_en")
-        if os.environ.get("TRPC", "1") == "1":
+        if self.trpc_on:
             for pid in order:
                 self.trpc(pid)
             self.flush("trpc")

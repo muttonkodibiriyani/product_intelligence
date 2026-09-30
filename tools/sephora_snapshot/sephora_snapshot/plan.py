@@ -41,12 +41,21 @@ def records(folder: Path, stream: str) -> Iterator[dict[str, Any]]:
             yield json.loads(line)
 
 
+def stock_read(rec: dict[str, Any]) -> bool:
+    """The loader's condition for a usable stock read: HTTP 200 with a parseable variant list."""
+    try:
+        data = rec["json"][0]["result"]["data"]["json"]
+    except (KeyError, IndexError, TypeError):
+        return False
+    return rec.get("status") == 200 and isinstance(data, dict)
+
+
 def done_pids(folders: list[Path], phase: str) -> set[str]:
-    """Products this phase already covered: stock read (HTTP 200) or AR page fetched."""
+    """Products this phase already covered: a usable stock read, or an AR page extracted."""
     done: set[str] = set()
     for folder in folders:
         if phase == "stock":
-            done |= {r["pid"] for r in records(folder, "trpc") if r.get("status") == 200}
+            done |= {r["pid"] for r in records(folder, "trpc") if stock_read(r)}
         else:
             done |= {r["pid"] for r in records(folder, "pdp_ar")}
     return done
