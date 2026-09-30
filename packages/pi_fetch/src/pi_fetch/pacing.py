@@ -23,7 +23,7 @@ from enum import StrEnum
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 
 from pi_core import PiModel
 
@@ -131,7 +131,8 @@ class OffPeakWindow(PiModel):
 
     start: dtime
     end: dtime
-    time_zone: str = Field(default="Asia/Dubai")
+    #: IANA zone of the context (``SourceContext.time_zone``); required, there is no default.
+    time_zone: str
 
     @field_validator("time_zone")
     @classmethod

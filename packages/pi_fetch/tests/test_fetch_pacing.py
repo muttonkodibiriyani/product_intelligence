@@ -108,8 +108,8 @@ def test_wait_uses_the_longer_of_pacer_and_source_interval() -> None:
 
 
 def test_off_peak_window_wrapping_midnight() -> None:
-    night = OffPeakWindow(start=time(1, 0), end=time(6, 0))
-    wrap = OffPeakWindow(start=time(23, 0), end=time(5, 0))
+    night = OffPeakWindow(start=time(1, 0), end=time(6, 0), time_zone="Asia/Dubai")
+    wrap = OffPeakWindow(start=time(23, 0), end=time(5, 0), time_zone="Asia/Dubai")
     at_2am_dubai = datetime(2026, 9, 30, 22, 0, tzinfo=UTC)
     at_noon_dubai = datetime(2026, 9, 30, 8, 0, tzinfo=UTC)
     assert night.contains(at_2am_dubai)
@@ -118,8 +118,15 @@ def test_off_peak_window_wrapping_midnight() -> None:
     assert not wrap.contains(at_noon_dubai)
     assert night.seconds_until_open(at_2am_dubai) == 0
     assert night.seconds_until_open(at_noon_dubai) == 13 * 3600
-    early = OffPeakWindow(start=time(23, 0), end=time(23, 30))
+    early = OffPeakWindow(start=time(23, 0), end=time(23, 30), time_zone="Asia/Dubai")
     assert early.seconds_until_open(at_noon_dubai) == 11 * 3600
+
+
+def test_off_peak_window_has_no_default_zone() -> None:
+    with pytest.raises(ValueError, match="time_zone"):
+        OffPeakWindow(start=time(1), end=time(2))  # type: ignore[call-arg]
+    kuwait = OffPeakWindow(start=time(1), end=time(6), time_zone="Asia/Kuwait")
+    assert kuwait.contains(datetime(2026, 9, 30, 23, 0, tzinfo=UTC))  # 02:00 in Kuwait
 
 
 def test_off_peak_window_rejects_unknown_zone() -> None:

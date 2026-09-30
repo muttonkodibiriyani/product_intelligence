@@ -187,7 +187,8 @@ _METHOD_RUNG: dict[FetchMethod, LadderRung] = {
 
 
 class Market(StrEnum):
-    """Markets a source context can target (ADR-0004). Values are ISO 3166-1 alpha-2 codes."""
+    """Deprecated (ADR-0007): the pilot's two markets. Use ``CountryCode`` plus the context's own
+    ``currency`` and ``time_zone``; members still validate as country codes."""
 
     KSA = "SA"
     UAE = "AE"
@@ -208,7 +209,8 @@ _MARKET_TIME_ZONE: dict[Market, str] = {Market.KSA: "Asia/Riyadh", Market.UAE: "
 
 
 class Locale(StrEnum):
-    """Collection and content locales (SCP-06, CAT-06). Both are collected for every source."""
+    """Deprecated (ADR-0007): the pilot's two locales. Use ``LocaleTag`` (BCP 47) and
+    ``pi_core.markets.is_rtl``; members still validate as locale tags."""
 
     EN = "en"
     AR = "ar"

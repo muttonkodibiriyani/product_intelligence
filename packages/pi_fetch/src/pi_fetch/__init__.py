@@ -68,7 +68,12 @@ from pi_fetch.types import (
 #: Runner-side additions that connectors cannot see (no bump): FetchPolicy.residential_proxy
 #: (rung 5 via the pinned browser, ulta.ae only), ProxyUsage, SourceStoppedError; a rung-5
 #: FetchResult may carry the browser profile.
-INTERFACE_VERSION = "0.2"
+#: 0.3 (ADR-0007, markets as data): ``FetchRequest.locale`` and ``DiscoveredItem.locale`` are
+#: canonical BCP 47 tags (``LocaleTag``, e.g. ``"ar-AE"``) validated to plain ``str``; the
+#: deprecated ``Locale`` members still validate, but compare with ``==``, not ``is``. The
+#: Accept-Language fallbacks come from ``FetchPolicy.accept_language_fallbacks`` (default
+#: ``("en",)``, so AE/KSA headers are unchanged) and ``OffPeakWindow.time_zone`` is required.
+INTERFACE_VERSION = "0.3"
 
 __all__ = [
     "INTERFACE_VERSION",

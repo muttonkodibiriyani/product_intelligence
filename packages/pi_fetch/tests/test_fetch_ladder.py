@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from pydantic import HttpUrl
+from pydantic import HttpUrl, ValidationError
 
 from fetch_helpers import (
     NOW,
@@ -103,8 +103,33 @@ def test_sends_normal_headers(tmp_path: Path) -> None:
     assert headers["X-A"] == "1"
 
 
-def test_accept_language() -> None:
-    assert accept_language(Locale.EN, Market.KSA) == "en-SA,en;q=0.9"
+@pytest.mark.parametrize(
+    ("locale", "country", "fallbacks", "expected"),
+    [
+        (Locale.EN, Market.KSA, ("en",), "en-SA,en;q=0.9"),  # AE/KSA headers are unchanged
+        (Locale.AR, Market.UAE, ("en",), "ar-AE,ar;q=0.9,en;q=0.8"),
+        ("ar-KW", "KW", ("en",), "ar-KW,ar;q=0.9,en;q=0.8"),  # a regioned tag keeps its region
+        ("fr", "FR", ("en-GB", "de", "en"), "fr-FR,fr;q=0.9,en;q=0.8,de;q=0.7"),
+        ("zh-Hant-TW", "TW", (), "zh-Hant-TW,zh;q=0.9"),
+        ("en", "US", ("fr", "fr"), "en-US,en;q=0.9,fr;q=0.8"),
+    ],
+)
+def test_accept_language(
+    locale: str, country: str, fallbacks: tuple[str, ...], expected: str
+) -> None:
+    assert accept_language(locale, country, fallbacks) == expected
+
+
+def test_accept_language_fallbacks_come_from_policy(tmp_path: Path) -> None:
+    factory = ScriptedFactory(raw())
+    f = fetcher(tmp_path, factory, policy=FetchPolicy(accept_language_fallbacks=("fr",)))
+    f.fetch(FetchRequest(url=URL, kind=PayloadKind.HTML, locale=Locale.AR), make_ctx())
+    assert factory.sends[0][2]["Accept-Language"] == "ar-AE,ar;q=0.9,fr;q=0.8"
+
+
+def test_policy_rejects_non_bcp47_fallback() -> None:
+    with pytest.raises(ValidationError, match="canonical BCP 47"):
+        FetchPolicy(accept_language_fallbacks=("en_US",))
 
 
 def test_block_is_returned_once_without_retry_or_escalation(tmp_path: Path) -> None:

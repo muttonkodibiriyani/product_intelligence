@@ -27,6 +27,7 @@ CONTEXT = CollectionContext(
         source_id=2,
         country=Market.UAE,
         locale=Locale.EN,
+        currency="AED",
         time_zone=Market.UAE.time_zone,
         valid_from=NOW - timedelta(days=1),
     ),
