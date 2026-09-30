@@ -1,0 +1,54 @@
+# apps/web — Product Intelligence dashboard (static)
+
+The dashboard served at https://productintelligence-beeb3.web.app. Plain JavaScript and CSS,
+no bundler and no npm dependencies. It reads the `pi.dataset/v1` snapshot from Firebase Storage
+after sign-in; the Firebase web config is loaded at runtime from `/__/firebase/init.json`, so no
+key is ever in the source or the build.
+
+## Build
+
+```sh
+apps/web/build.sh            # dist/: hosted build (content-hashed JS/CSS, strict CSP)
+apps/web/build.sh verify     # build dist/ and compare it byte-for-byte with deployed.sha256
+apps/web/build.sh artifact   # artifact/: offline build with in-browser sample data (no network)
+```
+
+Needs `node` (only for `node --check`) and coreutils. `dist/` and `artifact/` are git-ignored.
+
+`deployed.sha256` pins the build that is live now (Phase 1: `app.5abcc636ee.js`,
+`styles.10948c25be.css`). Run `verify` before every deploy; a source change must update that file in the
+same PR (run `build.sh`, then regenerate it as in the `verify` step) and the new hashes are
+what Infra deploys.
+
+## Deploy
+
+Infra copies the build into `infra/web-dist/` (never committed) and deploys Hosting from `infra/`:
+
+```sh
+apps/web/build.sh verify && rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist
+```
+
+## Source layout
+
+Files are concatenated in this order into one `app.<hash>.js`:
+
+| file | what it holds |
+|---|---|
+| `src/data.js` | deterministic sample generator; only used in sample mode (artifact build) |
+| `src/model.js` | dataset loading, validation and derived metrics (index, gaps, coverage) |
+| `src/charts.js` | SVG charts (LTR geometry, accessible labels, tooltips) |
+| `src/i18n.js` | English and Arabic strings, number/currency formatting, RTL helpers |
+| `src/app.js` | shell, auth screens, routes and screens |
+| `src/styles.css` | all styles, including `[dir=rtl]` |
+
+## Routes
+
+Hash routes, all served by `/index.html` (unknown routes fall back to `#/dashboard`):
+`#/dashboard`, `#/explorer`, `#/pricing`, `#/promotions`, `#/assortment`, `#/availability`,
+`#/compare`, `#/assistant`, `#/coverage`, `#/product/<id>`, `#/signin`, `#/forgot`.
+`/auth/action` is the password-reset landing page (Firebase email action URL).
+
+## Known issues (next build)
+
+- Opening `#/forgot` directly shows plain sign-in; the in-page "Forgot password" link works.
+- On phones the explorer renders every card at once (very long page); it needs paging or "show more".
