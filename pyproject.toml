@@ -5,7 +5,7 @@ description = "Competitive product and price intelligence platform (workspace ro
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["pi-connector-ulta", "pi-core", "pi-db"]
+dependencies = ["pi-connector-ulta", "pi-core", "pi-db", "pi-fetch"]
 
 [tool.uv]
 package = false
@@ -17,6 +17,7 @@ members = ["packages/*"]
 pi-connector-ulta = { workspace = true }
 pi-core = { workspace = true }
 pi-db = { workspace = true }
+pi-fetch = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -61,6 +62,8 @@ mypy_path = [
   "packages/pi_core/src",
   "packages/pi_connector_ulta/src",
   "packages/pi_db/src",
+  "packages/pi_fetch/src",
+  "packages/pi_fetch/tests",
   "tests",
 ]
 files = [
@@ -70,6 +73,8 @@ files = [
   "packages/pi_connector_ulta/tests",
   "packages/pi_db/src",
   "packages/pi_db/tests",
+  "packages/pi_fetch/src",
+  "packages/pi_fetch/tests",
   "tests/uat",
 ]
 
@@ -81,7 +86,7 @@ warn_required_dynamic_aliases = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["packages", "tests/uat"]
-pythonpath = ["tests"]
+pythonpath = ["tests", "packages/pi_fetch/tests"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "uat: UAT scenario mapped to a requirement ID (tests/uat)",
@@ -98,7 +103,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_core", "pi_connector_ulta", "pi_db"]
+source = ["pi_core", "pi_connector_ulta", "pi_db", "pi_fetch"]
 
 [tool.coverage.report]
 fail_under = 85
