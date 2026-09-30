@@ -1,5 +1,9 @@
 """Behaviour of schema v1 against a real PostgreSQL 16 + pgvector database."""
 
+import os
+import shutil
+import subprocess
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -7,12 +11,13 @@ from enum import StrEnum
 
 import psycopg
 import pytest
+from alembic import command
 from psycopg import errors
 from sqlalchemy.engine import make_url
 
 import pi_core
-from pi_db import APP_ROLE, IMAGE_EMBEDDING_DIM, TEXT_EMBEDDING_DIM
-from pi_db.migrations.versions.v0001_schema_v1 import APPEND_ONLY_TABLES, SCHEMA_ENUMS
+from pi_db import APP_ROLE, IMAGE_EMBEDDING_DIM, TEXT_EMBEDDING_DIM, alembic_config
+from pi_db.migrations.versions.v0001_schema_v1 import APPEND_ONLY_TABLES, SCHEMA_ENUMS, TABLES
 
 pytestmark = pytest.mark.db
 
@@ -736,3 +741,68 @@ def test_fetch_method_enum_matches_migration(conn: Conn) -> None:
 def test_ensure_partition_refuses_implausible_months(conn: Conn, month: str) -> None:
     with pytest.raises(errors.InvalidParameterValue, match="outside"):
         conn.execute("SELECT pi_ensure_offer_observation_partition(%s::date)", (month,))
+
+
+# ------------------------------------------------------------------ backup and restore
+def _libpq(url: str) -> str:
+    return make_url(url).set(drivername="postgresql").render_as_string(hide_password=False)
+
+
+def _tools() -> tuple[str, str]:
+    pg_dump, pg_restore = shutil.which("pg_dump"), shutil.which("pg_restore")
+    if pg_dump is None or pg_restore is None:
+        if os.environ.get("CI"):
+            pytest.fail("pg_dump/pg_restore must be on PATH in CI")
+        pytest.skip("pg_dump/pg_restore not installed")
+    return pg_dump, pg_restore
+
+
+def _snapshot(url: str) -> dict[str, object]:
+    with psycopg.connect(_libpq(url)) as conn:
+        counts: dict[str, object] = {t: _one(conn, f"SELECT count(*) FROM {t}") for t in TABLES}
+        counts["partitions"] = _one(
+            conn, "SELECT count(*) FROM pg_inherits WHERE inhparent = 'offer_observation'::regclass"
+        )
+        counts["field_state_check"] = _one(
+            conn,
+            "SELECT count(*) FROM pg_constraint"
+            " WHERE conname = 'offer_observation_field_state_check'"
+            " AND convalidated",
+        )
+    return counts
+
+
+def test_plain_dump_restores_into_a_fresh_database(empty_db: str, server_url: str) -> None:
+    """A plain ``pg_dump -Fc | pg_restore`` round-trips (pg_restore runs with search_path='').
+
+    Regression for 0001's unqualified ``NULL::field_state`` in the inlined CHECK function, which
+    failed the restore at ATTACH PARTITION (fixed in 0002).
+    """
+    pg_dump, pg_restore = _tools()
+    command.upgrade(alembic_config(empty_db), "head")
+    with psycopg.connect(_libpq(empty_db)) as conn:
+        seed = _seed(conn)
+        _observe(
+            conn, seed, datetime(2026, 10, 1, tzinfo=UTC), field_state='{"price_was": "unknown"}'
+        )
+        _observe(conn, seed, datetime(2026, 11, 1, tzinfo=UTC), key="k2")
+    target = f"pi_test_{uuid.uuid4().hex[:12]}"
+    with psycopg.connect(_libpq(server_url), autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{target}"')
+    target_url = make_url(empty_db).set(database=target).render_as_string(hide_password=False)
+    try:
+        dump = subprocess.run(  # noqa: S603 -- fixed argv, test database only
+            [pg_dump, "-Fc", f"--dbname={_libpq(empty_db)}"], check=True, capture_output=True
+        )
+        restore = subprocess.run(  # noqa: S603
+            [pg_restore, "--exit-on-error", f"--dbname={_libpq(target_url)}"],
+            input=dump.stdout,
+            capture_output=True,
+            check=False,
+        )
+        assert restore.returncode == 0, restore.stderr.decode(errors="replace")
+        assert _snapshot(target_url) == _snapshot(empty_db)
+        assert _snapshot(target_url)["offer_observation"] == 2
+    finally:
+        with psycopg.connect(_libpq(server_url), autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE "{target}" WITH (FORCE)')
