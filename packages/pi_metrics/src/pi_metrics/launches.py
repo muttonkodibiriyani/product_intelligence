@@ -10,20 +10,19 @@ from __future__ import annotations
 
 from datetime import date
 
-from pi_core import PiModel
-from pi_dataset import Dataset
+from pi_dataset import ContractModel, Dataset
 from pi_metrics import view
 from pi_metrics.model import Caveat, CaveatCode, Metric, ProductFilter, Reason, Status
 
 
-class Launch(PiModel):
+class Launch(ContractModel):
     id: str
     name: str
     retailer: str
     first_seen: date
 
 
-class Launches(PiModel):
+class Launches(ContractModel):
     items: tuple[Launch, ...]
 
 

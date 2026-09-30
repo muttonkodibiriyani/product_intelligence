@@ -45,9 +45,9 @@ def test_promo_share_and_items_deepest_first(ds: Dataset) -> None:
     result = promotions(ds, (A, B), EVERYTHING)
     assert result.status is Status.OK
     shares = {s.retailer: s.model_dump(mode="json") for s in result.data.retailers}
-    assert (shares[A]["n"], shares[A]["on_promo"], shares[A]["share"]) == (6, 3, "50.0")
+    assert (shares[A]["n"], shares[A]["onPromo"], shares[A]["share"]) == (6, 3, "50.0")
     assert shares[B]["share"] == "0.0"
-    assert [(i.id, i.model_dump(mode="json")["stated_pct"]) for i in result.data.items] == [
+    assert [(i.id, i.model_dump(mode="json")["statedPct"]) for i in result.data.items] == [
         ("p05", "33.3"),
         ("p04", "20.4"),
         ("p01", "10.0"),
@@ -117,9 +117,9 @@ def test_availability_shares_over_observed_states(ds: Dataset) -> None:
     assert result.status is Status.OK
     rows = {r.retailer: r.model_dump(mode="json") for r in result.data.retailers}
     assert rows[A]["denominator"] == 5
-    assert (rows[A]["out_of_stock_share"], rows[A]["low_stock_share"]) == ("40.0", "20.0")
+    assert (rows[A]["outOfStockShare"], rows[A]["lowStockShare"]) == ("40.0", "20.0")
     assert rows[A]["counts"]["removed"] == 1
-    assert rows[B]["out_of_stock_share"] == "0.0"
+    assert rows[B]["outOfStockShare"] == "0.0"
 
 
 def test_availability_partial_and_off(ds: Dataset) -> None:
@@ -166,8 +166,8 @@ def test_launches_need_history(ds: Dataset) -> None:
 def test_reviews_use_one_scale_and_weight_by_count(ds: Dataset) -> None:
     result = reviews_summary(ds, (A, B), EVERYTHING)
     rows = {r.retailer: r.model_dump(mode="json") for r in result.data.retailers}
-    assert (rows[A]["n"], rows[A]["avg_rating"], rows[A]["scale"]) == (13, "4.20", "5")
-    assert rows[A]["rating_count"] == 130
+    assert (rows[A]["n"], rows[A]["avgRating"], rows[A]["scale"]) == (13, "4.20", "5")
+    assert rows[A]["ratingCount"] == 130
     assert [c.code for c in result.caveats] == [CaveatCode.RATING_SCALE_MIXED]
 
 

@@ -10,8 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from decimal import Decimal
 
-from pi_core import PiModel
-from pi_dataset import Dataset, Rating
+from pi_dataset import ContractModel, Dataset, Rating
 from pi_dataset.models import FieldStatus
 from pi_metrics import view
 from pi_metrics.model import (
@@ -26,7 +25,7 @@ from pi_metrics.model import (
 )
 
 
-class RetailerReviews(PiModel):
+class RetailerReviews(ContractModel):
     retailer: str
     n: int
     avg_rating: RatingValue | None
@@ -35,7 +34,7 @@ class RetailerReviews(PiModel):
     reason: Reason | None
 
 
-class ReviewsSummary(PiModel):
+class ReviewsSummary(ContractModel):
     retailers: tuple[RetailerReviews, ...]
 
 

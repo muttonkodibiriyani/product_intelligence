@@ -11,8 +11,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from pi_core import PiModel
-from pi_dataset import Dataset, MoneyValue
+from pi_dataset import ContractModel, Dataset, MoneyValue
 from pi_dataset.models import FieldStatus, RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
@@ -30,7 +29,7 @@ from pi_metrics.model import (
 UNCOLLECTED = {FieldStatus.NOT_COLLECTED, FieldStatus.NOT_PUBLISHED, FieldStatus.BLOCKED}
 
 
-class PromoItem(PiModel):
+class PromoItem(ContractModel):
     id: str
     name: str
     retailer: str
@@ -39,7 +38,7 @@ class PromoItem(PiModel):
     stated_pct: Pct
 
 
-class RetailerPromo(PiModel):
+class RetailerPromo(ContractModel):
     retailer: str
     n: int
     on_promo: int
@@ -47,7 +46,7 @@ class RetailerPromo(PiModel):
     reason: Reason | None
 
 
-class Promotions(PiModel):
+class Promotions(ContractModel):
     retailers: tuple[RetailerPromo, ...]
     items: tuple[PromoItem, ...]
 

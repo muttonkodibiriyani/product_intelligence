@@ -13,8 +13,7 @@ from collections import Counter
 from datetime import date
 from enum import StrEnum
 
-from pi_core import PiModel
-from pi_dataset import Dataset
+from pi_dataset import ContractModel, Dataset
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
@@ -34,7 +33,7 @@ class GapLabel(StrEnum):
     UNMATCHED = "unmatched"
 
 
-class GapItem(PiModel):
+class GapItem(ContractModel):
     id: str
     brand: str
     name: str
@@ -42,12 +41,12 @@ class GapItem(PiModel):
     label: GapLabel
 
 
-class BrandCount(PiModel):
+class BrandCount(ContractModel):
     brand: str
     count: int
 
 
-class AssortmentGaps(PiModel):
+class AssortmentGaps(ContractModel):
     missing_at: str
     present_at: str
     total: int

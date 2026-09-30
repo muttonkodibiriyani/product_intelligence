@@ -47,8 +47,8 @@ def test_summary_over_the_exact_counted_pairs(ds: Dataset) -> None:
     summary = result.data.summary
     assert summary is not None
     wire = summary.model_dump(mode="json")
-    assert wire["median_gap_pct"] == "2.4"
-    assert wire["mean_gap_pct"] == "4.5"
+    assert wire["medianGapPct"] == "2.4"
+    assert wire["meanGapPct"] == "4.5"
     assert summary.cheaper_counts == {A: 3, B: 2}
     assert summary.equal_count == 1
     assert summary.basket.base == aed("580.75")

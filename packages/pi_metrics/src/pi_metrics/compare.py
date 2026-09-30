@@ -8,8 +8,8 @@ from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
-from pi_core import MatchClass, PiModel, ReviewState
-from pi_dataset import Dataset, MoneyValue, Product
+from pi_core import MatchClass, ReviewState
+from pi_dataset import ContractModel, Dataset, MoneyValue, Product
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
@@ -35,7 +35,7 @@ GAP_CONVENTION = (
 COHORT_DESCRIPTION = "exact approved/locked pairs, same size, both priced, not early"
 
 
-class Gap(PiModel):
+class Gap(ContractModel):
     amount: MoneyValue
     pct: Pct
     cheaper: Cheaper
@@ -46,7 +46,7 @@ class GroupBy(StrEnum):
     BRAND = "brand"
 
 
-class PairRow(PiModel):
+class PairRow(ContractModel):
     id: str
     name: str
     brand: str
@@ -58,12 +58,12 @@ class PairRow(PiModel):
     excluded_reason: Excluded | None
 
 
-class Basket(PiModel):
+class Basket(ContractModel):
     base: MoneyValue
     other: MoneyValue
 
 
-class CompareSummary(PiModel):
+class CompareSummary(ContractModel):
     n: int
     median_gap_pct: Pct
     mean_gap_pct: Pct
@@ -72,7 +72,7 @@ class CompareSummary(PiModel):
     basket: Basket
 
 
-class Side(PiModel):
+class Side(ContractModel):
     """One retailer's state in a comparison, so a client can say which side is short."""
 
     retailer: str
@@ -86,12 +86,12 @@ class Side(PiModel):
     only_here: int
 
 
-class Sides(PiModel):
+class Sides(ContractModel):
     base: Side
     other: Side
 
 
-class Group(PiModel):
+class Group(ContractModel):
     """The summary for one ``groupBy`` key, with the cohort rule applied per group."""
 
     key: str
@@ -101,7 +101,7 @@ class Group(PiModel):
     summary: CompareSummary | None
 
 
-class Comparison(PiModel):
+class Comparison(ContractModel):
     base: str
     other: str
     sides: Sides

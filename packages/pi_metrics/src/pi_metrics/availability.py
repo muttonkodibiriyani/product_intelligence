@@ -12,8 +12,8 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from pi_core import AvailabilityState, PiModel
-from pi_dataset import Dataset
+from pi_core import AvailabilityState
+from pi_dataset import ContractModel, Dataset
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
@@ -30,7 +30,7 @@ from pi_metrics.model import (
 DENOMINATOR = "offers in an observed stock state (in_stock, low_stock, out_of_stock)"
 
 
-class RetailerAvailability(PiModel):
+class RetailerAvailability(ContractModel):
     retailer: str
     counts: dict[AvailabilityState, int]
     denominator: int
@@ -39,7 +39,7 @@ class RetailerAvailability(PiModel):
     reason: Reason | None
 
 
-class Availability(PiModel):
+class Availability(ContractModel):
     retailers: tuple[RetailerAvailability, ...]
     denominator: str = DENOMINATOR
 

@@ -2,16 +2,35 @@
 
 from __future__ import annotations
 
+import json
 import random
+from collections.abc import Iterator
 from decimal import Decimal
 
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import BaseModel
 
 from pi_dataset import MoneyValue
-from pi_metrics import EVERYTHING, MIN_COHORT, Cheaper, PairRow, ProductFilter, gap
+from pi_metrics import (
+    EVERYTHING,
+    MIN_COHORT,
+    Cheaper,
+    GroupBy,
+    PairRow,
+    ProductFilter,
+    assortment_gaps,
+    availability,
+    compare,
+    coverage,
+    gap,
+    launches,
+    price_index,
+    promotions,
+    reviews_summary,
+)
 from pi_metrics.compare import summarise
-from pi_metrics.fixtures import metrics_dataset
+from pi_metrics.fixtures import A, B, metrics_dataset
 from pi_metrics.model import fixed
 
 cents = st.integers(min_value=1, max_value=10_000_000)
@@ -87,3 +106,35 @@ def test_filters_are_case_insensitive_and_combine() -> None:
         "p02"
     ]
     assert ids(ProductFilter(ids=("p02",), brands=("Fixture Beauty",))) == []
+
+
+def _walk(value: object) -> Iterator[object]:
+    yield value
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from _walk(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk(item)
+
+
+def test_no_float_and_camel_case_on_the_wire() -> None:
+    ds = metrics_dataset()
+    results: list[BaseModel] = [
+        compare(ds, A, B, EVERYTHING, group_by=GroupBy.BRAND),
+        price_index(ds, A, B, EVERYTHING),
+        promotions(ds, (), EVERYTHING),
+        assortment_gaps(ds, B, A, EVERYTHING),
+        availability(ds, (), EVERYTHING),
+        launches(ds, (), EVERYTHING),
+        reviews_summary(ds, (), EVERYTHING),
+        coverage(ds, ()),
+    ]
+    for result in results:
+        wire = json.loads(result.model_dump_json())
+        assert "asOf" in wire
+        values = list(_walk(wire))
+        assert not [v for v in values if isinstance(v, float)]
+        # Field names are camelCase; snake_case keys are data (enum values, source keys).
+        assert "cohort_too_small" not in wire

@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from pi_core import PiModel
-from pi_dataset import Dataset
+from pi_dataset import ContractModel, Dataset
 from pi_metrics import view
 from pi_metrics.compare import COHORT_DESCRIPTION, pair_row
 from pi_metrics.model import (
@@ -26,14 +25,14 @@ INDEX_DEFINITION = (
 )
 
 
-class IndexPoint(PiModel):
+class IndexPoint(ContractModel):
     date: date
     index: IndexValue | None
     n: int
     reason: Reason | None
 
 
-class PriceIndex(PiModel):
+class PriceIndex(ContractModel):
     base: str
     other: str
     points: tuple[IndexPoint, ...]

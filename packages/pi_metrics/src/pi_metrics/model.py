@@ -16,8 +16,8 @@ from typing import Annotated
 
 from pydantic import PlainSerializer
 
-from pi_core import PiModel, ReviewState
-from pi_dataset import Product
+from pi_core import ReviewState
+from pi_dataset import ContractModel, Product
 
 #: Changes whenever a metric definition changes; recorded in docs/decision-log.md (design §7).
 METRIC_VERSION = "2026-10-01.1"
@@ -95,17 +95,17 @@ class CaveatCode(StrEnum):
     RATING_SCALE_MIXED = "rating_scale_mixed"
 
 
-class Caveat(PiModel):
+class Caveat(ContractModel):
     code: CaveatCode
     params: dict[str, str]
 
 
-class Cohort(PiModel):
+class Cohort(ContractModel):
     description: str
     n: int
 
 
-class Metric[T](PiModel):
+class Metric[T](ContractModel):
     """One metric answer. ``data`` is always present; withheld parts inside it are ``None``."""
 
     status: Status
@@ -116,7 +116,7 @@ class Metric[T](PiModel):
     as_of: date
 
 
-class ProductFilter(PiModel):
+class ProductFilter(ContractModel):
     """Optional narrowing; matching is case-insensitive. Empty means everything."""
 
     ids: tuple[str, ...] = ()

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from datetime import date
 
-from pi_core import MatchClass, PiModel
-from pi_dataset import Dataset
+from pi_core import MatchClass
+from pi_dataset import ContractModel, Dataset
 from pi_dataset.models import LocalizedText, RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import COUNTED_STATES, EVERYTHING, Metric, Status
 
 
-class RetailerCoverage(PiModel):
+class RetailerCoverage(ContractModel):
     id: str
     name: str
     status: RetailerStatus
@@ -22,7 +22,7 @@ class RetailerCoverage(PiModel):
     freshness: date | None
 
 
-class Coverage(PiModel):
+class Coverage(ContractModel):
     retailers: tuple[RetailerCoverage, ...]
 
 
