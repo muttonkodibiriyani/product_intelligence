@@ -101,3 +101,31 @@ def test_plp_tiles() -> None:
     assert first.final_price.amount == Decimal("38.50")
     assert first.original_price.amount == Decimal("77.00")
     assert (first.rating_average, first.rating_count) == (Decimal("3.3"), 23)
+
+
+def _degraded(html: str) -> str:
+    """Every swatch drawn as out of stock, while JSON-LD still says InStock."""
+    return html.replace('name="color"', 'name="color" disabled').replace(
+        " swatch", " out of stock swatch"
+    )
+
+
+def test_swatches_contradicting_json_ld_mean_stock_not_observed() -> None:
+    html = _read("ulta_ae_pdp_en_kylie_tint.html")
+    assert '"availability": "InStock"' in html
+    p = parse_pdp_html(_degraded(html), "en")
+    assert len(p.variants) > 1
+    assert all(v.in_stock is None for v in p.variants)  # never a mass out-of-stock
+
+
+def test_selected_swatch_contradicting_json_ld_means_not_observed() -> None:
+    html = _read("ulta_ae_pdp_en_kylie_tint.html").replace(
+        '"availability": "InStock"', '"availability": "OutOfStock"'
+    )
+    p = parse_pdp_html(html, "en")
+    assert all(v.in_stock is None for v in p.variants)
+
+
+def test_consistent_swatches_are_observed() -> None:
+    p = parse_pdp_html(_read("ulta_ae_pdp_en_kylie_tint.html"), "en")
+    assert all(v.in_stock is not None for v in p.variants)

@@ -1,7 +1,8 @@
 """Load a downloaded ulta.ae snapshot (jsonl.gz page records) into pi_db, append-only, idempotent.
 
 Usage: python -m ulta_snapshot.load <local_snapshot_dir> <uri_prefix> [--finish]
-(env PI_DATABASE_URL; ULTA_USE_PAGE_JSON=1 enables the optional page-JSON path, default off).
+(env PI_DATABASE_URL; ULTA_USE_PAGE_JSON=1 enables the optional page-JSON path, default off;
+it also needs ``<local_snapshot_dir>/robots.txt``, the robots.txt the runner obeyed).
 Same loader contract as the Sephora baseline (task 01a0f424).
 
 Input, one JSON object per line under ``pdp/`` (``part-NNNN.jsonl.gz``), written by the rung-5
@@ -12,9 +13,11 @@ runner for each product page load::
      "html": rendered DOM,                                   # primary source
      "captures": [{"url": str, "status": int, "body": str}]} # optional page-loaded JSON
 
-Primary source is the rendered DOM + JSON-LD (``pi_connector_ulta.dom``): robots disallows
-``/graphql`` per the coordinator, so page-loaded catalog JSON is only read when the flag is on,
-and then only to fill what the DOM cannot show (other variants' prices, EAN, promotions).
+Primary source is the rendered DOM + JSON-LD (``pi_connector_ulta.dom``). Page-loaded catalog
+JSON is read only when the flag is on, only from captures whose URL robots.txt allows (the same
+``RobotsTagger`` rules as the fetch; ``Disallow: /*?`` refuses ``GET /graphql?query=...``, and
+no robots.txt means no captures are read), and then only to fill what the DOM cannot show
+(other variants' prices, EAN, promotions).
 
 Grain: one source_listing per Ulta SKU (the sellable variant; the parent style code is in
 listing_content.labels). Per page load, one offer_observation per variant: availability from the
@@ -34,12 +37,14 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.types.json import Jsonb
 
 from pi_connector_ulta.catalog import CatalogError, UltaProduct, UltaVariant, parse_pdp_payload
 from pi_connector_ulta.dom import merge_page_json, parse_pdp_html
+from pi_fetch.pacing import RobotsTag, RobotsTagger
 
 SOURCE = "ulta_ae"
 CONNECTOR_VERSION = "ulta_snapshot/0.1"
@@ -48,6 +53,7 @@ RETENTION = timedelta(days=90)
 FETCH_METHOD = "residential_proxy"  # ADR-0006 Amendment 2: rung 5, ulta.ae only
 RUNG = 5
 LANGS = ("en", "ar")
+HOSTS = frozenset({"ulta.ae", "www.ulta.ae"})
 
 
 def _sha(*parts: str) -> str:
@@ -58,10 +64,38 @@ def _slug(url: str) -> str:
     return url.rstrip("/").rsplit("/", 1)[-1]
 
 
-def _page_json(rec: dict[str, Any], sku: str, locale: str) -> UltaProduct | None:
+def allowed_captures(
+    rec: dict[str, Any], robots: RobotsTagger | None
+) -> tuple[list[dict[str, Any]], int]:
+    """Captures robots.txt allows (ulta.ae host, 200), and the number refused.
+
+    Fails closed: with no robots rules, or a host whose robots.txt is unknown, nothing is usable.
+    A refused capture is never parsed, hashed or stored.
+    """
+    usable: list[dict[str, Any]] = []
+    refused = 0
     for cap in rec.get("captures") or []:
+        url = str(cap.get("url") or "")
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower() if parts.scheme == "https" else ""
+        if (
+            robots is None
+            or host not in HOSTS
+            or robots.tag(host, url) is not RobotsTag.ALLOWED
+            or cap.get("status") != 200
+        ):
+            refused += 1
+            continue
+        usable.append(cap)
+    return usable, refused
+
+
+def _page_json(
+    captures: list[dict[str, Any]], lang: str, sku: str, locale: str
+) -> UltaProduct | None:
+    for cap in captures:
         try:
-            products = parse_pdp_payload(cap.get("body") or "", rec["lang"])
+            products = parse_pdp_payload(cap.get("body") or "", lang)
         except CatalogError:
             continue
         for product in products:
@@ -70,15 +104,33 @@ def _page_json(rec: dict[str, Any], sku: str, locale: str) -> UltaProduct | None
     return None
 
 
-def page_product(rec: dict[str, Any], use_page_json: bool = False) -> UltaProduct | None:
-    """The page's product from its rendered DOM; page JSON only fills DOM gaps when enabled."""
+def page_product(rec: dict[str, Any], robots: RobotsTagger | None = None) -> UltaProduct | None:
+    """The page's product from its rendered DOM. Page JSON fills DOM gaps only when ``robots``
+    is given (the page-JSON flag is on), and only from captures it allows."""
     try:
         product = parse_pdp_html(rec.get("html") or "", rec["lang"])
     except CatalogError:
         return None
-    if use_page_json:
-        product = merge_page_json(product, _page_json(rec, product.sku, rec["lang"]))
+    if robots is not None:
+        captures, _ = allowed_captures(rec, robots)
+        found = _page_json(captures, rec["lang"], product.sku, rec["lang"])
+        product = merge_page_json(product, found)
     return product
+
+
+def robots_for(root: Path, enabled: bool) -> RobotsTagger | None:
+    """The robots rules for page-JSON captures: None (page JSON off) unless the flag is on and
+    the snapshot carries the robots.txt the runner obeyed."""
+    path = root / "robots.txt"
+    if not enabled:
+        return None
+    if not path.exists():
+        print("page JSON off: snapshot has no robots.txt", file=sys.stderr)
+        return None
+    tagger = RobotsTagger()
+    for host in HOSTS:
+        tagger.add(host, path.read_text())
+    return tagger
 
 
 class Loader:
@@ -95,7 +147,7 @@ class Loader:
         self.source_id = self._source()
         self.ctx = {lang: self._context(lang) for lang in LANGS}
         self.run_id = {lang: self._run(lang) for lang in LANGS}
-        self.use_page_json = os.environ.get("ULTA_USE_PAGE_JSON") == "1"  # off until ruled
+        self.robots = robots_for(root, os.environ.get("ULTA_USE_PAGE_JSON") == "1")
 
     # ------------------------------------------------------------ reference rows
     def _one(self, sql: str, args: tuple[Any, ...]) -> int | None:
@@ -174,7 +226,8 @@ class Loader:
         if existing:
             return existing  # replay: evidence is append-only, never duplicated
         at = datetime.fromisoformat(rec["at"])
-        bodies = [c.get("body") or "" for c in rec.get("captures") or []]
+        captures, _ = allowed_captures(rec, self.robots)
+        bodies = [c.get("body") or "" for c in captures]
         return self._id(
             "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri, retrieved_at,"
             " http_status, ladder_rung_used, fetch_method, retention_until)"
@@ -182,7 +235,7 @@ class Loader:
             (
                 self.run_id[rec["lang"]],
                 rec["url"],
-                _sha(*bodies),
+                _sha(rec.get("html") or "", *bodies),  # the rendered DOM is the evidence
                 uri,
                 at,
                 rec.get("status"),
@@ -227,7 +280,7 @@ class Loader:
     def pdp(self, rec: dict[str, Any], uri: str) -> int:
         if rec.get("status") != 200:
             return 0
-        product = page_product(rec, self.use_page_json)
+        product = page_product(rec, self.robots)
         if product is None or not product.variants:
             return 0  # block page or not a product: no rows (absent, never out of stock)
         at = datetime.fromisoformat(rec["at"])
@@ -293,7 +346,8 @@ class Loader:
         if p.rating_count is None:
             fs["rating_value"] = fs["rating_count"] = "not_published"
         if v.in_stock is None:
-            state = "not_observed"
+            state = "not_observed"  # no stock shown, or swatches contradict the JSON-LD offer
+            fs["availability_state"] = "unknown"
         else:
             state = "in_stock" if v.in_stock else "out_of_stock"
             fs["availability_state"] = "observed"
@@ -346,10 +400,11 @@ class Loader:
         return stats
 
     def finish(self) -> None:
-        counts = self.progress.get("counts", {})
+        by_lang = self.progress.get("counts", {})  # {"en": {...}, "ar": {...}}
         status = "succeeded" if self.progress.get("stopped") == "complete" else "partial"
-        blocked = sum(v for k, v in counts.items() if k.startswith("block_"))
         for lang in LANGS:
+            counts = by_lang.get(lang) or {}
+            blocked = sum(v for k, v in counts.items() if k.startswith("block_"))
             self.c.execute(
                 "UPDATE crawl_run SET finished_at=%s, status=%s, discovered=%s, fetched=%s,"
                 " parsed=%s, blocked_count=%s WHERE id=%s",

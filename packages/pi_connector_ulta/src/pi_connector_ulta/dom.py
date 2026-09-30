@@ -314,6 +314,18 @@ def parse_pdp_html(document: str | bytes, page_locale: str) -> UltaProduct:
                 selected=True,
             )
         ]
+    # A degraded render (e.g. swatches drawn before stock loaded) must not become a mass
+    # out-of-stock: when the swatches contradict the JSON-LD offer, stock is not observed.
+    ld_stock = _ld_stock(ld)
+    chosen_stock = next((sw.in_stock for sw in swatches if sw.selected), None)
+    conflict = (
+        bool(found)
+        and ld_stock is not None
+        and (
+            (chosen_stock is not None and chosen_stock != ld_stock)
+            or (ld_stock and not any(sw.in_stock for sw in swatches))
+        )
+    )
     unknown = Price(None, "unknown")
     variants = []
     for sw in swatches:
@@ -324,7 +336,7 @@ def parse_pdp_html(document: str | bytes, page_locale: str) -> UltaProduct:
             UltaVariant(
                 sku=sw.sku,
                 name=name,
-                in_stock=sw.in_stock if found else _ld_stock(ld),
+                in_stock=None if conflict else (sw.in_stock if found else ld_stock),
                 regular=reg,
                 final=fin,
                 shade=sw.value if sw.dimension == "color" else None,

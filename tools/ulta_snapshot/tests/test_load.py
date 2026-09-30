@@ -4,6 +4,7 @@ Needs PI_DATABASE_URL (``make up``); skips when unset or unreachable, except in 
 """
 
 import gzip
+import hashlib
 import json
 import os
 import uuid
@@ -77,7 +78,10 @@ def _snapshot(root: Path, records: list[dict[str, Any]]) -> Path:
                 "started": AT,
                 "updated": AT,
                 "stopped": "complete",
-                "counts": {"discovered": 3, "pdp_ok": 3, "pdp_parsed": 3},
+                "counts": {
+                    "en": {"discovered": 3, "pdp_ok": 2, "pdp_parsed": 2, "block_cloudflare": 1},
+                    "ar": {"discovered": 1, "pdp_ok": 1, "pdp_parsed": 1},
+                },
             }
         )
     )
@@ -134,7 +138,14 @@ def test_load_is_idempotent_and_never_invents_stock_or_prices(db: str, tmp_path:
         assert listing[2] == "en"
         ctx = q("SELECT ladder_rung_current FROM source_context WHERE locale='en-AE'").fetchone()
         assert ctx == (5,)
-        run = q("SELECT status, ladder_rung_used FROM crawl_run LIMIT 1").fetchone()
-        assert run == ("succeeded", 5)
+        runs = q(
+            "SELECT r.status, r.ladder_rung_used, r.discovered, r.fetched, r.blocked_count"
+            " FROM crawl_run r JOIN source_context c ON c.id = r.source_context_id"
+            " ORDER BY c.locale DESC"
+        ).fetchall()
+        assert runs == [("succeeded", 5, 3, 2, 1), ("succeeded", 5, 1, 1, 0)]  # en-AE, ar-AE
+        # Evidence hashes the rendered DOM, never sha256 of nothing.
+        empty = hashlib.sha256(b"").hexdigest()
+        assert q("SELECT count(*) FROM evidence WHERE content_hash=%s", (empty,)).fetchone() == (0,)
         method = q("SELECT DISTINCT fetch_method FROM evidence").fetchall()
         assert method == [("residential_proxy",)]
