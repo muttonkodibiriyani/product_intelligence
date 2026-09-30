@@ -8,6 +8,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "pi-connector-ulta",
     "pi-core",
     "pi-db",
     "product-intelligence",
@@ -206,6 +207,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/fd/3f939c2847f4a72c20cff8b1ac33da78ea91a2d38d9b43336e60db719103/coverage-7.16.2-cp315-cp315t-win_amd64.whl", hash = "sha256:2aca0bdfa9e91621d5b09d815357bf63def4fc0e9cb66da67bf2cf93f3b1a6f5", size = 227374, upload-time = "2026-09-27T12:28:55.158Z" },
     { url = "https://files.pythonhosted.org/packages/5a/35/b98cdc354c952402132e675a87f2cc3227fb68f959c84aaa491fbe15933d/coverage-7.16.2-cp315-cp315t-win_arm64.whl", hash = "sha256:b88841e654f09732804809e435b3e005a929ffd9998b872b7b213957b8759cb8", size = 227064, upload-time = "2026-09-27T12:28:57.075Z" },
     { url = "https://files.pythonhosted.org/packages/3f/0c/7a64e1ac90541a8edf50daef0914848011fb057a5bf55284a4811e21939a/coverage-7.16.2-py3-none-any.whl", hash = "sha256:11d28e9123a9156cb405d8d27b44256c9a58fb5decc2073a8f17862057e3aa0f", size = 215754, upload-time = "2026-09-27T12:28:59.075Z" },
+]
+
+[[package]]
+name = "defusedxml"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520, upload-time = "2021-03-08T10:59:26.269Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604, upload-time = "2021-03-08T10:59:24.45Z" },
 ]
 
 [[package]]
@@ -551,6 +561,23 @@ wheels = [
 ]
 
 [[package]]
+name = "pi-connector-ulta"
+version = "0.1.0"
+source = { editable = "packages/pi_connector_ulta" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "pi-core" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
+
+[[package]]
 name = "pi-core"
 version = "0.1.0"
 source = { editable = "packages/pi_core" }
@@ -592,6 +619,7 @@ name = "product-intelligence"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "pi-connector-ulta" },
     { name = "pi-core" },
     { name = "pi-db" },
 ]
@@ -607,6 +635,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pi-connector-ulta", editable = "packages/pi_connector_ulta" },
     { name = "pi-core", editable = "packages/pi_core" },
     { name = "pi-db", editable = "packages/pi_db" },
 ]

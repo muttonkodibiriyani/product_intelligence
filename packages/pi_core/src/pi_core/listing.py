@@ -68,8 +68,8 @@ class ImageRef(PiModel):
     position: int = Field(ge=0)
 
 
-class ListingRecord(FieldStateModel):
-    """One source SKU as parsed from one piece of evidence."""
+class ListingFields(FieldStateModel):
+    """Shared validated listing fields before persistence IDs are assigned."""
 
     TRACKED_FIELDS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -88,7 +88,6 @@ class ListingRecord(FieldStateModel):
         }
     )
 
-    source_id: DbId
     source_listing_key: NonEmptyStr
     source_sku: NonEmptyStr | None
     url: HttpUrl
@@ -107,7 +106,6 @@ class ListingRecord(FieldStateModel):
     category_path_source: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)] | None
     images: Annotated[tuple[ImageRef, ...], Field(min_length=1)] | None
     attributes: dict[str, str] = Field(default_factory=dict)
-    evidence_id: DbId
     observed_at: UtcDatetime
 
     @model_validator(mode="after")
@@ -121,6 +119,13 @@ class ListingRecord(FieldStateModel):
                 msg = "duplicate image (role, position)"
                 raise ValueError(msg)
         return self
+
+
+class ListingRecord(ListingFields):
+    """One persisted source SKU parsed from one piece of evidence."""
+
+    source_id: DbId
+    evidence_id: DbId
 
     @property
     def natural_key(self) -> tuple[int, str]:
