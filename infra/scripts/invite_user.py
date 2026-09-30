@@ -19,11 +19,8 @@ import argparse
 import sys
 from collections.abc import Callable
 from functools import partial
-
-import firebase_admin
-import google.auth
-import google.auth.transport.requests
-from firebase_admin import auth
+from types import ModuleType
+from typing import Any, Protocol
 
 ROLES = ("admin", "viewer")
 SEND_OOB = "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode"
@@ -34,8 +31,14 @@ def mask(email: str) -> str:
     return f"{local[:1]}***@{domain}"
 
 
+class Session(Protocol):
+    """The slice of google.auth's AuthorizedSession this script uses."""
+
+    def post(self, url: str, **kwargs: Any) -> Any: ...
+
+
 def send_reset_email(
-    session: google.auth.transport.requests.AuthorizedSession,
+    session: Session,
     project: str,
     email: str,
     continue_url: str,
@@ -57,7 +60,12 @@ class RefusedError(Exception):
 
 
 def invite(
-    email: str, role: str, send_email: Callable[[str], None] | None, *, allow_existing: bool
+    email: str,
+    role: str,
+    send_email: Callable[[str], None] | None,
+    *,
+    allow_existing: bool,
+    auth: ModuleType | Any,
 ) -> str:
     try:
         user = auth.get_user_by_email(email)
@@ -85,7 +93,7 @@ def invite(
     return f"{mask(email)} uid={user.uid} {state} role={role}{revoked} reset-email={sent}"
 
 
-def revoke(email: str) -> str:
+def revoke(email: str, *, auth: ModuleType | Any) -> str:
     """Remove the role claim and revoke refresh tokens; the account itself is kept."""
     user = auth.get_user_by_email(email)
     claims = {k: v for k, v in (user.custom_claims or {}).items() if k != "role"}
@@ -115,19 +123,24 @@ def main() -> int:
         print("expected one email per line on stdin", file=sys.stderr)
         return 2
 
+    import firebase_admin  # noqa: PLC0415 (lazy: unit tests run without Firebase installed)
+    import google.auth  # noqa: PLC0415
+    import google.auth.transport.requests  # noqa: PLC0415
+    from firebase_admin import auth  # noqa: PLC0415
+
     firebase_admin.initialize_app(options={"projectId": args.project})
     creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     session = google.auth.transport.requests.AuthorizedSession(creds)
-    mailer = None
+    mailer: Callable[[str], None] | None = None
     if not args.no_email:
         mailer = partial(send_reset_email, session, args.project, continue_url=args.continue_url)
     failed = 0
     for email in emails:
         try:
             if args.revoke:
-                print(revoke(email))
+                print(revoke(email, auth=auth))
             else:
-                print(invite(email, args.role, mailer, allow_existing=args.existing))
+                print(invite(email, args.role, mailer, allow_existing=args.existing, auth=auth))
         except Exception as exc:
             failed += 1
             print(f"{mask(email)} FAILED: {exc}", file=sys.stderr)

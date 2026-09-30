@@ -44,6 +44,7 @@ ignore = ["PLR2004"]
 [tool.ruff.lint.per-file-ignores]
 "packages/*/tests/**" = ["S101", "PLR2004", "PLR0913", "PLR0917", "S608"]
 "tests/**" = ["S101", "PLR2004"]
+"infra/tests/**" = ["S101", "PLR2004"]
 "tools/*/tests/**" = ["S101", "PLR2004"]
 # Migrations are DDL assembled from frozen module constants, never from input.
 "packages/pi_db/src/pi_db/migrations/versions/*" = ["S608"]
@@ -71,6 +72,7 @@ mypy_path = [
   "tests",
   "tools/gulf_probe",
   "tools/ulta_snapshot",
+  "infra/scripts",
 ]
 files = [
   "packages/pi_core/src",
@@ -89,7 +91,15 @@ files = [
   "tools/gulf_probe/gulf_probe/plan.py",
   "tools/gulf_probe/tests",
   "tools/ulta_snapshot",
+  "infra/scripts/invite_user.py",
+  "infra/scripts/publish_dataset.py",
+  "infra/tests",
 ]
+
+# infra/scripts import Firebase lazily inside main(); the workspace does not install it.
+[[tool.mypy.overrides]]
+module = ["firebase_admin", "firebase_admin.*", "google", "google.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
@@ -98,11 +108,12 @@ warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
-testpaths = ["packages", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "scripts/demo_export"]
-pythonpath = ["tests", "packages/pi_fetch/tests", "tools/gulf_probe", "tools/ulta_snapshot"]
+testpaths = ["packages", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "scripts/demo_export", "infra/tests"]
+pythonpath = ["tests", "packages/pi_fetch/tests", "tools/gulf_probe", "tools/ulta_snapshot", "infra/scripts"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",
+  "emulator: Firebase rules against the Firestore/Storage emulators (CI job asserts 0 skips)",
   "uat: UAT scenario mapped to a requirement ID (tests/uat)",
   "req(id): requirement ID from docs/requirements/traceability.csv",
   "scenario(id): acceptance scenario UAT-XX from docs/requirements/uat_scenarios.csv",

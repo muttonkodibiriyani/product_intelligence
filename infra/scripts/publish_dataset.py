@@ -22,11 +22,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import firebase_admin
-from firebase_admin import firestore, storage
-from google.api_core.exceptions import PreconditionFailed
-
 SCHEMA = "pi.dataset/v1"
+PRECONDITION_FAILED = 412  # google.api_core PreconditionFailed.code (if_generation_match)
 # Never ship Algolia credentials: header/param names, or a 32-hex key next to an Algolia hint.
 FORBIDDEN = [
     re.compile(r"x-algolia-(api-key|application-id)", re.I),
@@ -68,6 +65,61 @@ def blob_md5(body: bytes) -> str:
     return base64.b64encode(hashlib.md5(body).digest()).decode()  # noqa: S324 (GCS checksum)
 
 
+def package(doc: dict[str, Any], prefix: str) -> tuple[bytes, list[str], dict[str, Any]]:
+    """Deterministic gzip body, upload paths (snapshot first) and the Firestore summary."""
+    meta = doc["meta"]
+    body = gzip.compress(
+        json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode(), mtime=0
+    )
+    stamp = re.sub(r"[^0-9TZ]", "", str(meta["cutoff"]))
+    # Snapshot first: if that cutoff was already published differently, latest.json stays untouched.
+    paths = [f"{prefix}/{stamp}.json", f"{prefix}/latest.json"]
+    summary = {
+        "schema": SCHEMA,
+        "kind": meta["kind"],
+        "test": bool(meta.get("test")),
+        "cutoff": meta["cutoff"],
+        "generatedAt": meta["generatedAt"],
+        "market": meta["market"],
+        "products": len(doc["products"]),
+        "retailers": [
+            {k: r.get(k) for k in ("id", "key", "name", "status", "since")}
+            for r in meta["retailers"]
+        ],
+        "storagePath": paths[-1],
+    }
+    return body, paths, summary
+
+
+def upload(bucket: Any, paths: list[str], body: bytes) -> int:
+    """Upload to every path in order; a cutoff snapshot is create-only. Returns an exit code."""
+    for path in paths:
+        blob = bucket.blob(path)
+        blob.content_encoding = "gzip"
+        blob.cache_control = "private, no-cache"
+        if path.endswith("/latest.json"):
+            blob.upload_from_string(body, content_type="application/json; charset=utf-8")
+        else:
+            # A cutoff snapshot is immutable: create-only, identical re-publish is a no-op.
+            try:
+                blob.upload_from_string(
+                    body, content_type="application/json; charset=utf-8", if_generation_match=0
+                )
+            except Exception as exc:
+                if getattr(exc, "code", None) != PRECONDITION_FAILED:
+                    raise
+                existing = bucket.get_blob(path)
+                if existing is None or existing.md5_hash != blob_md5(body):
+                    print(
+                        f"refusing: {path} already exists with different content", file=sys.stderr
+                    )
+                    return 1
+                print(f"unchanged gs://{bucket.name}/{path}")
+                continue
+        print(f"uploaded gs://{bucket.name}/{path}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("path", type=Path)
@@ -85,56 +137,19 @@ def main() -> int:
         for err in errors[:50]:
             print(f"INVALID: {err}", file=sys.stderr)
         return 1
-    meta = doc["meta"]
-    body = gzip.compress(
-        json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode(), mtime=0
-    )
-    stamp = re.sub(r"[^0-9TZ]", "", str(meta["cutoff"]))
-    # Snapshot first: if that cutoff was already published differently, latest.json stays untouched.
-    paths = [f"{args.prefix}/{stamp}.json", f"{args.prefix}/latest.json"]
-    summary = {
-        "schema": SCHEMA,
-        "kind": meta["kind"],
-        "test": bool(meta.get("test")),
-        "cutoff": meta["cutoff"],
-        "generatedAt": meta["generatedAt"],
-        "market": meta["market"],
-        "products": len(doc["products"]),
-        "retailers": [
-            {k: r.get(k) for k in ("id", "key", "name", "status", "since")}
-            for r in meta["retailers"]
-        ],
-        "storagePath": paths[-1],
-    }
+    body, paths, summary = package(doc, args.prefix)
     print(json.dumps(summary, ensure_ascii=False), f"gzip={len(body)}B", sep="\n")
     if args.dry_run:
         return 0
 
+    import firebase_admin  # noqa: PLC0415 (lazy: unit tests run without Firebase installed)
+    from firebase_admin import firestore, storage  # noqa: PLC0415
+
     bucket_name = args.bucket or f"{args.project}.firebasestorage.app"
     firebase_admin.initialize_app(options={"projectId": args.project, "storageBucket": bucket_name})
     bucket = storage.bucket()
-    for path in paths:
-        blob = bucket.blob(path)
-        blob.content_encoding = "gzip"
-        blob.cache_control = "private, no-cache"
-        if path.endswith("/latest.json"):
-            blob.upload_from_string(body, content_type="application/json; charset=utf-8")
-        else:
-            # A cutoff snapshot is immutable: create-only, identical re-publish is a no-op.
-            try:
-                blob.upload_from_string(
-                    body, content_type="application/json; charset=utf-8", if_generation_match=0
-                )
-            except PreconditionFailed:
-                existing = bucket.get_blob(path)
-                if existing is None or existing.md5_hash != blob_md5(body):
-                    print(
-                        f"refusing: {path} already exists with different content", file=sys.stderr
-                    )
-                    return 1
-                print(f"unchanged gs://{bucket_name}/{path}")
-                continue
-        print(f"uploaded gs://{bucket_name}/{path}")
+    if upload(bucket, paths, body) != 0:
+        return 1
     firestore.client().collection("demo_meta").document("current").set(summary)
     print("wrote firestore demo_meta/current")
     return 0

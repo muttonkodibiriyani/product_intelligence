@@ -47,8 +47,16 @@ uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3
 
 After this PR merges, rules are redeployed only from `main` (`firebase deploy --only firestore:rules,storage`).
 
+## Rules tests
+
+`infra/tests/test_rules_emulator.py` checks both rule files against the Firestore/Storage emulators
+(CI job `firebase-rules`, 0 skips allowed). It covers: anonymous, no-role and unknown-role users
+denied; viewer/admin may read `demo_meta/*` and `datasets/**` only; no client writes. Run it locally with:
+
+    npx -y firebase-tools@14 emulators:exec --config infra/firebase.json --project demo-pi \
+        --only firestore,storage "uv run pytest infra/tests -m emulator"
+
 ## Follow-ups (after the demo)
 
 - Dedicated crawl service account without Owner, holding only the resource-level
   `secretAccessor` on `pi-proxy-iproyal-ae` (approved by the Coordinator; no IAM churn before the demo).
-- Emulator rules test (deny unauthenticated, deny no-role, deny non-`demo_` collections, deny writes) before this PR merges.
