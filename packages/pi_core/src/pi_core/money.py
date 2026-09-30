@@ -14,6 +14,8 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 # ISO 4217 minor-unit exponents for every active currency with a minor unit (List One;
 # funds and precious metals without a minor unit are excluded). Mauritania (MRU) and Madagascar
 # (MGA) are listed by ISO with 2 decimals although their subdivisions are not decimal.
+# Snapshot of ISO 4217 List One as maintained by SIX, checked 2026-09-30: includes XCG (2025),
+# ZWG (2024), SLE and VED; excludes the withdrawn ANG, CUC, HRK, SLL and ZWL. Re-check on amendment.
 CURRENCY_EXPONENTS: dict[str, int] = {
     "AED": 2,
     "AFN": 2,

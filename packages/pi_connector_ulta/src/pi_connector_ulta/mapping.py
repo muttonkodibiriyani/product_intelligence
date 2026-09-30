@@ -27,17 +27,19 @@ from pi_core import (
     FieldState,
     ImageRef,
     ImageRole,
-    Locale,
     TaxStatus,
     is_valid_gtin,
+    language_of,
 )
 
 _SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(\S+)\s*$")
 
 
-def _text(value: LocalizedText, locale: Locale) -> str:
-    selected = value.ar if locale is Locale.AR else value.en
-    fallback = value.en if locale is Locale.AR else value.ar
+def _text(value: LocalizedText, locale: str) -> str:
+    # Compare by language, not enum identity: pi_fetch 0.3 locales are BCP 47 str ("ar", "ar-AE").
+    arabic = language_of(locale) == "ar"
+    selected = value.ar if arabic else value.en
+    fallback = value.en if arabic else value.ar
     if selected:
         return selected
     if fallback:

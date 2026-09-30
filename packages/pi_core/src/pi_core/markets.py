@@ -26,7 +26,7 @@ COUNTRY_CODES: frozenset[str] = frozenset(
 
 #: Languages written right to left in their default script.
 RTL_LANGUAGES: frozenset[str] = frozenset(
-    {"ar", "arc", "ckb", "dv", "fa", "he", "ks", "ku", "ps", "sd", "syr", "ug", "ur", "yi"}
+    {"ar", "arc", "ckb", "dv", "fa", "he", "ks", "ps", "sd", "syr", "ug", "ur", "yi"}
 )
 #: Scripts written right to left; an explicit script subtag overrides the language default.
 RTL_SCRIPTS: frozenset[str] = frozenset({"Adlm", "Arab", "Hebr", "Nkoo", "Rohg", "Syrc", "Thaa"})

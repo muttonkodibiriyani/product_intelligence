@@ -14,8 +14,8 @@ from pi_connector_ulta._pi_fetch_stub import (
     PayloadKind,
     to_canonical,
 )
-from pi_connector_ulta.mapping import map_product
-from pi_connector_ulta.models import ProductRecord
+from pi_connector_ulta.mapping import _text, map_product
+from pi_connector_ulta.models import LocalizedText, ProductRecord
 from pi_core import (
     AvailabilityState,
     CollectionContext,
@@ -92,6 +92,28 @@ def test_draft_fields_are_canonical_fields_minus_persistence_ids() -> None:
     assert set(OfferDraft.model_fields) - {"source_listing_key"} == set(
         OfferObservation.model_fields
     ) - {"source_listing_id", "evidence_id", "ingested_at"}
+
+
+@pytest.mark.parametrize(
+    ("locale", "name", "brand"),
+    [(Locale.EN, "Glow Balm", "Example Beauty"), (Locale.AR, "بلسم جلو", "إكزامبل بيوتي")],
+)
+def test_listing_text_follows_request_locale(locale: Locale, name: str, brand: str) -> None:
+    request = _result().request.model_copy(update={"locale": locale})
+    result = _result().model_copy(update={"request": request})
+    listing = map_product(_product(), result, CONTEXT).listings[0]
+    assert listing.lang == locale
+    assert listing.name_original == name
+    assert listing.brand == brand
+
+
+@pytest.mark.parametrize("locale", ["ar", "ar-AE", Locale.AR])
+def test_text_selects_arabic_for_plain_str_tags(locale: str) -> None:
+    # pi_fetch >= 0.3 yields plain BCP 47 str locales; enum identity must not be relied on.
+    text = LocalizedText(en="Lipstick", ar="أحمر شفاه")
+    assert _text(text, locale) == "أحمر شفاه"
+    assert _text(text, "en-AE") == "Lipstick"
+    assert _text(LocalizedText(en="Lipstick", ar=None), locale) == "Lipstick"
 
 
 def test_mapping_is_replay_deterministic_and_uses_stable_variant_keys() -> None:

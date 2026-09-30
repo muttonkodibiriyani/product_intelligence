@@ -43,7 +43,10 @@ def test_unknown_country_rejected(bad: str) -> None:
         ("es-419", "es", "419", False),
         ("zh-Hant-TW", "zh", "TW", False),
         ("az-Arab", "az", None, True),  # the script decides
-        ("ku-Latn", "ku", None, False),  # an explicit Latin script overrides an RTL language
+        ("ku", "ku", None, False),  # CLDR: Kurmanji defaults to Latn
+        ("ku-Arab", "ku", None, True),  # the script decides
+        ("ckb-IQ", "ckb", "IQ", True),  # Sorani is Arabic script
+        ("ar-Latn", "ar", None, False),  # an explicit Latin script overrides an RTL language
         ("he-IL", "he", "IL", True),
         ("fa", "fa", None, True),
     ],
