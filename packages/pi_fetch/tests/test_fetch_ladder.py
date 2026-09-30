@@ -226,8 +226,18 @@ def test_obeyed_robots_refuses_disallowed_url_before_any_page_request(
 
 @pytest.mark.parametrize(
     "robots_response",
-    [raw(503, b"down"), raw(403, b"denied"), raw(429, b"slow"), None],
-    ids=["5xx", "403", "429", "transport-error"],
+    [
+        raw(503, b"down"),
+        raw(500, b"err"),
+        raw(401, b"auth"),
+        raw(403, b"denied"),
+        raw(418, b"teapot"),
+        raw(429, b"slow"),
+        raw(200, b"<html>Just a moment...</html>"),
+        raw(200, b"\n<!DOCTYPE html><title>x</title>", (("content-type", "text/plain"),)),
+        None,
+    ],
+    ids=["503", "500", "401", "403", "418", "429", "html-2xx", "html-body-2xx", "transport-error"],
 )
 def test_unreadable_robots_refuses_every_url(
     tmp_path: Path, robots_response: RawResponse | None
@@ -242,13 +252,31 @@ def test_unreadable_robots_refuses_every_url(
     assert len(factory.sends) <= 1  # robots.txt is read once per host, then remembered
 
 
-def test_missing_robots_allows_and_is_read_once(tmp_path: Path) -> None:
-    factory = ScriptedFactory(raw(404, b"missing"), raw(), raw())
+@pytest.mark.parametrize("status", [404, 410])
+def test_missing_robots_allows_and_is_read_once(tmp_path: Path, status: int) -> None:
+    factory = ScriptedFactory(raw(status, b"missing"), raw(), raw())
     f = fetcher(tmp_path, factory, robots=RobotsTagger())
     ctx = make_ctx(LadderRung.PLAIN_HTTP)
     assert f.fetch(req(), ctx).ok
     assert f.fetch(req(), ctx).ok
     assert len(factory.sends) == 3
+
+
+def test_robots_with_bom_is_obeyed(tmp_path: Path) -> None:
+    text = (("content-type", "text/plain"),)
+    factory = ScriptedFactory(raw(200, b"\xef\xbb\xbfUser-agent: *\nDisallow: /p/\n", text))
+    f = fetcher(tmp_path, factory, robots=RobotsTagger())
+    with pytest.raises(RobotsRefusedError):
+        f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
+
+
+def test_default_robots_groups_use_the_user_agent_product_token(tmp_path: Path) -> None:
+    text = (("content-type", "text/plain"),)
+    robots_txt = b"User-agent: *\nAllow: /\n\nUser-agent: Mozilla\nDisallow: /p/\n"
+    factory = ScriptedFactory(raw(200, robots_txt, text))
+    f = fetcher(tmp_path, factory, robots=None)
+    with pytest.raises(RobotsRefusedError):
+        f.fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
 
 
 def test_robots_is_read_over_plain_http_even_for_a_browser_fetch(tmp_path: Path) -> None:
@@ -345,6 +373,8 @@ def test_audit_log_records_every_fetch(tmp_path: Path, caplog: pytest.LogCapture
         fetcher(tmp_path, factory).fetch(req(), make_ctx(LadderRung.PLAIN_HTTP))
     (record,) = caplog.records
     assert record.__dict__["block_vendor"] == "akamai"
+    assert record.__dict__["block_kind"] == "blocked"
+    assert record.__dict__["rate_limited"] is False
     assert record.__dict__["robots"] == "allowed"
     assert record.__dict__["ladder_rung_used"] == 1
     assert record.__dict__["browser_engine"] is None

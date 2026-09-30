@@ -9,7 +9,11 @@ The browser engine is pinned per source (``FetchPolicy.browsers``) and never swi
 
 Before any request to a URL the fetcher reads the host's robots.txt (once, paced) and, unless
 the source is configured ``tag_only``, refuses a disallowed URL, or any URL when robots.txt is
-unavailable, with ``RobotsRefusedError``. A 429 backs the host off (``HostPacer.back_off``) and
+unavailable, with ``RobotsRefusedError``. robots.txt counts as unavailable on any status other
+than 2xx, 404 or 410 (401/403/429 included), on a transport error, and on a 2xx HTML page: a
+deliberate deviation from RFC 9309 §2.3.1.3, which treats 4xx as "no robots.txt" (ADR-0006
+consequences). Groups are chosen by the product token of our User-Agent, else ``*``.
+A 429 backs the host off (``HostPacer.back_off``) and
 is returned with a RATE_LIMITED verdict (``rate_limited``): its listings are recorded not
 observed, but it does not mark the source blocked (only CHALLENGE and BLOCKED verdicts do).
 When ``next_rung`` returns None after real blocks, the source is marked blocked and a Proxy
@@ -32,6 +36,7 @@ from pi_fetch.pacing import (
     RobotsTag,
     RobotsTagger,
     parse_retry_after,
+    product_token,
 )
 from pi_fetch.policy import Engine, FetchPlan, FetchPolicy, plan
 from pi_fetch.transports.base import RawResponse, Transport, TransportError
@@ -55,7 +60,10 @@ _ACCEPT: dict[PayloadKind, str] = {
     PayloadKind.IMAGE: "image/avif,image/webp,image/png,image/*;q=0.8,*/*;q=0.5",
 }
 _NOT_MODIFIED = 304
-#: robots.txt statuses that mean "no robots.txt": everything allowed (RFC 9309 §2.3.1.3).
+#: robots.txt statuses that mean "no robots.txt": everything allowed. DEVIATION from RFC 9309
+#: §2.3.1.3, which allows every 4xx: here every other non-2xx (401/403/418/429 included), a
+#: transport error or a 2xx HTML page makes robots.txt unavailable and refuses the host. That is
+#: stricter than the RFC on purpose (ADR-0006 consequences; coordinator decision).
 _ROBOTS_ABSENT = frozenset({404, 410})
 _ROBOTS_ACCEPT = "text/plain,*/*;q=0.8"
 
@@ -96,7 +104,7 @@ class Fetcher:
         self._evidence = evidence
         self._pacer = pacer or HostPacer()
         self._cache = cache
-        self._robots = robots or RobotsTagger()
+        self._robots = robots or RobotsTagger(product_token(self._policy.user_agent))
         self._factory = transport_factory
         self._clock = clock
         self._transports: dict[tuple[Engine, str, BrowserProfile | None], Transport] = {}
@@ -202,8 +210,8 @@ class Fetcher:
         else:
             status = raw.status
             self._pace_after(host, raw, self._clock())
-        if status is not None and 200 <= status < 300:
-            self._robots.add(host, raw.body.decode("utf-8", errors="replace"))
+        if status is not None and 200 <= status < 300 and not _is_html(raw.content_type, raw.body):
+            self._robots.add(host, raw.body.decode("utf-8-sig", errors="replace"))
         elif status in _ROBOTS_ABSENT:
             self._robots.add(host, "")
         else:
@@ -277,7 +285,9 @@ class Fetcher:
                 "browser_headless": result.browser.headless if result.browser else None,
                 "browser_device": result.browser.device.value if result.browser else None,
                 "http_status": result.http_status,
+                "block_kind": result.block.kind.value if result.block else None,
                 "block_vendor": result.block.vendor.value if result.block else None,
+                "rate_limited": result.rate_limited,
                 "block_reason": result.block.reason if result.block else None,
                 "robots": robots.value,
                 "from_cache": result.from_cache,
@@ -289,3 +299,11 @@ class Fetcher:
 def _port(url: HttpUrl) -> str:
     default = {"http": 80, "https": 443}.get(url.scheme)
     return "" if url.port in {None, default} else f":{url.port}"
+
+
+def _is_html(content_type: str | None, body: bytes) -> bool:
+    """A 2xx robots.txt that is really an HTML page (soft 404, block or challenge page)."""
+    if content_type is not None and "html" in content_type.lower():
+        return True
+    head = body.lstrip(b"\xef\xbb\xbf \t\r\n")[:15].lower()
+    return head.startswith((b"<!doctype", b"<html"))

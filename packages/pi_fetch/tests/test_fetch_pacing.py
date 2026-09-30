@@ -1,6 +1,7 @@
 import random
 from datetime import UTC, datetime, time
 from itertools import pairwise
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -11,9 +12,11 @@ from pi_fetch.pacing import (
     MAX_DEFER_S,
     HostPacer,
     OffPeakWindow,
+    RobotsRules,
     RobotsTag,
     RobotsTagger,
     parse_retry_after,
+    product_token,
 )
 
 
@@ -135,3 +138,95 @@ def test_robots_tagger() -> None:
     tagger.mark_unavailable("other.example")
     assert tagger.known("other.example")
     assert tagger.tag("other.example", "https://other.example/") is RobotsTag.UNKNOWN
+
+
+ULTA_ROBOTS = """
+User-agent: *
+Disallow: /*?
+Disallow: */?*
+Allow: /*.json?
+Allow: /*media_*?
+Allow: /*?selected*
+Disallow: /checkout$
+
+User-agent: OtherBot
+Disallow: /
+"""
+
+
+@pytest.mark.parametrize(
+    ("url", "allowed"),
+    [
+        ("https://ulta.ae/p/lipstick", True),
+        ("https://ulta.ae/p/lipstick?sort=price", False),
+        ("https://ulta.ae/search/?q=a", False),
+        ("https://ulta.ae/p/lipstick.json?variant=2", True),
+        ("https://ulta.ae/img/media_1234?w=300", True),
+        ("https://ulta.ae/p/lipstick?selected=2", True),
+        ("https://ulta.ae/checkout", False),
+        ("https://ulta.ae/checkout/step", True),
+        ("https://ulta.ae/robots.txt", True),
+    ],
+)
+def test_robots_rfc9309_wildcards_and_longest_match(url: str, allowed: bool) -> None:
+    rules = RobotsRules(ULTA_ROBOTS)
+    assert rules.allows(url) is allowed
+
+
+def test_robots_tie_goes_to_allow_and_agent_groups_merge() -> None:
+    rules = RobotsRules("User-agent: *\nDisallow: /a\nAllow: /a\n")
+    assert rules.allows("https://x.example/a")
+    merged = "User-agent: pibot\nDisallow: /x\n\nUser-agent: pibot\nDisallow: /y\n"
+    mine = RobotsRules(merged + "User-agent: *\nDisallow: /\n", "PIbot")
+    assert not mine.allows("https://x.example/x")
+    assert not mine.allows("https://x.example/y")
+    assert mine.allows("https://x.example/z")
+    assert RobotsRules("# nothing\nSitemap: https://x.example/s.xml\n").allows("https://x.example/")
+
+
+SEPHORA_ROBOTS = (Path(__file__).parent / "fixtures" / "robots" / "sephora_me.txt").read_text()
+
+
+@pytest.mark.parametrize(
+    ("path", "allowed"),
+    [
+        ("/ae/en/p/lipstick-P123", True),
+        ("/on/demandware.store/Sites-SA/en/Home-GetFooter", True),  # longer Allow beats Disallow
+        ("/on/demandware.store/Sites-SA/en/Cart-Show", False),
+        ("/ae/en/makeup?scgid=C12", True),  # equal-length Allow and Disallow: Allow wins
+        ("/ae/en/makeup?scgid=X12", False),
+        ("/ae/en/search?q=rouge", False),
+        ("/ae/en/makeup?sz=48", False),
+        ("/checkout/cart", False),
+        ("/ae/en/api/v1/products", False),
+        ("/beautyboard/", True),
+    ],
+)
+def test_robots_real_sephora_file(path: str, allowed: bool) -> None:
+    assert RobotsRules(SEPHORA_ROBOTS).allows(f"https://www.sephora.me{path}") is allowed
+
+
+def test_robots_percent_encoding_is_normalised() -> None:
+    rules = RobotsRules(
+        "User-agent: *\nDisallow: /caf\u00e9\nDisallow: /%7euser\nDisallow: /a%2fb\n"
+    )
+    assert not rules.allows("https://x.example/caf%c3%a9/menu")
+    assert not rules.allows("https://x.example/~user/home")
+    assert not rules.allows("https://x.example/a%2Fb")
+    assert rules.allows("https://x.example/a/b")  # an encoded slash is not a path separator
+
+
+def test_robots_empty_disallow_allows_all() -> None:
+    rules = RobotsRules("User-agent: *\nDisallow:\n")
+    assert rules.allows("https://x.example/anything?at=all")
+
+
+def test_robots_bom_does_not_drop_the_first_group() -> None:
+    assert not RobotsRules("\ufeffUser-agent: *\nDisallow: /private\n").allows(
+        "https://x.example/private/1"
+    )
+
+
+def test_product_token() -> None:
+    assert product_token("Mozilla/5.0 (X11; Linux x86_64) Chrome/140") == "Mozilla"
+    assert product_token("   ") == "*"

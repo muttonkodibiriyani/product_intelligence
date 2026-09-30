@@ -62,7 +62,8 @@ from pi_fetch.types import (
 #: FetchResult records the pinned BrowserProfile of a browser fetch; FetchPolicy pins engines,
 #: robots modes and page intervals per source; the Fetcher lives only in ``pi_fetch.ladder``;
 #: BlockVerdict.kind (challenge | blocked | rate_limited): a 429 is RATE_LIMITED, and only
-#: CHALLENGE and BLOCKED mark a source blocked (PDR, API-route refusal).
+#: CHALLENGE and BLOCKED mark a source blocked (PDR, API-route refusal); FetchResult.rate_limited.
+#: robots.txt is matched per RFC 9309 (wildcards, $, longest match).
 INTERFACE_VERSION = "0.2"
 
 __all__ = [

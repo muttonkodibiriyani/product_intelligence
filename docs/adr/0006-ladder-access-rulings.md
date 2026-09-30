@@ -59,6 +59,16 @@ cart/checkout, polite pacing, and every escalation audit-logged.
   impersonation. UAT-25 asserts stop, mark blocked and report.
 - Coverage may be lower on bot-protected sources. The Proxy Decision Report is the only path
   past a block.
+- robots.txt is matched per RFC 9309 (wildcards, `$`, longest match, Allow wins ties). Every
+  source obeys it except those configured `tag_only` (Sephora, ADR-0005). The status of the
+  robots.txt fetch decides what happens when there is no usable file (coordinator decision,
+  2026-09-30). This is deliberately stricter than RFC 9309 §2.3.1.3 for 4xx other than 404/410:
+  - 404/410: no robots.txt; all allowed, per RFC.
+  - A 2xx HTML page instead of robots.txt: unreadable; refuse every URL on the host.
+  - 401/403/429 and every other 4xx: refuse every URL on the host. We are being blocked or throttled, and policy is
+    to stop, not to assume allow.
+  - 5xx or unreachable: refuse every URL on the host.
+  See `packages/pi_fetch/README.md` (runbook).
 
 ## Amendment 1 (2026-09-30 UTC): owner rulings from the Gulf probe
 1. **Browser engine choice.** Playwright's stock Chromium, Firefox and WebKit engines are all

@@ -10,14 +10,17 @@ for a source configured ``tag_only`` (ADR-0005 override).
 """
 
 import random
+import re
+import string
 import threading
 import time
-import urllib.robotparser
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from datetime import time as dtime
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
+from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator
@@ -185,12 +188,99 @@ class RobotsRefusedError(Exception):
         self.tag = tag
 
 
+@dataclass(frozen=True)
+class _Rule:
+    allow: bool
+    pattern: str
+    regex: re.Pattern[str]
+
+
+_UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
+_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
+#: Printable ASCII stays as is; space and non-ASCII are UTF-8 percent-encoded.
+_PRINTABLE = "".join(chr(c) for c in range(0x21, 0x7F))
+
+
+def _normalise(value: str) -> str:
+    """RFC 9309 §2.2.2 comparison form for a path or pattern. Non-ASCII is percent-encoded,
+    escapes are upper-cased, and escaped unreserved characters are decoded."""
+
+    def fix(match: re.Match[str]) -> str:
+        char = chr(int(match.group(1), 16))
+        return char if char in _UNRESERVED else f"%{match.group(1).upper()}"
+
+    return _ESCAPE.sub(fix, quote(value, safe=_PRINTABLE))
+
+
+def _rule(allow: bool, pattern: str) -> _Rule:
+    """An RFC 9309 path pattern: ``*`` matches any run of characters, a final ``$`` anchors the
+    end, and everything else is a literal prefix match (after ``_normalise``)."""
+    pattern = _normalise(pattern)
+    anchored = pattern.endswith("$")
+    body = pattern[:-1] if anchored else pattern
+    regex = ".*".join(re.escape(part) for part in body.split("*"))
+    return _Rule(allow, pattern, re.compile(regex + ("$" if anchored else ""), re.DOTALL))
+
+
+class RobotsRules:
+    """One host's robots.txt, evaluated per RFC 9309 (not ``urllib.robotparser``, which has no
+    wildcards and uses first match).
+
+    The groups for the most specific matching user-agent token are merged, else the ``*`` groups.
+    The longest matching pattern wins, and Allow wins a tie. No match, or no group, means allowed.
+    ``/robots.txt`` itself is always allowed.
+    """
+
+    def __init__(self, robots_txt: str, user_agent: str = "*") -> None:
+        groups: list[tuple[list[str], list[_Rule]]] = []
+        agents: list[str] = []
+        rules: list[_Rule] = []
+        for raw_line in robots_txt.removeprefix("\ufeff").splitlines():
+            line = raw_line.split("#", 1)[0].strip()
+            key, sep, value = line.partition(":")
+            if not sep:
+                continue
+            key, value = key.strip().lower(), value.strip()
+            if key == "user-agent":
+                if rules:
+                    groups.append((agents, rules))
+                    agents, rules = [], []
+                agents.append(value.lower())
+            elif key in {"allow", "disallow"} and agents and value:
+                rules.append(_rule(key == "allow", value))
+        if agents:
+            groups.append((agents, rules))
+        product = user_agent.lower()
+        mine = [r for names, group in groups if product != "*" and product in names for r in group]
+        self._rules = mine or [r for names, group in groups if "*" in names for r in group]
+
+    def allows(self, url: str) -> bool:
+        """True when ``url`` (path plus query) may be fetched."""
+        parts = urlsplit(url)
+        target = _normalise((parts.path or "/") + (f"?{parts.query}" if parts.query else ""))
+        if parts.path == "/robots.txt":
+            return True
+        best: _Rule | None = None
+        for rule in self._rules:
+            if rule.regex.match(target) is None:
+                continue
+            if best is None or (len(rule.pattern), rule.allow) > (len(best.pattern), best.allow):
+                best = rule
+        return best is None or best.allow
+
+
+def product_token(user_agent: str) -> str:
+    """The product token of a User-Agent for robots.txt group matching (RFC 9309 §2.2.1)."""
+    token = user_agent.split("/", 1)[0].split(maxsplit=1)
+    return token[0] if token else "*"
+
+
 class RobotsTagger:
     """Evaluates URLs against robots.txt per host. The fetcher decides whether to obey."""
 
     def __init__(self, user_agent: str = "*") -> None:
         self._user_agent = user_agent
-        self._parsers: dict[str, urllib.robotparser.RobotFileParser | None] = {}
+        self._parsers: dict[str, RobotsRules | None] = {}
 
     def known(self, host: str) -> bool:
         """True once robots.txt was registered or marked unavailable for ``host``."""
@@ -202,14 +292,11 @@ class RobotsTagger:
 
     def add(self, host: str, robots_txt: str) -> None:
         """Register the robots.txt text for ``host``."""
-        parser = urllib.robotparser.RobotFileParser()
-        parser.parse(robots_txt.splitlines())
-        self._parsers[host.lower()] = parser
+        self._parsers[host.lower()] = RobotsRules(robots_txt, self._user_agent)
 
     def tag(self, host: str, url: str) -> RobotsTag:
         """ALLOWED / DISALLOWED per the host's robots.txt; UNKNOWN when none is available."""
         parser = self._parsers.get(host.lower())
         if parser is None:
             return RobotsTag.UNKNOWN
-        allowed = parser.can_fetch(self._user_agent, url)
-        return RobotsTag.ALLOWED if allowed else RobotsTag.DISALLOWED
+        return RobotsTag.ALLOWED if parser.allows(url) else RobotsTag.DISALLOWED
