@@ -27,6 +27,7 @@ from pi_db import DATABASE_URL_ENV, alembic_config
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CSV = FIXTURES / "acme_feed.csv"
+CLEAN = FIXTURES / "acme_clean.csv"  # every row valid
 MAPPING = FIXTURES / "acme_mapping.json"
 URI = "gs://pi-imports-test/acme/acme_feed.csv"
 
@@ -177,20 +178,24 @@ def test_load_and_idempotent_replay(db: str, tmp_path: Path) -> None:
     assert {t: _count(db, t) for t in counts} == counts
 
 
+def _full_mapping(tmp_path: Path, name: str, **changes: Any) -> Path:
+    config = json.loads(MAPPING.read_text()) | {"complete_catalogue": True} | changes
+    config["source"] = config["source"] | {"name": name}
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps(config))
+    return path
+
+
 def test_complete_catalogue_run_succeeds_and_cli_loads(
     db: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    config = json.loads(MAPPING.read_text()) | {"complete_catalogue": True}
-    config["source"] = config["source"] | {"name": "acme_full_catalogue"}
-    config["url_template"] = None
-    mapping_path = tmp_path / "full.json"
-    mapping_path.write_text(json.dumps(config))
+    mapping_path = _full_mapping(tmp_path, "acme_full_catalogue")
     monkeypatch.setenv(DATABASE_URL_ENV, db)
     report_path = tmp_path / "report.json"
-    assert main([str(CSV), "--mapping", str(mapping_path), "--report", str(report_path)]) == 0
+    assert main([str(CLEAN), "--mapping", str(mapping_path), "--report", str(report_path)]) == 0
     out = json.loads(report_path.read_text())
     assert out["dry_run"] is False
-    assert out["load"]["observations_inserted"] == 5
+    assert (out["load"]["observations_inserted"], out["load"]["rejected"]) == (4, 0)
     [(status, uri)] = _rows(
         db,
         "SELECT r.status, e.storage_uri FROM crawl_run r JOIN evidence e ON e.crawl_run_id = r.id"
@@ -198,14 +203,46 @@ def test_complete_catalogue_run_succeeds_and_cli_loads(
         (out["load"]["crawl_run_id"],),
     )
     assert status == "succeeded"
-    assert uri == CSV.resolve().as_uri()
-    [(url,)] = _rows(
-        db,
-        "SELECT l.url FROM source_listing l JOIN source s ON s.id = l.source_id"
-        " WHERE s.name='acme_full_catalogue' AND l.source_listing_key='AB-1003'",
-    )
-    assert url == f"{uri}#listing_key=AB-1003"  # no url column and no template
+    assert uri == CLEAN.resolve().as_uri()  # evidence storage only; never a listing URL
+    urls = {u for (u,) in _rows(db, "SELECT url FROM source_listing")}
+    assert urls
+    assert all(u.startswith("https://acme-beauty.example/p/") for u in urls)
     assert json.loads(capsys.readouterr().out)["load"]["replay"] is False
+
+
+def test_complete_catalogue_with_a_rejected_row_is_partial(db: str, tmp_path: Path) -> None:
+    mapping = load_mapping(_full_mapping(tmp_path, "acme_full_but_dirty"))
+    out = _load(db, mapping)  # acme_feed.csv: 5 accepted, 6 rejected
+    [(status,)] = _rows(db, "SELECT status FROM crawl_run WHERE id=%s", (out["crawl_run_id"],))
+    assert status == "partial"
+
+
+def test_complete_catalogue_with_no_rows_is_partial(db: str, tmp_path: Path) -> None:
+    empty = tmp_path / "empty.csv"
+    empty.write_text(CLEAN.read_text().splitlines()[0] + "\n")
+    mapping = load_mapping(_full_mapping(tmp_path, "acme_full_but_empty"))
+    out = _load(db, mapping, empty, "gs://pi-imports-test/acme/empty.csv")
+    [(status,)] = _rows(db, "SELECT status FROM crawl_run WHERE id=%s", (out["crawl_run_id"],))
+    assert status == "partial"
+
+
+def test_feed_without_price_columns_records_price_unknown(db: str, tmp_path: Path) -> None:
+    config = json.loads(MAPPING.read_text())
+    config["source"] = config["source"] | {"name": "acme_stock_only"}
+    for col in ("price_current", "price_regular", "price_promo"):
+        config["columns"].pop(col, None)
+    path = tmp_path / "stock_only.json"
+    path.write_text(json.dumps(config))
+    out = _load(db, load_mapping(path), CLEAN, "gs://pi-imports-test/acme/stock_only.csv")
+    states = {
+        fs["price_current"]
+        for (fs,) in _rows(
+            db,
+            "SELECT field_state FROM offer_observation WHERE crawl_run_id=%s",
+            (out["crawl_run_id"],),
+        )
+    }
+    assert states == {"unknown"}
 
 
 def test_url_template_encodes_the_key() -> None:

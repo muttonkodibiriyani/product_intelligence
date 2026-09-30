@@ -40,11 +40,16 @@ def idempotency_key(source: str, file_sha256: str, listing_key: str) -> str:
     return _sha(source, file_sha256, listing_key)
 
 
-def _field_state(row: ImportRow) -> dict[str, str]:
-    """Why each price is null, and how availability was determined (DQ-02, DAT-06)."""
+def _field_state(row: ImportRow, prices_mapped: bool) -> dict[str, str]:
+    """Why each price is null, and how availability was determined (DQ-02, DAT-06).
+
+    A feed with no price column says nothing about price: 'unknown', which the export skips,
+    so a stock-only import never blanks a crawled price. A mapped but blank price is
+    'not_published'.
+    """
     fs: dict[str, str] = {}
     if row.price_current is None:
-        fs["price_current"] = FieldState.NOT_PUBLISHED
+        fs["price_current"] = FieldState.NOT_PUBLISHED if prices_mapped else FieldState.UNKNOWN
     if row.availability_observed:
         fs["availability_state"] = FieldState.OBSERVED
     elif row.availability is AvailabilityState.UNKNOWN:
@@ -131,14 +136,14 @@ class Loader:
 
     # ------------------------------------------------------------ per row
     def _url(self, row: ImportRow) -> str:
-        if row.text.get("url"):
-            return str(row.text["url"])
-        if self.m.url_template is not None:
-            return self.m.url_template.format(  # path-safe: a key may hold "/", "?", "#"
-                listing_key=quote(row.listing_key, safe=""),
-                sku=quote(str(row.text.get("sku") or row.listing_key), safe=""),
-            )
-        return f"{self.uri}#listing_key={row.listing_key}"
+        url = row.text.get("url")  # validation guarantees an http(s) URL or a template
+        if url:
+            return url
+        assert self.m.url_template is not None  # noqa: S101 - enforced by the mapping
+        return self.m.url_template.format(  # path-safe: a key may hold "/", "?", "#"
+            listing_key=quote(row.listing_key, safe=""),
+            sku=quote(str(row.text.get("sku") or row.listing_key), safe=""),
+        )
 
     def _listing(self, row: ImportRow) -> int:
         t = row.text
@@ -222,7 +227,7 @@ class Loader:
                 self.m.currency if any_price else None,
                 row.availability.value,
                 True if low else None,
-                Jsonb(_field_state(row)),
+                Jsonb(_field_state(row, self.m.prices_mapped)),
                 evidence,
             ),
         )
@@ -260,9 +265,14 @@ class Loader:
         }
 
     def _finish(self, run: int, started: datetime) -> None:
-        """An import is 'partial' unless the partner states it is the whole catalogue."""
-        status = "succeeded" if self.m.complete_catalogue else "partial"
+        """'succeeded' only for a declared whole catalogue loaded without a single rejected row.
+
+        The export treats the newest succeeded run as the full baseline, so a rejected row in a
+        'complete' feed would read as a removal; any rejection makes the run 'partial'.
+        """
         r = self.report
+        complete = self.m.complete_catalogue and r.rows > 0 and not r.rejected
+        status = "succeeded" if complete else "partial"
         self.c.execute(
             "UPDATE crawl_run SET finished_at=GREATEST(%s, now()), status=%s, discovered=%s,"
             " fetched=%s, parsed=%s, accepted=%s, quarantined=%s WHERE id=%s",

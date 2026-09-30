@@ -9,6 +9,7 @@ import json
 import re
 from pathlib import Path
 from typing import Literal, Self
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
@@ -139,7 +140,19 @@ class ImportMapping(PiModel):
         ):
             msg = "url_template may only use {listing_key} and {sku}"
             raise ValueError(msg)
+        # Listing URLs are published; a local path or other scheme must never become one.
+        if self.columns.url is None and self.url_template is None:
+            msg = "map columns.url or set url_template (an http(s) listing URL is required)"
+            raise ValueError(msg)
+        if self.url_template is not None and not is_http_url(self.url_template):
+            msg = "url_template must be an http(s) URL"
+            raise ValueError(msg)
         return self
+
+    @property
+    def prices_mapped(self) -> bool:
+        c = self.columns
+        return any(col is not None for col in (c.price_current, c.price_regular, c.price_promo))
 
     def format_for(self, path: Path) -> Format:
         if self.format is not None:
@@ -149,6 +162,11 @@ class ImportMapping(PiModel):
         except KeyError:
             msg = f"cannot tell the format of {path.name}; set 'format' in the mapping"
             raise ValueError(msg) from None
+
+
+def is_http_url(value: str) -> bool:
+    parts = urlsplit(value)
+    return parts.scheme in {"http", "https"} and bool(parts.netloc)
 
 
 def load_mapping(path: Path) -> ImportMapping:

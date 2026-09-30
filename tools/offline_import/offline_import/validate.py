@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from offline_import.mapping import ImportMapping
+from offline_import.mapping import ImportMapping, is_http_url
 from offline_import.readers import NumberedRow, Row, read_rows
 from pi_core import AvailabilityState, is_valid_gtin
 
@@ -200,6 +200,15 @@ class _Validator:
             for f in self.cols
             if f not in {*PRICE_FIELDS, "listing_key", "stock_qty", "availability", "observed_at"}
         }
+        url = text.get("url")
+        if url is not None and not is_http_url(url):
+            if self.m.url_template is None:
+                reasons.append(f"url {url!r} is not an http(s) URL")
+            else:
+                warnings.append(f"url {url!r} is not an http(s) URL; url_template used")
+                text["url"] = None
+        elif url is None and self.m.url_template is None:
+            reasons.append("missing url and no url_template")
         gtin = text.get("gtin")
         if gtin is not None and not is_valid_gtin(gtin):
             warnings.append(f"gtin {gtin!r} is not a valid GTIN; dropped")

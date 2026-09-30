@@ -44,10 +44,10 @@ def _method_rung_check(mapping: dict[str, int]) -> str:
 
 
 def _replace_check(drop: str, add: str, mapping: dict[str, int]) -> None:
+    # One transaction: DROP takes ACCESS EXCLUSIVE on evidence until commit, so the ADD's scan of
+    # existing rows runs under that lock too (evidence is small; the pause is brief).
     op.execute(f"ALTER TABLE evidence DROP CONSTRAINT {drop}")
-    # NOT VALID + VALIDATE: the scan of existing rows runs under a weaker lock than ADD.
-    op.execute(f"ALTER TABLE evidence ADD CONSTRAINT {add} {_method_rung_check(mapping)} NOT VALID")
-    op.execute(f"ALTER TABLE evidence VALIDATE CONSTRAINT {add}")
+    op.execute(f"ALTER TABLE evidence ADD CONSTRAINT {add} {_method_rung_check(mapping)}")
 
 
 def upgrade() -> None:

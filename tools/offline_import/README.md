@@ -24,7 +24,7 @@ python -m offline_import <file> --mapping <mapping.json> [--uri gs://bucket/arch
 |---|---|
 | `source` | found by `source.name` or created (kind `offline` by default) |
 | `source_context` | found by country, locale and channel, or created (rung 0, `partial`) |
-| `crawl_run` | one per import, rung 0. Status is `partial`, or `succeeded` only with `complete_catalogue: true` |
+| `crawl_run` | one per import, rung 0. Status is `partial`, or `succeeded` only with `complete_catalogue: true`, at least one row and no rejected row |
 | `evidence` | one for the file: `content_hash` = the file's sha256, `fetch_method` = `offline_import` (rung 0) |
 | `source_listing` | one per `listing_key` (the feed's SKU or variant key), upserted |
 | `listing_content` | one per row. `labels` holds brand, size, shade, gtin, product_name, sku, image_url, stock_qty and import provenance |
@@ -33,7 +33,8 @@ python -m offline_import <file> --mapping <mapping.json> [--uri gs://bucket/arch
 ## Rules
 
 - **Missing is data.** A blank price is NULL with `field_state.price_current = not_published`,
-  never 0. A price of 0 or below is rejected.
+  never 0. A feed with no price column at all records `unknown` instead, so a stock-only import
+  never blanks a crawled price in the export. A price of 0 or below is rejected.
 - **Absence is not removal.** A listing missing from a feed gets no row, and the run stays
   `partial` unless the partner states the feed is the whole catalogue.
 - **Availability** comes only from `availability_map`, which maps a feed value to a state and
@@ -73,7 +74,8 @@ The fixture `tests/fixtures/acme_mapping.json` shows every option. Extra keys ar
 - Readers: `format` (default: from the file suffix), `csv.delimiter`, `csv.encoding`,
   `json_items_path` (e.g. `data.items`), `xlsx_sheet`, `decimal_separator` (`.` or `,`).
 - `availability_map` (case-insensitive) and `url_template` (`{listing_key}`, `{sku}`). With no
-  url column and no template, the URL is `<file uri>#listing_key=<key>`.
+  Every listing needs an http(s) URL, from the url column or the template; the mapping is
+  refused without either, and a row with a non-http(s) URL and no template is rejected.
 
 YAML mappings need PyYAML, which is not a workspace dependency; JSON always works. XLSX is read
 with the standard library and defusedxml (openpyxl is not installed). Only cell values are read:

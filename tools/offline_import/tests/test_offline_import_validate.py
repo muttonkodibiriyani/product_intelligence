@@ -33,7 +33,7 @@ def _json_mapping() -> ImportMapping:
             observed_at=None,
             json_items_path="data.items",
             decimal_separator=",",
-            url_template=None,
+            url_template="https://acme-beauty.example/p/{listing_key}",
             columns={
                 "listing_key": "variant_id",
                 "name": "name",
@@ -74,6 +74,8 @@ def test_fixture_mapping_loads() -> None:
         ({"availability_map": {}}, "needs an availability_map"),
         ({"availability_map": {"gone": "removed"}}, "cannot assert"),
         ({"url_template": "https://x.example/{name}"}, "url_template may only use"),
+        ({"url_template": None}, "an http\\(s\\) listing URL is required"),
+        ({"url_template": "file:///feeds/{listing_key}"}, "url_template must be an http"),
     ],
 )
 def test_mapping_rejects(overrides: dict[str, Any], message: str) -> None:
@@ -285,3 +287,22 @@ def test_cli_reports_unusable_input(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert main([str(CSV), "--mapping", str(bad), "--dry-run"]) == 2
     assert "Extra inputs are not permitted" in capsys.readouterr().err
     assert main([str(tmp_path / "missing.csv"), "--mapping", str(MAPPING), "--dry-run"]) == 2
+
+
+def test_listing_urls_must_be_http() -> None:
+    at = "2026-09-20T10:00:00Z"
+    rows: list[tuple[int, dict[str, object]]] = [
+        (1, {"variant_id": "U1", "url": "file:///home/x/feed.json", "updated_at": at}),
+        (2, {"variant_id": "U2", "url": "https://acme-beauty.example/p/U2", "updated_at": at}),
+    ]
+    templated = Report(file="mem", sha256="0" * 64, format="json")
+    validate_rows(rows, _json_mapping(), templated)
+    assert [r.text["url"] for r in templated.accepted] == [None, "https://acme-beauty.example/p/U2"]
+    assert any("not an http(s) URL; url_template used" in w.message for w in templated.warnings)
+
+    no_template = _json_mapping().model_copy(update={"url_template": None})
+    strict = Report(file="mem", sha256="0" * 64, format="json")
+    validate_rows(rows, no_template, strict)
+    assert {r.row: r.reasons for r in strict.rejected} == {
+        1: ["url 'file:///home/x/feed.json' is not an http(s) URL"]
+    }
