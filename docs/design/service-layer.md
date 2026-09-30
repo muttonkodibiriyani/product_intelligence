@@ -323,8 +323,10 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 - **`/v1/availability`:** `retailer[]`, `brand`, `category`, `date` (default: the latest).
   Returns, per retailer, a count for **every** blueprint state (`pi_core.AvailabilityState`):
   `inStock`, `lowStock`, `outOfStock`, `notDeliverable`, `removed`, `notObserved`, `blocked`,
-  `unknown`. Shares use only the observed states (`AvailabilityState.is_known`) as the
-  denominator, and the response states that denominator.
+  `unknown`. Shares use only the observed stock states (`AvailabilityState.is_known`: in, low
+  and out of stock) as the denominator, and the response states that denominator.
+  `notDeliverable` and `removed` are counted and reported, but **outside** the share denominator,
+  like the unobserved states.
   - `notObserved`, `blocked` and `unknown` are never folded into out-of-stock or removed.
   - `removed` is reported only when the retailer's crawl for that date was **complete**
     (`status = supported`, no `notObserved` window covering the date and category). After a
