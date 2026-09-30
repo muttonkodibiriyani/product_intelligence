@@ -372,8 +372,8 @@ client.
 1. **Money** is Decimal throughout, and rounds once at the edge (§5).
 2. **Counted pairs.** Price gaps and indexes count a pair only if **all** of these hold:
    - `matchClass = exact`;
-   - `reviewState ∈ {approved, locked}` (both are human-confirmed; `locked` is also frozen
-     against re-matching);
+   - `reviewState ∈ {approved, locked}` (`approved` is decided by a human or by auto-accept,
+     §8.3; `locked` is human-confirmed and also frozen against re-matching);
    - the same normalised size;
    - both sides priced;
    - neither side `early` (recon samples);
@@ -394,6 +394,11 @@ client.
 4. **Cohorts.** Summary statistics (median and mean gap, index points, promo share) need n ≥ 5.
    - Below that → `cohort_too_small`, and the rows are still returned.
    - If n is 0 because no candidate pair was reviewed → `matches_unreviewed`.
+   - If n is 0 and no product offered by both sides has an edge between them → `no_match`.
+     Pairs are never inferred through a third retailer.
+   - `groupBy=brand|category` (compare) applies the rule **per group**; `category` groups by the
+     top-level category slug. The overall summary and the groups always cover every row, never
+     one page of rows.
 5. **Gap convention.** `gapAmount = other − base`, `gapPct = (other − base) / base × 100`,
    `cheaper ∈ {base, other, equal}`. A positive gap means **other is dearer** than base. Every
    gap-bearing response carries `cheaper` explicitly on each row and a `convention` string, and
@@ -407,6 +412,10 @@ client.
    A single date gives one point and `trendAvailable: false`. There is no extrapolation.
 7. **Markets are data.** Currency and exponents come from `pi_core`, and retailers from the
    dataset. There are no literals.
+8. **Compare sides.** `data.sides.{base,other}` gives each retailer's `status` (with `reason`
+   `retailer_blocked` / `retailer_partial`), `observed` (collected, non-early offers priced on
+   the date), `counted` (the same n on both sides) and `onlyHere` (offered here and not at the
+   other side), so a client can say which side is short without recomputing anything.
 
 Every metric function takes typed inputs and returns `(value | NotEnoughData, cohort, caveats)`,
 so the envelope is assembled mechanically. `metricVersion` changes whenever a definition changes,
