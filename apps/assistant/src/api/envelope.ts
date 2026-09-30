@@ -25,7 +25,7 @@ const identifier = z.string().regex(/^[A-Za-z0-9_.:-]{1,200}$/);
 
 export const EvidenceSchema = z.object({
   productId: identifier,
-  retailer: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
+  retailer: z.string().regex(/^[a-z][a-z0-9_]{1,62}$/),
   url: z.string().nullable(),
   capturedAt: z.string().datetime({ offset: true }),
   runId: identifier.optional(),
@@ -41,7 +41,7 @@ export const EnvelopeSchema = z
     detail: bilingual.optional(),
     cohort: z.object({ description: z.string().max(500), n: z.number().int().nonnegative() }),
     caveats: z.array(bilingual).max(20),
-    evidence: z.array(EvidenceSchema).max(50),
+    evidence: z.array(EvidenceSchema).max(20),
     meta: z.object({
       generation: identifier,
       cutoff: z.string().datetime({ offset: true }),
