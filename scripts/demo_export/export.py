@@ -165,15 +165,26 @@ WITH scoped_runs AS (
 -- The baseline is the newest SUCCEEDED run per context: a running, failed or partial refresh
 -- must never hide it (that would publish false removals).
 current_runs AS (
-  SELECT DISTINCT ON (source_context_id) id, source_context_id
+  SELECT DISTINCT ON (source_context_id) id, source_context_id, started_at
   FROM scoped_runs
   WHERE status = 'succeeded'
   ORDER BY source_context_id, started_at DESC, id DESC
 ),
+-- Incremental refreshes are partial runs by design. Rows of partial runs started after the
+-- baseline are read too, so their newer prices and stock states reach the export. Absence
+-- never does: a listing a partial run did not see keeps its baseline row, and only an
+-- explicit observation (e.g. availability 'removed' from a page check) changes it. Failed and
+-- aborted runs (integrity unknown) and running ones (a half-loaded pass) are left out; a
+-- running run counts once --finish closes it as partial.
 -- Contexts with no succeeded run yet fall back to the latest observation per listing across
 -- all of their runs.
 eligible_runs AS (
   SELECT id FROM current_runs
+  UNION ALL
+  SELECT r.id
+  FROM scoped_runs r
+  JOIN current_runs c ON c.source_context_id = r.source_context_id
+  WHERE r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
@@ -220,13 +231,17 @@ latest_any AS (
 latest_price AS (
   SELECT DISTINCT ON (source_listing_id) *
   FROM obs
-  WHERE (field_state ->> 'price_current') IS DISTINCT FROM 'unknown'
+  -- Not a price observation: field_state price_current unknown, blocked or parse_failure.
+  -- not_published, restricted and not_applicable are observations and do win.
+  WHERE COALESCE(field_state ->> 'price_current', '') NOT IN ('unknown', 'blocked', 'parse_failure')
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
 latest_stock AS (
   SELECT DISTINCT ON (source_listing_id) source_listing_id, availability_state
   FROM obs
-  WHERE availability_state <> 'not_observed'
+  -- Not a stock observation: availability not_observed, unknown or blocked; never replaces a
+  -- known state.
+  WHERE availability_state NOT IN ('not_observed', 'unknown', 'blocked')
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
 latest AS (
