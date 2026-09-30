@@ -116,3 +116,53 @@ cart/checkout, polite pacing, and every escalation audit-logged.
      - **Pacing:** at most 1 req/s with jitter and off-peak, enforced per host in the
        `pi_fetch` rate limiter.
 4. **Ulta ME mobile app study** (`com.ub.mena`): on hold until the owner says go.
+
+## Amendment 2 (2026-09-30 UTC): owner approves rung 5 for ulta.ae
+The owner has answered the ulta.ae Proxy Decision Report: he bought a UAE residential proxy
+(IPRoyal, AE exit) and approved rung 5 for **ulta.ae only**. This supersedes the 48 h cool-off.
+Rung 5 is the rung-2 browser (Amendment 1: pinned stock WebKit, no stealth) sending its traffic
+through the proxy. It does not add any new client technique. Conditions:
+
+1. **Scope:** ulta.ae only. Sephora and every other source stay without a proxy. The proxy is
+   enabled per source in configuration and recorded as `FetchMethod.residential_proxy` (rung 5),
+   with the engine, device profile and egress in the evidence metadata.
+2. **Same page and robots transport:** `robots.txt` is fetched through the same pinned engine and
+   the same proxy egress as the pages. The fail-closed status matrix applies, and HTML or a challenge served with a 2xx
+   means unreadable, which refuses the host. There is no fallback to another transport, engine or egress.
+3. **Stop at the first challenge:** a challenge is classified by the response body and markers
+   (for example, a Cloudflare "Just a moment..." or managed-challenge page), **not** by the status code.
+   Any challenge (whether served as 403, 429 or 503), and any 401 or 403, stops the whole run and
+   marks ulta.ae blocked. There is no solving, no retry and no switch of engine, user agent or egress.
+   Only a plain 429 without challenge markers backs off per host. **Two consecutive 429s stop the
+   run.** If the ~20-page test is challenged, Ulta stays blocked and no further proxy spend is made.
+4. **Sequence and volume:** a ~20-page test first. Then, if the test is clean, **one** full-catalogue snapshot, stored permanently.
+   There is no recurring Ulta crawl (on-demand cadence, blueprint §6.4). The pace is at most 1 page per 5–10 s, off-peak.
+5. **Minimal proxy traffic:** heavy assets (images, media, fonts, third-party trackers) are
+   blocked in the proxied browser, and images are fetched directly from the CDN, not through the proxy.
+   A per-run proxy byte counter is recorded in the run manifest. The **hard stop at 1.8 GB** (the balance is 2 GB bought at $6.25/GB; 0.2 GB is kept for a re-test; more only if the
+   owner approves more) is **enforced inside `pi_fetch`**: a request that would cross the cap is not sent,
+   and the run aborts. The proxy configuration is **refused for any source other than ulta.ae**.
+   Both are covered by tests.
+   Direct image fetches obey the image CDN's own `robots.txt` and have their own per-host pacing.
+6. **Credentials:** they are read at runtime from Secret Manager
+   (`pi-proxy-iproyal-ae`, latest version). They are never printed, logged, committed or put in
+   fixtures, and they are redacted in reprs, audit events and exceptions. The secret must be rotatable
+   without code changes. The password was briefly visible in the owner chat, so it should be
+   rotated **before first use**; the coordinator has asked the owner to do this. If it is not
+   rotated before first use, this is recorded as an owner-accepted risk and it is rotated after the demo.
+7. **Unchanged:** logins, cookie reuse, checkout, stealth (rung 3), TLS impersonation and
+   challenge solving remain prohibited. Classifier refusals are never routed around.
+
+**Recorded concern (Reviewer, owner-accepted risk):** using a residential proxy while the site's
+WAF is actively challenging our other egresses sits uneasily with "not permission to bypass
+access controls". The owner accepted this risk with the stop-at-first-challenge condition above.
+**Legal/ToS review waived by the owner:** the cadence decision (2026-09-30, blueprint §6.4) makes a
+legal/ToS review a precondition for rung 5. The owner's explicit instruction to build and crawl
+ulta.ae now waives that precondition for this snapshot. The review by counsel remains an open item
+for the owner, and it is required before any further Ulta refresh.
+
+**Vendor note:** residential proxy exits are other people's connections. We rely on IPRoyal's stated
+consent-based pool, which we have not verified independently.
+
+**Proxy Decision Report (#19):** superseded by this amendment. It is closed as answered, with the
+owner's decision recorded here.
