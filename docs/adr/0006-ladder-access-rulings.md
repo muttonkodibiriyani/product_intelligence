@@ -86,4 +86,17 @@ cart/checkout, polite pacing, and every escalation audit-logged.
    - **Guardrail:** B is allowed only while ulta.ae itself is reachable by our browser. If
      ulta.ae blocks us, collection does not quietly switch to Algolia-only. It pauses and is
      reported, and the owner decides.
+   - **Enforcement (review gates for any Algolia-route PR):**
+     - **Key hygiene:** the key is redacted everywhere: stored request URLs, headers,
+       `x-algolia-api-key` query parameters, captured JSON, logs, exceptions and fixtures. A
+       test asserts that a recorded request never contains the key.
+     - **Provenance:** recorded as `site_api` (rung 0). No new `FetchMethod` value. The
+       evidence request URL must show the Algolia host.
+     - **Mechanical guardrail:** `pi_fetch` refuses the Algolia route for a source context
+       that is blocked or paused, and emits a report or event instead of falling back.
+       Tested: ulta.ae blocked ⇒ Algolia request refused.
+     - **Read-only:** only the query endpoint paths and methods are allowlisted. Settings,
+       keys, batch and other paths are rejected.
+     - **Pacing:** at most 1 req/s with jitter and off-peak, enforced per host in the
+       `pi_fetch` rate limiter.
 4. **Ulta ME mobile app study** (`com.ub.mena`): on hold until the owner says go.
