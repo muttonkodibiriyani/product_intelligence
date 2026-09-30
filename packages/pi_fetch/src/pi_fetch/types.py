@@ -186,6 +186,7 @@ class FetchResult(PiModel):
         if self.browser is not None and self.ladder_rung_used not in {
             LadderRung.BROWSER,
             LadderRung.EGRESS_VARIATION,
+            LadderRung.PAID_PROXY,  # the residential proxy carries the pinned browser
         }:
             msg = "only a browser fetch has a browser profile"
             raise ValueError(msg)
