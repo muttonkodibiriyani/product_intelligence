@@ -32,6 +32,41 @@ def test_test_data_is_refused_unless_allowed() -> None:
     assert load_dataset(_text(test=False)).meta.test is False
 
 
+def _patched(path: tuple[str | int, ...], value: Any) -> str:
+    doc = ae_pilot().model_dump(mode="json")
+    target: Any = doc
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    return json.dumps(doc, ensure_ascii=False)
+
+
+_OFFER = ("products", 0, "offers", "example_north_ae")
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ((*_OFFER, "series", "price", 0, "minor"), "12900"),
+        ((*_OFFER, "rating", "count"), "12"),
+        ((*_OFFER, "shadeCount"), False),
+        ((*_OFFER, "early"), 0),
+        ((*_OFFER, "early"), "false"),
+        (("meta", "capabilities", "history"), "true"),
+    ],
+)
+def test_load_does_not_coerce(path: tuple[str | int, ...], value: Any) -> None:
+    with pytest.raises(DatasetError):
+        load_dataset(_patched(path, value), allow_test=True)
+
+
+@pytest.mark.parametrize("value", ["false", 0, None])
+def test_test_flag_must_be_a_real_boolean(value: Any) -> None:
+    # "false" must not load as meta.test = False and slip past allow_test.
+    with pytest.raises(DatasetError):
+        load_dataset(_patched(("meta", "test"), value))
+
+
 @pytest.mark.parametrize("number", ["129.5", "1e3", "NaN", "Infinity"])
 def test_json_floats_are_refused(number: str) -> None:
     text = _text(test=False).replace('"shadeCount": 0', f'"shadeCount": {number}', 1)

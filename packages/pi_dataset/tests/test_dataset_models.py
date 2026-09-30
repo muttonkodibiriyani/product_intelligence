@@ -108,6 +108,8 @@ def test_locked_stays_locked_on_the_wire() -> None:
         ({"review_state": ReviewState.PROPOSED}, "decided_by"),
         ({"decided_by": None}, "decided_by"),
         ({"confidence": "1.5"}, "outside 0..1"),
+        ({"confidence": "-0.5"}, "pattern"),
+        ({"review_state": ReviewState.LOCKED, "decided_by": DecidedBy.AUTO}, "locked edge"),
         ({"review_state": "accepted"}, "review_state"),
         ({"review_state": "auto_accepted"}, "review_state"),
     ],
@@ -219,6 +221,31 @@ def test_dates_rules(dates: list[str], message: str) -> None:
     assert message in _errors(doc)
 
 
+def test_dates_are_local_to_each_market() -> None:
+    # 2026-09-30T00:00Z is still the 29th in New York, so a date of the 30th is in the future.
+    doc = _doc()
+    doc["meta"]["markets"][0]["timeZone"] = "America/New_York"
+    assert "after the cutoff's local date 2026-09-29 in AE (America/New_York)" in _errors(doc)
+
+
+@pytest.mark.parametrize("amount", [("0.00", 0), ("-1.00", -100)])
+def test_prices_must_be_positive(amount: tuple[str, int]) -> None:
+    doc = _doc()
+    for field in ("price", "regular"):
+        doc["products"][0]["offers"]["example_north_ae"]["series"][field][0] = {
+            "amount": amount[0],
+            "minor": amount[1],
+            "currency": "AED",
+        }
+    assert "prices must be positive" in _errors(doc)
+
+
+def test_availability_uses_null_for_not_observed() -> None:
+    doc = _doc()
+    doc["products"][0]["offers"]["example_north_ae"]["series"]["availability"][0] = "not_observed"
+    assert "use null" in _errors(doc)
+
+
 def test_generated_before_cutoff_is_rejected() -> None:
     doc = _doc()
     doc["meta"]["generatedAt"] = "2026-09-29T23:00:00Z"
@@ -262,6 +289,11 @@ def test_not_observed_window_must_be_ordered() -> None:
         (("schema",), "pi.dataset/v1", "pi.dataset/v2"),
         (("meta", "retailers", 0, "status"), "ok", "status"),
         (("products", 0, "brand"), "  ", "pattern"),
+        (("products", 0, "offers", "example_north_ae", "size", "value"), "0", "must be positive"),
+        (("products", 0, "offers", "example_north_ae", "size", "value"), "-50", "pattern"),
+        (("products", 0, "offers", "example_north_ae", "rating", "average"), "-1", "pattern"),
+        (("products", 0, "offers", "example_north_ae", "rating", "average"), "5.5", "above"),
+        (("products", 0, "offers", "example_north_ae", "rating", "scale"), "0", "scale 0"),
     ],
 )
 def test_field_rules(path: tuple[str | int, ...], value: str, message: str) -> None:

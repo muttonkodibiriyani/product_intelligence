@@ -98,6 +98,7 @@
           "shadeCount": 0,
           "rating": {
             "average": "4.25",
+            "scale": "5",
             "count": 12
           },
           "early": false,
@@ -160,6 +161,7 @@
           "shadeCount": 0,
           "rating": {
             "average": "4.25",
+            "scale": "5",
             "count": 12
           },
           "early": false,
@@ -229,6 +231,7 @@
           "shadeCount": 0,
           "rating": {
             "average": "4.25",
+            "scale": "5",
             "count": 12
           },
           "early": false,
@@ -275,6 +278,7 @@
           "shadeCount": 0,
           "rating": {
             "average": "4.25",
+            "scale": "5",
             "count": 12
           },
           "early": true,
@@ -341,6 +345,7 @@
           "shadeCount": 0,
           "rating": {
             "average": "4.25",
+            "scale": "5",
             "count": 12
           },
           "early": false,

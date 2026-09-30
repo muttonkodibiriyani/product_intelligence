@@ -85,7 +85,7 @@ def _offer(  # noqa: PLR0913 -- keyword-only fixture builder
         url=None,
         size=Size(value=size[0], unit=size[1]),
         shade_count=0,
-        rating=Rating(average="4.25", count=12),
+        rating=Rating(average="4.25", scale="5", count=12),
         early=early,
         series=Series(
             price=_money(prices, currency),

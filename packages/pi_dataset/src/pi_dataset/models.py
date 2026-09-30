@@ -17,6 +17,7 @@ Rules in short:
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
@@ -51,6 +52,8 @@ SCHEMA_ID = "pi.dataset/v2"
 #: A decimal number as text: consumers never see a JSON float.
 DECIMAL_TEXT = r"^-?\d+(\.\d+)?$"
 DecimalText = Annotated[str, StringConstraints(pattern=DECIMAL_TEXT)]
+#: A non-negative decimal number as text (sizes, ratings, confidences).
+UnsignedDecimalText = Annotated[str, StringConstraints(pattern=r"^\d+(\.\d+)?$")]
 #: A source register key (ADR-0007 §2), e.g. ``sephora_me``.
 SourceKey = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{1,62}$")]
 #: A scope: a ComparisonSet id or a vertical/category slice, used as a storage path segment.
@@ -188,7 +191,10 @@ class Meta(ContractModel):
     vertical: SourceKey
     markets: Annotated[tuple[MarketInfo, ...], Field(min_length=1)]
     retailers: Annotated[tuple[Retailer, ...], Field(min_length=1)]
-    #: Observation dates; every series has exactly one entry per date.
+    #: Observation dates: calendar dates in each market's ``timeZone`` (a run on the evening of
+    #: the 30th in Dubai is the 30th, even though it is the 30th in UTC too only by luck). Every
+    #: series has exactly one entry per date. The last date is on or before the cutoff's local
+    #: date in every market.
     dates: Annotated[tuple[date, ...], Field(min_length=1)]
     match_stage: NonEmptyStr
     capabilities: Capabilities
@@ -199,13 +205,39 @@ class Meta(ContractModel):
 
 
 class Size(ContractModel):
-    value: DecimalText
+    """The pack size as published, e.g. ``{"value": "50", "unit": "ml"}``. Never converted."""
+
+    value: UnsignedDecimalText
     unit: NonEmptyStr
+
+    @model_validator(mode="after")
+    def _check_positive(self) -> Self:
+        if Decimal(self.value) <= 0:
+            msg = f"size {self.value} {self.unit} must be positive"
+            raise ValueError(msg)
+        return self
 
 
 class Rating(ContractModel):
-    average: DecimalText
+    """The retailer's published rating on its own ``scale`` (e.g. ``"5"`` for 0-5 stars).
+
+    The producer never rescales; consumers compare ratings only on the same scale or after
+    normalising ``average / scale`` themselves.
+    """
+
+    average: UnsignedDecimalText
+    scale: UnsignedDecimalText
     count: Annotated[int, Field(ge=0)]
+
+    @model_validator(mode="after")
+    def _check_scale(self) -> Self:
+        if Decimal(self.scale) <= 0:
+            msg = f"rating scale {self.scale} must be positive"
+            raise ValueError(msg)
+        if Decimal(self.average) > Decimal(self.scale):
+            msg = f"rating average {self.average} is above its scale {self.scale}"
+            raise ValueError(msg)
+        return self
 
 
 class Series(ContractModel):
@@ -214,11 +246,27 @@ class Series(ContractModel):
     ``price`` is the selling price observed; ``regular`` is the retailer's stated regular (was)
     price. There is no promo series: promotion depth is derived from the two by the metric layer,
     so the contract carries only what was observed.
+
+    Every price is positive (a zero or negative "price" is a parse failure, recorded in
+    ``meta.fields``, never a value). ``availability`` uses ``null`` for "not observed that day",
+    like the money series; the ``not_observed`` state is therefore not allowed in a series, so
+    there is one spelling.
     """
 
     price: tuple[MoneyValue | None, ...]
     regular: tuple[MoneyValue | None, ...] | None = None
     availability: tuple[AvailabilityState | None, ...] | None = None
+
+    @model_validator(mode="after")
+    def _check_values(self) -> Self:
+        bad = sorted({m.amount for m in self.money() if m.decimal() <= 0})
+        if bad:
+            msg = f"prices must be positive, got {bad}"
+            raise ValueError(msg)
+        if self.availability is not None and AvailabilityState.NOT_OBSERVED in self.availability:
+            msg = "availability: use null, not 'not_observed', for a day without an observation"
+            raise ValueError(msg)
+        return self
 
     def lengths(self) -> dict[str, int]:
         found = {"price": len(self.price)}
@@ -271,17 +319,28 @@ class DecidedBy(StrEnum):
 
 
 class MatchEdge(ContractModel):
-    """One edge between two retailers' offers of a product; retailer ids in canonical order."""
+    """One edge between two retailers' offers of a product; retailer ids in canonical order.
+
+    An edge is the only evidence that two offers are the same item. Grouping offers under one
+    ``Product`` is a presentation choice, **not** an identity claim: a pair is comparable only
+    through its own edge, and nothing is inferred transitively (an exact a-b edge and an exact
+    b-c edge say nothing about a-c; blueprint §8, "no transitive exact identity").
+
+    Producer mapping from ``pi_db.match_edge``: ``review_state`` verbatim; ``decidedBy`` is
+    ``null`` for ``proposed``, ``human`` when ``reviewer`` is set, and ``auto`` when it is not
+    (the auto-accept / hard-constraint reject policy of ``algo_version``). Reviewer identities
+    are never published (SEC-06). ``confidence`` is ``score``.
+    """
 
     a: SourceKey
     b: SourceKey
     match_class: MatchClass
-    #: The database state verbatim. Counted comparisons use ``approved`` and ``locked`` (both
-    #: human-confirmed; ``locked`` is also frozen). They stay distinct here: ``locked`` is never
-    #: rewritten as ``approved``. ``proposed`` and ``rejected`` are never counted.
+    #: The database state verbatim, so ``locked`` is never rewritten as ``approved``. Which states
+    #: count is the metric layer's rule (service-layer design §7.2: ``approved``, whether by a
+    #: human or the auto-accept policy of blueprint §8.3, and ``locked``, which only a human sets).
     review_state: ReviewState
     decided_by: DecidedBy | None
-    confidence: DecimalText | None
+    confidence: UnsignedDecimalText | None
     method: NonEmptyStr
     stage: NonEmptyStr
 
@@ -294,7 +353,10 @@ class MatchEdge(ContractModel):
         if undecided != (self.decided_by is None):
             msg = "decided_by is required exactly when review_state is not proposed"
             raise ValueError(msg)
-        if self.confidence is not None and not Decimal(0) <= Decimal(self.confidence) <= 1:
+        if self.review_state is ReviewState.LOCKED and self.decided_by is not DecidedBy.HUMAN:
+            msg = "a locked edge is decided by a human"
+            raise ValueError(msg)
+        if self.confidence is not None and Decimal(self.confidence) > 1:
             msg = f"confidence {self.confidence} is outside 0..1"
             raise ValueError(msg)
         return self
@@ -308,6 +370,7 @@ class Product(ContractModel):
     category: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
     unit: NonEmptyStr | None
     offers: Annotated[dict[SourceKey, Offer], Field(min_length=1)]
+    #: Edges between this product's offers. Grouping is not identity: see ``MatchEdge``.
     matches: tuple[MatchEdge, ...] = ()
     shades: tuple[NonEmptyStr, ...] = ()
     #: Vertical attributes, validated against the vertical profile (ADR-0007 §4).
@@ -364,7 +427,7 @@ class Dataset(ContractModel):
 
 
 def _duplicates(values: list[str]) -> list[str]:
-    return sorted({v for v in values if values.count(v) > 1})
+    return sorted(v for v, n in Counter(values).items() if n > 1)
 
 
 def _reference_errors(ds: Dataset) -> list[str]:
@@ -397,8 +460,13 @@ def _meta_errors(meta: Meta) -> list[str]:
     ]
     if list(meta.dates) != sorted(set(meta.dates)):
         errors.append("meta.dates must be strictly increasing")
-    if meta.dates[-1] > meta.cutoff.date():
-        errors.append(f"meta.dates: {meta.dates[-1]} is after the cutoff {meta.cutoff.date()}")
+    for market in meta.markets:
+        local_cutoff = meta.cutoff.astimezone(ZoneInfo(market.time_zone)).date()
+        if meta.dates[-1] > local_cutoff:
+            errors.append(
+                f"meta.dates: {meta.dates[-1]} is after the cutoff's local date {local_cutoff} "
+                f"in {market.country} ({market.time_zone})"
+            )
     if meta.generated_at < meta.cutoff:
         errors.append("meta.generatedAt is before meta.cutoff")
     return errors

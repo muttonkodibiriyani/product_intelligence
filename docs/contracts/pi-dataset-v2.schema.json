@@ -172,7 +172,7 @@
     },
     "MatchEdge": {
       "additionalProperties": false,
-      "description": "One edge between two retailers' offers of a product; retailer ids in canonical order.",
+      "description": "One edge between two retailers' offers of a product; retailer ids in canonical order.\n\nAn edge is the only evidence that two offers are the same item. Grouping offers under one\n``Product`` is a presentation choice, **not** an identity claim: a pair is comparable only\nthrough its own edge, and nothing is inferred transitively (an exact a-b edge and an exact\nb-c edge say nothing about a-c; blueprint §8, \"no transitive exact identity\").\n\nProducer mapping from ``pi_db.match_edge``: ``review_state`` verbatim; ``decidedBy`` is\n``null`` for ``proposed``, ``human`` when ``reviewer`` is set, and ``auto`` when it is not\n(the auto-accept / hard-constraint reject policy of ``algo_version``). Reviewer identities\nare never published (SEC-06). ``confidence`` is ``score``.",
       "properties": {
         "a": {
           "pattern": "^[a-z][a-z0-9_]{1,62}$",
@@ -187,7 +187,7 @@
         "confidence": {
           "anyOf": [
             {
-              "pattern": "^-?\\d+(\\.\\d+)?$",
+              "pattern": "^\\d+(\\.\\d+)?$",
               "type": "string"
             },
             {
@@ -647,9 +647,10 @@
     },
     "Rating": {
       "additionalProperties": false,
+      "description": "The retailer's published rating on its own ``scale`` (e.g. ``\"5\"`` for 0-5 stars).\n\nThe producer never rescales; consumers compare ratings only on the same scale or after\nnormalising ``average / scale`` themselves.",
       "properties": {
         "average": {
-          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "pattern": "^\\d+(\\.\\d+)?$",
           "title": "Average",
           "type": "string"
         },
@@ -657,10 +658,16 @@
           "minimum": 0,
           "title": "Count",
           "type": "integer"
+        },
+        "scale": {
+          "pattern": "^\\d+(\\.\\d+)?$",
+          "title": "Scale",
+          "type": "string"
         }
       },
       "required": [
         "average",
+        "scale",
         "count"
       ],
       "title": "Rating",
@@ -771,7 +778,7 @@
     },
     "Series": {
       "additionalProperties": false,
-      "description": "One entry per ``meta.dates``; ``null`` means not observed that day, never zero.\n\n``price`` is the selling price observed; ``regular`` is the retailer's stated regular (was)\nprice. There is no promo series: promotion depth is derived from the two by the metric layer,\nso the contract carries only what was observed.",
+      "description": "One entry per ``meta.dates``; ``null`` means not observed that day, never zero.\n\n``price`` is the selling price observed; ``regular`` is the retailer's stated regular (was)\nprice. There is no promo series: promotion depth is derived from the two by the metric layer,\nso the contract carries only what was observed.\n\nEvery price is positive (a zero or negative \"price\" is a parse failure, recorded in\n``meta.fields``, never a value). ``availability`` uses ``null`` for \"not observed that day\",\nlike the money series; the ``not_observed`` state is therefore not allowed in a series, so\nthere is one spelling.",
       "properties": {
         "availability": {
           "anyOf": [
@@ -840,6 +847,7 @@
     },
     "Size": {
       "additionalProperties": false,
+      "description": "The pack size as published, e.g. ``{\"value\": \"50\", \"unit\": \"ml\"}``. Never converted.",
       "properties": {
         "unit": {
           "pattern": "\\S",
@@ -847,7 +855,7 @@
           "type": "string"
         },
         "value": {
-          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "pattern": "^\\d+(\\.\\d+)?$",
           "title": "Value",
           "type": "string"
         }

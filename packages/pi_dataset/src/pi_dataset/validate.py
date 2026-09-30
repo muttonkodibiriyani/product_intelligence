@@ -17,7 +17,9 @@ from pi_dataset.models import SCHEMA_ID, Dataset
 
 SCHEMA_URI = "https://github.com/muttonkodibiriyani/product_intelligence/docs/contracts/pi-dataset-v2.schema.json"
 
-#: Never publish third-party credentials (the same patterns as ``publish_dataset``, #23).
+#: Never publish third-party credentials (the same patterns as ``publish_dataset``, #23). The scan
+#: covers the whole document, scraped text included, and fails closed: a false positive in a
+#: product name blocks publication until the producer is fixed, which is the intended trade-off.
 FORBIDDEN = (
     re.compile(r"x-algolia-(api-key|application-id)", re.IGNORECASE),
     re.compile(r"algolia[^\"]{0,40}\"\s*:\s*\"[A-Za-z0-9]{10,}\"", re.IGNORECASE),
@@ -53,7 +55,8 @@ def load_dataset(raw: bytes | str, *, allow_test: bool = False) -> Dataset:
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA_ID:
         raise DatasetError([f"schema must be {SCHEMA_ID!r}"])
     try:
-        dataset = Dataset.model_validate(doc)
+        # Strict: no coercion, so "false", "12900" or 0 never stand in for false, 12900 or false.
+        dataset = Dataset.model_validate_json(text, strict=True)
     except ValidationError as exc:
         raise DatasetError(
             [f"{'.'.join(str(p) for p in e['loc']) or '<root>'}: {e['msg']}" for e in exc.errors()]
