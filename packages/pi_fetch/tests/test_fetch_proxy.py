@@ -4,10 +4,12 @@ import base64
 import json
 import logging
 import subprocess
+from collections import Counter
 from collections.abc import Callable, Mapping
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -29,9 +31,10 @@ from pi_fetch.ladder import (
     Fetcher,
     SourceStoppedError,
     default_proxy_transport,
+    robots_key,
     robots_text_from_viewer,
 )
-from pi_fetch.pacing import HostPacer, RobotsRefusedError, RobotsTagger
+from pi_fetch.pacing import HostPacer, RobotsRefusedError, RobotsTag, RobotsTagger
 from pi_fetch.policy import (
     EgressProfile,
     Engine,
@@ -58,8 +61,8 @@ from pi_fetch.proxy import (
     should_abort,
 )
 from pi_fetch.transports.base import RawResponse, Transport, TransportError
-from pi_fetch.transports.browser import BrowserTransport
-from pi_fetch.types import BlockKind, FetchRequest, PayloadKind
+from pi_fetch.transports.browser import BrowserTransport, _collector
+from pi_fetch.types import BlockKind, CapturedJson, FetchRequest, PayloadKind
 
 RESOURCE = "projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/latest"
 USER = "fake-proxy-user-3141"
@@ -78,6 +81,7 @@ ULTA = ResidentialProxy(
     owner_approval_ref="owner-decision-2026-09-30-iproyal",
     secret_resource=RESOURCE,
     egress_name="iproyal_ae",
+    prior_bytes=0,
 )
 POLICY = FetchPolicy(browsers=PINNED, residential_proxy={3: ULTA}, page_interval_s={3: 5.0})
 PDP = HttpUrl("https://www.ulta.ae/en/p/1")
@@ -114,10 +118,17 @@ class ProxyFactory:
         self.credentials: list[ProxyCredentials] = []
         self.meters: list[ProxyMeter] = []
         self.sent: list[tuple[FetchPlan, FetchRequest]] = []
+        self.robots_checks: list[Callable[[str], bool]] = []
 
     def __call__(
-        self, route: FetchPlan, policy: FetchPolicy, creds: ProxyCredentials, meter: ProxyMeter
+        self,
+        route: FetchPlan,
+        policy: FetchPolicy,
+        creds: ProxyCredentials,
+        meter: ProxyMeter,
+        robots_ok: Callable[[str], bool],
     ) -> Transport:
+        self.robots_checks.append(robots_ok)
         self.credentials.append(creds)
         self.meters.append(meter)
         factory = self
@@ -174,6 +185,7 @@ def test_proxy_is_refused_for_any_source_but_ulta() -> None:
             owner_approval_ref="x",
             secret_resource=RESOURCE,
             egress_name="iproyal",
+            prior_bytes=0,
         )
 
 
@@ -223,6 +235,12 @@ def test_plan_never_proxies_images() -> None:
     assert route.engine is Engine.HTTP
     assert route.egress.name == "direct"
     assert route.proxy is None
+
+
+@pytest.mark.parametrize("host", ["www.ulta.ae", "ulta.ae", "WWW.ULTA.AE"])
+def test_plan_skips_images_on_the_proxied_page_host(host: str) -> None:
+    with pytest.raises(LadderPolicyError, match="skipped"):
+        plan(pdp(HttpUrl(f"https://{host}/i/1.jpg"), PayloadKind.IMAGE), ctx(), POLICY)
 
 
 def test_plan_refuses_proxying_another_site() -> None:
@@ -592,9 +610,15 @@ def _creds() -> ProxyCredentials:
     return load_credentials(FakeReader(), RESOURCE)
 
 
+def _yes(_url: str) -> bool:
+    return True
+
+
 def test_browser_transport_proxy_settings_and_repr() -> None:
     creds = _creds()
-    t = BrowserTransport(profile=WEBKIT, credentials=creds, meter=ProxyMeter("p", 10))
+    t = BrowserTransport(
+        profile=WEBKIT, credentials=creds, meter=ProxyMeter("p", 10), subrequest_allowed=_yes
+    )
     settings = t._proxy_settings()
     assert settings == {
         "server": "http://gw.proxy.test:12321",
@@ -609,10 +633,14 @@ def test_browser_transport_proxy_settings_and_repr() -> None:
     assert BrowserTransport(profile=WEBKIT)._proxy_settings() is None
     with pytest.raises(ValueError, match="byte meter"):
         BrowserTransport(profile=WEBKIT, credentials=creds)
+    with pytest.raises(ValueError, match="robots check"):
+        BrowserTransport(profile=WEBKIT, credentials=creds, meter=ProxyMeter("p", 10))
 
 
 def test_browser_errors_are_scrubbed(monkeypatch: pytest.MonkeyPatch) -> None:
-    t = BrowserTransport(profile=WEBKIT, credentials=_creds(), meter=ProxyMeter("p", 10**6))
+    t = BrowserTransport(
+        profile=WEBKIT, credentials=_creds(), meter=ProxyMeter("p", 10**6), subrequest_allowed=_yes
+    )
 
     def boom(_: str) -> None:
         raise PlaywrightError(f"proxy auth failed for {USER}:{PASSWORD}")
@@ -628,16 +656,27 @@ def test_browser_errors_are_scrubbed(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_browser_refuses_a_page_over_the_cap() -> None:
     meter = ProxyMeter("p", 10, page_reserve=5)
     meter.add(6, 0)
-    t = BrowserTransport(profile=WEBKIT, credentials=_creds(), meter=meter)
+    t = BrowserTransport(profile=WEBKIT, credentials=_creds(), meter=meter, subrequest_allowed=_yes)
     with pytest.raises(ProxyBudgetExceededError):
         t.send(pdp(), {})
 
 
 class _FakeRequest:
-    def __init__(self, url: str, resource_type: str, sizes: dict[str, int] | None = None) -> None:
+    def __init__(
+        self,
+        url: str,
+        resource_type: str,
+        sizes: dict[str, int] | None = None,
+        *,
+        navigation: bool = False,
+    ) -> None:
         self.url = url
         self.resource_type = resource_type
         self._sizes = sizes
+        self._navigation = navigation
+
+    def is_navigation_request(self) -> bool:
+        return self._navigation
 
     def sizes(self) -> dict[str, int]:
         if self._sizes is None:
@@ -666,20 +705,40 @@ class _FakeContext:
     def on(self, event: str, handler: Callable[..., None]) -> None:
         self.handlers[event] = handler
 
+    def route_web_socket(self, _: str, handler: Callable[..., None]) -> None:
+        self.handlers["websocket"] = handler
+
+
+class _FakeWebSocket:
+    closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _guarded(
+    robots_ok: Callable[[str], bool], meter: ProxyMeter | None = None
+) -> tuple[_FakeContext, Callable[..., str], Counter[str]]:
+    meter = meter or ProxyMeter("p", 10**9)
+    t = BrowserTransport(
+        profile=WEBKIT, credentials=_creds(), meter=meter, subrequest_allowed=robots_ok
+    )
+    context = _FakeContext()
+    aborted: Counter[str] = Counter()
+    t._guard(context, "www.ulta.ae", meter, aborted)  # type: ignore[arg-type]
+
+    def outcome(url: str, resource_type: str, *, navigation: bool = False) -> str:
+        route = _FakeRoute()
+        context.handlers["route"](route, _FakeRequest(url, resource_type, navigation=navigation))
+        return route.outcome
+
+    return context, outcome, aborted
+
 
 def test_browser_guard_aborts_heavy_and_third_party_and_meters() -> None:
     meter = ProxyMeter("p", 10_000, request_reserve=1_000)
-    t = BrowserTransport(profile=WEBKIT, credentials=_creds(), meter=meter)
-    context = _FakeContext()
-    t._guard(context, "www.ulta.ae", meter)  # type: ignore[arg-type]
-    on_route = context.handlers["route"]
-
-    def outcome(url: str, resource_type: str) -> str:
-        route = _FakeRoute()
-        on_route(route, _FakeRequest(url, resource_type))
-        return route.outcome
-
-    assert outcome("https://www.ulta.ae/en/p/1", "document") == "continue"
+    context, outcome, aborted = _guarded(_yes, meter)
+    assert outcome("https://www.ulta.ae/en/p/1", "document", navigation=True) == "continue"
     assert outcome("https://www.ulta.ae/api/graphql", "fetch") == "continue"
     assert outcome("https://www.ulta.ae/i/1.jpg", "image") == "abort"
     assert outcome("https://www.google-analytics.com/collect", "xhr") == "abort"
@@ -699,11 +758,125 @@ def test_browser_guard_aborts_heavy_and_third_party_and_meters() -> None:
     finished(_FakeRequest("u", "xhr", None))  # sizes unavailable: skipped
     assert meter.usage().total == 9_100
     assert outcome("https://www.ulta.ae/api/graphql", "fetch") == "abort"  # would cross the cap
+    assert aborted == {"asset": 2, "cap": 1}
+
+
+ULTA_ROBOTS = (Path(__file__).parent / "fixtures" / "robots" / "ulta_ae.txt").read_text()
+
+
+def _ulta_rules(*, available: bool = True) -> Callable[[str], bool]:
+    tagger = RobotsTagger()
+    if available:
+        tagger.add("www.ulta.ae", ULTA_ROBOTS)
+    else:
+        tagger.mark_unavailable("www.ulta.ae")
+
+    def allowed(url: str) -> bool:
+        return tagger.tag(urlsplit(url).hostname or "", url) is RobotsTag.ALLOWED
+
+    return allowed
+
+
+def test_guard_applies_robots_to_every_subrequest() -> None:
+    _, outcome, aborted = _guarded(_ulta_rules())
+    # The page itself was robots-checked by the fetcher; only the first navigation is exempt.
+    assert outcome("https://www.ulta.ae/en/p/1", "document", navigation=True) == "continue"
+    assert outcome("https://www.ulta.ae/graphql?query=%7Bproduct%7D", "fetch") == "abort"
+    assert outcome("https://www.ulta.ae/graphql", "fetch") == "continue"  # POST, no query
+    assert outcome("https://www.ulta.ae/en/fragments/header", "xhr") == "abort"
+    assert outcome("https://www.ulta.ae/en/p/2?x=1", "document", navigation=True) == "abort"
+    assert aborted == {"robots": 3}
+
+
+def test_guard_aborts_every_subrequest_when_robots_is_unavailable() -> None:
+    _, outcome, aborted = _guarded(_ulta_rules(available=False))
+    assert outcome("https://www.ulta.ae/robots.txt", "document", navigation=True) == "continue"
+    assert outcome("https://www.ulta.ae/graphql", "fetch") == "abort"
+    assert outcome("https://www.ulta.ae/static/app.js", "script") == "abort"
+    assert aborted == {"robots": 2}
+
+
+def test_guard_closes_websockets() -> None:
+    context, _, _ = _guarded(_yes)
+    ws = _FakeWebSocket()
+    context.handlers["websocket"](ws)
+    assert ws.closed
+
+
+class _Resp:
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.status = 200
+        self.request = _FakeRequest(url, "fetch")
+
+    def header_value(self, _: str) -> str:
+        return "application/json"
+
+    def body(self) -> bytes:
+        return b"{}"
+
+
+def test_capture_never_keeps_json_from_a_disallowed_url() -> None:
+    sink: list[CapturedJson] = []
+    on_response = _collector(sink, _ulta_rules())
+    on_response(_Resp("https://www.ulta.ae/graphql?query=%7Bproduct%7D"))  # type: ignore[arg-type]
+    on_response(_Resp("https://www.ulta.ae/graphql"))  # type: ignore[arg-type]
+    assert [str(c.url) for c in sink] == ["https://www.ulta.ae/graphql"]
+
+
+class _FakeBrowser:
+    def __init__(self) -> None:
+        self.kwargs: dict[str, Any] = {}
+
+    def new_context(self, **kwargs: Any) -> str:
+        self.kwargs = kwargs
+        return "context"
+
+
+def test_proxied_context_blocks_service_workers() -> None:
+    t = BrowserTransport(
+        profile=WEBKIT, credentials=_creds(), meter=ProxyMeter("p", 10), subrequest_allowed=_yes
+    )
+    browser = _FakeBrowser()
+    t._browser = browser  # type: ignore[assignment]
+    t._new_context("en")
+    assert browser.kwargs["service_workers"] == "block"
+    direct = BrowserTransport(profile=WEBKIT)
+    direct._browser = browser  # type: ignore[assignment]
+    direct._new_context("en")
+    assert browser.kwargs["service_workers"] == "allow"
+
+
+def test_page_bytes_are_logged(caplog: pytest.LogCaptureFixture) -> None:
+    t = BrowserTransport(
+        profile=WEBKIT, credentials=_creds(), meter=ProxyMeter("p", 10), subrequest_allowed=_yes
+    )
+    with caplog.at_level(logging.INFO, logger="pi_fetch.audit"):
+        t._log_page(pdp(), 1234, Counter({"robots": 2}))
+    (record,) = [r for r in caplog.records if getattr(r, "event", "") == "proxy_page_bytes"]
+    assert record.bytes == 1234  # type: ignore[attr-defined]
+    assert record.aborted == {"robots": 2}  # type: ignore[attr-defined]
+
+
+def test_fetcher_robots_check_uses_the_route_key(tmp_path: Path) -> None:
+    factory = ProxyFactory(raw())
+    robots = RobotsTagger()
+    f = proxied_fetcher(tmp_path, factory, robots=robots)
+    route = plan(pdp(), ctx(), POLICY)
+    assert route.browser is not None
+    robots.add(
+        robots_key("www.ulta.ae", route.browser.engine.value, route.egress.name), ULTA_ROBOTS
+    )
+    f.fetch(pdp(), ctx())
+    (check,) = factory.robots_checks
+    assert check("https://www.ulta.ae/graphql")
+    assert not check("https://www.ulta.ae/graphql?query=x")
+    assert not check("https://cdn.ulta.ae/x.js")  # robots never read for that host: abort
 
 
 def test_default_proxy_transport() -> None:
     route = plan(pdp(), ctx(), POLICY)
-    transport = default_proxy_transport(route, POLICY, _creds(), ProxyMeter("p", 10))
+    transport = default_proxy_transport(route, POLICY, _creds(), ProxyMeter("p", 10), _yes)
     assert isinstance(transport, BrowserTransport)
     http_route = FetchPlan(
         rung=LadderRung.PLAIN_HTTP,
@@ -712,7 +885,7 @@ def test_default_proxy_transport() -> None:
         egress=EgressProfile(name="direct"),
     )
     with pytest.raises(ValueError, match="pinned browser"):
-        default_proxy_transport(http_route, POLICY, _creds(), ProxyMeter("p", 10))
+        default_proxy_transport(http_route, POLICY, _creds(), ProxyMeter("p", 10), _yes)
 
 
 class _FailingProxy:
@@ -720,7 +893,12 @@ class _FailingProxy:
         self.sends = 0
 
     def __call__(
-        self, route: FetchPlan, policy: FetchPolicy, creds: ProxyCredentials, meter: ProxyMeter
+        self,
+        route: FetchPlan,
+        policy: FetchPolicy,
+        creds: ProxyCredentials,
+        meter: ProxyMeter,
+        robots_ok: Callable[[str], bool],
     ) -> Transport:
         return self
 
@@ -773,3 +951,27 @@ def test_unreadable_secret_stops_the_run(tmp_path: Path) -> None:
     with pytest.raises(SourceStoppedError):
         f.fetch(pdp(), ctx())
     assert proxy.sent == []
+
+
+def test_meter_is_seeded_with_prior_runs_bytes() -> None:
+    config = ULTA.model_copy(
+        update={"byte_cap": 1_000, "prior_bytes": 600, "page_reserve_bytes": 300}
+    )
+    meter = ProxyMeter.for_config(config)
+    before = meter.exhausted
+    assert not before
+    meter.add(50, 60)  # 600 + 110 + 300 > 1000: no further page
+    assert meter.exhausted
+    usage = meter.usage()
+    assert (usage.total, usage.allowance_used) == (110, 710)
+    manifest = usage.manifest()
+    assert (manifest["bytes_via_proxy"], manifest["prior_bytes"]) == (110, 600)
+    assert manifest["allowance_used"] == 710
+    assert meter.run_bytes == 110
+
+
+def test_prior_bytes_is_required() -> None:
+    fields = ULTA.model_dump()
+    del fields["prior_bytes"]
+    with pytest.raises(ValueError, match="prior_bytes"):
+        ResidentialProxy.model_validate(fields)

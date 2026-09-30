@@ -66,8 +66,12 @@ class ResidentialProxy(PiModel):
     secret_resource: NonEmptyStr
     #: Egress name recorded on results and audit events (e.g. ``iproyal_ae``).
     egress_name: NonEmptyStr
-    #: Hard stop for request + response bytes through the proxy per run.
+    #: Hard stop for request + response bytes through the proxy, over **all** runs on this
+    #: allowance (the owner's 1.8 GB out of one prepaid balance), not per run.
     byte_cap: int = Field(default=DEFAULT_BYTE_CAP, gt=0)
+    #: Bytes already used from ``byte_cap`` by earlier runs (their manifests' ``bytes_via_proxy``
+    #: or the provider dashboard). Required, so a restart cannot silently start again at 0.
+    prior_bytes: int = Field(ge=0)
     #: Headroom a page load may need: no page is started unless this much of the cap is left.
     page_reserve_bytes: int = Field(default=8_000_000, ge=0)
     #: Headroom per sub-request (XHR, script): aborted unless this much of the cap is left.
@@ -250,6 +254,8 @@ class ProxyUsage(PiModel):
     egress: str
     bytes_sent: int
     bytes_received: int
+    #: Bytes of the same allowance used by earlier runs (seeded into the meter).
+    prior_bytes: int = 0
     byte_cap: int
     usd_per_gb: Decimal
     stopped: bool
@@ -258,6 +264,11 @@ class ProxyUsage(PiModel):
     def total(self) -> int:
         """Request plus response bytes."""
         return self.bytes_sent + self.bytes_received
+
+    @property
+    def allowance_used(self) -> int:
+        """Earlier runs' bytes plus this run's: what counts against ``byte_cap``."""
+        return self.prior_bytes + self.total
 
     @property
     def usd(self) -> Decimal:
@@ -271,6 +282,8 @@ class ProxyUsage(PiModel):
             "bytes_via_proxy": self.total,
             "bytes_sent": self.bytes_sent,
             "bytes_received": self.bytes_received,
+            "prior_bytes": self.prior_bytes,
+            "allowance_used": self.allowance_used,
             "byte_cap": self.byte_cap,
             "usd_per_gb": str(self.usd_per_gb),
             "usd": str(self.usd),
@@ -284,9 +297,15 @@ class ProxyMeter:
     Counts come from Playwright's ``Request.sizes()`` (headers + bodies). TLS and CONNECT
     overhead are not visible there, so the provider's bill runs somewhat higher: set the cap
     with margin.
+
+    The meter starts at ``prior_bytes`` (earlier runs' use of the same allowance). Bytes are
+    added when a request *finishes*, so concurrent sub-requests of one page may together pass
+    ``request_reserve``: at worst one page overshoots by its own size. ``page_reserve`` (8 MB)
+    and the owner's 0.2 GB margin absorb that and the TLS/CONNECT overhead; the transport logs
+    each page's bytes (``proxy_page_bytes``) so the reserve can be checked against real pages.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only tuning knobs
         self,
         egress: str,
         byte_cap: int,
@@ -294,8 +313,10 @@ class ProxyMeter:
         usd_per_gb: Decimal = DEFAULT_USD_PER_GB,
         page_reserve: int = 0,
         request_reserve: int = 0,
+        prior_bytes: int = 0,
     ) -> None:
         self._egress = egress
+        self._prior = max(prior_bytes, 0)
         self._cap = byte_cap
         self._usd_per_gb = usd_per_gb
         self._page_reserve = page_reserve
@@ -313,22 +334,29 @@ class ProxyMeter:
             usd_per_gb=config.usd_per_gb,
             page_reserve=config.page_reserve_bytes,
             request_reserve=config.request_reserve_bytes,
+            prior_bytes=config.prior_bytes,
         )
 
     def _would_cross(self, reserve: int) -> bool:
         with self._lock:
-            return self._sent + self._received + reserve > self._cap
+            return self._prior + self._sent + self._received + reserve > self._cap
 
     @property
     def exhausted(self) -> bool:
         """True once a new page could cross the cap: no further page may be started."""
         with self._lock:
-            used = self._sent + self._received
+            used = self._prior + self._sent + self._received
         return used >= self._cap or used + self._page_reserve > self._cap
 
     def allows_subrequest(self) -> bool:
         """False once a sub-request of up to ``request_reserve`` bytes could cross the cap."""
         return not self._would_cross(self._request_reserve)
+
+    @property
+    def run_bytes(self) -> int:
+        """Bytes through the proxy in this run (excluding ``prior_bytes``)."""
+        with self._lock:
+            return self._sent + self._received
 
     def add(self, sent: int, received: int) -> None:
         """Record one request's bytes."""
@@ -341,7 +369,7 @@ class ProxyMeter:
         if self.exhausted:
             usage = self.usage()
             msg = (
-                f"proxy {self._egress}: {usage.total} bytes used; another page "
+                f"proxy {self._egress}: {usage.allowance_used} bytes used; another page "
                 f"(reserve {self._page_reserve}) could cross the cap of {self._cap}"
             )
             raise ProxyBudgetExceededError(msg)
@@ -350,12 +378,13 @@ class ProxyMeter:
         """A snapshot for the run manifest."""
         with self._lock:
             sent, received = self._sent, self._received
+        used = self._prior + sent + received
         return ProxyUsage(
             egress=self._egress,
             bytes_sent=sent,
             bytes_received=received,
+            prior_bytes=self._prior,
             byte_cap=self._cap,
             usd_per_gb=self._usd_per_gb,
-            stopped=sent + received + self._page_reserve > self._cap
-            or sent + received >= self._cap,
+            stopped=used + self._page_reserve > self._cap or used >= self._cap,
         )

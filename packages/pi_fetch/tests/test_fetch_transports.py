@@ -1,12 +1,15 @@
 """Transports against a local server only (no live sites)."""
 
 import json
+from pathlib import Path
 
 import pytest
 from pydantic import HttpUrl
 
 from fetch_helpers import local_server
-from pi_core import Locale
+from pi_core import FetchMethod, LadderRung, Locale
+from pi_fetch.ladder import _robots_text
+from pi_fetch.policy import EgressProfile, Engine, FetchPlan
 from pi_fetch.transports.base import TransportError
 from pi_fetch.transports.browser import BrowserTransport, is_json_response
 from pi_fetch.transports.http import HttpTransport
@@ -131,3 +134,27 @@ def test_browser_failure_raises_transport_error(profile: BrowserProfile) -> None
             transport.send(req("http://127.0.0.1:9/"), {})
     finally:
         transport.close()
+
+
+ULTA_ROBOTS = (Path(__file__).parent / "fixtures" / "robots" / "ulta_ae.txt").read_text()
+
+
+@pytest.mark.browser
+def test_real_browser_robots_viewer_extracts_the_file_exactly(profile: BrowserProfile) -> None:
+    # The recon ulta.ae robots.txt plus the characters a viewer must escape, behind a BOM.
+    text = ULTA_ROBOTS.rstrip("\n") + "\n# a <b> & c > d\nDisallow: /x?a=1&b=<2>\n"
+    with local_server() as srv:
+        srv.static("/robots.txt", "﻿".encode() + text.encode(), "text/plain; charset=utf-8")
+        transport = BrowserTransport(profile=profile, timeout_s=15)
+        try:
+            raw = transport.send(req(f"{srv.base}/robots.txt"), {})
+        finally:
+            transport.close()
+    route = FetchPlan(
+        rung=LadderRung.BROWSER,
+        method=FetchMethod.PLAYWRIGHT,
+        engine=Engine.BROWSER,
+        egress=EgressProfile(name="direct"),
+        browser=profile,
+    )
+    assert _robots_text(route, raw) == text

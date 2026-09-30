@@ -40,6 +40,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 from pydantic import HttpUrl
 
@@ -109,7 +110,10 @@ _VIEWER_RE = re.compile(
 #: Builds the transport for a route; the fetcher keeps one per (engine, egress).
 TransportFactory = Callable[[FetchPlan, FetchPolicy], Transport]
 #: Builds the transport for a residential-proxy route from its credentials and the run's meter.
-ProxyTransportFactory = Callable[[FetchPlan, FetchPolicy, ProxyCredentials, ProxyMeter], Transport]
+#: The last argument tells the transport whether robots.txt allows a sub-request URL.
+ProxyTransportFactory = Callable[
+    [FetchPlan, FetchPolicy, ProxyCredentials, ProxyMeter, Callable[[str], bool]], Transport
+]
 
 
 class SourceStoppedError(Exception):
@@ -131,9 +135,14 @@ def default_transport(route: FetchPlan, policy: FetchPolicy) -> Transport:
 
 
 def default_proxy_transport(
-    route: FetchPlan, policy: FetchPolicy, credentials: ProxyCredentials, meter: ProxyMeter
+    route: FetchPlan,
+    policy: FetchPolicy,
+    credentials: ProxyCredentials,
+    meter: ProxyMeter,
+    subrequest_allowed: Callable[[str], bool],
 ) -> Transport:
-    """The pinned stock browser through the residential proxy, guarded and metered."""
+    """The pinned stock browser through the residential proxy, guarded, robots-checked for every
+    sub-request and metered."""
     if route.browser is None or route.proxy is None:
         msg = "the residential proxy carries only the pinned browser"
         raise ValueError(msg)
@@ -143,6 +152,7 @@ def default_proxy_transport(
         credentials=credentials,
         meter=meter,
         allow_hosts=route.proxy.allow_hosts,
+        subrequest_allowed=subrequest_allowed,
     )
 
 
@@ -232,10 +242,22 @@ class Fetcher:
                 reader = self._secret_reader or SecretManagerReader()
                 credentials = load_credentials(reader, route.proxy.secret_resource)
                 transport = self._proxy_factory(
-                    route, self._policy, credentials, self._meter(route)
+                    route, self._policy, credentials, self._meter(route), self._robots_check(route)
                 )
             self._transports[key] = transport
         return transport
+
+    def _robots_check(self, route: FetchPlan) -> Callable[[str], bool]:
+        """Whether the route's robots.txt (same tagger, same route key) lets the proxied browser
+        request a sub-request URL. Always obeyed on the proxy: a host whose robots.txt is
+        unavailable, or was never read on this route, allows nothing."""
+        tagger = self._robots
+
+        def allowed(url: str) -> bool:
+            host = urlsplit(url).hostname or ""
+            return tagger.tag(_robots_key(host, route), url) is RobotsTag.ALLOWED
+
+        return allowed
 
     def _meter(self, route: FetchPlan) -> ProxyMeter:
         if route.proxy is None:  # pragma: no cover - only called for proxied routes

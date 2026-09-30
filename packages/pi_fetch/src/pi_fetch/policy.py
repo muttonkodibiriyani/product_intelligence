@@ -239,6 +239,12 @@ def plan(request: FetchRequest, ctx: CollectionContext, policy: FetchPolicy) -> 
     rung = ctx.ladder_rung_used
     residential = policy.proxy_for(ctx.source_context.source_id)
     if request.kind is PayloadKind.IMAGE and rung is LadderRung.PAID_PROXY and residential:
+        host = (request.url.host or "").lower()
+        if host in {residential.site_domain, f"www.{residential.site_domain}"}:
+            # The page host answers our direct egress with a WAF 403, which would stop the
+            # whole source: such images are skipped, never proxied (ADR-0006 Am.2).
+            msg = f"image on the proxied page host is skipped, not fetched: {request.url}"
+            raise LadderPolicyError(msg)
         rung = LadderRung.PLAIN_HTTP
     if request.render and rung < LadderRung.BROWSER:
         rung = LadderRung.BROWSER
