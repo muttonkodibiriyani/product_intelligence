@@ -237,7 +237,8 @@ latest_price AS (
 latest_stock AS (
   SELECT DISTINCT ON (source_listing_id) source_listing_id, availability_state
   FROM obs
-  WHERE availability_state <> 'not_observed'
+  -- not_observed, unknown and blocked are not stock states: they never replace a known one.
+  WHERE availability_state NOT IN ('not_observed', 'unknown', 'blocked')
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
 latest AS (

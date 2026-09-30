@@ -279,3 +279,14 @@ def test_arabic_context_rows_never_override_the_english_baseline(conn: Conn) -> 
 
     a = _row(world, "A")
     assert (a["price"], a["availability"], a["run_id"]) == (Decimal("80"), "in_stock", en)
+
+
+@pytest.mark.parametrize("state", ["not_observed", "unknown", "blocked"])
+def test_non_stock_states_never_override_a_known_stock_state(conn: Conn, state: str) -> None:
+    world = World(conn)
+    baseline = world.run("succeeded", 1)
+    world.observe(baseline, "A", 1, "10", availability="in_stock")
+    refresh = world.run("partial", 5)
+    world.observe(refresh, "A", 5, None, availability=state, field_state=STOCK_ONLY)
+
+    assert _row(world, "A")["availability"] == "in_stock"
