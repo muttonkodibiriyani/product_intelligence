@@ -83,6 +83,8 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
   ladder audit, see above.
 - `offer_observation.price_range_min` / `price_range_max`: range prices (PRC-13).
 - `review.rating_scale`, `offer_observation.rating_scale`: ratings keep their source scale.
+- `field_state` value `observed` (pi_core `FieldState.OBSERVED`): the positive qualifier for
+  `availability_state`, required under negative availability claims. Never a null reason.
 
 ## Migration notes
 
