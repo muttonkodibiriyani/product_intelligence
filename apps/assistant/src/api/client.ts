@@ -51,6 +51,41 @@ function errorCode(body: unknown): string {
   return "http_error";
 }
 
+class TooLarge extends Error {}
+
+/**
+ * Read at most `limit` bytes of the body. Rejects before buffering when Content-Length is over
+ * the limit, and cancels the stream as soon as the running byte count passes it.
+ */
+export async function readCapped(response: Response, limit: number): Promise<string> {
+  const declared = response.headers.get("content-length");
+  if (declared !== null && /^\d+$/.test(declared) && Number(declared) > limit) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new TooLarge();
+  }
+  if (response.body === null) return "";
+  const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      throw new TooLarge();
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
 /** fetch-based client. Not wired to any deployment until the service layer exists. */
 export class HttpMetricApi implements MetricApi {
   constructor(
@@ -76,11 +111,10 @@ export class HttpMetricApi implements MetricApi {
         signal: AbortSignal.timeout(this.options.timeoutMs ?? 10_000),
         redirect: "error",
       });
-      text = await response.text();
-    } catch {
-      throw new ApiError(0, "unavailable");
+      text = await readCapped(response, MAX_RESPONSE_BYTES);
+    } catch (error) {
+      throw new ApiError(0, error instanceof TooLarge ? "response_too_large" : "unavailable");
     }
-    if (text.length > MAX_RESPONSE_BYTES) throw new ApiError(0, "response_too_large");
     let body: unknown;
     try {
       body = JSON.parse(text);

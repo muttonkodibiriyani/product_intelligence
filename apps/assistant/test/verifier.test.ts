@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   collectToolNumbers,
+  collectToolTimes,
   extractNumbers,
   isDisplayOf,
   normaliseDigits,
@@ -28,10 +29,64 @@ describe("normalisation", () => {
     expect(normaliseDigits("۱۶٫۷")).toBe("16.7");
   });
 
-  it("extracts numbers and strips dates, clocks, list markers and product tokens", () => {
+  it("strips only tool dates, tool clocks, sequential list markers and product tokens", () => {
+    const times = collectToolTimes([output]);
     expect(
-      extractNumbers("1. As of 2026-09-15T20:00:00Z at 20:00, [[product:p42]] costs 1,020.74 (8)"),
+      extractNumbers(
+        "1. As of 2026-09-15T20:00:00Z at 20:00 on 2026-09-15, [[product:p42]] costs 1,020.74 (8)",
+        times,
+      ),
     ).toEqual(["1020.74", "8"]);
+    expect(extractNumbers("1. a\n2. b\n3) c", times)).toEqual([]);
+    expect(extractNumbers("1. a\n3. b", times)).toEqual(["3"]);
+  });
+
+  it("keeps dates, clocks and markers no tool returned", () => {
+    const times = collectToolTimes([output]);
+    expect(extractNumbers("Price 2099-12-31", times)).toEqual(["2099", "12", "31"]);
+    expect(extractNumbers("12:30 AED", times)).toEqual(["12", "30"]);
+    expect(extractNumbers("37. cheaper", times)).toEqual(["37"]);
+  });
+
+  it("does not collect times from untrusted text", () => {
+    const times = collectToolTimes([{ data: { note: { untrusted: "2099-12-31T12:30:00Z" } } }]);
+    expect(times.dates.size + times.clocks.size).toBe(0);
+  });
+});
+
+describe("reviewer #41 condition 3", () => {
+  it.each(["Price 2099-12-31", "12:30 AED", "37. cheaper"])("rejects %j", (answer) => {
+    expect(verifyAnswerNumbers(answer, [output]).ok).toBe(false);
+  });
+
+  it("accepts the tool's own cutoff date and time", () => {
+    expect(verifyAnswerNumbers("As of 2026-09-15 20:00, 129.00 AED", [output]).ok).toBe(true);
+  });
+});
+
+describe("reviewer #41 condition 2", () => {
+  const cited = {
+    data: { price: "129.00" },
+    citation: {
+      apiVersion: "2.5",
+      metricVersion: "3",
+      toolVersion: "4",
+      endpoint: "compare",
+      scope: "uae",
+      datasetGeneration: "7",
+      filters: { priceMin: "999" },
+      cohort: { description: { untrusted: "11 products" }, n: 12 },
+    },
+  };
+
+  it("never lets citation versions support a number", () => {
+    for (const answer of ["2.5 AED", "3 AED", "4 AED", "7 AED", "999 AED", "11 products"]) {
+      expect(verifyAnswerNumbers(answer, [cited]).ok, answer).toBe(false);
+    }
+  });
+
+  it("counts only cohort.n from the citation", () => {
+    expect(verifyAnswerNumbers("12 products at 129.00 AED", [cited]).ok).toBe(true);
   });
 });
 

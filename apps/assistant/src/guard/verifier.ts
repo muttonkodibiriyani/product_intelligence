@@ -16,11 +16,15 @@
  *   the shown number of decimal places. Nothing else counts: no rounding to tens, no unit
  *   conversion, no arithmetic on sources.
  * - Always allowed, exactly: 5 (rating scale) and 100 (index base).
- * - Stripped before matching:
+ * - Version fields (`apiVersion`, `metricVersion`, …) are never sources, and of the citation
+ *   only `cohort.n` counts: "2.5" as a version must not allow "2.5 AED".
+ * - Stripped before matching, and only these:
  *   - `[[product:<id>]]` tokens (the UI renders product names from server data);
- *   - ISO dates and datetimes (the cited cutoff);
- *   - clock times;
- *   - leading list markers ("1. ", "2) ").
+ *   - ISO dates and datetimes that a tool returned (whole value, or its date part);
+ *   - clock times (HH:MM or HH:MM:SS) that appear in a datetime a tool returned;
+ *   - ordered-list markers ("1. ", "2) ") that count up from 1 in sequence.
+ *   Any other date, time or line-leading number is checked digit group by digit group, so
+ *   "Price 2099-12-31", "12:30 AED" and "37. cheaper" fail.
  *
  * Known limit: the verifier checks magnitudes, not direction or association. "A is 12.5% cheaper"
  * passes when the tool said B is cheaper by 12.5%. Mitigations:
@@ -47,6 +51,11 @@ export const NON_METRIC_KEYS: ReadonlySet<string> = new Set([
   "generation",
   "datasetGeneration",
   "toolVersion",
+  "apiVersion",
+  "metricVersion",
+  "promptVersion",
+  "endpoint",
+  "scope",
   "url",
   // Money is {amount, minor, currency}; the minor-unit integer is not a display value.
   "minor",
@@ -69,17 +78,78 @@ export function normaliseDigits(text: string): string {
 
 const ISO_DATETIME =
   /\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?/g;
-const CLOCK = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
-const LIST_MARKER = /^\s*\d+[.)]\s/gm;
+const ISO_VALUE = /^\d{4}-\d{2}-\d{2}(?:T(\d{2}):(\d{2})(?::(\d{2}))?[^]*)?$/;
+const CLOCK = /\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/g;
+const LIST_MARKER = /^(\s*)(\d{1,2})([.)]\s)/;
 const NUMBER = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
 
+/** Dates and clock times the tools returned; only these may be stripped from an answer. */
+export interface ToolTimes {
+  readonly dates: ReadonlySet<string>;
+  readonly clocks: ReadonlySet<string>;
+}
+
+const NO_TIMES: ToolTimes = { dates: new Set(), clocks: new Set() };
+
+function clockKey(hours: string, minutes: string, seconds?: string): string {
+  const base = `${hours.padStart(2, "0")}:${minutes}`;
+  return seconds === undefined ? base : `${base}:${seconds}`;
+}
+
+/** Collect ISO dates/datetimes from tool outputs (any key; `{untrusted}` values excluded). */
+export function collectToolTimes(outputs: readonly unknown[]): ToolTimes {
+  const dates = new Set<string>();
+  const clocks = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      const match = ISO_VALUE.exec(value);
+      if (!match) return;
+      dates.add(value);
+      dates.add(value.slice(0, 10));
+      const [, hours, minutes, seconds] = match;
+      if (hours !== undefined && minutes !== undefined) {
+        dates.add(`${value.slice(0, 10)}T${clockKey(hours, minutes)}`);
+        dates.add(`${value.slice(0, 10)} ${clockKey(hours, minutes)}`);
+        clocks.add(clockKey(hours, minutes));
+        if (seconds !== undefined) clocks.add(clockKey(hours, minutes, seconds));
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach(visit);
+    } else if (typeof value === "object" && value !== null && !("untrusted" in value)) {
+      Object.values(value).forEach(visit);
+    }
+  };
+  outputs.forEach(visit);
+  return { dates, clocks };
+}
+
+/** Strip "1. ", "2. ", … only while they count up from 1; any other leading number stays. */
+function stripListMarkers(text: string): string {
+  let last = 0;
+  return text
+    .split("\n")
+    .map((line) => {
+      const match = LIST_MARKER.exec(line);
+      if (!match) return line;
+      const [whole, indent, digits, tail] = match as unknown as [string, string, string, string];
+      const n = Number(digits);
+      if (n !== 1 && n !== last + 1) return line;
+      last = n;
+      return `${indent}${" ".repeat(digits.length)}${" ".repeat(tail.length)}${line.slice(whole.length)}`;
+    })
+    .join("\n");
+}
+
 /** Numbers shown in an answer, as decimal text (absolute value, separators removed). */
-export function extractNumbers(answer: string): string[] {
-  const cleaned = normaliseDigits(answer)
-    .replace(PRODUCT_TOKEN, " ")
-    .replace(ISO_DATETIME, " ")
-    .replace(CLOCK, " ")
-    .replace(LIST_MARKER, " ");
+export function extractNumbers(answer: string, times: ToolTimes = NO_TIMES): string[] {
+  const cleaned = stripListMarkers(
+    normaliseDigits(answer)
+      .replace(PRODUCT_TOKEN, " ")
+      .replace(ISO_DATETIME, (match) => (times.dates.has(match) ? " " : match))
+      .replace(CLOCK, (match, hours: string, minutes: string, seconds?: string) =>
+        times.clocks.has(clockKey(hours, minutes, seconds)) ? " " : match,
+      ),
+  );
   return Array.from(cleaned.matchAll(NUMBER), (match) => match[0].replace(/,/g, ""));
 }
 
@@ -90,6 +160,12 @@ function abs(value: Decimal): Decimal {
 /** Collect metric values from typed fields of tool outputs. */
 export function collectToolNumbers(outputs: readonly unknown[]): Decimal[] {
   const found: Decimal[] = [];
+  // Of a citation, only the cohort size is a metric.
+  const visitCitation = (citation: unknown): void => {
+    if (typeof citation !== "object" || citation === null || !("cohort" in citation)) return;
+    const { cohort } = citation;
+    if (typeof cohort === "object" && cohort !== null && "n" in cohort) visit(cohort.n);
+  };
   const visit = (value: unknown): void => {
     if (typeof value === "string") {
       if (DECIMAL_TEXT.test(value)) found.push(abs(parseDecimal(value)));
@@ -99,7 +175,8 @@ export function collectToolNumbers(outputs: readonly unknown[]): Decimal[] {
       value.forEach(visit);
     } else if (typeof value === "object" && value !== null && !("untrusted" in value)) {
       for (const [key, child] of Object.entries(value)) {
-        if (!NON_METRIC_KEYS.has(key)) visit(child);
+        if (key === "citation") visitCitation(child);
+        else if (!NON_METRIC_KEYS.has(key)) visit(child);
       }
     }
   };
@@ -128,7 +205,7 @@ export interface VerifyResult {
 
 export function verifyAnswerNumbers(answer: string, toolOutputs: readonly unknown[]): VerifyResult {
   const allowed = [...collectToolNumbers(toolOutputs), ...ALWAYS_ALLOWED.map(parseDecimal)];
-  const unsupported = extractNumbers(answer).filter((text) => {
+  const unsupported = extractNumbers(answer, collectToolTimes(toolOutputs)).filter((text) => {
     const shown = parseDecimal(text);
     return !allowed.some((source) => isDisplayOf(shown, source));
   });

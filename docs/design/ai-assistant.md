@@ -290,16 +290,22 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
     - The Arabic decimal separator ٫ becomes "." and the thousands separator ٬ becomes ",".
     - ٪ becomes %.
     - "," is accepted only as a thousands separator in groups of three.
-  - *Strip before matching:*
+  - *Strip before matching, and only these:*
     - `[[product:<id>]]` tokens;
-    - ISO dates and datetimes;
-    - clock times;
-    - leading list markers.
+    - ISO dates and datetimes that a tool returned (the whole value or its date part);
+    - clock times that appear in a datetime a tool returned;
+    - ordered-list markers that count up from 1 in sequence.
+    Any other date, time or line-leading number is checked group by group, so
+    "Price 2099-12-31", "12:30 AED" and "37. cheaper" fail (review of #41).
   - *Sources.* Only typed tool fields count: decimal strings and safe integers.
     - Skipped: identifier and timestamp keys (`id`, `productId`, `runId`, `sku`, `capturedAt`,
-      `date`, `cutoff`, `generation`, `datasetGeneration`, `toolVersion`, `url`), `Money.minor`,
-      and the echoed `filters`, so a number the model put into a filter cannot launder itself.
-    - Also skipped: `{untrusted}` values, so digits in retailer text never become allowed.
+      `date`, `cutoff`, `generation`, `datasetGeneration`, `toolVersion`, `apiVersion`,
+      `metricVersion`, `endpoint`, `scope`, `url`), `Money.minor`, and the echoed `filters`, so a
+      number the model put into a filter cannot launder itself. Of the citation only `cohort.n`
+      counts; an `apiVersion` of "2.5" must not allow "2.5 AED".
+    - Also skipped: `{untrusted}` values, so digits in retailer text never become allowed. The
+      API's own prose (`caveats`, not-enough-data `detail`, `cohort.description`) is wrapped as
+      `{untrusted}` too (≤ 500 chars per language), since it may interpolate retailer text.
   - *Matching.* Exact `BigInt` decimal arithmetic on absolute values. A shown number is allowed
     only if it equals a source (trailing zeros allowed), or equals the source rounded **half
     away from zero** to fewer decimal places. There is no rounding to tens, no unit conversion

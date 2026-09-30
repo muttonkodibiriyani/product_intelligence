@@ -10,6 +10,9 @@ export const META = {
   market: "AE",
   currency: "AED",
   apiVersion: "v1.0.0",
+  metricVersion: "m1",
+  endpoint: "compare",
+  scope: "uae",
 };
 
 export const INJECTION =

@@ -6,12 +6,15 @@
  * - one API call carrying the user's ID token;
  * - envelope validation and fail-closed sanitising;
  * - a size cap;
- * - a citation built from the envelope meta.
+ * - a citation built from the envelope meta;
+ * - API prose (caveats, not-enough-data detail, cohort description) wrapped as `{untrusted}`,
+ *   because the API may interpolate retailer text (brand, category) into it.
  * Anything unexpected becomes a typed error result, never free text the model could follow.
  */
 import type { z } from "zod";
 
 import { ApiError, type ApiRequest, type MetricApi } from "../api/client.js";
+import { type Untrusted, untrusted } from "../guard/untrusted.js";
 import {
   type Bilingual,
   type Evidence,
@@ -47,22 +50,38 @@ export interface ToolError {
 export interface Citation {
   readonly tool: string;
   readonly toolVersion: string;
-  readonly apiVersion: string | null;
-  readonly metricVersion: string | null;
+  readonly apiVersion: string;
+  readonly metricVersion: string;
   readonly datasetGeneration: string;
   readonly cutoff: string;
   readonly market: string;
   readonly currency: string;
   readonly filters: Readonly<Record<string, unknown>>;
-  readonly cohort: { readonly description: string; readonly n: number };
+  readonly cohort: { readonly description: Untrusted; readonly n: number };
+}
+
+/** API prose in both languages, each side wrapped as untrusted data. */
+export interface UntrustedBilingual {
+  readonly en: Untrusted;
+  readonly ar: Untrusted;
+}
+
+/** Longest API prose passed to the model, per language. */
+export const PROSE_MAX_CHARS = 500;
+
+function prose(text: Bilingual): UntrustedBilingual {
+  return { en: untrusted(text.en, PROSE_MAX_CHARS), ar: untrusted(text.ar, PROSE_MAX_CHARS) };
 }
 
 export interface ToolEnvelope {
   readonly status: "ok" | "not_enough_data";
   readonly data?: Sanitised;
-  readonly notEnoughData?: { readonly reason: NotEnoughDataReason; readonly detail: Bilingual };
+  readonly notEnoughData?: {
+    readonly reason: NotEnoughDataReason;
+    readonly detail: UntrustedBilingual;
+  };
   readonly citation: Citation;
-  readonly caveats: readonly Bilingual[];
+  readonly caveats: readonly UntrustedBilingual[];
   readonly evidence: readonly Evidence[];
 }
 
@@ -166,22 +185,22 @@ export class ToolRegistry {
         : {
             notEnoughData: {
               reason: envelope.data.reason ?? "no_match",
-              detail: envelope.data.detail ?? { en: "", ar: "" },
+              detail: prose(envelope.data.detail ?? { en: "", ar: "" }),
             },
           }),
       citation: {
         tool: tool.name,
         toolVersion: tool.version,
-        apiVersion: meta.apiVersion ?? null,
-        metricVersion: meta.metricVersion ?? null,
+        apiVersion: meta.apiVersion,
+        metricVersion: meta.metricVersion,
         datasetGeneration: meta.generation,
         cutoff: meta.cutoff,
         market: meta.market,
         currency: meta.currency,
         filters: input,
-        cohort,
+        cohort: { description: untrusted(cohort.description, PROSE_MAX_CHARS), n: cohort.n },
       },
-      caveats,
+      caveats: caveats.map(prose),
       // Defence in depth: the API strips admin-only fields for viewers; strip them again here.
       evidence: envelope.data.evidence.map(({ runId, source, ...item }) => ({
         ...item,

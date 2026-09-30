@@ -1,5 +1,8 @@
 """Run the TypeScript assistant's own gate (typecheck, lint, format, tests + coverage) from pytest.
 
+Install runs with --ignore-scripts, so no dependency lifecycle script executes in CI, and
+`npm audit` fails the gate on any moderate-or-worse advisory (.npmrc audit-level).
+
 This lets the existing Python CI job enforce the TS checks without a workflow change. It fails,
 never skips, when Node.js/npm is missing, so the gate cannot pass silently.
 """
@@ -30,7 +33,9 @@ def test_node_available() -> None:
 def test_assistant_npm_check() -> None:
     npm = shutil.which("npm")
     assert npm is not None, "npm is required for apps/assistant checks"
-    install = _run(npm, "ci", "--no-audit", "--no-fund")
+    install = _run(npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund")
     assert install.returncode == 0, install.stdout[-4000:] + install.stderr[-4000:]
+    audit = _run(npm, "audit", "--audit-level=moderate")
+    assert audit.returncode == 0, audit.stdout[-8000:] + audit.stderr[-4000:]
     check = _run(npm, "run", "check")
     assert check.returncode == 0, check.stdout[-8000:] + check.stderr[-4000:]
