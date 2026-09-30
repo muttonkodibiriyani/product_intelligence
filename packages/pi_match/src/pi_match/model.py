@@ -60,7 +60,7 @@ class MatchPair(PiModel):
     right_unit_price: UnitPrice | None
     #: (right - left) / left for the same currency; per unit when both sizes are known.
     price_gap_pct: Decimal | None
-    price_basis: str | None  # "unit" | "item" | None (not comparable)
+    price_basis: str | None  # "unit" | "item" | "item_size_unknown" | None (not comparable)
 
 
 class BrandOverlap(PiModel):

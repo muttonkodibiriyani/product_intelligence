@@ -2,7 +2,8 @@
 
 Pure and deterministic: the same inputs give byte-identical outputs. Rules, blueprint §8.4:
 
-- GTIN: two valid, equal GTINs are an exact match; two valid, different GTINs never match.
+- GTIN: two valid, different GTINs never match. Two valid, equal GTINs are exact only if the
+  rules below agree; a rule conflict makes the pair ``candidate`` with ``gtin_conflict``.
 - Concentration (EDP/EDT/parfum/...), when both are known, must agree or the pair is dropped.
 - Item kind (regular/mini/refill/set) must agree or the pair is dropped.
 - Exact needs a strong name score, the same size and a compatible shade. A known size or shade
@@ -96,15 +97,18 @@ def _size_relation(left: Size | None, right: Size | None) -> str:
     return "same" if left.same_as(right) else "differs"
 
 
-def _excluded(left: Prepared, right: Prepared) -> bool:
-    """Hard rules: a different item kind, or two known concentrations that differ."""
+def _rule_conflicts(left: Prepared, right: Prepared) -> tuple[str, ...]:
+    """Hard-rule conflicts: a different item kind, or two known concentrations that differ."""
+    conflicts: list[str] = []
     if left.kind is not right.kind:
-        return True
-    return (
+        conflicts.append("kind_differs")
+    if (
         left.concentration is not None
         and right.concentration is not None
         and left.concentration is not right.concentration
-    )
+    ):
+        conflicts.append("concentration_differs")
+    return tuple(conflicts)
 
 
 def _bucket(left: Prepared, right: Prepared, score: Decimal, size: str, shade: str) -> Bucket:
@@ -117,17 +121,24 @@ def _bucket(left: Prepared, right: Prepared, score: Decimal, size: str, shade: s
 
 
 def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[str, ...]] | None:
-    """Bucket, score and reasons for one same-brand pair, or None when rules exclude it."""
+    """Bucket, score and reasons for one same-brand pair, or None when rules exclude it.
+
+    The §8.4 rules run before the GTIN: equal GTINs only make an exact match when kind,
+    concentration, size and shade agree. A conflict keeps the pair as ``candidate`` with
+    ``gtin_conflict`` so a reviewer sees it, rather than trusting either signal.
+    """
     reasons: list[str] = [f"brand={left.brand_key}"]
+    gtin_equal = False
     if left.gtin is not None and right.gtin is not None:
         if left.gtin != right.gtin:
             return None
-        return Bucket.EXACT, Decimal(1), (*reasons, "gtin_equal")
+        gtin_equal = True
     score = name_score(left.tokens, right.tokens)
-    if _excluded(left, right) or score < CANDIDATE_MIN:
+    conflicts = list(_rule_conflicts(left, right))
+    if not gtin_equal and (conflicts or score < CANDIDATE_MIN):
         return None
     reasons.append(f"name={score}")
-    if left.kind is not ItemKind.REGULAR:
+    if left.kind is not ItemKind.REGULAR and left.kind is right.kind:
         reasons.append(f"kind={left.kind.value}")
     if left.concentration is not None and left.concentration is right.concentration:
         reasons.append(f"concentration={left.concentration.value}")
@@ -136,6 +147,14 @@ def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[
     reasons.extend((f"size_{size}", f"shade_{shade}"))
     if "differs" in {size, shade}:
         reasons.append("family_only")
+        conflicts.extend(
+            f"{k}_differs" for k, rel in (("size", size), ("shade", shade)) if rel == "differs"
+        )
+    if gtin_equal:
+        reasons.append("gtin_equal")
+        if conflicts:
+            return Bucket.CANDIDATE, score, (*reasons, "gtin_conflict", *conflicts)
+        return Bucket.EXACT, Decimal(1), tuple(reasons)
     return _bucket(left, right, score, size, shade), score, tuple(reasons)
 
 
@@ -148,19 +167,33 @@ def unit_price(item: Prepared) -> UnitPrice | None:
     return UnitPrice(amount=amount, currency=record.currency, unit=item.size.unit)
 
 
+def _pct(base: Decimal, other: Decimal) -> Decimal:
+    return ((other - base) / base * 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
+
+
 def _price_gap(
     left: Prepared, right: Prepared
 ) -> tuple[UnitPrice | None, UnitPrice | None, Decimal | None, str | None]:
+    """Unit prices, the gap in % (right vs left) and its basis.
+
+    - ``unit``: both unit prices are known in the same unit (ml vs ml, g vs g).
+    - ``item``: per-item prices, only when the sizes are the same.
+    - ``item_size_unknown``: per-item prices when neither size is known (flagged: may differ).
+    - otherwise no gap: ml vs g, one side's size unknown, missing price or another currency.
+    """
     lu, ru = unit_price(left), unit_price(right)
     lp, rp = left.record.price, right.record.price
     if left.record.currency is None or left.record.currency != right.record.currency:
         return lu, ru, None, None
     if lu is not None and ru is not None and lu.unit == ru.unit and lu.amount:
-        gap = (ru.amount - lu.amount) / lu.amount * 100
-        return lu, ru, gap.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN), "unit"
-    if lp is not None and rp is not None and lp:
-        gap = (rp - lp) / lp * 100
-        return lu, ru, gap.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN), "item"
+        return lu, ru, _pct(lu.amount, ru.amount), "unit"
+    if lp is None or rp is None or not lp:
+        return lu, ru, None, None
+    size = _size_relation(left.size, right.size)
+    if size == "same":
+        return lu, ru, _pct(lp, rp), "item"
+    if left.size is None and right.size is None:
+        return lu, ru, _pct(lp, rp), "item_size_unknown"
     return lu, ru, None, None
 
 

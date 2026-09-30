@@ -104,12 +104,85 @@ def test_currency_mismatch_is_not_compared() -> None:
     assert pair.currency is None
 
 
-def test_item_price_gap_when_size_unknown() -> None:
+def test_item_price_gap_when_both_sizes_unknown_is_flagged() -> None:
     left = [rec("a", "Hydra Cream", price="100", currency="AED")]
     right = [rec("x", "Hydra Cream", price="110", currency="AED")]
     (pair,) = match(left, right)
-    assert (pair.price_basis, pair.price_gap_pct) == ("item", Decimal("10.00"))
+    assert (pair.price_basis, pair.price_gap_pct) == ("item_size_unknown", Decimal("10.00"))
     assert pair.left_unit_price is None
+
+
+def test_unit_price_gap_across_fl_oz_and_ml() -> None:
+    left = rec("a", "Hydra Cream", size="50 ml", price="100", currency="AED")
+    right = rec("x", "Hydra Cream", size="1.7 fl oz", price="120", currency="AED")
+    (pair,) = match([left], [right])
+    assert pair.price_basis == "unit"
+    assert pair.price_gap_pct is not None
+
+
+@pytest.mark.parametrize(
+    ("left_size", "right_size"),
+    [
+        ("50 ml", "50 g"),  # ml vs g: not comparable per unit or per item
+        ("50 ml", None),  # one side unknown
+        (None, "50 g"),
+    ],
+)
+def test_no_price_gap_across_units_or_one_unknown_size(
+    left_size: str | None, right_size: str | None
+) -> None:
+    left = rec("a", "Hydra Cream", size=left_size, price="100", currency="AED")
+    right = rec("x", "Hydra Cream", size=right_size, price="200", currency="AED")
+    (pair,) = match([left], [right])
+    assert pair.price_gap_pct is None
+    assert pair.price_basis is None
+
+
+def test_equal_gtin_with_size_conflict_is_candidate() -> None:
+    left = prepare(rec("a", "Hydra Cream 50 ml", gtin="4006381333931"))
+    right = prepare(rec("b", "Hydra Cream 100 ml", gtin="4006381333931"))
+    result = score_pair(left, right)
+    assert result is not None
+    bucket, _, reasons = result
+    assert bucket is Bucket.CANDIDATE
+    assert {"gtin_equal", "gtin_conflict", "size_differs", "family_only"} <= set(reasons)
+
+
+def test_equal_gtin_with_shade_conflict_is_candidate() -> None:
+    left = prepare(rec("a", "Skin Tint 30 ml", shade="N12", gtin="4006381333931"))
+    right = prepare(rec("b", "Skin Tint 30 ml", shade="N20", gtin="4006381333931"))
+    result = score_pair(left, right)
+    assert result is not None
+    assert result[0] is Bucket.CANDIDATE
+    assert {"gtin_conflict", "shade_differs"} <= set(result[2])
+
+
+@pytest.mark.parametrize(
+    ("left_name", "right_name", "conflict"),
+    [
+        ("Libre Eau de Parfum 50 ml", "Libre Eau de Toilette 50 ml", "concentration_differs"),
+        ("Libre Eau de Parfum 50 ml", "Libre Eau de Parfum Mini 50 ml", "kind_differs"),
+    ],
+)
+def test_equal_gtin_with_hard_rule_conflict_is_candidate(
+    left_name: str, right_name: str, conflict: str
+) -> None:
+    left = prepare(rec("a", left_name, gtin="4006381333931"))
+    right = prepare(rec("b", right_name, gtin="4006381333931"))
+    result = score_pair(left, right)
+    assert result is not None
+    bucket, _, reasons = result
+    assert bucket is Bucket.CANDIDATE
+    assert {"gtin_equal", "gtin_conflict", conflict} <= set(reasons)
+
+
+def test_equal_gtin_with_no_conflict_is_exact_even_with_a_weak_name() -> None:
+    left = prepare(rec("a", "Hydra Cream 50 ml", gtin="4006381333931"))
+    right = prepare(rec("b", "Aqua Gel 50 ml", gtin="4006381333931"))
+    result = score_pair(left, right)
+    assert result is not None
+    assert result[0] is Bucket.EXACT
+    assert "gtin_conflict" not in result[2]
 
 
 def test_missing_price_is_not_compared() -> None:

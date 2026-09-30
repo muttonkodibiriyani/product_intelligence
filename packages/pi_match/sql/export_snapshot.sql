@@ -1,3 +1,4 @@
+-- DRAFT, NOT TO USE beyond local demo runs: pi.dataset/v1 is the shared export contract.
 -- Export one source's snapshot from pi_db as pi_match JSONL (one ProductRecord per line).
 -- Usage (local stack):
 --   psql "$PI_DATABASE_URL" -v source=sephora_me -At -f packages/pi_match/sql/export_snapshot.sql > sephora.jsonl
