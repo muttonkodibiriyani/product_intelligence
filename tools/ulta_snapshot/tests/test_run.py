@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import html
+import io
 import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -12,11 +13,11 @@ from typing import Any
 
 from pydantic import HttpUrl
 from ulta_snapshot.load import allowed_captures, page_product, robots_for
-from ulta_snapshot.run import context, make_run, policy
+from ulta_snapshot.run import Run, context, make_run, policy, prior_bytes
 
 from pi_fetch.pacing import HostPacer
 from pi_fetch.policy import FetchPlan, FetchPolicy
-from pi_fetch.proxy import ProxyCredentials, ProxyMeter
+from pi_fetch.proxy import DEFAULT_BYTE_CAP, ProxyCredentials, ProxyMeter
 from pi_fetch.transports.base import RawResponse, Transport
 from pi_fetch.types import CapturedJson, FetchRequest
 
@@ -45,13 +46,18 @@ class Reader:
 class FakeBrowser:
     """Scripted proxied browser: asks robots about two graphql sub-requests per page."""
 
-    def __init__(self, meter: ProxyMeter, allowed: Callable[[str], bool]) -> None:
+    def __init__(
+        self, meter: ProxyMeter, allowed: Callable[[str], bool], challenge_at: int | None
+    ) -> None:
         self.meter = meter
         self.allowed = allowed
+        self.challenge_at = challenge_at
         self.pages = 0
+        self.requested: list[str] = []
 
     def send(self, request: FetchRequest, headers: Mapping[str, str]) -> RawResponse:
         url = str(request.url)
+        self.requested.append(url)
         self.meter.add(500, 1500)
         if url.endswith("/robots.txt"):
             text = html.escape((FIXTURES / "ulta_ae_robots.txt").read_text())
@@ -65,7 +71,7 @@ class FakeBrowser:
                 elapsed_ms=1,
             )
         self.pages += 1
-        if self.pages == 3:  # a Cloudflare challenge: the run must stop here
+        if self.pages == self.challenge_at:  # a Cloudflare challenge: the run must stop here
             page = ROOT / "docs/recon/samples/probe/ulta_ae_cf_challenge_webkit_head.html"
             return RawResponse(
                 final_url=url,
@@ -95,35 +101,57 @@ class FakeBrowser:
         pass
 
 
-def _factory(
-    route: FetchPlan,
-    pol: FetchPolicy,
-    creds: ProxyCredentials,
-    meter: ProxyMeter,
-    allowed: Callable[[str], bool],
-) -> Transport:
-    return FakeBrowser(meter, allowed)
+class Factory:
+    """The proxied-browser factory, keeping the browsers it built for assertions."""
+
+    def __init__(self, challenge_at: int | None = None) -> None:
+        self.challenge_at = challenge_at
+        self.browsers: list[FakeBrowser] = []
+
+    def __call__(
+        self,
+        route: FetchPlan,
+        pol: FetchPolicy,
+        creds: ProxyCredentials,
+        meter: ProxyMeter,
+        allowed: Callable[[str], bool],
+    ) -> Transport:
+        self.browsers.append(FakeBrowser(meter, allowed, self.challenge_at))
+        return self.browsers[-1]
+
+    @property
+    def requested(self) -> list[str]:
+        return [u for b in self.browsers for u in b.requested]
 
 
-def test_runner_stops_at_first_challenge_and_writes_loader_input(tmp_path: Path) -> None:
+def _run(out: Path, urls: list[str], prior: int, factory: Factory, console: io.StringIO) -> Run:
     now = [0.0]
 
     def sleep(s: float) -> None:
         now[0] += s
 
-    out = tmp_path / "snap"
-    run = make_run(  # capture_json stays off (rung 5 refuses captured_json on main)
+    return make_run(  # capture_json stays off (the owner's test runs with CAPTURE_JSON=0)
         out,
-        URLS,
-        policy(0, "owner-approval-test", RESOURCE),
+        urls,
+        policy(prior, "owner-approval-test", RESOURCE),
         Reader(),
-        inner=_factory,
+        inner=factory,
         pacer=HostPacer(clock=lambda: now[0], sleep=sleep),
         sleep=sleep,
+        console=console,
     )
+
+
+def test_runner_stops_at_first_challenge_and_writes_loader_input(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    console = io.StringIO()
+    run = _run(out, URLS, 0, Factory(challenge_at=3), console)
     with run.fetcher:
         run.run(context(datetime.now(UTC)))
+    run.finish()
 
+    assert "ULTA TEST RESULT: status=stopped_at_challenge pages_ok=2/4" in console.getvalue()
+    assert "challenge=yes" in console.getvalue()
     progress = json.loads((out / "progress.json").read_text())
     assert progress["stopped"].startswith("stopped:")
     assert progress["counts"]["en"]["pdp_ok"] == 2
@@ -144,3 +172,75 @@ def test_runner_stops_at_first_challenge_and_writes_loader_input(tmp_path: Path)
     product = page_product(recs[0], robots)
     assert product is not None
     assert product.variants
+
+
+PAGE = 303_000  # one fake page load through the proxy (2 kB request + 301 kB page)
+RESERVE = 8_000_000  # ResidentialProxy.page_reserve_bytes default
+
+
+def test_byte_cap_stops_the_run_before_a_page_could_cross_it(tmp_path: Path) -> None:
+    # Room for robots.txt and two pages; after the second, another page could cross the cap.
+    prior = DEFAULT_BYTE_CAP - RESERVE - 2_000 - 2 * PAGE + 1
+    out = tmp_path / "snap"
+    console = io.StringIO()
+    factory = Factory()
+    run = _run(out, URLS, prior, factory, console)
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    assert factory.requested == [f"{BASE}/robots.txt", URLS[0], URLS[1]]  # no 3rd page request
+    progress = json.loads((out / "progress.json").read_text())
+    assert progress["stopped"].startswith("stopped:")
+    assert "proxy_byte_cap" in progress["stopped"]
+    assert progress["counts"]["en"]["pdp_ok"] == 2
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["stopped"] == progress["stopped"]
+    assert manifest["proxy_usage"][0]["prior_bytes"] == prior
+    assert "status=cap_reached pages_ok=2/4" in console.getvalue()
+
+
+def test_exhausted_allowance_raises_before_any_request(tmp_path: Path) -> None:
+    prior = DEFAULT_BYTE_CAP - RESERVE + 1  # not even one page fits
+    out = tmp_path / "snap"
+    console = io.StringIO()
+    factory = Factory()
+    run = _run(out, URLS, prior, factory, console)
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    assert factory.requested == [f"{BASE}/robots.txt"]  # no page request at all
+    progress = json.loads((out / "progress.json").read_text())
+    assert progress["stopped"] != "complete"
+    assert progress["proxy"]["bytes_via_proxy"] == 2_000  # robots.txt only
+    assert (out / "manifest.json").exists()
+    assert "status=cap_reached pages_ok=0/4" in console.getvalue()
+
+
+def test_robots_refused_page_is_skipped_and_the_run_continues(tmp_path: Path) -> None:
+    refused = f"{BASE}/en/buy-b?colour=red"  # robots: Disallow: /*?
+    urls = [URLS[0], refused, URLS[2]]
+    out = tmp_path / "snap"
+    console = io.StringIO()
+    factory = Factory()
+    run = _run(out, urls, 0, factory, console)
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    assert refused not in factory.requested  # never sent through the proxy
+    assert factory.requested == [f"{BASE}/robots.txt", URLS[0], URLS[2]]
+    progress = json.loads((out / "progress.json").read_text())
+    assert progress["stopped"] == "complete"
+    assert progress["counts"]["en"]["robots_refused_page"] == 1
+    assert progress["counts"]["en"]["pdp_ok"] == 2
+    assert progress["proxy"]["bytes_via_proxy"] == 2_000 + 2 * PAGE  # zero bytes for the refusal
+    assert f"refused by robots (not fetched, 0 bytes): {refused}" in console.getvalue()
+    assert "status=complete pages_ok=2/3 robots_refused=1" in console.getvalue()
+
+
+def test_prior_bytes_rounds_the_dashboard_figure_up() -> None:
+    assert prior_bytes({"PRIOR_GB": "0.00002"}) == 20_000
+    assert prior_bytes({"PRIOR_GB": "0.0000132101"}) == 13_211
+    assert prior_bytes({"PRIOR_BYTES": "5", "PRIOR_GB": "9"}) == 5

@@ -15,10 +15,15 @@ Writes to ``OUT_DIR`` (the loader's input layout, see ``load.py``):
 * ``audit.jsonl``: the fetcher's audit events (per-page proxy bytes and abort reasons);
 * ``evidence/``: the fetcher's content-addressed raw payloads.
 
-Env: ``OUT_DIR``, ``URLS_FILE`` (one product URL per line), ``PRIOR_BYTES`` (required; bytes
-already used from the allowance), ``OWNER_APPROVAL_REF``, ``SECRET_RESOURCE``, ``CAPTURE_JSON``
-(default off), ``MAX_PAGES`` (default 20), ``GOOGLE_APPLICATION_CREDENTIALS`` (the service
-account that may read the secret).
+Env: ``OUT_DIR``, ``URLS_FILE`` (one product URL per line), ``PRIOR_GB`` or ``PRIOR_BYTES``
+(required; already used from the allowance, rounded up), ``OWNER_APPROVAL_REF``,
+``SECRET_RESOURCE``, ``CAPTURE_JSON`` (default off), ``MAX_PAGES`` (default 20),
+``GOOGLE_OAUTH_ACCESS_TOKEN`` (the operator's own short-lived token, e.g.
+``gcloud auth print-access-token`` in Cloud Shell; used only to read the secret, removed from the
+environment before the browser starts, never printed).
+
+Console: one line per page, then one ``ULTA TEST RESULT:`` summary line (runbook:
+docs/runbooks/ulta-proxy-test.md).
 """
 
 from __future__ import annotations
@@ -26,17 +31,18 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+import math
 import os
 import random
 import signal
 import sys
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 from urllib.parse import urlsplit
 
 from pydantic import HttpUrl
@@ -53,6 +59,7 @@ from pi_fetch.pacing import HostPacer, RobotsRefusedError, RobotsTagger
 from pi_fetch.policy import FetchPlan, FetchPolicy
 from pi_fetch.proxy import (
     ProxyBudgetExceededError,
+    ProxyConfigError,
     ProxyCredentials,
     ProxyMeter,
     ResidentialProxy,
@@ -138,22 +145,14 @@ def gb(n: int) -> str:
     return str((Decimal(n) / _BYTES_PER_GB).quantize(Decimal("0.000001")))
 
 
-def service_account_token() -> str:
-    """An access token for the mounted service account (in memory only, never logged)."""
-    # google-auth is installed in the job image only (tools/ulta_snapshot/Dockerfile).
-    from google.auth.transport.requests import (  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
-        Request,
-    )
-    from google.oauth2 import (  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
-        service_account,
-    )
-
-    creds = service_account.Credentials.from_service_account_file(
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
-        scopes=["https://www.googleapis.com/auth/cloud-platform"],
-    )
-    creds.refresh(Request())
-    return str(creds.token)
+def operator_token() -> Callable[[], str]:
+    """The operator's access token, taken out of the environment (so the browser process never
+    inherits it) and kept in memory only; never logged."""
+    token = os.environ.pop("GOOGLE_OAUTH_ACCESS_TOKEN", "").strip()
+    if not token:
+        msg = "GOOGLE_OAUTH_ACCESS_TOKEN is not set (see docs/runbooks/ulta-proxy-test.md)"
+        raise SystemExit(msg)
+    return lambda: token
 
 
 def context(now: datetime) -> CollectionContext:
@@ -218,12 +217,13 @@ class Run:
         self.graphql: GraphqlCounter = extra["graphql"]
         self.audit: AuditSink = extra["audit"]
         self.sleep: Callable[[float], None] = extra.get("sleep", time.sleep)
-        #: Off by default: on main (1758af4) ``FetchResult`` refuses ``captured_json`` at rung 5
-        #: (types.py), so capturing would fail the fetch. The DOM + JSON-LD path needs none.
+        #: Off by default (``CAPTURE_JSON=0`` for the owner's test): the DOM + JSON-LD path needs
+        #: no captures. Rung 5 accepts them since #31 when the coordinator asks for page JSON.
         self.capture_json: bool = extra.get("capture_json", False)
         self.counts: Counter[str] = Counter()
         self.started = datetime.now(UTC).isoformat()
         self.stopped = "running"
+        self.console = extra.get("console", sys.stdout)
         (out / "pdp").mkdir(parents=True, exist_ok=True)
 
     def usage(self) -> dict[str, Any]:
@@ -271,8 +271,14 @@ class Run:
             result = self.fetcher.fetch(request, ctx)
         except RobotsRefusedError:
             self.counts["robots_refused_page"] += 1
+            self.say(f"refused by robots (not fetched, 0 bytes): {url}")
             return True
-        except (SourceStoppedError, ProxyBudgetExceededError, TransportError) as exc:
+        except (
+            SourceStoppedError,
+            ProxyBudgetExceededError,
+            ProxyConfigError,
+            TransportError,
+        ) as exc:
             self.stopped = f"stopped: {type(exc).__name__}: {exc}"
             return False
         finally:
@@ -280,6 +286,8 @@ class Run:
         page_bytes = int(self.usage()["bytes_via_proxy"]) - int(before)
         self.emit(page_record(result, page_bytes))
         self.counts["pdp_fetched"] += 1
+        state = result.block.kind.value if result.block else f"http {result.http_status}"
+        self.say(f"page {self.counts['pdp_fetched']}: {state}, {page_bytes} bytes: {url}")
         if result.block is not None:
             self.counts[f"block_{result.block.kind.value}"] += 1
             if result.block.marks_source_blocked:
@@ -293,6 +301,48 @@ class Run:
             self.stopped = f"stopped: {self.fetcher.stopped_sources()}"
             return False
         return True
+
+    def say(self, line: str) -> None:
+        print(line, file=self.console, flush=True)
+
+    def summary(self) -> str:
+        """The one line the operator pastes back: status, pages, bytes, GB, USD, challenges."""
+        use = self.usage()
+        challenged = any(k.startswith("block_") for k in self.counts)
+        if self.stopped == "complete":
+            status = "complete"
+        elif challenged:
+            status = "stopped_at_challenge"
+        elif "proxy_byte_cap" in self.stopped or "ProxyBudgetExceeded" in self.stopped:
+            status = "cap_reached"
+        elif "signal" in self.stopped:
+            status = "stopped_by_operator"
+        else:
+            status = "stopped_error"
+        return (
+            f"ULTA TEST RESULT: status={status} pages_ok={self.counts['pdp_ok']}/{len(self.urls)}"
+            f" robots_refused={self.counts['robots_refused_page']}"
+            f" proxy_bytes={use['bytes_via_proxy']} gb={use['gb']} usd={use.get('usd', '0.00')}"
+            f" challenge={'yes' if challenged else 'no'} detail={self.stopped!r}"
+        )
+
+    def finish(self) -> None:
+        """Final status file, manifest and summary line (also after a stop or a signal)."""
+        self.progress()
+        (self.out / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "proxy_usage": [u.manifest() for u in self.fetcher.proxy_usage()],
+                    "stopped": self.stopped,
+                    "counts": dict(self.counts),
+                    "graphql": dict(self.graphql.counts),
+                    "pages": self.audit.pages,
+                },
+                indent=1,
+                default=str,
+            )
+        )
+        self.say(self.summary())
 
     def run(self, ctx: CollectionContext) -> None:
         self.counts["discovered"] = len(self.urls)
@@ -317,6 +367,7 @@ def make_run(  # noqa: PLR0913 - keyword-only test seams
     pacer: HostPacer | None = None,
     sleep: Callable[[float], None] = time.sleep,
     capture_json: bool = False,
+    console: TextIO = sys.stdout,
 ) -> Run:
     """The fetcher on main's rung-5 route, with robots text, graphql and audit recording."""
     out.mkdir(parents=True, exist_ok=True)
@@ -342,7 +393,19 @@ def make_run(  # noqa: PLR0913 - keyword-only test seams
         audit=audit,
         sleep=sleep,
         capture_json=capture_json,
+        console=console,
     )
+
+
+def prior_bytes(env: Mapping[str, str]) -> int:
+    """Bytes already used from the allowance: ``PRIOR_BYTES``, else ``PRIOR_GB`` (the IPRoyal
+    dashboard figure) rounded up to a whole byte. One of them is required: no default of 0."""
+    if env.get("PRIOR_BYTES"):
+        return int(env["PRIOR_BYTES"])
+    if not env.get("PRIOR_GB"):
+        msg = "set PRIOR_GB (IPRoyal dashboard, GB used, rounded up) or PRIOR_BYTES"
+        raise SystemExit(msg)
+    return math.ceil(Decimal(env["PRIOR_GB"]) * _BYTES_PER_GB)
 
 
 def main() -> int:
@@ -351,7 +414,7 @@ def main() -> int:
     urls = [u.strip() for u in Path(os.environ["URLS_FILE"]).read_text().splitlines() if u.strip()]
     urls = urls[: int(os.environ.get("MAX_PAGES", "20"))]
     pol = policy(
-        int(os.environ["PRIOR_BYTES"]),
+        prior_bytes(os.environ),
         os.environ["OWNER_APPROVAL_REF"],
         os.environ["SECRET_RESOURCE"],
     )
@@ -359,35 +422,27 @@ def main() -> int:
         out,
         urls,
         pol,
-        SecretManagerReader(token=service_account_token),
+        SecretManagerReader(token=operator_token()),
         capture_json=os.environ.get("CAPTURE_JSON") == "1",
     )
-    fetcher, graphql, audit = run.fetcher, run.graphql, run.audit
 
-    def on_term(signum: int, _frame: object) -> None:
-        run.stopped = f"stopped: signal {signum}"
-        run.progress()
-        sys.exit(1)
+    def on_signal(signum: int, _frame: object) -> None:
+        run.stopped = f"stopped: signal {signum} (operator stop)"
+        raise SystemExit(1)
 
-    signal.signal(signal.SIGTERM, on_term)
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGINT, on_signal)
+    run.say(f"ulta.ae proxy test: {len(urls)} pages, prior_bytes={pol_prior(pol)}, out={out}")
     try:
-        with fetcher:
+        with run.fetcher:
             run.run(context(datetime.now(UTC)))
     finally:
-        run.progress()
-        (out / "manifest.json").write_text(
-            json.dumps(
-                {
-                    "proxy_usage": [u.manifest() for u in fetcher.proxy_usage()],
-                    "stopped": run.stopped,
-                    "graphql": dict(graphql.counts),
-                    "pages": audit.pages,
-                },
-                indent=1,
-                default=str,
-            )
-        )
-    return 0
+        run.finish()
+    return 0 if run.stopped == "complete" else 2
+
+
+def pol_prior(pol: FetchPolicy) -> int:
+    return next(iter(pol.residential_proxy.values())).prior_bytes
 
 
 if __name__ == "__main__":
