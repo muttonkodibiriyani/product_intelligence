@@ -535,6 +535,30 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
 
 A dataset without an imported retailer is served as the same object, byte for byte.
 
+### Price floor (API 1.7.1, planned; `pi_api.floor`)
+
+A price or regular price of **0.01 or less** is not a real shelf price (a placeholder or a parse
+artefact). The dataset contract already refuses 0.00 and below, so such a file is never served
+(503 `data_unavailable`). For 0.01, at load and before the imported-retailer correction,
+`pi_api` serves a copy with those values nulled, on every retailer:
+
+- **Not observed, never measured.** Medians, means, histograms, ladders, brand prices, promotion
+  depths, gaps, the index and every export read a withheld value exactly as a missing one. No
+  response shows a price at or below the floor. Stored rows and files are never changed.
+- **Flags.** An offer whose latest price was withheld carries `priceFlag: "invalid_low"`
+  (`null` otherwise), and a product card carries `priceFlags` by context. A withheld regular
+  price alone is counted but not flagged.
+- **Caveat.** A priced response involving a retailer with withheld values carries
+  `invalid_price_excluded` with `{retailer, count}` ("<count> <retailer> items had a price of
+  0.01 or less …"), scoped like the imported-retailer caveats.
+
+A dataset without such a value is served as the same object.
+
+Additive summary fields in the same version: `/v1/summary` `meanPrice` (half-even, over the
+same prices as `medianPrice`, `null` below the minimum sample) and `/v1/compare`
+`summary.gapHist` (fixed edges −50 … 50 percent, 11 counts over every counted pair, not the
+page, so the counts sum to `summary.n`).
+
 ## 7. Metric rules (owned by `pi_metrics`)
 
 These rules come from the Reviewer's REQUEST_CHANGES on #32, and are binding for the API and every

@@ -96,6 +96,16 @@
               }
             ]
           },
+          "priceFlag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceFlag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "promoPct": {
             "anyOf": [
               {
@@ -699,7 +709,8 @@
           "size_labels_differ_total",
           "was_price_unverified",
           "snapshot_import_date",
-          "parent_listings_included"
+          "parent_listings_included",
+          "invalid_price_excluded"
         ],
         "title": "CaveatCode",
         "type": "string"
@@ -793,6 +804,9 @@
             "title": "Equalcount",
             "type": "integer"
           },
+          "gapHist": {
+            "$ref": "#/components/schemas/GapHistogram"
+          },
           "meanGapPct": {
             "title": "Meangappct",
             "type": "string"
@@ -812,7 +826,8 @@
           "meanGapPct",
           "cheaperCounts",
           "equalCount",
-          "basket"
+          "basket",
+          "gapHist"
         ],
         "title": "CompareSummary",
         "type": "object"
@@ -2293,6 +2308,32 @@
         "title": "Gap",
         "type": "object"
       },
+      "GapHistogram": {
+        "additionalProperties": false,
+        "description": "Counted pairs by ``gap.pct``. ``counts`` has ``len(edges) + 1`` bins: bin 0 is below\n``edges[0]``, bin k is ``[edges[k-1], edges[k])``, and the last is at or above ``edges[-1]``.",
+        "properties": {
+          "counts": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "edges": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Edges",
+            "type": "array"
+          }
+        },
+        "required": [
+          "edges",
+          "counts"
+        ],
+        "title": "GapHistogram",
+        "type": "object"
+      },
       "GapItem": {
         "additionalProperties": false,
         "properties": {
@@ -2973,6 +3014,16 @@
               }
             ]
           },
+          "priceFlag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceFlag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "promoPct": {
             "anyOf": [
               {
@@ -3234,6 +3285,13 @@
         "title": "PairRow",
         "type": "object"
       },
+      "PriceFlag": {
+        "enum": [
+          "invalid_low"
+        ],
+        "title": "PriceFlag",
+        "type": "string"
+      },
       "PriceHistogram": {
         "additionalProperties": false,
         "properties": {
@@ -3349,6 +3407,13 @@
             "title": "Name",
             "type": "string",
             "x-pi-source-text": true
+          },
+          "priceFlags": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PriceFlag"
+            },
+            "title": "Priceflags",
+            "type": "object"
           },
           "prices": {
             "additionalProperties": {
@@ -4305,6 +4370,16 @@
             ],
             "title": "Ladder"
           },
+          "meanPrice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "medianPrice": {
             "anyOf": [
               {
@@ -4413,6 +4488,7 @@
           "brands",
           "categories",
           "medianPrice",
+          "meanPrice",
           "promoSharePct",
           "ladder",
           "promoDepth",

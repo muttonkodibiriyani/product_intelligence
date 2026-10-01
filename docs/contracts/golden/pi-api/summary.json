@@ -75,6 +75,11 @@
         }
       }
     ],
+    "meanPrice": {
+      "amount": "71.48",
+      "currency": "AED",
+      "minor": 7148
+    },
     "medianPrice": {
       "amount": "50.00",
       "currency": "AED",
