@@ -12,7 +12,8 @@
     "configUnavailable": "Sign-in isn't available at this address. Open the app from its Firebase Hosting URL.",
     "noRoleTitle": "No access yet",
     "noRole": "Your account is signed in but has no role. Ask an admin to grant you viewer access, then sign in again.",
-    "verifying": "Couldn't confirm your access just now. You're still signed in."
+    "verifying": "Couldn't confirm your access just now. You're still signed in.",
+    "recheck": "Try again"
   },
   "signIn": {
     "title": "Sign in",

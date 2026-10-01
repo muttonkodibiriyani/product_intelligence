@@ -3,22 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import type { Localized } from '@/lib/api/types';
+import { formatDate, loc } from '@/lib/format';
 import { useAuth } from './auth-provider';
 import { ErrorNotice } from './error-notice';
-
-/** Localised text with English as the fallback when a translation is missing. */
-export function loc(l: Partial<Localized> | null | undefined, locale: string): string {
-  return (locale === 'ar' ? l?.ar : undefined) ?? l?.en ?? '';
-}
-
-function formatDate(iso: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-AE' : 'en-GB', {
-    dateStyle: 'medium',
-    timeZone: 'UTC',
-    numberingSystem: 'latn',
-  }).format(new Date(iso));
-}
+import { Known } from './ui/known';
 
 /** What data the app is looking at. Every value is shown as the API sent it. */
 export function DatasetStatus() {
@@ -48,7 +36,9 @@ export function DatasetStatus() {
         {t('title')}
       </h1>
       {env.status === 'not_enough_data' && env.reason && (
-        <p className="mt-2 text-sm text-ink-2">{loc(env.detail, locale) || tr(env.reason)}</p>
+        <p className="mt-2 text-sm text-ink-2">
+          {loc(env.detail, locale) || <Known t={tr} v={env.reason} />}
+        </p>
       )}
       {m && (
         <>
@@ -59,10 +49,10 @@ export function DatasetStatus() {
           )}
           <dl className="mt-4 grid max-w-xl grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
             <Row k={t('vertical')}>
-              <Value t={t} v={m.vertical} />
+              <Known t={t} k="values" v={m.vertical} />
             </Row>
             <Row k={t('kind')}>
-              <Value t={t} v={m.kind} />
+              <Known t={t} k="values" v={m.kind} />
             </Row>
             <Row k={t('cutoff')}>
               <time dateTime={m.cutoff}>{formatDate(m.cutoff, locale)}</time>
@@ -71,7 +61,7 @@ export function DatasetStatus() {
               <span className="tabular-nums">{m.dates.length}</span>
             </Row>
             <Row k={t('matchStage')}>
-              <Value t={t} v={m.matchStage} />
+              <Known t={t} k="values" v={m.matchStage} />
             </Row>
           </dl>
           <h2 className="mt-8 text-base font-semibold">{t('retailers')}</h2>
@@ -83,7 +73,9 @@ export function DatasetStatus() {
                     <th scope="row" className="py-2 pe-6 text-start font-medium whitespace-nowrap">
                       {r.name}
                     </th>
-                    <td className="py-2 pe-6">{t(`status.${r.status}`)}</td>
+                    <td className="py-2 pe-6">
+                      <Known t={t} k="status" v={r.status} />
+                    </td>
                     <td className="py-2 pe-6 whitespace-nowrap text-ink-2">
                       {r.since ? t('since', { date: formatDate(r.since, locale) }) : t('notCollected')}
                     </td>
@@ -98,18 +90,6 @@ export function DatasetStatus() {
         </>
       )}
     </section>
-  );
-}
-
-/** A known value in the user's language; an unknown one exactly as the API sent it. */
-function Value({ t, v }: { t: ReturnType<typeof useTranslations>; v: string }) {
-  const key = `values.${v}`;
-  return t.has(key) ? (
-    <>{t(key)}</>
-  ) : (
-    <span lang="en" dir="ltr">
-      {v}
-    </span>
   );
 }
 

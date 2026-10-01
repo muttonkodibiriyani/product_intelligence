@@ -58,6 +58,8 @@ export function roleOf(claims: Record<string, unknown>): Role | null {
 export interface Session {
   email: string | null;
   role: Role | null;
+  /** False when the token's claims could not be read (identity outage): the role is unknown, not absent. */
+  verified: boolean;
 }
 
 /** The Firebase Auth instance plus the few calls the app makes. Token-only: no cookies anywhere. */
@@ -75,12 +77,17 @@ export function startAuth(config: FirebaseOptions) {
         if (!user) return cb(null);
         try {
           const t = await user.getIdTokenResult();
-          cb({ email: user.email, role: roleOf(t.claims) });
+          cb({ email: user.email, role: roleOf(t.claims), verified: true });
         } catch {
-          // Token refresh failed (offline, identity service down): keep the user signed in.
-          cb({ email: user.email, role: null });
+          // Token refresh failed (offline, identity service down): keep the user signed in, and
+          // say the role is unknown rather than missing, so a viewer never sees "no access".
+          cb({ email: user.email, role: null, verified: false });
         }
       });
+    },
+    /** Forces a token refresh; a new token fires `watch` again with the claims re-read. */
+    async recheck(): Promise<void> {
+      await auth.currentUser?.getIdToken(true);
     },
     async getToken(force: boolean): Promise<string | null> {
       return auth.currentUser ? auth.currentUser.getIdToken(force) : null;
