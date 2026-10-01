@@ -33,14 +33,35 @@ import {
 // The charts (and ECharts with them) load after the page: the KPIs and the table come first.
 const charts = () => import('../widgets/charts');
 // Holds the chart's place while its code loads, so the cards do not jump.
-const lazy = { ssr: false, loading: () => <Skeleton kind="chart" /> } as const;
-const LadderWidget = dynamic(() => charts().then((m) => m.LadderWidget), lazy);
-const PromoDepthWidget = dynamic(() => charts().then((m) => m.PromoDepthWidget), lazy);
-const BrandPriceWidget = dynamic(() => charts().then((m) => m.BrandPriceWidget), lazy);
-const CategoryMixWidget = dynamic(() => charts().then((m) => m.CategoryMixWidget), lazy);
-const PriceHistWidget = dynamic(() => charts().then((m) => m.PriceHistWidget), lazy);
-const BrandShareWidget = dynamic(() => charts().then((m) => m.BrandShareWidget), lazy);
-const RatingPriceWidget = dynamic(() => charts().then((m) => m.RatingPriceWidget), lazy);
+const ChartSkeleton = () => <Skeleton kind="chart" />;
+const LadderWidget = dynamic(() => charts().then((m) => m.LadderWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
+const PromoDepthWidget = dynamic(() => charts().then((m) => m.PromoDepthWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
+const BrandPriceWidget = dynamic(() => charts().then((m) => m.BrandPriceWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
+const CategoryMixWidget = dynamic(() => charts().then((m) => m.CategoryMixWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
+const PriceHistWidget = dynamic(() => charts().then((m) => m.PriceHistWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
+const BrandShareWidget = dynamic(() => charts().then((m) => m.BrandShareWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
+const RatingPriceWidget = dynamic(() => charts().then((m) => m.RatingPriceWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
 
 type View = 'overview' | 'compare';
 
