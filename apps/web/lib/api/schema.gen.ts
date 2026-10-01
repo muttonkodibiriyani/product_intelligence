@@ -55,6 +55,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalogues/{retailer}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Catalogue */
+        get: operations["get_catalogue_api_v1_catalogues__retailer__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogues/{retailer}/skus/{sku}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Catalogue Sku */
+        get: operations["get_catalogue_sku_api_v1_catalogues__retailer__skus__sku__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/compare": {
         parameters: {
             query?: never;
@@ -423,7 +457,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.5.2
+             * @default 1.7.0
              */
             apiVersion: string;
             /** Currency */
@@ -571,6 +605,116 @@ export interface components {
             confidence: string | null;
             matchClass: components["schemas"]["MatchClass"];
             reviewState: components["schemas"]["ReviewState"];
+        };
+        /** CatalogueDetail */
+        CatalogueDetail: {
+            /** Children */
+            children: components["schemas"]["RelatedSku"][];
+            /** Duplicateimagesremoved */
+            duplicateImagesRemoved: number;
+            /** Generation */
+            generation: string;
+            /** Images */
+            images: components["schemas"]["GalleryImage"][];
+            /**
+             * Importedat
+             * Format: date-time
+             */
+            importedAt: string;
+            /** Parents */
+            parents: components["schemas"]["RelatedSku"][];
+            /** Provenance */
+            provenance: string;
+            record: components["schemas"]["CatalogueRecord"];
+            /** Retailer */
+            retailer: string;
+        };
+        /** CatalogueRecord */
+        CatalogueRecord: {
+            /**
+             * Capturedat
+             * Format: date-time
+             */
+            capturedAt: string;
+            /**
+             * Children
+             * @default []
+             */
+            children: components["schemas"]["SkuReference"][];
+            /** Excludedparentsummary */
+            excludedParentSummary: boolean;
+            /** Groupingmastersku */
+            groupingMasterSku: string;
+            /**
+             * Imageids
+             * @default []
+             */
+            imageIds: string[];
+            /** Isvariant */
+            isVariant: boolean;
+            /** Name */
+            name: string;
+            /** Optionvalues */
+            optionValues?: {
+                [key: string]: string;
+            };
+            /**
+             * Parents
+             * @default []
+             */
+            parents: components["schemas"]["SkuReference"][];
+            /** Producttype */
+            productType: string;
+            /** Sku */
+            sku: string;
+            sourceIds: components["schemas"]["SourceIds"];
+        };
+        /** CatalogueSummary */
+        CatalogueSummary: {
+            /**
+             * Capturedfrom
+             * Format: date-time
+             */
+            capturedFrom: string;
+            /**
+             * Capturedto
+             * Format: date-time
+             */
+            capturedTo: string;
+            /** Excludedparentsummaries */
+            excludedParentSummaries: number;
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            /** Generation */
+            generation: string;
+            /** Imageassets */
+            imageAssets: number;
+            /**
+             * Importedat
+             * Format: date-time
+             */
+            importedAt: string;
+            /** Parentchildlinks */
+            parentChildLinks: number;
+            /** Provenance */
+            provenance: string;
+            /** Retailer */
+            retailer: string;
+            /** Skurecords */
+            skuRecords: number;
+            /** Skuswithimages */
+            skusWithImages: number;
+            /** Sourcesha256 */
+            sourceSha256: string;
+            /** Uniqueimagecontents */
+            uniqueImageContents: number;
+            /** Unresolvedskus */
+            unresolvedSkus: number;
+            /** Variantskus */
+            variantSkus: number;
         };
         /** CategoryNode */
         CategoryNode: {
@@ -773,6 +917,34 @@ export interface components {
             caveats: components["schemas"]["CaveatView"][];
             cohort?: components["schemas"]["Cohort"] | null;
             data: components["schemas"]["Availability"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** Envelope[CatalogueDetail] */
+        Envelope_CatalogueDetail_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["CatalogueDetail"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** Envelope[CatalogueSummary] */
+        Envelope_CatalogueSummary_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["CatalogueSummary"] | null;
             detail?: components["schemas"]["Localized"] | null;
             meta: components["schemas"]["ApiMeta"];
             reason?: components["schemas"]["Reason"] | null;
@@ -1024,6 +1196,25 @@ export interface components {
          * @enum {string}
          */
         FreshnessStatus: "fresh" | "aging" | "stale" | "snapshot";
+        /** GalleryImage */
+        GalleryImage: {
+            /** Assetid */
+            assetId: string;
+            /** Caption */
+            caption: string;
+            /** Height */
+            height: number;
+            /** Roles */
+            roles: string[];
+            /** Sha256 */
+            sha256: string;
+            /** Sourceurl */
+            sourceUrl: string | null;
+            /** Url */
+            url: string | null;
+            /** Width */
+            width: number;
+        };
         /** Gap */
         Gap: {
             amount: components["schemas"]["MoneyValue"];
@@ -1493,6 +1684,20 @@ export interface components {
          * @enum {string}
          */
         Reason: "capability_off" | "field_not_collected" | "retailer_blocked" | "retailer_partial" | "cohort_too_small" | "matches_unreviewed" | "no_match" | "not_in_scope" | "currency_mismatch" | "not_applicable" | "was_price_unverified";
+        /** RelatedSku */
+        RelatedSku: {
+            /** Name */
+            name: string | null;
+            /** Resolved */
+            resolved: boolean;
+            /** Selectionlabels */
+            selectionLabels: string[];
+            /** Selections */
+            selections: string[];
+            /** Sku */
+            sku: string;
+            sourceIds: components["schemas"]["SourceIds"] | null;
+        };
         /** RetailerAvailability */
         RetailerAvailability: {
             /** Counts */
@@ -1642,6 +1847,29 @@ export interface components {
             unit: string;
             /** Value */
             value: string;
+        };
+        /** SkuReference */
+        SkuReference: {
+            /**
+             * Selections
+             * @default []
+             */
+            selections: string[];
+            /** Sku */
+            sku: string;
+        };
+        /** SourceIds */
+        SourceIds: {
+            /** Catalogueid */
+            catalogueId?: string | null;
+            /** Externalid */
+            externalId?: string | null;
+            /** Stockid */
+            stockId?: number | null;
+            /** Structuredid */
+            structuredId?: string | number | null;
+            /** Structuredproductid */
+            structuredProductId?: string | number | null;
         };
         /**
          * Status
@@ -1937,6 +2165,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_Availability_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_catalogue_api_v1_catalogues__retailer__get: {
+        parameters: {
+            query?: {
+                market?: string | null;
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                retailer: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_CatalogueSummary_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_catalogue_sku_api_v1_catalogues__retailer__skus__sku__get: {
+        parameters: {
+            query?: {
+                market?: string | null;
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                retailer: string;
+                sku: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_CatalogueDetail_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
