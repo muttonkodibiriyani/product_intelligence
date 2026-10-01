@@ -498,15 +498,12 @@ reaches the model through tool output.
   - Fork PRs never get an OIDC token: the job has `if: github.event.pull_request.head.repo.full_name == github.repository`,
     and GitHub withholds `id-token` from forks anyway.
   - `permissions: {id-token: write, contents: read}` is set on that job only.
-  - The service account holds `roles/aiplatform.user`, plus Firestore access for the shared
-    meter (`assistant_config/current` read, `assistant_usage_counters` and
-    `assistant_reservations` read/write). **Open decision (owner/Infra):** Firestore IAM cannot
-    scope a role to collections, so `roles/datastore.user` would reach the whole (default)
-    database, chat threads included. Options: (a) accept it behind the protected environment
-    and owner review; (b) the CI job calls a tiny metering endpoint run by the function's
-    service account; (c) CI counters in a separate named database, with the kill switch
-    mirrored there. Recommendation: (a) for the pilot, since no user threads exist until
-    stage 1c, then (b) before real users arrive.
+  - The service account holds only `roles/aiplatform.user` today. Real eval calls also need
+    Firestore access for the shared meter, and Firestore IAM cannot scope a role to
+    collections. **Ruling (Coordinator, 2026-10-01): no IAM widening now.** CI runs the evals in
+    validate/no-network mode only (`promptfoo validate` plus the unit tests). Before any real
+    eval spend, the owner chooses between a small metering endpoint run by the function's
+    service account and a scoped grant.
 - **How the $1.50/month CI cap is enforced.** The eval harness calls Gemini through the same
   meter as production (§9), with label `ci`. The meter reserves the per-case ceiling in
   Firestore before each Vertex call and refuses the call once the `ci` month total would pass

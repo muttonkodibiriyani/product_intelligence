@@ -6,9 +6,9 @@
 #      repository == 'muttonkodibiriyani/product_intelligence' and environment ==
 #      'assistant-evals') and the service account pi-assistant-ci@, bound only to
 #      principalSet .../attribute.environment/assistant-evals.
-#   3. The service account holds roles/aiplatform.user plus the Firestore access the shared
-#      meter needs (open decision, design §8: roles/datastore.user is project-wide on the
-#      (default) database).
+#   3. The owner has decided how the eval job reaches the shared Firestore meter (metering
+#      endpoint vs scoped grant; design §8). Until then: no IAM change, and CI stays in
+#      validate/no-network mode (Coordinator ruling 2026-10-01).
 #   4. The protected environment `assistant-evals` exists: required reviewer = owner;
 #      deployment branches = main and same-repo PR branches. Its variables (not secrets; none
 #      are confidential): ASSISTANT_EVALS_WIF_PROVIDER, ASSISTANT_EVALS_SA,
