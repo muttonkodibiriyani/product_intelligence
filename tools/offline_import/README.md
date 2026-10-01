@@ -82,3 +82,55 @@ with the standard library and defusedxml (openpyxl is not installed). Only cell 
 dates stored as serial numbers are not converted, so use ISO text for `observed_at`.
 
 Fixtures are synthetic ("Acme Beauty", GS1 restricted-circulation `2…` GTINs).
+
+## Existing Ulta website snapshots
+
+`python -m offline_import.ulta_feed` imports the captured Ulta UAE JSONL format through this
+loader. It preserves the website-scrape provenance, brands, parent/variant relationships,
+product content, image references, promotions, original price and stock capture times, and
+raw values that cannot be represented as normalized prices. It does not contact the retailer.
+
+```sh
+PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed prepare source.jsonl prepared/
+PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed load prepared/
+PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed export review-dataset.json
+# An explicitly authorized Ulta export from an isolated database:
+PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed export review-ulta.json \
+  --sources ulta_ae --ulta-unblocked
+```
+
+The `load` and `export` commands require `PI_DATABASE_URL`. Run write commands only against an isolated
+database. `ulta_feed load` uses the existing `ulta_ae` source: the shared loader upserts listing
+metadata and touches shared brand rows, even though observations are append-only.
+`ulta_catalogue enrich --apply` appends content to those same listings. Neither command may
+run against the protected production Ulta rows. A production import requires a separately
+scoped source and explicit authorization; this adapter does not provide that isolation.
+Merging this code runs neither command and does not publish or deploy anything.
+
+Replaying the same prepared file adds no observations. Each SKU
+has independent price and stock observations, with source capture times rather than import
+wall time. A missing capture time fails preparation; `--capture-index captures.json` may supply
+explicit per-SKU capture evidence (`retrieved_at`, basis, source file and hash). Never substitute
+an ingestion time or a product's last-modified date for a capture time.
+
+The export defaults to `sephora_me` only. Ulta rows require both an explicit `--sources`
+selection containing `ulta_ae` and `--ulta-unblocked`; either flag alone never selects Ulta.
+Programmatic callers must likewise pass `sources=("ulta_ae",)` and an explicitly unblocked
+`UltaContext`. The default remains blocked. For a combined local review file, explicitly
+select `--sources sephora_me,ulta_ae --ulta-unblocked`. Source selection also scopes the
+listing-metadata query; the presence of stored Ulta rows never opts them into an export.
+
+The export preserves the selected retailers, excludes configurable parent summaries when
+sellable children exist, and uses the existing product/pack-size grouping. Non-positive source
+prices become null; positive values finer than AED's minor unit remain exact in the database
+and are withheld from the dataset. Known failed images remain null. Coverage stays partial.
+The report and full feed retain exceptions for review. The shared exporter alone owns parent
+deduplication and per-retailer image allowlisting; childless parents remain present and
+non-allowlisted image hosts become null. Ulta's status defaults to blocked, as in the main
+exporter. `--ulta-blocked-since` sets the cutoff and `--ulta-unblocked` explicitly selects the
+row-derived status after collection resumes; existing rows alone never clear the block.
+
+The app's retailer image host configuration must include `ulta_ae=media.alshaya.com`, and its
+Hosting image CSP must permit `https://media.alshaya.com`. Product evidence links use
+`ulta_ae=www.ulta.ae`. Export creates a local review file. Publication is a separate authorized
+operation; the protected combined `latest.json` must remain unchanged by this workflow.

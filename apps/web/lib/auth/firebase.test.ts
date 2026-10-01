@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickWebConfig, roleOf, signInErrorKey } from './firebase';
+import { authCode, pickWebConfig, resetOutcome, roleOf, signInErrorKey } from './firebase';
 
 describe('web config', () => {
   it('keeps only the web-config fields', () => {
@@ -33,5 +33,24 @@ describe('sign-in errors', () => {
     expect(signInErrorKey({ code: 'auth/wrong-password' })).toBe('badCredentials');
     expect(signInErrorKey({ code: 'auth/too-many-requests' })).toBe('tooMany');
     expect(signInErrorKey(new Error('x'))).toBe('generic');
+  });
+});
+
+describe('password reset outcomes', () => {
+  it('an unknown address reads as sent; every other failure is said', () => {
+    expect(resetOutcome({ code: 'auth/user-not-found' })).toBe('sent');
+    expect(resetOutcome({ code: 'auth/invalid-email' })).toBe('invalidEmail');
+    expect(resetOutcome({ code: 'auth/missing-email' })).toBe('invalidEmail');
+    for (const code of ['auth/too-many-requests', 'auth/quota-exceeded', 'auth/network-request-failed'])
+      expect(resetOutcome({ code })).toBe('later');
+    expect(resetOutcome(new Error('HTTP 403'))).toBe('later');
+    expect(resetOutcome(null)).toBe('later');
+  });
+
+  it('logs only a code string, never the message', () => {
+    expect(authCode(Object.assign(new Error('for a@example.com'), { code: 'auth/quota-exceeded' }))).toBe(
+      'auth/quota-exceeded',
+    );
+    expect(authCode(new Error('for a@example.com'))).toBe('unknown');
   });
 });

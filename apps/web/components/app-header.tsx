@@ -13,6 +13,7 @@ export function AppHeader() {
   const pathname = usePathname();
   const nav = [
     { href: `/${locale}/explore/`, label: t('nav.explore'), match: /^\/(en|ar)\/(explore|product)\// },
+    { href: `/${locale}/prices/`, label: t('nav.prices'), match: /^\/(en|ar)\/prices\// },
     { href: `/${locale}/compare/`, label: t('nav.compare'), match: /^\/(en|ar)\/compare\// },
     { href: `/${locale}/promotions/`, label: t('nav.promotions'), match: /^\/(en|ar)\/promotions\// },
     { href: `/${locale}/launches/`, label: t('nav.launches'), match: /^\/(en|ar)\/launches\// },
