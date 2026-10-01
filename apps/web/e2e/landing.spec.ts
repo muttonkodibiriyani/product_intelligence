@@ -150,7 +150,8 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(note.locator('p')).toHaveText([T.pricesOff, T.ratingsOff]);
       // Measured tiles stay; the median price reads as not measured, never as zero.
       await expect(page.getByText(T.products, { exact: true })).toBeVisible();
-      await expect(page.getByText(T.median, { exact: true }).locator('..')).toContainText(T.none);
+      const median = page.locator('main dl > div').filter({ has: page.getByText(T.median, { exact: true }) });
+      await expect(median.locator('dd')).toHaveText(T.none);
       for (const name of [T.ladder, T.brands, T.hist, T.rating, T.share, T.depth, T.top])
         await expect(h2(page, name)).toHaveCount(0);
       await expect(h2(page, T.mix)).toBeVisible();
