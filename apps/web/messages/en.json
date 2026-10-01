@@ -481,6 +481,50 @@
       "send": "Send",
       "disabled": "Sending is off until the assistant is connected."
     },
-    "promises": "Read-only tools only. Every number is cited. When the data is not enough, it says so instead of guessing."
+    "promises": "Read-only tools only. Every number is cited. When the data is not enough, it says so instead of guessing.",
+    "progress": {
+      "label": "Progress",
+      "thinking": "Thinking",
+      "verifying": "Verifying numbers",
+      "retrying": "Re-checking the answer",
+      "tool": "Reading {tool}",
+      "toolEmpty": "{tool}: not enough data",
+      "toolError": "{tool}: unavailable"
+    },
+    "tools": {
+      "search_products": "Product search",
+      "get_product": "Product details",
+      "compare": "Price comparison",
+      "index_trend": "Price index",
+      "promotions": "Promotions",
+      "assortment_gaps": "Assortment gaps",
+      "launches": "Launches",
+      "reviews_summary": "Reviews",
+      "coverage_status": "Data coverage",
+      "other": "Data tool"
+    },
+    "answer": {
+      "product": "Product",
+      "skip": "Show full answer",
+      "sources": "Sources",
+      "cutoff": "data to",
+      "n": "n = {n}",
+      "source": "Source",
+      "dataset": "dataset",
+      "market": "Market",
+      "filters": "Filters",
+      "unverified": "Could not verify a written answer — showing the tool results instead",
+      "shown": "first {shown} of {total}",
+      "notEnough": "Not enough data",
+      "caveats": "Caveats"
+    },
+    "unavailable": {
+      "off": "Ryzan AI Assistant is switched off right now. No answer was generated.",
+      "questionCap": "You have reached today’s question limit. Try again tomorrow.",
+      "spendCap": "The assistant has reached its spending limit for now. No answer was generated.",
+      "invalid": "That question could not be read. Please rephrase it.",
+      "tooLong": "That question is too long. Please shorten it.",
+      "generic": "The assistant could not answer right now. No answer was generated."
+    }
   }
 }
