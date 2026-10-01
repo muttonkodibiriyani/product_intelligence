@@ -173,7 +173,7 @@ The API also enforces:
    locked; `locked` stays distinct from `approved`, and the v1 exporter's merged `accepted` is
    read as `approved` with a caveat), with equal size and the same currency (otherwise
    `currency_mismatch`). Every row states `counted` and, if not
-   counted, `excludedReason`.
+   counted, `excludedReason` (incl. `size_unknown`: a missing size is never assumed equal).
 2. **Direction.** Direction follows the #39 convention (the reverse of this doc's first draft):
    - `gapAmount = other − base`;
    - `gapPct = (other − base) / base × 100`;
@@ -248,7 +248,7 @@ Results over 16,000 chars are refused with `output_too_large` rather than trunca
 | `get_product` | `GET /v1/products/{id}` | `id` | Offers, `gap {gapAmount, gapPct, cheaper, convention}` or `gapExcludedReason`, evidence |
 | `compare` | `POST /v1/compare` | `ids[2..6]` **or** `brand?/category?`, `retailers? {base, other}`, `limit` | Rows always returned; summary (`medianGapPct`, `meanGapPct`, `cheaperCounts{<retailer>: n}`, `basket {base, other}`) only when n ≥ 5 |
 | `index_trend` | `GET /v1/index` | `retailers? {base, other}` (sent as one form param `retailers=<base>,<other>`, exactly 2, ordered; multi-value filters repeat the key), `brand?`, `category?`, `from?/to?` | `points[{date, index, n}]`; trend needs history, otherwise `capability_off` |
-| `promotions` | `GET /v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?`, `limit` | `promoShare{<retailer>: pct}`, items with `statedPct` |
+| `promotions` | `GET /v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?`, `limit` | `promoShare{<retailer>: pct}`, items with `depthPct` = (regular − price) / regular × 100 |
 | `assortment_gaps` | `GET /v1/assortment-gaps` | `missingAt?`, `presentAt?`, `brand?`, `category?`, `limit` | Absence rules as in §3.2.4 |
 | `launches` | `GET /v1/launches` | `retailer?`, `since?`, `category?`, `limit` | Needs two or more runs, otherwise `capability_off` |
 | `reviews_summary` | `GET /v1/reviews-summary` | `id[]?` (repeated, ≤ 25) **or** `brand?/category?`, `retailer[]?` | `n`, count-weighted `avgRating`, `ratingCount`. Distribution and themes → `field_not_collected` |
@@ -290,16 +290,22 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
     - The Arabic decimal separator ٫ becomes "." and the thousands separator ٬ becomes ",".
     - ٪ becomes %.
     - "," is accepted only as a thousands separator in groups of three.
-  - *Strip before matching:*
+  - *Strip before matching, and only these:*
     - `[[product:<id>]]` tokens;
-    - ISO dates and datetimes;
-    - clock times;
-    - leading list markers.
+    - ISO dates and datetimes that a tool returned (the whole value or its date part);
+    - clock times that appear in a datetime a tool returned;
+    - ordered-list markers that count up from 1 in sequence.
+    Any other date, time or line-leading number is checked group by group, so
+    "Price 2099-12-31", "12:30 AED" and "37. cheaper" fail (review of #41).
   - *Sources.* Only typed tool fields count: decimal strings and safe integers.
     - Skipped: identifier and timestamp keys (`id`, `productId`, `runId`, `sku`, `capturedAt`,
-      `date`, `cutoff`, `generation`, `datasetGeneration`, `toolVersion`, `url`), `Money.minor`,
-      and the echoed `filters`, so a number the model put into a filter cannot launder itself.
-    - Also skipped: `{untrusted}` values, so digits in retailer text never become allowed.
+      `date`, `cutoff`, `generation`, `datasetGeneration`, `toolVersion`, `apiVersion`,
+      `metricVersion`, `endpoint`, `scope`, `url`), `Money.minor`, and the echoed `filters`, so a
+      number the model put into a filter cannot launder itself. Of the citation only `cohort.n`
+      counts; an `apiVersion` of "2.5" must not allow "2.5 AED".
+    - Also skipped: `{untrusted}` values, so digits in retailer text never become allowed. The
+      API's own prose (`caveats`, not-enough-data `detail`, `cohort.description`) is wrapped as
+      `{untrusted}` too (≤ 500 chars per language), since it may interpolate retailer text.
   - *Matching.* Exact `BigInt` decimal arithmetic on absolute values. A shown number is allowed
     only if it equals a source (trailing zeros allowed), or equals the source rounded **half
     away from zero** to fewer decimal places. There is no rounding to tens, no unit conversion
@@ -344,10 +350,19 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
     - Client rule: read if `request.auth.uid == uid` and the role claim is valid.
     - **Retention: 90 days.** Every document carries `expireAt`, with a Firestore TTL policy on
       it. The user can delete a thread at any time.
-  - `assistant_usage/{yyyy-mm}/days/{dd}` and `…/users/{uid}`: token and cost counters
-    (functions only). Admin read.
-  - `assistant_config/current`: `enabled`, `model`, `caps`, `promptVersion`. Admin read.
+  - `assistant_usage_counters/{key}`: integer micro-USD `spent` and `reserved`, and question
+    counts. One flat document per key, so a reservation touches a fixed set of documents in
+    one transaction. Keys (each segment URI-encoded, joined with `|`): `total|{yyyy-mm}`,
+    `label|{label}|{yyyy-mm}`, `label|{label}|{yyyy-mm-dd}`, `user|{uid}|{yyyy-mm-dd}`.
+  - `assistant_reservations/{id}`: one per model call, `reserved` → `settled`, holding the
+    ceiling, the actual cost, token usage and the price-table version. A call whose settle
+    fails stays `reserved`, so its ceiling keeps counting against the caps.
+  - `assistant_config/current`: `enabled`, `model`, `promptVersion`, `priceTableVersion`,
+    `caps`, `limits`. A missing or invalid document means **disabled** (fail closed).
     Writes only through the audited admin callable.
+  - All three are functions-only: the rules deny every client read and write
+    (`infra/tests/test_rules_emulator.py`). Admins see usage through a callable in stage 2.
+    Counter and reservation documents carry `expireAt` (+90 days) for the TTL policy.
 - **Storage** (stage 2): `reports/{uid}/{reportId}.{xlsx,pdf,pptx}`. No client read rule. Access
   is only by **V4 signed URL (1 h)**, issued by a callable that checks ownership. Needs
   `iam.serviceAccounts.signBlob` on the runtime service account (a self-binding of
@@ -522,7 +537,11 @@ Worst-case chat alone would use too much of the $25 shared with Cloud SQL and cr
     until next month or an owner-approved raise;
   - daily $0.40;
   - per-user daily question caps (§6);
-  - per-question hard token ceiling.
+  - per-question hard token ceiling; `maxInputTokens` is capped at 200k by schema, because
+    Gemini Pro bills prompts above 200k tokens at a higher tier that the price table does not
+    model.
+  - The kill switch and config are re-read before **every** model call, not only at question
+    start, so switching off stops a running question at its next call.
 - **CI evals:** at most $1.50/month, tracked through a separate CI label. Full runs are
   manual-dispatch only once the smoke budget is used.
 - **Kill switch:** `assistant_config/current.enabled = false`. It is also flipped automatically
@@ -547,7 +566,8 @@ owner's OK via the Coordinator.
 | GitHub protected environment `assistant-evals` + eval workflow job (`.github` change, owner pushes) | **needs owner** | – | Model evals in CI |
 | Service-layer API deployed with `/v1/*` (#39) | Deep Coder's track | – | Stage 1c |
 | `recaptchaenterprise` + App Check | optional, **needs OK** | free ≤ 10 k/month | Stage 1 hardening |
-| Budget → Pub/Sub → kill-switch subscriber | optional, **needs OK** | free | Auto kill switch |
+| Budget → Pub/Sub → kill-switch subscriber | **required before Vertex enablement** (Coordinator, 2026-10-01); own PR after the Genkit/promptfoo PR; deploy **needs OK** | free | Auto kill switch; catches spend around the meter |
+| Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `messages` (collection groups) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
 | Rules changes (threads read-own; no client report reads) | with the stage 1 PR, emulator-tested | – | Stage 1 |

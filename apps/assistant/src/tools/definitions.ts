@@ -138,7 +138,9 @@ export const promotions = defineTool({
   version: "1",
   description:
     "Current promotions: the share of offers on promotion at each retailer and the promoted " +
-    "products, deepest first. Early recon offers are excluded.",
+    "products, deepest first. depthPct = (regular - price) / regular x 100, computed from " +
+    "shown prices, not the retailer's stated discount; minPct filters on it. Early recon " +
+    "offers are excluded.",
   minRole: "viewer",
   input: z
     .object({

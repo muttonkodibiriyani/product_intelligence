@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError, HttpMetricApi, MAX_RESPONSE_BYTES, requestUrl } from "../src/api/client.js";
+import {
+  ApiError,
+  HttpMetricApi,
+  MAX_RESPONSE_BYTES,
+  readCapped,
+  requestUrl,
+} from "../src/api/client.js";
 
 function fakeFetch(status: number, body: string, seen: { url?: string; init?: RequestInit } = {}) {
   return (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -66,5 +72,52 @@ describe("HttpMetricApi", () => {
       code: "response_too_large",
     });
     await expect(call(() => Promise.reject(new TypeError("net")))).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("readCapped (reviewer #41: count bytes, check before buffering)", () => {
+  it("counts UTF-8 bytes, not characters", async () => {
+    // 6 characters, 12 bytes.
+    await expect(readCapped(new Response("éééééé"), 11)).rejects.toThrow();
+    await expect(readCapped(new Response("éééééé"), 12)).resolves.toBe("éééééé");
+    const multibyte = `"${"é".repeat(MAX_RESPONSE_BYTES / 2)}"`;
+    expect(multibyte.length).toBeLessThan(MAX_RESPONSE_BYTES);
+    const api = new HttpMetricApi("https://api.example", {
+      fetch: () => Promise.resolve(new Response(multibyte)),
+    });
+    await expect(api.call({ method: "GET", path: "/v1/x" }, "t")).rejects.toMatchObject({
+      code: "response_too_large",
+    });
+  });
+
+  it("rejects on Content-Length before reading the body", async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(10));
+        controller.close();
+      },
+    });
+    const response = new Response(body, { headers: { "content-length": "101" } });
+    await expect(readCapped(response, 100)).rejects.toThrow();
+    expect(pulled).toBeLessThanOrEqual(1);
+  });
+
+  it("stops reading a stream once it passes the cap", async () => {
+    let pulled = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(64));
+      },
+    });
+    await expect(readCapped(new Response(endless), 1000)).rejects.toThrow();
+    expect(pulled).toBeLessThan(40);
+  });
+
+  it("rejects invalid UTF-8 and reads an empty body", async () => {
+    await expect(readCapped(new Response(new Uint8Array([0xff, 0xfe])), 10)).rejects.toThrow();
+    await expect(readCapped(new Response(null), 10)).resolves.toBe("");
   });
 });

@@ -30,14 +30,50 @@ describe("ToolRegistry", () => {
       tool: "compare",
       toolVersion: "1",
       apiVersion: "v1.0.0",
-      metricVersion: null,
+      metricVersion: "m1",
       datasetGeneration: "gen-42",
       cutoff: META.cutoff,
       market: "AE",
       currency: "AED",
       filters: { ids: ["p01", "n04"], limit: 10 },
-      cohort: { description: "exact, reviewed, same-size matched pairs", n: 8 },
+      cohort: { description: { untrusted: "exact, reviewed, same-size matched pairs" }, n: 8 },
     });
+    expect(result.caveats).toEqual([
+      {
+        en: { untrusted: "East Store coverage is partial." },
+        ar: { untrusted: "تغطية متجر الشرق جزئية." },
+      },
+    ]);
+  });
+
+  it("reviewer #41 condition 1: wraps caveats, detail and cohort text as untrusted", async () => {
+    const prose = { en: INJECTION, ar: INJECTION };
+    const api = new FakeApi(() =>
+      okEnvelope(undefined, {
+        status: "not_enough_data",
+        reason: "cohort_too_small",
+        detail: prose,
+        caveats: [prose],
+        cohort: { description: INJECTION, n: 3 },
+      }),
+    );
+    const result = (await registry(api).run("compare", {}, VIEWER, "t")) as ToolEnvelope;
+    expect(result.status).toBe("not_enough_data");
+    const wrapped = [
+      result.notEnoughData?.detail.en,
+      result.notEnoughData?.detail.ar,
+      result.caveats[0]?.en,
+      result.caveats[0]?.ar,
+      result.citation.cohort.description,
+    ];
+    for (const item of wrapped) {
+      expect(Object.keys(item ?? {})).toEqual(["untrusted"]);
+      expect(item?.untrusted).not.toContain("\u200b");
+      expect(item?.untrusted).not.toContain("](https://evil");
+    }
+    // Wrapped prose never supports a number: the injected "50%" stays unsupported.
+    expect(verifyAnswerNumbers("50% cheaper", [result]).ok).toBe(false);
+    expect(verifyAnswerNumbers("3 pairs", [result]).ok).toBe(true);
   });
 
   it("escapes injected retailer text and filters evidence for viewers", async () => {
