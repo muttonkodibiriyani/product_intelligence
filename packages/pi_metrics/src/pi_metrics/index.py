@@ -78,7 +78,7 @@ def price_index(  # noqa: PLR0913 -- the endpoint filters; window bounds are key
     """
     ds = view.as_v3(dataset)
     if base == other:
-        msg = "base and other must be different retailers"
+        msg = "base and other must be different retailers or contexts"
         raise view.UnknownInput(msg)
     view.context(ds, base)
     view.context(ds, other)

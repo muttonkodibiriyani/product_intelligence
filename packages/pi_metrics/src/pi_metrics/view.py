@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 import unicodedata
+import weakref
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -46,18 +47,32 @@ class UnknownInput(ValueError):  # noqa: N818 -- a request error; the API maps i
 
 @dataclass(frozen=True, slots=True)
 class _Indexed:
-    source: AnyDataset
-    ds: DatasetV3
+    #: Weak: a cached document never outlives its caller's last reference to the source.
+    source: weakref.ref[AnyDataset]
+    #: The upgrade of a v2 source; ``None`` when the source is itself v3 (held only weakly).
+    upgraded: DatasetV3 | None
     products: Mapping[str, ProductV3]
     contexts: Mapping[str, Context]
+
+    def holds(self, ds: AnyDataset) -> bool:
+        return self.source() is ds or self.upgraded is ds
+
+    @property
+    def ds(self) -> DatasetV3:
+        if self.upgraded is not None:
+            return self.upgraded
+        source = self.source()
+        assert isinstance(source, DatasetV3)  # noqa: S101 -- alive: the caller passed it in
+        return source
 
 
 class _Upgraded:
     """Upgraded documents, keyed by identity (``is``), never by value.
 
-    The API holds one generation per dataset path and upgrades each once, when it loads it
-    (``pi_api.source``), so a request never pays for an upgrade. A different document object is
-    always read afresh. The oldest entries go first beyond ``LIMIT`` documents.
+    The API upgrades each generation once, when it loads it (``pi_api.source``), so a request
+    never pays for an upgrade. An entry lives only as long as its source document: when the API
+    replaces a generation and drops the old one, ``weakref.finalize`` evicts its entry and the
+    upgrade goes with it. ``LIMIT`` bounds the live entries; a different object is read afresh.
     """
 
     LIMIT = 8
@@ -66,23 +81,36 @@ class _Upgraded:
 
     @classmethod
     def get(cls, ds: AnyDataset) -> _Indexed:
+        # Lock-free read: ``_entries`` is only ever replaced whole. Two threads may both upgrade
+        # one new document; the later swap wins and both results are equal, so that is harmless.
         entry = cls._entries.get(id(ds))
-        if entry is not None and (entry.source is ds or entry.ds is ds):
+        if entry is not None and entry.holds(ds):
             return entry
-        v3 = ds if isinstance(ds, DatasetV3) else _upgrade(ds)
+        upgraded = None if isinstance(ds, DatasetV3) else _upgrade(ds)
+        v3 = ds if isinstance(ds, DatasetV3) else upgraded
+        assert v3 is not None  # noqa: S101 -- one of the two branches above
         entry = _Indexed(
-            source=ds,
-            ds=v3,
+            source=weakref.ref(ds),
+            upgraded=upgraded,
             products={p.id: p for p in v3.products},
             contexts={c.id: c for c in v3.meta.contexts},
         )
         with cls._lock:
             entries = {**cls._entries, id(ds): entry, id(v3): entry}
+            # Drop entries whose source died (a finalizer may race this swap).
+            entries = {k: e for k, e in entries.items() if e.source() is not None}
             while len({id(e) for e in entries.values()}) > cls.LIMIT:
                 oldest = next(iter(entries.values()))
                 entries = {k: e for k, e in entries.items() if e is not oldest}
             cls._entries = entries  # one reference swap: readers see a whole dict
+        weakref.finalize(ds, cls._evict, entry)
         return entry
+
+    @classmethod
+    def _evict(cls, entry: _Indexed) -> None:
+        # Runs when the source is collected, possibly on any thread: no lock (it could already be
+        # held by this thread mid-swap); ``get`` also drops dead entries under its lock.
+        cls._entries = {k: e for k, e in cls._entries.items() if e is not entry}
 
 
 def _upgrade(v2: Dataset) -> DatasetV3:
@@ -275,10 +303,11 @@ def same_size(  # noqa: PLR0911 -- the rule table, one return per row
         return SizeMatch.EQUAL
     if a.value is not None or b.value is not None or not labels_comparable:
         return SizeMatch.UNKNOWN
-    # Both label-only: SizeV3 guarantees a label when there is no value.
+    # Both label-only: SizeV3 guarantees a label when there is no value. Labels are never
+    # translated, so "وسط" vs "Medium" proves nothing either way: unknown, never a mismatch.
     if fold(a.label or "") == fold(b.label or "") and a.system == b.system:
         return SizeMatch.EQUAL
-    return SizeMatch.MISMATCH
+    return SizeMatch.UNKNOWN
 
 
 def market_currency(ds: DatasetV3, retailer_id: str) -> str:

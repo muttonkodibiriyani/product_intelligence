@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import gc
+import weakref
 from collections.abc import Callable
 from typing import Any
 
@@ -64,8 +66,9 @@ def sz(value: str | None, unit: str | None, label: str | None, system: str | Non
         (sz("50", "ml", "Small"), sz("50", "ml", None), False, SizeMatch.EQUAL),
         (sz(None, None, "Medium"), sz(None, None, WIDE_MEDIUM), True, SizeMatch.EQUAL),
         (sz(None, None, "Medium"), sz(None, None, "Medium"), False, SizeMatch.UNKNOWN),
-        (sz(None, None, "Medium"), sz(None, None, "Large"), True, SizeMatch.MISMATCH),
-        (sz(None, None, "M", "alpha"), sz(None, None, "M", "eu"), True, SizeMatch.MISMATCH),
+        (sz(None, None, "Medium"), sz(None, None, "Large"), True, SizeMatch.UNKNOWN),
+        (sz(None, None, "M", "alpha"), sz(None, None, "M", "eu"), True, SizeMatch.UNKNOWN),
+        (sz(None, None, "\u0648\u0633\u0637"), sz(None, None, "Medium"), True, SizeMatch.UNKNOWN),
         (sz(None, None, "M", "alpha"), sz(None, None, "m", "alpha"), True, SizeMatch.EQUAL),
         (sz(None, None, "Medium"), sz("50", "ml", "Medium"), True, SizeMatch.UNKNOWN),
         (None, sz("50", "ml", None), True, SizeMatch.UNKNOWN),
@@ -190,7 +193,7 @@ def test_equal_measures_with_different_labels_count_with_a_caveat() -> None:
     }  # fmt: skip
 
 
-@pytest.mark.parametrize(("label", "expected"), [(" medium", None), ("Large", "size_mismatch")])
+@pytest.mark.parametrize(("label", "expected"), [(" medium", None), ("Large", "size_unknown")])
 def test_label_only_sizes_compare_on_the_folded_label(label: str, expected: str | None) -> None:
     d = menu()
     offer(d, "p01", WEB)["size"] = size(None, None, "Medium")
@@ -275,3 +278,14 @@ def test_the_oldest_upgrade_is_evicted_beyond_the_limit() -> None:
 def test_a_v2_vertical_without_a_committed_profile_is_not_read() -> None:
     with pytest.raises(ValueError, match="no committed profile food_menu@1"):
         view.as_v3(rebuild(metrics_dataset(), vertical="food_menu"))
+
+
+def test_a_dropped_generation_and_its_upgrade_are_freed() -> None:
+    first = metrics_dataset()
+    upgraded = weakref.ref(view.as_v3(first))
+    source = weakref.ref(first)
+    view.as_v3(metrics_dataset())  # the next generation
+    del first
+    gc.collect()
+    assert source() is None
+    assert upgraded() is None

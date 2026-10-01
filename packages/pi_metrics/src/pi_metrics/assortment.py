@@ -67,7 +67,7 @@ def assortment_gaps(
     """Products offered at context ``present_at`` and absent at context ``missing_at``."""
     ds = view.as_v3(dataset)
     if missing_at == present_at:
-        msg = "missingAt and presentAt must be different retailers"
+        msg = "missingAt and presentAt must be different retailers or contexts"
         raise view.UnknownInput(msg)
     status = view.status(ds, missing_at)
     view.context(ds, present_at)
