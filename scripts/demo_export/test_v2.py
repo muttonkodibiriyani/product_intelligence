@@ -294,3 +294,46 @@ def test_ulta_status_follows_its_rows_once_the_owner_says_unblocked() -> None:
     assert d["meta"]["retailers"][0]["status"] == RetailerStatus.SUPPORTED
     assert d["meta"]["retailers"][0]["since"] is None
     assert d["notObserved"] == []
+
+
+SEPHORA_IMG = "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/p1.jpg?sw=1248&sh=1248"
+
+
+def with_image(url: str | None, **kw: Any) -> ListingRow:
+    return ListingRow(**(row(**kw).__dict__ | {"image": url}))
+
+
+def test_the_main_image_is_the_offer_and_product_thumbnail() -> None:
+    d = doc([with_image(SEPHORA_IMG)])
+    assert only_offer(d)["image"] == SEPHORA_IMG
+    assert d["products"][0]["image"] == SEPHORA_IMG
+    assert d["meta"]["capabilities"]["images"] is True
+    assert d["meta"]["fields"]["image"] == "ok"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        None,
+        "",
+        "?sw=1248&sh=1248&sm=fit&q=85",  # the relative swatch junk seen in pi_db
+        "http://img-product.sephora.me/p1.jpg",
+        "https://img-product.sephora.me.evil.test/p1.jpg",
+        "https://cdn.example.test/p1.jpg",
+        "https://user@img-product.sephora.me/p1.jpg",
+        "https://img-product.sephora.me:8443/p1.jpg",
+        "https://img-product.sephora.me/p1.jpg#x",
+    ],
+)
+def test_an_image_off_the_allowlist_is_null_never_guessed(url: str | None) -> None:
+    d = doc([with_image(url)])
+    assert only_offer(d)["image"] is None
+    assert d["products"][0]["image"] is None
+    assert d["meta"]["capabilities"]["images"] is False
+    assert d["meta"]["fields"]["image"] == "not_collected"
+
+
+def test_image_is_partial_when_only_some_products_have_one() -> None:
+    d = doc([with_image(SEPHORA_IMG), with_image(None, family=11, variant=101)])
+    assert d["meta"]["fields"]["image"] == "partial"
+    assert d["meta"]["capabilities"]["images"] is True
