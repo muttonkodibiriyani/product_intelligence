@@ -214,8 +214,13 @@ def scaled(stats: BandStats, factor: Decimal) -> BandStats:
     )
 
 
-def _grid(ending: Ending, near: Decimal) -> tuple[Decimal, Decimal]:
-    """The allowed prices with ``ending`` just at-or-below and at-or-above ``near``."""
+def _grid(ending: Ending, near: Decimal) -> tuple[Decimal, ...]:
+    """The allowed prices with ``ending`` around ``near``: two below it and two above it.
+
+    ``near`` itself counts on both sides when it is on the grid. The extra step matters when a
+    band edge is an allowed price: ``entry`` is strictly below p25 and ``premium`` strictly above
+    p75, so the best landing price is the step past the edge, not the edge.
+    """
     step, offset = {
         Ending.WHOLE: (Decimal(1), Decimal(0)),
         Ending.HALF: (Decimal(1), Decimal("0.5")),
@@ -223,7 +228,8 @@ def _grid(ending: Ending, near: Decimal) -> tuple[Decimal, Decimal]:
     }[ending]
     k = math.floor((near - offset) / step)
     below = offset + k * step
-    return below, below if below == near else below + step
+    above = below if below == near else below + step
+    return below - step, below, above, above + step
 
 
 def allowed_prices(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import statistics
 from decimal import Decimal
 from typing import Any
@@ -14,6 +15,7 @@ from metrics_fixture import A, B, metrics_dataset
 from pi_metrics import Reason, Status, UnknownInput
 from pi_metrics.gated import Gated
 from pi_metrics.pricing import (
+    _ORDER,
     RULE_LABEL,
     Aim,
     Band,
@@ -25,6 +27,7 @@ from pi_metrics.pricing import (
     PeerScope,
     PricePosition,
     PriceSuggestion,
+    aim_point,
     band_of,
     band_stats,
     percentile,
@@ -112,6 +115,15 @@ def test_mid_is_inclusive(value: str, band: Band) -> None:
         ("150.00", Band.MID, RAILS, Outcome.SUGGESTED, "140.00", True),
         # 99.50 is the first entry price: a 0.9 % change, under the 1 % minimum.
         ("100.40", Band.ENTRY, RAILS, Outcome.BELOW_MIN_CHANGE, None, False),
+        # A band edge on the grid: entry is strictly below p25 = 100, so 99.00, not 100.00.
+        (
+            "105.00",
+            Band.ENTRY,
+            Guardrails(endings=(Ending.WHOLE,)),
+            Outcome.SUGGESTED,
+            "99.00",
+            True,
+        ),
         # No x9 price within 2 % of 105.
         (
             "105.00",
@@ -138,6 +150,35 @@ def test_suggest_table(
     assert steps[0].params == {"band": band_of(Decimal(current), STATS).value}
 
 
+@pytest.mark.parametrize(
+    ("current", "stats", "target", "rails", "price"),
+    [
+        # The Reviewer's cases: the edge is an allowed price, so the step past it is the answer.
+        (
+            "178.77",
+            BandStats(n=5, p25=Decimal(139), median=Decimal(150), p75=Decimal(200)),
+            Band.ENTRY,
+            Guardrails(max_change_pct=Decimal(47), endings=(Ending.NINE,)),
+            "129.00",
+        ),
+        (
+            "206.56",
+            BandStats(n=5, p25=Decimal(150), median=Decimal(200), p75=Decimal(268)),
+            Band.PREMIUM,
+            Guardrails(max_change_pct=Decimal(41), endings=(Ending.WHOLE,)),
+            "269.00",
+        ),
+    ],
+)
+def test_on_grid_edge_takes_the_next_step(
+    current: str, stats: BandStats, target: Band, rails: Guardrails, price: str
+) -> None:
+    outcome, chosen, landed, _ = suggest_price(
+        Decimal(current), stats=stats, target=target, guardrails=rails
+    )
+    assert (outcome, chosen, landed) == (Outcome.SUGGESTED, Decimal(price), True)
+
+
 def test_median_aim() -> None:
     _, chosen, landed, _ = suggest_price(
         Decimal("150.00"), stats=STATS, target=Band.MID, guardrails=RAILS, aim=Aim.MEDIAN
@@ -147,13 +188,19 @@ def test_median_aim() -> None:
 
 
 bounds = st.integers(min_value=100, max_value=1_000_000).map(lambda m: Decimal(m).scaleb(-2))
+#: Thresholds that are allowed prices themselves (.00, .50 and x9.00), the case that once missed.
+on_grid = st.integers(min_value=2, max_value=20_000).map(lambda h: Decimal(h) / 2)
+thresholds = st.one_of(bounds, on_grid)
 
 
 @st.composite
 def cases(draw: st.DrawFn) -> tuple[Decimal, BandStats, Band, Guardrails]:
-    a, b, c = sorted(draw(bounds) for _ in range(3))
+    a, b, c = sorted(draw(thresholds) for _ in range(3))
     stats = BandStats(n=5, p25=a, median=b, p75=c)
-    current = draw(bounds)
+    # Half the time the price sits within reach of a threshold, where the choice is decided.
+    factor = Decimal(draw(st.integers(min_value=50, max_value=150))) / 100
+    near = (draw(st.sampled_from((a, b, c))) * factor).quantize(Decimal("0.01"))
+    current = draw(st.one_of(bounds, st.just(max(near, Decimal(1)))))
     endings = draw(st.lists(st.sampled_from(list(Ending)), min_size=1, unique=True))
     rails = Guardrails(
         max_change_pct=Decimal(draw(st.integers(min_value=1, max_value=50))),
@@ -184,6 +231,72 @@ def test_suggestion_guardrails_hold(case: tuple[Decimal, BandStats, Band, Guardr
     if reaches:
         again = suggest_price(chosen, stats=stats, target=target, guardrails=rails)
         assert again[0] is Outcome.ALREADY_IN_BAND
+
+
+_GRID = {
+    Ending.WHOLE: (1, Decimal(0)),
+    Ending.HALF: (1, Decimal("0.5")),
+    Ending.NINE: (10, Decimal(9)),
+}
+
+
+def _oracle(
+    current: Decimal, stats: BandStats, target: Band, rails: Guardrails, aim: Aim
+) -> tuple[Outcome, Decimal | None]:
+    """The §5 rule by brute force: every allowed price in the clamp window, then choose."""
+    if band_of(current, stats) is target:
+        return Outcome.ALREADY_IN_BAND, None
+    point = aim_point(band_of(current, stats), target, stats, aim)
+    limit = current * rails.max_change_pct / 100
+    up = _ORDER.index(target) > _ORDER.index(band_of(current, stats))
+    low, high = (current, current + limit) if up else (current - limit, current)
+    every = {
+        offset + k * step
+        for ending in rails.endings
+        for step, offset in [_GRID[ending]]
+        for k in range(math.ceil((low - offset) / step), math.floor((high - offset) / step) + 1)
+    }
+    candidates = [p for p in every if p > 0 and p != current]
+    if not candidates:
+        return Outcome.NO_ALLOWED_PRICE, None
+    pool = [p for p in candidates if band_of(p, stats) is target] or candidates
+    chosen = min(pool, key=lambda p: (abs(p - point), p))
+    if abs(chosen - current) / current * 100 < rails.min_change_pct:
+        return Outcome.BELOW_MIN_CHANGE, None
+    return Outcome.SUGGESTED, chosen
+
+
+@st.composite
+def edge_cases(draw: st.DrawFn) -> tuple[Decimal, BandStats, Band, Guardrails]:
+    """The target band's edge is an allowed price and lies within reach of the current price."""
+    endings = draw(st.lists(st.sampled_from(list(Ending)), min_size=1, unique=True))
+    step, offset = _GRID[endings[0]]
+    edge = offset + step * draw(st.integers(min_value=1, max_value=1000))
+    away = Decimal(draw(st.integers(min_value=1, max_value=4000))) / 10_000
+    target = draw(st.sampled_from((Band.ENTRY, Band.PREMIUM)))
+    if target is Band.ENTRY:
+        current = (edge * (1 + away)).quantize(Decimal("0.01"))
+        stats = BandStats(n=5, p25=edge, median=edge, p75=current * 2)
+    else:
+        current = (edge * (1 - away)).quantize(Decimal("0.01"))
+        stats = BandStats(n=5, p25=current / 2, median=current, p75=edge)
+    rails = Guardrails(
+        max_change_pct=Decimal(draw(st.integers(min_value=1, max_value=50))),
+        min_change_pct=Decimal(draw(st.integers(min_value=0, max_value=5))),
+        endings=tuple(endings),
+    )
+    return current, stats, target, rails
+
+
+@given(st.one_of(cases(), edge_cases()), st.sampled_from(list(Aim)))
+def test_suggestion_matches_enumeration_oracle(
+    case: tuple[Decimal, BandStats, Band, Guardrails], aim: Aim
+) -> None:
+    current, stats, target, rails = case
+    outcome, chosen, _, _ = suggest_price(
+        current, stats=stats, target=target, guardrails=rails, aim=aim
+    )
+    assert (outcome, chosen) == _oracle(current, stats, target, rails, aim)
 
 
 # ---- over the fixture ----------------------------------------------------------------------
