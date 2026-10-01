@@ -378,7 +378,7 @@ def s5_gallery(api: Api, rep: Report) -> None:
     if sku is None:
         return
     r = api.get(f"/catalogues/ulta_ae/skus/{urllib.parse.quote(sku, safe='')}")
-    images = (r.data.get("record") or {}).get("images") or []
+    images = r.data.get("images") or []  # CatalogueDetail.images; record has only imageIds
     urls = [i["url"] for i in images if i.get("url")]
     bad = [u for u in urls if not u.startswith(f"https://{IMAGE_HOSTS['ulta_ae']}/")]
     rep.expect(

@@ -198,7 +198,10 @@ class FakeProd:
         if path == "/catalogues/ulta_ae":
             return {"generation": "1790852220300614"}
         if path.startswith("/catalogues/ulta_ae/skus/"):
-            return {"record": {"images": [{"url": "https://media.alshaya.com/g/1.jpg"}]}}
+            return {
+                "record": {"sku": path.rsplit("/", 1)[-1], "imageIds": ["a1"]},
+                "images": [{"assetId": "a1", "url": "https://media.alshaya.com/g/1.jpg"}],
+            }
         if path == "/category-compare":
             return {"rows": []}
         return None
@@ -284,6 +287,24 @@ def test_a_wrong_version_or_catalogue_generation_fails(
     problems = json.loads((tmp_path / "check.json").read_text())["problems"]
     assert any(p.startswith("S1 apiVersion") for p in problems)
     assert any(p.startswith("S5 served catalogue generation") for p in problems)
+
+
+class NoGallery(FakeProd):
+    """CatalogueDetail with no top-level images: the gallery lives there, not in record."""
+
+    def route(self, path: str, q: dict[str, str]) -> Any:
+        body = super().route(path, q)
+        if path.startswith("/catalogues/ulta_ae/skus/"):
+            return {"record": {**body["record"], "images": body["images"]}, "images": []}
+        return body
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_s5_reads_the_gallery_from_the_top_level_images(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    assert run(NoGallery(), tmp_path, "check", "--expect-api", "1.7.0") == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert any("0 gallery images" in p for p in problems)
 
 
 @pytest.mark.usefixtures("owner_token")
