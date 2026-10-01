@@ -4,7 +4,9 @@ The numbers come from ``pi_metrics.summary``, computed once per snapshot generat
 context and cached. This module adds what depends on the request or the deployment: the
 snapshot's freshness at request time and the ``topDiscounts`` thumbnails, which follow the
 ``ProductCard.image`` rules (an https URL on the retailer's ``PI_API_IMAGE_HOSTS``, else null).
-An imported retailer's freshness is a ``snapshot`` of its import date (API 1.5.0).
+An imported retailer's freshness is a ``snapshot`` of its import date (API 1.5.0). The default
+context is a collected one, and a collected context's ``asOf`` and freshness never come from an
+import (API 1.5.1).
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from pydantic import Field
 
 from pi_api.analytics import RetailerId
 from pi_api.catalog import EvidenceHosts, ScopeQuery, card_image
+from pi_api.dq import collected_day
 from pi_api.source import Loaded
 from pi_dataset import ContractModel
 from pi_metrics import Metric, view
@@ -107,7 +110,11 @@ class SummaryCache:
 
     def get(self, loaded: Loaded, retailer: str | None) -> Metric[Summary]:
         ds = loaded.dataset
-        ctx = (default_context(ds) if retailer is None else view.context(ds, retailer)).id
+        ctx = (
+            default_context(ds, loaded.unverified)
+            if retailer is None
+            else view.context(ds, retailer)
+        ).id
         key = (loaded.generation, ctx)
         with self._lock:
             hit = self._entries.get(key)
@@ -132,12 +139,21 @@ def _freshness(loaded: Loaded, ctx: str, now: datetime) -> Freshness:
 
 
 def summary_view(metric: Metric[Summary], loaded: Loaded, now: datetime) -> Metric[SummaryView]:
-    data = SummaryView(**dict(metric.data), freshness=_freshness(loaded, metric.data.retailer, now))
+    ds = loaded.dataset
+    ctx = metric.data.retailer
+    time_zone = ds.market_of(view.context(ds, ctx).retailer).time_zone
+    as_of = (
+        metric.as_of
+        if ctx in loaded.unverified
+        else collected_day(loaded.imported, metric.as_of, ds.meta.cutoff, time_zone)
+    )
+    fields = dict(metric.data) | {"as_of": as_of}
+    data = SummaryView(**fields, freshness=_freshness(loaded, ctx, now))
     return Metric[SummaryView](
         status=metric.status,
         data=data,
         reason=metric.reason,
         cohort=metric.cohort,
         caveats=metric.caveats,
-        as_of=metric.as_of,
+        as_of=as_of,
     )

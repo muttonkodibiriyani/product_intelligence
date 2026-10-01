@@ -8,7 +8,12 @@ load, once per generation, and only the served copy differs.
   retailer's ``regular`` series. Every metric then treats them as not observed: no discount,
   promotion or top-discount figure ever reads them, and none reads "no promotion" either.
 - **Import date.** The offers' ``capturedAt`` is the import time, not an observation date. The
-  retailer is served as a snapshot imported on that date, never as fresh collection.
+  retailer is served as a snapshot imported on that date, never as fresh collection, and the
+  dataset's ``meta.cutoff`` is the latest capture of the other retailers' offers, so an import
+  never reads as the data's "as of" time (when every offer is imported, the file's cutoff is
+  kept and the response's ``snapshot_import_date`` caveat says so). ``meta.dates`` and the
+  series are left as published; ``collected_day`` caps the ``asOf`` day that a collected
+  retailer's ``/summary`` reports.
 
 Each response that involves an imported retailer says so in caveats: ``was_price_unverified``
 where the endpoint shows prices or promotions, then always ``snapshot_import_date`` and
@@ -22,7 +27,8 @@ products may include parents that repeat their variants.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from pi_dataset import DatasetV3, OfferV3, ProductV3
 from pi_metrics import Caveat, CaveatCode
@@ -79,7 +85,14 @@ def imported_view(ds: DatasetV3) -> tuple[DatasetV3, tuple[Imported, ...]]:
         products.append(
             product if offers == product.offers else product.model_copy(update={"offers": offers})
         )
-    served = ds.model_copy(update={"products": tuple(products)})
+    own = [
+        o.evidence.captured_at
+        for p in ds.products
+        for cid, o in p.offers.items()
+        if cid not in contexts
+    ]
+    meta = ds.meta.model_copy(update={"cutoff": max(own)}) if own else ds.meta
+    served = ds.model_copy(update={"products": tuple(products), "meta": meta})
     found = tuple(
         Imported(
             retailer=shop,
@@ -117,3 +130,11 @@ def caveats(
             Caveat(code=CaveatCode.PARENT_LISTINGS_INCLUDED, params={"retailer": shop.retailer})
         )
     return tuple(out)
+
+
+def collected_day(
+    imported: tuple[Imported, ...], day: date, cutoff: datetime, time_zone: str
+) -> date:
+    """The as-of day of collected data: with an import served, never after the cutoff's local
+    day in the market's ``time_zone`` (the day ``meta.dates`` are counted in)."""
+    return min(day, cutoff.astimezone(ZoneInfo(time_zone)).date()) if imported else day

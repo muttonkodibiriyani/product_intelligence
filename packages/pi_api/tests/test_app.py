@@ -264,7 +264,7 @@ def test_meta_envelope(client: Client) -> None:
     doc = body(client, f"{API}/meta")
     assert doc["status"] == "ok"
     meta = doc["meta"]
-    assert meta["apiVersion"] == "1.5.0"
+    assert meta["apiVersion"] == "1.5.1"
     assert (meta["endpoint"], meta["market"], meta["currency"]) == ("meta", "AE", "AED")
     assert [r["id"] for r in doc["data"]["retailers"]] == [A, B, C, "shop_d"]
     tree = {n["key"]: n for n in doc["data"]["categories"]}
