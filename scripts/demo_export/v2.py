@@ -90,6 +90,7 @@ class Stale:
 
     day: date
     prices: int = 0
+    regulars: int = 0
     stock: int = 0
 
     def on_day(self, moment: datetime) -> bool:
@@ -110,17 +111,18 @@ def availability(value: str | None) -> AvailabilityState | None:
 
 
 def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
-    """Price and regular come from the price capture, stock from the row's own (newest)
-    observation; each is published only when captured on ``stale.day``. The evidence is the
-    price capture when the price is published, else the stock observation."""
+    """Price and regular come from the price capture, stock from the stock observation's own
+    capture (``stock_capture``); each is published only when captured on ``stale.day``. The
+    evidence is the price capture when the price is published, else the stock observation."""
     rep = choose_representative(rows)
     unit, size = rep.effective_size
     price_at, price_run_id = rep.price_capture
-    stock_at, stock_run_id = rep.evidence_retrieved_at or rep.observed_at, rep.run_id
+    stock_at, stock_run_id = rep.stock_capture
     price = money(rep.price, currency)
     if price is not None and not stale.on_day(price_at):
         price = None
         stale.prices += 1
+        stale.regulars += money(rep.regular, currency) is not None
     regular = money(rep.regular, currency) if price is not None else None
     stock = availability(rep.availability)
     if stock is not None and not stale.on_day(stock_at):
@@ -292,7 +294,7 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     has_rating = any(o.rating is not None for o in offers)
 
     # The owner's statement, not row presence: rows from before the block must not hide it.
-    ulta_status = RetailerStatus.BLOCKED
+    ulta_status = RetailerStatus.BLOCKED if ulta.blocked else STATUS[retailer_status(rows, "u")]
     retailers = [
         Retailer(
             id=RETAILERS["u"][0],
@@ -361,7 +363,7 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
                 else "not_collected"
             ),
             "regular": status_of(
-                ("partial" if stale.prices else "ok") if has_regular else "not_collected"
+                "partial" if stale.regulars else "ok" if has_regular else "not_collected"
             ),
             "stock": status_of(
                 "partial" if stale.stock else "ok" if has_stock else "not_collected"

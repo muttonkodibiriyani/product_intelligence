@@ -85,6 +85,9 @@ class ListingRow:
     price_observed_at: datetime | None = None
     price_evidence_retrieved_at: datetime | None = None
     price_run_id: int | None = None
+    stock_observed_at: datetime | None = None
+    stock_evidence_retrieved_at: datetime | None = None
+    stock_run_id: int | None = None
 
     @property
     def price_capture(self) -> tuple[datetime, int]:
@@ -92,6 +95,13 @@ class ListingRow:
         if self.price_observed_at is None or self.price_run_id is None:
             return self.evidence_retrieved_at or self.observed_at, self.run_id
         return self.price_evidence_retrieved_at or self.price_observed_at, self.price_run_id
+
+    @property
+    def stock_capture(self) -> tuple[datetime, int]:
+        """When and in which run the shown stock state was observed (the newest row without one)."""
+        if self.stock_observed_at is None or self.stock_run_id is None:
+            return self.evidence_retrieved_at or self.observed_at, self.run_id
+        return self.stock_evidence_retrieved_at or self.stock_observed_at, self.stock_run_id
 
     @property
     def retailer(self) -> str:
@@ -149,6 +159,9 @@ ULTA_BLOCKED_NOTE_AR = (
 @dataclass(frozen=True)
 class UltaContext:
     blocked_since: datetime
+    #: The owner's statement that ulta.ae is blocked (v2 takes Ulta's status from it, never from
+    #: whether Ulta rows exist). ``--ulta-unblocked`` clears it once Ulta is collected again.
+    blocked: bool = True
     recon_observed_count: int | None = None
     recon_source: str | None = None
     blocked_note: str = ULTA_BLOCKED_NOTE
@@ -200,7 +213,8 @@ eligible_runs AS (
 -- (field_state price_current='unknown'). Price and availability therefore each come from their
 -- own newest row that observed them, so a newer stock read never blanks the price and a newer
 -- page read never hides the stock state. The price row's own time, evidence and run are carried
--- as price_* so a later stock read never makes the price look fresher than it is.
+-- as price_* so a later stock read never makes the price look fresher than it is; likewise the
+-- stock row's as stock_*, so a later page read never makes an old stock state look current.
 obs AS (
   SELECT
     o.source_listing_id,
@@ -240,7 +254,9 @@ latest_price AS (
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
 latest_stock AS (
-  SELECT DISTINCT ON (source_listing_id) source_listing_id, availability_state
+  SELECT DISTINCT ON (source_listing_id)
+    source_listing_id, availability_state, observed_at, observation_id, evidence_retrieved_at,
+    crawl_run_id
   FROM obs
   -- Not a stock observation: availability not_observed, unknown or blocked; never replaces a
   -- known state.
@@ -265,7 +281,10 @@ latest AS (
     a.evidence_retrieved_at,
     p.observed_at AS price_observed_at,
     p.evidence_retrieved_at AS price_evidence_retrieved_at,
-    p.crawl_run_id AS price_run_id
+    p.crawl_run_id AS price_run_id,
+    st.observed_at AS stock_observed_at,
+    st.evidence_retrieved_at AS stock_evidence_retrieved_at,
+    st.crawl_run_id AS stock_run_id
   FROM latest_any a
   LEFT JOIN latest_price p ON p.source_listing_id = a.source_listing_id
   LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id
@@ -301,7 +320,10 @@ SELECT
   latest.coverage_status,
   latest.price_observed_at,
   latest.price_evidence_retrieved_at,
-  latest.price_run_id
+  latest.price_run_id,
+  latest.stock_observed_at,
+  latest.stock_evidence_retrieved_at,
+  latest.stock_run_id
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id
@@ -861,6 +883,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--ulta-recon-source")
     result.add_argument("--generated-at")
     result.add_argument("--ulta-blocked-since", default="2026-09-30T20:55:00Z")
+    result.add_argument(
+        "--ulta-unblocked",
+        action="store_true",
+        help="v2: Ulta is collected again; its status then comes from its rows (default: blocked)",
+    )
     result.add_argument("--ulta-blocked-note", help="Ulta status line while blocked (EN)")
     result.add_argument("--ulta-blocked-note-ar", help="the same line in Arabic (required with EN)")
     result.add_argument(
@@ -929,7 +956,9 @@ def main() -> None:
             rows,
             matches,
             generated_at=generated_at,
-            ulta=UltaContext(blocked_since=parse_utc(args.ulta_blocked_since)),
+            ulta=UltaContext(
+                blocked_since=parse_utc(args.ulta_blocked_since), blocked=not args.ulta_unblocked
+            ),
             ulta_note=dataset["meta"]["retailers"][0]["note"],
             ulta_early=early,
             scope=args.scope,

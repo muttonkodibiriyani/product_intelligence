@@ -254,3 +254,43 @@ def test_ulta_stays_blocked_even_when_older_ulta_rows_exist() -> None:
 def test_size_is_partial_when_only_some_products_have_one() -> None:
     fields = doc([row(), row(family=11, variant=101, size=None, unit=None)])["meta"]["fields"]
     assert fields["size"] == "partial"
+
+
+def test_an_old_stock_state_behind_a_fresh_page_read_is_null() -> None:
+    """The reviewer's case: a 28 Sep stock read plus today's not_observed page read."""
+    today = datetime(2026, 9, 30, 10, 0, tzinfo=UTC)
+    old = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    base = at(today, availability="in_stock")
+    stale_stock = ListingRow(
+        **(
+            base.__dict__
+            | {"stock_observed_at": old, "stock_evidence_retrieved_at": old, "stock_run_id": 2}
+        )
+    )
+    d = doc([stale_stock])
+    offer = only_offer(d)
+    assert offer["series"]["availability"] == [None]
+    assert offer["series"]["price"][0] is not None
+    assert offer["evidence"]["capturedAt"] == "2026-09-30T10:00:00Z"
+    assert d["meta"]["fields"]["stock"] == "partial"
+
+
+def test_regular_is_partial_when_every_regular_was_stale() -> None:
+    old = at(datetime(2026, 9, 28, 12, 0, tzinfo=UTC), family=11, variant=101)
+    fresh = at(datetime(2026, 9, 30, 10, 0, tzinfo=UTC), regular=None)
+    fields = doc([fresh, old])["meta"]["fields"]
+    assert fields["regular"] == "partial"
+
+
+def test_ulta_status_follows_its_rows_once_the_owner_says_unblocked() -> None:
+    ds = build_dataset_v2(
+        [row(), row(source="ulta_ae", family=20, variant=200)],
+        [],
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, 20, 55, tzinfo=UTC), blocked=False),
+        ulta_note=NOTE,
+    )
+    d = json.loads(dump_dataset(ds))
+    assert d["meta"]["retailers"][0]["status"] == RetailerStatus.SUPPORTED
+    assert d["meta"]["retailers"][0]["since"] is None
+    assert d["notObserved"] == []

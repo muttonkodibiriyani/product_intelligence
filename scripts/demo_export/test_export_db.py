@@ -319,3 +319,22 @@ def test_not_published_price_is_an_observation(conn: Conn) -> None:
 
     a = _row(world, "A")
     assert (a["price"], a["price_run_id"]) == (None, refresh)
+
+
+def test_stock_provenance_is_the_stock_row_not_a_newer_page_read(conn: Conn) -> None:
+    """An old stock state must not look current: it carries its own time and run (#53)."""
+    world = World(conn)
+    stock = world.run("partial", 1)
+    world.observe(stock, "A", 1, None, availability="in_stock", field_state=STOCK_ONLY)
+    page = world.run("partial", 4)
+    world.observe(page, "A", 4, "75", availability="not_observed")
+    world.observe(page, "B", 4, "90", availability="not_observed")
+
+    a, b = _row(world, "A"), _row(world, "B")
+    assert (a["availability"], a["observed_at"], a["run_id"]) == (
+        "in_stock",
+        T0.replace(hour=4),
+        page,
+    )
+    assert (a["stock_observed_at"], a["stock_run_id"]) == (T0.replace(hour=1), stock)
+    assert (b["stock_observed_at"], b["stock_run_id"]) == (None, None)  # no stock read at all
