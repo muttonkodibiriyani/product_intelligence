@@ -51,8 +51,11 @@ uv run pi-dataset schema --v3 > docs/contracts/pi-dataset-v3.schema.json
 ## Upgrading v2
 
 `upgrade(v2, profile)` gives every retailer one online context whose id is the retailer id, so
-every v2 offer key stays valid. It raises `UpgradeError` if the vertical isn't the profile's or a
-product carries an attribute key the profile doesn't declare.
+every v2 offer key stays valid. Each offer's v2 `sku` becomes `evidence.itemKey` (kind `sku`; both
+`null` without a sku), so size variants that share one page `url` stay distinct items under
+identity rule (a). It raises `UpgradeError` if the vertical isn't the profile's, a product carries
+an attribute key the profile doesn't declare, or the result breaks a v3 rule (for example one sku
+in two products of a retailer).
 
 ## Literal guard
 
