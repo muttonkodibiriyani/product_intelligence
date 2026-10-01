@@ -598,16 +598,17 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
     if not slots.acquire():
         export.audit(who, head, export.Outcome.BUSY)
         raise export.ExportBusyError
+    stream = slots.hold(export.encode(head, rows))
     try:
         export.audit(who, head)
         name = export.filename(view, fmt, loaded.dataset.meta.cutoff)
         return StreamingResponse(
-            slots.stream(export.encode(head, rows)),
+            stream,
             media_type=export.MEDIA_TYPES[fmt],
             headers={"content-disposition": f'attachment; filename="{name}"'},
         )
-    except BaseException:  # pragma: no cover - the stream never started, so free the slot here
-        slots.release()
+    except BaseException:  # pragma: no cover - no response, so free the slot now
+        stream.close()
         raise
 
 

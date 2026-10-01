@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
+import gc
 import io
 import json
 import logging
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from starlette.requests import ClientDisconnect
+from starlette.responses import StreamingResponse
+from starlette.types import Message
 
 from api_fixture import Client, bearer, make_client, served_dataset, write
 from metrics_fixture import A, B
@@ -250,16 +256,50 @@ def test_a_finished_export_frees_its_slot(tmp_path: Path, monkeypatch: pytest.Mo
         get(one, "export/coverage")
 
 
-def test_slots_are_non_blocking_and_freed_when_a_stream_stops() -> None:
+def test_slots_are_non_blocking_and_freed_once_when_a_stream_ends() -> None:
     slots = export.ExportSlots(1)
     assert slots.acquire()
     assert not slots.acquire()
-    stream = slots.stream(iter([b"a", b"b"]))
+    stream = slots.hold(iter([b"a", b"b"]))
     assert next(stream) == b"a"
     stream.close()  # the client went away mid-download
+    stream.close()  # releasing again is a no-op, never a second slot
+    assert not stream.held
     assert slots.acquire()
-    slots.release()
+    assert not slots.acquire()
+    done = slots.hold(iter([b"a"]))
+    assert list(done) == [b"a"]
+    assert slots.acquire()
+    failing = slots.hold(_Boom())
+    with pytest.raises(RuntimeError):
+        next(failing)
+    assert slots.acquire()
     assert not export.ExportSlots(0).acquire()
+
+
+class _Boom(Iterator[bytes]):
+    def __next__(self) -> bytes:
+        raise RuntimeError("encoder failed")
+
+
+def test_a_disconnect_before_the_response_starts_frees_the_slot() -> None:
+    """Reviewer MUST on #64: Starlette sends the headers before it first iterates the body."""
+    slots = export.ExportSlots(1)
+    assert slots.acquire()
+    response = StreamingResponse(slots.hold(iter([b"a"])))
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(_: Message) -> None:
+        raise OSError("client went away")
+
+    scope = {"type": "http", "asgi": {"spec_version": "2.4"}, "method": "GET", "headers": []}
+    with pytest.raises(ClientDisconnect):
+        asyncio.run(response(scope, receive, send))
+    del response
+    gc.collect()
+    assert slots.acquire()
 
 
 def test_configure_audit_writes_bare_json_lines() -> None:

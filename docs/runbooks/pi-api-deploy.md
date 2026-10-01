@@ -11,7 +11,7 @@ hosting requirements in the decision log). Change one only with a new coordinato
 ## 0. Gate: approval first
 
 Cloud Run `pi-api` and the Artifact Registry repository `pi-api` are new standing billable
-resources (estimate ≈ $0–1.5/month, design §9). Create nothing until `docs/decision-log.md` has a
+resources (estimate ≈ $0–2/month at 1Gi, design §9). Create nothing until `docs/decision-log.md` has a
 coordinator entry naming both resources, me-central1, the scaling limits below, and the estimate
 against the remaining $25/month budget. That entry, which also approves `--allow-unauthenticated`
 (§6), lands in PR #65; check it is on `main` before §3.
@@ -28,7 +28,7 @@ binds whoever deploys it by hand. If Hosting must ship earlier, remove the rewri
 | Service account `pi-api@productintelligence-beeb3.iam.gserviceaccount.com` | **no keys**; never the default compute SA | the runtime identity |
 | Custom role `piApiObjectReader` | `storage.objects.get` only | reads, never lists (design §9) |
 | Bucket IAM binding | `pi-api@` → `piApiObjectReader` on the datasets bucket, conditioned on the `datasets/` prefix | read-only, that prefix only |
-| Cloud Run service `pi-api` | **me-central1**, min 0, **max 3**, default concurrency, 1 vCPU, **512Mi**, timeout 30 s, request-based CPU | design §9 |
+| Cloud Run service `pi-api` | **me-central1**, min 0, **max 3**, default concurrency (80), 1 vCPU, **1Gi**, timeout 30 s, request-based CPU | design §9 |
 
 **Not created:** no Cloud SQL, no VPC connector, no Secret Manager secret, no Firebase admin role,
 no `min-instances=1`. The service needs no secret: ID tokens are checked against Google's public
@@ -104,7 +104,7 @@ Deploy by digest, not by tag.
 gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
-  --min-instances=0 --max-instances=3 --cpu=1 --memory=512Mi --timeout=30 \
+  --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
   --cpu-throttling --port=8080 --ingress=all --allow-unauthenticated \
   --set-env-vars="PI_API_FIREBASE_PROJECT=$PROJECT,PI_API_BUCKET=$BUCKET,PI_API_DATASETS=<paths from §2>"
 ```
@@ -116,10 +116,24 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
   (for example domain-restricted sharing) refuses the binding, stop (stop rule).
 - The startup probe is the default TCP probe. There are no health routes, by design.
-- **Memory at 512Mi.** Peak per export, measured locally for 50 k product cards (the row cap):
-  ~164 MiB of rows plus ~58 MiB while encoding CSV (JSONL ~0), so ~220 MiB. The app allows two
-  exports at a time per instance and answers a third with `429 rate_limited` (`Retry-After: 5`).
-  If Cloud Run logs a memory-limit restart, report it; do not raise the memory without a decision.
+- **Memory 1Gi** (decision log, 2026-10-01; was 512Mi). Measured locally (RSS, Python 3.12):
+
+  | What | Measured |
+  |---|---|
+  | App baseline (imports, FastAPI app, a 16-product fixture loaded) | ~66 MiB |
+  | Loaded dataset | ~27 KiB per product (20 000 products, 54 MiB JSON → 558 MiB RSS) |
+  | One export, per row (CSV: rows + encode peak; JSONL less) | ~4.4 KiB (50 k rows ≈ 220 MiB) |
+  | **Peak, 20 000 products loaded + 2 concurrent CSV exports of all of them** | **800 MiB** |
+
+  So at the dataset budget (≤ 50 MB JSON) the measured peak is ~800 MiB, inside 1Gi with
+  ~200 MiB headroom. A 50 k-row export would need a 50 k-product dataset, which by itself exceeds
+  the budget, so the 2 × ~220 MiB worst case never adds to a full dataset. 512Mi does not fit a
+  budget-size dataset at all. The app allows two exports at once per instance; a third gets
+  `429 rate_limited` (`Retry-After: 5`). If Cloud Run logs a memory-limit restart, report it;
+  change nothing without a decision.
+- **`--timeout=30s`, `--cpu-throttling` (request-based CPU).** The slowest route is a 50 k-row CSV
+  export, ~4 s measured locally (~1.3 s JSONL); even several times slower on 1 vCPU it is well
+  inside 30 s.
 
 ## 7. Hosting rewrite
 
@@ -150,7 +164,7 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
   `jsonPayload.event="pi_api.export"` and `outcome="ok"` (uid, view, filters, row count; no row
   content).
 - Check the describe output: `autoscaling.knative.dev/maxScale: '3'`, no `minScale` (or 0), no
-  Cloud SQL or VPC annotations, the `pi-api@` account, memory 512Mi.
+  Cloud SQL or VPC annotations, the `pi-api@` account, memory 1Gi, timeout 30.
 
 ## 9. Record, roll back, tear down
 

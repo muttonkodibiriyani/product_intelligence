@@ -87,7 +87,7 @@ versioned snapshots.
   `max-age`. Paging stays consistent through cursors bound to the generation (`409 stale_cursor`).
 - **Size.** Today's pilot dataset is a few MB. The budget is ≤ 50 MB of JSON per instance; beyond
   that, history moves to the fact extracts and is read lazily per product. The instance has
-  512 MiB.
+  1 GiB (§6 exports, §9).
 - **Transition.** Until the producers emit v2 (PR-B defines it, and Infra then switches
   `demo_export`/`publish_dataset`), `SnapshotSource` reads `datasets/uae/latest.json` (v1)
   through the read adapter in `pi_dataset`. The adapter maps the fixed `u`/`s` slots to register
@@ -378,8 +378,11 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   - **Row cap 50 000.** Over it the export is refused with `422 export_too_large`, never cut
     short. 50 k product cards encode in ~4 s (CSV) on a dev machine, well inside the 30 s timeout.
   - **Two exports at a time per instance.** Measured for 50 k product cards: ~164 MiB of row
-    models plus ~58 MiB peak while encoding CSV (JSONL adds ~0), so ~220 MiB per export. Two fit
-    in 512Mi beside the loaded dataset; a third concurrent export on the same instance gets
+    models plus ~58 MiB peak while encoding CSV (JSONL adds ~0), so ~4.4 KiB per row. With the
+    app baseline (~66 MiB) and a budget-size dataset loaded (20 k products, 54 MiB JSON: 558 MiB),
+    two concurrent exports of every product measured a peak of 800 MiB, inside 1Gi (runbook §6; 512Mi did not fit, decision
+    log 2026-10-01). A slot is released exactly once, also when the client leaves before the
+    response starts. A third concurrent export on the same instance gets
     `429 rate_limited` with `Retry-After: 5` instead of risking an out-of-memory restart.
   - **Line 1 is the manifest** (`schemaId: pi-api.export/v1`): view, format, row count, and the
     envelope minus `data` (status, reason, detail, cohort, caveats, and `meta` with cutoff,
@@ -481,8 +484,8 @@ and is recorded in `docs/decision-log.md`.
 - **Runtime.** Cloud Run service `pi-api`, **me-central1**, running a container image (Python
   3.12, uvicorn, one worker) from Artifact Registry in the same region.
 - **Scaling.** `min-instances=0` (scales to zero), `max-instances=3` (the coordinator's cap),
-  default concurrency, 1 vCPU / 512 MiB, request-based billing (CPU only during requests),
-  timeout 30 s. No Cloud SQL and no VPC connector.
+  default concurrency (80), 1 vCPU / 1 GiB, request-based billing (CPU only during requests),
+  timeout 30 s (the slowest route, a 50 k-row CSV export, takes ~4 s measured locally). No Cloud SQL and no VPC connector.
 - **Identity.** A dedicated runtime service account `pi-api@` that can **read objects** under
   `datasets/` and nothing else. It has **no** Secret Manager or DB roles, and no Firebase admin
   roles. Token verification needs only public certificates.
@@ -507,12 +510,12 @@ and is recorded in `docs/decision-log.md`.
 
 | Item | Assumption | Est. $/month |
 |---|---|---|
-| Cloud Run requests + CPU | ≤ 50 k requests × ~150 ms at 1 vCPU ≈ 7.5 k vCPU-s, 3.75 k GiB-s: within the free tier if it applies to the region, otherwise well under $1 | $0–1 |
+| Cloud Run requests + CPU | ≤ 50 k requests × ~150 ms at 1 vCPU ≈ 7.5 k vCPU-s, 7.5 k GiB-s at 1 GiB: within the free tier if it applies to the region, otherwise well under $2 | $0–1.5 |
 | Cold starts | Load a few MB of JSON plus validation, ~2–4 s. Accepted for the pilot; `min-instances=1` would cost ≈ $10–15 and **is not proposed** | $0 |
 | GCS reads | One generation check per instance per minute while warm, plus downloads on change | < $0.10 |
 | Artifact Registry | ~150 MB per image, cleanup policy keeps the last 5 | < $0.10 |
 | Egress | JSON responses, a few hundred MB | < $0.10 |
-| **Total** | | **≈ $0–1.5** |
+| **Total** | | **≈ $0–2** |
 
 Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of this design.
 

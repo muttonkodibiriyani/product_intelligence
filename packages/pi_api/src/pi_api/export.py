@@ -17,7 +17,8 @@ import logging
 import re
 import sys
 import threading
-from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
+import weakref
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, TextIO
@@ -28,7 +29,7 @@ from pi_dataset import ContractModel
 from pi_metrics import Cohort, Reason, Status
 
 MAX_EXPORT_ROWS = 50_000
-#: Per instance. A 50 k-row export holds ~165 MiB of rows (measured), so two fit in 512 MiB.
+#: Per instance. A 50 k-row CSV export peaks at ~220 MiB (measured), so two fit in 1 GiB.
 MAX_CONCURRENT_EXPORTS = 2
 #: Seconds a client should wait when every export slot is busy.
 BUSY_RETRY = 5
@@ -74,7 +75,7 @@ class Outcome(StrEnum):
 
 
 class ExportSlots:
-    """A non-blocking counter of running exports; a slot is held until the stream ends."""
+    """A non-blocking counter of running exports; a slot is held until its stream is done."""
 
     def __init__(self, size: int) -> None:
         self._slots = threading.BoundedSemaphore(size) if size > 0 else None
@@ -86,12 +87,41 @@ class ExportSlots:
         if self._slots is not None:
             self._slots.release()
 
-    def stream(self, chunks: Iterator[bytes]) -> Generator[bytes]:
-        """Yields ``chunks`` and frees the slot when they end, fail or the client goes away."""
+    def hold(self, chunks: Iterator[bytes]) -> HeldStream:
+        """``chunks`` holding an acquired slot until they end, fail, close or are dropped."""
+        return HeldStream(chunks, self.release)
+
+
+class HeldStream:
+    """An iterator that releases its slot exactly once, however the download ends.
+
+    A generator's ``finally`` is not enough: Starlette sends the response headers before it
+    first iterates the body, so a client that goes away before then leaves the generator
+    unstarted, and closing or collecting an unstarted generator skips its ``finally``. Here the
+    release is a ``weakref.finalize``, which runs once on exhaustion, on an error, on ``close()``
+    or when the stream is dropped unstarted, whichever comes first.
+    """
+
+    def __init__(self, chunks: Iterator[bytes], release: Callable[[], None]) -> None:
+        self._chunks = chunks
+        self._release = weakref.finalize(self, release)
+
+    def __iter__(self) -> HeldStream:
+        return self
+
+    def __next__(self) -> bytes:
         try:
-            yield from chunks
-        finally:
-            self.release()
+            return next(self._chunks)
+        except BaseException:  # StopIteration included: the download is over either way
+            self._release()
+            raise
+
+    def close(self) -> None:
+        self._release()
+
+    @property
+    def held(self) -> bool:
+        return self._release.alive
 
 
 class ExportManifest(ContractModel):
