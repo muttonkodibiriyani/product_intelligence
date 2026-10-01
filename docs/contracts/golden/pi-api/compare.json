@@ -440,11 +440,13 @@
       "meanGapPct": "4.5",
       "medianGapPct": "2.4",
       "n": 6
-    }
+    },
+    "total": 15,
+    "truncated": false
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.0.0",
+    "apiVersion": "1.1.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",

@@ -107,6 +107,9 @@ class Comparison(ContractModel):
     sides: Sides
     rows: tuple[PairRow, ...]
     summary: CompareSummary | None
+    #: Rows before any ``limit``; ``truncated`` says the list was cut to it (pi_api).
+    total: int
+    truncated: bool = False
     group_by: GroupBy | None = None
     groups: tuple[Group, ...] = ()
     convention: str = GAP_CONVENTION
@@ -346,6 +349,7 @@ def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are k
             ),
             rows=rows,
             summary=summary,
+            total=len(rows),
             group_by=group_by,
             groups=groups,
         ),

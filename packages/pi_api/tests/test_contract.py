@@ -53,6 +53,11 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
         {},
     ),
     "compare": ("/compare?retailers=shop_a,shop_b&groupBy=brand", Envelope[Comparison], {}),
+    "compare-limited": (
+        "/compare?retailers=shop_a,shop_b&limit=3",
+        Envelope[Comparison],
+        {},
+    ),
     "compare-blocked": ("/compare?retailers=shop_a,shop_d", Envelope[Comparison], {}),
     "index": ("/index?retailers=shop_a,shop_b", Envelope[PriceIndex], {}),
     "promotions": ("/promotions?minPct=10", Envelope[Promotions], {}),

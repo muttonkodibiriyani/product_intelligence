@@ -29,6 +29,9 @@ from pi_core import MatchClass, ReviewState
 from pi_dataset import ContractModel, Dataset
 from pi_dataset.models import DecidedBy
 from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
+from pi_metrics.compare import Comparison, PairRow
+from pi_metrics.launches import Launch, Launches
+from pi_metrics.promotions import PromoItem, Promotions
 
 RetailerId = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{1,62}$")]
 RetailerIds = Annotated[tuple[RetailerId, ...], Field(max_length=25)]
@@ -67,6 +70,28 @@ class CompareQuery(PairQuery):
         return ProductFilter(ids=self.id, brands=self.brand, categories=self.category)
 
 
+#: The largest ``limit`` on ``/compare``, ``/promotions`` and ``/launches``.
+MAX_ROWS = 500
+
+
+class RowLimit(ContractModel):
+    """An optional cap on a metric's row list. The metric itself is always over every row."""
+
+    limit: int | None = Field(
+        default=None,
+        ge=1,
+        le=MAX_ROWS,
+        description=(
+            "Return at most this many rows, in the endpoint's documented order; "
+            "`total` counts them all and `truncated` says the list was cut."
+        ),
+    )
+
+
+class CompareRowsQuery(CompareQuery, RowLimit):
+    """``/compare`` only: an export never takes ``limit``."""
+
+
 class IndexQuery(PairQuery):
     start: date | None = Field(default=None, alias="from")
     end: date | None = Field(default=None, alias="to")
@@ -84,12 +109,20 @@ class PromotionsQuery(RetailersQuery):
         return None if self.min_pct is None else Decimal(self.min_pct)
 
 
+class PromotionsRowsQuery(PromotionsQuery, RowLimit):
+    pass
+
+
 class AvailabilityQuery(RetailersQuery):
     on: date | None = Field(default=None, alias="date")
 
 
 class LaunchesQuery(RetailersQuery):
     since: date | None = None
+
+
+class LaunchesRowsQuery(LaunchesQuery, RowLimit):
+    pass
 
 
 class ReviewsQuery(RetailersQuery):
@@ -103,6 +136,55 @@ class AssortmentQuery(FilterQuery):
     missing_at: RetailerId
     present_at: RetailerId
     on: date | None = Field(default=None, alias="date")
+
+
+# ---------------------------------------------------------------- row caps
+
+
+def _gap_first(row: PairRow) -> tuple[bool, Decimal, str]:
+    """Largest absolute gap first, rows without a gap last, then id."""
+    return (row.gap is None, -abs(row.gap.pct) if row.gap else Decimal(0), row.id)
+
+
+def _deepest_first(item: PromoItem) -> tuple[Decimal, str, str]:
+    return (-item.depth_pct, item.id, item.retailer)
+
+
+def _newest_first(item: Launch) -> tuple[int, str, str]:
+    return (-item.first_seen.toordinal(), item.id, item.retailer)
+
+
+def capped_comparison(metric: Metric[Comparison], limit: int | None) -> Metric[Comparison]:
+    """At most ``limit`` rows by ``|gap.pct|`` desc then id; the summary is over every row."""
+    if limit is None:
+        return metric
+    rows = sorted(metric.data.rows, key=_gap_first)
+    data = metric.data.model_copy(
+        update={"rows": tuple(rows[:limit]), "truncated": len(rows) > limit}
+    )
+    return metric.model_copy(update={"data": data})
+
+
+def capped_promotions(metric: Metric[Promotions], limit: int | None) -> Metric[Promotions]:
+    """At most ``limit`` items by ``depthPct`` desc, then id and retailer."""
+    if limit is None:
+        return metric
+    items = sorted(metric.data.items, key=_deepest_first)
+    data = metric.data.model_copy(
+        update={"items": tuple(items[:limit]), "truncated": len(items) > limit}
+    )
+    return metric.model_copy(update={"data": data})
+
+
+def capped_launches(metric: Metric[Launches], limit: int | None) -> Metric[Launches]:
+    """At most ``limit`` items by ``firstSeen`` desc, then id and retailer."""
+    if limit is None:
+        return metric
+    items = sorted(metric.data.items, key=_newest_first)
+    data = metric.data.model_copy(
+        update={"items": tuple(items[:limit]), "truncated": len(items) > limit}
+    )
+    return metric.model_copy(update={"data": data})
 
 
 # ---------------------------------------------------------------- matches

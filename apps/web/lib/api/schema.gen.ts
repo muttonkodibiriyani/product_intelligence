@@ -396,7 +396,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.0.0
+             * @default 1.1.0
              */
             apiVersion: string;
             /** Currency */
@@ -579,6 +579,13 @@ export interface components {
             rows: components["schemas"]["PairRow"][];
             sides: components["schemas"]["Sides"];
             summary: components["schemas"]["CompareSummary"] | null;
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** Coverage */
         Coverage: {
@@ -932,6 +939,13 @@ export interface components {
         Launches: {
             /** Items */
             items: components["schemas"]["Launch"][];
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** Localized */
         Localized: {
@@ -1145,6 +1159,13 @@ export interface components {
             items: components["schemas"]["PromoItem"][];
             /** Retailers */
             retailers: components["schemas"]["RetailerPromo"][];
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * Rating
@@ -1620,6 +1641,8 @@ export interface operations {
     get_compare_api_v1_compare_get: {
         parameters: {
             query: {
+                /** @description Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut. */
+                limit?: number | null;
                 market?: string | null;
                 scope?: string | null;
                 brand?: string[];
@@ -2534,6 +2557,8 @@ export interface operations {
     get_launches_api_v1_launches_get: {
         parameters: {
             query?: {
+                /** @description Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut. */
+                limit?: number | null;
                 market?: string | null;
                 scope?: string | null;
                 brand?: string[];
@@ -3131,6 +3156,8 @@ export interface operations {
     get_promotions_api_v1_promotions_get: {
         parameters: {
             query?: {
+                /** @description Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut. */
+                limit?: number | null;
                 market?: string | null;
                 scope?: string | null;
                 brand?: string[];

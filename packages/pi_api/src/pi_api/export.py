@@ -100,6 +100,10 @@ class HeldStream:
     unstarted, and closing or collecting an unstarted generator skips its ``finally``. Here the
     release is a ``weakref.finalize``, which runs once on exhaustion, on an error, on ``close()``
     or when the stream is dropped unstarted, whichever comes first.
+
+    "Dropped" relies on the response, and with it this stream, being freed. CPython frees it as
+    soon as the last reference goes; if a reference cycle holds it, the slot waits for the cyclic
+    garbage collector instead.
     """
 
     def __init__(self, chunks: Iterator[bytes], release: Callable[[], None]) -> None:

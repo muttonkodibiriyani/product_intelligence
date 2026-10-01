@@ -24,6 +24,9 @@ class Launch(ContractModel):
 
 class Launches(ContractModel):
     items: tuple[Launch, ...]
+    #: Rows before any ``limit``; ``truncated`` says the list was cut to it (pi_api).
+    total: int
+    truncated: bool = False
 
 
 def launches(
@@ -37,7 +40,7 @@ def launches(
     if not ds.meta.capabilities.history or len(ds.meta.dates) < 2:
         return Metric[Launches](
             status=Status.NOT_ENOUGH_DATA,
-            data=Launches(items=()),
+            data=Launches(items=(), total=0),
             reason=Reason.CAPABILITY_OFF,
             as_of=as_of,
         )
@@ -64,5 +67,8 @@ def launches(
         else ()
     )
     return Metric[Launches](
-        status=Status.OK, data=Launches(items=tuple(items)), caveats=caveats, as_of=as_of
+        status=Status.OK,
+        data=Launches(items=tuple(items), total=len(items)),
+        caveats=caveats,
+        as_of=as_of,
     )

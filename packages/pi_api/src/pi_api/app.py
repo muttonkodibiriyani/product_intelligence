@@ -38,13 +38,18 @@ from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
     CompareQuery,
+    CompareRowsQuery,
     IndexQuery,
-    LaunchesQuery,
+    LaunchesRowsQuery,
     MatchesQuery,
     MatchPage,
     PromotionsQuery,
+    PromotionsRowsQuery,
     ReviewsQuery,
     StatesForbiddenError,
+    capped_comparison,
+    capped_launches,
+    capped_promotions,
     matches,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
@@ -82,7 +87,7 @@ from pi_api.source import (
     ObjectStore,
     SnapshotSource,
 )
-from pi_api.wire import ApiMeta, Envelope, ErrorBody, envelope, error_body
+from pi_api.wire import API_VERSION, ApiMeta, Envelope, ErrorBody, envelope, error_body
 from pi_dataset import ContractModel
 from pi_metrics import (
     AssortmentGaps,
@@ -394,7 +399,7 @@ def build_api(source: SnapshotSource) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
         title="Product Intelligence API",
-        version="1.0.0",
+        version=API_VERSION,
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -473,13 +478,13 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
     """S3: one route per ``pi_metrics`` call (design §6); every number comes from there."""
 
     @api.get(f"{PREFIX}/compare", response_model=Envelope[Comparison])
-    def get_compare(query: Annotated[CompareQuery, Query()], _: Viewer) -> Envelope[Comparison]:
+    def get_compare(query: Annotated[CompareRowsQuery, Query()], _: Viewer) -> Envelope[Comparison]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
         metric = compare(
             loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
         )
-        return respond(loaded, "compare", query, metric)
+        return respond(loaded, "compare", query, capped_comparison(metric, query.limit))
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
     def get_index(query: Annotated[IndexQuery, Query()], _: Viewer) -> Envelope[PriceIndex]:
@@ -492,13 +497,13 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
 
     @api.get(f"{PREFIX}/promotions", response_model=Envelope[Promotions])
     def get_promotions(
-        query: Annotated[PromotionsQuery, Query()], _: Viewer
+        query: Annotated[PromotionsRowsQuery, Query()], _: Viewer
     ) -> Envelope[Promotions]:
         loaded = source.select(query.market, query.scope)
         metric = promotions(
             loaded.dataset, query.retailer, query.where(), query.min_depth(), query.on
         )
-        return respond(loaded, "promotions", query, metric)
+        return respond(loaded, "promotions", query, capped_promotions(metric, query.limit))
 
     @api.get(f"{PREFIX}/assortment-gaps", response_model=Envelope[AssortmentGaps])
     def get_assortment_gaps(
@@ -519,10 +524,10 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         return respond(loaded, "availability", query, metric)
 
     @api.get(f"{PREFIX}/launches", response_model=Envelope[Launches])
-    def get_launches(query: Annotated[LaunchesQuery, Query()], _: Viewer) -> Envelope[Launches]:
+    def get_launches(query: Annotated[LaunchesRowsQuery, Query()], _: Viewer) -> Envelope[Launches]:
         loaded = source.select(query.market, query.scope)
         metric = launches(loaded.dataset, query.retailer, query.where(), query.since)
-        return respond(loaded, "launches", query, metric)
+        return respond(loaded, "launches", query, capped_launches(metric, query.limit))
 
     @api.get(f"{PREFIX}/reviews-summary", response_model=Envelope[ReviewsSummary])
     def get_reviews_summary(

@@ -197,7 +197,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.0.0",
+            "default": "1.1.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -651,6 +651,15 @@
                 "type": "null"
               }
             ]
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
@@ -658,7 +667,8 @@
           "other",
           "sides",
           "rows",
-          "summary"
+          "summary",
+          "total"
         ],
         "title": "Comparison",
         "type": "object"
@@ -2037,10 +2047,20 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
         ],
         "title": "Launches",
         "type": "object"
@@ -2784,11 +2804,21 @@
             },
             "title": "Retailers",
             "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
           "retailers",
-          "items"
+          "items",
+          "total"
         ],
         "title": "Promotions",
         "type": "object"
@@ -3319,7 +3349,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3877,6 +3907,26 @@
       "get": {
         "operationId": "get_compare_api_v1_compare_get",
         "parameters": [
+          {
+            "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+              "title": "Limit"
+            }
+          },
           {
             "in": "query",
             "name": "market",
@@ -5780,6 +5830,26 @@
         "operationId": "get_launches_api_v1_launches_get",
         "parameters": [
           {
+            "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+              "title": "Limit"
+            }
+          },
+          {
             "in": "query",
             "name": "market",
             "required": false,
@@ -6962,6 +7032,26 @@
       "get": {
         "operationId": "get_promotions_api_v1_promotions_get",
         "parameters": [
+          {
+            "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+              "title": "Limit"
+            }
+          },
           {
             "in": "query",
             "name": "market",

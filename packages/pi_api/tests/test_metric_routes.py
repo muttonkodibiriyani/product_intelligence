@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,9 @@ import pytest
 
 from api_fixture import Client, bearer, make_client, served_dataset, write
 from metrics_fixture import A, B, C, D
+from pi_api.analytics import capped_launches
+from pi_metrics import Metric, Status
+from pi_metrics.launches import Launch, Launches
 
 API = "/api/v1"
 NO_STORE = "private, no-store"
@@ -74,6 +78,11 @@ def test_metric_routes_are_bearer_only_and_no_store(client: Client, path: str) -
         f"/matches?retailers={A},{A}",
         "/matches?class=twin",
         "/matches?limit=0",
+        f"/compare?{PAIR}&limit=0",
+        f"/compare?{PAIR}&limit=501",
+        "/promotions?limit=ten",
+        "/launches?limit=0",
+        "/index?retailers=shop_a,shop_b&limit=3",
     ],
 )
 def test_bad_metric_queries_are_422(client: Client, path: str) -> None:
@@ -119,6 +128,58 @@ def test_index_is_a_fixed_basket_series(client: Client) -> None:
     assert doc["data"]["trendAvailable"] is True
     single = body(client, f"/index?{PAIR}&from=2026-09-30")
     assert len(single["data"]["points"]) == 1
+
+
+def _gap_first(row: dict[str, Any]) -> tuple[bool, Decimal, str]:
+    gap = row["gap"]
+    return (gap is None, -abs(Decimal(gap["pct"])) if gap else Decimal(0), row["id"])
+
+
+@pytest.mark.parametrize("limit", [1, 3, 15, 500])
+def test_compare_limit_cuts_rows_by_largest_gap_and_keeps_the_summary(
+    client: Client, limit: int
+) -> None:
+    full = body(client, f"/compare?{PAIR}")["data"]
+    capped = body(client, f"/compare?{PAIR}&limit={limit}")
+    data = capped["data"]
+    assert (full["total"], full["truncated"]) == (len(full["rows"]), False)
+    assert data["total"] == full["total"] == 15
+    assert data["truncated"] is (limit < data["total"])
+    assert data["rows"] == sorted(full["rows"], key=_gap_first)[:limit]
+    assert data["summary"] == full["summary"]  # the metric is over every row
+    assert data["sides"] == full["sides"]
+    assert capped["meta"]["filters"]["limit"] == limit
+
+
+def test_promotions_limit_cuts_items_by_deepest_discount(client: Client) -> None:
+    full = body(client, "/promotions")["data"]
+    assert full["total"] == len(full["items"]) >= 2
+    data = body(client, "/promotions?limit=1")["data"]
+    deepest = sorted(full["items"], key=lambda i: (-Decimal(i["depthPct"]), i["id"], i["retailer"]))
+    assert (data["items"], data["total"], data["truncated"]) == (deepest[:1], full["total"], True)
+    assert data["retailers"] == full["retailers"]
+
+
+def test_launches_limit_keeps_the_newest_first() -> None:
+    items = (
+        Launch(id="p2", name="b", retailer=B, first_seen=date(2026, 9, 2)),
+        Launch(id="p1", name="a", retailer=B, first_seen=date(2026, 9, 1)),
+        Launch(id="p3", name="c", retailer=A, first_seen=date(2026, 9, 2)),
+        Launch(id="p2", name="b", retailer=A, first_seen=date(2026, 9, 2)),
+    )
+    metric = Metric[Launches](
+        status=Status.OK, data=Launches(items=items, total=4), as_of=date(2026, 9, 30)
+    )
+    assert capped_launches(metric, None) is metric
+    capped = capped_launches(metric, 3).data
+    assert [(i.id, i.retailer) for i in capped.items] == [("p2", A), ("p2", B), ("p3", A)]
+    assert (capped.total, capped.truncated) == (4, True)
+    assert capped_launches(metric, 4).data.truncated is False
+
+
+def test_launches_limit_on_the_route(client: Client) -> None:
+    data = body(client, "/launches?limit=1")["data"]
+    assert (len(data["items"]), data["total"], data["truncated"]) == (1, 1, False)
 
 
 def test_promotions_availability_launches_reviews(client: Client) -> None:

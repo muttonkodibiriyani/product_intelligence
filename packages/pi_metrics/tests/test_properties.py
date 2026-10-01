@@ -81,8 +81,11 @@ def test_summary_needs_the_cohort_and_ignores_row_order(
     assert sum(summary.cheaper_counts.values()) + summary.equal_count == len(rows)
     assert summary.basket.base.minor == sum(b for b, _ in prices)
     lo, hi = min(r.gap.pct for r in rows if r.gap), max(r.gap.pct for r in rows if r.gap)
-    assert lo <= summary.median_gap_pct <= hi
-    assert lo <= summary.mean_gap_pct <= hi
+    # Decimal arithmetic rounds at 28 digits, so a mean of equal values may differ in the last
+    # one; the wire shows one decimal place.
+    slack = Decimal("1e-20")
+    assert lo - slack <= summary.median_gap_pct <= hi + slack
+    assert lo - slack <= summary.mean_gap_pct <= hi + slack
 
 
 @given(st.decimals(min_value=-1000, max_value=1000, allow_nan=False, places=4))
