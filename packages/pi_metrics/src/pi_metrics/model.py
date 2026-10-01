@@ -144,8 +144,8 @@ class ProductFilter(ContractModel):
         if self.brands and product.brand.casefold() not in {b.casefold() for b in self.brands}:
             return False
         if self.categories:
-            wanted = {c.casefold() for c in self.categories}
-            return any(level.casefold() in wanted for level in product.category)
+            # The code alone: ``category[1:]`` is the retailer's breadcrumb (#108).
+            return product.category[0].casefold() in {c.casefold() for c in self.categories}
         return True
 
 

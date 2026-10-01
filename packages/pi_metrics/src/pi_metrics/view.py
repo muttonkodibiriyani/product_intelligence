@@ -215,8 +215,8 @@ def covers(window: NotObservedV3, product: ProductV3, day: date) -> bool:
         return False
     if window.categories is None:
         return True
-    wanted = {c.casefold() for c in window.categories}
-    return any(level.casefold() in wanted for level in product.category)
+    # Window categories are codes; ``category[1:]`` is the retailer's breadcrumb (#108).
+    return product.category[0].casefold() in {c.casefold() for c in window.categories}
 
 
 def not_observed(ds: DatasetV3, context_id: str, product: ProductV3, i: int) -> bool:
