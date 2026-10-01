@@ -280,8 +280,37 @@ def test_attribute_facets_keep_the_most_common_values(
     facets = attr_facets(faceted)
     assert facets["finish"] == {"Matte": 2}
     assert facets["shadeFamilies"] == {"Nude": 2}
+    assert truncated(faceted) == ["finish", "shadeFamilies"]  # concentration has only EDP
     monkeypatch.setattr(catalog, "ATTR_FACET_LIMIT", 2)
     assert list(attr_facets(faceted)["finish"]) == ["Gloss", "Matte"]  # shown in raw order
+    assert truncated(faceted) == []
+
+
+def truncated(client: Client) -> list[str]:
+    return list(get(client, "products")["data"]["facets"]["attributesTruncated"])
+
+
+@pytest.mark.parametrize(
+    ("stored", "shown"),
+    [(" Matte ", "Matte"), ("\tGloss", "Gloss"), ("Gloss\n", "Gloss"), ("x\u00a0", "x")],
+)
+def test_edge_whitespace_is_trimmed_before_folding_listing_and_matching(
+    tmp_path: Path, stored: str, shown: str
+) -> None:
+    """Reviewer's #104 point 1: a trimmed value is one chip, and that chip filters to it."""
+    doc = faceted_doc()
+    next(p for p in doc["products"] if p["id"] == "p03")["attributes"]["finish"] = stored
+    write(tmp_path, DatasetV3.model_validate(doc))
+    client = make_client(tmp_path)[0]
+    page = get(client, "products")["data"]["facets"]["attributes"]["finish"]
+    keys = [f["key"] for f in page]
+    assert len(keys) == len({catalog.fold(k) for k in keys})  # one chip per value
+    assert shown in keys
+    for item in page:
+        hits = ids(get(client, f"products?attr=finish:{item['key']}&limit=100"))
+        assert len(hits) == item["count"]
+    assert "p03" in ids(get(client, f"products?attr=finish:{shown}&limit=100"))
+    assert "p03" in ids(get(client, f"products?attr=finish:%20{shown}%20&limit=100"))
 
 
 def test_beauty_lists_every_facet_attribute(beauty: Client) -> None:

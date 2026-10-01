@@ -18,6 +18,7 @@ from pi_api.analytics import MatchPage
 from pi_api.app import PREFIX
 from pi_api.catalog import AdminProductDetail, History, MetaView, ProductDetail, ProductPage
 from pi_api.contract import main, openapi, openapi_text
+from pi_api.summary import SummaryView
 from pi_api.wire import Envelope
 from pi_metrics.assortment import AssortmentGaps
 from pi_metrics.availability import Availability
@@ -69,6 +70,8 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
     "availability": ("/availability", Envelope[Availability], {}),
     "launches": ("/launches", Envelope[Launches], {}),
     "reviews-summary": ("/reviews-summary", Envelope[ReviewsSummary], {}),
+    "summary": ("/summary", Envelope[SummaryView], {}),
+    "summary-blocked": ("/summary?retailer=shop_d", Envelope[SummaryView], {}),
     "matches": ("/matches?limit=3", Envelope[MatchPage], {}),
     "admin-matches": ("/matches?reviewState=proposed", Envelope[MatchPage], {"role": "admin"}),
     "error-stale-cursor": ("", BaseModel, {}),
@@ -181,3 +184,20 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
         "https://firebasestorage.googleapis.com",
     }
     assert all(not hosts for hosts in external.values()), external
+
+
+@pytest.mark.parametrize(
+    ("schema", "fields"),
+    [
+        ("TopDiscount", {"brand", "name", "category", "image"}),
+        ("BrandPrice", {"brand"}),
+        ("CategoryShare", {"category"}),
+        ("LadderRow", {"category"}),
+        ("PromoDepth", {"category"}),
+    ],
+)
+def test_summary_page_text_is_tagged(schema: str, fields: set[str]) -> None:
+    """AIE's #104 flag: every retailer-written field in ``SummaryView`` is ``x-pi-source-text``."""
+    properties = openapi()["components"]["schemas"][schema]["properties"]
+    tagged = {k for k, v in properties.items() if '"x-pi-source-text": true' in json.dumps(v)}
+    assert tagged == fields

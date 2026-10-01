@@ -8,6 +8,7 @@
         "finish": [],
         "shadeFamilies": []
       },
+      "attributesTruncated": [],
       "brand": [
         {
           "count": 2,
@@ -32,7 +33,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.3.0",
+    "apiVersion": "1.4.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "products",
