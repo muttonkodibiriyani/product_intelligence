@@ -29,15 +29,27 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from pi_api.analytics import (
+    AssortmentQuery,
+    AvailabilityQuery,
+    CompareQuery,
+    IndexQuery,
+    LaunchesQuery,
+    MatchesQuery,
+    MatchPage,
+    PromotionsQuery,
+    ReviewsQuery,
+    StatesForbiddenError,
+    matches,
+)
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
 from pi_api.catalog import (
-    MAX_VALUES,
     AdminProductDetail,
+    CoverageQuery,
     History,
     HistoryQuery,
     InvalidQueryError,
@@ -46,8 +58,8 @@ from pi_api.catalog import (
     ProductNotFoundError,
     ProductPage,
     ProductQuery,
+    ScopeQuery,
     ScopeRef,
-    ShortText,
     StaleCursorError,
     admin_product_detail,
     find,
@@ -69,7 +81,23 @@ from pi_api.source import (
 )
 from pi_api.wire import ApiMeta, Envelope, ErrorBody, envelope, error_body
 from pi_dataset import ContractModel
-from pi_metrics import Metric
+from pi_metrics import (
+    AssortmentGaps,
+    Availability,
+    Comparison,
+    Launches,
+    Metric,
+    PriceIndex,
+    Promotions,
+    ReviewsSummary,
+    assortment_gaps,
+    availability,
+    compare,
+    launches,
+    price_index,
+    promotions,
+    reviews_summary,
+)
 from pi_metrics.coverage import Coverage, coverage
 from pi_metrics.view import UnknownInput
 
@@ -251,18 +279,13 @@ class RateLimit:
 # ---------------------------------------------------------------- queries and helpers
 
 
-class ScopeQuery(ContractModel):
-    market: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
-    scope: ShortText | None = None
-
-
-class CoverageQuery(ScopeQuery):
-    retailer: Annotated[tuple[ShortText, ...], Field(max_length=MAX_VALUES)] = ()
-
-
 def principal(request: Request) -> Principal:
     value: Principal = request.state.principal
     return value
+
+
+#: Any signed-in role; the route only needs the guard to have run.
+Viewer = Annotated[Principal, Depends(principal)]
 
 
 def admin(request: Request) -> Principal:
@@ -324,6 +347,7 @@ def _install_handlers(api: FastAPI) -> None:
     handle(UnknownInput, 422, "invalid_query")
     handle(StaleCursorError, 409, "stale_cursor", "the data changed; restart from the first page")
     handle(ForbiddenError, 403, "forbidden", "admins only")
+    handle(StatesForbiddenError, 403, "forbidden", "only admins may list unreviewed or rejected")
 
     async def invalid(_: Request, error: Exception) -> JSONResponse:
         errors = error.errors() if isinstance(error, RequestValidationError) else []
@@ -349,6 +373,12 @@ def _install_handlers(api: FastAPI) -> None:
 # ---------------------------------------------------------------- the app
 
 
+def respond[T](
+    loaded: Loaded, endpoint: str, query: ContractModel, metric: Metric[T]
+) -> Envelope[T]:
+    return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
+
+
 def build_api(source: SnapshotSource) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
@@ -361,11 +391,6 @@ def build_api(source: SnapshotSource) -> FastAPI:
         responses=ERROR_RESPONSES,
     )
     _install_handlers(api)
-
-    def respond[T](
-        loaded: Loaded, endpoint: str, query: ContractModel, metric: Metric[T]
-    ) -> Envelope[T]:
-        return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
     @api.get(f"{PREFIX}/meta", response_model=Envelope[MetaView], response_model_by_alias=True)
     def get_meta(
@@ -428,7 +453,78 @@ def build_api(source: SnapshotSource) -> FastAPI:
         loaded = source.select(query.market, query.scope)
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
+    _metric_routes(api, source)
     return api
+
+
+def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
+    """S3: one route per ``pi_metrics`` call (design §6); every number comes from there."""
+
+    @api.get(f"{PREFIX}/compare", response_model=Envelope[Comparison])
+    def get_compare(query: Annotated[CompareQuery, Query()], _: Viewer) -> Envelope[Comparison]:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = compare(
+            loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
+        )
+        return respond(loaded, "compare", query, metric)
+
+    @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
+    def get_index(query: Annotated[IndexQuery, Query()], _: Viewer) -> Envelope[PriceIndex]:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = price_index(
+            loaded.dataset, base, other, query.where(), start=query.start, end=query.end
+        )
+        return respond(loaded, "index", query, metric)
+
+    @api.get(f"{PREFIX}/promotions", response_model=Envelope[Promotions])
+    def get_promotions(
+        query: Annotated[PromotionsQuery, Query()], _: Viewer
+    ) -> Envelope[Promotions]:
+        loaded = source.select(query.market, query.scope)
+        metric = promotions(
+            loaded.dataset, query.retailer, query.where(), query.min_depth(), query.on
+        )
+        return respond(loaded, "promotions", query, metric)
+
+    @api.get(f"{PREFIX}/assortment-gaps", response_model=Envelope[AssortmentGaps])
+    def get_assortment_gaps(
+        query: Annotated[AssortmentQuery, Query()], _: Viewer
+    ) -> Envelope[AssortmentGaps]:
+        loaded = source.select(query.market, query.scope)
+        metric = assortment_gaps(
+            loaded.dataset, query.missing_at, query.present_at, query.where(), query.on
+        )
+        return respond(loaded, "assortment_gaps", query, metric)
+
+    @api.get(f"{PREFIX}/availability", response_model=Envelope[Availability])
+    def get_availability(
+        query: Annotated[AvailabilityQuery, Query()], _: Viewer
+    ) -> Envelope[Availability]:
+        loaded = source.select(query.market, query.scope)
+        metric = availability(loaded.dataset, query.retailer, query.where(), query.on)
+        return respond(loaded, "availability", query, metric)
+
+    @api.get(f"{PREFIX}/launches", response_model=Envelope[Launches])
+    def get_launches(query: Annotated[LaunchesQuery, Query()], _: Viewer) -> Envelope[Launches]:
+        loaded = source.select(query.market, query.scope)
+        metric = launches(loaded.dataset, query.retailer, query.where(), query.since)
+        return respond(loaded, "launches", query, metric)
+
+    @api.get(f"{PREFIX}/reviews-summary", response_model=Envelope[ReviewsSummary])
+    def get_reviews_summary(
+        query: Annotated[ReviewsQuery, Query()], _: Viewer
+    ) -> Envelope[ReviewsSummary]:
+        loaded = source.select(query.market, query.scope)
+        metric = reviews_summary(loaded.dataset, query.retailer, query.where())
+        return respond(loaded, "reviews_summary", query, metric)
+
+    @api.get(f"{PREFIX}/matches", response_model=Envelope[MatchPage])
+    def get_matches(query: Annotated[MatchesQuery, Query()], who: Viewer) -> Envelope[MatchPage]:
+        loaded = source.select(query.market, query.scope)
+        page = matches(loaded.dataset, loaded.generation, query, admin=who.role is Role.ADMIN)
+        return respond(loaded, "matches", query, page)
 
 
 def create_app(source: SnapshotSource, verifier: TokenVerifier, buckets: TokenBuckets) -> ASGIApp:

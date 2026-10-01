@@ -5,7 +5,7 @@
     "facets": {
       "brand": [
         {
-          "count": 13,
+          "count": 12,
           "key": "Fixture Beauty"
         },
         {
@@ -15,7 +15,7 @@
       ],
       "category": [
         {
-          "count": 2,
+          "count": 1,
           "key": "makeup"
         },
         {
@@ -45,8 +45,21 @@
           "skincare",
           "serum"
         ],
-        "gap": null,
-        "id": "p07",
+        "gap": {
+          "base": "shop_a",
+          "excludedReason": null,
+          "gap": {
+            "amount": {
+              "amount": "20.00",
+              "currency": "AED",
+              "minor": 2000
+            },
+            "cheaper": "base",
+            "pct": "25.0"
+          },
+          "other": "shop_b"
+        },
+        "id": "p05",
         "image": null,
         "matches": [
           {
@@ -54,20 +67,20 @@
             "b": "shop_b",
             "confidence": "0.95",
             "matchClass": "exact",
-            "reviewState": "proposed"
+            "reviewState": "locked"
           }
         ],
-        "name": "Product p07",
+        "name": "Product p05",
         "prices": {
           "shop_a": {
-            "amount": "50.00",
+            "amount": "80.00",
             "currency": "AED",
-            "minor": 5000
+            "minor": 8000
           },
           "shop_b": {
-            "amount": "50.00",
+            "amount": "100.00",
             "currency": "AED",
-            "minor": 5000
+            "minor": 10000
           }
         },
         "size": {
@@ -81,8 +94,21 @@
           "skincare",
           "serum"
         ],
-        "gap": null,
-        "id": "p08",
+        "gap": {
+          "base": "shop_a",
+          "excludedReason": null,
+          "gap": {
+            "amount": {
+              "amount": "10.00",
+              "currency": "AED",
+              "minor": 1000
+            },
+            "cheaper": "base",
+            "pct": "11.1"
+          },
+          "other": "shop_b"
+        },
+        "id": "p01",
         "image": null,
         "matches": [
           {
@@ -90,56 +116,69 @@
             "b": "shop_b",
             "confidence": "0.95",
             "matchClass": "exact",
-            "reviewState": "rejected"
-          }
-        ],
-        "name": "Product p08",
-        "prices": {
-          "shop_a": {
-            "amount": "50.00",
-            "currency": "AED",
-            "minor": 5000
-          },
-          "shop_b": {
-            "amount": "50.00",
-            "currency": "AED",
-            "minor": 5000
-          }
-        },
-        "size": {
-          "unit": "ml",
-          "value": "50"
-        }
-      },
-      {
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "gap": null,
-        "id": "p09",
-        "image": null,
-        "matches": [
-          {
-            "a": "shop_a",
-            "b": "shop_b",
-            "confidence": "0.95",
-            "matchClass": "family",
             "reviewState": "approved"
           }
         ],
-        "name": "Product p09",
+        "name": "Product p01",
         "prices": {
           "shop_a": {
-            "amount": "50.00",
+            "amount": "90.00",
             "currency": "AED",
-            "minor": 5000
+            "minor": 9000
           },
           "shop_b": {
-            "amount": "50.00",
+            "amount": "100.00",
             "currency": "AED",
-            "minor": 5000
+            "minor": 10000
+          }
+        },
+        "size": {
+          "unit": "ml",
+          "value": "50"
+        }
+      },
+      {
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "gap": {
+          "base": "shop_a",
+          "excludedReason": null,
+          "gap": {
+            "amount": {
+              "amount": "4.50",
+              "currency": "AED",
+              "minor": 450
+            },
+            "cheaper": "base",
+            "pct": "4.7"
+          },
+          "other": "shop_b"
+        },
+        "id": "p04",
+        "image": null,
+        "matches": [
+          {
+            "a": "shop_a",
+            "b": "shop_b",
+            "confidence": "0.95",
+            "matchClass": "exact",
+            "reviewState": "approved"
+          }
+        ],
+        "name": "Product p04",
+        "prices": {
+          "shop_a": {
+            "amount": "95.50",
+            "currency": "AED",
+            "minor": 9550
+          },
+          "shop_b": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
           }
         },
         "size": {
@@ -148,8 +187,8 @@
         }
       }
     ],
-    "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjMsImYiOiJkM2ViODQwNDg0MGIwNzBiIn0",
-    "total": 16
+    "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjMsImYiOiI2ZDcxZTVjZDIyYmFjNDJhIn0",
+    "total": 15
   },
   "detail": null,
   "meta": {
@@ -159,7 +198,11 @@
     "endpoint": "products",
     "filters": {
       "limit": 3,
-      "sort": "price_asc"
+      "retailer": [
+        "shop_a",
+        "shop_b"
+      ],
+      "sort": "gap"
     },
     "generation": "1790000000000000000",
     "market": "AE",
