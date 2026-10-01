@@ -8,9 +8,11 @@ import type { ReactNode } from 'react';
 import type { Envelope, Schemas } from '@/lib/api/types';
 import { parseCompare, toCompareSearch } from '@/lib/compare';
 import { parseState, toSearch } from '@/lib/explore';
+import { parsePromotions, toPromotionsSearch } from '@/lib/promotions';
 import { formatCount, formatDate, loc } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import type { BackTo } from '../explore/product-table';
 import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
 import { Known } from '../ui/known';
@@ -33,6 +35,20 @@ export function safeHttpUrl(url: string | null): string | null {
   }
 }
 
+/** Each list that links here, rebuilt from its own parsed state so Back is never a free URL. */
+const BACKS: Record<
+  BackTo | 'explore',
+  { path: string; search: (sp: URLSearchParams) => string; label: string }
+> = {
+  explore: { path: 'explore', search: (sp) => toSearch(parseState(sp)), label: 'back' },
+  compare: { path: 'compare', search: (sp) => toCompareSearch(parseCompare(sp)), label: 'backCompare' },
+  promotions: {
+    path: 'promotions',
+    search: (sp) => toPromotionsSearch(parsePromotions(sp)),
+    label: 'backPromotions',
+  },
+};
+
 export function ProductView() {
   const t = useTranslations('product');
   const locale = useLocale();
@@ -43,10 +59,9 @@ export function ProductView() {
   const valid = PRODUCT_ID.test(id);
   // Only the list's own filters are carried back, rebuilt from parsed state: never a free URL.
   const from = new URLSearchParams(sp.get('from') ?? '');
-  const toCompare = sp.get('back') === 'compare';
-  const back = toCompare
-    ? `/${locale}/compare/${toCompareSearch(parseCompare(from))}`
-    : `/${locale}/explore/${toSearch(parseState(from))}`;
+  const backTo = sp.get('back') ?? '';
+  const to = Object.hasOwn(BACKS, backTo) ? BACKS[backTo as BackTo] : BACKS.explore;
+  const back = `/${locale}/${to.path}/${to.search(from)}`;
 
   const q = useQuery({
     queryKey: ['product', id],
@@ -58,7 +73,7 @@ export function ProductView() {
   const backLink = (
     <Link href={back} className="text-sm text-accent hover:underline focus-visible:outline-2">
       <span aria-hidden>{locale === 'ar' ? '→ ' : '← '}</span>
-      {t(toCompare ? 'backCompare' : 'back')}
+      {t(to.label)}
     </Link>
   );
 
@@ -161,7 +176,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-const TH = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
+const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
 const TD = 'px-3 py-2 align-top';
 
 /** One row per retailer. Columns the dataset doesn't collect (per /meta) are left out, not zeroed. */
@@ -177,7 +192,7 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('retailer')}
             </th>
             <th scope="col" className={`${TH} text-end`}>
@@ -190,16 +205,16 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
               {t('promo')}
             </th>
             {show.stock && (
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('availability')}
               </th>
             )}
             {show.ratings && (
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('rating')}
               </th>
             )}
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('size')}
             </th>
             {show.shades && (
@@ -207,10 +222,10 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
                 {t('shades')}
               </th>
             )}
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('sku')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('evidence')}
             </th>
           </tr>
@@ -303,13 +318,13 @@ function Pairs({ pairs, name }: { pairs: Schemas['PairGap'][]; name: (id: string
       <table className="w-full max-w-3xl text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('pairBase')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('pairOther')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('pairGap')}
             </th>
           </tr>
@@ -338,10 +353,10 @@ function Matches({ matches, name }: { matches: Schemas['CardMatch'][]; name: (id
       <table className="w-full max-w-3xl text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('retailer')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('matchClass')}
             </th>
             <th scope="col" className={`${TH} text-end`}>

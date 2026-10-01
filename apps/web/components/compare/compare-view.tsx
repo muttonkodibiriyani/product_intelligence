@@ -16,6 +16,7 @@ import { formatCount } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { EnvNotes } from '../ui/env-notes';
+import { FilterChips } from '../ui/filter-chips';
 import { useRetailerName } from '../use-meta';
 import { CompareRows } from './compare-rows';
 import { Groups, Sides, Summary } from './compare-summary';
@@ -51,10 +52,6 @@ export function CompareView() {
   });
   const env = q.data;
   const data = env?.data ?? null;
-  const filters = [
-    ...state.brand.map((v) => ({ k: 'brand' as const, v })),
-    ...state.category.map((v) => ({ k: 'category' as const, v })),
-  ];
 
   return (
     <section aria-labelledby="compare-title" className="space-y-6">
@@ -67,25 +64,11 @@ export function CompareView() {
 
       <PairPicker state={state} update={update} />
 
-      {filters.length > 0 && (
-        <ul aria-label={t('activeFilters')} className="flex flex-wrap gap-2">
-          {filters.map((f) => (
-            <li key={`${f.k}:${f.v}`}>
-              <button
-                type="button"
-                onClick={() => update({ [f.k]: state[f.k].filter((x) => x !== f.v) })}
-                className="rounded border border-line bg-surface px-2 py-1 text-sm hover:bg-surface-2 focus-visible:outline-2"
-              >
-                {t(f.k === 'brand' ? 'filterBrand' : 'filterCategory', { value: f.v })}
-                <span aria-hidden className="ms-2 text-ink-2">
-                  ×
-                </span>
-                <span className="sr-only">{t('removeFilter')}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <FilterChips
+        brand={state.brand}
+        category={state.category}
+        remove={(k, v) => update({ [k]: state[k].filter((x) => x !== v) })}
+      />
 
       {!ready ? (
         <div className="rounded border border-line bg-surface px-4 py-6">

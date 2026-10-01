@@ -8,9 +8,12 @@ import { GapView, MatchLabel } from '../ui/pair';
 
 type Card = Schemas['ProductCard'];
 
-/** The URL of a product page; `from` carries the list's query so "Back to products" restores it. */
-export function productHref(locale: string, id: string, from = ''): string {
-  const p = new URLSearchParams({ id });
+/** Where the product page's Back goes; the explorer when not set. */
+export type BackTo = 'compare' | 'promotions';
+
+/** The URL of a product page; `from` carries the list's query so Back restores it. */
+export function productHref(locale: string, id: string, from = '', back?: BackTo): string {
+  const p = new URLSearchParams({ id, ...(back ? { back } : {}) });
   if (from) p.set('from', from.replace(/^\?/, ''));
   return `/${locale}/product/?${p.toString()}`;
 }
@@ -31,14 +34,14 @@ export function ProductTable({
 }) {
   const t = useTranslations('explore');
   const locale = useLocale();
-  const th = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
+  const th = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
   return (
     <div className="relative overflow-x-auto rounded border border-line bg-surface">
       <table className="w-full text-sm">
         <caption className="sr-only">{t('results')}</caption>
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={`${th} sticky start-0 bg-surface`}>
+            <th scope="col" className={`${th} sticky start-0 bg-surface text-start`}>
               {t('colProduct')}
             </th>
             {retailers.map((r) => (

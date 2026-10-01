@@ -14,6 +14,7 @@ export function AppHeader() {
   const nav = [
     { href: `/${locale}/explore/`, label: t('nav.explore'), match: /^\/(en|ar)\/(explore|product)\// },
     { href: `/${locale}/compare/`, label: t('nav.compare'), match: /^\/(en|ar)\/compare\// },
+    { href: `/${locale}/promotions/`, label: t('nav.promotions'), match: /^\/(en|ar)\/promotions\// },
     { href: `/${locale}/`, label: t('nav.status'), match: /^\/(en|ar)\/?$/ },
   ];
   return (

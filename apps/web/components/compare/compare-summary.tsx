@@ -10,7 +10,7 @@ import { Money, Pct } from '../ui/money';
 type Comparison = Schemas['Comparison'];
 type Name = (id: string) => string;
 
-const TH = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
+const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
 const TD = 'px-3 py-2 align-top tabular-nums';
 
 /**
@@ -109,10 +109,10 @@ export function Sides({ data, name }: { data: Comparison; name: Name }) {
         <table className="w-full text-sm">
           <thead className="border-b border-line">
             <tr>
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('retailer')}
               </th>
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('status')}
               </th>
               <th scope="col" className={`${TH} text-end`}>
@@ -177,7 +177,7 @@ export function Groups({
         <table className="w-full text-sm">
           <thead className="border-b border-line">
             <tr>
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t(by === 'brand' ? 'groupBrand' : 'groupCategory')}
               </th>
               <th scope="col" className={`${TH} text-end`}>
@@ -189,7 +189,7 @@ export function Groups({
               <th scope="col" className={`${TH} text-end`}>
                 {t('mean')}
               </th>
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('cheaperAt')}
               </th>
             </tr>
