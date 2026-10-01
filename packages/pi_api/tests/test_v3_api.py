@@ -280,8 +280,25 @@ def test_attribute_facets_keep_the_most_common_values(
     facets = attr_facets(faceted)
     assert facets["finish"] == {"Matte": 2}
     assert facets["shadeFamilies"] == {"Nude": 2}
+    assert truncated(faceted) == ["finish", "shadeFamilies"]  # concentration has only EDP
     monkeypatch.setattr(catalog, "ATTR_FACET_LIMIT", 2)
     assert list(attr_facets(faceted)["finish"]) == ["Gloss", "Matte"]  # shown in raw order
+    assert truncated(faceted) == []
+
+
+def truncated(client: Client) -> list[str]:
+    return list(get(client, "products")["data"]["facets"]["attributesTruncated"])
+
+
+def test_a_facet_value_is_shown_trimmed(tmp_path: Path) -> None:
+    """Reviewer's #101 nit: " Matte " and "Matte" are one value, shown without the padding."""
+    doc = faceted_doc()
+    next(p for p in doc["products"] if p["id"] == "p02")["attributes"]["finish"] = " Matte  "
+    next(p for p in doc["products"] if p["id"] == "p01")["attributes"]["finish"] = "Soft Matte"
+    write(tmp_path, DatasetV3.model_validate(doc))
+    client = make_client(tmp_path)[0]
+    assert attr_facets(client)["finish"] == {"Gloss": 1, "Matte": 1, "Soft Matte": 1}
+    assert attr_facets(client, "attr=finish:Soft%20Matte")["concentration"] == {"EDP": 1}
 
 
 def test_beauty_lists_every_facet_attribute(beauty: Client) -> None:

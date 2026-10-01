@@ -336,8 +336,12 @@ class Facets(ContractModel):
     #: API 1.3.0: per ``facet`` attribute of ``meta.attributeSet`` (in its order), the products
     #: per value. Values that fold equal count once, under their least raw form; send it back as
     #: ``attr=<key>:<value>``. Only values ``attr`` accepts are listed, at most
-    #: ``ATTR_FACET_LIMIT`` per key: the most products first, then shown in raw order.
+    #: ``ATTR_FACET_LIMIT`` per key: the most products first, then shown in raw order. A value
+    #: is shown trimmed (API 1.4.0); one with a control character inside is still not listed.
     attributes: dict[str, tuple[FacetCount, ...]]
+    #: API 1.4.0: the keys of ``attributes`` that had more than ``ATTR_FACET_LIMIT`` listable
+    #: values, so the list is not exhaustive (in ``meta.attributeSet`` order).
+    attributes_truncated: tuple[str, ...] = ()
 
 
 class ProductPage(ContractModel):
@@ -580,13 +584,13 @@ def _facets(ds: DatasetV3, checks: dict[str, Check], shown: Shown) -> Facets:
     def counts(counter: Counter[str]) -> tuple[FacetCount, ...]:
         return tuple(FacetCount(key=k, count=n) for k, n in sorted(counter.items()))
 
+    attrs = {a.key: _attr_facet(ds, checks, shown, a.key) for a in ds.meta.attribute_set if a.facet}
     return Facets(
         brand=counts(brand),
         category=counts(category),
         retailer=counts(retailer),
-        attributes={
-            a.key: _attr_facet(ds, checks, shown, a.key) for a in ds.meta.attribute_set if a.facet
-        },
+        attributes={k: values for k, (values, _) in attrs.items()},
+        attributes_truncated=tuple(k for k, (_, cut) in attrs.items() if cut),
     )
 
 
@@ -603,8 +607,9 @@ def _filterable(key: str, value: str) -> bool:
 
 def _attr_facet(
     ds: DatasetV3, checks: dict[str, Check], shown: Shown, key: str
-) -> tuple[FacetCount, ...]:
-    """Products per folded value of ``key``, under every filter but ``key``'s own."""
+) -> tuple[tuple[FacetCount, ...], bool]:
+    """Products per folded value of ``key``, under every filter but ``key``'s own, and
+    whether values beyond ``ATTR_FACET_LIMIT`` were left out."""
     counter: Counter[str] = Counter()
     raw: dict[str, str] = {}
     for p in ds.products:
@@ -612,10 +617,12 @@ def _attr_facet(
             texts = _product_attr_texts(p, shown, key)
             counter.update(texts.keys())
             for folded, text in texts.items():
-                raw[folded] = min(text, raw.get(folded, text))
+                label = text.strip()  # " Matte " and "Matte" show as "Matte"
+                raw[folded] = min(label, raw.get(folded, label))
     listed = [(f, n) for f, n in counter.items() if _filterable(key, raw[f])]
     top = sorted(listed, key=lambda i: (-i[1], raw[i[0]]))[:ATTR_FACET_LIMIT]
-    return tuple(FacetCount(key=raw[f], count=n) for f, n in sorted(top, key=lambda i: raw[i[0]]))
+    counts = tuple(FacetCount(key=raw[f], count=n) for f, n in sorted(top, key=lambda i: raw[i[0]]))
+    return counts, len(listed) > ATTR_FACET_LIMIT
 
 
 #: Filters added in API 1.2.0: left out of the digest while unset, so a cursor issued before

@@ -161,7 +161,7 @@ versioned snapshots.
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
   "meta": {
-    "apiVersion": "1.3.0", "endpoint": "compare", "metricVersion": "2026-10-01.3",
+    "apiVersion": "1.4.0", "endpoint": "compare", "metricVersion": "2026-10-01.3",
     "generation": "1727…", "cutoff": "2026-09-30T00:00:00Z",
     "market": "AE", "currency": "AED", "scope": "pilot",
     "filters": { ... }                   // the validated, normalised input, echoed
@@ -286,6 +286,7 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 | `/v1/reviews-summary` | `reviews_summary` | Rating averages and counts |
 | `/v1/coverage` | `coverage_status` | Per-retailer coverage and trust |
 | `/v1/matches` | – | Match edges and rationale |
+| `/v1/summary` | – | API 1.4.0: one context's catalogue at a glance, for the landing dashboard |
 | `/v1/export/{view}` | – | CSV/JSONL of a view |
 | ~~`/healthz`, `/readyz`~~ | – | Dropped in S2: no route is unauthenticated, and Cloud Run reserves some `…z` paths. Cloud Run uses a TCP startup probe; `503 data_unavailable` covers "no dataset yet" |
 
@@ -319,7 +320,13 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     and its shown non-early offers' values (each item of a list), counted once per product.
     Values that fold equal count together under their least raw form, which round-trips as
     `attr=<key>:<value>`. Like the other facets, a key's counts apply every filter except
-    that key's own `attr[]` values. Sorted by value.
+    that key's own `attr[]` values. Sorted by value. Two limits keep every listed value a
+    working filter: a value that `attr[]` would refuse (a control character or U+2028/U+2029
+    inside, or `<key>:<value>` over 120 characters) is not listed, and each key lists at most
+    its 50 most common values (`ATTR_FACET_LIMIT`). API 1.4.0: a value is shown trimmed
+    (`" Matte "` and `"Matte"` are one value, shown `Matte`), and `facets.attributesTruncated`
+    lists the keys that had more than 50 listable values, so a client knows the list is not
+    exhaustive.
   - The retailer facet counts a product once per retailer, however many of its contexts offer
     it.
   - A `ProductCard` has: `id`, `brand`, `name`, `category`, `size` (string plus unit), `image`
@@ -411,6 +418,39 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
   whole-catalogue `notObserved` window); it does not mean the run was complete. Only a complete
   run backs an absence claim (§7). Admins also
   get rungs, run ids and block counts.
+- **`/v1/summary`** (API 1.4.0, `pi_metrics.summary`): `market`, `scope` and `retailer` (one
+  context id; default: the context with the most collected offers). It is the landing
+  dashboard's single call, computed once per snapshot generation and context (an LRU of 16)
+  and under 60 KB on the live catalogue (about 43 KB). Every figure is for one context on the
+  snapshot's latest date. Early offers are left out (caveat `early_excluded`), and prices in
+  another currency don't count. It returns:
+  - `retailer`, `asOf`, `currency`;
+  - `products` (collected), `priced` (with a price: the denominator of every price figure),
+    `brands` (fold-equal names count once), `categories` (top level);
+  - `medianPrice` (nearest rank, the lower middle);
+  - `ladder[{category, n, min, p25, p50, p75, max}]`: the 20 largest top-level categories;
+  - `brandPrice[{brand, n, median}]`: the 30 brands with the most priced products, by `n`
+    descending then name. Brand concentration is the sum of the top `n` over `priced`;
+  - `categoryMix[{category: path, n}]`: up to 100 category paths, by size;
+  - `priceHist{edges, counts}`: 20 log-spaced bins with edges rounded to the currency, the last
+    bin closed. It is null when every price is equal;
+  - `ratingPrice{n, ratedPct, scale, points[{price, rating, count}], sampled}`: the most
+    common scale only (caveat `rating_scale_mixed` counts the rest). Points group equal
+    (price, rating) pairs, and above 800 they are sampled deterministically (by a hash of the
+    pair);
+  - `promoSharePct`, `promoDepth{category[], bands["<10","10-20","20-30","30-50","50+"],
+    cells[category][band]}` and `topDiscounts[{id, brand, name, category, price, regular,
+    depthPct, image}]` (the 20 deepest, then by id). These count only offers with both a price
+    and a regular price. `image` follows the `ProductCard.image` rules;
+  - `freshness{cutoff, ageDays, status}`: whole days from `meta.cutoff` to the request,
+    `fresh` ≤ 1, `aging` ≤ 3, else `stale`;
+  - `withheld[{section: prices|promotions|ratings, reason}]`. A section that can't be
+    measured is null and listed here, never 0. Promotions are withheld as `capability_off`
+    (`meta.capabilities.promotions` false; the live sephora_me snapshot today),
+    `field_not_collected` (regular price not collected) or `cohort_too_small` (fewer than 5
+    offers with both prices). Ratings follow the same pattern. Fewer than 5 priced offers is
+    status `not_enough_data` with every price figure null, and a blocked or not-applicable
+    context returns an empty summary with that reason.
 - **`/v1/matches`:** `class`, `reviewState`, `retailers`, `brand`, `limit`, `cursor`. Returns
   `{total, nextCursor, items[{productId, brand, name, a, b, matchClass, reviewState, decidedBy,
   confidence, method, stage}]}`, ordered by product id then `(a, b)`. `retailers` filters an

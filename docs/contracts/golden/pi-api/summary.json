@@ -1,0 +1,284 @@
+{
+  "caveats": [
+    {
+      "ar": "تقييمات في shop_a تستخدم مقياساً آخر واستُبعدت: 1.",
+      "code": "rating_scale_mixed",
+      "en": "1 rating at shop_a uses another scale and is left out.",
+      "params": {
+        "count": "1",
+        "retailer": "shop_a"
+      }
+    }
+  ],
+  "cohort": {
+    "description": "collected offers with a price on the latest date",
+    "n": 14
+  },
+  "data": {
+    "asOf": "2026-09-30",
+    "brandPrice": [
+      {
+        "brand": "Fixture Beauty",
+        "median": {
+          "amount": "50.00",
+          "currency": "AED",
+          "minor": 5000
+        },
+        "n": 11
+      }
+    ],
+    "brands": 2,
+    "categories": 1,
+    "categoryMix": [
+      {
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "n": 14
+      }
+    ],
+    "currency": "AED",
+    "freshness": {
+      "ageDays": 2,
+      "cutoff": "2026-09-30T00:00:00Z",
+      "status": "aging"
+    },
+    "ladder": [
+      {
+        "category": "skincare",
+        "max": {
+          "amount": "110.00",
+          "currency": "AED",
+          "minor": 11000
+        },
+        "min": {
+          "amount": "50.00",
+          "currency": "AED",
+          "minor": 5000
+        },
+        "n": 14,
+        "p25": {
+          "amount": "50.00",
+          "currency": "AED",
+          "minor": 5000
+        },
+        "p50": {
+          "amount": "50.00",
+          "currency": "AED",
+          "minor": 5000
+        },
+        "p75": {
+          "amount": "95.50",
+          "currency": "AED",
+          "minor": 9550
+        }
+      }
+    ],
+    "medianPrice": {
+      "amount": "50.00",
+      "currency": "AED",
+      "minor": 5000
+    },
+    "priceHist": {
+      "counts": [
+        7,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "edges": [
+        "50.00",
+        "52.01",
+        "54.10",
+        "56.28",
+        "58.54",
+        "60.89",
+        "63.34",
+        "65.89",
+        "68.54",
+        "71.30",
+        "74.16",
+        "77.14",
+        "80.25",
+        "83.47",
+        "86.83",
+        "90.32",
+        "93.95",
+        "97.73",
+        "101.66",
+        "105.75",
+        "110.00"
+      ]
+    },
+    "priced": 14,
+    "products": 14,
+    "promoDepth": {
+      "bands": [
+        "<10",
+        "10-20",
+        "20-30",
+        "30-50",
+        "50+"
+      ],
+      "category": [
+        "skincare"
+      ],
+      "cells": [
+        [
+          0,
+          1,
+          1,
+          1,
+          0
+        ]
+      ]
+    },
+    "promoSharePct": "50.0",
+    "ratingPrice": {
+      "n": 13,
+      "points": [
+        {
+          "count": 6,
+          "price": "50.00",
+          "rating": "4.20"
+        },
+        {
+          "count": 1,
+          "price": "70.00",
+          "rating": "4.20"
+        },
+        {
+          "count": 1,
+          "price": "80.00",
+          "rating": "4.20"
+        },
+        {
+          "count": 1,
+          "price": "90.00",
+          "rating": "4.20"
+        },
+        {
+          "count": 1,
+          "price": "95.50",
+          "rating": "4.20"
+        },
+        {
+          "count": 1,
+          "price": "100.00",
+          "rating": "4.20"
+        },
+        {
+          "count": 1,
+          "price": "105.25",
+          "rating": "4.20"
+        },
+        {
+          "count": 1,
+          "price": "110.00",
+          "rating": "4.20"
+        }
+      ],
+      "ratedPct": "92.9",
+      "sampled": false,
+      "scale": "5"
+    },
+    "retailer": "shop_a",
+    "topDiscounts": [
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "depthPct": "33.3",
+        "id": "p05",
+        "image": null,
+        "name": "Product p05",
+        "price": {
+          "amount": "80.00",
+          "currency": "AED",
+          "minor": 8000
+        },
+        "regular": {
+          "amount": "120.00",
+          "currency": "AED",
+          "minor": 12000
+        }
+      },
+      {
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "depthPct": "20.4",
+        "id": "p04",
+        "image": null,
+        "name": "Product p04",
+        "price": {
+          "amount": "95.50",
+          "currency": "AED",
+          "minor": 9550
+        },
+        "regular": {
+          "amount": "120.00",
+          "currency": "AED",
+          "minor": 12000
+        }
+      },
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "depthPct": "10.0",
+        "id": "p01",
+        "image": null,
+        "name": "Product p01",
+        "price": {
+          "amount": "90.00",
+          "currency": "AED",
+          "minor": 9000
+        },
+        "regular": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      }
+    ],
+    "withheld": []
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.4.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "summary",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.3",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

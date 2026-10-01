@@ -24,6 +24,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Path, Query, Request
@@ -88,6 +89,7 @@ from pi_api.source import (
     ObjectStore,
     SnapshotSource,
 )
+from pi_api.summary import SummaryCache, SummaryQuery, SummaryView, summary_view
 from pi_api.wire import API_VERSION, ApiMeta, Envelope, ErrorBody, envelope, error_body
 from pi_dataset import ContractModel
 from pi_metrics import (
@@ -401,10 +403,15 @@ def respond[T](
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def build_api(
     source: SnapshotSource,
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
+    clock: Callable[[], datetime] = utc_now,
 ) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
@@ -484,6 +491,7 @@ def build_api(
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
     _metric_routes(api, source)
+    _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     return api
 
@@ -556,6 +564,17 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         loaded = source.select(query.market, query.scope)
         page = matches(loaded.dataset, loaded.generation, query, admin=who.role is Role.ADMIN)
         return respond(loaded, "matches", query, page)
+
+
+def _summary_route(
+    api: FastAPI, source: SnapshotSource, cache: SummaryCache, clock: Callable[[], datetime]
+) -> None:
+    @api.get(f"{PREFIX}/summary", response_model=Envelope[SummaryView])
+    def get_summary(query: Annotated[SummaryQuery, Query()], _: Viewer) -> Envelope[SummaryView]:
+        loaded = source.select(query.market, query.scope)
+        metric = cache.get(loaded, query.retailer)
+        view = summary_view(metric, loaded.dataset.meta.cutoff, clock())
+        return respond(loaded, "summary", query, view)
 
 
 # ---------------------------------------------------------------- exports
@@ -743,14 +762,16 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         )
 
 
-def create_app(
+def create_app(  # noqa: PLR0913 -- the deployment's settings, keyword-only past the third
     source: SnapshotSource,
     verifier: TokenVerifier,
     buckets: TokenBuckets,
+    *,
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
+    clock: Callable[[], datetime] = utc_now,
 ) -> ASGIApp:
-    api = build_api(source, evidence_hosts, image_hosts)
+    api = build_api(source, evidence_hosts, image_hosts, clock)
     return NoStore(ServerErrors(Authenticate(RateLimit(api, buckets), verifier)))
 
 
@@ -774,4 +795,10 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
     source.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())
     buckets = TokenBuckets(settings.rate_per_second, settings.rate_burst)
-    return create_app(source, verifier, buckets, settings.evidence_hosts, settings.image_hosts)
+    return create_app(
+        source,
+        verifier,
+        buckets,
+        evidence_hosts=settings.evidence_hosts,
+        image_hosts=settings.image_hosts,
+    )

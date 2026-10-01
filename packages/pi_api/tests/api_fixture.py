@@ -7,7 +7,7 @@ Nothing here touches the network: certificates come from ``FakeCerts`` and the d
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,6 +31,8 @@ PROJECT = "pi-test-project"
 KID = "test-kid"
 DATASET_PATH = "datasets/uae/latest.json"
 NOW = time.time()
+#: The API's wall clock in tests (``/summary`` freshness), fixed so goldens are stable.
+CLOCK = datetime(2026, 10, 2, 6, 0, tzinfo=UTC)
 
 
 def _key_and_cert() -> tuple[rsa.RSAPrivateKey, str]:
@@ -127,10 +129,18 @@ def make_client(
     load: bool = True,
     evidence_hosts: Mapping[str, frozenset[str]] | None = None,
     image_hosts: Mapping[str, frozenset[str]] | None = None,
+    clock: Callable[[], datetime] = lambda: CLOCK,
 ) -> tuple[Client, SnapshotSource]:
     source = SnapshotSource(LocalStore(root), paths, refresh_seconds=3600)
     if load:
         source.load_all()
     verifier = TokenVerifier(PROJECT, certs or FakeCerts(), now=lambda: NOW)
-    app = create_app(source, verifier, TokenBuckets(rate, burst), evidence_hosts, image_hosts)
+    app = create_app(
+        source,
+        verifier,
+        TokenBuckets(rate, burst),
+        evidence_hosts=evidence_hosts,
+        image_hosts=image_hosts,
+        clock=clock,
+    )
     return Client(app), source
