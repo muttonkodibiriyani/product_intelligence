@@ -17,10 +17,17 @@ Validates the contract, refuses anything that looks like an Algolia credential, 
 gzipped to ``<prefix>/latest.json`` plus an immutable copy named after the cutoff (for rollback),
 and mirrors meta to Firestore.
 
-- v1 (the dashboard's current input): prefix datasets/uae, meta in demo_meta/current.
-- v2 (ADR-0007 §6): checked by pi_dataset's strict ``load_dataset``; prefix
-  ``datasets/<country>/<scope>`` (e.g. datasets/ae/beauty), meta in demo_meta/v2_<country>_<scope>.
-  v1 stays readable until the dashboard moves to v2, so both are published side by side.
+- v2 (ADR-0007 §6): checked by pi_dataset's strict ``load_dataset``. One file per source: the
+  file's offers must all come from one source PI publishes (``PUBLISH_SOURCES``), and it goes to
+  ``datasets/<country>/<source>/`` (e.g. datasets/ae/sephora_me), meta in
+  demo_meta/v2_<country>_<source>. Nothing is ever written outside those prefixes: other sources'
+  data (e.g. ulta_ae in datasets/ae/beauty/latest.json) is not PI's to replace (owner, 2026-10-01).
+- Before uploading, the live latest.json at the target is read and the publish is HELD if any
+  live source is missing from the new file or has fewer offers, or if any source other than the
+  one being published has different products. The only override is ``--drop-source <id>``, which
+  needs the owner's explicit approval for that publish.
+- v1 (datasets/uae, the legacy dashboard's input) is validated but no longer published: it is a
+  write outside the per-source prefixes.
   A v2 file must also load through pi-api's own serving parse (``pi_api.source.parse``, which
   upgrades it to v3). pi-api skips a dataset it can't load, so uploading one would leave the API
   with no data: such a file is held, never uploaded (decision 2026-10-01, after the v3 upgrade
@@ -42,6 +49,8 @@ from typing import Any
 
 SCHEMA = "pi.dataset/v1"
 SCHEMA_V2 = "pi.dataset/v2"
+# The only sources PI publishes; any other source's data is protected (owner, 2026-10-01).
+PUBLISH_SOURCES = ("sephora_me",)
 PRECONDITION_FAILED = 412  # google.api_core PreconditionFailed.code (if_generation_match)
 # Never ship Algolia credentials: header/param names, or a 32-hex key next to an Algolia hint.
 FORBIDDEN = [
@@ -103,16 +112,84 @@ def serve_check(raw: str, *, allow_test: bool) -> list[str]:
     return []
 
 
-def package_v2(dataset: Any) -> tuple[bytes, list[str], dict[str, Any], str]:
-    """v2 body (canonical dump), paths under datasets/<country>/<scope>, summary, Firestore doc."""
+def offer_counts(doc: dict[str, Any]) -> dict[str, int]:
+    """Offers per source (retailer id) in a v2 document."""
+    counts: dict[str, int] = {}
+    for product in doc.get("products") or []:
+        for source in product.get("offers") or {}:
+            counts[source] = counts.get(source, 0) + 1
+    return counts
+
+
+def source_hash(doc: dict[str, Any], source: str) -> str:
+    """sha256 over every product carrying an offer from ``source``, order-independent."""
+    products = sorted(
+        (p for p in doc.get("products") or [] if source in (p.get("offers") or {})),
+        key=lambda p: str(p.get("id")),
+    )
+    canonical = json.dumps(products, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def publishing_source(
+    doc: dict[str, Any], allowed: tuple[str, ...] = PUBLISH_SOURCES
+) -> tuple[str | None, list[str]]:
+    """The one source a v2 file publishes, or the reasons it can't be published."""
+    sources = sorted(offer_counts(doc))
+    if len(sources) != 1:
+        return None, [f"one source per file: offers come from {sources or 'no source'}"]
+    if sources[0] not in allowed:
+        return None, [f"{sources[0]} is not a source PI publishes ({', '.join(allowed)})"]
+    return sources[0], []
+
+
+def outside_prefixes(paths: list[str], allowed: tuple[str, ...] = PUBLISH_SOURCES) -> list[str]:
+    """Paths outside datasets/<country>/<allowed source>/: never written."""
+    pattern = re.compile(
+        rf"^datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/[^/]+\.json$"
+    )
+    return [p for p in paths if not pattern.match(p)]
+
+
+def source_guard(
+    live: dict[str, Any] | None,
+    new: dict[str, Any],
+    publishing: str,
+    drop: tuple[str, ...] = (),
+) -> list[str]:
+    """HOLD reasons for replacing ``live`` with ``new``; empty when nothing live is lost."""
+    if live is None:
+        return []
+    live_counts, new_counts = offer_counts(live), offer_counts(new)
+    problems = []
+    for source, count in sorted(live_counts.items()):
+        if source in drop:
+            continue
+        if source not in new_counts:
+            problems.append(f"HOLD, live source {source} ({count} offers) is missing")
+        elif new_counts[source] < count:
+            problems.append(f"HOLD, {source} drops from {count} to {new_counts[source]} offers")
+        elif source != publishing and source_hash(live, source) != source_hash(new, source):
+            problems.append(f"HOLD, {source} is not {publishing}'s to change: its products differ")
+    return problems
+
+
+def package_v2(
+    dataset: Any, allowed: tuple[str, ...] = PUBLISH_SOURCES
+) -> tuple[bytes, list[str], dict[str, Any], str]:
+    """v2 body (canonical dump), paths under datasets/<country>/<source>, summary, Firestore doc."""
     from pi_dataset import dump_dataset  # noqa: PLC0415
 
     meta = dataset.meta
     if len(meta.markets) != 1:
         raise ValueError("a multi-market dataset needs a layout decision first (ADR-0007 §6)")
     country = meta.markets[0].country.lower()
-    prefix = f"datasets/{country}/{meta.scope}"
-    body = gzip.compress(dump_dataset(dataset), mtime=0)
+    dumped = dump_dataset(dataset)
+    source, errors = publishing_source(json.loads(dumped), allowed)
+    if source is None:
+        raise ValueError(errors[0])
+    prefix = f"datasets/{country}/{source}"
+    body = gzip.compress(dumped, mtime=0)
     cutoff = meta.cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
     stamp = re.sub(r"[^0-9TZ]", "", cutoff)
     paths = [f"{prefix}/{stamp}.json", f"{prefix}/latest.json"]
@@ -124,6 +201,7 @@ def package_v2(dataset: Any) -> tuple[bytes, list[str], dict[str, Any], str]:
         "generatedAt": meta.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "market": meta.markets[0].country,
         "scope": meta.scope,
+        "source": source,
         "products": len(dataset.products),
         "retailers": [
             {
@@ -136,7 +214,17 @@ def package_v2(dataset: Any) -> tuple[bytes, list[str], dict[str, Any], str]:
         ],
         "storagePath": paths[-1],
     }
-    return body, paths, summary, f"v2_{country}_{meta.scope}"
+    return body, paths, summary, f"v2_{country}_{source}"
+
+
+def read_live(bucket: Any, path: str) -> dict[str, Any] | None:
+    """The live object at ``path`` (stored gzip or plain), or None if there is none yet."""
+    blob = bucket.get_blob(path)
+    if blob is None:
+        return None
+    raw = blob.download_as_bytes(raw_download=True)
+    live: dict[str, Any] = json.loads(gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw)
+    return live
 
 
 def blob_md5(body: bytes) -> str:
@@ -204,31 +292,47 @@ def main() -> int:
     parser.add_argument("path", type=Path)
     parser.add_argument("--project", required=True)
     parser.add_argument("--bucket", default=None, help="default: <project>.firebasestorage.app")
-    parser.add_argument(
-        "--prefix", default="datasets/uae", help="v1 Storage folder (v2 derives its own)"
-    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-test", action="store_true")
+    parser.add_argument(
+        "--live-file",
+        type=Path,
+        help="dry run: check the source guard against this copy of the live latest.json",
+    )
+    parser.add_argument(
+        "--drop-source",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="let this live source be missing, smaller or changed. OWNER APPROVAL REQUIRED",
+    )
     args = parser.parse_args()
 
     raw = args.path.read_text(encoding="utf-8")
     doc = json.loads(raw)
-    is_v2 = isinstance(doc, dict) and doc.get("schema") == SCHEMA_V2
-    if is_v2:
-        dataset, errors = validate_v2(raw, allow_test=args.allow_test)
+    if not (isinstance(doc, dict) and doc.get("schema") == SCHEMA_V2):
+        errors = validate(doc, raw, allow_test=args.allow_test) if isinstance(doc, dict) else []
+        errors.append("v1 is no longer published (datasets/uae is outside the source prefixes)")
     else:
-        errors = validate(doc, raw, allow_test=args.allow_test)
+        dataset, errors = validate_v2(raw, allow_test=args.allow_test)
+        errors += publishing_source(doc)[1]
     if errors:
         for err in errors[:50]:
             print(f"INVALID: {err}", file=sys.stderr)
         return 1
-    if is_v2:
-        body, paths, summary, meta_doc = package_v2(dataset)
-    else:
-        body, paths, summary = package(doc, args.prefix)
-        meta_doc = "current"
+    body, paths, summary, meta_doc = package_v2(dataset)
+    source = str(summary["source"])
+    packaged = json.loads(gzip.decompress(body))  # the guard judges exactly what is uploaded
+    if outside := outside_prefixes(paths):  # belt and braces: package_v2 builds these paths
+        print(f"refusing: writes outside the source prefixes: {outside}", file=sys.stderr)
+        return 1
     print(json.dumps(summary, ensure_ascii=False), f"gzip={len(body)}B", sep="\n")
+    drop = tuple(args.drop_source)
     if args.dry_run:
+        if args.live_file:
+            live = json.loads(args.live_file.read_text(encoding="utf-8"))
+            return report_guard(source_guard(live, packaged, source, drop), drop)
+        print(f"source guard: runs against the live {paths[-1]} before upload")
         return 0
 
     import firebase_admin  # noqa: PLC0415 (lazy: unit tests run without Firebase installed)
@@ -237,11 +341,24 @@ def main() -> int:
     bucket_name = args.bucket or f"{args.project}.firebasestorage.app"
     firebase_admin.initialize_app(options={"projectId": args.project, "storageBucket": bucket_name})
     bucket = storage.bucket()
-    if upload(bucket, paths, body) != 0:
-        return 1
+    held = report_guard(source_guard(read_live(bucket, paths[-1]), packaged, source, drop), drop)
+    if held or upload(bucket, paths, body):
+        return 1  # a HOLD uploads nothing; upload() reports its own refusals
     firestore.client().collection("demo_meta").document(meta_doc).set(summary)
     print(f"wrote firestore demo_meta/{meta_doc}")
     return 0
+
+
+def report_guard(problems: list[str], drop: tuple[str, ...]) -> int:
+    """Print the source guard's verdict; nonzero means nothing may be uploaded."""
+    for problem in problems:
+        print(problem, file=sys.stderr)
+    if drop:
+        print(
+            f"WARNING: --drop-source {', '.join(drop)} (owner approval required)", file=sys.stderr
+        )
+    print("source guard:", "HOLD" if problems else "ok")
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
