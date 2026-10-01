@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { Schemas } from '@/lib/api/types';
-import { Money } from '../ui/money';
+import { Price as PriceOf } from '../ui/money';
 import { GapView, MatchLabel } from '../ui/pair';
 import { RowThumb } from './row-thumb';
 
@@ -124,8 +124,13 @@ function Price({ card, retailer, locale }: { card: Card; retailer: string; local
   const tp = useTranslations('product');
   if (!(retailer in card.prices))
     return <span className="whitespace-nowrap text-ink-2">{t('notOffered')}</span>;
-  const m = card.prices[retailer];
-  return m ? <Money m={m} locale={locale} /> : <span className="text-ink-2">{tp('noPrice')}</span>;
+  return (
+    <PriceOf
+      of={{ price: card.prices[retailer] }}
+      locale={locale}
+      fallback={<span className="text-ink-2">{tp('noPrice')}</span>}
+    />
+  );
 }
 
 /** The pair's match when a pair is picked; otherwise the first match and how many more. */

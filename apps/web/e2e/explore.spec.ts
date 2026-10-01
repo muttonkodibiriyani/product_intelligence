@@ -28,7 +28,10 @@ const PNG = Buffer.from(
 const IMG = 'https://img-product.sephora.me/v1/p07.jpg';
 const IMG_BROKEN = 'https://img-product.sephora.me/v1/p08.jpg';
 /** Ulta UAE's own image host, allowlisted for its view (owner decision). */
-const IMG_ULTA = 'https://media.alshaya.com/adobe/assets/urn:aaid:aem:1/as/SK-1_1.png?width=185';
+const IMG_ULTA =
+  'https://media.alshaya.com/adobe/assets/urn:aaid:aem:127339d4-dd12-4a65-bc02-9685026f9ab2/as/SK-345530811_1.png?width=533&height=800&preferwebp=true';
+/** The same asset after its file was renamed: the host answers 404. */
+const IMG_ULTA_GONE = IMG_ULTA.replace('SK-345530811_1', 'SK-345530811_2');
 /** A look-alike host: only the exact hostname is allowed. */
 const IMG_LOOKALIKE = 'https://img-product.sephora.me.evil.example/v1/p09.jpg';
 
@@ -89,6 +92,9 @@ for (const locale of ['en', 'ar'] as const) {
         noSource: 'لا رابط للصفحة',
         filters: 'عوامل التصفية',
         noImage: 'لا صورة',
+        results: 'النتائج',
+        grid: 'شبكة',
+        list: 'قائمة',
       }
     : {
         nav: 'Products',
@@ -110,7 +116,18 @@ for (const locale of ['en', 'ar'] as const) {
         noSource: 'No page link',
         filters: 'Filters',
         noImage: 'No image',
+        results: 'Results',
+        grid: 'Grid',
+        list: 'List',
       };
+
+  /** The product cards: the explorer's default view. */
+  const cards = (page: Page) => page.getByRole('list', { name: T.results }).getByRole('listitem');
+  /** Switches to the dense list (a table), the view the column tests are about. */
+  async function asList(page: Page) {
+    await page.getByRole('button', { name: T.list }).click();
+    await expect(page.getByRole('table')).toBeVisible();
+  }
 
   /** Opens the filters on a narrow screen, where they start folded away. */
   async function filters(page: Page) {
@@ -129,11 +146,22 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/explore/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
       await expect(page.getByText(T.count16)).toBeVisible();
+      // Cards first: one per product, the grid button pressed.
+      await expect(cards(page)).toHaveCount(products.data.items.length);
+      await expect(page.getByRole('button', { name: T.grid })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('link', { name: products.data.items[0].name })).toBeVisible();
+      await noHorizontalScroll(page);
+      // The list is one click away, and stays the choice after a reload.
+      await asList(page);
       const rows = page.getByRole('table').getByRole('row');
       await expect(rows).toHaveCount(1 + products.data.items.length);
       await expect(page.getByRole('columnheader', { name: 'Shop A' })).toBeVisible();
-      await expect(page.getByRole('link', { name: products.data.items[0].name })).toBeVisible();
       await noHorizontalScroll(page);
+      await page.reload();
+      await expect(page.getByRole('button', { name: T.list })).toHaveAttribute('aria-pressed', 'true');
+      await expect(rows).toHaveCount(1 + products.data.items.length);
+      await page.getByRole('button', { name: T.grid }).click();
+      await expect(cards(page)).toHaveCount(products.data.items.length);
 
       const first = productCalls(mock)[0]!;
       expect(first.searchParams.get('sort')).toBe('name');
@@ -158,7 +186,7 @@ for (const locale of ['en', 'ar'] as const) {
       });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/explore/`);
-      await expect(page.getByRole('table')).toBeVisible();
+      await asList(page);
       const sort = page.getByLabel(T.sort);
       await expect(sort.locator('option[value=gap]')).toBeDisabled();
 
@@ -198,13 +226,13 @@ for (const locale of ['en', 'ar'] as const) {
       await page.getByRole('button', { name: T.more }).click();
       await expect(page.getByText(T.restarted)).toBeVisible();
       // Restarted from page 1: the list is not doubled.
-      await expect(page.getByRole('table').getByRole('row')).toHaveCount(1 + products.data.items.length);
+      await expect(cards(page)).toHaveCount(products.data.items.length);
       const calls = productCalls(mock);
       expect(calls.at(-2)!.searchParams.get('cursor')).toBe(products.data.nextCursor);
       expect(calls.at(-1)!.searchParams.has('cursor')).toBe(false);
 
       await page.getByRole('button', { name: T.more }).click();
-      await expect(page.getByRole('table').getByRole('row')).toHaveCount(1 + 2 * products.data.items.length);
+      await expect(cards(page)).toHaveCount(2 * products.data.items.length);
       expect(mock.errors).toEqual([]);
     });
 
@@ -223,14 +251,14 @@ for (const locale of ['en', 'ar'] as const) {
       });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/explore/`);
-      const rows = page.getByRole('table').locator('tbody tr');
+      const rows = cards(page);
       await expect(rows).toHaveCount(3);
 
       const img = rows.nth(0).locator('img');
       await expect(img).toHaveAttribute('src', IMG);
       await expect(img).toHaveAttribute('loading', 'lazy');
       await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
-      await expect(img).toHaveAttribute('width', '48');
+      await expect(img).toHaveAttribute('width', '320');
       await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
       // Never through an image proxy or loader: the browser asks the image host itself.
       expect(await img.getAttribute('srcset')).toBeNull();
@@ -239,7 +267,7 @@ for (const locale of ['en', 'ar'] as const) {
         await expect(rows.nth(i).locator('img')).toHaveCount(0);
         await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
       }
-      // The product name stays the row's link, next to the picture.
+      // The product name stays the card's link, under the picture.
       await expect(rows.nth(0).getByRole('link', { name: products.data.items[0].name })).toBeVisible();
       await noHorizontalScroll(page);
       expect(images.map((r) => r.url).sort()).toEqual([IMG, IMG_BROKEN]);
@@ -252,31 +280,36 @@ for (const locale of ['en', 'ar'] as const) {
       page,
     }) => {
       const mock = await mockBackend(page, {
-        onApi: withSummary(api({ products: () => withImages('ulta_ae', [IMG_ULTA, IMG_LOOKALIKE, null]) })),
+        onApi: withSummary(
+          api({ products: () => withImages('ulta_ae', [IMG_ULTA, IMG_ULTA_GONE, IMG_LOOKALIKE, null]) }),
+        ),
       });
       const images: { url: string; referer?: string }[] = [];
       await page.route('https://media.alshaya.com/**', (r) => {
         images.push({ url: r.request().url(), referer: r.request().headers()['referer'] });
-        return r.fulfill({ contentType: 'image/png', body: PNG });
+        return r.request().url() === IMG_ULTA
+          ? r.fulfill({ contentType: 'image/png', body: PNG })
+          : r.fulfill({ status: 404, body: '' });
       });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/explore/`);
-      const rows = page.getByRole('table').locator('tbody tr');
-      await expect(rows).toHaveCount(3);
+      const rows = cards(page);
+      await expect(rows).toHaveCount(4);
       const img = rows.nth(0).locator('img');
       await expect(img).toHaveAttribute('src', IMG_ULTA);
       await expect(img).toHaveAttribute('loading', 'lazy');
       await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
       await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
-      for (const i of [1, 2]) {
+      // The renamed file (404), the look-alike host and no image at all: each the placeholder.
+      for (const i of [1, 2, 3]) {
         await expect(rows.nth(i).locator('img')).toHaveCount(0);
         await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
       }
       await noHorizontalScroll(page);
-      expect(images.map((r) => r.url)).toEqual([IMG_ULTA]);
+      expect(images.map((r) => r.url).sort()).toEqual([IMG_ULTA, IMG_ULTA_GONE].sort());
       for (const r of images) expect(r.referer).toBeUndefined();
       expect(mock.external).toEqual([]);
-      expect(mock.errors).toEqual([]);
+      expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 
     for (const [host, url] of [
@@ -320,6 +353,7 @@ for (const locale of ['en', 'ar'] as const) {
       await page.goto(`/app/${locale}/explore/?brand=Sample+Labs&retailer=shop_c`);
       await expect(page.getByText(T.empty)).toBeVisible();
       await expect(page.getByRole('table')).toHaveCount(0);
+      await expect(page.getByRole('list', { name: T.results })).toHaveCount(0);
     });
 
     test('product page: offers with evidence, gaps, history; back keeps the filters', async ({ page }) => {

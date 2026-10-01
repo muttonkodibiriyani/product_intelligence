@@ -36,6 +36,15 @@ export function HistoryChart({ series, name }: { series: Series; name: (id: stri
     (series[r] ?? []).flatMap((p) => (p.price && isValidMoney(p.price) ? [p.price] : [])),
   );
   if (dates.length === 0 || priced.length === 0) return <p className="text-ink-2">{t('historyEmpty')}</p>;
+  // No line from a single day (owner rule): until nightly collection gives a second day, the
+  // prices the API has are shown as they are, beside the reason there is no chart.
+  if (dates.length < 2)
+    return (
+      <div>
+        <p className="text-sm text-ink-2">{t('historyBegins')}</p>
+        <HistoryTable series={series} dates={dates} name={name} />
+      </div>
+    );
 
   const value = (m: MoneyValue) => Number(m.amount);
   const lo = priced.reduce((a, b) => (value(b) < value(a) ? b : a));
