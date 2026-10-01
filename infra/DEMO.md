@@ -17,10 +17,12 @@ Enabled APIs: firestore, firebasestorage, identitytoolkit, firebasehosting, fire
 ```sh
 # rules + hosting (from infra/, with the web build in infra/web-dist/)
 npx -y firebase-tools@14.27.0 deploy --project productintelligence-beeb3 --only firestore:rules,storage,hosting
-# publish a dataset (validate first with --dry-run). The schema picks the layout:
-#   pi.dataset/v1 -> datasets/uae/ + demo_meta/current (what the dashboard reads today)
-#   pi.dataset/v2 -> datasets/<country>/<scope>/ + demo_meta/v2_<country>_<scope> (ADR-0007 §6)
-# Until the dashboard moves to v2, publish both files from the same export.
+# publish a dataset (validate first with --dry-run). pi.dataset/v2 only, ONE source per file:
+#   -> datasets/<country>/<source>/ + demo_meta/v2_<country>_<source>; PI publishes sephora_me only.
+# Nothing is written outside datasets/<cc>/sephora_me/ (datasets/ae/beauty and datasets/uae hold
+# data PI doesn't own). Before upload the live latest.json is read and the publish HOLDs if a live
+# source is missing, loses offers, or another source's products changed. --drop-source <id> overrides
+# that for one source and needs the OWNER'S approval. v1 files are validated but no longer published.
 uv run --script infra/scripts/publish_dataset.py --project productintelligence-beeb3 <file.json>
 # invite users: emails on stdin, one per line; add --no-email to create without sending
 uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3 --role viewer < emails.txt
