@@ -236,7 +236,7 @@ STOCK_ONLY = '{"price_current": "unknown", "availability_state": "observed"}'
 
 
 def _row(world: World, key: str) -> dict[str, object]:
-    rows = world.conn.execute(LATEST_LISTINGS_SQL, SEPHORA).fetchall()
+    rows = world.conn.execute(LATEST_LISTINGS_SQL, {"sources": [world.name]}).fetchall()
     return next(dict(r) for r in rows if r["source_listing_key"] == key)
 
 
