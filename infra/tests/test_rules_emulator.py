@@ -243,3 +243,36 @@ def test_kill_switch_cannot_read_or_delete_the_config() -> None:
     assert firestore_get(CONFIG, "kill switch") == DENIED
     headers = {"Authorization": f"Bearer {tok}"}
     assert httpx.delete(_doc_url(CONFIG), headers=headers, timeout=10).status_code == DENIED
+
+
+# Everything else is denied to the kill-switch identity. It is also in USERS, so every rule test
+# above runs for it; this names the paths it could plausibly reach for.
+KILL_SWITCH_ELSEWHERE = [
+    "demo_meta/current",
+    "users/ks",
+    "users/u1/assistant_threads/t1",
+    "users/u1/assistant_threads/t1/messages/m1",
+    "assistant_config/next",
+    *ASSISTANT_PATHS,
+]
+
+
+@pytest.mark.parametrize("path", KILL_SWITCH_ELSEWHERE)
+def test_kill_switch_can_read_and_write_nothing_else_in_firestore(path: str) -> None:
+    tok = USERS["kill switch"]
+    assert firestore_get(path, "kill switch") == DENIED
+    assert firestore_write(path, "kill switch") == DENIED
+    headers = {"Authorization": f"Bearer {tok}"}
+    assert httpx.delete(_doc_url(path), headers=headers, timeout=10).status_code == DENIED
+
+
+@pytest.mark.parametrize("collection", ["assistant_config", "demo_meta", "users"])
+def test_kill_switch_cannot_list_collections(collection: str) -> None:
+    headers = {"Authorization": f"Bearer {USERS['kill switch']}"}
+    assert httpx.get(_doc_url(collection), headers=headers, timeout=10).status_code == DENIED
+
+
+@pytest.mark.parametrize("name", ["datasets/uae/latest.json", "reports/ks/r.pdf", "x.json"])
+def test_kill_switch_can_read_and_write_nothing_in_storage(name: str) -> None:
+    assert storage_get(name, "kill switch") == DENIED
+    assert storage_write(name, "kill switch") == DENIED

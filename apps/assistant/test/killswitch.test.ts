@@ -7,7 +7,12 @@ import { AssistantConfigSchema } from "../src/meter/config.js";
 import { CONFIG } from "./meter-fixtures.js";
 
 const NOW = new Date("2026-10-20T12:00:00Z");
-const POLICY: KillSwitchPolicy = { budgetId: "budget-1", thresholdPct: 90, maxAgeMs: 6 * 3600_000 };
+const POLICY: KillSwitchPolicy = {
+  budgetId: "budget-1",
+  currency: "USD",
+  thresholdPct: 90,
+  maxAgeMs: 6 * 3600_000,
+};
 
 function message(
   body: Record<string, unknown> = {},
@@ -35,6 +40,7 @@ describe("decide", () => {
   it("switches off at exactly the threshold, with the month and percent", () => {
     expect(decide(message(), POLICY, NOW)).toEqual({
       action: "disable",
+      trigger: "threshold",
       disabledBy: "budget_alert:90%:2026-10",
       pct: 90,
     });
@@ -48,9 +54,37 @@ describe("decide", () => {
     });
   });
 
-  it("caps the percent at 999 so disabledBy always matches the rules pattern", () => {
-    const decision = decide(message({ costAmount: 900_000 }), POLICY, NOW);
-    expect(decision).toMatchObject({ action: "disable", disabledBy: "budget_alert:999%:2026-10" });
+  it.each([900_000, 10_000_000, 1e300])(
+    "fails closed on runaway cost %d: switches off, percent capped at 999 for the rules pattern",
+    (costAmount) => {
+      expect(decide(message({ costAmount }), POLICY, NOW)).toMatchObject({
+        action: "disable",
+        trigger: "threshold",
+        disabledBy: "budget_alert:999%:2026-10",
+      });
+    },
+  );
+
+  it("works in the configured currency, whatever it is", () => {
+    const aed = { ...POLICY, currency: "AED" };
+    const body = { currencyCode: "AED", budgetAmount: 92, costAmount: 184 };
+    expect(decide(message(body), aed, NOW)).toMatchObject({ action: "disable", pct: 200 });
+    expect(decide(message({ ...body, costAmount: 9 }), aed, NOW)).toMatchObject({
+      action: "ignore",
+      reason: "below_threshold",
+    });
+  });
+
+  it.each([
+    ["AED at 200 %", { currencyCode: "AED", costAmount: 50 }, 200],
+    ["EUR below the threshold", { currencyCode: "EUR", costAmount: 5 }, 20],
+  ])("fails closed on a currency the policy was not set for (%s)", (_name, body, pct) => {
+    expect(decide(message(body), POLICY, NOW)).toEqual({
+      action: "disable",
+      trigger: "currency_mismatch",
+      disabledBy: `budget_alert:${String(pct)}%:2026-10`,
+      pct,
+    });
   });
 
   it.each([
@@ -63,9 +97,11 @@ describe("decide", () => {
     ["malformed", message({}, { data: Buffer.from("not json").toString("base64") })],
     ["malformed", message({}, { data: undefined })],
     ["malformed", message({ costAmount: "22.50" })],
-    ["malformed", message({ budgetAmount: 0 })],
     ["malformed", message({ costAmount: -1 })],
-    ["currency", message({ currencyCode: "EUR" })],
+    ["invalid_budget", message({ budgetAmount: 0 })],
+    ["invalid_budget", message({ budgetAmount: 0.004 })],
+    ["invalid_budget", message({ budgetAmount: -25 })],
+    ["invalid_budget", message({ budgetAmount: 1e307 })],
   ])("ignores %s messages", (reason, input) => {
     expect(decide(input, POLICY, NOW)).toMatchObject({ action: "ignore", reason });
   });
@@ -98,7 +134,13 @@ describe("handleBudgetMessage", () => {
     await expect(handleBudgetMessage(message({ costAmount: 23 }), d)).resolves.toBe("disabled");
     expect(disabled).toEqual(["budget_alert:92%:2026-10"]);
     expect(logs).toEqual([
-      { event: "kill_switch_disabled", pct: 92, disabledBy: "budget_alert:92%:2026-10" },
+      {
+        severity: "WARNING",
+        event: "kill_switch_disabled",
+        trigger: "threshold",
+        pct: 92,
+        disabledBy: "budget_alert:92%:2026-10",
+      },
     ]);
     expect(JSON.stringify(logs)).not.toContain("pi-monthly");
   });
@@ -107,13 +149,34 @@ describe("handleBudgetMessage", () => {
     const { disabled, logs, deps: d } = deps();
     await expect(handleBudgetMessage(message({ costAmount: 5 }), d)).resolves.toBe("ignored");
     expect(disabled).toEqual([]);
-    expect(logs).toEqual([{ event: "kill_switch_ignored", reason: "below_threshold", pct: 20 }]);
+    expect(logs).toEqual([
+      { severity: "INFO", event: "kill_switch_ignored", reason: "below_threshold", pct: 20 },
+    ]);
+  });
+
+  it("acks an unusable budget amount without retrying, logged at ERROR", async () => {
+    const { disabled, logs, deps: d } = deps();
+    await expect(handleBudgetMessage(message({ budgetAmount: 0.004 }), d)).resolves.toBe("ignored");
+    expect(disabled).toEqual([]);
+    expect(logs).toEqual([
+      { severity: "ERROR", event: "kill_switch_ignored", reason: "invalid_budget", pct: null },
+    ]);
+  });
+
+  it("switches off on a currency mismatch and logs it at ERROR", async () => {
+    const { disabled, logs, deps: d } = deps();
+    await expect(
+      handleBudgetMessage(message({ currencyCode: "AED", costAmount: 5 }), d),
+    ).resolves.toBe("disabled");
+    expect(disabled).toEqual(["budget_alert:20%:2026-10"]);
+    expect(logs[0]).toEqual({ severity: "ERROR", event: "kill_switch_currency_mismatch", pct: 20 });
+    expect(logs[1]).toMatchObject({ event: "kill_switch_disabled", trigger: "currency_mismatch" });
   });
 
   it("rethrows a failed write so Pub/Sub retries", async () => {
     const { logs, deps: d } = deps(true);
     await expect(handleBudgetMessage(message(), d)).rejects.toThrow("write failed (HTTP 403)");
-    expect(logs[0]).toMatchObject({ event: "kill_switch_failed", pct: 90 });
+    expect(logs[0]).toMatchObject({ severity: "ERROR", event: "kill_switch_failed", pct: 90 });
   });
 
   it("uses the real clock by default", async () => {

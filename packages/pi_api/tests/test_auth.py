@@ -99,6 +99,6 @@ def test_an_unreadable_certificate_fails_closed_as_503() -> None:
     assert status_of(f"Bearer {token()}", FakeCerts({KID: "not a pem"})) == 503
 
 
-@pytest.mark.parametrize("role", [None, "", "owner", "ADMIN"])
+@pytest.mark.parametrize("role", [None, "", "owner", "ADMIN", "killswitch"])
 def test_a_missing_or_unknown_role_is_403(role: str | None) -> None:
     assert status_of(f"Bearer {token(role=role)}") == 403

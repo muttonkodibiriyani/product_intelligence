@@ -366,7 +366,11 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
 
 - **Identity.** Firebase Auth (invite-only, email/password; PR #23). Custom claim
   `role ∈ {viewer, admin}`. The `onCall` handler rejects missing tokens and
-  unknown roles. The same check repeats inside every tool (defence in depth).
+  unknown roles. It maps the claim to a caller role only through `callerRole`
+  (`src/tools/types.ts`), which accepts exactly `viewer` or `admin`. Any other claim, including
+  the kill switch's `killswitch` (§9.4), is refused before the meter or any tool runs; it is never
+  treated as a viewer. The same check repeats inside every tool (defence in depth), and pi_api
+  returns 403 to it on every `/api/v1` route (`packages/pi_api/tests/test_app.py`).
 - **Abuse protection.** App Check with reCAPTCHA Enterprise (free tier 10 k assessments/month)
   on the callable. It is enforced from stage 1 and only if the owner OKs enabling the API.
   Until then, the auth policy and per-user rate limits protect the function.
@@ -644,15 +648,27 @@ subscribed to it (`handleBudgetMessage`, `apps/assistant/src/killswitch/`) sets
 The meter re-reads the config before every model call, so a running question stops at its next
 call.
 
-**Decision** (`budget.ts`, pure, unit-tested). A message switches the assistant off only if all of
-these hold; anything else is ignored and logged:
+**Decision** (`budget.ts`, pure, unit-tested). A message is considered only if:
 
 - the `budgetId` attribute equals the configured budget, and `schemaVersion` is `1.0`;
 - it was published less than 6 h ago (this ends Pub/Sub retries, and stops last month's late
   alerts from firing after the reset), and not more than 5 min in the future;
-- the body parses, `currencyCode` is `USD`, and month-to-date `costAmount` ≥ 90 % of
-  `budgetAmount`. The comparison uses integer cents. Notifications arrive several times a day
-  whatever the spend, so `alertThresholdExceeded` is not relied on.
+- the body parses, with a finite, non-negative `costAmount`.
+
+Anything else is ignored and logged. Notifications arrive several times a day whatever the spend,
+so `alertThresholdExceeded` is not relied on. For a message that passes, it **fails closed on
+money**:
+
+- **Threshold.** Month-to-date `costAmount` ≥ 90 % of `budgetAmount` switches off, however large
+  the cost; there is no upper bound that could make a runaway amount look malformed. The
+  comparison uses integer minor units (cents). The percentage in `disabledBy` is capped at 999.
+- **Currency.** Budget amounts are in the billing account's currency. The policy's currency
+  (`KILL_SWITCH_CURRENCY`) is set from the value the owner verifies at step 1; it is not assumed.
+  A `currencyCode` other than the policy's **switches off** and logs
+  `kill_switch_currency_mismatch` at ERROR, because the threshold can no longer be trusted.
+- **Unusable budget.** A `budgetAmount` below one cent (zero, negative, sub-cent) has no
+  percentage. It is logged at ERROR (`invalid_budget`) and acknowledged without retry; it cannot
+  produce a NaN or a write the rules would reject.
 
 The write is idempotent; repeated alerts rewrite the same two fields. A failed write throws, and
 Pub/Sub retries it (retry on, bounded by the 6 h age).
@@ -672,8 +688,12 @@ custom role with only `datastore.entities.update` covers every document in the d
   assistant on. A `custom` sign-in with the same claim is refused. The emulator tests in
   `infra/tests/test_rules_emulator.py` cover each case.
 - **Blast radius if the password leaks:** someone can switch the assistant off. That is an
-  outage of the assistant only, with no spend and no data access. Rotation: reset the password,
-  then add a new secret version.
+  outage of the assistant only, with no spend and no data access.
+- **Rotation** (owner). Reset the account's password through the reset email. Add it as a new
+  version of `assistant-killswitch-password`, then disable (and later destroy) the old versions.
+  The function reads `latest` on each cold start; check with a synthetic message (step 5).
+- **Revoke:** disable the Firebase account; sign-in then fails and the function logs
+  `kill_switch_failed` at ERROR.
 - Rejected: a custom-token principal. Minting custom tokens needs
   `iam.serviceAccountTokenCreator` on the runtime SA, which could mint a token for **any** uid
   with any claims, admin included. Also rejected: a Google-provider sign-in with the SA's ID
@@ -687,7 +707,9 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
 
 1. Create the topic `pi-budget-alerts` (me-central1 storage policy). Connect the
    `pi-monthly-25usd` budget to it (*Billing → Budgets → Manage notifications → Connect a Pub/Sub
-   topic*, or `gcloud billing budgets update … --notifications-rule-pubsub-topic`).
+   topic*, or `gcloud billing budgets update … --notifications-rule-pubsub-topic`). Record the
+   billing account's currency (the budget's amounts are in it) for `KILL_SWITCH_CURRENCY` and the
+   decision log.
 2. Create the SA `pi-killswitch` with no roles and no key.
 3. Create the Firebase Auth password account (an owner-controlled mailbox, e.g. a plus address)
    and set the claim `{"role": "killswitch"}` with the Admin SDK. The owner sets the password
@@ -697,8 +719,8 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
 4. Deploy the rules (the change in this PR) and the function (the deploy PR wraps
    `handleBudgetMessage` in `onMessagePublished` with `retry: true`, runtime SA
    `pi-killswitch@`, secret bound, min instances 0). Deploy config holds the env:
-   `KILL_SWITCH_BUDGET_ID`, the project's Web API key and the account email. No literals in
-   `src/`.
+   `KILL_SWITCH_BUDGET_ID`, `KILL_SWITCH_CURRENCY` (from step 1), the project's Web API key and
+   the account email. No literals in `src/`.
 5. Verify once with a **synthetic message**: publish a hand-built notification with a fake
    `costAmount` ≥ 90 % to the topic, as the owner. Check that `enabled` flips to false and the
    function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove

@@ -26,6 +26,7 @@ from metrics_fixture import A, B, C, rebuild, with_capabilities
 from pi_api.app import ServerErrors, TokenBuckets
 from pi_api.auth import CertificatesUnavailableError
 from pi_api.catalog import evidence_url
+from pi_api.contract import openapi
 from pi_api.source import SnapshotSource
 from pi_dataset import Dataset, Offer, Product
 
@@ -110,6 +111,16 @@ def test_two_authorization_headers_are_refused(client: Client) -> None:
 def test_a_token_without_a_role_is_403_everywhere(client: Client) -> None:
     for path in ROUTES:
         assert body(client, path, 403, role=None)["error"]["code"] == "forbidden"
+
+
+# The assistant's budget-alert kill switch signs in with role=killswitch (Firestore rules let it
+# set assistant_config/current.enabled=false and nothing else). It must not be a viewer here.
+OPENAPI_PATHS = [path.replace("{product_id}", "p01") for path in openapi()["paths"]]
+
+
+@pytest.mark.parametrize("path", OPENAPI_PATHS)
+def test_the_kill_switch_role_is_403_on_every_api_route(client: Client, path: str) -> None:
+    assert body(client, path, 403, role="killswitch")["error"]["code"] == "forbidden"
 
 
 def test_docs_and_health_routes_do_not_exist(client: Client) -> None:

@@ -20,19 +20,36 @@ export async function handleBudgetMessage(
 ): Promise<"disabled" | "ignored"> {
   const decision = decide(message, deps.policy, (deps.now ?? (() => new Date()))());
   if (decision.action === "ignore") {
-    deps.log({ event: "kill_switch_ignored", reason: decision.reason, pct: decision.pct ?? null });
+    // Acknowledged either way: retrying an unusable budget amount cannot help.
+    deps.log({
+      severity: decision.reason === "invalid_budget" ? "ERROR" : "INFO",
+      event: "kill_switch_ignored",
+      reason: decision.reason,
+      pct: decision.pct ?? null,
+    });
     return "ignored";
+  }
+  if (decision.trigger === "currency_mismatch") {
+    // Billing reports in a currency the policy was not set for: switch off and get attention.
+    deps.log({ severity: "ERROR", event: "kill_switch_currency_mismatch", pct: decision.pct });
   }
   try {
     await deps.configSwitch.disable(decision.disabledBy);
   } catch (error) {
     deps.log({
+      severity: "ERROR",
       event: "kill_switch_failed",
       pct: decision.pct,
       error: error instanceof Error ? error.message : "unknown",
     });
     throw error;
   }
-  deps.log({ event: "kill_switch_disabled", pct: decision.pct, disabledBy: decision.disabledBy });
+  deps.log({
+    severity: "WARNING",
+    event: "kill_switch_disabled",
+    trigger: decision.trigger,
+    pct: decision.pct,
+    disabledBy: decision.disabledBy,
+  });
   return "disabled";
 }

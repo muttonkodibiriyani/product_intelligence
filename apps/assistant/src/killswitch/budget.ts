@@ -3,23 +3,26 @@
  * (design §9.4). The switch is a backstop: budget data lags spend by hours, so the meter's caps
  * are the bound and this only catches spend the meter cannot see.
  *
- * The decision is pure. A message turns the assistant off only when it is fresh, comes from the
- * configured budget, is in USD, and its month-to-date cost has reached the threshold share of the
- * budget. Anything malformed or unexpected is ignored and logged, never acted on: the topic only
- * accepts the billing service's publisher, and a false "off" is cheap but still an outage.
+ * The decision is pure. A fresh, well-formed message from the configured budget turns the
+ * assistant off when its month-to-date cost has reached the threshold share of the budget, however
+ * large the cost. It fails closed on surprises about money: a currency other than the configured
+ * one also turns it off (the threshold can no longer be trusted). Messages that are malformed,
+ * stale or from another budget are ignored: the topic only accepts the billing service's
+ * publisher, and a false "off" is cheap but still an outage. A budget amount below one cent is
+ * ignored without retry (no percentage exists) and logged at ERROR.
  */
 import { z } from "zod";
 
 /** A publish time further ahead of our clock than this is not trusted. */
 const CLOCK_SKEW_MS = 5 * 60_000;
 
-const money = z.number().finite().min(0).max(1_000_000);
-
 /** The message body Cloud Billing publishes (only the fields used here). */
 export const BudgetNotificationSchema = z.object({
   budgetDisplayName: z.string().max(200),
-  costAmount: money,
-  budgetAmount: money.positive(),
+  // No upper bound: a runaway cost must switch off, not look malformed.
+  costAmount: z.number().finite().min(0),
+  // Checked in decide(): below one cent there is no percentage to compute.
+  budgetAmount: z.number().finite(),
   costIntervalStart: z.string().regex(/^\d{4}-\d{2}-\d{2}T/),
   currencyCode: z.string().regex(/^[A-Z]{3}$/),
 });
@@ -41,6 +44,11 @@ export interface PubSubMessage {
 export interface KillSwitchPolicy {
   /** The budget whose alerts may switch the assistant off (deploy config, not a literal). */
   readonly budgetId: string;
+  /**
+   * ISO 4217 code of the billing account; budget amounts are always in it. Deploy config, set
+   * from what the owner verifies at enablement (design §9.4), never assumed.
+   */
+  readonly currency: string;
   /** Whole percent of the budget at which to switch off: 90 for the 90 % project threshold. */
   readonly thresholdPct: number;
   /** Messages older than this are ignored (Pub/Sub retries end; last month's late alerts too). */
@@ -48,10 +56,22 @@ export interface KillSwitchPolicy {
 }
 
 export type Decision =
-  | { readonly action: "disable"; readonly disabledBy: string; readonly pct: number }
+  | {
+      readonly action: "disable";
+      readonly trigger: DisableTrigger;
+      readonly disabledBy: string;
+      readonly pct: number;
+    }
   | { readonly action: "ignore"; readonly reason: IgnoreReason; readonly pct?: number };
 
-export type IgnoreReason = "malformed" | "other_budget" | "currency" | "stale" | "below_threshold";
+/** Why it switched off: the threshold, or a currency it cannot compare (fail closed). */
+export type DisableTrigger = "threshold" | "currency_mismatch";
+
+export type IgnoreReason =
+  "malformed" | "other_budget" | "stale" | "invalid_budget" | "below_threshold";
+
+/** The disabledBy pattern in infra/firestore.rules allows at most three digits. */
+const MAX_PCT = 999;
 
 /** Integer cents, so the threshold comparison has no floating-point edge. */
 function cents(amount: number): number {
@@ -80,14 +100,23 @@ export function decide(message: PubSubMessage, policy: KillSwitchPolicy, now: Da
   const parsed = BudgetNotificationSchema.safeParse(body);
   if (!parsed.success) return { action: "ignore", reason: "malformed" };
   const notification = parsed.data;
-  if (notification.currencyCode !== "USD") return { action: "ignore", reason: "currency" };
 
   const cost = cents(notification.costAmount);
   const budget = cents(notification.budgetAmount);
-  const pct = Math.min(999, Math.floor((cost * 100) / budget));
+  if (!Number.isFinite(budget) || budget < 1) return { action: "ignore", reason: "invalid_budget" };
+  // cost may overflow to Infinity for an absurd amount; that still switches off, at 999 %.
+  const pct = Math.min(MAX_PCT, Math.floor((cost * 100) / budget));
+  const month = notification.costIntervalStart.slice(0, 7);
+  const disable = (trigger: DisableTrigger): Decision => ({
+    action: "disable",
+    trigger,
+    disabledBy: `budget_alert:${String(pct)}%:${month}`,
+    pct,
+  });
+
+  if (notification.currencyCode !== policy.currency) return disable("currency_mismatch");
   if (cost * 100 < budget * policy.thresholdPct) {
     return { action: "ignore", reason: "below_threshold", pct };
   }
-  const month = notification.costIntervalStart.slice(0, 7);
-  return { action: "disable", disabledBy: `budget_alert:${String(pct)}%:${month}`, pct };
+  return disable("threshold");
 }
