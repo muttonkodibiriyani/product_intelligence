@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { FALLBACK_NOTE, ChatFlow, knownProductIds, toolSpec } from "../src/flows/chat.js";
+import type { ChatProgress } from "../src/flows/chat.js";
 import type { ChatModel, ModelReply, ModelRequest } from "../src/flows/model.js";
 import { PROMPT_VERSION } from "../src/flows/prompt.js";
 import { ChatRequestSchema, MemoryThreadStore } from "../src/flows/threads.js";
@@ -282,5 +283,52 @@ describe("toolSpec and knownProductIds", () => {
       data: { rows: [{ id: "a" }, { name: { untrusted: "id b" } }], card: { productId: "c" } },
     } as unknown as ToolEnvelope;
     expect([...knownProductIds([envelope])].sort()).toEqual(["a", "c"]);
+  });
+});
+
+describe("ChatFlow progress", () => {
+  const collect = () => {
+    const seen: ChatProgress[] = [];
+    return { seen, sink: (progress: ChatProgress) => void seen.push(progress) };
+  };
+
+  it("streams stages and tool outcomes, never model text or tool data", async () => {
+    const { flow } = setup([callCompare, say("It is 50% cheaper."), say(GOOD)]);
+    const { seen, sink } = collect();
+    const answer = await flow.answer(ask(), VIEWER, "t", sink);
+    expect(answer.status).toBe("answered");
+    expect(seen).toEqual([
+      { type: "status", stage: "thinking" },
+      { type: "tool", name: "compare", status: "ok" },
+      { type: "status", stage: "verifying" },
+      { type: "status", stage: "retrying" },
+    ]);
+    expect(JSON.stringify(seen)).not.toMatch(/50|100\.00|p01/);
+  });
+
+  it("streams a tool error with its code", async () => {
+    const bad: Step = () => ({ toolCalls: [{ name: "drop_table", args: {} }] });
+    const { flow } = setup([bad, say("I could not find data.")]);
+    const { seen, sink } = collect();
+    await flow.answer(ask(), VIEWER, "t", sink);
+    expect(seen[1]).toMatchObject({ type: "tool", name: "drop_table", status: "error" });
+    expect(seen[1]).toHaveProperty("code");
+  });
+
+  it("a failing sink never changes the answer", async () => {
+    const { flow } = setup([callCompare, say(GOOD)]);
+    const answer = await flow.answer(ask(), VIEWER, "t", () => {
+      throw new Error("client gone");
+    });
+    expect(answer.status).toBe("answered");
+    expect(answer.answerMd).toBe(GOOD);
+  });
+
+  it("sends nothing for a question refused before the model runs", async () => {
+    const { flow } = setup([]);
+    const { seen, sink } = collect();
+    const answer = await flow.answer(ask(""), VIEWER, "t", sink);
+    expect(answer.status).toBe("unavailable");
+    expect(seen).toEqual([]);
   });
 });

@@ -845,8 +845,17 @@ Coordinator rulings, 2026-09-30, under authority delegated by the owner (logged 
 4. **APIs, SA, WIF (§10).** Approved in principle. They are executed only after this doc is
    approved **and** the Coordinator gives an explicit go.
 
-Still open: the chat panel contract (`httpsCallable().stream()`) is to be confirmed with the
-Frontend Builder once this design is approved.
+**Chat panel contract** (split agreed with the Frontend Builder via the Coordinator,
+2026-10-01). The web app calls `assistantChat` with `httpsCallable().stream()`. While the
+question runs, the stream carries `ChatProgress` chunks (`src/flows/chat.ts`):
+
+- `{type: "status", stage: "thinking" | "verifying" | "retrying"}`;
+- `{type: "tool", name, status, code?}`, one per tool call.
+
+The call's result is the full `ChatAnswer`. **Model text is never streamed**: numbers reach
+the screen only after the verifier has checked them (§5), so the panel shows live progress
+(which tools ran), then the verified answer. Non-streaming callers get the same `ChatAnswer`.
+A failed chunk send (client gone) never affects the answer or the meter.
 
 ## 12. Stage timeline
 
