@@ -173,13 +173,17 @@ class Summary(ContractModel):
     withheld: tuple[Withheld, ...]
 
 
-def default_context(ds: DatasetV3) -> Context:
-    """The context with the most non-early offers observed on the latest date (ties by id)."""
+def default_context(ds: DatasetV3, exclude: frozenset[str] = frozenset()) -> Context:
+    """The context with the most non-early offers observed on the latest date (ties by id).
+
+    Contexts in ``exclude`` are picked only when every context is excluded.
+    """
     i = len(ds.meta.dates) - 1
     counts = Counter(
         cid for p in ds.products for cid, o in p.offers.items() if not o.early and view.seen(o, i)
     )
-    return min(ds.meta.contexts, key=lambda c: (-counts[c.id], c.id))
+    contexts = [c for c in ds.meta.contexts if c.id not in exclude] or ds.meta.contexts
+    return min(contexts, key=lambda c: (-counts[c.id], c.id))
 
 
 def _rank[T](ordered: Sequence[T], pct: int) -> T:
