@@ -10,8 +10,10 @@ import { describe, expect, it } from "vitest";
 
 import { SOURCE_TEXT_KEYS, STRUCTURAL_KEYS } from "../src/guard/sanitise.js";
 import { verifyAnswerNumbers } from "../src/guard/verifier.js";
+import { MAX_UPSTREAM_CAVEATS } from "../src/api/envelope.js";
 import { TOOLS } from "../src/tools/definitions.js";
 import {
+  MAX_CAVEATS,
   ToolRegistry,
   type ToolEnvelope,
   type ToolResult,
@@ -185,5 +187,73 @@ describe("truncation", () => {
     [[1, 2], "rows", null],
   ])("%j via %s → %j", (data, key, expected) => {
     expect(truncation(data, key)).toEqual(expected);
+  });
+});
+
+describe("pi_metrics v3 (metricVersion 2026-10-01.2)", () => {
+  const labelCaveats = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      code: "size_labels_differ",
+      en: `label pair ${String(i)}`,
+      ar: `زوج ${String(i)}`,
+    }));
+  const withCaveats = (body: unknown, caveats: unknown[]) => ({
+    ...(body as Record<string, unknown>),
+    caveats,
+  });
+  const run = async (body: unknown) =>
+    await new ToolRegistry(TOOLS, new FakeApi(() => body), { evidenceHosts: [] }).run(
+      "compare",
+      MINIMAL.compare,
+      VIEWER_CALLER,
+      "t",
+    );
+
+  it("passes not_applicable through as a not-enough-data reason", async () => {
+    const body = {
+      ...(golden("compare") as Record<string, unknown>),
+      status: "not_enough_data",
+      reason: "not_applicable",
+      detail: { en: "Not defined for this vertical.", ar: "غير معرّف لهذا القطاع." },
+    };
+    const result = (await run(body)) as ToolEnvelope;
+    expect(result.status).toBe("not_enough_data");
+    expect(result.notEnoughData?.reason).toBe("not_applicable");
+  });
+
+  it("lists 19 of 25 label caveats plus caveats_truncated instead of failing the envelope", async () => {
+    const result = (await run(withCaveats(golden("compare"), labelCaveats(25)))) as ToolEnvelope;
+    expect(result.status).toBe("ok");
+    expect(result.caveats).toHaveLength(MAX_CAVEATS);
+    expect(result.caveats.slice(0, 19).map((c) => c.en)).toEqual(
+      labelCaveats(19).map((c) => ({ untrusted: c.en })),
+    );
+    expect(result.caveats.at(-1)).toEqual({
+      code: "caveats_truncated",
+      en: { untrusted: "6 more caveats are not listed." },
+      ar: { untrusted: "هناك 6 تنبيهات أخرى غير معروضة." },
+    });
+  });
+
+  it("keeps the row-limit caveat last when both lists are cut", async () => {
+    const result = (await run(
+      withCaveats(golden("compare-limited"), labelCaveats(30)),
+    )) as ToolEnvelope;
+    expect(result.caveats).toHaveLength(MAX_CAVEATS);
+    expect(result.caveats.slice(-2).map((c) => c.code)).toEqual(["caveats_truncated", "truncated"]);
+    expect(result.caveats.at(-2)?.en).toEqual({ untrusted: "12 more caveats are not listed." });
+  });
+
+  it("lists exactly 20 upstream caveats unchanged", async () => {
+    const result = (await run(withCaveats(golden("compare"), labelCaveats(20)))) as ToolEnvelope;
+    expect(result.caveats.map((c) => c.code)).not.toContain("caveats_truncated");
+    expect(result.caveats).toHaveLength(20);
+  });
+
+  it("still rejects an absurd caveat list as upstream_invalid", async () => {
+    const result = await run(
+      withCaveats(golden("compare"), labelCaveats(MAX_UPSTREAM_CAVEATS + 1)),
+    );
+    expect(result).toMatchObject({ status: "error", code: "upstream_invalid" });
   });
 });

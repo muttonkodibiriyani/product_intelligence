@@ -220,10 +220,15 @@ The API also enforces:
 - `matches_unreviewed`;
 - `no_match`;
 - `not_in_scope` (uplift, market share, sales volume);
-- `currency_mismatch`.
+- `currency_mismatch`;
+- `not_applicable` (the metric is not defined for this vertical; metricVersion 2026-10-01.2).
 
 Partial coverage that does not change the answer's meaning is reported as `caveats[]`, and the
-prompt requires the model to show them (SCP-08).
+prompt requires the model to show them (SCP-08). pi_metrics v3 adds one `size_labels_differ` per
+distinct label pair, with no cap, so the envelope accepts up to 200 caveats (more is
+`upstream_invalid`). The registry lists at most 20: the first upstream caveats (most frequent
+first), then one assistant-side `caveats_truncated` ("N more caveats are not listed") when some are
+cut, then the row-limit `truncated` caveat when present. `caveats_truncated` is not a pi_api code.
 
 ## 4. Tools
 
@@ -242,7 +247,7 @@ type ToolEnvelope = {
     filters: Record<string, unknown>;                // echo of validated input
     cohort: { description: string; n: number } | null;   // null where the endpoint has none
   };
-  caveats: { code: string; en: string; ar: string }[];   // ≤ 20; code from the API's enum
+  caveats: { code: string; en: string; ar: string }[];   // ≤ 20; API codes + caveats_truncated, truncated
 };
 ```
 

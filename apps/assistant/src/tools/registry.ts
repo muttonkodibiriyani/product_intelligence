@@ -115,6 +115,29 @@ function truncatedCaveat({ shown, total }: { shown: number; total: number }): Ca
   };
 }
 
+/**
+ * Caveats listed per result. Upstream caveats beyond the room left by `extra` (the row-limit
+ * caveat, always kept) collapse into one assistant-side `caveats_truncated`; not a pi_api code.
+ */
+export const MAX_CAVEATS = 20;
+
+function listedCaveats(upstream: readonly Caveat[], extra: readonly Caveat[]): Caveat[] {
+  const room = MAX_CAVEATS - extra.length;
+  if (upstream.length <= room) return [...upstream, ...extra];
+  const more = String(upstream.length - (room - 1));
+  return [
+    ...upstream.slice(0, room - 1),
+    {
+      code: "caveats_truncated",
+      ...prose({
+        en: `${more} more caveats are not listed.`,
+        ar: `هناك ${more} تنبيهات أخرى غير معروضة.`,
+      }),
+    },
+    ...extra,
+  ];
+}
+
 function withShown(data: Sanitised, cut: { readonly shown: number } | null): Sanitised {
   if (cut === null || typeof data !== "object" || data === null || Array.isArray(data)) return data;
   return { ...data, shown: cut.shown };
@@ -244,10 +267,10 @@ export class ToolRegistry {
             ? null
             : { description: untrusted(cohort.description, PROSE_MAX_CHARS), n: cohort.n },
       },
-      caveats: [
-        ...caveats.map(({ code, ...text }) => ({ code, ...prose(text) })),
-        ...(cut ? [truncatedCaveat(cut)] : []),
-      ],
+      caveats: listedCaveats(
+        caveats.map(({ code, ...text }) => ({ code, ...prose(text) })),
+        cut ? [truncatedCaveat(cut)] : [],
+      ),
     };
     if (JSON.stringify(result).length > MAX_RESULT_CHARS) {
       return error(name, "output_too_large", API_ERROR_MESSAGES.output_too_large);
