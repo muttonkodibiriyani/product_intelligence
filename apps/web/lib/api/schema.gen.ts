@@ -1018,7 +1018,7 @@ export interface components {
          * ProductSort
          * @enum {string}
          */
-        ProductSort: "name" | "price_asc" | "price_desc" | "gap";
+        ProductSort: "name" | "price_asc" | "price_desc" | "gap" | "gap_asc";
         /** PromoItem */
         PromoItem: {
             /** Depthpct */
@@ -2112,6 +2112,7 @@ export interface operations {
                 q?: string | null;
                 brand?: string[];
                 category?: string[];
+                /** @description Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc. */
                 retailer?: string[];
                 matched?: boolean | null;
                 priceMin?: string | null;
