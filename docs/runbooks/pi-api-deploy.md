@@ -105,8 +105,8 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
   --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
-  --cpu-throttling --port=8080 --ingress=all --allow-unauthenticated \
-  --set-env-vars="PI_API_FIREBASE_PROJECT=$PROJECT,PI_API_BUCKET=$BUCKET,PI_API_DATASETS=<paths from §2>"
+  --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
+  --set-env-vars="PI_API_FIREBASE_PROJECT=$PROJECT,PI_API_BUCKET=$BUCKET,PI_API_DATASETS=<paths from §2>,PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me"
 ```
 
 - **No `--concurrency`** (default), no `--add-cloudsql-instances`, no `--vpc-connector`, no
@@ -115,11 +115,17 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   `<source_key>=<host>,<source_key>=<host>`, the exact hosts the connectors fetch). Without
   it the service runs, but every offer's `evidence.url` is null. A host the API should not link
   to is simply left out; there are no wildcards.
+  Today's value is `sephora_me=www.sephora.me`: that is the only source with URLs in the
+  published dataset, confirmed by the connectors' owner. `ulta_ae` has no offers, so it is left
+  out and its links stay null. A typo nulls every link without an error, which is why §8 checks
+  one. For two or more pairs, the commas clash with `--set-env-vars`. Switch the delimiter:
+  `--set-env-vars="^@^PI_API_EVIDENCE_HOSTS=a=x.example,b=y.example@PI_API_BUCKET=..."`.
 - **`--allow-unauthenticated` is deliberate.** Hosting rewrites call the service without an IAM
   identity, so `allUsers` gets `run.invoker`. Every route, unknown paths included, verifies the
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
   (for example domain-restricted sharing) refuses the binding, stop (stop rule).
 - The startup probe is the default TCP probe. There are no health routes, by design.
+- **`--cpu-boost`**: the gcloud default (startup-only), passed explicitly so redeploys match live; accepted 2026-10-01.
 - **Memory 1Gi** (decision log, 2026-10-01; was 512Mi). Measured locally (RSS, Python 3.12):
 
   | What | Measured |
@@ -168,6 +174,10 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
   "pi-api.export/v1", ...}`. Logs Explorer shows one entry with
   `jsonPayload.event="pi_api.export"` and `outcome="ok"` (uid, view, filters, row count; no row
   content).
+- **Evidence links:** signed in, `GET /api/v1/products/s-P10000765-unknown-unknown` (any id
+  whose dataset offer has a `sephora_me` url) → the `sephora_me` offer's `evidence.url` is non-null
+  and starts with `https://www.sephora.me/`. If it is null, `PI_API_EVIDENCE_HOSTS` is missing
+  or misspelt.
 - Check the describe output: `autoscaling.knative.dev/maxScale: '3'`, no `minScale` (or 0), no
   Cloud SQL or VPC annotations, the `pi-api@` account, memory 1Gi, timeout 30.
 
