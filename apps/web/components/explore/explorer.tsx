@@ -81,22 +81,22 @@ export function Explorer() {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
       <div className="lg:hidden">
         <button
           type="button"
           aria-expanded={filtersOpen}
           aria-controls={filtersId}
           onClick={() => setFiltersOpen((o) => !o)}
-          className="rounded border border-line bg-surface px-3 py-1.5 text-sm focus-visible:outline-2"
+          className="btn focus-visible:outline-2"
         >
           {filtersOpen ? t('hideFilters') : t('showFilters', { count: activeFilterCount(state) })}
         </button>
-        <div id={filtersId} hidden={!filtersOpen} className="mt-3">
+        <div id={filtersId} hidden={!filtersOpen} className="mt-3 panel p-4">
           {filtersOpen && filters}
         </div>
       </div>
-      <aside aria-label={t('filters')} className="hidden lg:block">
+      <aside aria-label={t('filters')} className="hidden self-start panel p-4 lg:block">
         {filters}
       </aside>
 
@@ -104,7 +104,7 @@ export function Explorer() {
         <Toolbar key={state.q} state={state} update={update} name={name} />
 
         <div className="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 id="explore-title" className="text-xl font-semibold">
+          <h1 id="explore-title" className="text-2xl font-bold tracking-tight">
             {t('title')}
           </h1>
           {last && (
@@ -130,7 +130,7 @@ export function Explorer() {
         </div>
 
         {restarted && (
-          <p role="status" className="mt-3 rounded bg-warn-bg px-3 py-2 text-sm text-warn">
+          <p role="status" className="mt-3 rounded-ctl bg-butter px-4 py-2.5 text-sm text-warn">
             {t('restarted')}
           </p>
         )}
@@ -145,7 +145,7 @@ export function Explorer() {
             </p>
           ) : items.length === 0 ? (
             first?.status === 'ok' && (
-              <div className="rounded border border-line bg-surface px-4 py-6">
+              <div className="panel px-5 py-6">
                 <p className="font-medium">{t('empty')}</p>
                 <p className="mt-1 text-sm text-ink-2">{t('emptyHint')}</p>
               </div>
@@ -168,7 +168,7 @@ export function Explorer() {
                     type="button"
                     disabled={q.isFetchingNextPage}
                     onClick={() => void q.fetchNextPage()}
-                    className="rounded border border-line bg-surface px-3 py-1.5 text-sm hover:bg-surface-2 focus-visible:outline-2 disabled:opacity-60"
+                    className="btn focus-visible:outline-2"
                   >
                     {q.isFetchingNextPage
                       ? t('loadingMore')

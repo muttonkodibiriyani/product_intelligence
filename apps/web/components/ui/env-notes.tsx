@@ -11,10 +11,7 @@ export function EnvNotes({ env, className = '' }: { env: Envelope<unknown>; clas
   const locale = useLocale();
   if (env.status !== 'not_enough_data' && env.caveats.length === 0) return null;
   return (
-    <div
-      role="note"
-      className={`space-y-1 rounded border border-line bg-surface px-3 py-2 text-sm ${className}`}
-    >
+    <div role="note" className={`space-y-1 panel px-4 py-3 text-sm ${className}`}>
       {env.status === 'not_enough_data' && env.reason && (
         <p>{loc(env.detail, locale) || <Known t={tr} v={env.reason} />}</p>
       )}

@@ -34,9 +34,9 @@ export function ProductTable({
 }) {
   const t = useTranslations('explore');
   const locale = useLocale();
-  const th = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
+  const th = 'th whitespace-nowrap';
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto panel">
       <table className="w-full text-sm">
         <caption className="sr-only">{t('results')}</caption>
         <thead className="border-b border-line">
