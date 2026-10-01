@@ -53,7 +53,11 @@ Created 2026-10-01 from `docs/runbooks/pi-api-deploy.md` at `19655dd` (decision 
 
 The owner ran `gcloud run deploy` (revision `pi-api-00001-jpx`) and the Hosting deploy (main `42d3632`); the auto-mode classifier refuses production deploys from the Infra agent, so those go to the owner. Verified 2026-10-01 (runbook §8): `/api/v1/*` without or with a bad token → 401 `private, no-store` with a Bearer challenge; a signed-in viewer gets 200 on `/api/v1/meta` and a coverage CSV export whose line 1 is the `pi-api.export/v1` manifest; the `pi_api.export` audit log line is present (no row content); EN+AR dashboard smoke passes on WebKit, Firefox and Chromium; live Hosting files match `apps/web/deployed.sha256`. Tear-down order: runbook §9.
 
-The next pi-api redeploy (first image with #72) adds `PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me`
-and passes `--cpu-boost` explicitly (runbook §6). `ulta_ae` is left out: it has no offers, so its
-evidence links stay null. Adding it later is a config change. The owner runs the deploy; the
-revision and image digest are recorded here once §8 passes.
+**Redeployed 2026-10-01** (owner-run, runbook §6 at `0278326`): revision `pi-api-00002-ffc` at 100%,
+image by digest `sha256:708ce7d7f6081648176d2b45a43f583ca69c92eeb4aacb1d912de0dee9cae6c4` (tag
+`2e374b1144be`, main after #72). Same settings as `pi-api-00001-jpx`, with `--cpu-boost` passed
+explicitly and `PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me` added. `ulta_ae` is left out: it
+has no offers, so its evidence links stay null, and adding it later is a config change. §8
+re-check passed: 401s, viewer meta and export, export audit line, the evidence url for
+`s-P10000765-unknown-unknown` non-null on `https://www.sephora.me/`, and the EN+AR dashboard
+smoke. Rollback target: `pi-api-00001-jpx`.
