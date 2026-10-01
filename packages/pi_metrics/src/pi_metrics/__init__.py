@@ -36,7 +36,7 @@ from pi_metrics.model import (
 )
 from pi_metrics.promotions import Promotions, promotions
 from pi_metrics.reviews import ReviewsSummary, reviews_summary
-from pi_metrics.view import UnknownInput
+from pi_metrics.view import AmbiguousContext, UnknownInput
 
 __all__ = [
     "COUNTED_STATES",
@@ -45,6 +45,7 @@ __all__ = [
     "INDEX_DEFINITION",
     "METRIC_VERSION",
     "MIN_COHORT",
+    "AmbiguousContext",
     "AssortmentGaps",
     "Availability",
     "Caveat",

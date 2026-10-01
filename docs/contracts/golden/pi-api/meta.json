@@ -2,6 +2,47 @@
   "caveats": [],
   "cohort": null,
   "data": {
+    "attributeSet": [
+      {
+        "block": "summary",
+        "capability": true,
+        "facet": true,
+        "key": "finish",
+        "label": {
+          "ar": "اللمسة النهائية",
+          "en": "Finish"
+        },
+        "level": "product",
+        "type": "text",
+        "values": null
+      },
+      {
+        "block": "summary",
+        "capability": true,
+        "facet": true,
+        "key": "concentration",
+        "label": {
+          "ar": "التركيز",
+          "en": "Concentration"
+        },
+        "level": "product",
+        "type": "text",
+        "values": null
+      },
+      {
+        "block": "swatches",
+        "capability": true,
+        "facet": true,
+        "key": "shadeFamilies",
+        "label": {
+          "ar": "عائلات الدرجات",
+          "en": "Shade families"
+        },
+        "level": "product",
+        "type": "text_list",
+        "values": null
+      }
+    ],
     "capabilities": {
       "campaigns": false,
       "coverage": true,
@@ -31,6 +72,44 @@
         "key": "skincare"
       }
     ],
+    "contexts": [
+      {
+        "channel": "online",
+        "id": "shop_a",
+        "label": {
+          "en": "Shop A"
+        },
+        "location": null,
+        "retailer": "shop_a"
+      },
+      {
+        "channel": "online",
+        "id": "shop_b",
+        "label": {
+          "en": "Shop B"
+        },
+        "location": null,
+        "retailer": "shop_b"
+      },
+      {
+        "channel": "online",
+        "id": "shop_c",
+        "label": {
+          "en": "Shop C"
+        },
+        "location": null,
+        "retailer": "shop_c"
+      },
+      {
+        "channel": "online",
+        "id": "shop_d",
+        "label": {
+          "en": "Shop D"
+        },
+        "location": null,
+        "retailer": "shop_d"
+      }
+    ],
     "cutoff": "2026-09-30T00:00:00Z",
     "datasets": [
       {
@@ -55,6 +134,12 @@
     },
     "kind": "snapshot",
     "matchStage": "reviewed",
+    "profile": {
+      "name": "beauty",
+      "sizeLabelsComparable": false,
+      "sizeSystemRequired": false,
+      "version": 1
+    },
     "retailers": [
       {
         "country": "AE",
@@ -96,7 +181,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.1.0",
+    "apiVersion": "1.2.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "meta",

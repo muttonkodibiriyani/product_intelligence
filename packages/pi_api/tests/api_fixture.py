@@ -25,7 +25,7 @@ from metrics_fixture import metrics_dataset, rebuild
 from pi_api.app import TokenBuckets, create_app
 from pi_api.auth import TokenVerifier
 from pi_api.source import LocalStore, SnapshotSource
-from pi_dataset import Dataset, dump_dataset
+from pi_dataset import Dataset, DatasetV3, dump_dataset
 
 PROJECT = "pi-test-project"
 KID = "test-kid"
@@ -93,7 +93,7 @@ def served_dataset() -> Dataset:
     return rebuild(metrics_dataset(), test=False)
 
 
-def write(root: Path, dataset: Dataset, path: str = DATASET_PATH) -> None:
+def write(root: Path, dataset: Dataset | DatasetV3, path: str = DATASET_PATH) -> None:
     target = root / path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(dump_dataset(dataset))

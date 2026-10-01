@@ -108,7 +108,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
-from pi_metrics.view import UnknownInput
+from pi_metrics.view import AmbiguousContext, UnknownInput
 
 log = logging.getLogger(__name__)
 
@@ -126,7 +126,10 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         403: "no role, or admins only",
         404: "no such route, product, market or scope",
         409: "stale_cursor: the data changed; restart from the first page",
-        422: "invalid_request / invalid_query / ambiguous_dataset / export_too_large",
+        422: (
+            "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context"
+            " / export_too_large"
+        ),
         429: "rate_limited (Retry-After)",
         500: "internal_error: an unexpected failure; nothing about it is echoed",
         503: "data_unavailable / auth_unavailable: retry later (Retry-After)",
@@ -362,6 +365,8 @@ def _install_handlers(api: FastAPI) -> None:
         retry_after=str(export.BUSY_RETRY),
     )
     handle(UnknownInput, 422, "invalid_query")
+    # A retailer id with several contexts where one context is needed (ADR-0008 §2).
+    handle(AmbiguousContext, 422, "ambiguous_context")
     handle(StaleCursorError, 409, "stale_cursor", "the data changed; restart from the first page")
     handle(ForbiddenError, 403, "forbidden", "admins only")
     handle(StatesForbiddenError, 403, "forbidden", "only admins may list unreviewed or rejected")

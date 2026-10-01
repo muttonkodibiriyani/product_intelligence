@@ -2,6 +2,10 @@
 
 Pure functions of a validated dataset and typed queries; the HTTP layer lives in ``app``.
 Admin-only fields are in separate models (``AdminEvidence``), never filtered after the fact.
+
+The dataset is read as ``pi.dataset/v3`` (a v2 snapshot is served through its upgrade). Offers
+are keyed by context id; a beauty retailer is its own sole context, so its keys are its retailer
+ids, as in v2. Fields added for v3 (ADR-0008 step 4b) are additive and come last.
 """
 
 from __future__ import annotations
@@ -23,23 +27,26 @@ from urllib.parse import urlsplit
 from pydantic import Field
 
 from pi_api.wire import SourceText
-from pi_core import AvailabilityState, MatchClass, ReviewState
+from pi_core import AvailabilityState, Channel, MatchClass, ReviewState
 from pi_dataset import (
     Capabilities,
+    Context,
     ContractModel,
-    Dataset,
+    DatasetV3,
     FieldStatus,
     MoneyValue,
-    Offer,
-    Product,
+    OfferV3,
+    ProductV3,
     Rating,
     RetailerStatus,
     Size,
+    SizeV3,
 )
+from pi_dataset.profiles import AttributeDef, ProfileInfo
 from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
-from pi_metrics.compare import Gap, pair_row
+from pi_metrics.compare import Gap, pair_with_labels
 from pi_metrics.promotions import depth
-from pi_metrics.view import as_v3, price_on, product_v3, regular_on
+from pi_metrics.view import AmbiguousContext, context, price_on, regular_on
 
 MAX_LIMIT = 100
 MAX_VALUES = 25
@@ -48,6 +55,8 @@ MAX_TEXT = 120
 ShortText = Annotated[str, Field(min_length=1, max_length=MAX_TEXT)]
 Values = Annotated[tuple[ShortText, ...], Field(max_length=MAX_VALUES)]
 DecimalText = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,6})?$")]
+#: ``<key>:<value>``; the key is a declared facet attribute (``meta.attributeSet``).
+AttrText = Annotated[str, Field(pattern=r"^[a-z][A-Za-z0-9_]{1,62}:.+$", max_length=MAX_TEXT)]
 
 
 class InvalidQueryError(ValueError):
@@ -108,9 +117,15 @@ class MetaView(ContractModel):
     fields: dict[str, FieldStatus]
     categories: tuple[CategoryNode, ...]
     test: bool
+    #: Where each offer was observed: retailer, channel, location (ADR-0008 §2). A retailer with
+    #: one context has it under the retailer's own id.
+    contexts: tuple[Context, ...]
+    profile: ProfileInfo
+    #: The profile's attributes; a ``facet`` one is usable as ``attr=<key>:<value>``.
+    attribute_set: tuple[AttributeDef, ...]
 
 
-def retailer_views(ds: Dataset) -> tuple[RetailerView, ...]:
+def retailer_views(ds: DatasetV3) -> tuple[RetailerView, ...]:
     return tuple(
         RetailerView(
             id=r.id,
@@ -124,7 +139,7 @@ def retailer_views(ds: Dataset) -> tuple[RetailerView, ...]:
     )
 
 
-def category_tree(products: Iterable[Product]) -> tuple[CategoryNode, ...]:
+def category_tree(products: Iterable[ProductV3]) -> tuple[CategoryNode, ...]:
     """Top-level slugs with their second-level children, counted in products."""
     top: Counter[str] = Counter()
     second: dict[str, Counter[str]] = {}
@@ -145,7 +160,7 @@ def category_tree(products: Iterable[Product]) -> tuple[CategoryNode, ...]:
     )
 
 
-def meta_view(ds: Dataset, datasets: tuple[ScopeRef, ...]) -> Metric[MetaView]:
+def meta_view(ds: DatasetV3, datasets: tuple[ScopeRef, ...]) -> Metric[MetaView]:
     m = ds.meta
     view = MetaView(
         datasets=datasets,
@@ -159,6 +174,9 @@ def meta_view(ds: Dataset, datasets: tuple[ScopeRef, ...]) -> Metric[MetaView]:
         fields=dict(m.fields),
         categories=category_tree(ds.products),
         test=m.test,
+        contexts=m.contexts,
+        profile=m.profile,
+        attribute_set=m.attribute_set,
     )
     return Metric[MetaView](status=Status.OK, data=view, as_of=m.dates[-1])
 
@@ -192,8 +210,9 @@ class ProductFilters(ContractModel):
         Values,
         Field(
             description=(
-                "Repeatable. With exactly two different values the order matters: the first is "
-                "the base of each card's gap and of sort=gap/gap_asc."
+                "Repeatable; a retailer id (all its contexts) or a context id. With exactly two "
+                "different values the order matters: the first is the base of each card's gap "
+                "and of sort=gap/gap_asc, and each must name one context."
             )
         ),
     ] = ()
@@ -201,6 +220,27 @@ class ProductFilters(ContractModel):
     price_min: DecimalText | None = None
     price_max: DecimalText | None = None
     sort: ProductSort = ProductSort.NAME
+    channel: Annotated[
+        tuple[Channel, ...],
+        Field(
+            max_length=MAX_VALUES,
+            description="Repeatable. Narrows the offers shown to contexts on these channels.",
+        ),
+    ] = ()
+    location: Annotated[
+        Values,
+        Field(description="Repeatable. Narrows the offers shown to contexts at these locations."),
+    ] = ()
+    attr: Annotated[
+        tuple[AttrText, ...],
+        Field(
+            max_length=MAX_VALUES,
+            description=(
+                "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key "
+                "are alternatives; different keys must all match."
+            ),
+        ),
+    ] = ()
 
 
 class ProductQuery(ProductFilters):
@@ -217,18 +257,42 @@ class CardMatch(ContractModel):
 
 
 class PairGap(ContractModel):
-    """One retailer pair's gap on the latest date, or why it isn't counted (design §7.2)."""
+    """One context pair's gap on the latest date, or why it isn't counted (design §7.2)."""
 
     base: str
     other: str
     gap: Gap | None
     excluded_reason: Excluded | None
+    #: On a counted pair whose equal measures carry different published labels: the base's
+    #: label, then the other's (the ``size_labels_differ`` caveat). Otherwise null.
+    size_labels: tuple[SourceText, SourceText] | None = None
 
 
-def pair_gap(ds: Dataset, product: Product, base: str, other: str) -> PairGap:
-    # pi_metrics pairs on v3; a v2 retailer is its own sole context, so the ids carry over.
-    row = pair_row(as_v3(ds), product_v3(ds, product.id), base, other, len(ds.meta.dates) - 1)
-    return PairGap(base=base, other=other, gap=row.gap, excluded_reason=row.excluded_reason)
+def pair_gap(ds: DatasetV3, product: ProductV3, base: str, other: str) -> PairGap:
+    row, labels = pair_with_labels(ds, product, base, other, len(ds.meta.dates) - 1)
+    return PairGap(
+        base=base,
+        other=other,
+        gap=row.gap,
+        excluded_reason=row.excluded_reason,
+        size_labels=labels,
+    )
+
+
+def measure(size: SizeV3 | None) -> Size | None:
+    """The v2-shaped measure of a size; null for a label-only size."""
+    if size is None or size.value is None or size.unit is None:
+        return None
+    return Size(value=size.value, unit=size.unit)
+
+
+def size_label(size: SizeV3 | None) -> tuple[str | None, str | None]:
+    """The published label (``Medium``, ``38``), never converted, and its system (``eu``)."""
+    return (None, None) if size is None else (size.label, size.system)
+
+
+def _first_label(offers: Iterable[OfferV3]) -> tuple[str | None, str | None]:
+    return next((size_label(o.size) for o in offers if o.size and o.size.label), (None, None))
 
 
 class ProductCard(ContractModel):
@@ -243,6 +307,10 @@ class ProductCard(ContractModel):
     matches: tuple[CardMatch, ...]
     #: Set when the search names exactly two retailers (base first); otherwise null.
     gap: PairGap | None = None
+    #: The first published size label of the shown offers, if any (``size`` is the measure),
+    #: and the label's system (``eu``, ``alpha``) where it matters.
+    size_label: SourceText | None = None
+    size_system: str | None = None
 
 
 class FacetCount(ContractModel):
@@ -283,18 +351,22 @@ _ARABIC_FOLD = str.maketrans(
 )
 
 
-def _latest(ds: Dataset, offer: Offer) -> MoneyValue | None:
+def _latest(ds: DatasetV3, offer: OfferV3) -> MoneyValue | None:
     return price_on(offer, len(ds.meta.dates) - 1)
 
 
-def _visible(product: Product, retailers: tuple[str, ...]) -> list[tuple[str, Offer]]:
-    return [(r, o) for r, o in product.offers.items() if not retailers or r in retailers]
+#: A set of context ids, or ``None`` for every context.
+Shown = frozenset[str] | None
 
 
-def _low_price(ds: Dataset, product: Product, retailers: tuple[str, ...]) -> Decimal | None:
+def _visible(product: ProductV3, shown: Shown) -> list[tuple[str, OfferV3]]:
+    return [(c, o) for c, o in product.offers.items() if shown is None or c in shown]
+
+
+def _low_price(ds: DatasetV3, product: ProductV3, contexts: Shown) -> Decimal | None:
     prices = [
         p.decimal()
-        for _, o in _visible(product, retailers)
+        for _, o in _visible(product, contexts)
         if not o.early and (p := _latest(ds, o)) is not None
     ]
     return min(prices, default=None)
@@ -309,15 +381,21 @@ def _decimal(text: str | None) -> Decimal | None:
         raise InvalidQueryError(text) from None
 
 
-def card(ds: Dataset, product: Product, pair: tuple[str, str] | None = None) -> ProductCard:
-    size = next((o.size for o in product.offers.values() if o.size is not None), None)
+def card(
+    ds: DatasetV3,
+    product: ProductV3,
+    pair: tuple[str, str] | None = None,
+    shown: Shown = None,
+) -> ProductCard:
+    offers = _visible(product, shown)
+    label, system = _first_label(o for _, o in offers)
     return ProductCard(
         id=product.id,
         brand=product.brand,
         name=product.name,
         category=product.category,
-        size=size,
-        prices={r: _latest(ds, o) for r, o in sorted(product.offers.items())},
+        size=next((m for _, o in offers if (m := measure(o.size)) is not None), None),
+        prices={c: _latest(ds, o) for c, o in sorted(offers)},
         matches=tuple(
             CardMatch(
                 a=e.a,
@@ -329,42 +407,107 @@ def card(ds: Dataset, product: Product, pair: tuple[str, str] | None = None) -> 
             for e in product.matches
         ),
         gap=None if pair is None else pair_gap(ds, product, *pair),
+        size_label=label,
+        size_system=system,
     )
 
 
-def _matched(product: Product) -> bool:
+def _matched(product: ProductV3) -> bool:
     return any(
         e.match_class is MatchClass.EXACT and e.review_state in COUNTED_STATES
         for e in product.matches
     )
 
 
-def _predicates(ds: Dataset, query: ProductFilters) -> dict[str, Callable[[Product], bool]]:
+def _named(ds: DatasetV3, ids: Iterable[str]) -> frozenset[str]:
+    """The contexts ``ids`` name: a context id itself, a retailer id every context it has."""
+    return frozenset(c.id for c in ds.meta.contexts for i in ids if i in (c.id, c.retailer))
+
+
+def shown_contexts(ds: DatasetV3, query: ProductFilters) -> Shown:
+    """The contexts whose offers a card shows: those on the ``channel`` and ``location`` asked
+    for, or every context when neither is given (ADR-0008 §2, "narrow the offers shown")."""
+    if not query.channel and not query.location:
+        return None
+    return frozenset(
+        c.id
+        for c in ds.meta.contexts
+        if (not query.channel or c.channel in query.channel)
+        and (not query.location or (c.location is not None and c.location.id in query.location))
+    )
+
+
+def _within(named: frozenset[str] | None, shown: Shown) -> Shown:
+    if named is None:
+        return shown
+    return named if shown is None else named & shown
+
+
+def _attr_values(value: object) -> set[str]:
+    """A stored attribute value as the folded texts a filter value can equal."""
+    if isinstance(value, bool):
+        return {"true" if value else "false"}
+    if isinstance(value, str | int | Decimal):
+        return {fold(str(value))}
+    if isinstance(value, list | tuple):
+        return {text for item in value for text in _attr_values(item)}
+    return set()  # an object never equals a filter value
+
+
+def _attr_filters(ds: DatasetV3, query: ProductFilters) -> dict[str, set[str]]:
+    facets = {a.key for a in ds.meta.attribute_set if a.facet}
+    wanted: dict[str, set[str]] = {}
+    for item in query.attr:
+        key, value = item.split(":", 1)
+        if key not in facets:
+            msg = f"attr {key!r} is not a facet attribute of this dataset"
+            raise InvalidQueryError(msg)
+        wanted.setdefault(key, set()).add(fold(value))
+    return wanted
+
+
+def _has_attrs(product: ProductV3, shown: Shown, wanted: dict[str, set[str]]) -> bool:
+    offers = [o for _, o in _visible(product, shown) if not o.early]
+    return all(
+        any(
+            _attr_values(source.get(key)) & values
+            for source in (product.attributes, *(o.attributes for o in offers))
+        )
+        for key, values in wanted.items()
+    )
+
+
+Check = Callable[[ProductV3], bool]
+
+
+def _predicates(ds: DatasetV3, query: ProductFilters) -> dict[str, Check]:
     """One predicate per filter, so each facet can drop its own (design §6, FE ask 6)."""
     brands = {fold(b) for b in query.brand}
     categories = {fold(c) for c in query.category}
-    retailers = set(query.retailer)
+    shown = shown_contexts(ds, query)
+    named = _within(_named(ds, query.retailer), shown) if query.retailer else None
     words = fold(query.q).split() if query.q else []
     low, high = _decimal(query.price_min), _decimal(query.price_max)
-    visible = tuple(query.retailer)
-    checks: dict[str, Callable[[Product], bool]] = {}
+    priced_in = _within(named, shown)
+    wanted = _attr_filters(ds, query)
+    checks: dict[str, Check] = {}
     if words:
         checks["q"] = lambda p: all(w in fold(f"{p.brand} {p.name} {p.id}") for w in words)
     if brands:
         checks["brand"] = lambda p: fold(p.brand) in brands
     if categories:
         checks["category"] = lambda p: any(fold(c) in categories for c in p.category)
-    if retailers:
-        checks["retailer"] = lambda p: any(
-            r in retailers and not o.early for r, o in p.offers.items()
-        )
+    if named is not None:
+        checks["retailer"] = lambda p: any(c in named and not o.early for c, o in p.offers.items())
+    if shown is not None:
+        checks["context"] = lambda p: any(c in shown and not o.early for c, o in p.offers.items())
     if query.matched is not None:
-        wanted = query.matched
-        checks["matched"] = lambda p: _matched(p) is wanted
+        is_matched = query.matched
+        checks["matched"] = lambda p: _matched(p) is is_matched
     if low is not None or high is not None:
 
-        def priced(p: Product) -> bool:
-            price = _low_price(ds, p, visible)
+        def priced(p: ProductV3) -> bool:
+            price = _low_price(ds, p, priced_in)
             return (
                 price is not None
                 and (low is None or price >= low)
@@ -372,26 +515,28 @@ def _predicates(ds: Dataset, query: ProductFilters) -> dict[str, Callable[[Produ
             )
 
         checks["price"] = priced
+    if wanted:
+        checks["attr"] = lambda p: _has_attrs(p, shown, wanted)
     return checks
 
 
-def _passes(product: Product, checks: dict[str, Callable[[Product], bool]], skip: str) -> bool:
+def _passes(product: ProductV3, checks: dict[str, Check], skip: str) -> bool:
     return all(check(product) for name, check in checks.items() if name != skip)
 
 
-def _facets(ds: Dataset, checks: dict[str, Callable[[Product], bool]]) -> Facets:
+def _facets(ds: DatasetV3, checks: dict[str, Check], shown: Shown) -> Facets:
+    """Counts in products; a retailer counts a product once, however many contexts offer it."""
     brand: Counter[str] = Counter()
     category: Counter[str] = Counter()
     retailer: Counter[str] = Counter()
+    owner = {c.id: c.retailer for c in ds.meta.contexts}
     for p in ds.products:
         if _passes(p, checks, "brand"):
             brand[p.brand] += 1
         if _passes(p, checks, "category"):
             category[p.category[0]] += 1
         if _passes(p, checks, "retailer"):
-            for r, o in p.offers.items():
-                if not o.early:
-                    retailer[r] += 1
+            retailer.update({owner[c] for c, o in _visible(p, shown) if not o.early})
 
     def counts(counter: Counter[str]) -> tuple[FacetCount, ...]:
         return tuple(FacetCount(key=k, count=n) for k, n in sorted(counter.items()))
@@ -399,9 +544,17 @@ def _facets(ds: Dataset, checks: dict[str, Callable[[Product], bool]]) -> Facets
     return Facets(brand=counts(brand), category=counts(category), retailer=counts(retailer))
 
 
+#: Filters added in API 1.2.0: left out of the digest while unset, so a cursor issued before
+#: them still continues.
+_ADDED_FILTERS = ("channel", "location", "attr")
+
+
 def filters_digest(query: ContractModel, extra: str = "") -> str:
     """Binds a cursor to the filters (and ``extra``, e.g. the role) it was issued for."""
     fields = query.model_dump(mode="json", exclude={"cursor", "limit"})
+    for name in _ADDED_FILTERS:
+        if fields.get(name) == []:
+            del fields[name]
     raw = json.dumps({"q": fields, "x": extra}, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -429,17 +582,39 @@ def decode_cursor(cursor: str, generation: str, digest: str) -> int:
     return offset
 
 
-def _unknown_values(ds: Dataset, query: ProductFilters) -> None:
-    known = {r.id for r in ds.meta.retailers}
+def _unknown_values(ds: DatasetV3, query: ProductFilters) -> None:
+    known = {r.id for r in ds.meta.retailers} | {c.id for c in ds.meta.contexts}
     unknown = sorted(set(query.retailer) - known)
     if unknown:
-        msg = f"unknown retailer {unknown[0]!r}"
+        msg = f"unknown retailer or context {unknown[0]!r}"
+        raise InvalidQueryError(msg)
+    places = {c.location.id for c in ds.meta.contexts if c.location is not None}
+    if not set(query.location) <= places:
+        msg = "unknown location"  # free text: never echoed
         raise InvalidQueryError(msg)
 
 
-def _search_pair(query: ProductFilters) -> tuple[str, str] | None:
+def _sole(ds: DatasetV3, value: str) -> str | None:
+    """The one context ``value`` names, or ``None`` for a retailer with several."""
+    try:
+        return context(ds, value).id
+    except AmbiguousContext:
+        return None
+
+
+def _search_pair(ds: DatasetV3, query: ProductFilters) -> tuple[str, str] | None:
+    """The two contexts a card's gap compares, if the search names exactly two.
+
+    A retailer with several contexts names none of them: its cards carry no gap, and
+    ``sort=gap/gap_asc`` is refused (422 ``ambiguous_context``) rather than guess one.
+    """
     if len(query.retailer) == 2 and query.retailer[0] != query.retailer[1]:
-        return query.retailer[0], query.retailer[1]
+        base, other = (_sole(ds, v) for v in query.retailer)
+        if base is not None and other is not None:
+            return base, other
+        if query.sort in GAP_SORTS:
+            for value in query.retailer:
+                context(ds, value)  # raises AmbiguousContext for the first ambiguous one
     if query.sort in GAP_SORTS:
         msg = f"sort={query.sort} needs exactly two different retailer values (base first)"
         raise InvalidQueryError(msg)
@@ -447,8 +622,8 @@ def _search_pair(query: ProductFilters) -> tuple[str, str] | None:
 
 
 def _by_gap(
-    ds: Dataset, hits: list[Product], pair: tuple[str, str], *, ascending: bool
-) -> list[Product]:
+    ds: DatasetV3, hits: list[ProductV3], pair: tuple[str, str], *, ascending: bool
+) -> list[ProductV3]:
     sign = 1 if ascending else -1
     gaps = [(p, pair_gap(ds, p, *pair).gap) for p in hits]
     # Ties break on id ascending in both directions, as the price sorts do.
@@ -459,14 +634,15 @@ def _by_gap(
 
 
 def _ordered(
-    ds: Dataset,
+    ds: DatasetV3,
     query: ProductFilters,
     pair: tuple[str, str] | None,
-    checks: dict[str, Callable[[Product], bool]],
-) -> list[Product]:
+    checks: dict[str, Check],
+) -> list[ProductV3]:
     """Every product passing the filters, in the query's sort order."""
     hits = [p for p in ds.products if _passes(p, checks, "")]
-    visible = tuple(query.retailer)
+    shown = shown_contexts(ds, query)
+    visible = _within(_named(ds, query.retailer), shown) if query.retailer else shown
     if query.sort is ProductSort.NAME:
         hits.sort(key=lambda p: (fold(p.name), p.id))
     elif query.sort in GAP_SORTS and pair is not None:
@@ -484,10 +660,11 @@ def _ordered(
     return hits
 
 
-def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[ProductPage]:
+def product_page(ds: DatasetV3, generation: str, query: ProductQuery) -> Metric[ProductPage]:
     _unknown_values(ds, query)
-    pair = _search_pair(query)
+    pair = _search_pair(ds, query)
     checks = _predicates(ds, query)
+    shown = shown_contexts(ds, query)
     digest = filters_digest(query)
     offset = 0 if query.cursor is None else decode_cursor(query.cursor, generation, digest)
     hits = _ordered(ds, query, pair, checks)
@@ -498,21 +675,22 @@ def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[Pr
         data=ProductPage(
             total=len(hits),
             next_cursor=encode_cursor(generation, end, digest) if end < len(hits) else None,
-            items=tuple(card(ds, p, pair) for p in page),
-            facets=_facets(ds, checks),
+            items=tuple(card(ds, p, pair, shown) for p in page),
+            facets=_facets(ds, checks, shown),
         ),
         as_of=ds.meta.dates[-1],
     )
 
 
-def product_cards(ds: Dataset, query: ProductFilters) -> Metric[tuple[ProductCard, ...]]:
+def product_cards(ds: DatasetV3, query: ProductFilters) -> Metric[tuple[ProductCard, ...]]:
     """Every card ``/v1/products`` would page through for these filters, in the same order."""
     _unknown_values(ds, query)
-    pair = _search_pair(query)
+    pair = _search_pair(ds, query)
     hits = _ordered(ds, query, pair, _predicates(ds, query))
+    shown = shown_contexts(ds, query)
     return Metric[tuple[ProductCard, ...]](
         status=Status.OK,
-        data=tuple(card(ds, p, pair) for p in hits),
+        data=tuple(card(ds, p, pair, shown) for p in hits),
         as_of=ds.meta.dates[-1],
     )
 
@@ -561,6 +739,7 @@ class AdminEvidence(Evidence):
 
 
 class OfferView(ContractModel):
+    #: The retailer the offer is at; ``context`` says where it was observed.
     retailer: str
     price: MoneyValue | None
     regular: MoneyValue | None
@@ -572,6 +751,12 @@ class OfferView(ContractModel):
     early: bool
     availability: AvailabilityState | None
     evidence: Evidence
+    context: str
+    channel: Channel
+    #: The context's location id; null for a context with no location (online).
+    location: str | None
+    size_label: SourceText | None
+    size_system: str | None
 
 
 class AdminOfferView(OfferView):
@@ -581,7 +766,7 @@ class AdminOfferView(OfferView):
 class ProductDetail(ContractModel):
     card: ProductCard
     offers: tuple[OfferView, ...]
-    #: Every retailer pair of the offers (base = the lower id), latest date.
+    #: Every context pair of the offers (base = the lower id), latest date.
     pairs: tuple[PairGap, ...]
 
 
@@ -591,7 +776,7 @@ class AdminProductDetail(ContractModel):
     pairs: tuple[PairGap, ...]
 
 
-def pair_gaps(ds: Dataset, product: Product) -> tuple[PairGap, ...]:
+def pair_gaps(ds: DatasetV3, product: ProductV3) -> tuple[PairGap, ...]:
     return tuple(pair_gap(ds, product, a, b) for a, b in combinations(sorted(product.offers), 2))
 
 
@@ -601,40 +786,52 @@ def _promo(price: MoneyValue | None, regular: MoneyValue | None) -> str | None:
     return str(depth(price, regular).quantize(Decimal("0.1")))
 
 
-def _offer_fields(ds: Dataset, retailer: str, offer: Offer) -> dict[str, Any]:
+def _offer_fields(ds: DatasetV3, ctx: Context, offer: OfferV3) -> dict[str, Any]:
     i = len(ds.meta.dates) - 1
     price, regular = price_on(offer, i), regular_on(offer, i)
     states = offer.series.availability
     return {
-        "retailer": retailer,
+        "retailer": ctx.retailer,
         "price": price,
         "regular": regular,
         "promo_pct": _promo(price, regular),
         "rating": offer.rating,
-        "size": offer.size,
+        "size": measure(offer.size),
         "shade_count": offer.shade_count,
         "sku": offer.sku,
         "early": offer.early,
         "availability": None if states is None else states[i],
+        "context": ctx.id,
+        "channel": ctx.channel,
+        "location": None if ctx.location is None else ctx.location.id,
+        "size_label": size_label(offer.size)[0],
+        "size_system": size_label(offer.size)[1],
     }
 
 
-def find(ds: Dataset, product_id: str) -> Product:
+def _offers(ds: DatasetV3, product: ProductV3) -> list[tuple[Context, OfferV3]]:
+    """The product's offers by context id, each with its context."""
+    return [(context(ds, c), o) for c, o in sorted(product.offers.items())]
+
+
+def find(ds: DatasetV3, product_id: str) -> ProductV3:
     for p in ds.products:
         if p.id == product_id:
             return p
     raise ProductNotFoundError(product_id)
 
 
-def product_detail(ds: Dataset, product: Product, hosts: EvidenceHosts) -> Metric[ProductDetail]:
+def product_detail(
+    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts
+) -> Metric[ProductDetail]:
     offers = tuple(
         OfferView(
-            **_offer_fields(ds, r, o),
+            **_offer_fields(ds, c, o),
             evidence=Evidence(
-                captured_at=o.evidence.captured_at, url=evidence_url(o.url, r, hosts)
+                captured_at=o.evidence.captured_at, url=evidence_url(o.url, c.retailer, hosts)
             ),
         )
-        for r, o in sorted(product.offers.items())
+        for c, o in _offers(ds, product)
     )
     return Metric[ProductDetail](
         status=Status.OK,
@@ -644,19 +841,19 @@ def product_detail(ds: Dataset, product: Product, hosts: EvidenceHosts) -> Metri
 
 
 def admin_product_detail(
-    ds: Dataset, product: Product, hosts: EvidenceHosts
+    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts
 ) -> Metric[AdminProductDetail]:
     offers = tuple(
         AdminOfferView(
-            **_offer_fields(ds, r, o),
+            **_offer_fields(ds, c, o),
             evidence=AdminEvidence(
                 captured_at=o.evidence.captured_at,
-                url=evidence_url(o.url, r, hosts),
+                url=evidence_url(o.url, c.retailer, hosts),
                 source=o.evidence.source,
                 run_id=o.evidence.run_id,
             ),
         )
-        for r, o in sorted(product.offers.items())
+        for c, o in _offers(ds, product)
     )
     return Metric[AdminProductDetail](
         status=Status.OK,
@@ -686,8 +883,9 @@ class HistoryQuery(ContractModel):
     end: date | None = Field(default=None, alias="to")
 
 
-def history(ds: Dataset, product: Product, query: HistoryQuery) -> Metric[History]:
-    """Per-retailer series; a missing day is null, never carried forward."""
+def history(ds: DatasetV3, product: ProductV3, query: HistoryQuery) -> Metric[History]:
+    """Per-context series (a sole context's key is its retailer's id); a missing day is null,
+    never carried forward."""
     if query.start and query.end and query.start > query.end:
         msg = "from is after to"
         raise InvalidQueryError(msg)
