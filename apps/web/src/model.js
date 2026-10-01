@@ -59,6 +59,8 @@ function hydrate(j){
     p.sameSize=p.listed.u&&p.listed.s&&p.size.u!=null&&p.size.u===p.size.s&&!p.sizeChg.length&&(!p.match||p.match[3]==='exact');return p});
   early.forEach(e=>{const sr=e.o.series||{};e.price=sr.price?sr.price[N-1]:null;e.size=e.o.size;e.at=e.o.evidence&&e.o.evidence.capturedAt});
   products.splice(0,products.length,...products.filter(p=>p.listed.u||p.listed.s));
+  /* categories outside the beauty list stay visible as 'other' (filters, ladder, overlap) */
+  if(products.some(p=>p.cat==='other')&&!CATS.includes('other'))CATS.push('other');
   const campaigns=(j.campaigns||[]).map(c=>({id:c.id,r:c.retailer,name:typeof c.name==='string'?{en:c.name}:c.name,mech:c.mechanic||'unclassified',start:c.start,end:c.end,depth:c.depth,cats:c.categories,a:dOf(c.start),b:dOf(c.end)}));
   const notObs=(j.notObserved||[]).map(n=>({r:n.retailer,a:dOf(n.start),b:dOf(n.end),cats:n.categories||null,why:typeof n.why==='string'?{en:n.why}:n.why}));
   const cov=j.coverage||{};

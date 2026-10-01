@@ -43,3 +43,5 @@ images/
 .DS_Store
 # Static web build copied in at deploy time (never committed)
 infra/web-dist/
+# Offline artifact build of the dashboard (apps/web/build.sh artifact)
+apps/web/artifact/
