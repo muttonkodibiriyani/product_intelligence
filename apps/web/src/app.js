@@ -82,7 +82,10 @@ function outSince(p,k,d){let i=d;while(i>0&&stockAt(p,k,i-1)===3)i--;return i}
 /* ---------- small components ---------- */
 const stockTag=(st)=>{const k=['na','in','low','out','unk'][st||0];return `<span class="stock st-${k}"><i></i>${t('stock')[k]}</span>`};
 const gapSpan=g=>g==null?'<span class="muted">—</span>':`<span class="num ${g>0.05?'gap-pos':g<-0.05?'gap-neg':'muted'}">${pct(g)}</span>`;
-const thumb=p=>`<span class="thumb">${productSVG(p,'')}</span>`;
+/* The retailer's image when the snapshot has one; the browser rendering when it has none or it fails to load. */
+const pic=p=>p.img?`<img class="pphoto" src="${esc(p.img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" width="200" height="200"><span hidden>${productSVG(p,'')}</span>`:productSVG(p,'');
+document.addEventListener('error',e=>{const i=e.target;if(i&&i.classList&&i.classList.contains('pphoto')){i.hidden=true;const f=i.nextElementSibling;if(f)f.hidden=false}},true);
+const thumb=p=>`<span class="thumb">${pic(p)}</span>`;
 const pcell=(p,sub)=>`<div class="pcell">${thumb(p)}<div class="pcx"><div class="bn">${esc(p.brand)}</div><div class="pn">${esc(p.name)}</div>${sub?`<div class="muted xs">${sub}</div>`:''}</div></div>`;
 const pinBtn=(p,label)=>{const on=S.pins.includes(p.id);return `<button class="iconbtn pinb${on?' on':''}" data-pin="${p.id}" aria-pressed="${on}" aria-label="${on?t('unpin'):t('pin')}: ${esc(p.brand+' '+p.name)}" ${tipAttr([on?t('unpin'):t('pin')])}>${ICON.pin}${label?`<span>${on?t('pinned'):t('pin')}</span>`:''}</button>`};
 const evBtn=(p,k,label)=>`<button class="linkbtn" data-ev="${p.id}" data-r="${k}">${label||t('evidence')}</button>`;
@@ -340,9 +343,9 @@ Object.assign(W,{
 function pageGrid(items,alts){if(!DS.real)return fixedGrid(items);
   const g=it=>gate(W[it[0]].needs);const ok=items.filter(it=>!g(it)),off=items.filter(g);
   if(off.length)alts.forEach(it=>{if(!g(it)&&!ok.some(o=>o[0]===it[0]))ok.push(it)});
-  const kp=ok.filter(it=>W[it[0]].kpi),rest=ok.filter(it=>!W[it[0]].kpi),kw=kp.length?Math.max(3,Math.floor(12/kp.length)):3;
-  const card=comingCard(off),first=off.length&&!items.some(it=>!W[it[0]].kpi&&!g(it));
-  return (first?card:'')+fixedGrid([...kp.map(it=>[it[0],kw,1]),...rest])+(first?'':card)}
+  const kp=ok.filter(it=>W[it[0]].kpi).slice(0,4),rest=ok.filter(it=>!W[it[0]].kpi),kw=kp.length?Math.max(3,Math.floor(12/kp.length)):3;
+  /* real data leads; what waits on data is one compact strip at the bottom, never a hero card */
+  return fixedGrid([...kp.map(it=>[it[0],kw,1]),...rest])+comingCard(off)}
 function comingCard(off){if(!off.length)return '';const seen=new Map();off.forEach(it=>{const r=gate(W[it[0]].needs).t;if(!seen.has(r))seen.set(r,[]);seen.get(r).push(W[it[0]].title())});
   return `<section class="card coming" aria-labelledby="coming-h"><div class="ch"><span class="gi wait">${ICON.clock}</span><div><h2 id="coming-h">${t('comingT')}</h2><p class="muted">${t('comingP')}</p></div></div>
    <ul class="clist">${[...seen].map(([r,ws])=>`<li><b>${esc(ws.join(' · '))}</b><span>${esc(r)}</span></li>`).join('')}</ul>
@@ -381,8 +384,10 @@ function vDashboard(){const v=viewById(S.viewId);const own=!v.preset;
      <button class="btn sm" data-resetview ${S.dirty?'':'disabled'}>${t('discard')}</button>${own?`<button class="btn sm" data-delview>${t('deleteView')}</button>`:''}${own?`<button class="btn sm" data-save>${t('save')}</button>`:''}<button class="btn sm" data-saveas>${t('saveAs')}</button><button class="btn sm primary" data-edit>${t('doneEdit')}</button>`
      :`${S.dirty?`<button class="btn sm" data-saveas>${t('saveAs')}</button>`:''}<button class="btn sm" data-edit>${t('customize')}</button>`}</div></div>
    ${S.saveAs?`<form class="saveas" data-saveform><label for="vname">${t('viewName')}</label><input id="vname" required maxlength="40" value="${esc(L(v.name)+(v.preset?' · '+t('copy'):''))}"><button class="btn sm primary" type="submit">${t('save')}</button><button class="btn sm" type="button" data-cancelsave>${t('cancel')}</button></form>`:''}`;
-  const grid=S.layout.length?`<div class="dgrid${S.edit?' edit':''}" id="dgrid">${S.layout.map((it,i)=>widget(it,i,S.edit)).join('')}</div>`:`<div class="wempty big"><b>${t('noWidgets')}</b><span>${t('noWidgetsP')}</span><button class="btn primary" data-addw>${ICON.plus} ${t('addWidget')}</button></div>`;
+  const grid=DS.real&&!S.edit&&S.layout.length?pageGrid(S.layout,DASH_ALTS):S.layout.length?`<div class="dgrid${S.edit?' edit':''}" id="dgrid">${S.layout.map((it,i)=>widget(it,i,S.edit)).join('')}</div>`:`<div class="wempty big"><b>${t('noWidgets')}</b><span>${t('noWidgetsP')}</span><button class="btn primary" data-addw>${ICON.plus} ${t('addWidget')}</button></div>`;
   return pagehead(t('nDash'),DS.real?t('dashSubReal'):t('dashSub'))+tabs+filterBar()+(S.edit?`<p class="edithint muted xs">${t('editHint')}</p>`:'')+grid}
+/* What a dashboard tab shows from today's snapshot when its own widgets wait on data. */
+const DASH_ALTS=[['kpiCatalog',3,1],['kpiMedPrice',3,1],['kpiBrands',3,1],['kpiRating',3,1],['ladder',12,4],['bandgrid',12,5],['cattbl',12,4],['brandtbl',12,5]];
 function fixedGrid(items){return `<div class="dgrid">${items.map((it,i)=>widget(it,'f'+i,false)).join('')}</div>`}
 function vPricing(){return pagehead(t('nPricing'),t('pricingSub'))+filterBar()+pageGrid([['kpiIndex',3,1],['kpiGap',3,1],['kpiMatched',3,1],['kpiCatalog',3,1],['index',12,3],['gapdist',5,3],['gaps',7,3],['ladder',12,4]],[['kpiMedPrice',3,1],['kpiBrands',3,1],['kpiRating',3,1],['bandgrid',12,5],['cattbl',12,4],['brandtbl',12,5]])}
 function vPromotions(){return pagehead(t('nPromo'),t('promoSub'))+filterBar()+pageGrid([['promocal',12,3],['promoheat',6,3],['promodepth',6,3]],[['kpiCatalog',3,1],['kpiMedPrice',3,1],['bandgrid',12,5]])+markdownCard()}
@@ -409,7 +414,7 @@ function priceRow(p,k,d){if(DS.real&&!retOk(k))return `<div class="prow na"><spa
   const pr=promoAt(p,k,d),reg=regAt(p,k,d),v=priceAt(p,k,d);
   return `<div class="prow"><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span><span class="num"><b>${aed(v)}</b>${pr&&reg&&reg>v?` <s class="muted">${aed(reg)}</s>`:''}</span>${pr?`<span class="badge b-blush xs">−${pr}%</span>`:''}</div>`}
 function pcard(p,d){const g=gapOf(p,d,'exact'),gu=gapOf(p,d,'unit');const sh=p.shades.slice(0,6);const sc=Math.max(p.shadeCount.u,p.shadeCount.s);
-  return `<article class="pcard"><a class="pimg" href="#/product/${p.id}" aria-label="${esc(p.brand+' '+p.name)}">${productSVG(p,'')}</a>
+  return `<article class="pcard"><a class="pimg" href="#/product/${p.id}" aria-label="${esc(p.brand+' '+p.name)}">${pic(p)}</a>
    <div class="pbody"><div class="bn">${esc(p.brand)}</div><a class="pn" href="#/product/${p.id}">${esc(p.name)}</a><div class="muted xs">${t('cat')[p.cat]} · ${szT(p.size.u||p.size.s,p)}${p.size.u&&p.size.s&&p.size.u!==p.size.s?` / ${szT(p.size.s,p)}`:''}</div>
    <div class="prices">${RR.map(k=>priceRow(p,k,d)).join('')}</div>
    <div class="pfoot">${g!=null?`<span ${tipAttr([t('gapExplain')])}>${t('gap')} ${gapSpan(g)}</span>`:gu!=null?`<span ${tipAttr([t('unitGapExplain')])}>${t('perUnitShort')} ${gapSpan(gu)}</span>`:'<span></span>'}
@@ -426,8 +431,8 @@ function vExplorer(){const c=ctx();if(DS.real&&!bothOk()&&S.ex.sort==='gap')S.ex
 
 /* ---------- product page ---------- */
 function vProduct(){const p=byId[S.param];if(!p)return pagehead(t('notFound'),'')+`<div class="wempty big"><b>${t('notFoundT')}</b><span>${t('notFoundP')}</span><a class="btn" href="#/explorer">${t('backExplorer')}</a></div>`;
-  const b=DAYS-1;const views=[['detail',productSVG(p,'','detail')],['card',productSVG(p,'')]];if(p.shades.length)views.push(['shades',productSVG(p,'','shades')]);const gi=Math.min(S.gal,views.length-1);
-  const gal=`<div class="gallery"><div class="gmain">${views[gi][1]}</div><div class="gthumbs" role="tablist" aria-label="${t('images')}">${views.map((v,i)=>`<button role="tab" aria-selected="${i===gi}" data-gal="${i}" aria-label="${t('galN')[v[0]]}">${v[1]}</button>`).join('')}</div><p class="muted xs">${t('renderNote')}</p></div>`;
+  const b=DAYS-1;const views=[...(p.img?[['photo',pic(p)]]:[]),['detail',productSVG(p,'','detail')],['card',productSVG(p,'')]];if(p.shades.length)views.push(['shades',productSVG(p,'','shades')]);const gi=Math.min(S.gal,views.length-1);
+  const gal=`<div class="gallery"><div class="gmain">${views[gi][1]}</div><div class="gthumbs" role="tablist" aria-label="${t('images')}">${views.map((v,i)=>`<button role="tab" aria-selected="${i===gi}" data-gal="${i}" aria-label="${t('galN')[v[0]]}">${v[1]}</button>`).join('')}</div><p class="muted xs">${views[gi][0]==='photo'?t('photoNote')(RN(p.img.includes(IMG_HOSTS.u)?'u':'s')):t('renderNote')}</p></div>`;
   const offer=k=>{if(DS.real&&!retOk(k))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><span class="gl"><b>${retShort(k)}</b>${info(retDetail(k))}</span></div>`;
    if(!p.listed[k]||!listedAt(p,k,b))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><b>${t('notListedAt')(RN(k))}</b><p class="muted">${p.listed[k]?t('delistedOn')(fmtD(dayDate(p.last[k]+1))):t('notCarried')}</p></div>`;
    const v=priceAt(p,k,b),reg=regAt(p,k,b),pr=promoAt(p,k,b),st=stockAt(p,k,b);
@@ -460,7 +465,7 @@ function vCompare(){const P=S.pins.map(id=>byId[id]).filter(Boolean);const b=DAY
   const cell=(p,k,f)=>DS.real&&!retOk(k)?`<span class="muted xs">${t('awaitingShort')}</span>`:listedAt(p,k,b)?f():`<span class="muted xs">${t('notListed')}</span>`;
   const bestOf=f=>{const v=P.map(f).filter(x=>x!=null);return v.length>1?Math.min(...v):null};
   const rows=[
-   [t('image'),p=>`<a class="imgbox" href="#/product/${p.id}">${productSVG(p,'')}</a>`],
+   [t('image'),p=>`<a class="imgbox" href="#/product/${p.id}">${pic(p)}</a>`],
    [t('product'),p=>`<div class="bn">${esc(p.brand)}</div><a href="#/product/${p.id}" class="pn">${esc(p.name)}</a><div class="muted xs">${t('cat')[p.cat]}</div>`],
    ...RR.map(k=>{const best=bestOf(p=>retOk(k)&&listedAt(p,k,b)?unitAt(p,k,b):null);return [`${RN(k)} · ${t('price')}`,p=>cell(p,k,()=>`<b class="num">${aed(priceAt(p,k,b))}</b>${promoAt(p,k,b)?` <span class="badge b-blush xs">−${promoAt(p,k,b)}%</span>`:''}<div class="muted xs num ${unitAt(p,k,b)===best?'best':''}">${unitAt(p,k,b)==null?'—':`${aed(unitAt(p,k,b),2)}/${p.unit}`}${unitAt(p,k,b)===best?` · ${t('lowestUnit')}`:''}</div>`)]}),
    [t('gap'),p=>DS.real&&!bothOk()?`<span class="muted xs">${t('awaitingShort')}</span>`:gapSpan(gapOf(p,b,'exact'))+(gapOf(p,b,'exact')==null&&gapOf(p,b,'unit')!=null?` <span class="muted xs">${t('perUnitShort')} ${pct(gapOf(p,b,'unit'))}</span>`:'')],

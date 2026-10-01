@@ -163,7 +163,9 @@ def test_hosting_routes_api_before_the_spa_catch_all() -> None:
 def test_the_csp_names_only_the_expected_external_hosts() -> None:
     """Thumbnails (API 1.3.0) are hotlinked from exactly one image host; nothing else is added.
 
-    The owner's rule: images come only from img-product.sephora.me, never copied or rehosted.
+    Images are hotlinked, never copied or rehosted. img-product.sephora.me is the only host for
+    PI-collected (sephora_me) images; media.alshaya.com is allowed solely to keep serving the
+    ulta_ae view live since 2026-10-01 (decision log, 2026-10-01).
     ``connect-src`` keeps the Firebase Auth and Storage hosts it already had.
     """
     hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
@@ -177,7 +179,10 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
         name: {s for s in sources if "." in s}
         for name, *sources in (d.split() for d in csp.split(";") if d.strip())
     }
-    assert external.pop("img-src") == {"https://img-product.sephora.me"}
+    assert external.pop("img-src") == {
+        "https://img-product.sephora.me",
+        "https://media.alshaya.com",
+    }
     assert external.pop("connect-src") == {
         "https://identitytoolkit.googleapis.com",
         "https://securetoken.googleapis.com",
