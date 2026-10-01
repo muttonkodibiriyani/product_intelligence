@@ -155,7 +155,7 @@ are **numbers**.
 |---|---|---|
 | `enabled` | boolean | `false` |
 | `model` | string | `gemini-2.5-flash` |
-| `promptVersion` | string | `chat-2026-10-01.2` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` at switch-on) |
+| `promptVersion` | string | `chat-2026-10-01.3` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` at switch-on) |
 | `priceTableVersion` | string | `2026-09-30-planning` (must equal `version` in `apps/assistant/config/prices.json`) |
 | `caps.monthUsd` | string | `5.00` |
 | `caps.labelMonthUsd.ci` | string | `1.50` |
