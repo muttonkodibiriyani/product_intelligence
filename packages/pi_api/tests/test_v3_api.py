@@ -162,6 +162,9 @@ def test_attr_filters_on_a_declared_facet(split: Client) -> None:
     [
         "attr=colour:red",  # not declared
         "attr=finish",  # no value
+        "attr=finish:matte%0D",  # a control character in the value
+        "attr=finish:a%0Ab",
+        "attr=finish:%C2%85",  # C1 NEL
         "&".join(["attr=finish:x"] * 26),
         "location=" + "x" * 60,
         "channel=teleport",

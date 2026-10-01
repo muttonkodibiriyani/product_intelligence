@@ -168,7 +168,8 @@
           "sizeSystem": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "x-pi-source-text": true
               },
               {
                 "type": "null"
@@ -243,7 +244,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.2.0",
+            "default": "1.2.1",
             "title": "Apiversion",
             "type": "string"
           },
@@ -2834,7 +2835,8 @@
           "sizeSystem": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "x-pi-source-text": true
               },
               {
                 "type": "null"
@@ -3144,7 +3146,8 @@
           "sizeSystem": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "x-pi-source-text": true
               },
               {
                 "type": "null"
@@ -3882,7 +3885,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.2.0"
+    "version": "1.2.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5874,7 +5877,7 @@
               "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
               "items": {
                 "maxLength": 120,
-                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:.+$",
+                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:[^\\x00-\\x1f\\x7f-\\x9f]+$",
                 "type": "string"
               },
               "maxItems": 25,
@@ -7204,7 +7207,7 @@
               "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
               "items": {
                 "maxLength": 120,
-                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:.+$",
+                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:[^\\x00-\\x1f\\x7f-\\x9f]+$",
                 "type": "string"
               },
               "maxItems": 25,

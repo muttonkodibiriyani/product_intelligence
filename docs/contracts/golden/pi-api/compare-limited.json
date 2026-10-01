@@ -1,9 +1,9 @@
 {
   "caveats": [
     {
-      "ar": "لم تُحتسب 1 من عناصر العينة المبكرة.",
+      "ar": "عناصر العينة المبكرة غير المحتسبة: 1.",
       "code": "early_excluded",
-      "en": "1 early sample items are not counted.",
+      "en": "1 early sample item is not counted.",
       "params": {
         "count": "1"
       }
@@ -156,7 +156,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.2.0",
+    "apiVersion": "1.2.1",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",
