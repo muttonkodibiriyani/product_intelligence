@@ -73,7 +73,9 @@
         "size": {
           "unit": "ml",
           "value": "50"
-        }
+        },
+        "sizeLabel": null,
+        "sizeSystem": null
       },
       {
         "brand": "Fixture Beauty",
@@ -109,7 +111,9 @@
         "size": {
           "unit": "ml",
           "value": "50"
-        }
+        },
+        "sizeLabel": null,
+        "sizeSystem": null
       },
       {
         "brand": "Fixture Beauty",
@@ -145,7 +149,9 @@
         "size": {
           "unit": "ml",
           "value": "50"
-        }
+        },
+        "sizeLabel": null,
+        "sizeSystem": null
       }
     ],
     "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjMsImYiOiJkM2ViODQwNDg0MGIwNzBiIn0",
@@ -153,7 +159,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.1.0",
+    "apiVersion": "1.2.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "products",

@@ -61,12 +61,30 @@
               }
             ]
           },
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "context": {
+            "title": "Context",
+            "type": "string"
+          },
           "early": {
             "title": "Early",
             "type": "boolean"
           },
           "evidence": {
             "$ref": "#/components/schemas/AdminEvidence"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
           },
           "price": {
             "anyOf": [
@@ -135,6 +153,29 @@
               }
             ]
           },
+          "sizeLabel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizelabel"
+          },
+          "sizeSystem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizesystem"
+          },
           "sku": {
             "anyOf": [
               {
@@ -159,7 +200,12 @@
           "sku",
           "early",
           "availability",
-          "evidence"
+          "evidence",
+          "context",
+          "channel",
+          "location",
+          "sizeLabel",
+          "sizeSystem"
         ],
         "title": "AdminOfferView",
         "type": "object"
@@ -197,7 +243,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.1.0",
+            "default": "1.2.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -288,6 +334,111 @@
         ],
         "title": "AssortmentGaps",
         "type": "object"
+      },
+      "AttributeBlock": {
+        "description": "Where the product page shows a key; a client renders an unknown block as key/value.",
+        "enum": [
+          "summary",
+          "size_run",
+          "swatches",
+          "nutrition",
+          "combo",
+          "fees",
+          "channel"
+        ],
+        "title": "AttributeBlock",
+        "type": "string"
+      },
+      "AttributeDef": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributeBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "capability": {
+            "title": "Capability",
+            "type": "boolean"
+          },
+          "facet": {
+            "title": "Facet",
+            "type": "boolean"
+          },
+          "key": {
+            "pattern": "^[a-z][A-Za-z0-9_]{1,62}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minProperties": 1,
+            "title": "Label",
+            "type": "object"
+          },
+          "level": {
+            "$ref": "#/components/schemas/AttributeLevel"
+          },
+          "type": {
+            "$ref": "#/components/schemas/AttributeType"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EnumValue"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "required": [
+          "key",
+          "level",
+          "type",
+          "values",
+          "label",
+          "facet",
+          "block",
+          "capability"
+        ],
+        "title": "AttributeDef",
+        "type": "object"
+      },
+      "AttributeLevel": {
+        "enum": [
+          "product",
+          "offer"
+        ],
+        "title": "AttributeLevel",
+        "type": "string"
+      },
+      "AttributeType": {
+        "enum": [
+          "text",
+          "enum",
+          "decimal",
+          "money",
+          "bool",
+          "text_list",
+          "object"
+        ],
+        "title": "AttributeType",
+        "type": "string"
       },
       "Availability": {
         "additionalProperties": false,
@@ -689,6 +840,53 @@
         "title": "Comparison",
         "type": "object"
       },
+      "Context": {
+        "additionalProperties": false,
+        "description": "One priced place an item is sold: retailer, channel and optionally a location (§2).",
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{1,62}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minProperties": 1,
+            "title": "Label",
+            "type": "object"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "pattern": "^[a-z][a-z0-9_]{1,62}$",
+            "title": "Retailer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "retailer",
+          "channel",
+          "location",
+          "label"
+        ],
+        "title": "Context",
+        "type": "object"
+      },
       "ContextCoverage": {
         "additionalProperties": false,
         "properties": {
@@ -802,6 +1000,31 @@
         ],
         "title": "DecidedBy",
         "type": "string"
+      },
+      "EnumValue": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "\\S",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minProperties": 1,
+            "title": "Label",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "EnumValue",
+        "type": "object"
       },
       "Envelope_AdminProductDetail_": {
         "additionalProperties": false,
@@ -2368,6 +2591,13 @@
       "MetaView": {
         "additionalProperties": false,
         "properties": {
+          "attributeSet": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeDef"
+            },
+            "title": "Attributeset",
+            "type": "array"
+          },
           "capabilities": {
             "$ref": "#/components/schemas/Capabilities"
           },
@@ -2376,6 +2606,13 @@
               "$ref": "#/components/schemas/CategoryNode"
             },
             "title": "Categories",
+            "type": "array"
+          },
+          "contexts": {
+            "items": {
+              "$ref": "#/components/schemas/Context"
+            },
+            "title": "Contexts",
             "type": "array"
           },
           "cutoff": {
@@ -2413,6 +2650,9 @@
             "title": "Matchstage",
             "type": "string"
           },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileInfo"
+          },
           "retailers": {
             "items": {
               "$ref": "#/components/schemas/RetailerView"
@@ -2440,7 +2680,10 @@
           "capabilities",
           "fields",
           "categories",
-          "test"
+          "test",
+          "contexts",
+          "profile",
+          "attributeSet"
         ],
         "title": "MetaView",
         "type": "object"
@@ -2484,12 +2727,30 @@
               }
             ]
           },
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "context": {
+            "title": "Context",
+            "type": "string"
+          },
           "early": {
             "title": "Early",
             "type": "boolean"
           },
           "evidence": {
             "$ref": "#/components/schemas/Evidence"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
           },
           "price": {
             "anyOf": [
@@ -2558,6 +2819,29 @@
               }
             ]
           },
+          "sizeLabel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizelabel"
+          },
+          "sizeSystem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizesystem"
+          },
           "sku": {
             "anyOf": [
               {
@@ -2582,14 +2866,19 @@
           "sku",
           "early",
           "availability",
-          "evidence"
+          "evidence",
+          "context",
+          "channel",
+          "location",
+          "sizeLabel",
+          "sizeSystem"
         ],
         "title": "OfferView",
         "type": "object"
       },
       "PairGap": {
         "additionalProperties": false,
-        "description": "One retailer pair's gap on the latest date, or why it isn't counted (design §7.2).",
+        "description": "One context pair's gap on the latest date, or why it isn't counted (design §7.2).",
         "properties": {
           "base": {
             "title": "Base",
@@ -2618,6 +2907,29 @@
           "other": {
             "title": "Other",
             "type": "string"
+          },
+          "sizeLabels": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string",
+                    "x-pi-source-text": true
+                  },
+                  {
+                    "type": "string",
+                    "x-pi-source-text": true
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizelabels"
           }
         },
         "required": [
@@ -2816,6 +3128,29 @@
                 "type": "null"
               }
             ]
+          },
+          "sizeLabel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizelabel"
+          },
+          "sizeSystem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizesystem"
           }
         },
         "required": [
@@ -2907,6 +3242,38 @@
         ],
         "title": "ProductSort",
         "type": "string"
+      },
+      "ProfileInfo": {
+        "additionalProperties": false,
+        "description": "``meta.profile``: which profile version is in force, and its size rules (ADR-0008 §1).",
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]{1,62}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "sizeLabelsComparable": {
+            "title": "Sizelabelscomparable",
+            "type": "boolean"
+          },
+          "sizeSystemRequired": {
+            "title": "Sizesystemrequired",
+            "type": "boolean"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "sizeLabelsComparable",
+          "sizeSystemRequired"
+        ],
+        "title": "ProfileInfo",
+        "type": "object"
       },
       "PromoItem": {
         "additionalProperties": false,
@@ -3515,7 +3882,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3630,7 +3997,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -3834,7 +4201,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -4033,7 +4400,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -4281,7 +4648,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -4432,7 +4799,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -4642,7 +5009,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -4876,7 +5243,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -5033,7 +5400,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -5252,7 +5619,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -5387,13 +5754,13 @@
             }
           },
           {
-            "description": "Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc.",
+            "description": "Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context.",
             "in": "query",
             "name": "retailer",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc.",
+              "description": "Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context.",
               "items": {
                 "maxLength": 120,
                 "minLength": 1,
@@ -5462,6 +5829,58 @@
               "$ref": "#/components/schemas/ProductSort",
               "default": "name"
             }
+          },
+          {
+            "description": "Repeatable. Narrows the offers shown to contexts on these channels.",
+            "in": "query",
+            "name": "channel",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable. Narrows the offers shown to contexts on these channels.",
+              "items": {
+                "$ref": "#/components/schemas/Channel"
+              },
+              "maxItems": 25,
+              "title": "Channel",
+              "type": "array"
+            }
+          },
+          {
+            "description": "Repeatable. Narrows the offers shown to contexts at these locations.",
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable. Narrows the offers shown to contexts at these locations.",
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Location",
+              "type": "array"
+            }
+          },
+          {
+            "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
+            "in": "query",
+            "name": "attr",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
+              "items": {
+                "maxLength": 120,
+                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:.+$",
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Attr",
+              "type": "array"
+            }
           }
         ],
         "responses": {
@@ -5520,7 +5939,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -5742,7 +6161,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -5955,7 +6374,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -6174,7 +6593,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -6404,7 +6823,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -6539,7 +6958,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -6665,13 +7084,13 @@
             }
           },
           {
-            "description": "Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc.",
+            "description": "Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context.",
             "in": "query",
             "name": "retailer",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc.",
+              "description": "Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context.",
               "items": {
                 "maxLength": 120,
                 "minLength": 1,
@@ -6739,6 +7158,58 @@
             "schema": {
               "$ref": "#/components/schemas/ProductSort",
               "default": "name"
+            }
+          },
+          {
+            "description": "Repeatable. Narrows the offers shown to contexts on these channels.",
+            "in": "query",
+            "name": "channel",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable. Narrows the offers shown to contexts on these channels.",
+              "items": {
+                "$ref": "#/components/schemas/Channel"
+              },
+              "maxItems": 25,
+              "title": "Channel",
+              "type": "array"
+            }
+          },
+          {
+            "description": "Repeatable. Narrows the offers shown to contexts at these locations.",
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable. Narrows the offers shown to contexts at these locations.",
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Location",
+              "type": "array"
+            }
+          },
+          {
+            "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
+            "in": "query",
+            "name": "attr",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
+              "items": {
+                "maxLength": 120,
+                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:.+$",
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Attr",
+              "type": "array"
             }
           },
           {
@@ -6830,7 +7301,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -6977,7 +7448,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -7158,7 +7629,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -7394,7 +7865,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {
@@ -7592,7 +8063,7 @@
                 }
               }
             },
-            "description": "invalid_request / invalid_query / ambiguous_dataset / export_too_large"
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
           },
           "429": {
             "content": {

@@ -26,7 +26,7 @@ from pi_api.catalog import (
 )
 from pi_api.wire import SourceText
 from pi_core import MatchClass, ReviewState
-from pi_dataset import ContractModel, Dataset
+from pi_dataset import ContractModel, DatasetV3
 from pi_dataset.models import DecidedBy
 from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
 from pi_metrics.compare import Comparison, PairRow
@@ -225,7 +225,9 @@ class StatesForbiddenError(Exception):
     """A viewer asked for review states only admins may list (403)."""
 
 
-def matches(ds: Dataset, generation: str, query: MatchesQuery, *, admin: bool) -> Metric[MatchPage]:
+def matches(
+    ds: DatasetV3, generation: str, query: MatchesQuery, *, admin: bool
+) -> Metric[MatchPage]:
     """Match edges in a stable order (product id, a, b), paged with a generation-bound cursor."""
     if not admin and query.review_state is not None and query.review_state not in COUNTED_STATES:
         raise StatesForbiddenError

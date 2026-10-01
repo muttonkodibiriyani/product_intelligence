@@ -200,14 +200,21 @@ def safe_cell(text: str) -> str:
 
 
 #: Columns added after a view first shipped go last, whatever row they are first seen in, so a
-#: reader that relied on the earlier column positions keeps them.
+#: reader that relied on the earlier column positions keeps them. An entry also covers the
+#: columns nested under it (``sizeLabel`` covers ``sizeLabel.label``).
 TRAILING: Mapping[ExportView, tuple[str, ...]] = {
     ExportView.COVERAGE: ("contexts",),  # ADR-0008 step 4
+    ExportView.PRODUCTS: ("gap.sizeLabels", "sizeLabel", "sizeSystem"),  # API 1.2.0
 }
 
 
+def _trailing_rank(key: str, trailing: tuple[str, ...]) -> int | None:
+    return next((i for i, t in enumerate(trailing) if key == t or key.startswith(t + ".")), None)
+
+
 def columns_of(flat: Iterable[Mapping[str, str]], trailing: tuple[str, ...] = ()) -> list[str]:
-    """Every key in first-seen order, minus a key that another key nests under, ``trailing`` last.
+    """Every key in first-seen order, minus a key that another key nests under, ``trailing`` last
+    (in ``trailing``'s order, first-seen order within an entry).
 
     A null object (say an uncounted row's ``gap``) flattens to one empty ``gap`` cell, while a
     present one gives ``gap.amount.amount`` and so on; the nested columns win, and the null row
@@ -220,7 +227,9 @@ def columns_of(flat: Iterable[Mapping[str, str]], trailing: tuple[str, ...] = ()
         parts = parent.split(".")
         nested.update(".".join(parts[: i + 1]) for i in range(len(parts)))
     kept = [key for key in seen if key not in nested]
-    return [key for key in kept if key not in trailing] + [k for k in trailing if k in kept]
+    ranks = {key: _trailing_rank(key, trailing) for key in kept}
+    last = sorted((k for k in kept if ranks[k] is not None), key=lambda k: ranks[k] or 0)
+    return [key for key in kept if ranks[key] is None] + last
 
 
 def _line(writer_buffer: io.StringIO, writer: Any, cells: Sequence[str]) -> bytes:

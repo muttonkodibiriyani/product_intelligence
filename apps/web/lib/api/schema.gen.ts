@@ -368,9 +368,14 @@ export interface components {
         /** AdminOfferView */
         AdminOfferView: {
             availability: components["schemas"]["AvailabilityState"] | null;
+            channel: components["schemas"]["Channel"];
+            /** Context */
+            context: string;
             /** Early */
             early: boolean;
             evidence: components["schemas"]["AdminEvidence"];
+            /** Location */
+            location: string | null;
             price: components["schemas"]["MoneyValue"] | null;
             /** Promopct */
             promoPct: string | null;
@@ -381,6 +386,10 @@ export interface components {
             /** Shadecount */
             shadeCount: number | null;
             size: components["schemas"]["Size"] | null;
+            /** Sizelabel */
+            sizeLabel: string | null;
+            /** Sizesystem */
+            sizeSystem: string | null;
             /** Sku */
             sku: string | null;
         };
@@ -396,7 +405,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.1.0
+             * @default 1.2.0
              */
             apiVersion: string;
             /** Currency */
@@ -437,6 +446,40 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * AttributeBlock
+         * @description Where the product page shows a key; a client renders an unknown block as key/value.
+         * @enum {string}
+         */
+        AttributeBlock: "summary" | "size_run" | "swatches" | "nutrition" | "combo" | "fees" | "channel";
+        /** AttributeDef */
+        AttributeDef: {
+            block: components["schemas"]["AttributeBlock"] | null;
+            /** Capability */
+            capability: boolean;
+            /** Facet */
+            facet: boolean;
+            /** Key */
+            key: string;
+            /** Label */
+            label: {
+                [key: string]: string;
+            };
+            level: components["schemas"]["AttributeLevel"];
+            type: components["schemas"]["AttributeType"];
+            /** Values */
+            values: components["schemas"]["EnumValue"][] | null;
+        };
+        /**
+         * AttributeLevel
+         * @enum {string}
+         */
+        AttributeLevel: "product" | "offer";
+        /**
+         * AttributeType
+         * @enum {string}
+         */
+        AttributeType: "text" | "enum" | "decimal" | "money" | "bool" | "text_list" | "object";
         /** Availability */
         Availability: {
             /**
@@ -593,6 +636,22 @@ export interface components {
              */
             truncated: boolean;
         };
+        /**
+         * Context
+         * @description One priced place an item is sold: retailer, channel and optionally a location (§2).
+         */
+        Context: {
+            channel: components["schemas"]["Channel"];
+            /** Id */
+            id: string;
+            /** Label */
+            label: {
+                [key: string]: string;
+            };
+            location: components["schemas"]["Location"] | null;
+            /** Retailer */
+            retailer: string;
+        };
         /** ContextCoverage */
         ContextCoverage: {
             channel: components["schemas"]["Channel"];
@@ -631,6 +690,15 @@ export interface components {
          * @enum {string}
          */
         DecidedBy: "human" | "auto";
+        /** EnumValue */
+        EnumValue: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: {
+                [key: string]: string;
+            };
+        };
         /** Envelope[AdminProductDetail] */
         Envelope_AdminProductDetail_: {
             /**
@@ -1043,9 +1111,13 @@ export interface components {
         };
         /** MetaView */
         MetaView: {
+            /** Attributeset */
+            attributeSet: components["schemas"]["AttributeDef"][];
             capabilities: components["schemas"]["Capabilities"];
             /** Categories */
             categories: components["schemas"]["CategoryNode"][];
+            /** Contexts */
+            contexts: components["schemas"]["Context"][];
             /**
              * Cutoff
              * Format: date-time
@@ -1063,6 +1135,7 @@ export interface components {
             kind: string;
             /** Matchstage */
             matchStage: string;
+            profile: components["schemas"]["ProfileInfo"];
             /** Retailers */
             retailers: components["schemas"]["RetailerView"][];
             /** Test */
@@ -1085,9 +1158,14 @@ export interface components {
         /** OfferView */
         OfferView: {
             availability: components["schemas"]["AvailabilityState"] | null;
+            channel: components["schemas"]["Channel"];
+            /** Context */
+            context: string;
             /** Early */
             early: boolean;
             evidence: components["schemas"]["Evidence"];
+            /** Location */
+            location: string | null;
             price: components["schemas"]["MoneyValue"] | null;
             /** Promopct */
             promoPct: string | null;
@@ -1098,12 +1176,16 @@ export interface components {
             /** Shadecount */
             shadeCount: number | null;
             size: components["schemas"]["Size"] | null;
+            /** Sizelabel */
+            sizeLabel: string | null;
+            /** Sizesystem */
+            sizeSystem: string | null;
             /** Sku */
             sku: string | null;
         };
         /**
          * PairGap
-         * @description One retailer pair's gap on the latest date, or why it isn't counted (design §7.2).
+         * @description One context pair's gap on the latest date, or why it isn't counted (design §7.2).
          */
         PairGap: {
             /** Base */
@@ -1112,6 +1194,11 @@ export interface components {
             gap: components["schemas"]["Gap"] | null;
             /** Other */
             other: string;
+            /** Sizelabels */
+            sizeLabels?: [
+                string,
+                string
+            ] | null;
         };
         /** PairRow */
         PairRow: {
@@ -1166,6 +1253,10 @@ export interface components {
                 [key: string]: components["schemas"]["MoneyValue"] | null;
             };
             size: components["schemas"]["Size"] | null;
+            /** Sizelabel */
+            sizeLabel?: string | null;
+            /** Sizesystem */
+            sizeSystem?: string | null;
         };
         /** ProductDetail */
         ProductDetail: {
@@ -1190,6 +1281,20 @@ export interface components {
          * @enum {string}
          */
         ProductSort: "name" | "price_asc" | "price_desc" | "gap" | "gap_asc";
+        /**
+         * ProfileInfo
+         * @description ``meta.profile``: which profile version is in force, and its size rules (ADR-0008 §1).
+         */
+        ProfileInfo: {
+            /** Name */
+            name: string;
+            /** Sizelabelscomparable */
+            sizeLabelsComparable: boolean;
+            /** Sizesystemrequired */
+            sizeSystemRequired: boolean;
+            /** Version */
+            version: number;
+        };
         /** PromoItem */
         PromoItem: {
             /** Depthpct */
@@ -1455,7 +1560,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1555,7 +1660,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1654,7 +1759,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1758,7 +1863,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1854,7 +1959,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1956,7 +2061,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2060,7 +2165,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2158,7 +2263,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2261,7 +2366,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2308,12 +2413,18 @@ export interface operations {
                 q?: string | null;
                 brand?: string[];
                 category?: string[];
-                /** @description Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc. */
+                /** @description Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context. */
                 retailer?: string[];
                 matched?: boolean | null;
                 priceMin?: string | null;
                 priceMax?: string | null;
                 sort?: components["schemas"]["ProductSort"];
+                /** @description Repeatable. Narrows the offers shown to contexts on these channels. */
+                channel?: components["schemas"]["Channel"][];
+                /** @description Repeatable. Narrows the offers shown to contexts at these locations. */
+                location?: string[];
+                /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
+                attr?: string[];
             };
             header?: never;
             path?: never;
@@ -2367,7 +2478,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2469,7 +2580,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2570,7 +2681,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2671,7 +2782,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2772,7 +2883,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2867,7 +2978,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2913,12 +3024,18 @@ export interface operations {
                 q?: string | null;
                 brand?: string[];
                 category?: string[];
-                /** @description Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc. */
+                /** @description Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context. */
                 retailer?: string[];
                 matched?: boolean | null;
                 priceMin?: string | null;
                 priceMax?: string | null;
                 sort?: components["schemas"]["ProductSort"];
+                /** @description Repeatable. Narrows the offers shown to contexts on these channels. */
+                channel?: components["schemas"]["Channel"][];
+                /** @description Repeatable. Narrows the offers shown to contexts at these locations. */
+                location?: string[];
+                /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
+                attr?: string[];
                 limit?: number;
                 cursor?: string | null;
             };
@@ -2973,7 +3090,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3070,7 +3187,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3169,7 +3286,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3271,7 +3388,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3370,7 +3487,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description invalid_request / invalid_query / ambiguous_dataset / export_too_large */
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
             422: {
                 headers: {
                     [name: string]: unknown;

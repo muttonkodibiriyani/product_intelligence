@@ -36,11 +36,15 @@
       "size": {
         "unit": "ml",
         "value": "50"
-      }
+      },
+      "sizeLabel": null,
+      "sizeSystem": null
     },
     "offers": [
       {
         "availability": "in_stock",
+        "channel": "online",
+        "context": "shop_a",
         "early": false,
         "evidence": {
           "capturedAt": "2026-09-30T00:00:00Z",
@@ -48,6 +52,7 @@
           "source": "fixture:shop_a",
           "url": null
         },
+        "location": null,
         "price": {
           "amount": "90.00",
           "currency": "AED",
@@ -70,10 +75,14 @@
           "unit": "ml",
           "value": "50"
         },
+        "sizeLabel": null,
+        "sizeSystem": null,
         "sku": null
       },
       {
         "availability": "in_stock",
+        "channel": "online",
+        "context": "shop_b",
         "early": false,
         "evidence": {
           "capturedAt": "2026-09-30T00:00:00Z",
@@ -81,6 +90,7 @@
           "source": "fixture:shop_b",
           "url": null
         },
+        "location": null,
         "price": {
           "amount": "100.00",
           "currency": "AED",
@@ -103,6 +113,8 @@
           "unit": "ml",
           "value": "50"
         },
+        "sizeLabel": null,
+        "sizeSystem": null,
         "sku": null
       }
     ],
@@ -119,13 +131,14 @@
           "cheaper": "base",
           "pct": "11.1"
         },
-        "other": "shop_b"
+        "other": "shop_b",
+        "sizeLabels": null
       }
     ]
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.1.0",
+    "apiVersion": "1.2.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "admin_product",

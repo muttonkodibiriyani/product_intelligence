@@ -161,7 +161,7 @@ versioned snapshots.
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
   "meta": {
-    "apiVersion": "1.1.0", "endpoint": "compare", "metricVersion": "2026-10-01.3",
+    "apiVersion": "1.2.0", "endpoint": "compare", "metricVersion": "2026-10-01.3",
     "generation": "1727…", "cutoff": "2026-09-30T00:00:00Z",
     "market": "AE", "currency": "AED", "scope": "pilot",
     "filters": { ... }                   // the validated, normalised input, echoed
@@ -194,7 +194,7 @@ these reasons. A missing value is never a zero.
 
 | Status | Code |
 |---|---|
-| 422 | `invalid_request` (malformed or unknown keys), `invalid_query` (well-formed but not answerable: an unknown retailer, a pair of one retailer, an empty date window, a cursor from other filters or another role), `ambiguous_dataset` |
+| 422 | `invalid_request` (malformed or unknown keys), `invalid_query` (well-formed but not answerable: an unknown retailer, a pair of one retailer, an empty date window, a cursor from other filters or another role), `ambiguous_dataset`, `ambiguous_context` (API 1.2.0: a retailer id where one context is needed and the retailer has several; the message lists its context ids) |
 | 401 | `unauthenticated` (`WWW-Authenticate: Bearer`; the only status that means sign in again) |
 | 403 | `forbidden` (no role, admins only, or a viewer asking `/v1/matches` for unreviewed or rejected edges) / `out_of_scope` |
 | 404 | `not_found` |
@@ -290,16 +290,41 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 (`<base>,<other>`) or `retailer[]` (N retailers, for coverage, availability and assortment),
 `brand[]`, `category[]`, `from`, `to`. The encodings are pinned in §5.
 
+**Contexts (API 1.2.0, ADR-0008 step 4b).** The API reads `pi.dataset/v3`; a v2 snapshot is
+upgraded once at load. Every field below marked 1.2.0 is additive, and a beauty snapshot (one
+context per retailer, under the retailer's id) answers 1.1.x requests exactly as before.
+- `/v1/meta` adds `contexts[{id, retailer, channel, location {id, label, city, area} | null,
+  label}]`, `profile` and `attributeSet`.
+- A metric's retailer id (`retailers`, `retailer[]`, `missingAt`, `presentAt`) is a context id. A
+  retailer id is accepted only when it is that retailer's sole context (a sole context has the
+  retailer's id); with several contexts it is `422 ambiguous_context`. A beauty retailer never
+  is. Coverage stays per retailer and lists its contexts.
+
 - **`/v1/products`:** `q`, `brand[]`, `category[]`, `retailer[]`, `matched`, `priceMin`,
   `priceMax` (decimal strings, in `meta.currency`), `sort=name|price_asc|price_desc|gap|gap_asc`,
   `limit`, `cursor`. Returns `{total, truncated, nextCursor, items: ProductCard[]}`.
+  - API 1.2.0: a `retailer` value is a retailer id (all its contexts) or a context id.
+    `channel[]` and `location[]` (location ids) narrow the offers shown: card `prices`, the price
+    filter and sort, and the retailer facet use only those contexts, and a product needs a
+    non-early offer in one. `attr[]` is `<key>:<value>` on a `facet` attribute of
+    `meta.attributeSet` (else `422 invalid_query`; ≤ 25), matched case- and accent-insensitively
+    against the product's or a shown offer's value (any item of a list). Values of one key are
+    alternatives; different keys must all match. Attribute facet counts are a follow-up.
+  - The retailer facet counts a product once per retailer, however many of its contexts offer
+    it.
   - A `ProductCard` has: `id`, `brand`, `name`, `category`, `size` (string plus unit), `image`
     (null until the contract carries it; never invented), per-retailer `price: Money | null`, and
     `match {class, reviewState, confidence}`.
   - With exactly two different `retailer` values (the first is the base) each card also carries
     `gap: PairGap` = `{base, other, gap {amount, pct, cheaper} | null, excludedReason | null}` for
-    the latest date, from `pi_metrics.compare.pair_row`. Otherwise `gap` is null.
-  - `sort=gap` and `sort=gap_asc` need that pair (else `422 invalid_query`). Both sort on the
+    the latest date, from `pi_metrics.compare.pair_row`. Otherwise `gap` is null. API 1.2.0:
+    each value must name one context; a retailer with several gives no gap (the filter still
+    applies). `PairGap.sizeLabels` is `[baseLabel, otherLabel]` on a counted pair whose equal
+    measures carry different published labels (the `size_labels_differ` caveat), else null.
+  - API 1.2.0: `size` stays the measure (null for a label-only size). `sizeLabel` (source text)
+    is the first shown offer's published label, if any, and `sizeSystem` its system (`eu`).
+  - `sort=gap` and `sort=gap_asc` need that pair (else `422 invalid_query`, or
+    `422 ambiguous_context` for a retailer with several contexts). Both sort on the
     **signed** `gap.pct`, so the direction is kept (FE, 1 Oct). `gap` puts other dearest
     relative to base first; `gap_asc` puts other cheapest first. Uncounted cards come last in
     both, and ties and the tail are ordered by id.
@@ -314,8 +339,12 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   - As built (S3): `pairs: PairGap[]`, one per unordered retailer pair the product is offered
     at (sorted ids, the first is the base), each with its gap or `excludedReason`. The same
     list is on the admin detail.
+  - API 1.2.0: one offer view per context, keyed and sorted by context id. `retailer` is the
+    retailer; `context`, `channel`, `location` (id or null), `sizeLabel` and `sizeSystem` are
+    added. `pairs` are context pairs; two contexts of one retailer pair on an equal item key.
 - **`/v1/products/{id}/history`:** `from`, `to`. Returns `series[retailer] = [{date, price, regular,
-  promo, availability}]`. The trend needs `capabilities.history`, otherwise `capability_off`.
+  promo, availability}]` (API 1.2.0: keyed by context id, which is the retailer id for a sole
+  context). The trend needs `capabilities.history`, otherwise `capability_off`.
   Missing days are `null` with a `notObserved` window, never carried forward.
 - **`/v1/compare`:** `retailers=<base>,<other>`, `id[]` (≤ 25), `brand[]`, `category[]`, `date`
   (default: the latest), `groupBy=brand|category`.
@@ -365,7 +394,9 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 - **`/v1/coverage`:** `retailer[]`. Returns `retailers[{id, name, status, since, note,
   productCount, matchedCount, freshness, contexts[{id, channel, location, label, status,
   productCount, freshness, dates[{date, observed}]}]}]`, `capabilities`, `fields` and
-  `notObserved`. Admins also
+  `notObserved`. `observed` means the context was crawled that day (an offer seen, no
+  whole-catalogue `notObserved` window); it does not mean the run was complete. Only a complete
+  run backs an absence claim (§7). Admins also
   get rungs, run ids and block counts.
 - **`/v1/matches`:** `class`, `reviewState`, `retailers`, `brand`, `limit`, `cursor`. Returns
   `{total, nextCursor, items[{productId, brand, name, a, b, matchClass, reviewState, decidedBy,

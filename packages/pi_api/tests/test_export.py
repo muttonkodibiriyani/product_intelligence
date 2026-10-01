@@ -226,7 +226,7 @@ def test_each_export_writes_one_audit_entry_without_row_content(
         "format": "jsonl",
         "filters": {"retailers": f"{A},{B}"},
         "rows": 15,
-        "apiVersion": "1.1.0",
+        "apiVersion": "1.2.0",
     }
     text = caplog.text
     assert "Product p01" not in text
@@ -383,3 +383,23 @@ def test_the_coverage_csv_header_keeps_the_v2_columns_then_contexts(client: Clie
         "id", "name", "status", "since", "productCount", "matchedCount", "freshness", "note.en",
         "contexts",
     ]  # fmt: skip
+
+
+def test_a_trailing_entry_covers_its_nested_columns_in_trailing_order() -> None:
+    rows = [
+        {"id": "a", "sizeSystem": "", "sizeLabel": "", "gap": ""},
+        {"id": "b", "gap.pct": "1", "gap.sizeLabels": ""},
+        {"id": "c", "gap.pct": "2", "gap.sizeLabels": "[]", "note": "", "note.en": "x"},
+    ]
+    assert export.columns_of(rows, ("gap.sizeLabels", "note", "sizeLabel")) == [
+        "id", "sizeSystem", "gap.pct", "gap.sizeLabels", "note.en", "sizeLabel",
+    ]  # fmt: skip
+
+
+def test_the_products_csv_header_keeps_the_v1_1_columns_then_the_1_2_ones(
+    client: Client,
+) -> None:
+    lines = get(client, "export/products?retailer=shop_a&retailer=shop_b").text
+    header = next(csv.reader([lines.lstrip("﻿").splitlines()[1]]))
+    assert header[-3:] == ["gap.sizeLabels", "sizeLabel", "sizeSystem"]
+    assert header[:7] == ["id", "brand", "name", "category", "size.value", "size.unit", "image"]

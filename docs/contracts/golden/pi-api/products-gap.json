@@ -57,7 +57,8 @@
             "cheaper": "base",
             "pct": "25.0"
           },
-          "other": "shop_b"
+          "other": "shop_b",
+          "sizeLabels": null
         },
         "id": "p05",
         "image": null,
@@ -86,7 +87,9 @@
         "size": {
           "unit": "ml",
           "value": "50"
-        }
+        },
+        "sizeLabel": null,
+        "sizeSystem": null
       },
       {
         "brand": "Fixture Beauty",
@@ -106,7 +109,8 @@
             "cheaper": "base",
             "pct": "11.1"
           },
-          "other": "shop_b"
+          "other": "shop_b",
+          "sizeLabels": null
         },
         "id": "p01",
         "image": null,
@@ -135,7 +139,9 @@
         "size": {
           "unit": "ml",
           "value": "50"
-        }
+        },
+        "sizeLabel": null,
+        "sizeSystem": null
       },
       {
         "brand": "Sample Labs",
@@ -155,7 +161,8 @@
             "cheaper": "base",
             "pct": "4.7"
           },
-          "other": "shop_b"
+          "other": "shop_b",
+          "sizeLabels": null
         },
         "id": "p04",
         "image": null,
@@ -184,7 +191,9 @@
         "size": {
           "unit": "ml",
           "value": "50"
-        }
+        },
+        "sizeLabel": null,
+        "sizeSystem": null
       }
     ],
     "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjMsImYiOiI2ZDcxZTVjZDIyYmFjNDJhIn0",
@@ -192,7 +201,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.1.0",
+    "apiVersion": "1.2.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "products",

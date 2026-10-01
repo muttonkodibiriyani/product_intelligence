@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from pi_dataset import Dataset, DatasetError, load_dataset
+from pi_dataset import DatasetError, DatasetV3, load_any
 from pi_metrics.view import as_v3
 
 log = logging.getLogger(__name__)
@@ -76,7 +76,8 @@ class GcsStore:  # pragma: no cover - thin wrapper over the client; needs GCS cr
 @dataclass(frozen=True)
 class Loaded:
     path: str
-    dataset: Dataset
+    #: Always v3: a v2 snapshot is upgraded once, at load (ADR-0008 §4).
+    dataset: DatasetV3
     generation: str
 
     @property
@@ -109,13 +110,17 @@ def _gunzip(data: bytes, limit: int) -> bytes:
     return out
 
 
-def parse(data: bytes, *, allow_test: bool = False, limit: int = MAX_DATASET_BYTES) -> Dataset:
+def parse(data: bytes, *, allow_test: bool = False, limit: int = MAX_DATASET_BYTES) -> DatasetV3:
+    """A validated snapshot as v3: a ``pi.dataset/v3`` document as is, a v2 one upgraded.
+
+    Raises ``UpgradeError`` (a ``ValueError``) for a v2 document that can't be read as v3.
+    """
     if data.startswith(_GZIP_MAGIC):
         data = _gunzip(data, limit)
     if len(data) > limit:
         msg = f"dataset is larger than {limit} bytes"
         raise ValueError(msg)
-    return load_dataset(data.decode("utf-8"), allow_test=allow_test)
+    return as_v3(load_any(data.decode("utf-8"), allow_test=allow_test))
 
 
 class SnapshotSource:
@@ -146,10 +151,8 @@ class SnapshotSource:
                 if current is not None and self._store.generation(path) == current.generation:
                     continue
                 data, generation = self._store.read(path)
+                # Upgraded here, off the request path; a v2 that can't be is not loaded.
                 dataset = parse(data, allow_test=self._allow_test)
-                # pi_metrics reads v3: upgrade once here, off the request path (ADR-0008 §4).
-                # A v2 that can't be upgraded is not loaded (UpgradeError is a ValueError).
-                as_v3(dataset)
                 loaded = Loaded(path=path, dataset=dataset, generation=generation)
             except (DatasetError, ValueError, OSError, zlib.error) as error:
                 log.warning("dataset %s not loaded: %s", path, type(error).__name__)

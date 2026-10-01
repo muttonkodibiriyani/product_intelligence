@@ -45,6 +45,15 @@ class UnknownInput(ValueError):  # noqa: N818 -- a request error; the API maps i
     """A date, retailer or context the dataset doesn't have."""
 
 
+class AmbiguousContext(UnknownInput):
+    """A bare retailer id where a context id is needed, and the retailer has several contexts.
+
+    The context-id rule (ADR-0008 §2) makes this deterministic: a retailer id names a context
+    exactly when the retailer has one, so it is never resolved to a silent pick (422
+    ``ambiguous_context``).
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class _Indexed:
     #: Weak: a cached document never outlives its caller's last reference to the source.
@@ -165,9 +174,19 @@ def selected_retailers(ds: DatasetV3, ids: tuple[str, ...]) -> tuple[Retailer, .
 def context(ds: DatasetV3, context_id: str) -> Context:
     found = _Upgraded.get(ds).contexts.get(context_id)
     if found is None:
+        several = contexts_of(ds, context_id)
+        if several:
+            names = ", ".join(c.id for c in several)
+            msg = f"retailer {context_id!r} has several contexts; name one of: {names}"
+            raise AmbiguousContext(msg)
         msg = f"unknown retailer or context {context_id!r}"
         raise UnknownInput(msg)
     return found
+
+
+def contexts_of(ds: DatasetV3, retailer_id: str) -> tuple[Context, ...]:
+    """The retailer's contexts in snapshot order; empty for an id that is not a retailer."""
+    return tuple(c for c in ds.meta.contexts if c.retailer == retailer_id)
 
 
 def selected_contexts(ds: DatasetV3, ids: tuple[str, ...]) -> tuple[Context, ...]:

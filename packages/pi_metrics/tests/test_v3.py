@@ -158,8 +158,28 @@ def test_unclear_identity_fails_safe_to_no_match(key: str | None) -> None:
 
 
 def test_unknown_context_is_a_request_error() -> None:
-    with pytest.raises(view.UnknownInput, match="unknown retailer or context"):
-        compare(load(menu()), "shop_a", B, EVERYTHING)
+    with pytest.raises(view.UnknownInput, match="unknown retailer or context") as raised:
+        compare(load(menu()), "shop_z", B, EVERYTHING)
+    assert not isinstance(raised.value, view.AmbiguousContext)
+
+
+def test_a_retailer_with_several_contexts_is_ambiguous_not_unknown() -> None:
+    ds = load(menu())
+    for call in (
+        lambda: compare(ds, "shop_a", B, EVERYTHING),
+        lambda: price_index(ds, B, "shop_a", EVERYTHING),
+        lambda: promotions(ds, ("shop_a",), EVERYTHING),
+    ):
+        with pytest.raises(view.AmbiguousContext, match=f"name one of: {WEB}, {APP}"):
+            call()
+
+
+def test_no_beauty_retailer_id_is_ambiguous() -> None:
+    """Beauty has one context per retailer, under the retailer's id: never ambiguous_context."""
+    ds = view.as_v3(metrics_dataset())
+    assert ds.meta.profile.name == "beauty"
+    for shop in ds.meta.retailers:
+        assert view.contexts_of(ds, shop.id) == (view.context(ds, shop.id),)
 
 
 # ------------------------------------------------------------------ caveats

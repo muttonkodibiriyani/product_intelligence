@@ -71,6 +71,8 @@ export const SOURCE_TEXT_KEYS: ReadonlySet<string> = new Set([
   "method",
   "stage",
   "source",
+  "sizeLabel",
+  "sizeLabels",
 ]);
 
 /** Always removed (see the module comment). */
