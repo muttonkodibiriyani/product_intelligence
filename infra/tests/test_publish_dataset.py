@@ -198,3 +198,34 @@ def test_v2_is_published_under_country_and_scope_with_its_own_meta_doc() -> None
     # What is uploaded re-loads under the same strict rules, and packaging is deterministic.
     publish_dataset.validate_v2(gzip.decompress(body).decode(), allow_test=True)
     assert publish_dataset.package_v2(dataset)[0] == body
+
+
+def _shared_listing(raw: str) -> str:
+    """Two products carrying the same listing (url and sku): valid v2, but pi-api can't serve it."""
+    doc = json.loads(raw)
+    first = doc["products"][0]
+    first["offers"][next(iter(first["offers"]))]["url"] = "https://shop.example/p/1"
+    twin = copy.deepcopy(first)
+    twin["id"] = f"{first['id']}-twin"
+    doc["products"].append(twin)
+    return json.dumps(doc)
+
+
+def test_v2_that_pi_api_cannot_serve_is_held() -> None:
+    raw = _shared_listing(EXAMPLE.read_text(encoding="utf-8"))
+    dataset, errors = publish_dataset.validate_v2(raw, allow_test=True)
+    assert dataset is None
+    assert errors
+    assert all(e.startswith("HOLD, pi-api cannot serve this file") for e in errors)
+    assert any("is in several products" in e for e in errors)
+
+
+def test_held_file_is_never_uploaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "held.json"
+    path.write_text(_shared_listing(EXAMPLE.read_text(encoding="utf-8")), encoding="utf-8")
+    argv = ["publish_dataset.py", str(path), "--project", "demo-pi", "--allow-test"]
+    monkeypatch.setattr("sys.argv", argv)  # not --dry-run: it must stop before Firebase
+    assert publish_dataset.main() == 1
+    assert "INVALID: HOLD, pi-api cannot serve this file" in capsys.readouterr().err
