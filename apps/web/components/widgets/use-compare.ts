@@ -21,15 +21,19 @@ export type PairState<T> =
   | { kind: 'empty'; env: Envelope<T> }
   | { kind: 'ready'; data: T; env: Envelope<T> };
 
-function state<T>(q: {
-  data?: Envelope<T>;
-  isError: boolean;
-  error: unknown;
-  refetch: () => unknown;
-}): PairState<T> {
+function state<T>(
+  q: {
+    data?: Envelope<T>;
+    isError: boolean;
+    error: unknown;
+    refetch: () => unknown;
+  },
+  shaped: (d: T) => boolean,
+): PairState<T> {
   if (q.isError && !q.data) return { kind: 'error', error: q.error, retry: () => void q.refetch() };
   if (!q.data) return { kind: 'loading' };
-  if (!q.data.data || q.data.status !== 'ok') return { kind: 'empty', env: q.data };
+  // A body without the arrays we draw from is treated as no data, never handed to a chart.
+  if (!q.data.data || q.data.status !== 'ok' || !shaped(q.data.data)) return { kind: 'empty', env: q.data };
   return { kind: 'ready', data: q.data.data, env: q.data };
 }
 
@@ -58,7 +62,7 @@ export function useCompareData(
       }),
     enabled: !!api && !!pair,
   });
-  return state(q);
+  return state(q, (d) => Array.isArray(d.rows) && Array.isArray(d.groups));
 }
 
 /** /index for a pair: the basket index per collection day, drawn only when a real trend exists. */
@@ -70,5 +74,5 @@ export function useIndexData(pair: { base: string; other: string } | null): Pair
       api!.get('/api/v1/index', { query: { retailers: `${pair!.base},${pair!.other}` }, signal }),
     enabled: !!api && !!pair,
   });
-  return state(q);
+  return state(q, (d) => Array.isArray(d.points));
 }

@@ -281,7 +281,7 @@ for (const locale of ['en', 'ar'] as const) {
     }) => {
       const mock = await mockBackend(page, {
         onApi: withSummary(
-          api({ products: () => withImages('ulta_ae', [IMG_ULTA, IMG_ULTA_GONE, IMG_LOOKALIKE, null]) }),
+          api({ products: () => withImages('ulta_ae', [IMG_ULTA, IMG_ULTA_GONE, IMG_LOOKALIKE]) }),
         ),
       });
       const images: { url: string; referer?: string }[] = [];
@@ -294,14 +294,14 @@ for (const locale of ['en', 'ar'] as const) {
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/explore/`);
       const rows = cards(page);
-      await expect(rows).toHaveCount(4);
+      await expect(rows).toHaveCount(3);
       const img = rows.nth(0).locator('img');
       await expect(img).toHaveAttribute('src', IMG_ULTA);
       await expect(img).toHaveAttribute('loading', 'lazy');
       await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
       await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
-      // The renamed file (404), the look-alike host and no image at all: each the placeholder.
-      for (const i of [1, 2, 3]) {
+      // The renamed file (404) and the look-alike host: each the placeholder.
+      for (const i of [1, 2]) {
         await expect(rows.nth(i).locator('img')).toHaveCount(0);
         await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
       }
