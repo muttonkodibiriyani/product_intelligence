@@ -153,7 +153,7 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
 order and the region. Deploy Hosting only after the service exists:
 
 ```sh
-firebase deploy --only hosting --project $PROJECT
+npx -y firebase-tools@14.27.0 deploy --only hosting --project $PROJECT
 ```
 
 The rewrite keeps the API same-origin, so the CSP `connect-src 'self'` is unchanged.

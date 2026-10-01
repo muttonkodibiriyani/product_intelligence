@@ -16,7 +16,7 @@ Enabled APIs: firestore, firebasestorage, identitytoolkit, firebasehosting, fire
 
 ```sh
 # rules + hosting (from infra/, with the web build in infra/web-dist/)
-firebase deploy --project productintelligence-beeb3 --only firestore:rules,storage,hosting
+npx -y firebase-tools@14.27.0 deploy --project productintelligence-beeb3 --only firestore:rules,storage,hosting
 # publish a dataset (validate first with --dry-run). The schema picks the layout:
 #   pi.dataset/v1 -> datasets/uae/ + demo_meta/current (what the dashboard reads today)
 #   pi.dataset/v2 -> datasets/<country>/<scope>/ + demo_meta/v2_<country>_<scope> (ADR-0007 §6)
@@ -48,7 +48,7 @@ uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3
 | `cloud.firestore` | `rulesets/4000bcde-2291-4089-bca9-2d49ca04b800` | 2026-09-30 21:15:46 | `021f754d901855c2` | `021f754d901855c2` (`firestore.rules`) |
 | `firebase.storage/productintelligence-beeb3.firebasestorage.app` | `rulesets/fbab556b-8abb-44d9-bccc-448a5afc5cd2` | 2026-09-30 21:15:43 | `798b55374f6d9dfb` | `798b55374f6d9dfb` (`storage.rules`) |
 
-After this PR merges, rules are redeployed only from `main` (`firebase deploy --only firestore:rules,storage`).
+After this PR merges, rules are redeployed only from `main` (`npx -y firebase-tools@14.27.0 deploy --only firestore:rules,storage`).
 
 ## Rules tests
 
@@ -56,7 +56,7 @@ After this PR merges, rules are redeployed only from `main` (`firebase deploy --
 (CI job `firebase-rules`, 0 skips allowed). It covers: anonymous, no-role and unknown-role users
 denied; viewer/admin may read `demo_meta/*` and `datasets/**` only; no client writes. Run it locally with:
 
-    npx -y firebase-tools@14 emulators:exec --config infra/firebase.json --project demo-pi \
+    npx -y firebase-tools@14.27.0 emulators:exec --config infra/firebase.json --project demo-pi \
         --only firestore,storage "uv run pytest infra/tests -m emulator"
 
 ## Follow-ups (after the demo)
