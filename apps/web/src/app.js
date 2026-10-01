@@ -76,7 +76,7 @@ const binOf=g=>GAP_BINS.findIndex(([lo,hi])=>g===0?lo===0&&hi===0:(g>lo&&g<=hi)|
 function promoWindows(p,k,a,b){return p.promos.filter(x=>x.r===k&&x.b>=a&&x.a<=b)}
 const FREQ=['1','2','3','4+'],DEPTHB=['<15%','15–24%','25–34%','35–44%','45%+'];
 const depthIdx=v=>v<15?0:v<25?1:v<35?2:v<45?3:4;
-function launchesIn(P,a,b){const ev=[];P.forEach(p=>RR.forEach(k=>{if(!p.d[k]||!S.ret.has(k))return;if(p.first[k]>a&&p.first[k]<=b)ev.push({p,k,type:'new',d:p.first[k]});if(p.last[k]<DAYS-1&&p.last[k]>=a&&p.last[k]<b)ev.push({p,k,type:'gone',d:p.last[k]+1})}));return ev.sort((x,y)=>y.d-x.d)}
+function launchesIn(P,a,b){const ev=[];P.forEach(p=>RR.forEach(k=>{if(!p.d[k]||!S.ret.has(k))return;if(p.first[k]>a&&p.first[k]<=b&&!heldAt(p,k,p.first[k]-1))ev.push({p,k,type:'new',d:p.first[k]});if(p.last[k]<DAYS-1&&p.last[k]>=a&&p.last[k]<b&&!heldAt(p,k,p.last[k]+1))ev.push({p,k,type:'gone',d:p.last[k]+1})}));return ev.sort((x,y)=>y.d-x.d)}
 function outSince(p,k,d){let i=d;while(i>0&&stockAt(p,k,i-1)===3)i--;return i}
 
 /* ---------- small components ---------- */
@@ -434,6 +434,7 @@ function vProduct(){const p=byId[S.param];if(!p)return pagehead(t('notFound'),''
   const b=DAYS-1;const views=[...(p.img?[['photo',pic(p)]]:[]),['detail',productSVG(p,'','detail')],['card',productSVG(p,'')]];if(p.shades.length)views.push(['shades',productSVG(p,'','shades')]);const gi=Math.min(S.gal,views.length-1);
   const gal=`<div class="gallery"><div class="gmain">${views[gi][1]}</div><div class="gthumbs" role="tablist" aria-label="${t('images')}">${views.map((v,i)=>`<button role="tab" aria-selected="${i===gi}" data-gal="${i}" aria-label="${t('galN')[v[0]]}">${v[1]}</button>`).join('')}</div><p class="muted xs">${views[gi][0]==='photo'?t('photoNote')(RN(p.img.includes(IMG_HOSTS.u)?'u':'s')):t('renderNote')}</p></div>`;
   const offer=k=>{if(DS.real&&!retOk(k))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><span class="gl"><b>${retShort(k)}</b>${info(retDetail(k))}</span></div>`;
+   if(heldAt(p,k,b))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><b>${t('priceReview')}</b></div>`;
    if(!p.listed[k]||!listedAt(p,k,b))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><b>${t('notListedAt')(RN(k))}</b><p class="muted">${p.listed[k]?t('delistedOn')(fmtD(dayDate(p.last[k]+1))):t('notCarried')}</p></div>`;
    const v=priceAt(p,k,b),reg=regAt(p,k,b),pr=promoAt(p,k,b),st=stockAt(p,k,b);
    return `<div class="offer"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span>${p.sku[k]?`<span class="muted xs mono">${esc(p.sku[k])}</span>`:''}</h3><div class="big num">${aed(v)}${pr&&reg>v?` <s class="muted">${aed(reg)}</s>`:''}</div>
