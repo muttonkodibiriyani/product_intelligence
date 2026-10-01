@@ -36,6 +36,9 @@ function validateDataset(j){const e=[];if(!j||j.schema!=='pi.dataset/v1')e.push(
 /* Product images are hotlinked from the retailer's own CDN, never copied: an https URL on that retailer's host only, else none. */
 const IMG_HOSTS={s:'img-product.sephora.me',u:'media.alshaya.com'};
 function imgUrl(v,k){if(typeof v!=='string')return null;try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password&&(k?u.hostname===IMG_HOSTS[k]:Object.values(IMG_HOSTS).includes(u.hostname))?u.href:null}catch(e){return null}}
+/* A price of 0.01 or less is a feed error, not a price (owner rule): it is read as no price, so it
+   is never shown and never enters an aggregate. */
+const cash=v=>v==null||!(+v>0.01)?null:+v;
 function hydrate(j){
   const dates=j.meta.dates,N=dates.length,end=Date.parse(dates[N-1]+'T00:00:00Z'),dOf=iso=>Math.round((Date.parse(String(iso).slice(0,10)+'T00:00:00Z')-end)/864e5)+N-1;
   const caps=Object.assign({history:N>1,promotions:false,campaigns:false,stock:false,sizes:false,shades:false,coverage:false},j.meta.capabilities||{});
@@ -48,22 +51,22 @@ function hydrate(j){
       listed:{},size:{},reg:{},shadeCount:{},rating:{},first:{},last:{},d:{},ev:{},sku:{},url:{},promos:[],outs:[],sizeChg:[],
       match:q.match&&q.match.reviewState!=='rejected'?[q.match.method,q.match.confidence,q.match.stage||j.meta.matchStage,q.match.matchClass||'exact',q.match.reviewState||(j.meta.kind==='sample'?'accepted':'unreviewed')]:null};
     RR.forEach(k=>{let o=q.offers&&q.offers[k];if(o&&(o.early||!rOk(k))){if(o.early)early.push({p,k,o});o=null}p.listed[k]=!!o;if(!o){p.d[k]=null;p.first[k]=p.last[k]=null;p.shadeCount[k]=0;p.rating[k]=null;return}
-      const sr=o.series||{};const price=(sr.price||new Array(N).fill(null)).map(v=>v==null?null:+v);
+      const sr=o.series||{};const price=(sr.price||new Array(N).fill(null)).map(cash);
       const size=sr.size?sr.size.map(v=>v==null?null:+v):new Array(N).fill(o.size==null?null:+o.size);
       const stock=sr.stock?sr.stock.map((v,i)=>price[i]==null&&v!==4?0:v):null;
-      const promo=sr.promo||null;const regular=sr.regular||null;
-      p.d[k]={price,size,stock,promo,regular};p.size[k]=o.size!=null?+o.size:size[N-1];p.shadeCount[k]=+o.shadeCount||0;p.rating[k]=Array.isArray(o.rating)?o.rating.map(Number):null;
+      const regular=sr.regular?sr.regular.map(cash):null;/* a discount worked out from a guarded price or regular price is not a discount either */const bad=i=>price[i]==null||(regular&&regular[i]==null&&sr.regular[i]!=null);const promo=sr.promo?sr.promo.map((v,i)=>bad(i)?0:v):null;
+      const held=(sr.price||[]).map((v,i)=>v!=null&&price[i]==null);p.d[k]={price,size,stock,promo,regular,held};p.size[k]=o.size!=null?+o.size:size[N-1];p.shadeCount[k]=+o.shadeCount||0;p.rating[k]=Array.isArray(o.rating)?o.rating.map(Number):null;
       p.ev[k]=o.evidence||null;if(!p.img)p.img=imgUrl(o.image,k);p.sku[k]=o.sku||null;p.url[k]=o.url||null;
       let f=price.findIndex(v=>v!=null),l=-1;for(let i=N-1;i>=0;i--)if(price[i]!=null){l=i;break}
       p.first[k]=f<0?null:f;p.last[k]=l<0?null:l;
       p.reg[k]=regular&&l>=0?regular[l]:(l>=0?price[l]:null);
-      (o.promos||[]).forEach(x=>p.promos.push({c:x.campaign||null,r:k,a:Math.max(0,dOf(x.start)),b:Math.min(N-1,dOf(x.end)),pct:+x.pct||0}));
+      (o.promos||[]).forEach(x=>{const a=Math.max(0,dOf(x.start)),b=Math.min(N-1,dOf(x.end));let ok=false;for(let i=a;i<=b;i++)if(!bad(i))ok=true;if(ok)p.promos.push({c:x.campaign||null,r:k,a,b,pct:+x.pct||0})});
       if(!o.promos&&promo){let a=null;for(let i=0;i<=N;i++){const on=i<N&&promo[i]>0;if(on&&a==null)a=i;if(!on&&a!=null){p.promos.push({c:null,r:k,a,b:i-1,pct:Math.max(...promo.slice(a,i))});a=null}}}
       if(stock){let a=null;for(let i=0;i<=N;i++){const on=i<N&&stock[i]===3;if(on&&a==null)a=i;if(!on&&a!=null){p.outs.push({r:k,a,b:i-1});a=null}}}
       for(let i=1;i<N;i++)if(size[i]!=null&&size[i-1]!=null&&size[i]!==size[i-1])p.sizeChg.push({r:k,d:i,from:size[i-1],to:size[i]})});
     if(!p.img)p.img=imgUrl(q.image);
     p.sameSize=p.listed.u&&p.listed.s&&p.size.u!=null&&p.size.u===p.size.s&&!p.sizeChg.length&&(!p.match||p.match[3]==='exact');return p});
-  early.forEach(e=>{const sr=e.o.series||{};e.price=sr.price?sr.price[N-1]:null;e.size=e.o.size==null?null:+e.o.size;e.at=e.o.evidence&&e.o.evidence.capturedAt});
+  early.forEach(e=>{const sr=e.o.series||{};e.price=sr.price?cash(sr.price[N-1]):null;e.size=e.o.size==null?null:+e.o.size;e.at=e.o.evidence&&e.o.evidence.capturedAt});
   products.splice(0,products.length,...products.filter(p=>p.listed.u||p.listed.s));
   /* categories outside the beauty list stay visible as 'other' (filters, ladder, overlap) */
   if(products.some(p=>p.cat==='other')&&!CATS.includes('other'))CATS.push('other');
@@ -84,6 +87,8 @@ const sizeAt=(p,k,d)=>p.d[k]?p.d[k].size[d]:null;
 const stockAt=(p,k,d)=>{const x=p.d[k];if(!x)return 0;if(!x.stock)return x.price[d]!=null?-1:0;return x.stock[d]};
 const promoAt=(p,k,d)=>{const x=p.d[k];return x&&x.promo?x.promo[d]:0};
 const listedAt=(p,k,d)=>!!(p.d[k]&&p.d[k].price[d]!=null);
+/* listed that day, but its price was a feed error (0.01 or less) and is withheld */
+const heldAt=(p,k,d)=>!!(p.d[k]&&p.d[k].held&&p.d[k].held[d]);
 const unitAt=(p,k,d)=>{const v=priceAt(p,k,d),s=sizeAt(p,k,d);return v==null||!s?null:v/s};
 
 const SAMPLE=hydrate(sampleContract());
