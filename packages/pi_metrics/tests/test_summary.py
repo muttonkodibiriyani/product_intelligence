@@ -277,3 +277,28 @@ def test_products_are_the_offers_observed_on_the_latest_date() -> None:
     s = data(d)
     assert (s.products, s.priced) == (7, 6)  # q08 unseen; q07 seen without a price
     assert sum(c.n for c in s.category_mix or ()) == 7
+
+
+@pytest.mark.parametrize(
+    ("last", "mean"),
+    [
+        ("10.03", "10.00"),  # 60.03 / 6 = 10.005: half to even, down
+        ("10.09", "10.02"),  # 60.09 / 6 = 10.015: half to even, up
+        ("10.00", "10.00"),
+    ],
+)
+def test_the_mean_price_is_rounded_half_even_to_the_currency(last: str, mean: str) -> None:
+    s = data(only_a(["10.00"] * 5 + [last]))
+    assert s.mean_price is not None
+    assert (s.mean_price.amount, s.mean_price.currency) == (mean, "AED")
+
+
+def test_the_mean_price_is_over_the_same_prices_as_the_median() -> None:
+    s = data(only_a(["10.00", "20.00", "30.00", "40.00", "100.00"]))
+    assert s.median_price is not None
+    assert s.mean_price is not None
+    assert (s.median_price.amount, s.mean_price.amount) == ("30.00", "40.00")
+
+
+def test_too_few_prices_withhold_the_mean_too() -> None:
+    assert data(only_a(["10.00"] * 4)).mean_price is None
