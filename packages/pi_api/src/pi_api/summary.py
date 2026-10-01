@@ -102,7 +102,7 @@ class SummaryCache:
         self._entries: OrderedDict[tuple[str, str], Metric[Summary]] = OrderedDict()
 
     def get(self, loaded: Loaded, retailer: str | None) -> Metric[Summary]:
-        ds = loaded.dataset
+        ds = loaded.current
         ctx = (default_context(ds) if retailer is None else view.context(ds, retailer)).id
         key = (loaded.generation, ctx)
         with self._lock:

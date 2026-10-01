@@ -25,7 +25,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from pi_dataset import DatasetError, DatasetV3, load_any
-from pi_dataset.compose import SourceInfo, compose, only, source_infos
+from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
 from pi_metrics.view import as_v3
 
 log = logging.getLogger(__name__)
@@ -89,6 +89,15 @@ class Loaded:
     generation: str
     #: Each source with its own file's cutoff, dates and capabilities.
     sources: tuple[SourceInfo, ...] = field(default=())
+    #: For latest-date reads: ``dataset`` with each stale source at its own last date.
+    latest: DatasetV3 | None = None
+    #: The sources whose own last date is before the view's (``pi_dataset.compose.latest``).
+    stale: tuple[SourceInfo, ...] = field(default=())
+
+    @property
+    def current(self) -> DatasetV3:
+        """The dataset for a latest-date read: ``latest`` if a source is stale."""
+        return self.dataset if self.latest is None else self.latest
 
     @property
     def markets(self) -> tuple[str, ...]:
@@ -271,4 +280,14 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
     stamp = "|".join(f"{label}@{p.generation}" for label, p in parts)
     generation = "c" + hashlib.sha256(stamp.encode()).hexdigest()[:16]
     path = ",".join(label for label, _ in parts)
-    return Loaded(path, composed.dataset, generation, composed.sources)
+    as_of = latest(composed)
+    if as_of.stale:
+        log.info("per-source view: %s read at their own last date", [s.source for s in as_of.stale])
+    return Loaded(
+        path,
+        composed.dataset,
+        generation,
+        composed.sources,
+        latest=as_of.dataset if as_of.stale else None,
+        stale=as_of.stale,
+    )

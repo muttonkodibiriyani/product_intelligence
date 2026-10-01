@@ -9,7 +9,7 @@ from typing import Any
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.5.0"
+API_VERSION = "1.6.0"
 
 
 class Localized(ContractModel):
@@ -113,6 +113,16 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         ar=(
             "عناصر بأحجام متساوية وتسميات مختلفة: {count}، عبر أزواج من التسميات عددها {pairs}؛"
             " نعرض الأكثر تكرارًا."
+        ),
+    ),
+    CaveatCode.STALE_SOURCE: Localized(
+        en=(
+            "{retailer} was last collected on {asOf}: its latest figures are from that date,"
+            " older than the other retailers'."
+        ),
+        ar=(
+            "آخر جمع لبيانات {retailer} كان في {asOf}: أحدث أرقامه من ذلك التاريخ،"
+            " وهي أقدم من بيانات المتاجر الأخرى."
         ),
     ),
 }

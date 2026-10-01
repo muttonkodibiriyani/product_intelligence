@@ -23,8 +23,8 @@ import os
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from collections.abc import Callable, Iterable, Mapping
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Path, Query, Request
@@ -91,10 +91,12 @@ from pi_api.source import (
 )
 from pi_api.summary import SummaryCache, SummaryQuery, SummaryView, summary_view
 from pi_api.wire import API_VERSION, ApiMeta, Envelope, ErrorBody, envelope, error_body
-from pi_dataset import ContractModel
+from pi_dataset import ContractModel, DatasetV3
 from pi_metrics import (
     AssortmentGaps,
     Availability,
+    Caveat,
+    CaveatCode,
     Comparison,
     Launches,
     Metric,
@@ -403,6 +405,34 @@ def respond[T](
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
+def read_at(loaded: Loaded, on: date | None) -> DatasetV3:
+    """The dataset a read at ``on`` uses; the latest date reads each source at its own (ADR-0010).
+
+    An explicit date, even the view's last, reads the view itself: a source that wasn't collected
+    then is not observed there.
+    """
+    return loaded.current if on is None else loaded.dataset
+
+
+def stale_first[T](loaded: Loaded, metric: Metric[T], ids: Iterable[str | None] = ()) -> Metric[T]:
+    """``metric`` with a ``stale_source`` caveat first for each stale source it reads (ADR-0010).
+
+    ``ids`` are the retailer or context ids the request names; none names every source. The
+    caveats go before the metric's own, so a client that shows only the first few keeps them.
+    """
+    retailer_of = {c.id: c.retailer for c in loaded.dataset.meta.contexts}
+    named = {retailer_of.get(i, i) for i in ids if i is not None}
+    stale = tuple(
+        Caveat(
+            code=CaveatCode.STALE_SOURCE,
+            params={"retailer": s.source, "asOf": s.last_date.isoformat()},
+        )
+        for s in loaded.stale
+        if not named or s.source in named
+    )
+    return metric.model_copy(update={"caveats": (*stale, *metric.caveats)}) if stale else metric
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -448,8 +478,8 @@ def build_api(
         query: Annotated[ProductQuery, Query()], _: Annotated[Principal, Depends(principal)]
     ) -> Envelope[ProductPage]:
         loaded = source.select(query.market, query.scope)
-        page = product_page(loaded.dataset, loaded.generation, query, images)
-        return respond(loaded, "products", query, page)
+        page = product_page(loaded.current, loaded.generation, query, images)
+        return respond(loaded, "products", query, stale_first(loaded, page, query.retailer))
 
     @api.get(f"{PREFIX}/products/{{product_id}}", response_model=Envelope[ProductDetail])
     def get_product(
@@ -458,8 +488,10 @@ def build_api(
         _: Annotated[Principal, Depends(principal)],
     ) -> Envelope[ProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = product_detail(loaded.dataset, find(loaded.dataset, product_id), hosts, images)
-        return respond(loaded, "product", query, detail)
+        ds = loaded.current
+        product = find(ds, product_id)
+        detail = product_detail(ds, product, hosts, images)
+        return respond(loaded, "product", query, stale_first(loaded, detail, product.offers))
 
     @api.get(f"{PREFIX}/admin/products/{{product_id}}", response_model=Envelope[AdminProductDetail])
     def get_admin_product(
@@ -468,8 +500,10 @@ def build_api(
         _: Annotated[Principal, Depends(admin)],
     ) -> Envelope[AdminProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = admin_product_detail(
-            loaded.dataset, find(loaded.dataset, product_id), hosts, images
+        ds = loaded.current
+        product = find(ds, product_id)
+        detail = stale_first(
+            loaded, admin_product_detail(ds, product, hosts, images), product.offers
         )
         return respond(loaded, "admin_product", query, detail)
 
@@ -504,8 +538,15 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
         metric = compare(
-            loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
+            read_at(loaded, query.on),
+            base,
+            other,
+            query.where(),
+            on=query.on,
+            group_by=query.group_by,
         )
+        if query.on is None:
+            metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "compare", query, capped_comparison(metric, query.limit))
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
@@ -515,6 +556,8 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         metric = price_index(
             loaded.dataset, base, other, query.where(), start=query.start, end=query.end
         )
+        if query.end is None:
+            metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "index", query, metric)
 
     @api.get(f"{PREFIX}/promotions", response_model=Envelope[Promotions])
@@ -523,8 +566,10 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
     ) -> Envelope[Promotions]:
         loaded = source.select(query.market, query.scope)
         metric = promotions(
-            loaded.dataset, query.retailer, query.where(), query.min_depth(), query.on
+            read_at(loaded, query.on), query.retailer, query.where(), query.min_depth(), query.on
         )
+        if query.on is None:
+            metric = stale_first(loaded, metric, query.retailer)
         return respond(loaded, "promotions", query, capped_promotions(metric, query.limit))
 
     @api.get(f"{PREFIX}/assortment-gaps", response_model=Envelope[AssortmentGaps])
@@ -535,6 +580,8 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         metric = assortment_gaps(
             loaded.dataset, query.missing_at, query.present_at, query.where(), query.on
         )
+        if query.on is None:
+            metric = stale_first(loaded, metric, (query.missing_at, query.present_at))
         return respond(loaded, "assortment_gaps", query, metric)
 
     @api.get(f"{PREFIX}/availability", response_model=Envelope[Availability])
@@ -542,7 +589,9 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         query: Annotated[AvailabilityQuery, Query()], _: Viewer
     ) -> Envelope[Availability]:
         loaded = source.select(query.market, query.scope)
-        metric = availability(loaded.dataset, query.retailer, query.where(), query.on)
+        metric = availability(read_at(loaded, query.on), query.retailer, query.where(), query.on)
+        if query.on is None:
+            metric = stale_first(loaded, metric, query.retailer)
         return respond(loaded, "availability", query, metric)
 
     @api.get(f"{PREFIX}/launches", response_model=Envelope[Launches])
@@ -573,6 +622,7 @@ def _summary_route(
     def get_summary(query: Annotated[SummaryQuery, Query()], _: Viewer) -> Envelope[SummaryView]:
         loaded = source.select(query.market, query.scope)
         metric = cache.get(loaded, query.retailer)
+        metric = stale_first(loaded, metric, (metric.data.retailer,))
         view = summary_view(metric, loaded.dataset.meta.cutoff, clock())
         return respond(loaded, "summary", query, view)
 
@@ -664,7 +714,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         query: Annotated[ProductsExport, Query()], who: Viewer
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
-        metric = product_cards(loaded.dataset, query, images)
+        metric = stale_first(loaded, product_cards(loaded.current, query, images), query.retailer)
         return _download(
             loaded,
             view=view.PRODUCTS,
@@ -680,8 +730,15 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
         metric = compare(
-            loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
+            read_at(loaded, query.on),
+            base,
+            other,
+            query.where(),
+            on=query.on,
+            group_by=query.group_by,
         )
+        if query.on is None:
+            metric = stale_first(loaded, metric, (base, other))
         return _download(
             loaded,
             view=view.COMPARE,
@@ -699,6 +756,8 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         metric = price_index(
             loaded.dataset, base, other, query.where(), start=query.start, end=query.end
         )
+        if query.end is None:
+            metric = stale_first(loaded, metric, (base, other))
         return _download(
             loaded,
             view=view.INDEX,
@@ -715,8 +774,10 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         metric = promotions(
-            loaded.dataset, query.retailer, query.where(), query.min_depth(), query.on
+            read_at(loaded, query.on), query.retailer, query.where(), query.min_depth(), query.on
         )
+        if query.on is None:
+            metric = stale_first(loaded, metric, query.retailer)
         return _download(
             loaded,
             view=view.PROMOTIONS,
@@ -735,6 +796,8 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         metric = assortment_gaps(
             loaded.dataset, query.missing_at, query.present_at, query.where(), query.on
         )
+        if query.on is None:
+            metric = stale_first(loaded, metric, (query.missing_at, query.present_at))
         return _download(
             loaded,
             view=view.ASSORTMENT_GAPS,

@@ -108,6 +108,9 @@ class CaveatCode(StrEnum):
     #: More distinct label pairs than ``LABEL_CAVEAT_CAP``: the totals, emitted first, so a
     #: client that shows only the first caveats never drops them.
     SIZE_LABELS_DIFFER_TOTAL = "size_labels_differ_total"
+    #: A retailer's latest collection is older than the view's latest date (ADR-0010): its
+    #: latest-date figures are as of its own last date. The API emits it first, one per retailer.
+    STALE_SOURCE = "stale_source"
 
 
 class Caveat(ContractModel):

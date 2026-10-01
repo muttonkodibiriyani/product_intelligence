@@ -186,3 +186,94 @@ def test_settings_take_per_source_paths() -> None:
 def test_settings_refuse(datasets: str, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         Settings.from_env(env(datasets))
+
+
+STALE = {"code": "stale_source", "params": {"retailer": ULTA, "asOf": "2026-09-22"}}
+
+
+def get(client: Any, url: str) -> dict[str, Any]:
+    response = client.get(f"/api/v1/{url}", headers=bearer())
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def stale(body: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {"code": c["code"], "params": c["params"]}
+        for c in body["caveats"]
+        if c["code"] == "stale_source"
+    ]
+
+
+def test_the_latest_comparison_reads_a_stale_source_at_its_own_last_date(tmp_path: Path) -> None:
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    body = get(client, f"compare?retailers={ULTA},{SEPHORA}")
+    p1 = next(r for r in body["data"]["rows"] if r["id"] == "p1")
+    assert (p1["basePrice"]["minor"], p1["otherPrice"]["minor"]) == (10_000, 10_000)
+    assert body["caveats"][0]["code"] == "stale_source"
+    assert stale(body) == [STALE]
+    assert "2026-09-22" in body["caveats"][0]["en"]
+    assert "2026-09-22" in body["caveats"][0]["ar"]
+    # An explicit date reads that date: Ulta was not collected on 30 Sep.
+    body = get(client, f"compare?retailers={ULTA},{SEPHORA}&date=2026-09-30")
+    p1 = next(r for r in body["data"]["rows"] if r["id"] == "p1")
+    assert p1["basePrice"] is None
+    assert stale(body) == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"index?retailers={ULTA},{SEPHORA}",
+        f"promotions?retailer={ULTA}",
+        f"availability?retailer={ULTA}",
+        f"summary?retailer={ULTA}",
+        f"products?retailer={ULTA}",
+        "products",
+        "products/p2",
+        "admin/products/p1",
+    ],
+)
+def test_latest_date_reads_of_a_stale_source_say_so(tmp_path: Path, url: str) -> None:
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    headers = bearer(role="admin") if url.startswith("admin") else bearer()
+    response = client.get(f"/api/v1/{url}", headers=headers)
+    assert response.status_code == 200, response.text
+    assert stale(response.json()) == [STALE]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"summary?retailer={SEPHORA}",
+        f"availability?retailer={SEPHORA}",
+        f"availability?retailer={ULTA}&date=2026-09-22",
+        "products/p3",
+        f"launches?retailer={ULTA}",
+        f"coverage?retailer={ULTA}",
+    ],
+)
+def test_other_reads_carry_no_stale_caveat(tmp_path: Path, url: str) -> None:
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    assert stale(get(client, url)) == []
+
+
+def test_a_latest_gap_is_never_claimed_from_a_stale_source(tmp_path: Path) -> None:
+    """Gaps read the view itself: p3 isn't "missing at Ulta" on a date Ulta wasn't collected."""
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    body = get(client, f"assortment-gaps?missingAt={ULTA}&presentAt={SEPHORA}")
+    assert body["data"]["items"] == []
+    assert stale(body) == [STALE]
+
+
+def test_a_whole_file_has_no_stale_source(tmp_path: Path) -> None:
+    write(tmp_path, snapshot({"p1": BOTH, "p2": (ULTA,)}, dates=OLD), COMBINED)
+    client, source = make_client(tmp_path, paths=(COMBINED,))
+    (loaded,) = source.datasets()
+    assert (loaded.latest, loaded.stale) == (None, ())
+    assert stale(get(client, f"compare?retailers={ULTA},{SEPHORA}")) == []

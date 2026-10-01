@@ -9,7 +9,13 @@ import pytest
 from pi_api.wire import _PLURAL, CAVEAT_TEXT, render
 from pi_metrics import Caveat, CaveatCode
 
-PARAMS = {"retailer": "shop_a", "base": "M", "other": "Medium", "pairs": "7"}
+PARAMS = {
+    "retailer": "shop_a",
+    "base": "M",
+    "other": "Medium",
+    "pairs": "7",
+    "asOf": "2026-09-22",
+}
 
 
 def _text(code: CaveatCode, count: str) -> tuple[str, str]:
@@ -59,3 +65,12 @@ def test_arabic_ends_with_the_count_whatever_it_is() -> None:
 
 def test_a_spec_without_a_bar_formats_as_usual() -> None:
     assert _PLURAL.format("{n:>3}", n="1") == "  1"
+
+
+def test_a_stale_source_names_its_date_in_both_languages() -> None:
+    view = render(
+        Caveat(code=CaveatCode.STALE_SOURCE, params={"retailer": "shop_a", "asOf": "2026-09-22"})
+    )
+    for text in (view.en, view.ar):
+        assert "shop_a" in text
+        assert "2026-09-22" in text

@@ -244,7 +244,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.5.0",
+            "default": "1.6.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -696,7 +696,8 @@
           "rating_scale_mixed",
           "size_labels_differ",
           "channel_differs",
-          "size_labels_differ_total"
+          "size_labels_differ_total",
+          "stale_source"
         ],
         "title": "CaveatCode",
         "type": "string"
@@ -4574,7 +4575,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.5.0"
+    "version": "1.6.0"
   },
   "openapi": "3.1.0",
   "paths": {

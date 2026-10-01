@@ -94,6 +94,14 @@ versioned snapshots.
     edges come only from a file that holds both retailers, so no edge is made across files.
   - A bare path in the same scope as a composed view is two datasets and stays
     `422 ambiguous_dataset`; don't mix the two forms in one scope.
+  - **Per-source as-of (API 1.6.0).** A source whose file ends before the view's last date is
+    *stale*. Latest-date reads (`/compare`, `/promotions` and `/availability` with no `date`,
+    `/summary`, `/products`, `/products/{id}` and the matching exports) read it at its own last
+    date: `pi_dataset.compose.latest` builds that projection once per generation. Every response
+    that reads a stale source at the latest date, including `/index` with no `to` and
+    `/assortment-gaps` with no `date`, starts its caveats with `stale_source` (`retailer`,
+    `asOf`). An explicit date reads the view itself. History, launches, gaps and the index never
+    use the projection, so a stale value backs no trend and no absence claim.
 - **Freshness.** Each instance compares the object `generation` with the loaded one at most once
   every 60 s: one metadata GET. A new generation loads in the background and swaps in atomically,
   so readers see either the old dataset or the new one, never a mix. `meta.generation` and
