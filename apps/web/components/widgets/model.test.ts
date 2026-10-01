@@ -9,6 +9,7 @@ import {
   freshness,
   heatCells,
   histBins,
+  imageHost,
   imageSrc,
   ladderRows,
   pct,
@@ -142,6 +143,21 @@ describe('widget model', () => {
     expect(imageSrc('https://evil.example/img-product.sephora.me.jpg')).toBeNull();
     expect(imageSrc('javascript:alert(1)')).toBeNull();
     expect(imageSrc(null)).toBeNull();
+  });
+
+  it('matches the exact hostname, each retailer on its own host', () => {
+    const ulta = 'https://media.alshaya.com/p/1.jpg';
+    expect(imageSrc(ulta)).toBe(ulta);
+    expect(imageSrc(ulta, 'ulta_ae')).toBe(ulta);
+    expect(imageHost(ulta, 'ulta_ae')).toBe('media.alshaya.com');
+    expect(imageSrc(ulta, 'sephora_me')).toBeNull();
+    expect(imageSrc('https://img-product.sephora.me/a.jpg', 'ulta_ae')).toBeNull();
+    expect(imageSrc('https://img-product.sephora.me/a.jpg', 'sephora_me')).not.toBeNull();
+    expect(imageSrc('https://img-product.sephora.me.evil.example/a.jpg')).toBeNull();
+    expect(imageSrc('https://media.alshaya.com.evil.example/a.jpg')).toBeNull();
+    expect(imageSrc('https://x.media.alshaya.com/a.jpg')).toBeNull();
+    expect(imageSrc('https://u:p@media.alshaya.com/a.jpg')).toBeNull();
+    expect(imageSrc('https://media.alshaya.com/a.jpg', 'other')).toBeNull();
   });
 
   it('never guesses freshness', () => {

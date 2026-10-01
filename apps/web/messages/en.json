@@ -186,7 +186,8 @@
       "overCap": "Exports stop at 50,000 rows. Narrow the filters to export.",
       "busy": "Two exports are already running. Try again in {seconds} s.",
       "nothing": "Nothing to export."
-    }
+    },
+    "noImage": "No image"
   },
   "gap": {
     "otherDearer": "{other} dearer",
@@ -274,7 +275,8 @@
     "noPrice": "No price",
     "backCompare": "Back to comparison",
     "backPromotions": "Back to promotions",
-    "backLaunches": "Back to launches"
+    "backLaunches": "Back to launches",
+    "noImage": "No image"
   },
   "compare": {
     "title": "Compare prices",
