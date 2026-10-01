@@ -29,11 +29,9 @@ import secrets
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qs, urlencode, urlsplit
 
-import firebase_admin
 import requests
-from firebase_admin import auth
 from playwright.sync_api import Page, Response, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -186,7 +184,7 @@ def explore_and_product(page: Page, base: str, problems: list[str]) -> None:
     if page.get_by_text("Exports stop at 50,000 rows").count():
         # Narrow to the first row's brand so the export stays small.
         brand = page.locator("table tbody tr th span[dir=auto]").first.inner_text()
-        page.goto(f"{base}/app/en/explore/?brand={quote(brand)}")
+        page.goto(f"{base}/app/en/explore/?{urlencode({'brand': brand})}")
         page.get_by_role("table").wait_for(timeout=TIMEOUT)
     page.wait_for_load_state("networkidle")
     explore_url = page.url
@@ -197,10 +195,16 @@ def explore_and_product(page: Page, base: str, problems: list[str]) -> None:
     page.get_by_role("link", name="Back to products").click()
     # Wait for the URL, not a table: the product page has one too (its offers).
     try:
-        page.wait_for_url(explore_url, timeout=TIMEOUT)
+        page.wait_for_url(lambda u: same_view(u, explore_url), timeout=TIMEOUT)
     except PlaywrightTimeout:
         problems.append(f"back to products: {page.url} is not {explore_url}")
     page.get_by_role("table").wait_for(timeout=TIMEOUT)
+
+
+def same_view(a: str, b: str) -> bool:
+    """Same path and same decoded query: the app writes a space as + where quote() writes %20."""
+    ua, ub = urlsplit(a), urlsplit(b)
+    return (ua.path, parse_qs(ua.query)) == (ub.path, parse_qs(ub.query))
 
 
 def export_guard(page: Page, problems: list[str]) -> None:
@@ -272,6 +276,10 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
 
     problems = check_public(args.base, args.legacy_sha256)
+    # Imported here so the module (and same_view's test) loads where firebase_admin isn't installed.
+    import firebase_admin  # noqa: PLC0415
+    from firebase_admin import auth  # noqa: PLC0415
+
     firebase_admin.initialize_app(options={"projectId": args.project})
     email = f"pi-smoke-{secrets.token_hex(4)}@example.com"
     password = secrets.token_urlsafe(24)
