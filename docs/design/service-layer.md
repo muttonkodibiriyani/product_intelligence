@@ -144,7 +144,7 @@ versioned snapshots.
   a few seconds, well inside the burst of 30; a user running several turns back to back refills at
   10/s. A `429` carries `Retry-After`, and the assistant surfaces it rather than retrying in a loop.
 - **CORS.** Same-origin through a Firebase Hosting rewrite (`/api/**` → the Cloud Run service), so
-  the dashboard's CSP `connect-src 'self'` is unchanged. See §11 Q1 for the region caveat.
+  the dashboard's CSP `connect-src 'self'` is unchanged (me-central1 confirmed, §11 Q1).
 
 ## 5. Conventions every endpoint follows
 
@@ -556,10 +556,9 @@ Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of
 
 ## 11. Open questions
 
-1. **Hosting rewrite region.** Firebase Hosting → Cloud Run rewrites may not support every
-   region. If me-central1 isn't supported, the web app calls the `run.app` URL directly: CORS
-   allowlists the two Hosting origins, and Infra adds that URL to CSP `connect-src`.
-   **Infra to confirm.**
+1. **Hosting rewrite region.** *Resolved:* Infra confirmed that Firebase Hosting rewrites to Cloud
+   Run in me-central1 are supported, so the API stays same-origin through `/api/**` (no CORS, CSP
+   unchanged).
 2. **v2 timing.** Serve v1 through the adapter first (faster), or wait for v2 producers?
    *Proposal:* the adapter, so FE and the assistant can switch early. v2 follows with PR-B and the
    Infra producer change.

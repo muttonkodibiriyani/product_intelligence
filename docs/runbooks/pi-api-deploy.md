@@ -13,7 +13,8 @@ hosting requirements in the decision log). Change one only with a new coordinato
 Cloud Run `pi-api` and the Artifact Registry repository `pi-api` are new standing billable
 resources (estimate ≈ $0–1.5/month, design §9). Create nothing until `docs/decision-log.md` has a
 coordinator entry naming both resources, me-central1, the scaling limits below, and the estimate
-against the remaining $25/month budget.
+against the remaining $25/month budget. That entry, which also approves `--allow-unauthenticated`
+(§6), lands in PR #65; check it is on `main` before §3.
 
 ## 1. What gets created
 
@@ -41,9 +42,8 @@ gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_leve
 - **Uniform bucket-level access must be on.** IAM conditions on object names need it. If it is
   off, enabling it is a separate change that the coordinator approves first (it disables object
   ACLs on the bucket).
-- **Hosting → Cloud Run in me-central1** (design §11 Q1). Confirm that Firebase Hosting rewrites
-  can target a me-central1 service. If they can't, stop. The fallback (the web app calls the
-  `run.app` URL with CORS) needs a code change and a CSP change, and it is not in this handoff.
+- **Hosting → Cloud Run in me-central1** is supported (Infra confirmed; design §11 Q1). If a
+  Hosting deploy still rejects the rewrite, stop and report it (stop rule).
 - Note the datasets to serve: the object paths `publish_dataset.py` writes under `datasets/`
   (e.g. `datasets/ae/beauty/latest.json`). They become `PI_API_DATASETS`.
 
