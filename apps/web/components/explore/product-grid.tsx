@@ -79,7 +79,7 @@ export function ProductGrid({
                     </dt>
                     <dd className="whitespace-nowrap font-medium tabular-nums">
                       <Price
-                        of={{ price: c.prices[r] }}
+                        of={{ price: c.prices[r], priceFlag: c.priceFlags?.[r] }}
                         locale={locale}
                         fallback={<span className="font-normal text-ink-2">{tp('noPrice')}</span>}
                       />

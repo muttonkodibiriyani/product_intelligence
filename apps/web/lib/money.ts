@@ -1,4 +1,4 @@
-import type { Money } from './api/types';
+import type { Money, Schemas } from './api/types';
 
 /** ISO 4217 minor-unit exponent, from the platform's currency data (AED 2, KWD 3, JPY 0). */
 export function currencyExponent(currency: string): number {
@@ -20,9 +20,9 @@ export function isValidMoney(m: Money): boolean {
 }
 
 /**
- * Owner rule: a price of 0.01 or less is a placeholder, not a price. The API is adding
- * `priceFlag: "invalid_low"` (with `price: null`) for those; until it ships, the amount itself is
- * the guard. This is the one place that decides, so every table, chart and sort agrees.
+ * Owner rule: a price of 0.01 or less is a placeholder, not a price. The API flags those
+ * `priceFlag: "invalid_low"` (with `price: null`); the amount itself stays a backstop. This is the
+ * one place that decides, so every table, chart and sort agrees.
  */
 export function isValidAmount(amount: string): boolean {
   if (!/^-?\d+(\.\d+)?$/.test(amount)) return false;
@@ -30,8 +30,12 @@ export function isValidAmount(amount: string): boolean {
   return Number.isFinite(v) && v > 0.01;
 }
 
-/** Anything with a price: an offer, a pair row's side, a top discount. `priceFlag` is read defensively. */
-export type Priced = { price?: (Pick<Money, 'amount'> & Partial<Money>) | null };
+/** Anything with a price: an offer, a pair row's side, a top discount, a card's price at one retailer. */
+export type Priced = {
+  price?: (Pick<Money, 'amount'> & Partial<Money>) | null;
+  /** 'invalid_low': the API withheld the price as a placeholder (it sends `price: null`). */
+  priceFlag?: Schemas['PriceFlag'] | null;
+};
 
 /**
  * `review`: the price is withheld as invalid, shown as "Price under review" and left out of every
@@ -40,7 +44,7 @@ export type Priced = { price?: (Pick<Money, 'amount'> & Partial<Money>) | null }
  */
 export function priceState(x: Priced | null | undefined): 'ok' | 'review' {
   if (!x) return 'ok';
-  if ((x as { priceFlag?: unknown }).priceFlag === 'invalid_low') return 'review';
+  if (x.priceFlag === 'invalid_low') return 'review';
   return x.price && !isValidAmount(x.price.amount) ? 'review' : 'ok';
 }
 

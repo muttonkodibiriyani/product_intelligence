@@ -6,6 +6,7 @@
     "brands": "Brands",
     "categories": "Categories",
     "median": "Median price",
+    "mean": "mean {price}",
     "promo": "On promotion",
     "promoOf": "of products",
     "freshness": "Data freshness",
