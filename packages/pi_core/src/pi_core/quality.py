@@ -12,38 +12,53 @@ import re
 import statistics
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from urllib.parse import urlparse
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from pi_core.base import PiModel
 from pi_core.enums import QualityStatus
+from pi_core.listing import is_valid_gtin
 
 #: Bumped whenever a rule or threshold changes; stored with every verdict.
 GATE_VERSION = "dq-gate/1"
 
-#: A price below one unit of the market currency is a parse error, not a price (§7.2 sanity).
+#: Default floor: a price below one unit of the market currency is a parse error, not a price
+#: (§7.2 sanity). A market with a high-value currency sets its own via ``GateContext.min_price``.
 MIN_PRICE = Decimal(1)
 #: Price vs the listing's last accepted price: x10 or /10 is a decimal-point error (§7.2).
 JUMP_FACTOR = Decimal(10)
 #: Price vs category peers: more than this many standard deviations from their mean (§7.2).
+#: When the peers all share one price (sigma 0), JUMP_FACTOR vs their median applies instead.
 PEER_SIGMA = Decimal(5)
 #: Fewest peers before the sigma rule applies (pi_metrics MIN_COHORT; below it, too noisy).
 MIN_PEERS = 5
-#: A discount deeper than this is quarantined (§7.2).
+#: A discount deeper than this is quarantined (§7.2): current, promo or member price vs the
+#: stated regular price, else (promo and member) vs the current price.
 MAX_DISCOUNT = Decimal("0.90")
 #: A run with this fraction fewer listings than the last good run is ``partial`` (§7.2).
 MAX_COUNT_DROP = Decimal("0.20")
 
-_HTML_RE = re.compile(
-    r"<[a-zA-Z/!][^>]{0,200}>|&(?:amp|nbsp|quot|lt|gt|#\d+|#x[0-9a-f]+);", re.IGNORECASE
+#: Markup: known HTML tags (so a name like "<Me>" is not markup), comments and entities.
+_HTML_TAGS = (
+    "a|b|i|u|p|br|hr|div|span|img|strong|em|ul|ol|li|h[1-6]|table|tr|td|th|font|script|style"
+    "|iframe|sup|sub|small|meta|link"
 )
-#: UTF-8 read as Latin-1/CP-1252, the replacement character, and control characters.
-_JUNK_RE = re.compile("Ã.|â€|Â[\\s\\xa0®©™]|\ufffd|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_IMAGE_PATH_RE = re.compile(r"\.(jpe?g|png|webp|avif|gif)$", re.IGNORECASE)
+_HTML_RE = re.compile(
+    rf"</?(?:{_HTML_TAGS})\b[^>]{{0,200}}>|<!--|&(?:amp|nbsp|quot|lt|gt|#\d+|#x[0-9a-f]+);",
+    re.IGNORECASE,
+)
+#: UTF-8 read as Latin-1/CP-1252 ("Ã" before a continuation byte's Latin-1/CP-1252 form, so
+#: "SÃO" is text), the replacement character, and control characters.
+_CP1252_TAIL = "\xa0-\xbf\u0152\u0153\u0160\u0161\u0178\u017d\u017e\u0192\u02c6\u02dc\u2013\u2014\u2018-\u201e\u2020-\u2022\u2026\u2030\u2039\u203a\u20ac\u2122"  # noqa: E501
+_JUNK_RE = re.compile(
+    f"Ã[{_CP1252_TAIL}]|â€|Â[\\s\\xa0®©™]|\ufffd|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"
+)
+#: Values allowed in ``Issue.detail`` besides numbers: ISO currency codes.
+_ISO_CURRENCY_RE = re.compile(r"[A-Z]{3}")
 
 
 class Severity(StrEnum):
@@ -72,6 +87,7 @@ class Check(StrEnum):
     TEXT_HTML = "text_html"
     TEXT_JUNK = "text_junk"
     GTIN_MISSING = "gtin_missing"
+    GTIN_INVALID = "gtin_invalid"
     DUPLICATE_KEY = "duplicate_key"
     COUNT_DROP = "count_drop"
     CONTEXT_EMPTY = "context_empty"
@@ -102,8 +118,15 @@ class GateContext(PiModel):
     #: False where the retailer's stated regular ("was") price is never displayed (a warning
     #: when present; the export strips it).
     was_price_displayed: bool = True
-    #: Expected image hosts; empty means any https host.
+    #: Expected image hosts (compared case-insensitively); empty means any https host.
     image_hosts: frozenset[str] = frozenset()
+    #: Lowest plausible price in ``market_currency`` (e.g. lower for KWD than for AED).
+    min_price: Decimal = Field(default=MIN_PRICE, gt=0)
+
+    @field_validator("image_hosts")
+    @classmethod
+    def _lower_hosts(cls, hosts: frozenset[str]) -> frozenset[str]:
+        return frozenset(host.lower().rstrip(".") for host in hosts)
 
 
 class ObservationFacts(PiModel):
@@ -114,7 +137,8 @@ class ObservationFacts(PiModel):
     price_promo: Decimal | None = None
     price_member: Decimal | None = None
     currency: str | None = None
-    #: Null reasons per field (DQ-02), as stored in ``offer_observation.field_state``.
+    #: Null reasons per field (DQ-02), as stored in ``offer_observation.field_state``. A blank
+    #: reason is no reason.
     field_state: dict[str, str] = Field(default_factory=dict)
     #: The listing's last accepted ``price_current`` in the same currency, if any.
     last_accepted_price: Decimal | None = None
@@ -146,6 +170,7 @@ class RunFacts(PiModel):
     last_good_listings: int | None = Field(default=None, ge=0)
     #: Rows fetched per collection context (e.g. locale), for empty-context detection.
     fetched_by_context: dict[str, int] = Field(default_factory=dict)
+    #: A naive datetime is taken as UTC (as is ``as_of``), never compared raw.
     newest_observed_at: datetime | None = None
 
 
@@ -189,41 +214,49 @@ def _observation_issues(obs: ObservationFacts, ctx: GateContext) -> Iterable[Iss
     if priced and obs.currency is None:
         yield _issue(Check.PRICE_WITHOUT_CURRENCY, Severity.QUARANTINE, "currency")
     if obs.currency is not None and obs.currency != ctx.market_currency:
-        yield _issue(
-            Check.CURRENCY_NOT_MARKET,
-            Severity.QUARANTINE,
-            "currency",
-            currency=obs.currency,
-            expected=ctx.market_currency,
-        )
-    if obs.price_current is None and "price_current" not in obs.field_state:
+        # Source text never reaches detail: the code is echoed only when it is ISO-shaped.
+        shown = {"currency": obs.currency} if _ISO_CURRENCY_RE.fullmatch(obs.currency) else {}
+        yield _issue(Check.CURRENCY_NOT_MARKET, Severity.QUARANTINE, "currency", **shown)
+    if obs.price_current is None and not obs.field_state.get("price_current", "").strip():
         yield _issue(Check.PRICE_NULL_WITHOUT_REASON, Severity.QUARANTINE, "price_current")
     current, regular = obs.price_current, obs.price_regular_stated
     if current is not None and current > 0:
-        yield from _implausible(current, obs)
-        if regular is not None and regular > 0:
-            if regular < current:
-                yield _issue(
-                    Check.REGULAR_BELOW_CURRENT,
-                    Severity.QUARANTINE,
-                    "price_regular_stated",
-                    current=current,
-                    regular=regular,
-                )
-            elif 1 - current / regular > MAX_DISCOUNT:
-                yield _issue(
-                    Check.DISCOUNT_GT_90,
-                    Severity.QUARANTINE,
-                    "price_current",
-                    current=current,
-                    regular=regular,
-                )
+        yield from _implausible(current, obs, ctx.min_price)
+    yield from _discounts(obs)
     if regular is not None and not ctx.was_price_displayed:
         yield _issue(Check.WAS_PRICE_PRESENT, Severity.WARNING, "price_regular_stated")
 
 
-def _implausible(current: Decimal, obs: ObservationFacts) -> Iterable[Issue]:
-    if current < MIN_PRICE:
+def _discounts(obs: ObservationFacts) -> Iterable[Issue]:
+    """Regular below current, and any discount deeper than MAX_DISCOUNT (current, promo, member)."""
+    current, regular = _positive(obs.price_current), _positive(obs.price_regular_stated)
+    if current is not None and regular is not None and regular < current:
+        yield _issue(
+            Check.REGULAR_BELOW_CURRENT,
+            Severity.QUARANTINE,
+            "price_regular_stated",
+            current=current,
+            regular=regular,
+        )
+        return
+    offers = (
+        ("price_current", current, regular),
+        ("price_promo", _positive(obs.price_promo), regular or current),
+        ("price_member", _positive(obs.price_member), regular or current),
+    )
+    for name, price, reference in offers:
+        if price is not None and reference is not None and 1 - price / reference > MAX_DISCOUNT:
+            yield _issue(
+                Check.DISCOUNT_GT_90, Severity.QUARANTINE, name, price=price, reference=reference
+            )
+
+
+def _positive(value: Decimal | None) -> Decimal | None:
+    return value if value is not None and value > 0 else None
+
+
+def _implausible(current: Decimal, obs: ObservationFacts, floor: Decimal) -> Iterable[Issue]:
+    if current < floor:
         yield _issue(
             Check.PRICE_IMPLAUSIBLE,
             Severity.QUARANTINE,
@@ -246,12 +279,18 @@ def _implausible(current: Decimal, obs: ObservationFacts) -> Iterable[Issue]:
     if len(obs.peer_prices) >= MIN_PEERS:
         mean = statistics.mean(obs.peer_prices)
         sigma = statistics.pstdev(obs.peer_prices)
-        if sigma > 0 and abs(current - mean) > PEER_SIGMA * sigma:
+        if sigma > 0:
+            far, rule = abs(current - mean) > PEER_SIGMA * sigma, "peer_sigma"
+        else:  # every peer has the same price: no spread to measure, so use the x10 ratio
+            median = statistics.median(obs.peer_prices)
+            far = median > 0 and not median / JUMP_FACTOR < current < median * JUMP_FACTOR
+            rule = "peer_ratio"
+        if far:
             yield _issue(
                 Check.PRICE_IMPLAUSIBLE,
                 Severity.QUARANTINE,
                 "price_current",
-                rule="peer_sigma",
+                rule=rule,
                 value=current,
                 peers=len(obs.peer_prices),
             )
@@ -280,17 +319,24 @@ def _listing_issues(listing: ListingFacts, ctx: GateContext) -> Iterable[Issue]:
             yield _issue(Check.TEXT_HTML, Severity.QUARANTINE, name)
         elif _JUNK_RE.search(text):
             yield _issue(Check.TEXT_JUNK, Severity.WARNING, name)
-    if not listing.gtin:
+    gtin = (listing.gtin or "").strip()
+    if not gtin:
         yield _issue(Check.GTIN_MISSING, Severity.INFO, "gtin")
+    elif not is_valid_gtin(gtin):
+        yield _issue(Check.GTIN_INVALID, Severity.WARNING, "gtin", length=len(gtin))
 
 
 def _image_ok(url: str, hosts: frozenset[str]) -> bool:
-    parsed = urlparse(url.strip())
+    """An https URL on an expected host. The path needs no extension: CDNs often serve without."""
+    try:
+        parsed = urlparse(url.strip())
+        host = parsed.hostname  # lower-cased by urlparse
+    except ValueError:  # e.g. a malformed IPv6 host
+        return False
     return (
-        parsed.scheme == "https"
-        and bool(parsed.netloc)
-        and bool(_IMAGE_PATH_RE.search(parsed.path))
-        and (not hosts or parsed.hostname in hosts)
+        parsed.scheme.lower() == "https"
+        and bool(host)
+        and (not hosts or (host or "").rstrip(".") in hosts)
     )
 
 
@@ -320,13 +366,26 @@ def check_run(run: RunFacts, *, as_of: datetime, max_age: timedelta) -> RunVerdi
         issues.append(
             _issue(Check.COUNT_DROP, Severity.WARNING, None, listings=run.listings, last=last)
         )
-    for context, fetched in sorted(run.fetched_by_context.items()):
-        if fetched == 0:
-            issues.append(_issue(Check.CONTEXT_EMPTY, Severity.WARNING, None, context=context))
+    empty = sum(fetched == 0 for fetched in run.fetched_by_context.values())
+    if empty:  # a count: context keys come from the caller and stay out of detail
+        issues.append(
+            _issue(
+                Check.CONTEXT_EMPTY,
+                Severity.WARNING,
+                "fetched_by_context",
+                empty=empty,
+                contexts=len(run.fetched_by_context),
+            )
+        )
     newest = run.newest_observed_at
-    if newest is None or as_of - newest > max_age:
+    if newest is None or _utc(as_of) - _utc(newest) > max_age:
         issues.append(_issue(Check.STALE, Severity.WARNING, "observed_at"))
     return RunVerdict(partial=partial, issues=tuple(issues))
+
+
+def _utc(moment: datetime) -> datetime:
+    """Aware datetimes as they are; a naive one is taken as UTC."""
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
 
 
 def _issue(check: Check, severity: Severity, field: str | None, **detail: object) -> Issue:
