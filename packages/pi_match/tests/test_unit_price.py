@@ -65,6 +65,13 @@ def test_a_pack_of_one_is_not_a_multipack() -> None:
         ("x2 50ml", 2),
         ("\u00d7 3 30 g", 3),
         ("1.5 x 30ml", Decimal("1.5")),
+        ("1 x 50 ml x 2", 2),  # every multiplier counts, not the first
+        ("1 x 50ml (pack of 3)", 3),
+        ("1 x 50 ml duo", 2),
+        ("1 x 2 x 50ml", 2),
+        ("1 x 50 ml", 1),
+        ("50ml*2", 2),
+        ("2*50ml", 2),
         ("30ml x 1,5", Decimal("1.5")),
         ("3x15ml", 3),
         ("Pack of 4", 4),
@@ -113,6 +120,16 @@ def test_parse_count(text: str, count: int | None) -> None:
         (Decimal(120), "50ml \u00d72", None),
         (Decimal(120), "x2 50ml", None),
         (Decimal(120), "1.5 x 30ml", None),  # a non-integer multiplier is ambiguous
+        (Decimal(120), "1 x 50 ml x 2", None),
+        (Decimal(120), "1 x 50ml (pack of 3)", None),
+        (Decimal(120), "1 x 2 x 50ml", None),
+        (Decimal(120), "50ml*2", None),
+        (Decimal(120), "2*50ml", None),
+        (Decimal(120), "50 ml + 50 ml", None),  # several items
+        (Decimal(120), "50ml & 10ml", None),
+        (Decimal(120), "50 ml / 10 ml", None),  # two sizes that disagree
+        (Decimal(120), "50ml 1.7 fl oz", BasePrice(Decimal("240.0000"), Basis.PER_100_ML)),
+        (Decimal(120), "50 ml / 1.7 fl oz", BasePrice(Decimal("240.0000"), Basis.PER_100_ML)),
         (Decimal(120), "1 x 50 ml", BasePrice(Decimal("240.0000"), Basis.PER_100_ML)),
         (Decimal(120), "Kit 3 pieces", None),  # kits and sets hold different items
         (Decimal(120), "Gift Set 50 ml", None),
@@ -159,10 +176,17 @@ _SIZES = st.builds(
     st.sampled_from(["ml", "ML", "g", "fl oz"]),
     st.sampled_from(["", " "]),
 )
-_TIMES = st.sampled_from([" x ", "x", " X ", "\u00d7", " \u00d7 ", "x ", " x"])
+_TIMES = st.sampled_from([" x ", "x", " X ", "\u00d7", " \u00d7 ", "x ", " x", "*", " * "])
 
 
 @given(_PRICES, _SIZES, st.integers(min_value=2, max_value=48), _TIMES)
 def test_a_multipack_never_gets_a_unit_price(price: Decimal, size: str, n: int, times: str) -> None:
-    for label in (f"{size}{times}{n}", f"{n}{times}{size}", f"x{n} {size}"):
+    labels = (
+        f"{size}{times}{n}",
+        f"{n}{times}{size}",
+        f"x{n} {size}",
+        f"1{times}{size}{times}{n}",  # a "1 x" first never hides the real multiplier
+        f"1{times}{n}{times}{size}",
+    )
+    for label in labels:
         assert derive_unit_price(price, label) is None, label

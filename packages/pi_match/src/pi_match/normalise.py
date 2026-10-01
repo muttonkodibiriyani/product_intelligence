@@ -261,6 +261,11 @@ def parse_size(text: str | Sequence[str] | None) -> Size | None:
     return None if groups is None else _size_from_groups(groups)
 
 
+def find_sizes(text: str) -> tuple[Size, ...]:
+    """Every size written in plain ``text``, in order ("50ml / 1.7 fl oz" gives two)."""
+    return tuple(_size(match) for match in _SIZE_RE.finditer(text))
+
+
 def _size_from_groups(groups: tuple[tuple[str, ...], ...]) -> Size | None:
     if len(groups) == 1 and len(groups[0]) == 2:  # [50, "ml"]: a number, then its unit
         value, unit = groups[0]
