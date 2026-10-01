@@ -4,6 +4,11 @@
   - Q1: the follow-up recon was approved, in revised form (a).
   - Q2: the cheap cadence was approved, on condition that Q1 succeeded. It did.
 - Date: 2026-10-01
+- Amended 2026-10-01 (owner approval, relayed by the coordinator): a deeper category tree and
+  variant breadth. Decision 2 is now a gap-first variant pass with a first-run backfill, and
+  Decision 3 a leaf-level sweep with the `cgid` tree, EN + AR. Same method, pace, window and
+  stop rules; no new path. The estimate is on paper (offline analysis of the saved recon samples
+  and the baseline); no request was made for it.
 - Drafted by: the Crawl Engineer, on the coordinator's brief.
 - Supersedes (for `sephora_me` only): the 2026-09-30 decision "one-time baseline snapshot per
   source, then on-demand refreshes only". That covers the blueprint's Cadence row, §6.4 and its "No
@@ -71,11 +76,43 @@ have variants at different prices.
    - The default order can drift: page 1 over SSR and page 2 over tRPC, 20 minutes apart, shared 4
      of 36 ids. If drift is material, the sweep uses a stable option from the response's
      `sortingOptions`. The build verifies this before go-live.
-2. **Weekly variant-level pass.**
-   - EN PDP (price, content) plus tRPC availability (stock) for every product, split over two
-     nights inside the window.
-3. **Weekly AR pages and discovery.**
+2. **Weekly variant-level pass, gap-first** (amended).
+   - EN PDP (price, content, variants/shades/sizes, hotlinked image URLs) plus tRPC availability
+     (stock) for every product, split over two nights inside the window.
+   - The planner orders it gap-first and stops at the cutoff:
+     1. products whose listing variant ids (`representedProducts`) are not all in the DB, and new
+        products;
+     2. products with differently priced variants (~1.2k, 14.5%);
+     3. the rest.
+   - The gap detector is exact: it compares the listing's variant ids with the DB. Nothing is
+     guessed.
+   - The nightly sweep also queues PDPs for its own gap set, typically tens of products, a few
+     minutes a night.
+   - **First run = backfill, PDPs only.** Every product's EN PDPs on night 1 (~8.3k, ~4.6 h) and
+     its AR PDPs on night 2 (~4.6 h). Each night fits the 18:00–02:00Z window.
+     - The backfill carries **no tRPC stock reads**. A PDP-plus-stock pass for every product
+       (~16.6k requests, ~9 h, see Context) would not fit one night.
+     - Product-level stock comes from the nightly sweep. Variant-level stock stays in the regular
+       weekly pass, split over its two nights as above.
+     - Sizes for reference: the ~1.2k multi-price products take ~40 min; every multi-variant
+       product (~4–6.5k) takes ~2.2–3.6 h.
+   - Raw PDP HTML is not kept. The job stores extracted records only, plus a page's raw HTML when
+     it fails to parse, under the run's own GCS prefix. The build PR states the retention
+     (lifecycle rule) for those prefixes.
+   - Images: URLs only, hotlinked from `img-product.sephora.me` (Images B). No image bytes are
+     fetched or rehosted.
+3. **Weekly AR pages and discovery, leaf-level** (amended).
    - AR PDPs plus a sitemap diff. New products join the sweep automatically.
+   - The discovery night sweeps every **leaf** category with the same `products.getProducts`
+     call, in EN and in AR (`ar-AE`): about 380–420 calls per locale.
+   - The `cgid` refinement in each response carries the nested category tree with hit counts
+     (e.g. Makeup C302 > Face C342 > 11 leaves). The run stores the tree (ids, EN and AR labels)
+     and each product's leaf membership. Leaves overlap: Face's leaves sum to 1,120 hits against
+     982.
+   - Category and AR labels are stored as data only: they are displayed, never interpreted. The
+     sweep calls only the leaf ids that the `cgid` tree returns, never URLs built from labels.
+   - The export keeps `CATEGORY_DEPTH` 3. Publishing the deeper tree waits for the Deep Coder's
+     `category_tree` fix, and any depth change needs the owner's OK.
    - "Removed" is recorded only from an explicit page result, never from absence in a listing or
      sitemap.
 4. **Each run is its own dated snapshot.**
@@ -128,7 +165,16 @@ have variants at different prices.
 ## Cost
 - Nightly sweep: ~$0.01–0.02/night, which is under $1/month.
 - Weekly variant pass and weekly AR + discovery: ~$3–4/month.
-- **Total: about $4–5/month.** There is no proxy spend.
+- Leaf-level sweep (amended Decision 3): ~10–20 min and ≈ $0.03 per locale per run, so EN + AR
+  add ≈ $0.12/month. Data is ~150 KB per call, so ~60 MB per locale.
+- **Steady state: about $4.5–5.5/month.** There is no proxy spend.
+- One-off first-run backfill (amended Decision 2): ≈ $0.40 for EN and ≈ $0.75 with AR, over 2
+  nights. PDP HTML is ~1–4 GB inbound; inbound and same-region GCS writes are free.
+- **First month: about $5–6**, including the backfill.
+- Owner approved gap-fill Sephora crawling (subcategory depth + shade/size variants) on
+  2026-10-01, within the $25/month cap, folded into the approved cadence (relayed by the
+  coordinator). That adds about +$0.5–1/month over the $4–5 above, plus the one-off ≈ $0.75
+  backfill.
 - Cloud Scheduler: one job, inside the free tier (3 jobs per billing account), so $0.
 - Host side: no new runtime and no new cost beyond the job runs already budgeted. The publisher
   service account is free.
@@ -148,7 +194,8 @@ have variants at different prices.
   (ADR-0009)".
 - Build: about 1.5 days, after the landing ships.
   - The Crawl Engineer builds the listing parser and fixtures (synthetic only), the product-level
-    observation path and the in-job planner.
+    observation path, the in-job planner (gap-first order, first-run backfill) and the leaf-level
+    sweep with the `cgid` tree.
   - The Deep Coder builds v3 `offer.series.listing`.
   - Infra builds the Scheduler, timer and gate wiring. The service accounts and key are created
     only after the owner's explicit OK at build time; this ADR does not approve them.
