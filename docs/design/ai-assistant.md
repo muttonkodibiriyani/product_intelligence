@@ -411,7 +411,9 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
   - `users/{uid}/assistant_threads/{threadId}` and `…/messages/{msgId}`:
     - Contents: role, text, citations, tool calls (names + validated inputs + result hash, not
       full results), model id, prompt version, dataset generation, tokens and cost.
-    - Client rule: read if `request.auth.uid == uid` and the role claim is valid.
+    - Client access: **none.** The web app reads and deletes its own threads through the chat
+      callable (Coordinator, 2026-10-01), so the rules keep denying every client read and no
+      read-own rule is added.
     - **Retention: 90 days.** Every document carries `expireAt`, with a Firestore TTL policy on
       it. The user can delete a thread at any time.
   - `assistant_usage_counters/{key}`: integer micro-USD `spent` and `reserved`, and question
@@ -814,7 +816,7 @@ month (the secret version; Pub/Sub and Functions stay in the free tier).
 | Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `messages` (collection groups) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
-| Rules changes (threads read-own; no client report reads) | with the stage 1 PR, emulator-tested | – | Stage 1 |
+| Rules changes (no client report reads; threads are served by the callable, so no read-own rule) | none needed for stage 1 | – | Stage 1 |
 
 Nothing in this PR enables an API, creates a resource or deploys.
 
