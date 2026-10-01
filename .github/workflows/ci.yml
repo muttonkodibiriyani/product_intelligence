@@ -144,6 +144,49 @@ jobs:
       - name: apps/web/build.sh verify
         run: apps/web/build.sh verify
 
+  # The Phase 2 Next.js app in apps/web. Needs no secrets: E2E mocks Firebase and the API.
+  web-next:
+    name: Web (Next.js) — audit, types, lint, tests, build, E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install (exact lockfile, no install scripts)
+        run: npm ci --ignore-scripts
+      - name: npm audit (moderate and above)
+        run: npm audit --audit-level=moderate
+      - name: API types match docs/contracts/pi-api.openapi.json
+        run: npm run check:api
+      - name: tsc (strict)
+        run: npm run typecheck
+      - name: ESLint
+        run: npm run lint
+      - name: Prettier
+        run: npm run format
+      - name: Vitest
+        run: npm test
+      - name: Static export + secret scan
+        run: npm run build
+      - name: Playwright browsers + system deps
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: E2E (EN + AR, desktop + mobile, three engines)
+        run: npm run e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

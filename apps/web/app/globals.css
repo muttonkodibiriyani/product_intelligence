@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+/* Restrained palette: ink on paper, one accent, semantic colours only where they mean something. */
+@theme {
+    --font-sans:
+        system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Arabic', 'Geeza Pro', Tahoma,
+        sans-serif;
+    --color-ink: #1b1f24;
+    --color-ink-2: #59616b;
+    --color-line: #dde1e6;
+    --color-surface: #ffffff;
+    --color-surface-2: #f4f5f7;
+    --color-accent: #1f5f8b;
+    --color-danger: #a4262c;
+    --color-warn: #7a4b00;
+    --color-warn-bg: #fdf3dc;
+}
+
+html {
+    color: var(--color-ink);
+    background: var(--color-surface-2);
+}

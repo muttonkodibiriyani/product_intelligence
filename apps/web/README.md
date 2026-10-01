@@ -5,6 +5,50 @@ no bundler and no npm dependencies. It reads the `pi.dataset/v1` snapshot from F
 after sign-in; the Firebase web config is loaded at runtime from `/__/firebase/init.json`, so no
 key is ever in the source or the build.
 
+## Phase 2: the Next.js app (in progress)
+
+The Next.js app is being built in this same folder and will replace the static dashboard once it
+reaches parity. Until then the static dashboard (`src/`, `test/`, `build.sh`) is what is live, and
+Infra keeps deploying it as described below. The two do not share code.
+
+| path           | what it holds                                                                                 |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| `app/`         | routes: `/` picks the language, `/<en\|ar>/` and `/<en\|ar>/sign-in/` (static export)         |
+| `components/`  | auth provider (Firebase Auth + TanStack Query), header, sign-in, dataset status               |
+| `lib/api/`     | typed read-API client; `schema.gen.ts` is generated from `docs/contracts/pi-api.openapi.json` |
+| `lib/auth/`    | Firebase Auth: the web config is fetched from `/__/firebase/init.json` at runtime             |
+| `lib/money.ts` | `Money` checks (exact ISO exponent) and formatting from the decimal string                    |
+| `messages/`    | English and Arabic strings (same keys, checked by a test)                                     |
+| `e2e/`         | Playwright tests against the static export; Firebase and the API are mocked                   |
+
+```sh
+npm ci --ignore-scripts
+npm run check:api   # regenerate lib/api/schema.gen.ts from the contract; fails if it changed
+npm run typecheck && npm run lint && npm run format && npm test
+npm run build       # out/: static export, then a scan for secret-like strings
+npx playwright install --with-deps && npm run e2e
+```
+
+How it talks to the API:
+
+- **Bearer only.** Every call sends `Authorization: Bearer <Firebase ID token>` with
+  `credentials: 'omit'`; no cookies are set or sent.
+- **401:** retried once with a refreshed token; if that is refused too, the user signs in again.
+- **503 `auth_unavailable`:** the API could not check the token. The client waits Retry-After
+  (5 s by default), retries up to 3 times and never signs the user out.
+- **409 `stale_cursor`:** `api.page()` drops the cursor and fetches page 1 (`restarted: true`).
+- **429 / 503 `data_unavailable`:** shown with the server's Retry-After.
+- **Any error:** only the code is kept. The server's `message` is dropped, so nothing it sends
+  (or echoes from a query) reaches the screen.
+- **New dataset generation:** cached queries are invalidated.
+
+No secrets reach the client. There are no `NEXT_PUBLIC_*` keys, the Firebase web config is loaded
+at runtime, and `npm run build` fails if the export contains a Google API key pattern, an Algolia
+reference or a private key.
+
+Not done yet: Hosting config for the Next build. The static export includes inline bootstrap
+scripts, so its CSP needs their hashes before it can replace the dashboard.
+
 ## Build
 
 ```sh
