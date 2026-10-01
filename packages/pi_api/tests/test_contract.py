@@ -184,3 +184,20 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
         "https://firebasestorage.googleapis.com",
     }
     assert all(not hosts for hosts in external.values()), external
+
+
+@pytest.mark.parametrize(
+    ("schema", "fields"),
+    [
+        ("TopDiscount", {"brand", "name", "category", "image"}),
+        ("BrandPrice", {"brand"}),
+        ("CategoryShare", {"category"}),
+        ("LadderRow", {"category"}),
+        ("PromoDepth", {"category"}),
+    ],
+)
+def test_summary_page_text_is_tagged(schema: str, fields: set[str]) -> None:
+    """AIE's #104 flag: every retailer-written field in ``SummaryView`` is ``x-pi-source-text``."""
+    properties = openapi()["components"]["schemas"][schema]["properties"]
+    tagged = {k for k, v in properties.items() if '"x-pi-source-text": true' in json.dumps(v)}
+    assert tagged == fields

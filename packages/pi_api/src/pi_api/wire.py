@@ -2,32 +2,14 @@
 
 from __future__ import annotations
 
-import re
 import string
-import unicodedata
 from datetime import datetime
-from typing import Annotated, Any
-
-from pydantic import Field, PlainSerializer
+from typing import Any
 
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
 API_VERSION = "1.4.0"
-_CONTROLS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
-
-
-def strip_controls(text: str) -> str:
-    """Retailer and operator text is returned raw except C0/C1 controls (``\\t\\n`` kept)."""
-    return _CONTROLS.sub("", unicodedata.normalize("NFC", text))
-
-
-#: Text written by a retailer, operator or the matcher: raw, controls stripped, tagged in OpenAPI.
-SourceText = Annotated[
-    str,
-    PlainSerializer(strip_controls, return_type=str),
-    Field(json_schema_extra={"x-pi-source-text": True}),
-]
 
 
 class Localized(ContractModel):

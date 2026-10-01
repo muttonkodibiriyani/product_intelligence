@@ -29,7 +29,6 @@ from urllib.parse import urlsplit
 
 from pydantic import Field
 
-from pi_api.wire import SourceText
 from pi_core import AvailabilityState, Channel, MatchClass, ReviewState
 from pi_dataset import (
     Capabilities,
@@ -46,6 +45,7 @@ from pi_dataset import (
     SizeV3,
 )
 from pi_dataset.profiles import AttributeDef, ProfileInfo
+from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
 from pi_metrics.compare import Gap, pair_with_labels
 from pi_metrics.promotions import depth
@@ -337,7 +337,8 @@ class Facets(ContractModel):
     #: per value. Values that fold equal count once, under their least raw form; send it back as
     #: ``attr=<key>:<value>``. Only values ``attr`` accepts are listed, at most
     #: ``ATTR_FACET_LIMIT`` per key: the most products first, then shown in raw order. A value
-    #: is shown trimmed (API 1.4.0); one with a control character inside is still not listed.
+    #: is trimmed (API 1.4.0) before it is folded, listed or matched, so " Matte " is "Matte";
+    #: one with a control character inside is still not listed.
     attributes: dict[str, tuple[FacetCount, ...]]
     #: API 1.4.0: the keys of ``attributes`` that had more than ``ATTR_FACET_LIMIT`` listable
     #: values, so the list is not exhaustive (in ``meta.attributeSet`` order).
@@ -484,7 +485,8 @@ def _attr_texts(value: object) -> dict[str, str]:
         text = "true" if value else "false"
         return {text: text}
     if isinstance(value, str | int | Decimal):
-        return {fold(str(value)): str(value)}
+        text = str(value).strip()  # " Matte " is "Matte": label, fold and filter agree
+        return {fold(text): text}  # blank text is refused at load
     if isinstance(value, list | tuple):
         texts: dict[str, str] = {}
         for item in value:
@@ -512,7 +514,7 @@ def _attr_filters(ds: DatasetV3, query: ProductFilters) -> dict[str, set[str]]:
         if key not in facets:
             msg = f"attr {key!r} is not a facet attribute of this dataset"
             raise InvalidQueryError(msg)
-        wanted.setdefault(key, set()).add(fold(value))
+        wanted.setdefault(key, set()).add(fold(value.strip()))
     return wanted
 
 
@@ -617,8 +619,7 @@ def _attr_facet(
             texts = _product_attr_texts(p, shown, key)
             counter.update(texts.keys())
             for folded, text in texts.items():
-                label = text.strip()  # " Matte " and "Matte" show as "Matte"
-                raw[folded] = min(label, raw.get(folded, label))
+                raw[folded] = min(text, raw.get(folded, text))
     listed = [(f, n) for f, n in counter.items() if _filterable(key, raw[f])]
     top = sorted(listed, key=lambda i: (-i[1], raw[i[0]]))[:ATTR_FACET_LIMIT]
     counts = tuple(FacetCount(key=raw[f], count=n) for f, n in sorted(top, key=lambda i: raw[i[0]]))

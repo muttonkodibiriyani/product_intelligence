@@ -11,7 +11,7 @@
     }
   ],
   "cohort": {
-    "description": "collected offers with a price on the latest date",
+    "description": "offers observed with a price on the latest date",
     "n": 14
   },
   "data": {

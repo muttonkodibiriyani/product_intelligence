@@ -4,9 +4,9 @@
   "data": {
     "asOf": "2026-09-30",
     "brandPrice": null,
-    "brands": 0,
-    "categories": 0,
-    "categoryMix": [],
+    "brands": null,
+    "categories": null,
+    "categoryMix": null,
     "currency": "AED",
     "freshness": {
       "ageDays": 2,
@@ -16,8 +16,8 @@
     "ladder": null,
     "medianPrice": null,
     "priceHist": null,
-    "priced": 0,
-    "products": 0,
+    "priced": null,
+    "products": null,
     "promoDepth": null,
     "promoSharePct": null,
     "ratingPrice": null,

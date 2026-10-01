@@ -520,7 +520,8 @@
         "properties": {
           "brand": {
             "title": "Brand",
-            "type": "string"
+            "type": "string",
+            "x-pi-source-text": true
           },
           "median": {
             "$ref": "#/components/schemas/MoneyValue"
@@ -665,7 +666,8 @@
         "properties": {
           "category": {
             "items": {
-              "type": "string"
+              "type": "string",
+              "x-pi-source-text": true
             },
             "title": "Category",
             "type": "array"
@@ -2506,7 +2508,8 @@
         "properties": {
           "category": {
             "title": "Category",
-            "type": "string"
+            "type": "string",
+            "x-pi-source-text": true
           },
           "max": {
             "$ref": "#/components/schemas/MoneyValue"
@@ -3527,7 +3530,8 @@
           },
           "category": {
             "items": {
-              "type": "string"
+              "type": "string",
+              "x-pi-source-text": true
             },
             "title": "Category",
             "type": "array"
@@ -4240,19 +4244,40 @@
             "title": "Brandprice"
           },
           "brands": {
-            "title": "Brands",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brands"
           },
           "categories": {
-            "title": "Categories",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
           },
           "categoryMix": {
-            "items": {
-              "$ref": "#/components/schemas/CategoryShare"
-            },
-            "title": "Categorymix",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CategoryShare"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categorymix"
           },
           "currency": {
             "title": "Currency",
@@ -4296,12 +4321,26 @@
             ]
           },
           "priced": {
-            "title": "Priced",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priced"
           },
           "products": {
-            "title": "Products",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products"
           },
           "promoDepth": {
             "anyOf": [
@@ -4388,11 +4427,13 @@
         "properties": {
           "brand": {
             "title": "Brand",
-            "type": "string"
+            "type": "string",
+            "x-pi-source-text": true
           },
           "category": {
             "items": {
-              "type": "string"
+              "type": "string",
+              "x-pi-source-text": true
             },
             "title": "Category",
             "type": "array"
@@ -4408,7 +4449,8 @@
           "image": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "x-pi-source-text": true
               },
               {
                 "type": "null"
@@ -4418,7 +4460,8 @@
           },
           "name": {
             "title": "Name",
-            "type": "string"
+            "type": "string",
+            "x-pi-source-text": true
           },
           "price": {
             "$ref": "#/components/schemas/MoneyValue"

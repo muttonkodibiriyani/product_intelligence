@@ -323,8 +323,9 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     that key's own `attr[]` values. Sorted by value. Two limits keep every listed value a
     working filter: a value that `attr[]` would refuse (a control character or U+2028/U+2029
     inside, or `<key>:<value>` over 120 characters) is not listed, and each key lists at most
-    its 50 most common values (`ATTR_FACET_LIMIT`). API 1.4.0: a value is shown trimmed
-    (`" Matte "` and `"Matte"` are one value, shown `Matte`), and `facets.attributesTruncated`
+    its 50 most common values (`ATTR_FACET_LIMIT`). API 1.4.0: a value is trimmed before
+    it is folded, listed or matched (`" Matte "`, `"Matte"` and the filter `attr=finish: Matte `
+    are one value, shown `Matte`), and `facets.attributesTruncated`
     lists the keys that had more than 50 listable values, so a client knows the list is not
     exhaustive.
   - The retailer facet counts a product once per retailer, however many of its contexts offer
@@ -422,11 +423,14 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
   context id; default: the context with the most collected offers). It is the landing
   dashboard's single call, computed once per snapshot generation and context (an LRU of 16)
   and under 60 KB on the live catalogue (about 43 KB). Every figure is for one context on the
-  snapshot's latest date. Early offers are left out (caveat `early_excluded`), and prices in
-  another currency don't count. It returns:
+  snapshot's latest date: an offer counts when it was observed that day (priced, or with an
+  observed stock state); one seen only on an earlier date does not. Early offers are left out
+  (caveat `early_excluded`), and prices in another currency don't count. It returns:
   - `retailer`, `asOf`, `currency`;
-  - `products` (collected), `priced` (with a price: the denominator of every price figure),
-    `brands` (fold-equal names count once), `categories` (top level);
+  - `products` (observed on the latest date), `priced` (of those, with a price in the market
+    currency: the denominator of every price figure; `products - priced` were observed with a
+    stock state but no price, or priced in another currency), `brands` (fold-equal names count
+    once), `categories` (top level);
   - `medianPrice` (nearest rank, the lower middle);
   - `ladder[{category, n, min, p25, p50, p75, max}]`: the 20 largest top-level categories;
   - `brandPrice[{brand, n, median}]`: the 30 brands with the most priced products, by `n`
@@ -449,8 +453,9 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     (`meta.capabilities.promotions` false; the live sephora_me snapshot today),
     `field_not_collected` (regular price not collected) or `cohort_too_small` (fewer than 5
     offers with both prices). Ratings follow the same pattern. Fewer than 5 priced offers is
-    status `not_enough_data` with every price figure null, and a blocked or not-applicable
-    context returns an empty summary with that reason.
+    status `not_enough_data` with every price figure null. A blocked or not-applicable context
+    returns status `not_enough_data` with that reason, and every count and section null
+    (`products`, `priced`, `brands`, `categories`, `categoryMix` included), never 0.
 - **`/v1/matches`:** `class`, `reviewState`, `retailers`, `brand`, `limit`, `cursor`. Returns
   `{total, nextCursor, items[{productId, brand, name, a, b, matchClass, reviewState, decidedBy,
   confidence, method, stage}]}`, ordered by product id then `(a, b)`. `retailers` filters an

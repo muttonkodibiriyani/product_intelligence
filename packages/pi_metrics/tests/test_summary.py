@@ -148,7 +148,8 @@ def test_too_few_prices_withhold_every_price_figure() -> None:
 def test_a_blocked_retailer_has_an_empty_summary() -> None:
     m = summary(load(doc()), "shop_d")
     assert (m.status, m.reason) == (Status.NOT_ENOUGH_DATA, Reason.RETAILER_BLOCKED)
-    assert m.data.products == 0
+    s = m.data
+    assert (s.products, s.priced, s.brands, s.categories, s.category_mix) == (None,) * 5
     assert {w.reason for w in m.data.withheld} == {Reason.RETAILER_BLOCKED}
     assert len(m.data.withheld) == len(Section)
 
@@ -248,7 +249,7 @@ def test_rows_are_capped_and_ordered_by_size(monkeypatch: pytest.MonkeyPatch) ->
     s = data(d)
     assert s.ladder is not None
     assert [(r.category, r.n) for r in s.ladder] == [("skincare", 7), ("makeup", 5)]
-    assert [(c.category, c.n) for c in s.category_mix] == [
+    assert [(c.category, c.n) for c in s.category_mix or ()] == [
         (("skincare", "serum"), 7),
         (("makeup", "lips"), 5),
     ]
@@ -258,5 +259,21 @@ def test_rows_are_capped_and_ordered_by_size(monkeypatch: pytest.MonkeyPatch) ->
     assert s.ladder is not None
     assert s.promo_depth is not None
     assert [r.category for r in s.ladder] == list(s.promo_depth.category) == ["skincare"]
-    assert len(s.category_mix) == 1
+    assert len(s.category_mix or ()) == 1
     assert s.categories == 2
+
+
+def test_products_are_the_offers_observed_on_the_latest_date() -> None:
+    """Reviewer's #104 point 3: an offer seen only on an earlier date is not counted."""
+    d = only_a(["10.00"] * 8)
+    gone = offer(d, "q08", "shop_a")["series"]
+    gone["price"][-1] = None
+    if gone.get("availability") is not None:
+        gone["availability"][-1] = None
+    unpriced = offer(d, "q07", "shop_a")["series"]
+    unpriced["price"][-1] = None
+    assert unpriced.get("availability") is not None
+    unpriced["availability"][-1] = "in_stock"
+    s = data(d)
+    assert (s.products, s.priced) == (7, 6)  # q08 unseen; q07 seen without a price
+    assert sum(c.n for c in s.category_mix or ()) == 7

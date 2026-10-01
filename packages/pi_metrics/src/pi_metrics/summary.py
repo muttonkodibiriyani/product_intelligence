@@ -1,6 +1,7 @@
 """One context's catalogue at a glance (``/v1/summary``): the landing dashboard's numbers.
 
-Every figure is over the context's collected (non-early) offers with a price on the latest date.
+Every figure is over the context's non-early offers observed on the latest date (priced, or
+with an observed stock state); price figures over those with a price in the market currency.
 Percentiles and medians are nearest-rank, so each is an observed price, exact in its currency
 (the median of an even count is the lower middle). Promotion figures follow
 ``pi_metrics.promotions``: an offer counts only with both prices observed, so an unpublished
@@ -21,6 +22,7 @@ from enum import StrEnum
 
 from pi_dataset import Context, ContractModel, DatasetV3, MoneyValue, OfferV3, ProductV3
 from pi_dataset.models import FieldStatus, RetailerStatus
+from pi_dataset.text import SourceText
 from pi_metrics import view
 from pi_metrics.model import (
     EVERY_PROFILE,
@@ -75,7 +77,7 @@ class Withheld(ContractModel):
 
 
 class LadderRow(ContractModel):
-    category: str
+    category: SourceText
     n: int
     min: MoneyValue
     p25: MoneyValue
@@ -87,7 +89,7 @@ class LadderRow(ContractModel):
 class PromoDepth(ContractModel):
     """``cells[r][c]``: promoted offers of ``category[r]`` whose depth is in ``bands[c]``."""
 
-    category: tuple[str, ...]
+    category: tuple[SourceText, ...]
     bands: tuple[str, ...]
     cells: tuple[tuple[int, ...], ...]
 
@@ -95,7 +97,7 @@ class PromoDepth(ContractModel):
 class BrandPrice(ContractModel):
     """One of the ``BRAND_ROWS`` brands with the most priced products (n desc, then brand)."""
 
-    brand: str
+    brand: SourceText
     #: Priced products of the brand (fold-equal spellings merged).
     n: int
     median: MoneyValue
@@ -103,7 +105,7 @@ class BrandPrice(ContractModel):
 
 class CategoryShare(ContractModel):
     #: The full category path, top level first.
-    category: tuple[str, ...]
+    category: tuple[SourceText, ...]
     n: int
 
 
@@ -133,14 +135,14 @@ class RatingPrice(ContractModel):
 
 class TopDiscount(ContractModel):
     id: str
-    brand: str
-    name: str
-    category: tuple[str, ...]
+    brand: SourceText
+    name: SourceText
+    category: tuple[SourceText, ...]
     price: MoneyValue
     regular: MoneyValue
     depth_pct: Pct
     #: Set by the API from its image hosts (``ProductCard.image`` rules); never by the metric.
-    image: str | None = None
+    image: SourceText | None = None
 
 
 class Summary(ContractModel):
@@ -149,19 +151,22 @@ class Summary(ContractModel):
     #: The date every figure is for: the snapshot's latest.
     as_of: date
     currency: str
-    #: Collected (non-early) products at the context on the latest date.
-    products: int
+    #: Products with a non-early offer observed at the context on the latest date (``asOf``);
+    #: an offer only seen on an earlier date doesn't count. Null when the context is withheld
+    #: whole (blocked, not applicable), never 0.
+    products: int | None
     #: Of those, priced in ``currency``: the denominator of every price figure and of
-    #: ``brandPrice[].n`` (brand concentration = sum of the top n / priced).
-    priced: int
-    brands: int
-    categories: int
+    #: ``brandPrice[].n`` (brand concentration = sum of the top n / priced). ``products -
+    #: priced`` were observed without a price (a stock state only) or in another currency.
+    priced: int | None
+    brands: int | None
+    categories: int | None
     median_price: MoneyValue | None
     promo_share_pct: Pct | None
     ladder: tuple[LadderRow, ...] | None
     promo_depth: PromoDepth | None
     brand_price: tuple[BrandPrice, ...] | None
-    category_mix: tuple[CategoryShare, ...]
+    category_mix: tuple[CategoryShare, ...] | None
     price_hist: PriceHistogram | None
     rating_price: RatingPrice | None
     top_discounts: tuple[TopDiscount, ...] | None
@@ -169,8 +174,11 @@ class Summary(ContractModel):
 
 
 def default_context(ds: DatasetV3) -> Context:
-    """The context with the most collected offers (ties by id): the dashboard's default."""
-    counts = Counter(cid for p in ds.products for cid, o in p.offers.items() if not o.early)
+    """The context with the most non-early offers observed on the latest date (ties by id)."""
+    i = len(ds.meta.dates) - 1
+    counts = Counter(
+        cid for p in ds.products for cid, o in p.offers.items() if not o.early and view.seen(o, i)
+    )
     return min(ds.meta.contexts, key=lambda c: (-counts[c.id], c.id))
 
 
@@ -283,16 +291,16 @@ def _empty(ctx: Context, as_of: date, currency: str, reason: Reason) -> Summary:
         retailer=ctx.id,
         as_of=as_of,
         currency=currency,
-        products=0,
-        priced=0,
-        brands=0,
-        categories=0,
+        products=None,
+        priced=None,
+        brands=None,
+        categories=None,
         median_price=None,
         promo_share_pct=None,
         ladder=None,
         promo_depth=None,
         brand_price=None,
-        category_mix=(),
+        category_mix=None,
         price_hist=None,
         rating_price=None,
         top_discounts=None,
@@ -352,7 +360,7 @@ def _promotions(
 
 
 class _Scan(ContractModel):
-    """One pass over the context's offers on the latest date."""
+    """One pass over the context's offers observed on the latest date."""
 
     offered: tuple[tuple[ProductV3, OfferV3], ...]
     priced: tuple[tuple[ProductV3, OfferV3, MoneyValue], ...]
@@ -363,9 +371,11 @@ def _scan(ds: DatasetV3, ctx: Context, i: int, currency: str) -> _Scan:
     offered, early = [], 0
     for product in view.products(ds, EVERYTHING):
         offer = product.offers.get(ctx.id)
-        if offer is not None and offer.early:
+        if offer is None or not view.seen(offer, i):
+            continue
+        if offer.early:
             early += 1
-        elif offer is not None:
+        else:
             offered.append((product, offer))
     priced = tuple(
         (p, o, price)
@@ -489,9 +499,7 @@ def summary(dataset: view.AnyDataset, context_id: str | None) -> Metric[Summary]
         status=Status.OK if enough else Status.NOT_ENOUGH_DATA,
         data=data,
         reason=None if enough else Reason.COHORT_TOO_SMALL,
-        cohort=Cohort(
-            description="collected offers with a price on the latest date", n=len(prices)
-        ),
+        cohort=Cohort(description="offers observed with a price on the latest date", n=len(prices)),
         caveats=_caveats(ctx, shop, scan.early, mixed),
         as_of=as_of,
     )

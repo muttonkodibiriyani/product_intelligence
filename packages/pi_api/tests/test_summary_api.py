@@ -68,7 +68,7 @@ def test_the_retailer_param_picks_the_context(tmp_path: Path) -> None:
     client = served(tmp_path)
     assert get(client, "?retailer=shop_b")["data"]["retailer"] == "shop_b"
     blocked = get(client, "?retailer=shop_d")
-    assert blocked["data"]["products"] == 0
+    assert blocked["data"]["products"] is None
     assert blocked["reason"] == "retailer_blocked"
 
 
