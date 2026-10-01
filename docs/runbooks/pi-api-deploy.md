@@ -105,7 +105,7 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
   --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
-  --cpu-throttling --port=8080 --ingress=all --allow-unauthenticated \
+  --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
   --set-env-vars="PI_API_FIREBASE_PROJECT=$PROJECT,PI_API_BUCKET=$BUCKET,PI_API_DATASETS=<paths from §2>"
 ```
 
@@ -120,6 +120,7 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
   (for example domain-restricted sharing) refuses the binding, stop (stop rule).
 - The startup probe is the default TCP probe. There are no health routes, by design.
+- **`--cpu-boost`**: the gcloud default (startup-only), passed explicitly so redeploys match live; accepted 2026-10-01.
 - **Memory 1Gi** (decision log, 2026-10-01; was 512Mi). Measured locally (RSS, Python 3.12):
 
   | What | Measured |
