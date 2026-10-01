@@ -138,6 +138,9 @@ class OfferV3(Offer):
     evidence: EvidenceV3  # v3 adds itemKey (ADR-0008 §2)
     #: Declared offer-level keys only (fees, daypart, size-run stock).
     attributes: dict[AttributeKey, JsonValue] = Field(default_factory=dict)
+    #: How many of the retailer's listings the producer grouped into this offer (e.g. the shades
+    #: of one size); ``null`` when the producer doesn't say. Optional and additive.
+    listing_count: Annotated[int, Field(ge=1)] | None = None
 
 
 class ProductV3(ContractModel):

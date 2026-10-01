@@ -18,6 +18,9 @@ dataset runs every contract rule: an invalid document cannot be written. What ch
   retailer's allowlisted https host (``IMAGE_HOSTS``); anything else, including another
   retailer's host, is ``null``, never a guess;
 - Ulta's status is the owner's statement (``UltaContext``), not inferred from whether rows exist.
+
+``to_v3`` (``--output-v3``, opt-in) upgrades that v2 snapshot under ``beauty@1`` and states each
+collected offer's ``listingCount``: the listing rows grouped into it (one family, one size).
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ from pi_core import AvailabilityState, MatchClass, ReviewState
 from pi_dataset import (
     Capabilities,
     Dataset,
+    DatasetV3,
     DecidedBy,
     Evidence,
     FieldStatus,
@@ -54,6 +58,8 @@ from pi_dataset import (
     RetailerStatus,
     Series,
     Size,
+    committed_profile,
+    upgrade,
 )
 from scripts.demo_export.export import (
     GroupKey,
@@ -280,6 +286,11 @@ def edge(match: MatchRow) -> MatchEdge:
     )
 
 
+def pair_token(ulta_key: GroupKey, sephora: GroupKey) -> str:
+    """The id token of a matched pair's product (as in v1)."""
+    return f"m-{ulta_key.stable_token}-{sephora.stable_token}"
+
+
 def product(
     groups: Mapping[GroupKey, Sequence[ListingRow]],
     keys: Sequence[GroupKey],
@@ -378,7 +389,7 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
         product(
             groups,
             (sephora, ulta_key),
-            f"m-{ulta_key.stable_token}-{sephora.stable_token}",
+            pair_token(ulta_key, sephora),
             stale,
             (edge(match),),
         )
@@ -500,3 +511,43 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     return Dataset(
         schema_id="pi.dataset/v2", meta=meta, products=tuple(products), not_observed=not_observed
     )
+
+
+def listing_counts(
+    rows: Sequence[ListingRow], matches: Sequence[MatchRow]
+) -> dict[tuple[str, str], int]:
+    """Listing rows per collected offer, by (product id, retailer id): the grouping and pairing
+    ``build_dataset_v2`` uses, so every collected offer has its count."""
+    groups = group_rows(rows)
+    pairs, unpaired = pair_groups(groups, matches)
+    owned: list[tuple[tuple[GroupKey, ...], str]] = [
+        ((sephora, ulta_key), pair_token(ulta_key, sephora)) for ulta_key, sephora, _ in pairs
+    ]
+    owned += [((key,), key.stable_token) for key in unpaired]
+    return {
+        (product_id(token), RETAILERS[key.retailer][0]): len(groups[key])
+        for keys, token in owned
+        for key in keys
+    }
+
+
+def to_v3(v2: Dataset, rows: Sequence[ListingRow], matches: Sequence[MatchRow]) -> DatasetV3:
+    """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount``; an early
+    (recon) offer's stays ``null``. The caller validates the dump with ``load_any``."""
+    profile = committed_profile("beauty", 1)
+    if profile is None:  # pragma: no cover - the profile is committed with pi_dataset
+        raise ValueError("beauty@1 is not a committed profile")
+    counts = listing_counts(rows, matches)
+    v3 = upgrade(v2, profile)
+    products = tuple(
+        p.model_copy(
+            update={
+                "offers": {
+                    cid: o if o.early else o.model_copy(update={"listing_count": counts[p.id, cid]})
+                    for cid, o in p.offers.items()
+                }
+            }
+        )
+        for p in v3.products
+    )
+    return v3.model_copy(update={"products": products})
