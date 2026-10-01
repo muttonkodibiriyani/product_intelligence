@@ -56,7 +56,7 @@ gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_leve
   Hosting deploy still rejects the rewrite, stop and report it (stop rule).
 - Note the datasets to serve: the object paths `publish_dataset.py` writes under `datasets/`
   (e.g. `datasets/ae/beauty/latest.json`). They become `PI_API_DATASETS`.
-  With per-source files (API ≥ 1.6.0, ADR-0010), assign each source to its file instead, e.g.
+  With per-source files (API ≥ 1.7.0, ADR-0010), assign each source to its file instead, e.g.
   `sephora_me=datasets/ae/sephora_me/latest.json,ulta_ae=datasets/ae/beauty/latest.json`. Don't
   also list one of those paths bare in the same scope.
 

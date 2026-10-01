@@ -53,7 +53,7 @@ class Imported:
     imported_at: datetime
     #: Offers whose ``regular`` series was cleared (any non-null value in it).
     was_prices: int
-    #: The retailer's market time zone: the import date is that local day (API 1.6.0).
+    #: The retailer's market time zone: the import date is that local day (API 1.7.0).
     time_zone: str = "UTC"
 
     @property

@@ -78,7 +78,7 @@ versioned snapshots.
 
   A document that fails validation is **never served**. The previous good generation stays live,
   and if there is none the endpoint returns `503 data_unavailable`.
-- **Per-source files (API 1.6.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
+- **Per-source files (API 1.7.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
   `PI_API_DATASETS` entry may be `source=path` instead of a bare path. Each source (a retailer id)
   is then served only from its own file. The assigned files of one scope are composed into **one
   view** by `pi_dataset.compose`, so `select()` sees one dataset per scope, not several. Each
@@ -535,9 +535,12 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
   `status: snapshot` with `cutoff` = the import time, never `fresh`.
 - **Caveats.** A response involving it carries, in this order, `was_price_unverified` (endpoints
   showing prices or promotions), `snapshot_import_date` ("ulta_ae: snapshot imported <date>,
-  capture date unknown.") and `parent_listings_included`. The import's aggregate-parent
-  listings are not removed here (the served document has no parent marker); the export drops
-  them.
+  capture date unknown.") and `parent_listings_included`. "Involving" is the retailer or
+  contexts the request names (`retailer`, the `retailers` pair, `missing_at`/`present_at`), or
+  for a product and its history the contexts with offers or series; a request naming none
+  involves every retailer. The import's aggregate-parent listings are not removed here (the
+  served document has no parent marker). The demo export drops them (#133), so a file
+  exported before that change still includes them.
 
 - **Cutoff (API 1.5.1).** `meta.cutoff` is served as the latest `capturedAt` of the collected
   (non-imported) offers, so `/meta`, every envelope's `meta.cutoff` and a collected context's
@@ -545,7 +548,7 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
   is kept and `snapshot_import_date` says so. A collected context's `/summary` `asOf` is capped
   at that cutoff's day, and `/summary` without `retailer` picks a collected context.
   `meta.dates` and the series are left as published.
-- **Import day and per-source views (API 1.6.0).** The `snapshot_import_date` `<date>` is the
+- **Import day and per-source views (API 1.7.0).** The `snapshot_import_date` `<date>` is the
   import's local day in the market time zone, the day `meta.dates` count in (an import at
   21:15Z is 1 October in Dubai). The view applies to every served view: a whole file, and a
   composed per-source view after composition from the unchanged files. `/meta` `sources[].cutoff`

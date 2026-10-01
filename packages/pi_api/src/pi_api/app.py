@@ -404,6 +404,18 @@ def _selected(query: ContractModel, data: object) -> frozenset[str]:
         return frozenset({data.retailer})
     if isinstance(data, ProductDetail | AdminProductDetail):
         return frozenset(o.retailer for o in data.offers) or frozenset({""})
+    if isinstance(data, History):
+        return frozenset(data.series) or frozenset({""})
+    return _named(query)
+
+
+def _named(query: ContractModel) -> frozenset[str]:
+    """The retailer or context ids a query names; empty when it names none."""
+    pair = getattr(query, "retailers", None)
+    if isinstance(pair, str):
+        return frozenset(pair.split(","))
+    if isinstance(query, AssortmentQuery):
+        return frozenset({query.missing_at, query.present_at})
     named = getattr(query, "retailer", None)
     if isinstance(named, str):
         return frozenset({named})

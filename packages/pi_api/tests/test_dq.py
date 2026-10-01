@@ -295,3 +295,23 @@ def test_an_import_only_dataset_keeps_its_cutoff_and_says_it_is_a_snapshot(
     meta = get(make_client(tmp_path)[0], "/meta")
     assert meta["data"]["cutoff"] == IMPORTED_AT
     assert "snapshot_import_date" in codes(meta)
+
+
+def test_pair_and_history_endpoints_owe_ulta_caveats_only_when_ulta_is_in_them(
+    tmp_path: Path,
+) -> None:
+    """AIE and Reviewer, #131: the scope comes from the pair, the assortment ends or the series."""
+    client = served(tmp_path)
+    ulta_codes = {"was_price_unverified", "snapshot_import_date", "parent_listings_included"}
+    for path in (
+        "/compare?retailers=shop_a,shop_c",
+        "/index?retailers=shop_a,shop_c",
+        "/assortment-gaps?missing_at=shop_a&present_at=shop_c",
+        "/products/p12/history",
+    ):
+        assert not ulta_codes & set(codes(get(client, path))), path
+    assert ulta_codes <= set(codes(get(client, f"/compare?retailers=shop_a,{ULTA}")))
+    assert "snapshot_import_date" in codes(
+        get(client, f"/assortment-gaps?missing_at={ULTA}&present_at=shop_a")
+    )
+    assert "was_price_unverified" in codes(get(client, "/products/p03/history"))
