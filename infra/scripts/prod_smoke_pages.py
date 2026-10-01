@@ -16,7 +16,9 @@ It writes screenshots and one JSON verdict under --out.
   P3 /app/en/explore/?retailer=<rid> per retailer: rows > 0, >= 1 thumbnail loaded, 0 CSP blocks
   P4 the first Ulta product: gallery images load, all from media.alshaya.com, 0 CSP blocks
   P5 no rendered price of AED 0.00 / 0.01 (Latin or Arabic-Indic digits) on the P3/P4 pages
-  P6 --category-page (EN + AR) renders: 200, every /api/v1 call < 400, no alert
+  P6 --category-page, the /prices page (EN + AR): 200, every /api/v1 call < 400, no alert, and
+     section#p-buckets holds its "9 shared categories" meta line and exactly 9 category rows
+     (the table at desktop width, the card list on a phone); a "not available yet" note FAILs
 
 --phase before records P4-P6 as info, since live may not have the gallery or category page yet
 and the two known AED 0.01 prices are still served. --phase after enforces all six.
@@ -24,7 +26,7 @@ and the two known AED 0.01 prices are still served. --phase after enforces all s
 One-time browser install (no project access):
   uvx --from playwright==1.63.0 playwright install firefox webkit
   uv run --script infra/scripts/prod_smoke_pages.py --phase after --out "$W/shots" \\
-      --browser firefox --viewport desktop --category-page /app/en/categories/
+      --browser firefox --viewport desktop --category-page /app/en/prices/
 Exit codes: 0 PASS, 1 FAIL, 2 usage.
 """
 
@@ -69,6 +71,22 @@ ROOT_THUMBS_JS = """allowed => {
                                 && i.offsetParent).length};
 }"""
 IMAGES_JS = "els => els.map(e => ({src: e.src, ok: e.complete && e.naturalWidth > 0}))"
+BUCKETS_JS = """() => {
+  const s = document.querySelector('section#p-buckets');
+  if (!s) return null;
+  const shown = e => e.getClientRects().length > 0;
+  return {text: s.innerText,
+          rows: [...s.querySelectorAll('table tbody th[scope=row]')].filter(shown).length,
+          cards: [...s.querySelectorAll('ul > li h3')].filter(shown).length,
+          notes: [...s.querySelectorAll('[role=note]')].map(n => n.innerText.slice(0, 120))};
+}"""
+#: The /prices page's category section (FE P3): its loaded-data meta line and row count.
+BUCKETS = 9
+BUCKETS_META = {
+    "en": "Full catalogues · 9 shared categories ·",
+    "ar": "الكتالوج الكامل · 9 فئات مشتركة ·",
+}
+PHONE_MAX_WIDTH = 639  # the page switches the table for a card list below 640 px
 
 # ------------------------------------------------------------------ pure logic (unit-tested)
 
@@ -90,6 +108,22 @@ def low_prices(text: str) -> list[str]:
         text.translate(_DIGITS).replace("\u00a0", " ").replace("\u200f", "").replace("\u200e", "")
     )
     return [m.group(0) for m in _LOW_PRICE.finditer(normal)]
+
+
+def bucket_problems(state: dict[str, Any] | None, locale: str, width: int) -> list[str]:
+    """P6: the category section rendered with data in the layout this viewport should show."""
+    if state is None:
+        return ["no section#p-buckets"]
+    bad = [f"note: {n!r}" for n in state["notes"]]
+    text = " ".join(state["text"].translate(_DIGITS).split())
+    if BUCKETS_META[locale] not in text:
+        bad.append(f"no {BUCKETS_META[locale]!r} line")
+    shown, hidden = ("cards", "rows") if width <= PHONE_MAX_WIDTH else ("rows", "cards")
+    if state[shown] != BUCKETS:
+        bad.append(f"{state[shown]} category {shown}, want {BUCKETS}")
+    if state[hidden]:
+        bad.append(f"{state[hidden]} category {hidden} shown at {width}px")
+    return bad
 
 
 def off_host(urls: list[str], host: str) -> list[str]:
@@ -292,11 +326,11 @@ def run(args: argparse.Namespace) -> Report:
                     if args.category_page
                     else None
                 )
-                bad = (
-                    app_page(page, cat, out(f"category-{loc}"))
-                    if cat
-                    else ["no --category-page given"]
-                )
+                bad = ["no --category-page given"]
+                if cat:
+                    bad = app_page(page, cat, out(f"category-{loc}"))
+                    state = page.evaluate(BUCKETS_JS)
+                    bad += bucket_problems(state, loc, VIEWPORTS[args.viewport]["width"])
                 rep.check(f"P6 category {loc}", bad, enforced=args.phase == "after")
             p1_root(page, rep, out)
         except Exception as exc:

@@ -144,3 +144,37 @@ def test_the_lockfile_pins_every_dependency_with_hashes() -> None:
     lock = Path(pages.__file__).with_name("prod_smoke_pages.py.lock").read_text(encoding="utf-8")
     assert 'name = "playwright"\nversion = "1.63.0"' in lock
     assert lock.count('hash = "sha256:') >= lock.count("[[package]]") > 1
+
+
+def buckets(**over: object) -> dict[str, object]:
+    state: dict[str, object] = {
+        "text": "Prices by category\nFull catalogues · 9 shared categories · 2 retailers",
+        "rows": 9,
+        "cards": 0,
+        "notes": [],
+    }
+    return state | over
+
+
+def test_the_category_section_passes_with_nine_rows_in_the_right_layout() -> None:
+    assert pages.bucket_problems(buckets(), "en", 1440) == []
+    assert pages.bucket_problems(buckets(rows=0, cards=9), "en", 390) == []
+    ar = pages.BUCKETS_META["ar"].replace("9", "\u0669") + " 2"
+    assert pages.bucket_problems(buckets(text=ar), "ar", 1440) == []
+
+
+@pytest.mark.parametrize(
+    ("state", "width", "want"),
+    [
+        (None, 1440, "no section#p-buckets"),
+        (buckets(rows=0, notes=["not available yet"]), 1440, "note: 'not available yet'"),
+        (buckets(text="Prices by category"), 1440, "shared categories"),
+        (buckets(rows=8), 1440, "8 category rows, want 9"),
+        (buckets(), 390, "0 category cards, want 9"),
+        (buckets(cards=9), 1440, "9 category cards shown at 1440px"),
+    ],
+)
+def test_the_category_section_fails_when_empty_or_wrong(
+    state: dict[str, object] | None, width: int, want: str
+) -> None:
+    assert any(want in b for b in pages.bucket_problems(state, "en", width))
