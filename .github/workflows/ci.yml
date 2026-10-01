@@ -81,7 +81,7 @@ jobs:
       # module skips itself without the emulators, so CI refuses any skip.
       - name: pytest -m emulator against infra/firebase.json rules (0 skips allowed)
         run: |
-          npx -y firebase-tools@14 emulators:exec --config infra/firebase.json --project demo-pi \
+          npx -y firebase-tools@14.27.0 emulators:exec --config infra/firebase.json --project demo-pi \
             --only firestore,storage \
             "uv run pytest infra/tests -m emulator -rs --junitxml=$RUNNER_TEMP/emulator.xml"
           python3 .github/scripts/assert_no_skips.py "$RUNNER_TEMP/emulator.xml"

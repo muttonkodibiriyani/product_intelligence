@@ -40,6 +40,8 @@ check: lint types test
 # ---------------------------------------------------------------- local stack (blueprint §3.3)
 # Reads ./.env when present (copy from .env.example); otherwise compose defaults apply.
 COMPOSE := docker compose -f infra/docker-compose.yml $(if $(wildcard .env),--env-file .env)
+# One exact firebase-tools version everywhere (test_firebase_tools_pin.py scans all tracked files).
+FIREBASE_TOOLS_VERSION ?= 14.27.0
 # demo-* ids make the emulators refuse to reach any real Firebase project or credentials.
 FIREBASE_PROJECT := demo-productintelligence
 
@@ -57,4 +59,4 @@ db-shell:
 
 # Emulators only (auth, firestore, storage); never deploys. Firestore and Storage emulators need Java 11+.
 emulators:
-	cd infra && firebase emulators:start --project $(FIREBASE_PROJECT) --only auth,firestore,storage
+	cd infra && npx -y firebase-tools@$(FIREBASE_TOOLS_VERSION) emulators:start --project $(FIREBASE_PROJECT) --only auth,firestore,storage

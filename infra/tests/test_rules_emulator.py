@@ -2,7 +2,7 @@
 
 Runs only under the emulators (they set FIRESTORE_EMULATOR_HOST / FIREBASE_STORAGE_EMULATOR_HOST):
 
-    npx firebase-tools@14 emulators:exec --config infra/firebase.json --project demo-pi \
+    npx firebase-tools@14.27.0 emulators:exec --config infra/firebase.json --project demo-pi \
         --only firestore,storage "uv run pytest infra/tests -m emulator"
 
 Nothing is seeded: a read the rules allow on a missing object is 404, a denied one is 403, so the
