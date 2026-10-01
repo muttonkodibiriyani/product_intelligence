@@ -86,6 +86,14 @@ def test_role_change_on_existing_account_revokes_tokens_and_keeps_other_claims()
     assert "was viewer; tokens revoked" in line
 
 
+def test_killswitch_role_sets_only_the_role_claim() -> None:
+    auth = FakeAuth()
+    line = invite_user.invite(EMAIL, "killswitch", None, allow_existing=False, auth=auth)
+    assert "killswitch" in invite_user.ROLES
+    assert auth.users[EMAIL].custom_claims == {"role": "killswitch"}
+    assert line.endswith("role=killswitch reset-email=skipped")
+
+
 def test_same_role_on_existing_account_does_not_revoke() -> None:
     auth = FakeAuth(users={EMAIL: User("u1", EMAIL, {"role": "viewer"})})
     invite_user.invite(EMAIL, "viewer", None, allow_existing=True, auth=auth)

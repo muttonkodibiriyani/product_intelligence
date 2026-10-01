@@ -5,7 +5,7 @@ Live state, created 2026-09-30. Record every change here; nothing is click-ops.
 | Piece     | State |
 |-----------|-------|
 | Hosting   | site `productintelligence-beeb3` → https://productintelligence-beeb3.web.app; config in `firebase.json` (`hosting.public = web-dist`, the static build copied in at deploy time, never committed; SPA rewrite; `noindex` + security headers) |
-| Auth      | Identity Platform initialised; email/password only; **self sign-up and self-deletion disabled**. Users are invited with `scripts/invite_user.py` (no password is ever set; Firebase emails a reset link, valid 1 h). Access = custom claim `role` ∈ {admin, viewer} |
+| Auth      | Identity Platform initialised; email/password only; **self sign-up and self-deletion disabled**. Users are invited with `scripts/invite_user.py` (no password is ever set; Firebase emails a reset link, valid 1 h). Access = custom claim `role` ∈ {admin, viewer}; `killswitch` is the one budget kill-switch account (no data access) |
 | Firestore | `(default)`, Standard, **me-central1** (permanent). Rules: clients read `demo_*` only when invited; no client writes |
 | Storage   | `productintelligence-beeb3.firebasestorage.app`, **me-central1**. Rules: clients read `datasets/**` only when invited; no client writes. Small non-free-tier cost accepted (a few MB → < $0.05/month) |
 | Web app   | registered as `pi-demo-web`; the page loads its config from Hosting's `/__/firebase/init.js` so no key is committed |
