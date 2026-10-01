@@ -1,4 +1,4 @@
-"""Token verification (design §4): every failure is a 401 or 403, never a pass."""
+"""Token verification (design §4): every failure is a 401, 403 or 503, never a pass."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import jwt
 import pytest
 
 from api_fixture import CERT, KID, NOW, OTHER_KEY, PROJECT, FakeCerts, claims, token
-from pi_api.auth import AuthError, Role, TokenVerifier
+from pi_api.auth import AuthError, CertificatesUnavailableError, Role, TokenVerifier
 
 
 def verifier(certs: FakeCerts | None = None) -> TokenVerifier:
@@ -82,12 +82,16 @@ def _hs256(secret: bytes) -> str:
     return (signing + b"." + base64.urlsafe_b64encode(mac).rstrip(b"=")).decode()
 
 
-def test_unavailable_signing_keys_fail_closed() -> None:
+def test_unavailable_signing_keys_fail_closed_as_retryable_503() -> None:
     class Broken(FakeCerts):
         def certificates(self) -> dict[str, str]:
-            raise ValueError("bad response")
+            raise CertificatesUnavailableError
 
-    assert status_of(f"Bearer {token()}", Broken()) == 401
+    assert status_of(f"Bearer {token()}", Broken()) == 503
+
+
+def test_an_unreadable_certificate_fails_closed_as_503() -> None:
+    assert status_of(f"Bearer {token()}", FakeCerts({KID: "not a pem"})) == 503
 
 
 @pytest.mark.parametrize("role", [None, "", "owner", "ADMIN"])

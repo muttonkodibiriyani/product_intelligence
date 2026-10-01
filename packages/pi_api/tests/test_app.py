@@ -7,11 +7,23 @@ import os
 from pathlib import Path
 from typing import Any
 
+import anyio
 import pytest
+from starlette.types import Message, Receive, Scope, Send
 
-from api_fixture import DATASET_PATH, Client, bearer, make_client, served_dataset, write
+from api_fixture import (
+    DATASET_PATH,
+    KID,
+    Client,
+    FakeCerts,
+    bearer,
+    make_client,
+    served_dataset,
+    write,
+)
 from metrics_fixture import A, B, C, rebuild, with_capabilities
-from pi_api.app import TokenBuckets
+from pi_api.app import ServerErrors, TokenBuckets
+from pi_api.auth import CertificatesUnavailableError
 from pi_api.source import SnapshotSource
 
 API = "/api/v1"
@@ -132,6 +144,53 @@ def test_token_buckets_refill_and_evict() -> None:
 
 
 # ---------------------------------------------------------------- data availability
+
+
+class DownCerts(FakeCerts):
+    def certificates(self) -> dict[str, str]:
+        raise CertificatesUnavailableError
+
+
+@pytest.mark.parametrize("certs", [DownCerts(), FakeCerts({KID: "not a pem"})])
+def test_unverifiable_tokens_are_a_retryable_503_not_a_sign_out(
+    root: Path, certs: FakeCerts
+) -> None:
+    client = make_client(root, certs=certs)[0]
+    response = client.get(f"{API}/meta", headers=bearer())
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "auth_unavailable"
+    assert response.headers["retry-after"] == "5"
+    assert response.headers["cache-control"] == NO_STORE
+    assert "www-authenticate" not in response.headers
+
+
+def test_an_error_escaping_the_guards_is_a_json_500_with_no_store(root: Path) -> None:
+    class Exploding(FakeCerts):
+        def certificates(self) -> dict[str, str]:
+            raise RuntimeError("boom")
+
+    client = make_client(root, certs=Exploding())[0]
+    response = client.get(f"{API}/meta", headers=bearer())
+    assert response.status_code == 500
+    assert response.json() == {"error": {"code": "internal_error", "message": "internal error"}}
+    assert response.headers["cache-control"] == NO_STORE
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_an_error_inside_a_route_is_a_json_500_with_no_store(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, source = make_client(root)
+
+    def broken(*_: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(source, "select", broken)
+    response = client.get(f"{API}/meta", headers=bearer())
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "boom" not in response.text
+    assert response.headers["cache-control"] == NO_STORE
 
 
 def test_no_dataset_is_503_with_retry_after(tmp_path: Path) -> None:
@@ -360,3 +419,30 @@ def test_a_snapshot_source_is_what_the_app_reads(root: Path) -> None:
     _, source = make_client(root)
     assert isinstance(source, SnapshotSource)
     assert [d.scope for d in source.datasets()] == ["fixture"]
+
+
+def test_server_errors_keeps_a_started_response_and_passes_other_scopes() -> None:
+    sent: list[Message] = []
+
+    async def half_sent(scope: Scope, receive: Receive, send: Send) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        raise RuntimeError("boom")
+
+    async def lifespan(scope: Scope, receive: Receive, send: Send) -> None:
+        await send({"type": "lifespan.startup.complete"})
+
+    async def record(message: Message) -> None:
+        sent.append(message)
+
+    async def nothing() -> Message:
+        return {"type": "http.disconnect"}
+
+    async def run() -> None:
+        await ServerErrors(half_sent)(
+            {"type": "http", "method": "GET", "path": "/"}, nothing, record
+        )
+        await ServerErrors(lifespan)({"type": "lifespan"}, nothing, record)
+
+    anyio.run(run)
+    assert [m["type"] for m in sent] == ["http.response.start", "lifespan.startup.complete"]
+    assert sent[0]["status"] == 200

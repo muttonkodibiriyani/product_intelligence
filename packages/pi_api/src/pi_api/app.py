@@ -3,9 +3,12 @@
 Outermost first:
 
 1. ``NoStore`` sets ``Cache-Control: private, no-store`` on every response, errors included.
-2. ``Authenticate`` verifies the Firebase ID token (``Authorization: Bearer``) on every path,
-   including unknown ones, and fails closed. Cookies are never read.
-3. ``RateLimit`` is a per-uid token bucket per instance; over it answers 429 with Retry-After.
+2. ``ServerErrors`` turns any exception that escapes the layers below into a JSON 500, so even
+   an unexpected failure goes out through ``NoStore``.
+3. ``Authenticate`` verifies the Firebase ID token (``Authorization: Bearer``) on every path,
+   including unknown ones, and fails closed. Cookies are never read. Verification runs in a
+   worker thread because a certificate refresh is blocking I/O.
+4. ``RateLimit`` is a per-uid token bucket per instance; over it answers 429 with Retry-After.
 
 There are no unauthenticated routes: no health endpoints (Cloud Run uses a TCP startup probe)
 and no docs or OpenAPI routes (the spec is exported to ``docs/contracts`` instead).
@@ -27,6 +30,7 @@ from fastapi import Depends, FastAPI, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import Field
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -39,6 +43,7 @@ from pi_api.catalog import (
     InvalidQueryError,
     MetaView,
     ProductDetail,
+    ProductNotFoundError,
     ProductPage,
     ProductQuery,
     ScopeRef,
@@ -74,6 +79,8 @@ CACHE_CONTROL = b"private, no-store"
 PREFIX = "/api/v1"
 #: Seconds a client should wait before retrying when no dataset is loaded.
 UNAVAILABLE_RETRY = 30
+#: Seconds a client should wait before retrying when tokens can't be verified (no signing keys).
+AUTH_RETRY = 5
 #: Documented on every route; all use the ``ErrorBody`` shape (FastAPI's 422 shape is replaced).
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     status: {"model": ErrorBody, "description": text}
@@ -84,7 +91,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         409: "stale_cursor: the data changed; restart from the first page",
         422: "invalid_request / invalid_query / ambiguous_dataset",
         429: "rate_limited (Retry-After)",
-        503: "data_unavailable: no dataset loaded yet (Retry-After)",
+        500: "internal_error: an unexpected failure; nothing about it is echoed",
+        503: "data_unavailable / auth_unavailable: retry later (Retry-After)",
     }.items()
 }
 ProductId = Annotated[str, Path(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._:-]+$")]
@@ -137,6 +145,36 @@ class NoStore:
         await self.app(scope, receive, guarded)
 
 
+class ServerErrors:
+    """Answers an escaped exception with a JSON 500 (inside ``NoStore``) and logs it.
+
+    If the response had already started, it can't be replaced: the exception is logged and the
+    connection ends with what was sent.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        started = False
+
+        async def tracked(message: Message) -> None:
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, tracked)
+        except Exception:
+            log.exception("unhandled error on %s %s", scope.get("method"), scope.get("path"))
+            if not started:
+                await _send_json(send, 500, error_body("internal_error", "internal error"))
+
+
 class Authenticate:
     """Verifies the bearer token before anything else runs; any other scope type is refused."""
 
@@ -154,9 +192,13 @@ class Authenticate:
         try:
             if len(values) > 1:
                 raise AuthError(401, "unauthenticated", "more than one Authorization header")
-            principal = self.verifier.verify(values[0].decode("latin-1") if values else None)
+            header = values[0].decode("latin-1") if values else None
+            principal = await run_in_threadpool(self.verifier.verify, header)
         except AuthError as error:
-            extra = {"www_authenticate": 'Bearer realm="pi-api"'} if error.status == 401 else {}
+            extra = {
+                401: {"www_authenticate": 'Bearer realm="pi-api"'},
+                503: {"retry_after": str(AUTH_RETRY)},
+            }.get(error.status, {})
             await _send_json(send, error.status, error_body(error.code, error.message), **extra)
             return
         scope.setdefault("state", {})["principal"] = principal
@@ -276,7 +318,7 @@ def _install_handlers(api: FastAPI) -> None:
         retry_after=str(UNAVAILABLE_RETRY),
     )
     handle(NotFoundError, 404, "not_found", "no dataset for that market and scope")
-    handle(KeyError, 404, "not_found", "no such product")
+    handle(ProductNotFoundError, 404, "not_found", "no such product")
     handle(AmbiguousDatasetError, 422, "ambiguous_dataset")
     handle(InvalidQueryError, 422, "invalid_query")
     handle(UnknownInput, 422, "invalid_query")
@@ -295,7 +337,12 @@ def _install_handlers(api: FastAPI) -> None:
         code = {404: "not_found", 405: "method_not_allowed"}.get(status, "http_error")
         return _error(status, code, code.replace("_", " "))
 
+    async def internal(_: Request, __: Exception) -> JSONResponse:
+        # Starlette re-raises after this response; ServerErrors logs it then.
+        return _error(500, "internal_error", "internal error")
+
     api.add_exception_handler(RequestValidationError, invalid)
+    api.add_exception_handler(Exception, internal)
     api.add_exception_handler(StarletteHTTPException, http)
 
 
@@ -385,7 +432,7 @@ def build_api(source: SnapshotSource) -> FastAPI:
 
 
 def create_app(source: SnapshotSource, verifier: TokenVerifier, buckets: TokenBuckets) -> ASGIApp:
-    return NoStore(Authenticate(RateLimit(build_api(source), buckets), verifier))
+    return NoStore(ServerErrors(Authenticate(RateLimit(build_api(source), buckets), verifier)))
 
 
 def store_for(settings: Settings) -> ObjectStore:

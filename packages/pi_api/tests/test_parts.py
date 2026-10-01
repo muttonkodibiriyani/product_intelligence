@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import gzip
-import json
 import time
 from pathlib import Path
 
@@ -12,7 +11,7 @@ import pytest
 
 from api_fixture import DATASET_PATH, served_dataset, write
 from pi_api.app import app_from_env, store_for
-from pi_api.auth import HttpCertSource
+from pi_api.auth import CertificatesUnavailableError, HttpCertSource
 from pi_api.config import Settings
 from pi_api.source import (
     AmbiguousDatasetError,
@@ -150,10 +149,63 @@ def test_certificates_are_cached_for_max_age() -> None:
 
 @pytest.mark.parametrize(
     "response",
-    [httpx.Response(500), httpx.Response(200, json=["x"]), httpx.Response(200, json={"k": 1})],
+    [
+        httpx.Response(500),
+        httpx.Response(200, content=b"not json"),
+        httpx.Response(200, json=["x"]),
+        httpx.Response(200, json={"k": 1}),
+        httpx.Response(200, json={}),
+    ],
 )
-def test_a_bad_certificate_document_raises(response: httpx.Response) -> None:
+def test_a_bad_first_certificate_document_fails_closed(response: httpx.Response) -> None:
     client, _ = certs_client([response])
     source = HttpCertSource("https://certs.invalid/", client=client)
-    with pytest.raises((httpx.HTTPError, ValueError, json.JSONDecodeError)):
+    with pytest.raises(CertificatesUnavailableError):
         source.certificates()
+
+
+def test_failed_refreshes_back_off_and_serve_the_last_good_set_within_grace() -> None:
+    doc = {"k1": "pem"}
+    ok = httpx.Response(200, json=doc, headers={"cache-control": "max-age=100"})
+    down = [httpx.Response(503) for _ in range(20)]
+    client, calls = certs_client([ok, *down, httpx.Response(200, json={"k2": "pem"})])
+    now = [0.0]
+    source = HttpCertSource("https://certs.invalid/", clock=lambda: now[0], client=client)
+    assert source.certificates() == doc
+    now[0] = 100.0  # expired: one refresh attempt fails, the last good set is still served
+    for _ in range(6):
+        assert source.certificates() == doc
+    assert len(calls) == 2  # no refetch on every request while backing off
+    now[0] = 100.9
+    assert source.certificates() == doc
+    assert len(calls) == 2
+    now[0] = 101.0  # backoff 1s elapsed: second attempt, then 2s
+    assert source.certificates() == doc
+    assert len(calls) == 3
+    now[0] = 102.5
+    source.certificates()
+    assert len(calls) == 3
+    now[0] = 103.0
+    source.certificates()
+    assert len(calls) == 4
+    now[0] = 100.0 + HttpCertSource.GRACE  # past the grace: a failed attempt fails closed
+    with pytest.raises(CertificatesUnavailableError):
+        source.certificates()
+    now[0] += HttpCertSource.BACKOFF_MAX
+    calls.clear()
+    with pytest.raises(CertificatesUnavailableError):
+        source.certificates()
+    assert len(calls) == 1
+
+
+def test_backoff_is_capped_and_resets_after_a_good_refresh() -> None:
+    down = [httpx.Response(500) for _ in range(10)]
+    client, calls = certs_client([*down, httpx.Response(200, json={"k": "pem"})])
+    now = [0.0]
+    source = HttpCertSource("https://certs.invalid/", clock=lambda: now[0], client=client)
+    for _ in range(10):  # backoffs 1, 2, 4, ..., capped at BACKOFF_MAX
+        with pytest.raises(CertificatesUnavailableError):
+            source.certificates()
+        now[0] += HttpCertSource.BACKOFF_MAX
+    assert len(calls) == 10
+    assert source.certificates() == {"k": "pem"}
