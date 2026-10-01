@@ -52,6 +52,12 @@ The owner reads every report and billing figure in **AED**. If `<CURRENCY>` is A
 is about AED 91.81 (the $25 total cap). If it is USD, write the AED equivalent next to each
 amount you record, at the fixed peg of 3.6725 AED per USD.
 
+The kill switch holds no amount of its own. It trips when the budget message's
+`costAmount / budgetAmount` reaches **90 %** (`THRESHOLD_PCT`), both in `<CURRENCY>`: about
+AED 82.63 of AED 91.81, or $22.50 of $25. Only that ratio matters. The section 6 test publishes
+95 %, so `disabledBy` reads `95%`. `KILL_SWITCH_CURRENCY=<CURRENCY>` is used for one
+thing only: a message in any other currency turns the assistant off (fail closed).
+
 **Verify**
 
 - The budget still shows the 50/90/100 % thresholds and the email recipients.
@@ -78,6 +84,10 @@ enabled-before.txt -` shows only the APIs from sections 1–2.
 **Off / rollback:** `gcloud services disable <API>` for each API added here that is not in
 `enabled-before.txt`. Only after the functions in section 5 are deleted, because disabling them
 breaks a deployed function.
+
+**NEVER disable `run`, `artifactregistry` or `cloudbuild`, even if the diff seems to show them.
+pi-api runs on Cloud Run with images in Artifact Registry, so they were enabled before this
+runbook. Disabling `run` takes pi-api down.**
 
 ## 3. Kill-switch identity: SA, Auth account, secret (§9.4 steps 2–3)
 
@@ -107,22 +117,23 @@ gcloud secrets add-iam-policy-binding KILL_SWITCH_PASSWORD \
 ```
 
 **Single-account check.** Exactly one user holds `role: killswitch`. Run it with the same
-credentials as `invite_user.py` (see its docstring). It prints only a count and masked emails:
+credentials as `invite_user.py` (see its docstring). It prints only a count and uids. No email
+is ever echoed or logged, not even masked: a masked email still shows the domain.
 
 ```sh
 uv run --with firebase-admin python - "$PROJECT" <<'PY'
 import sys, firebase_admin
 from firebase_admin import auth
 firebase_admin.initialize_app(options={"projectId": sys.argv[1]})
-hits = [u.email or "" for u in auth.list_users().iterate_all()
+hits = [u.uid for u in auth.list_users().iterate_all()
         if (u.custom_claims or {}).get("role") == "killswitch"]
-print(len(hits), [e[:2] + "***@" + e.split("@")[-1] for e in hits])
+print(len(hits), hits)
 PY
 ```
 
 **Verify**
 
-- The check prints `1` and the masked `<KILLSWITCH_EMAIL>`.
+- The check prints `1` and one uid. Record it as `<KILLSWITCH_UID>`.
 - `gcloud projects get-iam-policy "$PROJECT" --flatten=bindings
   --filter="bindings.members:pi-killswitch@" --format="value(bindings.role)"` prints nothing.
 - `gcloud secrets get-iam-policy KILL_SWITCH_PASSWORD` shows only `pi-killswitch@` as
@@ -204,6 +215,23 @@ cp apps/assistant/.env.example apps/assistant/.env.productintelligence-beeb3
 # KILL_SWITCH_API_KEY=<WEB_API_KEY>, KILL_SWITCH_EMAIL=<KILLSWITCH_EMAIL>.
 # Leave the PI_* chat lines empty.
 git status --short apps/assistant   # must NOT list the .env file
+```
+
+`KILL_SWITCH_EMAIL` ends up as a plain env var on the `budgetkillswitch` Cloud Run revision,
+readable by anyone with `run.viewer`. That is accepted: it is an owner mailbox, not a secret.
+The password stays in Secret Manager.
+
+**Rules are pinned.** `deploy --only firestore:rules` replaces the WHOLE live ruleset. Record:
+
+- `<RULES_SHA>`: the main commit with the assistant rules, which is the one you deploy from;
+- `<PREV_SHA>`: the main commit whose `infra/firestore.rules` is live today.
+
+Before deploying, open *Firebase console → Firestore → Rules* and check that the live ruleset
+equals `git show <PREV_SHA>:infra/firestore.rules`. If it differs (drift), stop and report: the
+deploy would silently overwrite the live change.
+
+```sh
+git fetch origin && git checkout --detach <RULES_SHA>
 npm ci --prefix apps/assistant
 npx -y firebase-tools@14.27.0 deploy --config infra/firebase.json \
   --project productintelligence-beeb3 --only firestore:rules
@@ -214,12 +242,44 @@ npx -y firebase-tools@14.27.0 deploy --config apps/assistant/firebase.json \
 A missing or malformed env value makes the revision refuse to start. The error names the
 variable, never its value.
 
+**Image cleanup.** The first Functions deploy creates the Artifact Registry repo `gcf-artifacts`
+in `me-central1`. Images build up with every deploy, and storage over 0.5 GB is billed. Set a
+cleanup policy once, after the first deploy:
+
+```sh
+npx -y firebase-tools@14.27.0 functions:artifacts:setpolicy --location me-central1 --days 7 \
+  --project productintelligence-beeb3
+```
+
+If 14.27.0 does not know that command, use the keep-2-most-recent policy instead:
+
+```sh
+cat > gcf-cleanup.json <<'JSON'
+[{"name": "keep-2", "action": {"type": "Keep"}, "mostRecentVersions": {"keepCount": 2}},
+ {"name": "delete-rest", "action": {"type": "Delete"}, "condition": {"tagState": "ANY"}}]
+JSON
+gcloud artifacts repositories set-cleanup-policies gcf-artifacts --location=me-central1 \
+  --policy=gcf-cleanup.json --no-dry-run
+```
+
 **Verify**
 
 - The deploy reports `budgetKillSwitch(me-central1)` created, and the function's log shows no
   `refusing to start`.
 - `gcloud run services get-iam-policy budgetkillswitch --region=me-central1` grants
   `roles/run.invoker` only to the Eventarc trigger's service account.
+- **Runtime identity.** The code pins `pi-killswitch@`; prove the deploy honoured it:
+  `gcloud run services describe budgetkillswitch --region=me-central1
+  --format='value(spec.template.spec.serviceAccountName)'` prints
+  `pi-killswitch@productintelligence-beeb3.iam.gserviceaccount.com`. If it shows the compute
+  default service account, delete the function (off path below) and stop. The CLI would also
+  have granted the secret to that account.
+- Re-run section 3's secret check **now**, after the deploy: `gcloud secrets get-iam-policy
+  KILL_SWITCH_PASSWORD` shows only `pi-killswitch@` as `secretAccessor`. Remove any other
+  member.
+- The live rules equal `infra/firestore.rules` at `<RULES_SHA>` (console *Rules* tab).
+- `gcloud artifacts repositories describe gcf-artifacts --location=me-central1` shows a cleanup
+  policy.
 
 **Off / rollback:**
 
@@ -228,8 +288,9 @@ npx -y firebase-tools@14.27.0 functions:delete budgetKillSwitch --region me-cent
   --config apps/assistant/firebase.json --project productintelligence-beeb3
 ```
 
-Rules: redeploy `infra/firestore.rules` from the previous main commit with the same rules
-command.
+Rules: roll back to the exact ruleset you checked before the deploy. Either pick that version
+in *Firestore → Rules → history*, or `git checkout --detach <PREV_SHA>` and run the same rules
+deploy command. Never use "the previous main commit": it may not be what was live.
 
 ## 6. Synthetic verify, then leave it off (§9.4 step 5)
 
@@ -242,6 +303,13 @@ gcloud pubsub topics publish pi-budget-alerts \
   --message='{"budgetDisplayName":"pi-monthly-25usd","costAmount":<0.95_x_BUDGET_AMOUNT>,"costIntervalStart":"<YYYY-MM>-01T00:00:00Z","budgetAmount":<BUDGET_AMOUNT>,"budgetAmountType":"SPECIFIED_AMOUNT","currencyCode":"<CURRENCY>"}'
 ```
 
+Use the recorded `<BUDGET_AMOUNT>` and `<CURRENCY>` exactly: if the billing account is in AED,
+that is about 91.81 with `"currencyCode":"AED"`. Never type 25 just because the budget is named
+`pi-monthly-25usd`; the name is only a label. The kill switch compares `costAmount` with
+`budgetAmount` as a ratio, so it works in any currency. A message whose currency differs from
+`KILL_SWITCH_CURRENCY` turns the assistant **off** (fail closed, design §9.4), because the
+threshold can no longer be trusted.
+
 **Verify**
 
 - `assistant_config/current` now has `disabledBy = "budget_alert:95%:<YYYY-MM>"` and
@@ -253,15 +321,23 @@ gcloud pubsub topics publish pi-budget-alerts \
 - Re-run the single-account check (section 3): `1`.
 
 Then, as admin in the console, **delete the `disabledBy` field** and keep `enabled: false`.
+**Verify** that `enabled` is still `false` afterwards.
 
 **Off / rollback:** nothing to undo. If the flag did not appear, check the log for
 `kill_switch_failed` or `kill_switch_ignored`, and stop.
 
 ## 7. Chat runtime identity: `pi-assistant@` (§6, §10)
 
+`roles/aiplatform.user` is too broad: it can create endpoints, tuning and batch jobs and other
+billable resources. Gemini `generateContent` and `countTokens` on publisher models need only
+`aiplatform.endpoints.predict`, so create a custom role with exactly that permission (custom
+roles are free):
+
 ```sh
+gcloud iam roles create piAssistantVertex --project="$PROJECT" \
+  --title="PI assistant: Gemini predict" --permissions=aiplatform.endpoints.predict --stage=GA
 gcloud iam service-accounts create pi-assistant --display-name="PI assistant runtime"
-for ROLE in roles/aiplatform.user roles/datastore.user; do
+for ROLE in "projects/$PROJECT/roles/piAssistantVertex" roles/datastore.user; do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:pi-assistant@$PROJECT.iam.gserviceaccount.com" --role="$ROLE" \
     --condition=None
@@ -270,19 +346,20 @@ done
 
 Exactly these two roles. No Secret Manager access, no key, and no Storage role (reports are
 stage 2). `datastore.user` is **database-wide**: Firestore IAM has no collection-level scope.
-The code limits it to the assistant's collections, and a test pins their names. A narrower
-option is open for Infra review: move the assistant's collections to a named Firestore database
-and add an IAM condition on `resource.name` for that database only. That is a code and rules
-change, and the kill switch's `assistant_config/current` would move with it. Until it is
-decided, the database-wide grant plus the pinned-collections test is the accepted state.
+The code limits it to the assistant's collections, and a test pins their names. That is the
+accepted state. A named Firestore database was considered and closed: Firestore's free quota
+applies only to `(default)`, so a named database is billed from its first read.
 
 **Verify:** `gcloud projects get-iam-policy "$PROJECT" --flatten=bindings
 --filter="bindings.members:pi-assistant@" --format="value(bindings.role)"` prints exactly
-`roles/aiplatform.user` and `roles/datastore.user`. `keys list --managed-by=user` (as in section
+`projects/productintelligence-beeb3/roles/piAssistantVertex` and `roles/datastore.user`.
+`gcloud iam roles describe piAssistantVertex --project="$PROJECT"` lists only
+`aiplatform.endpoints.predict`. `keys list --managed-by=user` (as in section
 3) lists none.
 
 **Off / rollback:** `gcloud projects remove-iam-policy-binding` for each role, then
-`gcloud iam service-accounts disable pi-assistant@$PROJECT.iam.gserviceaccount.com`.
+`gcloud iam service-accounts disable pi-assistant@$PROJECT.iam.gserviceaccount.com` and
+`gcloud iam roles delete piAssistantVertex --project="$PROJECT"`.
 
 ## 8. App Check with reCAPTCHA Enterprise (§6, §10)
 
@@ -309,18 +386,23 @@ would lock it out. The callable enforces in code.
 
 **Verify:** App Check shows the web app as registered with reCAPTCHA Enterprise. The *APIs* tab
 shows every product as **Unenforced**. `gcloud recaptcha keys list` shows the key with the two
-domains.
+domains. After switch-on, check *Security → reCAPTCHA → the key → Assessments*: the free tier
+is 10,000 assessments a month, and App Check refreshes about one token per user per hour, so
+usage should stay far below it.
 
 **Off / rollback:** unregister the app's provider in App Check, then `gcloud recaptcha keys
 delete <RECAPTCHA_SITE_KEY>`.
 
 ## 9. TTL policies and Vertex (§6, §10, §10.1)
 
-**TTL** (90-day retention on `expireAt`). Unless Infra adopts TTL as code
-(`infra/firestore.indexes.json`, pending Infra's decision), run:
+**TTL** (90-day retention on `expireAt`). Infra adopts TTL as code
+(`infra/firestore.indexes.json` field overrides, in its switch-on PR). Until that lands, run the
+loop below. Both end in the same state, and a later `deploy --only firestore:indexes` from the
+file is idempotent. TTL deletes count as normal deletes (free tier 20,000 a day on
+`(default)`).
 
 ```sh
-for G in assistant_usage_counters assistant_reservations assistant_threads messages; do
+for G in assistant_usage_counters assistant_reservations assistant_threads assistant_messages; do
   gcloud firestore fields ttls update expireAt --collection-group="$G" --enable-ttl --async
 done
 ```
@@ -338,13 +420,29 @@ gcloud services enable aiplatform.googleapis.com
 ```
 
 Enabling the API costs nothing; spend starts only with model calls, and none happen until
-switch-on. Record `<VERTEX_LOCATION>`, confirmed by Infra: a location where the config's
-`model` (`gemini-2.5-flash`) is served, and whether that is still the current Flash. If it is
-not served in `me-central1`, Infra names the nearest compliant region and the data-residency
-trade-off for the owner. Prompts and tool results (product data, never user PII beyond the uid)
-would then be processed outside `me-central1`.
+switch-on.
 
-**Verify:** `gcloud services list --enabled --filter=config.name=aiplatform.googleapis.com`.
+**Location probe (zero cost).** `countTokens` is not billed and runs no generation. As the
+owner (the token goes through stdin, never argv):
+
+```sh
+gcloud auth print-access-token | sed 's/^/Authorization: Bearer /' | curl -sS -o probe.json \
+  -w '%{http_code}\n' -H @- -H 'Content-Type: application/json' -X POST \
+  "https://me-central1-aiplatform.googleapis.com/v1/projects/$PROJECT/locations/me-central1/publishers/google/models/gemini-2.5-flash:countTokens" \
+  -d '{"contents":[{"role":"user","parts":[{"text":"ping"}]}]}'
+```
+
+- `200`: record `<VERTEX_LOCATION>=me-central1`.
+- `404`, or "not found" / "not supported in location" in `probe.json`: **stop**. Infra names
+  the nearest region, with the data-residency note, for the owner to decide. Prompts and tool
+  results (product data, never user PII beyond the uid) would then be processed outside
+  `me-central1`. Never pick `global` or a `europe-west*` region silently.
+
+Also check *Model Garden → Gemini 2.5 Flash* for its retirement date before switch-on. If it is
+within 3 months, stop: `config.model` must change first (Coordinator decision).
+
+**Verify:** `gcloud services list --enabled --filter=config.name=aiplatform.googleapis.com`, and
+the probe returned `200`.
 **Off / rollback:** `gcloud services disable aiplatform.googleapis.com`.
 
 ## 10. Switch-on (handed over separately)
@@ -353,11 +451,17 @@ Not part of this handover. It will hold:
 
 - the chat env lines (`PI_API_BASE_URL`, `PI_VERTEX_LOCATION=<VERTEX_LOCATION>`,
   `PI_EVIDENCE_HOSTS`);
-- the `functions:assistant:assistantChat` deploy;
+- Infra's switch-on PR merged and deployed: the CSP origins for the callable, App Check and
+  reCAPTCHA, plus TTL as code;
+- the `functions:assistant:assistantChat` deploy, then the runtime-identity check as in section
+  5: `gcloud run services describe assistantchat --region=me-central1
+  --format='value(spec.template.spec.serviceAccountName)'` prints `pi-assistant@…`, otherwise
+  delete it and stop;
 - the web build with `NEXT_PUBLIC_ASSISTANT_ENABLED=true` and `NEXT_PUBLIC_RECAPTCHA_SITE`;
 - the §10.1 checklist re-run;
 - the version pre-check below, then flipping `enabled` to `true`;
-- a one-question smoke as a viewer, with its metered cost read back.
+- a one-question smoke as a viewer, with its metered cost read back. The meter reports USD;
+  write it as `AED x.xx (USD y.yy)` at 3.6725.
 
 Its off path is the instant off above, then deleting `assistantChat`.
 
