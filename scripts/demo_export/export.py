@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Export a local pi_db snapshot as the frontend's ``pi.dataset/v1`` JSON (and, with
-``--output-v2``, the ``pi.dataset/v2`` snapshot built by ``v2.py``).
+``--output-v2``, the ``pi.dataset/v2`` snapshot built by ``v2.py``; with ``--output-v3``, that
+snapshot upgraded to ``pi.dataset/v3`` with each offer's ``listingCount``).
 
 This is deliberately a read-only producer. It never fetches retailer data and it only adds
 Ulta early examples when an explicitly supplied, committed/redacted probe fixture is given.
@@ -906,6 +907,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "--output-v2", type=Path, help="also write the pi.dataset/v2 snapshot (ADR-0007 §6)"
     )
+    result.add_argument(
+        "--output-v3",
+        type=Path,
+        help="also write the v2 snapshot upgraded to pi.dataset/v3, with offer listingCount",
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
@@ -960,10 +966,10 @@ def main() -> None:
             blocked_note_ar=args.ulta_blocked_note_ar or ULTA_BLOCKED_NOTE_AR,
         ),
     )
-    if args.output_v2 is not None:
-        # Build v2 first: if the contract refuses the data, neither file is written.
-        from pi_dataset import dump_dataset, load_dataset  # noqa: PLC0415
-        from scripts.demo_export.v2 import build_dataset_v2, category_notes  # noqa: PLC0415
+    if args.output_v2 is not None or args.output_v3 is not None:
+        # Build v2 (and v3) first: if the contract refuses the data, no file is written.
+        from pi_dataset import dump_dataset, load_any, load_dataset  # noqa: PLC0415
+        from scripts.demo_export.v2 import build_dataset_v2, category_notes, to_v3  # noqa: PLC0415
 
         v2 = build_dataset_v2(
             rows,
@@ -979,6 +985,9 @@ def main() -> None:
         )
         body = dump_dataset(v2)
         load_dataset(body)  # the publisher's strict load, credential scan included
+        if args.output_v3 is not None:
+            body_v3 = dump_dataset(to_v3(v2, rows, matches))
+            load_any(body_v3)  # the same strict load, as v3
     write_json(args.output, dataset)
     print(
         f"wrote {len(dataset['products'])} products to {args.output} "
@@ -990,6 +999,12 @@ def main() -> None:
             f"wrote v2 {len(v2.products)} products to {args.output_v2} "
             f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)} "
             f"category_listings={category_notes(rows)}"
+        )
+    if args.output_v3 is not None:
+        write_bytes(args.output_v3, body_v3)
+        print(
+            f"wrote v3 {len(v2.products)} products to {args.output_v3} "
+            f"sha256={sha256(args.output_v3)}"
         )
 
 
