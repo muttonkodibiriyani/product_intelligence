@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import type { Summary } from '@/lib/api/summary';
+import type { Measured, Summary } from '@/lib/api/summary';
 import { num } from '@/lib/api/summary';
 import { formatCount } from '@/lib/format';
 import { base, Chart, labelWidth, type Palette } from './chart';
@@ -56,7 +56,7 @@ const splitLine = (p: Palette) => ({ lineStyle: { color: p.line2 } });
 /** Truncates long axis labels; the tooltip has the full name. */
 const short = (s: string, n = 18) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-export function LadderWidget({ data, currency, locale, height }: Props<Summary['ladder']>) {
+export function LadderWidget({ data, currency, locale, height }: Props<Measured<'ladder'>>) {
   const t = useTranslations('widgets.ladder');
   const tw = useTranslations('widgets');
   const router = useRouter();
@@ -124,7 +124,7 @@ export function LadderWidget({ data, currency, locale, height }: Props<Summary['
               trigger: 'item',
               formatter: (e: { dataIndex: number }) => {
                 const r = rows[e.dataIndex]!;
-                const m = (v: string) => amount(v, currency, locale);
+                const m = (v: { amount: string }) => amount(v.amount, currency, locale);
                 return (
                   tipHead(r.category) +
                   tipLine(tw('products', { n: r.n })) +
@@ -209,7 +209,7 @@ export function LadderWidget({ data, currency, locale, height }: Props<Summary['
   );
 }
 
-export function PromoDepthWidget({ data, locale, height }: Props<NonNullable<Summary['promoDepth']>>) {
+export function PromoDepthWidget({ data, locale, height }: Props<Measured<'promoDepth'>>) {
   const t = useTranslations('widgets.promo');
   const tw = useTranslations('widgets');
   const router = useRouter();
@@ -296,7 +296,7 @@ export function PromoDepthWidget({ data, locale, height }: Props<NonNullable<Sum
   );
 }
 
-export function BrandPriceWidget({ data, currency, locale, height }: Props<Summary['brandPrice']>) {
+export function BrandPriceWidget({ data, currency, locale, height }: Props<Measured<'brandPrice'>>) {
   const t = useTranslations('widgets.brands');
   const tw = useTranslations('widgets');
   const router = useRouter();
@@ -304,8 +304,8 @@ export function BrandPriceWidget({ data, currency, locale, height }: Props<Summa
   // The largest brands by products (as sent, n desc), ranked by median price.
   const rows = data
     .slice(0, BRANDS_TOP)
-    .filter((b) => num(b.median) > 0)
-    .sort((a, b) => num(b.median) - num(a.median));
+    .filter((b) => num(b.median.amount) > 0)
+    .sort((a, b) => num(b.median.amount) - num(a.median.amount));
   return (
     <Chart
       label={t('label', { n: rows.length })}
@@ -342,7 +342,7 @@ export function BrandPriceWidget({ data, currency, locale, height }: Props<Summa
             const r = rows[e.dataIndex]!;
             return (
               tipHead(r.brand) +
-              tipRow(tw('ladder.median'), amount(r.median, currency, locale)) +
+              tipRow(tw('ladder.median'), amount(r.median.amount, currency, locale)) +
               tipLine(tw('products', { n: r.n }))
             );
           },
@@ -351,7 +351,7 @@ export function BrandPriceWidget({ data, currency, locale, height }: Props<Summa
           {
             type: 'bar',
             name: t('title'),
-            data: rows.map((r) => ({ name: r.brand, value: num(r.median) })),
+            data: rows.map((r) => ({ name: r.brand, value: num(r.median.amount) })),
             barMaxWidth: 14,
             itemStyle: { color: p.a, borderRadius: rtl ? [4, 0, 0, 4] : [0, 4, 4, 0] },
             emphasis: { itemStyle: { color: p.blushInk } },
@@ -367,7 +367,7 @@ export function BrandShareWidget({
   priced,
   locale,
   height,
-}: Props<Summary['brandPrice']> & { priced: number }) {
+}: Props<Measured<'brandPrice'>> & { priced: number }) {
   const t = useTranslations('widgets.share');
   const tw = useTranslations('widgets');
   const router = useRouter();
@@ -439,7 +439,7 @@ export function BrandShareWidget({
   );
 }
 
-export function CategoryMixWidget({ data, locale, height }: Props<Summary['categoryMix']>) {
+export function CategoryMixWidget({ data, locale, height }: Props<Measured<'categoryMix'>>) {
   const t = useTranslations('widgets.mix');
   const tw = useTranslations('widgets');
   const router = useRouter();
@@ -461,7 +461,7 @@ export function CategoryMixWidget({ data, locale, height }: Props<Summary['categ
           tooltip: {
             ...(base(p, rtl).tooltip as object),
             formatter: (e: { data: TreeNode }) =>
-              tipHead(e.data.name) + tipLine(tw('products', { n: e.data.value })),
+              tipHead(e.data.trail.join(' › ')) + tipLine(tw('products', { n: e.data.value })),
           },
           series: [
             {
@@ -493,7 +493,7 @@ export function CategoryMixWidget({ data, locale, height }: Props<Summary['categ
   );
 }
 
-export function PriceHistWidget({ data, currency, locale, height }: Props<Summary['priceHist']>) {
+export function PriceHistWidget({ data, currency, locale, height }: Props<Measured<'priceHist'>>) {
   const t = useTranslations('widgets.hist');
   const tw = useTranslations('widgets');
   const router = useRouter();
@@ -550,7 +550,7 @@ export function PriceHistWidget({ data, currency, locale, height }: Props<Summar
   );
 }
 
-export function RatingPriceWidget({ data, currency, locale, height }: Props<Summary['ratingPrice']>) {
+export function RatingPriceWidget({ data, currency, locale, height }: Props<Measured<'ratingPrice'>>) {
   const t = useTranslations('widgets.rating');
   const rtl = locale === 'ar';
   const pts = ratingPoints(data);
@@ -582,7 +582,7 @@ export function RatingPriceWidget({ data, currency, locale, height }: Props<Summ
           name: t('rating'),
           position: rtl ? 'right' : 'left',
           min: 0,
-          max: 5,
+          max: Number(data.scale) > 0 ? Number(data.scale) : 5,
           interval: 1,
           splitLine: splitLine(p),
         },

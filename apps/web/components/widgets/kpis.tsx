@@ -15,18 +15,20 @@ export function KpiWidget({ data, locale }: { data: Summary; locale: string }) {
   const f = freshness(data.freshness);
   const promo = promotions(data);
   const all = exploreHref(locale, {});
+  // A null count is withheld by /summary, not zero.
+  const count = (v: number | null) => (v === null ? <None>{t('none')}</None> : formatCount(v, locale));
   return (
     <dl
       className={`grid grid-cols-2 gap-4 sm:grid-cols-3 ${promo.measured ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}
     >
       <Tile k={t('products')} href={all} tone="bg-lav">
-        {formatCount(data.products, locale)}
+        {count(data.products)}
       </Tile>
       <Tile k={t('brands')} href={all} tone="bg-sky">
-        {formatCount(data.brands, locale)}
+        {count(data.brands)}
       </Tile>
       <Tile k={t('categories')} href={all} tone="bg-mint">
-        {formatCount(data.categories, locale)}
+        {count(data.categories)}
       </Tile>
       <Tile k={t('median')} href={exploreHref(locale, { sort: 'price_asc' })} tone="bg-butter">
         {data.medianPrice ? formatMoney(data.medianPrice, lc) : <None>{t('none')}</None>}

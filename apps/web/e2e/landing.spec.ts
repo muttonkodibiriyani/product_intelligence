@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test';
 import { expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
-import { summaryBody, summaryNoPromo } from './summary-fixture';
+import { summaryBlocked, summaryBody, summaryNoPromo } from './summary-fixture';
 
 const meta = golden('meta');
 
@@ -37,6 +37,7 @@ for (const locale of ['en', 'ar'] as const) {
         dataset: 'مجموعة البيانات الحالية',
         preview: 'معاينة للتصميم',
         index: 'مؤشر الأسعار عبر الزمن',
+        blocked: 'هذا المتجر يمنع الجمع.',
       }
     : {
         title: 'Overview',
@@ -55,6 +56,7 @@ for (const locale of ['en', 'ar'] as const) {
         dataset: 'Current dataset',
         preview: 'Layout preview',
         index: 'Price index over time',
+        blocked: 'This retailer blocks collection.',
       };
   const h2 = (page: Page, name: string) => page.getByRole('heading', { level: 2, name, exact: true });
 
@@ -111,6 +113,17 @@ for (const locale of ['en', 'ar'] as const) {
 
       expect(mock.external).toEqual([]);
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
+    });
+
+    test('a blocked retailer: why, and the dataset; no tiles or charts', async ({ page }) => {
+      const mock = await mockBackend(page, { onApi: api(summaryBlocked) });
+      await signIn(page, locale);
+      await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
+      await expect(page.getByRole('note').filter({ hasText: T.blocked })).toBeVisible();
+      await expect(h2(page, T.dataset)).toBeVisible();
+      await expect(page.getByText(T.products, { exact: true })).toHaveCount(0);
+      await expect(page.locator('main [data-chart]')).toHaveCount(0);
+      expect(mock.external).toEqual([]);
     });
   });
 }

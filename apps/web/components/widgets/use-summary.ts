@@ -27,7 +27,7 @@ export function useSummaryData(params: SummaryQuery = {}): SummaryState {
   return {
     kind: 'ready',
     data: env.data,
-    currency: env.data.medianPrice?.currency ?? env.meta.currency,
+    currency: env.data.currency,
     env,
   };
 }

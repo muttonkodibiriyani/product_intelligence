@@ -120,7 +120,9 @@
         "capability_off": "Promotions are not collected for this retailer yet.",
         "field_not_collected": "Needs regular prices to measure discounts; this snapshot does not collect them.",
         "cohort_too_small": "Too few products carry both a price and a regular price to measure discounts.",
-        "other": "Discounts can't be measured in this snapshot."
+        "other": "Discounts can't be measured in this snapshot.",
+        "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
+        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions."
       }
     }
   },

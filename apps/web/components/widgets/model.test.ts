@@ -42,10 +42,12 @@ describe('widget model', () => {
   });
 
   it('drops ladder rows a log axis cannot place', () => {
-    const row = { category: 'A', n: 3, min: '10', p25: '20', p50: '30', p75: '40', max: '50' };
+    const m = (amount: string) => ({ amount, currency: 'AED', minor: 0 });
+    const row = { category: 'A', n: 3, min: m('10'), p25: m('20'), p50: m('30'), p75: m('40'), max: m('50') };
     expect(
-      ladderRows([row, { ...row, category: 'B', min: '0' }, { ...row, category: 'C', p50: 'x' }]),
+      ladderRows([row, { ...row, category: 'B', min: m('0') }, { ...row, category: 'C', p50: m('x') }]),
     ).toHaveLength(1);
+    expect(ladderRows(null)).toEqual([]);
   });
 
   it('builds heatmap cells and their maximum, treating missing cells as zero', () => {
@@ -63,18 +65,19 @@ describe('widget model', () => {
     expect(max).toBe(4);
   });
 
-  it('orders categories by count and drops empty ones', () => {
+  it('orders category paths by count, named by their last step, and drops empty ones', () => {
     expect(
       categoryNodes([
-        { category: 'Makeup', n: 13 },
-        { category: 'Skincare', n: 20 },
-        { category: 'Gifts', n: 0 },
-        { category: '', n: 3 },
+        { category: ['Makeup'], n: 13 },
+        { category: ['Skincare', 'Serum'], n: 20 },
+        { category: ['Gifts'], n: 0 },
+        { category: [], n: 3 },
       ]),
     ).toEqual([
-      { name: 'Skincare', value: 20 },
-      { name: 'Makeup', value: 13 },
+      { name: 'Serum', trail: ['Skincare', 'Serum'], value: 20 },
+      { name: 'Makeup', trail: ['Makeup'], value: 13 },
     ]);
+    expect(categoryNodes(null)).toEqual([]);
   });
 
   it('keeps promotions off unless measured, with the reason /summary gives', () => {
@@ -114,6 +117,8 @@ describe('widget model', () => {
       ratingPoints({
         n: 3,
         ratedPct: '66.7',
+        sampled: false,
+        scale: '5',
         points: [
           { price: '100', rating: '4.5', count: 12 },
           { price: '0', rating: '4', count: 1 },
@@ -135,17 +140,20 @@ describe('widget model', () => {
     expect(freshness({ cutoff: '2026-09-30', ageDays: 1, status: 'fresh' })).toBe('fresh');
     expect(freshness({ cutoff: '2026-09-28', ageDays: 3, status: 'aging' })).toBe('aging');
     expect(freshness({ cutoff: '2026-09-01', ageDays: 30, status: 'stale' })).toBe('stale');
-    expect(freshness({ cutoff: '2026-09-01', ageDays: 30, status: 'odd' })).toBe('unknown');
+    // A status newer than this build reads as unknown, not as fresh.
+    expect(freshness({ cutoff: '2026-09-01', ageDays: 30, status: 'odd' as 'stale' })).toBe('unknown');
   });
 });
+
+const aed = (amount: string) => ({ amount, currency: 'AED', minor: 0 });
 
 describe('brandShare', () => {
   it('ranks brands by products and keeps a running share of the whole catalogue', () => {
     const rows = brandShare(
       [
-        { brand: 'B', n: 10, median: '50' },
-        { brand: 'A', n: 30, median: '90' },
-        { brand: 'C', n: 0, median: '10' },
+        { brand: 'B', n: 10, median: aed('50') },
+        { brand: 'A', n: 30, median: aed('90') },
+        { brand: 'C', n: 0, median: aed('10') },
       ],
       200,
     );
@@ -153,6 +161,9 @@ describe('brandShare', () => {
       ['A', 15, 15],
       ['B', 5, 20],
     ]);
-    expect(brandShare([{ brand: 'A', n: 1, median: '1' }], 0)).toEqual([]);
+    expect(brandShare([{ brand: 'A', n: 1, median: aed('1') }], 0)).toEqual([]);
+    // Withheld: no brands, or no priced count.
+    expect(brandShare(null, 200)).toEqual([]);
+    expect(brandShare([{ brand: 'A', n: 1, median: aed('1') }], null)).toEqual([]);
   });
 });

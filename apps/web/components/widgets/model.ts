@@ -4,7 +4,7 @@
  */
 import { EMPTY, toSearch, type ExploreState } from '@/lib/explore';
 import { EMPTY_PROMOTIONS, MIN_PCTS, toPromotionsSearch, type MinPct } from '@/lib/promotions';
-import { num, type Summary } from '@/lib/api/summary';
+import { num, type Measured, type Summary } from '@/lib/api/summary';
 
 /** An amount in the user's language with Latin digits, like `formatMoney`; whole units on axes. */
 export function amount(v: string, currency: string, locale: string, whole = false): string {
@@ -46,16 +46,22 @@ export function bandFloor(label: string): string {
 
 /** Ladder rows with numbers, dropping any the chart could not place (and any non-positive price on a log axis). */
 export function ladderRows(ladder: Summary['ladder']) {
-  return ladder
+  return (ladder ?? [])
     .map((r) => ({
       ...r,
-      v: [num(r.min), num(r.p25), num(r.p50), num(r.p75), num(r.max)] as const,
+      v: [
+        num(r.min.amount),
+        num(r.p25.amount),
+        num(r.p50.amount),
+        num(r.p75.amount),
+        num(r.max.amount),
+      ] as const,
     }))
     .filter((r) => r.v.every((x) => Number.isFinite(x) && x > 0) && r.v[0] <= r.v[4]);
 }
 
 /** Heatmap cells as [col, row, count]; the largest count sets the colour scale. */
-export function heatCells(d: NonNullable<Summary['promoDepth']>) {
+export function heatCells(d: Measured<'promoDepth'>) {
   const cells: [number, number, number][] = [];
   let max = 0;
   d.category.forEach((_, ri) =>
@@ -69,20 +75,24 @@ export function heatCells(d: NonNullable<Summary['promoDepth']>) {
 }
 
 export interface TreeNode {
+  /** The category's own name, the last step of its path: what the tile shows and the drill filters on. */
   name: string;
+  /** The whole path, for the tooltip. */
+  trail: string[];
   value: number;
 }
 
-/** Categories for the treemap, largest first; one level deep, as /summary sends them. */
+/** Categories for the treemap, largest first: one tile per path /summary counts. */
 export function categoryNodes(mix: Summary['categoryMix']): TreeNode[] {
-  return mix
-    .filter((c) => c.category && c.n > 0)
-    .map((c) => ({ name: c.category, value: c.n }))
+  return (mix ?? [])
+    .filter((c) => c.category.length > 0 && c.n > 0)
+    .map((c) => ({ name: c.category[c.category.length - 1]!, trail: c.category, value: c.n }))
     .sort((a, b) => b.value - a.value);
 }
 
 /** Histogram bins with their bounds kept as the API's strings, for labels and drill links. */
 export function histBins(h: Summary['priceHist']) {
+  if (!h) return [];
   return h.counts.flatMap((count, i) => {
     const lo = h.edges[i];
     const hi = h.edges[i + 1];
@@ -92,6 +102,7 @@ export function histBins(h: Summary['priceHist']) {
 
 /** Scatter points [price, rating, reviews], dropping unplaceable ones. */
 export function ratingPoints(r: Summary['ratingPrice']) {
+  if (!r) return [];
   return r.points
     .map((p) => [num(p.price), num(p.rating), p.count] as [number, number, number])
     .filter(([x, y]) => x > 0 && Number.isFinite(y));
@@ -114,7 +125,20 @@ export function freshness(f: Summary['freshness']): 'fresh' | 'aging' | 'stale' 
   return f.status === 'fresh' || f.status === 'aging' || f.status === 'stale' ? f.status : 'unknown';
 }
 
-export const WITHHELD_REASONS = ['capability_off', 'field_not_collected', 'cohort_too_small'] as const;
+/** The reasons the landing words itself; any other reads as a generic "not measured". */
+export const WITHHELD_REASONS = [
+  'capability_off',
+  'field_not_collected',
+  'cohort_too_small',
+  'retailer_blocked',
+  'retailer_partial',
+] as const;
+
+/** Why a section is withheld, if /summary says it is. */
+export const withheldReason = (
+  s: Pick<Summary, 'withheld'>,
+  section: Summary['withheld'][number]['section'],
+) => s.withheld.find((w) => w.section === section)?.reason;
 
 /**
  * The promotion sections, or why they are withheld. /summary nulls all three together and lists
@@ -125,13 +149,13 @@ export function promotions(s: Pick<Summary, 'withheld' | 'promoSharePct' | 'prom
   | {
       measured: true;
       share: string;
-      depth: NonNullable<Summary['promoDepth']>;
-      top: NonNullable<Summary['topDiscounts']>;
+      depth: Measured<'promoDepth'>;
+      top: Measured<'topDiscounts'>;
     }
   | { measured: false; reason: string } {
-  const w = s.withheld?.find((x) => x.section === 'promotions');
-  if (w || s.promoSharePct === null || !s.promoDepth || !s.topDiscounts)
-    return { measured: false, reason: w?.reason ?? 'field_not_collected' };
+  const why = withheldReason(s, 'promotions');
+  if (why || s.promoSharePct === null || !s.promoDepth || !s.topDiscounts)
+    return { measured: false, reason: why ?? 'field_not_collected' };
   return { measured: true, share: s.promoSharePct, depth: s.promoDepth, top: s.topDiscounts };
 }
 
@@ -140,8 +164,8 @@ export function promotions(s: Pick<Summary, 'withheld' | 'promoSharePct' | 'prom
  * brand's share of all priced products and the running total, largest first. The denominator is
  * `priced`, not `products`, which also counts unpriced products.
  */
-export function brandShare(brands: Summary['brandPrice'], priced: number) {
-  if (!(priced > 0)) return [];
+export function brandShare(brands: Summary['brandPrice'], priced: number | null) {
+  if (!brands || !priced || !(priced > 0)) return [];
   let cum = 0;
   return [...brands]
     .filter((b) => b.n > 0)

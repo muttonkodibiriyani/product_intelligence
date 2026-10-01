@@ -14,7 +14,15 @@ import { KpiWidget } from '../widgets/kpis';
 import { TopDiscountsWidget } from '../widgets/top-discounts';
 import { useSummaryData } from '../widgets/use-summary';
 import { BRANDS_TOP } from '../widgets/constants';
-import { brandShare, ladderRows, pct, promotions, promotionsHref, WITHHELD_REASONS } from '../widgets/model';
+import {
+  brandShare,
+  categoryNodes,
+  ladderRows,
+  pct,
+  promotions,
+  promotionsHref,
+  WITHHELD_REASONS,
+} from '../widgets/model';
 
 // The charts (and ECharts with them) load after the page: the KPIs and the table come first.
 const charts = () => import('../widgets/charts');
@@ -85,11 +93,10 @@ function Subtitle() {
   const name = useRetailerName();
   const s = useSummaryData();
   if (s.kind !== 'ready') return null;
-  const retailer = s.env.meta.filters.retailer;
   return (
     <p className="mt-1 text-sm text-ink-2">
       {t('subtitle', {
-        retailer: typeof retailer === 'string' ? name(retailer) : s.env.meta.market,
+        retailer: name(s.data.retailer),
         date: formatDate(s.data.asOf, locale),
       })}
     </p>
@@ -124,47 +131,56 @@ function Overview() {
   // Only widgets the snapshot can fill: the landing never shows an empty card. Promotion widgets
   // need regular prices; until /summary reports them they wait on the Compare tab as previews.
   const promo = promotions(data);
+  // Null sections are withheld (/summary says why); locals keep them narrowed inside the cards.
+  const { ladder, brandPrice, priceHist, ratingPrice, categoryMix, priced } = data;
   const half = [
-    ladderRows(data.ladder).length > 0 &&
+    ladder &&
+      ladderRows(ladder).length > 0 &&
       ((span: 6 | 12) => (
         <Card key="ladder" span={span} {...card('ladder')} question={tw('ladder.question')}>
-          <LadderWidget data={data.ladder} {...p} />
+          <LadderWidget data={ladder} {...p} />
         </Card>
       )),
-    data.brandPrice.length > 0 &&
+    brandPrice &&
+      brandPrice.length > 0 &&
       ((span: 6 | 12) => (
         <Card
           key="brands"
           span={span}
           {...card('brands')}
-          question={tw('brands.question', { n: Math.min(BRANDS_TOP, data.brandPrice.length) })}
+          question={tw('brands.question', { n: Math.min(BRANDS_TOP, brandPrice.length) })}
         >
-          <BrandPriceWidget data={data.brandPrice} {...p} />
+          <BrandPriceWidget data={brandPrice} {...p} />
         </Card>
       )),
-    data.priceHist.counts.some((c) => c > 0) &&
+    priceHist &&
+      priceHist.counts.some((c) => c > 0) &&
       ((span: 6 | 12) => (
         <Card key="hist" span={span} {...card('hist')} question={tw('hist.question')}>
-          <PriceHistWidget data={data.priceHist} {...p} />
+          <PriceHistWidget data={priceHist} {...p} />
         </Card>
       )),
-    data.ratingPrice.points.length > 0 &&
+    ratingPrice &&
+      ratingPrice.points.length > 0 &&
       ((span: 6 | 12) => (
         <Card key="rating" span={span} {...card('rating')} question={tw('rating.question')}>
-          <RatingPriceWidget data={data.ratingPrice} {...p} />
-          <RatingNote data={data.ratingPrice} />
+          <RatingPriceWidget data={ratingPrice} {...p} />
+          <RatingNote data={ratingPrice} />
         </Card>
       )),
-    data.categoryMix.length > 0 &&
+    categoryMix &&
+      categoryNodes(categoryMix).length > 0 &&
       ((span: 6 | 12) => (
         <Card key="mix" span={span} {...card('mix')} question={tw('mix.question')}>
-          <CategoryMixWidget data={data.categoryMix} {...p} />
+          <CategoryMixWidget data={categoryMix} {...p} />
         </Card>
       )),
-    brandShare(data.brandPrice, data.priced).length > 0 &&
+    brandPrice &&
+      priced &&
+      brandShare(brandPrice, priced).length > 0 &&
       ((span: 6 | 12) => (
         <Card key="share" span={span} {...card('share')} question={tw('share.question')}>
-          <BrandShareWidget data={data.brandPrice} priced={data.priced} {...p} />
+          <BrandShareWidget data={brandPrice} priced={priced} {...p} />
         </Card>
       )),
     promo.measured &&
@@ -174,7 +190,7 @@ function Overview() {
           <PromoDepthWidget data={promo.depth} {...p} />
         </Card>
       )),
-  ].filter((c) => c !== false);
+  ].filter((c): c is (span: 6 | 12) => React.JSX.Element => typeof c === 'function');
 
   return (
     <div className="space-y-6">

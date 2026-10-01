@@ -1,10 +1,11 @@
 /**
- * A /summary (API 1.4.0) body for the landing tests, in the agreed shape. Test data only: the app
+ * A /summary (API 1.4.0) body for the landing tests, checked against `Summary` (#104's SummaryView). Test data only: the app
  * never ships it. Images are null so the run makes no request beyond localhost; the image path is
  * unit-tested.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Summary } from '../lib/api/summary';
 
 const goldenMeta = (
   JSON.parse(readFileSync(join(__dirname, '../../../docs/contracts/golden/pi-api/meta.json'), 'utf8')) as {
@@ -42,6 +43,8 @@ export const summaryBody = {
   status: 'ok',
   data: {
     asOf: '2026-09-30',
+    retailer: 'sephora_ae',
+    currency: 'AED',
     products: 4812,
     priced: 4790,
     brands: 236,
@@ -49,17 +52,17 @@ export const summaryBody = {
     medianPrice: aed('139.00'),
     promoSharePct: '18.4',
     freshness: { cutoff: '2026-09-30T04:00:00Z', ageDays: 1, status: 'fresh' },
-    withheld: [] as { section: string; reason: string }[],
+    withheld: [] as Summary['withheld'],
     ladder: cats.map((category, i) => {
       const b = 30 + i * 12;
       return {
         category,
         n: 120 + i * 37,
-        min: String(b),
-        p25: String(b * 2),
-        p50: String(b * 3),
-        p75: String(b * 4),
-        max: String(b * 9),
+        min: aed(String(b)),
+        p25: aed(String(b * 2)),
+        p50: aed(String(b * 3)),
+        p75: aed(String(b * 4)),
+        max: aed(String(b * 9)),
       };
     }),
     promoDepth: {
@@ -74,8 +77,8 @@ export const summaryBody = {
         [20, 9, 4, 0],
       ],
     },
-    brandPrice: brands.map(([brand, median], i) => ({ brand, n: 210 - i * 15, median })),
-    // One level deep, like Sephora UAE's live categories.
+    brandPrice: brands.map(([brand, median], i) => ({ brand, n: 210 - i * 15, median: aed(median) })),
+    // Category paths, one level deep like Sephora UAE's live categories.
     categoryMix: [
       ['Fragrance', 1120],
       ['Skincare', 1430],
@@ -85,7 +88,7 @@ export const summaryBody = {
       ['Tools & Brushes', 260],
       ['Men', 140],
       ['Gifts', 100],
-    ].map(([c, n]) => ({ category: c as string, n: n as number })),
+    ].map(([c, n]) => ({ category: [c as string], n: n as number })),
     priceHist: {
       edges: ['0', '50', '100', '150', '200', '300', '500', '1000'],
       counts: [610, 1140, 1020, 760, 690, 430, 162],
@@ -93,6 +96,8 @@ export const summaryBody = {
     ratingPrice: {
       n: 4812,
       ratedPct: '62.5',
+      sampled: false,
+      scale: '5',
       points: Array.from({ length: 60 }, (_, i) => ({
         price: String(25 + ((i * 37) % 600)),
         rating: (3.4 + ((i * 7) % 16) / 10).toFixed(1),
@@ -138,16 +143,16 @@ export const summaryBody = {
         '32.0',
       ],
     ].map(([id, brand, name, category, price, regular, depthPct]) => ({
-      id,
-      brand,
-      name,
-      category,
+      id: id as string,
+      brand: brand as string,
+      name: name as string,
+      category: category as string[],
       price: aed(price as string),
       regular: aed(regular as string),
-      depthPct,
+      depthPct: depthPct as string,
       image: null,
     })),
-  },
+  } satisfies Summary,
   // The golden /meta envelope's meta, so the generation matches and nothing is invalidated.
   meta: {
     ...goldenMeta,
@@ -167,5 +172,33 @@ export const summaryNoPromo = {
     promoDepth: null,
     topDiscounts: null,
     withheld: [{ section: 'promotions', reason: 'capability_off' }],
-  },
+  } satisfies Summary,
+};
+
+/** A blocked retailer, as in the summary-blocked golden: every section withheld, counts null (never 0). */
+export const summaryBlocked = {
+  ...summaryBody,
+  status: 'not_enough_data',
+  reason: 'retailer_blocked',
+  data: {
+    ...summaryBody.data,
+    retailer: 'shop_d',
+    products: null,
+    priced: null,
+    brands: null,
+    categories: null,
+    medianPrice: null,
+    ladder: null,
+    brandPrice: null,
+    categoryMix: null,
+    priceHist: null,
+    ratingPrice: null,
+    promoSharePct: null,
+    promoDepth: null,
+    topDiscounts: null,
+    withheld: (['prices', 'promotions', 'ratings'] as const).map((section) => ({
+      section,
+      reason: 'retailer_blocked' as const,
+    })),
+  } satisfies Summary,
 };
