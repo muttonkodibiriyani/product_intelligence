@@ -40,6 +40,10 @@ ALLOWED_CATEGORIES = {
 KNOWN_UNITS = {"ml", "g", "pc"}
 IN_STOCK = {"in_stock", "low_stock"}
 UNKNOWN_STOCK = {"unknown", "blocked", "not_observed"}
+#: A price at or below this (AED) is not a real offer (owner ruling, 1 Oct 2026). pi_api withholds
+#: and flags it (``priceFlag = "invalid_low"``); the exporter never lets it stand for a variant
+#: group that has a valid price, and v1 shows it as null.
+PRICE_FLOOR = Decimal("0.01")
 SECRET_KEYS = {
     "api_key",
     "apikey",
@@ -491,8 +495,26 @@ def group_rows(rows: Iterable[ListingRow]) -> dict[GroupKey, list[ListingRow]]:
     return dict(groups)
 
 
+def valid_price(value: Decimal | None) -> bool:
+    return value is not None and value > PRICE_FLOOR
+
+
+def invalid_prices(rows: Iterable[ListingRow]) -> dict[str, int]:
+    """Listing rows per retailer slot whose price is at or below ``PRICE_FLOOR`` (run log)."""
+    counts = dict.fromkeys(("u", "s"), 0)
+    for row in rows:
+        if row.price is not None and not valid_price(row.price):
+            counts[row.retailer] += 1
+    return counts
+
+
 def choose_representative(rows: Sequence[ListingRow]) -> ListingRow:
-    priced = [row for row in rows if row.price is not None]
+    """The cheapest in-stock (else unknown-stock, else any) priced row. A price at or below
+    ``PRICE_FLOOR`` is used only when no row of the group has a valid one, so it never wins
+    "cheapest" over a real price."""
+    priced = [row for row in rows if valid_price(row.price)] or [
+        row for row in rows if row.price is not None
+    ]
     if not priced:
         return min(rows, key=lambda row: row.variant_id)
     in_stock = [row for row in priced if row.availability in IN_STOCK]
@@ -511,6 +533,8 @@ def offer_for(rows: Sequence[ListingRow], *, early: bool = False) -> dict[str, A
     representative = choose_representative(rows)
     _, representative_size = representative.effective_size
     captured, price_run_id = representative.price_capture
+    # v1 has no flag: a price at or below the floor is shown as not observed.
+    price = representative.price if valid_price(representative.price) else None
     shade_values = {row.shade for row in rows if row.shade}
     offer: dict[str, Any] = {
         "sku": representative.source_sku or representative.source_listing_key,
@@ -518,16 +542,16 @@ def offer_for(rows: Sequence[ListingRow], *, early: bool = False) -> dict[str, A
         "size": json_number(representative_size),
         "shadeCount": len(shade_values),
         "rating": None,
-        "series": {"price": [json_money(representative.price)]},
+        "series": {"price": [json_money(price)]},
         "evidence": {
             "capturedAt": utc_text(captured),
             "source": f"{representative.source_name} · local pi_db snapshot",
             "runId": str(price_run_id),
         },
     }
-    if representative.price is not None and representative.regular is not None:
+    if price is not None and representative.regular is not None:
         offer["series"]["regular"] = [json_money(representative.regular)]
-        offer["series"]["promo"] = [promo_pct(representative.price, representative.regular)]
+        offer["series"]["promo"] = [promo_pct(price, representative.regular)]
     if (
         representative.rating is not None
         and representative.rating_scale is not None
@@ -1033,6 +1057,10 @@ def main() -> None:
             f"category_listings={category_notes(rows)}"
         )
         review = price_review(v2)
+        print(
+            f"listing rows priced <= {PRICE_FLOOR} AED (shown only when the group has no valid "
+            f"price; pi_api withholds them as priceFlag=invalid_low): {invalid_prices(rows)}"
+        )
         print(
             f"v2 listing rows={len(rows)}; prices to check by hand (never changed): "
             f"below={len(review['below'])} {review['below'][:20]} "
