@@ -101,6 +101,7 @@ for (const locale of ['en', 'ar'] as const) {
 
       // A tooltip on hover, then a click on a ladder bar opens that category in the explorer.
       const ladder = page.locator('#w-ladder [role=img]');
+      await ladder.scrollIntoViewIfNeeded(); // page.mouse does not scroll
       const box = (await ladder.boundingBox())!;
       const firstRow = page.locator('#w-ladder svg path, #w-ladder svg rect').first();
       await expect(firstRow).toBeVisible();

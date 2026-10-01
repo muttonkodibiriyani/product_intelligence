@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import type { Summary } from '@/lib/api/summary';
 import { num } from '@/lib/api/summary';
 import { formatCount } from '@/lib/format';
-import { base, Chart, type Palette } from './chart';
+import { base, Chart, labelWidth, type Palette } from './chart';
 import { BRANDS_TOP, SHARE_TOP } from './constants';
 import {
   amount,
@@ -46,6 +46,10 @@ const tipLine = (s: string) => `<div>${esc(s)}</div>`;
 
 const tipHead = (s: string) => `<div style="font-weight:600;margin-bottom:4px">${esc(s)}</div>`;
 
+/** Price-axis end labels grow inward: centred, ECharts shrinks a narrow grid to fit them, to nothing on a phone. */
+const edgeLabels = (rtl: boolean) =>
+  ({ alignMinLabel: rtl ? 'right' : 'left', alignMaxLabel: rtl ? 'left' : 'right' }) as const;
+
 const axisLine = (p: Palette) => ({ lineStyle: { color: p.line } });
 const splitLine = (p: Palette) => ({ lineStyle: { color: p.line2 } });
 
@@ -76,19 +80,34 @@ export function LadderWidget({ data, currency, locale, height }: Props<Summary['
         onPick={(name) => name && router.push(exploreHref(locale, { category: [name] }))}
         build={(p) => {
           const bands = [p.mint, p.lav, p.blush];
+          // A measured gutter for the category names: ECharts 6's own fit collapses this grid on
+          // a phone in Arabic (the log axis shrinks to zero width).
+          const gutter =
+            labelWidth(
+              rows.map((r) => short(r.category, 22)),
+              p,
+            ) + 16;
           return {
             ...base(p, rtl),
-            grid: { left: rtl ? 16 : 8, right: rtl ? 8 : 16, top: 8, bottom: 28, containLabel: true },
+            grid: {
+              left: rtl ? 28 : gutter,
+              right: rtl ? gutter : 28,
+              top: 8,
+              bottom: 28,
+              outerBoundsMode: 'none',
+            },
             xAxis: {
               type: 'log',
               inverse: rtl,
-              min: (v: { min: number }) => v.min * 0.8,
-              max: (v: { max: number }) => v.max * 1.25,
+              // Bounded to the data, so the log scale doesn't run out to the next power of ten.
+              min: Math.min(...rows.map((r) => r.v[0])) * 0.8,
+              max: Math.max(...rows.map((r) => r.v[4])) * 1.25,
               axisLine: axisLine(p),
               splitLine: splitLine(p),
               axisLabel: {
                 formatter: (v: number) => amount(String(v), currency, locale, true),
                 hideOverlap: true,
+                ...edgeLabels(rtl),
               },
             },
             yAxis: {
@@ -304,6 +323,7 @@ export function BrandPriceWidget({ data, currency, locale, height }: Props<Summa
           axisLabel: {
             formatter: (v: number) => amount(String(v), currency, locale, true),
             hideOverlap: true,
+            ...edgeLabels(rtl),
           },
         },
         yAxis: {
@@ -554,6 +574,7 @@ export function RatingPriceWidget({ data, currency, locale, height }: Props<Summ
           axisLabel: {
             formatter: (v: number) => amount(String(v), currency, locale, true),
             hideOverlap: true,
+            ...edgeLabels(rtl),
           },
         },
         yAxis: {

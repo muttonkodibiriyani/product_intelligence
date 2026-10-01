@@ -77,6 +77,14 @@ export function base(p: Palette, rtl: boolean): EChartsCoreOption {
   };
 }
 
+/** The widest of some labels in the chart font, in px, for a gutter ECharts doesn't have to guess. */
+export function labelWidth(labels: string[], p: Palette, size = 12): number {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return 120;
+  ctx.font = `${size}px ${p.font}`;
+  return Math.ceil(Math.max(0, ...labels.map((l) => ctx.measureText(l).width)));
+}
+
 type Loaded = typeof import('echarts/core');
 let loading: Promise<Loaded> | null = null;
 
@@ -152,5 +160,9 @@ export function Chart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  return <div ref={el} role="img" aria-label={label} data-chart className="w-full" style={{ height }} />;
+  // LTR box: an inherited rtl direction flips SVG text-anchor and misplaces axis labels. The
+  // options mirror the layout for Arabic instead, and the tooltip sets its own direction.
+  return (
+    <div ref={el} dir="ltr" role="img" aria-label={label} data-chart className="w-full" style={{ height }} />
+  );
 }
