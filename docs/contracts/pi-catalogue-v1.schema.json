@@ -1,0 +1,334 @@
+{
+  "$defs": {
+    "CatalogueImage": {
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Assetid",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string",
+          "x-pi-source-text": true
+        },
+        "sourceUrl": {
+          "title": "Sourceurl",
+          "type": "string",
+          "x-pi-source-text": true
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "integer"
+        },
+        "bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "contentType": {
+          "title": "Contenttype",
+          "type": "string",
+          "x-pi-source-text": true
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string",
+          "x-pi-source-text": true
+        },
+        "roles": {
+          "default": [],
+          "items": {
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "title": "Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "assetId",
+        "url",
+        "sourceUrl",
+        "sha256",
+        "width",
+        "height",
+        "bytes",
+        "contentType"
+      ],
+      "title": "CatalogueImage",
+      "type": "object"
+    },
+    "CatalogueRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "sku": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Sku",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string",
+          "x-pi-source-text": true
+        },
+        "productType": {
+          "title": "Producttype",
+          "type": "string",
+          "x-pi-source-text": true
+        },
+        "isVariant": {
+          "title": "Isvariant",
+          "type": "boolean"
+        },
+        "sourceIds": {
+          "$ref": "#/$defs/SourceIds"
+        },
+        "parents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkuReference"
+          },
+          "title": "Parents",
+          "type": "array"
+        },
+        "children": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkuReference"
+          },
+          "title": "Children",
+          "type": "array"
+        },
+        "groupingMasterSku": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Groupingmastersku",
+          "type": "string"
+        },
+        "excludedParentSummary": {
+          "title": "Excludedparentsummary",
+          "type": "boolean"
+        },
+        "capturedAt": {
+          "format": "date-time",
+          "title": "Capturedat",
+          "type": "string"
+        },
+        "imageIds": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "title": "Imageids",
+          "type": "array"
+        },
+        "optionValues": {
+          "additionalProperties": {
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "title": "Optionvalues",
+          "type": "object"
+        }
+      },
+      "required": [
+        "sku",
+        "name",
+        "productType",
+        "isVariant",
+        "sourceIds",
+        "groupingMasterSku",
+        "excludedParentSummary",
+        "capturedAt"
+      ],
+      "title": "CatalogueRecord",
+      "type": "object"
+    },
+    "SkuReference": {
+      "additionalProperties": false,
+      "properties": {
+        "sku": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Sku",
+          "type": "string"
+        },
+        "selections": {
+          "default": [],
+          "items": {
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "title": "Selections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sku"
+      ],
+      "title": "SkuReference",
+      "type": "object"
+    },
+    "SourceIds": {
+      "additionalProperties": false,
+      "properties": {
+        "catalogueId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Catalogueid"
+        },
+        "stockId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stockid"
+        },
+        "structuredProductId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Structuredproductid"
+        },
+        "structuredId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Structuredid"
+        },
+        "externalId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Externalid"
+        }
+      },
+      "title": "SourceIds",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "pi.catalogue/v1",
+      "default": "pi.catalogue/v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "retailer": {
+      "pattern": "^[a-z][a-z0-9_]{1,62}$",
+      "title": "Retailer",
+      "type": "string"
+    },
+    "market": {
+      "title": "Market",
+      "type": "string"
+    },
+    "scope": {
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+      "title": "Scope",
+      "type": "string"
+    },
+    "generatedAt": {
+      "format": "date-time",
+      "title": "Generatedat",
+      "type": "string"
+    },
+    "importedAt": {
+      "format": "date-time",
+      "title": "Importedat",
+      "type": "string"
+    },
+    "sourceSha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Sourcesha256",
+      "type": "string"
+    },
+    "provenance": {
+      "const": "archived_public_website_scrape",
+      "default": "archived_public_website_scrape",
+      "title": "Provenance",
+      "type": "string"
+    },
+    "records": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CatalogueRecord"
+      },
+      "minProperties": 1,
+      "title": "Records",
+      "type": "object"
+    },
+    "assets": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CatalogueImage"
+      },
+      "title": "Assets",
+      "type": "object"
+    }
+  },
+  "required": [
+    "retailer",
+    "market",
+    "scope",
+    "generatedAt",
+    "importedAt",
+    "sourceSha256",
+    "records",
+    "assets"
+  ],
+  "title": "CatalogueDataset",
+  "type": "object"
+}

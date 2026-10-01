@@ -12,6 +12,7 @@ TMP=$(mktemp --suffix=.js); trap 'rm -f "$TMP"' EXIT
 cat "${SRC[@]}" > "$TMP"
 node --check "$TMP"
 node test/escape.test.js   # dataset strings never render as markup
+node test/reset.test.js    # reset never claims a link it could not send; logs codes only
 
 page(){ # $1 extra meta, $2 csp, $3 css href, $4 script tags
 cat <<HTML
