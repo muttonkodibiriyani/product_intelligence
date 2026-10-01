@@ -194,13 +194,14 @@ these reasons. A missing value is never a zero.
 
 | Status | Code |
 |---|---|
-| 400 / 422 | `invalid_request` (unknown keys are rejected) |
-| 401 | `unauthenticated` |
-| 403 | `forbidden` / `out_of_scope` |
+| 422 | `invalid_request` (malformed or unknown keys), `invalid_query` (well-formed but not answerable: an unknown retailer, a pair of one retailer, an empty date window, a cursor from other filters or another role), `ambiguous_dataset` |
+| 401 | `unauthenticated` (`WWW-Authenticate: Bearer`; the only status that means sign in again) |
+| 403 | `forbidden` (no role, admins only, or a viewer asking `/v1/matches` for unreviewed or rejected edges) / `out_of_scope` |
 | 404 | `not_found` |
 | 409 | `stale_cursor` (the cursor's generation is no longer loaded; restart paging) |
 | 429 | `rate_limited` (with `Retry-After`) |
-| 503 | `data_unavailable` |
+| 500 | `internal_error` (a generic JSON body with `no-store`; nothing about the failure is echoed) |
+| 503 | `data_unavailable` (no dataset yet) / `auth_unavailable` (the signing keys can't be fetched); both send `Retry-After`; keep the session and retry |
 
 No stack traces or dataset internals appear in messages.
 
@@ -245,8 +246,9 @@ No stack traces or dataset internals appear in messages.
 **Query encoding (pinned in the OpenAPI):**
 - **An ordered pair** is `retailers=<base>,<other>`: one parameter, `style: form`,
   `explode: false`, exactly 2 items, order significant (first is the base). Source keys can't
-  contain commas (`^[a-z][a-z0-9_]{1,62}$`). `POST /v1/compare` uses the body object
-  `retailers: {base, other}` instead.
+  contain commas (`^[a-z][a-z0-9_]{1,62}$`). `/v1/compare` and `/v1/index` take it the same
+  way; there is no POST body (S3: every route is `GET`, so the no-store, auth and OpenAPI
+  rules stay uniform and a request fits in a URL).
 - **Multi-value filters** (`brand`, `category`, `retailer`, `id`) repeat the key:
   `brand=A&brand=B` (`style: form`, `explode: true`), ≤ 25 values. Brand and category values may
   contain commas, so they are never comma-joined.
@@ -272,7 +274,7 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 | `/v1/products/{id}` | `get_product` | Card plus per-retailer offers, gap and match |
 | `/v1/products/{id}/history` | – | Price, regular and promo series per retailer |
 | `/v1/admin/products/{id}` | – | Admins only (`403` otherwise): `/v1/products/{id}` plus evidence `source` and `runId`, in separate models |
-| `POST /v1/compare` | `compare` | Pair rows plus summary |
+| `/v1/compare` | `compare` | Pair rows plus summary |
 | `/v1/index` | `index_trend` | Fixed-basket price index points |
 | `/v1/promotions` | `promotions` | Promo share and items |
 | `/v1/assortment-gaps` | `assortment_gaps` | Present at one retailer, absent at another |
@@ -294,24 +296,33 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   - A `ProductCard` has: `id`, `brand`, `name`, `category`, `size` (string plus unit), `image`
     (null until the contract carries it; never invented), per-retailer `price: Money | null`, and
     `match {class, reviewState, confidence}`.
+  - With exactly two different `retailer` values (the first is the base) each card also carries
+    `gap: PairGap` = `{base, other, gap {amount, pct, cheaper} | null, excludedReason | null}` for
+    the latest date, from `pi_metrics.compare.pair_row`. Otherwise `gap` is null.
+  - `sort=gap` needs that pair (else `422 invalid_query`): counted pairs by `gap.pct`
+    descending (other dearest relative to base first), then the uncounted ones, each tie and the
+    tail ordered by id.
 - **`/v1/products/{id}`:** the card, plus `offers[retailer]`:
   - `price`, `regular`, `promoPct`, `rating{average, count}`, `size`, `shadeCount`, `sku`, `url`,
     `early`, `capturedAt`, `availability`;
   - `gap {gapAmount: Money, gapPct, cheaper, convention} | null`, with `gapExcludedReason` when
     null;
   - `match {class, reviewState, confidence, rationale}`.
+  - As built (S3): `pairs: PairGap[]`, one per unordered retailer pair the product is offered
+    at (sorted ids, the first is the base), each with its gap or `excludedReason`. The same
+    list is on the admin detail.
 - **`/v1/products/{id}/history`:** `from`, `to`. Returns `series[retailer] = [{date, price, regular,
   promo, availability}]`. The trend needs `capabilities.history`, otherwise `capability_off`.
   Missing days are `null` with a `notObserved` window, never carried forward.
-- **`POST /v1/compare`:** the body is `{ids[2..6]}` or `{brand?, category?}`, plus
-  `retailers {base, other}`.
-  - `rows[]`: `{id, name, basePrice, otherPrice, gapAmount, gapPct, cheaper, counted,
-    excludedReason}`.
+- **`/v1/compare`:** `retailers=<base>,<other>`, `id[]` (≤ 25), `brand[]`, `category[]`, `date`
+  (default: the latest), `groupBy=brand|category`.
+  - `rows[]`: `{id, name, brand, category, basePrice, otherPrice, gap {amount, pct, cheaper} |
+    null, counted, excludedReason}`; `sides {base, other}` say which side is short.
   - `summary {n, medianGapPct, meanGapPct, cheaperCounts{<source_key>: n}, equalCount,
     basket {base, other}} | null`.
   - Rows are always returned. The summary follows the cohort rule (§7).
-  - With more than two retailers, a row is `exact` only if every pair among them has an exact
-    edge; otherwise it is partial (ADR-0007 §5).
+  - v1 compares one ordered pair. Only that pair's own edge counts: nothing is inferred
+    through a third retailer (ADR-0007 §5). An N-retailer comparison is not in v1.
 - **`/v1/index`:** `retailers {base, other}`, `brand`, `category`, `from`, `to`. Returns
   `{points: [{date, index, n}], trendAvailable, definition}`.
 - **`/v1/promotions`:** `retailer[]`, `brand`, `category`, `minPct`. Returns
@@ -346,7 +357,12 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   productCount, matchedCount, freshness}]`, `capabilities`, `fields` and `notObserved`. Admins also
   get rungs, run ids and block counts.
 - **`/v1/matches`:** `class`, `reviewState`, `retailers`, `brand`, `limit`, `cursor`. Returns
-  edges with confidence and rationale. The review states are the canonical `pi_core.ReviewState`
+  `{total, nextCursor, items[{productId, brand, name, a, b, matchClass, reviewState, decidedBy,
+  confidence, method, stage}]}`, ordered by product id then `(a, b)`. `retailers` filters an
+  unordered pair here (edges are stored with `a < b`). A viewer asking for `proposed` or
+  `rejected` gets `403 forbidden`, not an empty page. The cursor is bound to the generation,
+  the filters and the role, so an admin's cursor is `422` for a viewer. The rationale text
+  is not in the v2 dataset, so it isn't returned. The review states are the canonical `pi_core.ReviewState`
   set: `proposed`, `approved`, `rejected`, `locked` (there is no `accepted`, `auto_accepted` or
   `pending` state; "accepted" was the v1 UI label). Viewers see `approved|locked`; admins see all
   states. **`locked` stays distinct from `approved`** all the way from `pi_db` through v2 to here.

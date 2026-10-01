@@ -14,11 +14,19 @@ import pytest
 from pydantic import BaseModel
 
 from api_fixture import DATASET_PATH, bearer, make_client, served_dataset, write
+from pi_api.analytics import MatchPage
 from pi_api.app import PREFIX
 from pi_api.catalog import AdminProductDetail, History, MetaView, ProductDetail, ProductPage
 from pi_api.contract import main, openapi, openapi_text
 from pi_api.wire import Envelope
+from pi_metrics.assortment import AssortmentGaps
+from pi_metrics.availability import Availability
+from pi_metrics.compare import Comparison
 from pi_metrics.coverage import Coverage
+from pi_metrics.index import PriceIndex
+from pi_metrics.launches import Launches
+from pi_metrics.promotions import Promotions
+from pi_metrics.reviews import ReviewsSummary
 
 REPO = Path(__file__).resolve().parents[3]
 CONTRACTS = REPO / "docs" / "contracts"
@@ -39,6 +47,25 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
     "admin-product": ("/admin/products/p01", Envelope[AdminProductDetail], {"role": "admin"}),
     "history": ("/products/p05/history", Envelope[History], {}),
     "coverage": ("/coverage", Envelope[Coverage], {}),
+    "products-gap": (
+        "/products?retailer=shop_a&retailer=shop_b&sort=gap&limit=3",
+        Envelope[ProductPage],
+        {},
+    ),
+    "compare": ("/compare?retailers=shop_a,shop_b&groupBy=brand", Envelope[Comparison], {}),
+    "compare-blocked": ("/compare?retailers=shop_a,shop_d", Envelope[Comparison], {}),
+    "index": ("/index?retailers=shop_a,shop_b", Envelope[PriceIndex], {}),
+    "promotions": ("/promotions?minPct=10", Envelope[Promotions], {}),
+    "assortment-gaps": (
+        "/assortment-gaps?missingAt=shop_b&presentAt=shop_a",
+        Envelope[AssortmentGaps],
+        {},
+    ),
+    "availability": ("/availability", Envelope[Availability], {}),
+    "launches": ("/launches", Envelope[Launches], {}),
+    "reviews-summary": ("/reviews-summary", Envelope[ReviewsSummary], {}),
+    "matches": ("/matches?limit=3", Envelope[MatchPage], {}),
+    "admin-matches": ("/matches?reviewState=proposed", Envelope[MatchPage], {"role": "admin"}),
     "error-stale-cursor": ("", BaseModel, {}),
 }
 

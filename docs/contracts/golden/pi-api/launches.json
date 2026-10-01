@@ -1,0 +1,37 @@
+{
+  "caveats": [
+    {
+      "ar": "1 عناصر ظهرت لأول مرة بعد جمع غير مكتمل لا تُعرض كإطلاقات.",
+      "code": "launches_withheld",
+      "en": "1 items first seen after an incomplete run are not shown as launches.",
+      "params": {
+        "count": "1"
+      }
+    }
+  ],
+  "cohort": null,
+  "data": {
+    "items": [
+      {
+        "firstSeen": "2026-09-29",
+        "id": "p14",
+        "name": "Product p14",
+        "retailer": "shop_b"
+      }
+    ]
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.0.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "launches",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

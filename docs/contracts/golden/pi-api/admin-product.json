@@ -8,6 +8,7 @@
         "skincare",
         "serum"
       ],
+      "gap": null,
       "id": "p01",
       "image": null,
       "matches": [
@@ -103,6 +104,22 @@
           "value": "50"
         },
         "sku": null
+      }
+    ],
+    "pairs": [
+      {
+        "base": "shop_a",
+        "excludedReason": null,
+        "gap": {
+          "amount": {
+            "amount": "10.00",
+            "currency": "AED",
+            "minor": 1000
+          },
+          "cheaper": "base",
+          "pct": "11.1"
+        },
+        "other": "shop_b"
       }
     ]
   },

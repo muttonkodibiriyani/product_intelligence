@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterable
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from itertools import combinations
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -34,7 +35,8 @@ from pi_dataset import (
     RetailerStatus,
     Size,
 )
-from pi_metrics import COUNTED_STATES, Metric, ProductFilter, Reason, Status
+from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
+from pi_metrics.compare import Gap, pair_row
 from pi_metrics.promotions import depth
 from pi_metrics.view import price_on, regular_on
 
@@ -57,6 +59,15 @@ class ProductNotFoundError(Exception):
 
 class StaleCursorError(Exception):
     """The cursor's generation is no longer loaded (409)."""
+
+
+class ScopeQuery(ContractModel):
+    market: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+    scope: ShortText | None = None
+
+
+class CoverageQuery(ScopeQuery):
+    retailer: Annotated[tuple[ShortText, ...], Field(max_length=MAX_VALUES)] = ()
 
 
 # ---------------------------------------------------------------- meta
@@ -158,6 +169,8 @@ class ProductSort(StrEnum):
     NAME = "name"
     PRICE_ASC = "price_asc"
     PRICE_DESC = "price_desc"
+    #: Needs exactly two ``retailer`` values (base first): largest gap pct first, uncounted last.
+    GAP = "gap"
 
 
 class ProductQuery(ContractModel):
@@ -185,6 +198,20 @@ class CardMatch(ContractModel):
     confidence: str | None
 
 
+class PairGap(ContractModel):
+    """One retailer pair's gap on the latest date, or why it isn't counted (design §7.2)."""
+
+    base: str
+    other: str
+    gap: Gap | None
+    excluded_reason: Excluded | None
+
+
+def pair_gap(ds: Dataset, product: Product, base: str, other: str) -> PairGap:
+    row = pair_row(product, base, other, len(ds.meta.dates) - 1)
+    return PairGap(base=base, other=other, gap=row.gap, excluded_reason=row.excluded_reason)
+
+
 class ProductCard(ContractModel):
     id: str
     brand: SourceText
@@ -195,6 +222,8 @@ class ProductCard(ContractModel):
     image: None = None
     prices: dict[str, MoneyValue | None]
     matches: tuple[CardMatch, ...]
+    #: Set when the search names exactly two retailers (base first); otherwise null.
+    gap: PairGap | None = None
 
 
 class FacetCount(ContractModel):
@@ -261,7 +290,7 @@ def _decimal(text: str | None) -> Decimal | None:
         raise InvalidQueryError(text) from None
 
 
-def card(ds: Dataset, product: Product) -> ProductCard:
+def card(ds: Dataset, product: Product, pair: tuple[str, str] | None = None) -> ProductCard:
     size = next((o.size for o in product.offers.values() if o.size is not None), None)
     return ProductCard(
         id=product.id,
@@ -280,6 +309,7 @@ def card(ds: Dataset, product: Product) -> ProductCard:
             )
             for e in product.matches
         ),
+        gap=None if pair is None else pair_gap(ds, product, *pair),
     )
 
 
@@ -350,9 +380,11 @@ def _facets(ds: Dataset, checks: dict[str, Callable[[Product], bool]]) -> Facets
     return Facets(brand=counts(brand), category=counts(category), retailer=counts(retailer))
 
 
-def _filters_digest(query: ProductQuery) -> str:
+def filters_digest(query: ContractModel, extra: str = "") -> str:
+    """Binds a cursor to the filters (and ``extra``, e.g. the role) it was issued for."""
     fields = query.model_dump(mode="json", exclude={"cursor", "limit"})
-    return hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()[:16]
+    raw = json.dumps({"q": fields, "x": extra}, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def encode_cursor(generation: str, offset: int, digest: str) -> str:
@@ -386,15 +418,35 @@ def _unknown_values(ds: Dataset, query: ProductQuery) -> None:
         raise InvalidQueryError(msg)
 
 
+def _search_pair(query: ProductQuery) -> tuple[str, str] | None:
+    if len(query.retailer) == 2 and query.retailer[0] != query.retailer[1]:
+        return query.retailer[0], query.retailer[1]
+    if query.sort is ProductSort.GAP:
+        msg = "sort=gap needs exactly two different retailer values (base first)"
+        raise InvalidQueryError(msg)
+    return None
+
+
+def _by_gap(ds: Dataset, hits: list[Product], pair: tuple[str, str]) -> list[Product]:
+    gaps = [(p, pair_gap(ds, p, *pair).gap) for p in hits]
+    counted = sorted(
+        ((p, g) for p, g in gaps if g is not None), key=lambda pg: (-pg[1].pct, pg[0].id)
+    )
+    return [p for p, _ in counted] + sorted((p for p, g in gaps if g is None), key=lambda p: p.id)
+
+
 def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[ProductPage]:
     _unknown_values(ds, query)
+    pair = _search_pair(query)
     checks = _predicates(ds, query)
-    digest = _filters_digest(query)
+    digest = filters_digest(query)
     offset = 0 if query.cursor is None else decode_cursor(query.cursor, generation, digest)
     hits = [p for p in ds.products if _passes(p, checks, "")]
     visible = tuple(query.retailer)
     if query.sort is ProductSort.NAME:
         hits.sort(key=lambda p: (fold(p.name), p.id))
+    elif query.sort is ProductSort.GAP and pair is not None:
+        hits = _by_gap(ds, hits, pair)
     else:
         priced = [(p, _low_price(ds, p, visible)) for p in hits]
         sign = -1 if query.sort is ProductSort.PRICE_DESC else 1
@@ -412,7 +464,7 @@ def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[Pr
         data=ProductPage(
             total=len(hits),
             next_cursor=encode_cursor(generation, end, digest) if end < len(hits) else None,
-            items=tuple(card(ds, p) for p in page),
+            items=tuple(card(ds, p, pair) for p in page),
             facets=_facets(ds, checks),
         ),
         as_of=ds.meta.dates[-1],
@@ -455,11 +507,18 @@ class AdminOfferView(OfferView):
 class ProductDetail(ContractModel):
     card: ProductCard
     offers: tuple[OfferView, ...]
+    #: Every retailer pair of the offers (base = the lower id), latest date.
+    pairs: tuple[PairGap, ...]
 
 
 class AdminProductDetail(ContractModel):
     card: ProductCard
     offers: tuple[AdminOfferView, ...]
+    pairs: tuple[PairGap, ...]
+
+
+def pair_gaps(ds: Dataset, product: Product) -> tuple[PairGap, ...]:
+    return tuple(pair_gap(ds, product, a, b) for a, b in combinations(sorted(product.offers), 2))
 
 
 def _promo(price: MoneyValue | None, regular: MoneyValue | None) -> str | None:
@@ -505,7 +564,7 @@ def product_detail(ds: Dataset, product: Product) -> Metric[ProductDetail]:
     )
     return Metric[ProductDetail](
         status=Status.OK,
-        data=ProductDetail(card=card(ds, product), offers=offers),
+        data=ProductDetail(card=card(ds, product), offers=offers, pairs=pair_gaps(ds, product)),
         as_of=ds.meta.dates[-1],
     )
 
@@ -525,7 +584,9 @@ def admin_product_detail(ds: Dataset, product: Product) -> Metric[AdminProductDe
     )
     return Metric[AdminProductDetail](
         status=Status.OK,
-        data=AdminProductDetail(card=card(ds, product), offers=offers),
+        data=AdminProductDetail(
+            card=card(ds, product), offers=offers, pairs=pair_gaps(ds, product)
+        ),
         as_of=ds.meta.dates[-1],
     )
 
