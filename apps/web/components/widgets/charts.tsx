@@ -34,6 +34,17 @@ interface Props<T> {
   currency: string;
   locale: string;
   height?: number;
+  /**
+   * Opens a mark's drill. Without it the widget navigates this tab; the assistant passes its own
+   * (a new tab, so the thread stays). `href` is locale-prefixed and has no basePath.
+   */
+  onPick?: (href: string) => void;
+}
+
+/** Where a mark's drill goes: the caller's `onPick` when given, else this tab. */
+function useDrill(onPick?: (href: string) => void) {
+  const router = useRouter();
+  return (href: string) => (onPick ? onPick(href) : router.push(href));
 }
 
 /** Escapes text going into an HTML tooltip: category and brand names come from the retailer. */
@@ -57,10 +68,10 @@ const splitLine = (p: Palette) => ({ lineStyle: { color: p.line2 } });
 /** Truncates long axis labels; the tooltip has the full name. */
 const short = (s: string, n = 18) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-export function LadderWidget({ data, currency, locale, height }: Props<Measured<'ladder'>>) {
+export function LadderWidget({ data, currency, locale, height, onPick }: Props<Measured<'ladder'>>) {
   const t = useTranslations('widgets.ladder');
   const tw = useTranslations('widgets');
-  const router = useRouter();
+  const drill = useDrill(onPick);
   const rows = ladderRows(data);
   const rtl = locale === 'ar';
   const h = height ?? Math.max(220, rows.length * 34 + 60);
@@ -78,7 +89,7 @@ export function LadderWidget({ data, currency, locale, height }: Props<Measured<
         label={t('label', { n: rows.length })}
         height={h}
         deps={[data, locale, currency]}
-        onPick={(name) => name && router.push(exploreHref(locale, { category: [name] }))}
+        onPick={(name) => name && drill(exploreHref(locale, { category: [name] }))}
         build={(p) => {
           const bands = [p.mint, p.lav, p.blush];
           // A measured gutter for the category names: ECharts 6's own fit collapses this grid on
@@ -210,10 +221,10 @@ export function LadderWidget({ data, currency, locale, height }: Props<Measured<
   );
 }
 
-export function PromoDepthWidget({ data, locale, height }: Props<Measured<'promoDepth'>>) {
+export function PromoDepthWidget({ data, locale, height, onPick }: Props<Measured<'promoDepth'>>) {
   const t = useTranslations('widgets.promo');
   const tw = useTranslations('widgets');
-  const router = useRouter();
+  const drill = useDrill(onPick);
   const rtl = locale === 'ar';
   const { cells, max } = heatCells(data);
   return (
@@ -224,7 +235,7 @@ export function PromoDepthWidget({ data, locale, height }: Props<Measured<'promo
       onPick={(_, d) => {
         const v = (d as [number, number, number] | undefined) ?? undefined;
         if (!v || !v[2]) return;
-        router.push(
+        drill(
           promotionsHref(locale, {
             category: data.category[v[1]],
             minPct: bandFloor(data.bands[v[0]] ?? ''),
@@ -297,10 +308,10 @@ export function PromoDepthWidget({ data, locale, height }: Props<Measured<'promo
   );
 }
 
-export function BrandPriceWidget({ data, currency, locale, height }: Props<Measured<'brandPrice'>>) {
+export function BrandPriceWidget({ data, currency, locale, height, onPick }: Props<Measured<'brandPrice'>>) {
   const t = useTranslations('widgets.brands');
   const tw = useTranslations('widgets');
-  const router = useRouter();
+  const drill = useDrill(onPick);
   const rtl = locale === 'ar';
   // The largest brands by products (as sent, n desc), ranked by median price.
   const rows = data
@@ -312,7 +323,7 @@ export function BrandPriceWidget({ data, currency, locale, height }: Props<Measu
       label={t('label', { n: rows.length })}
       height={height ?? Math.max(240, rows.length * 24 + 40)}
       deps={[data, locale, currency]}
-      onPick={(name) => name && router.push(exploreHref(locale, { brand: [name] }))}
+      onPick={(name) => name && drill(exploreHref(locale, { brand: [name] }))}
       build={(p) => ({
         ...base(p, rtl),
         grid: { left: 8, right: 16, top: 4, bottom: 24, containLabel: true },
@@ -368,10 +379,11 @@ export function BrandShareWidget({
   priced,
   locale,
   height,
+  onPick,
 }: Props<Measured<'brandPrice'>> & { priced: number }) {
   const t = useTranslations('widgets.share');
   const tw = useTranslations('widgets');
-  const router = useRouter();
+  const drill = useDrill(onPick);
   const rtl = locale === 'ar';
   const rows = brandShare(data, priced).slice(0, SHARE_TOP);
   const share = (v: number) => pct(v.toFixed(1), locale);
@@ -391,7 +403,7 @@ export function BrandShareWidget({
         label={t('label', { n: rows.length })}
         height={height ?? Math.max(240, rows.length * 24 + 40)}
         deps={[data, priced, locale]}
-        onPick={(name) => name && router.push(exploreHref(locale, { brand: [name] }))}
+        onPick={(name) => name && drill(exploreHref(locale, { brand: [name] }))}
         build={(p) => ({
           ...base(p, rtl),
           grid: { left: 8, right: 16, top: 4, bottom: 24, containLabel: true },
@@ -440,10 +452,10 @@ export function BrandShareWidget({
   );
 }
 
-export function CategoryMixWidget({ data, locale, height }: Props<Measured<'categoryMix'>>) {
+export function CategoryMixWidget({ data, locale, height, onPick }: Props<Measured<'categoryMix'>>) {
   const t = useTranslations('widgets.mix');
   const tw = useTranslations('widgets');
-  const router = useRouter();
+  const drill = useDrill(onPick);
   const rtl = locale === 'ar';
   const tree = categoryNodes(data);
   return (
@@ -453,7 +465,7 @@ export function CategoryMixWidget({ data, locale, height }: Props<Measured<'cate
       deps={[data, locale]}
       onPick={(_, d) => {
         const node = d as TreeNode | undefined;
-        if (node?.trail?.length) router.push(categoryNodeHref(locale, node));
+        if (node?.trail?.length) drill(categoryNodeHref(locale, node));
       }}
       build={(p) => {
         const colors = [p.lav, p.mint, p.sky, p.blush, p.butter, p.rose];
@@ -496,10 +508,10 @@ export function CategoryMixWidget({ data, locale, height }: Props<Measured<'cate
   );
 }
 
-export function PriceHistWidget({ data, currency, locale, height }: Props<Measured<'priceHist'>>) {
+export function PriceHistWidget({ data, currency, locale, height, onPick }: Props<Measured<'priceHist'>>) {
   const t = useTranslations('widgets.hist');
   const tw = useTranslations('widgets');
-  const router = useRouter();
+  const drill = useDrill(onPick);
   const rtl = locale === 'ar';
   const bins = histBins(data);
   const label = (b: { lo: string; hi: string }) =>
@@ -511,7 +523,7 @@ export function PriceHistWidget({ data, currency, locale, height }: Props<Measur
       deps={[data, locale, currency]}
       onPick={(_, d) => {
         const b = bins[(d as { idx?: number } | undefined)?.idx ?? -1];
-        if (b) router.push(exploreHref(locale, { priceMin: b.lo, priceMax: b.hi, sort: 'price_asc' }));
+        if (b) drill(exploreHref(locale, { priceMin: b.lo, priceMax: b.hi, sort: 'price_asc' }));
       }}
       build={(p) => ({
         ...base(p, rtl),
