@@ -75,7 +75,7 @@ ADR claimed otherwise, and that was wrong (Reviewer, #57 MUST 1).
 - **Dual-write, then retire.**
   - Once `pi_api`, `pi_metrics` and the dashboard read v3, Infra's publisher writes both a v2 and a
     v3 document per generation for a transition window.
-  - A test pins the v3 document to `upgrade(v2)`.
+  - A test pins the v3 document to `upgrade(v2, profile)`.
   - v2 retires only by a later ADR, which names the date and confirms no v2 reader remains.
   - Non-beauty profiles publish v3 only. They never had a v2 form.
 - **`meta.vertical` is kept in v3.** It is still required and still a `SourceKey`, and it must
@@ -170,7 +170,7 @@ Product.offers: dict[context id, Offer]
 - So a retailer id names a context exactly when the retailer has one. An API request that uses a
   retailer id with several contexts gets a deterministic `422 ambiguous_context`, never a silent
   pick.
-- `upgrade(v2)` gives every retailer exactly one context `{id: <retailer id>, channel: online,
+- `upgrade(v2, profile)` gives every retailer exactly one context `{id: <retailer id>, channel: online,
   location: null}`. So every v2 offer key is a valid v3 context id, and beauty results don't
   change.
 - **Ids are stable across generations and never reused** (round 2, nit 3).
@@ -181,6 +181,18 @@ Product.offers: dict[context id, Offer]
   - The publisher compares each new generation's `meta.contexts` with the previous published
     one, and refuses an id whose `(retailer, channel, location.id)` changed.
   - This is what lets a cursor, a saved view or a history series name a context safely.
+- **The one permitted rename: a retailer gains a second context** (#57 review, nit 1).
+  - Under the collision rule, the bare retailer id can't stay a context id once the retailer has
+    two contexts. So the generation that adds the second context **retires** the bare id, and
+    every context of that retailer, including the one that used to be the sole one, gets a
+    non-bare id from the context register.
+  - From that generation on, a request naming the bare retailer id gets `422
+    ambiguous_context`, never a silent pick of the old sole context.
+  - The publisher's stability check allows exactly this change: a bare retailer id that
+    disappears because its retailer now has two or more contexts. Any other id change is
+    still refused.
+  - The bare id is never reassigned to a different context later. If the retailer goes back to
+    one context, that context keeps its register id.
 
 **Identity across contexts** (MUST 2):
 - **Same retailer, several contexts.** The producer puts several contexts of one retailer under
@@ -217,6 +229,10 @@ fail-safe reading, so a document that slipped past validation still can't miscou
     two unkeyed offers of one retailer with the same canonical `url` in different products.
   - Without this rule, one item could be counted twice in promotions, availability and assortment
     gaps, and two A items could share one B identity.
+  - **A retailer with more than one context needs `itemKey` or `url` on every offer** (#57
+    review, nit 2). Otherwise an offer would carry nothing that rule (a) could check, and one
+    item emitted once per context could land in several products unnoticed. A retailer with a
+    single context (every upgraded v2 retailer) may still omit both.
 - **(b) Same-retailer pairs need a shared key.**
   - Two offers of one retailer in one product are compared only when both carry the same
     `itemKey`. Otherwise the pair is `no_match`.
@@ -284,7 +300,8 @@ meta.profile = {
   sizeLabelsComparable: true, sizeSystemRequired: false  # §1
 }
 meta.attributeSet[] {
-  key:        SourceKey-shaped, e.g. "portion_label", "daypart", "colour_family"
+  key:        ^[a-z][A-Za-z0-9_]{1,62}$, e.g. "portion_label", "daypart", "shadeFamilies"
+              # SourceKey-shaped plus lowerCamel, so beauty's v2 key "shadeFamilies" upgrades as is
   level:      "product" | "offer"
   type:       "text" | "enum" | "decimal" | "money" | "bool" | "text_list" | "object"
   values:     [ { id, label: LocalizedText } ] | null  # enum only; closed
@@ -353,11 +370,11 @@ its two size flags from its versioned pydantic attribute model (`beauty@1`, `foo
 v3 = v2 plus the rows below. Nothing else in v2 changes: wire money (`{amount, minor, currency}`),
 series, ratings, match edges, the field statuses and capabilities are all identical.
 
-| Location | v2 | v3 | `upgrade(v2)` sets |
+| Location | v2 | v3 | `upgrade(v2, profile)` sets |
 |---|---|---|---|
 | `schema` | `"pi.dataset/v2"` | `"pi.dataset/v3"` | `"pi.dataset/v3"` |
 | `meta.vertical` | required `SourceKey` | **kept**, required, must equal `meta.profile.name` | unchanged |
-| `meta.profile` | — | **new, required**: `{name, version, sizeLabelsComparable, sizeSystemRequired}` | `{name: <vertical>, version: 1, false, false}` |
+| `meta.profile` | — | **new, required**: `{name, version, sizeLabelsComparable, sizeSystemRequired}` | from the `ProfileDeclaration` (`{name, version, sizeLabelsComparable, sizeSystemRequired}`); `UpgradeError` unless `name` = `meta.vertical` |
 | `meta.attributeSet` | — | **new, required** (may be empty) | `ProfileDeclaration.attributeSet` (from `contracts/profiles/beauty@1.json` for beauty) |
 | `meta.contexts` | — | **new, required**, ≥ 1 per retailer, collision rule §2 | one `{id: <retailer id>, retailer, channel: online, location: null, label: <retailer name>}` per retailer |
 | `Size.value`, `Size.unit` | required | nullable, set together (§1) | unchanged |
@@ -369,9 +386,9 @@ series, ratings, match edges, the field statuses and capabilities are all identi
 | `notObserved[].context` | — | **new**, nullable (null = whole retailer) | `null` |
 | `MatchEdge.a`, `.b` | retailer ids | retailer ids (unchanged) | unchanged |
 
-**Pinning `upgrade(v2)`:**
+**Pinning `upgrade(v2, profile)`:**
 - The function is defined by this table and tested against every v2 fixture and golden.
-- `pi_metrics` results on `upgrade(v2)` must equal today's results on v2, except for
+- `pi_metrics` results on `upgrade(v2, profile)` must equal today's results on v2, except for
   `meta.metricVersion`.
 - That equality is the guard that beauty doesn't move.
 
@@ -388,9 +405,9 @@ Small PRs. Until step 5, beauty production output stays byte-identical v2.
 |---|---|---|
 | 1 | `pi_dataset`: the `DatasetV3` models and validator (§1–§4, identity rules (a)–(c)), the schema-id-first check in `load_any` and the v2 loader, `upgrade(v2, profile)`, `contracts/profiles/beauty@1.json`, the v3 JSON Schema; the v2 model frozen by a test. Literal-guard allowlist for `FAMS`/categories | This ADR accepted |
 | 2 | PR-E: `VerticalProfile` registry (`beauty@1` first, exporting its attribute set and size flags); `variant.attributes_schema` append-only migration; brand aliases as data (ADR-0007 §4) | Step 1 |
-| 3 | `pi_metrics` on v3: context pairs with the stable-key rule, the symmetric label same-size rule, `size_labels_differ`, `channel_differs`, `not_applicable`; one `metricVersion` bump; beauty equality test on `upgrade(v2)` | Step 1 |
+| 3 | `pi_metrics` on v3: context pairs with the stable-key rule, the symmetric label same-size rule, `size_labels_differ`, `channel_differs`, `not_applicable`; one `metricVersion` bump; beauty equality test on `upgrade(v2, profile)` | Step 1 |
 | 4 | Consumers read v3: `pi_api` (`load_any` + `upgrade`, context ids, `ambiguous_context`, `channel`/`location`/`attr` filters, per-context coverage) and the dashboard client | Steps 1, 3 |
-| 5 | Infra: the publisher dual-writes v2 + v3 per generation; a test pins v3 = `upgrade(v2)`; the context-id stability check against the previous generation | Step 4 deployed |
+| 5 | Infra: the publisher dual-writes v2 + v3 per generation; a test pins v3 = `upgrade(v2, profile)`; the context-id stability check against the previous generation | Step 4 deployed |
 | 6 | `food_menu@1` and `apparel@1` with synthetic fixtures (no live sources); dashboard modules driven by `attributeSet` blocks; `FAMS`/categories allowlist removed | Steps 2, 4 |
 | 7 | Retire v2 | A later ADR |
 

@@ -93,8 +93,8 @@ def test_credential_like_content_is_refused(snippet: str) -> None:
     ("raw", "message"),
     [
         ("{", "not JSON"),
-        ("[]", "schema must be"),
-        ('{"schema": "pi.dataset/v1"}', "schema must be"),
+        ("[]", "unsupported schema None; this reader accepts pi.dataset/v2"),
+        ('{"schema": "pi.dataset/v1"}', "unsupported schema pi.dataset/v1"),
     ],
 )
 def test_malformed_documents(raw: str, message: str) -> None:
