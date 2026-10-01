@@ -1,7 +1,7 @@
 # Ryzan AI Assistant: owner-run enablement runbook
 
-Owner-run, in order. **Every section needs the owner's explicit OK via the Coordinator before it
-runs**; agents never enable, create or deploy anything. Source of truth for the reasoning:
+Owner-run, in one pass. **Run the sections in order; stop on any failed verify and report to
+the Coordinator.** Agents never enable, create or deploy anything. Source of truth for the reasoning:
 `docs/design/ai-assistant.md` §6, §9.4, §10 and §10.1. This runbook only orders those steps and
 adds a verify and an off path to each.
 
@@ -323,8 +323,11 @@ gcloud services enable aiplatform.googleapis.com
 ```
 
 Enabling the API costs nothing; spend starts only with model calls, and none happen until
-switch-on. Record `<VERTEX_LOCATION>`, the Gemini Flash location confirmed by Infra
-(availability and data residency).
+switch-on. Record `<VERTEX_LOCATION>`, confirmed by Infra: a location where the config's
+`model` (`gemini-2.5-flash`) is served, and whether that is still the current Flash. If it is
+not served in `me-central1`, Infra names the nearest compliant region and the data-residency
+trade-off for the owner. Prompts and tool results (product data, never user PII beyond the uid)
+would then be processed outside `me-central1`.
 
 **Verify:** `gcloud services list --enabled --filter=config.name=aiplatform.googleapis.com`.
 **Off / rollback:** `gcloud services disable aiplatform.googleapis.com`.
