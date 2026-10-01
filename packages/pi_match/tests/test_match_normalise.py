@@ -8,13 +8,16 @@ from hypothesis import strategies as st
 
 from pi_match.normalise import (
     BRAND_ALIASES,
+    MAX_LIST_TEXT,
     Concentration,
     ItemKind,
     Shade,
     Size,
     concentration,
     fold,
+    is_listed,
     item_kind,
+    list_groups,
     name_tokens,
     normalise_brand,
     parse_brand_aliases,
@@ -127,6 +130,117 @@ def test_parse_size_absent(text: str | None) -> None:
     assert parse_size(text) is None
 
 
+@pytest.mark.parametrize(
+    ("text", "size"),
+    [
+        ("['100'] ['ML']", Size(Decimal(100), "ml")),
+        ("['3.4'] ['oz']", Size(Decimal("96.3883"), "g")),
+        ('["50 ml"]', Size(Decimal(50), "ml")),
+        ("['1.7 fl oz / 50 ml']", Size(Decimal("50.27495"), "ml")),  # one size in two units
+    ],
+)
+def test_parse_size_from_list_text(text: str, size: Size) -> None:
+    assert parse_size(text) == size
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "['50', '90'] ['ML']",  # several sizes: ambiguous, never the first
+        "['30 ml', '50 ml']",
+        "['NOSIZE']",
+        "['one size']",
+        "['100']",  # a number without a unit
+        "[]",
+    ],
+)
+def test_parse_size_from_list_text_absent(text: str) -> None:
+    assert parse_size(text) is None
+
+
+@given(
+    st.decimals(min_value=1, max_value=999, places=1),
+    st.sampled_from(["ml", "ML", "g", "fl oz", "oz", "l", "mg"]),
+)
+def test_single_item_list_parses_like_plain_text(amount: Decimal, unit: str) -> None:
+    assert parse_size(f"['{amount}'] ['{unit}']") == parse_size(f"{amount} {unit}")
+    assert parse_size(f'["{amount} {unit}"]') == parse_size(f"{amount} {unit}")
+
+
+def test_list_groups() -> None:
+    assert list_groups("['50', '90'] ['ML']") == (("50", "90"), ("ML",))
+    assert list_groups('["a", " ", ""]') == (("a",),)
+    assert list_groups("['L\\'Oreal Red']") == (("L'Oreal Red",),)
+    assert list_groups("['a]b', 'c']") == (("a]b", "c"),)
+    assert list_groups(("50 ml",)) == (("50 ml",),)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "50 ml",  # not a list
+        "['50'",  # unclosed
+        "['50'] trailing",
+        "[['50']]",  # nested
+        "[{'a': 1}]",
+        "[True]",
+        "[__import__('os')]",  # never evaluated
+        "['x'] " * 200,  # longer than MAX_LIST_TEXT
+    ],
+)
+def test_list_groups_rejects_other_shapes(text: str) -> None:
+    assert list_groups(text) is None
+
+
+def test_list_text_is_capped() -> None:
+    assert len("['x'] " * 200) > MAX_LIST_TEXT
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "['50'] ['ML', 'G']",  # one value, two units: ambiguous
+        "['50'] ['G', 'ML']",
+        "['50', '50 g'] ['ML']",
+        ("30 ml", "50 ml"),
+    ],
+)
+def test_ambiguous_size_lists_give_none(value: str | tuple[str, ...]) -> None:
+    assert parse_size(value) is None
+
+
+def test_shade_list_text_with_quotes_inside() -> None:
+    assert parse_shade("['L\\'Oreal Red']") == Shade(None, "loreal red")
+    assert parse_shade('["He said \\"hi\\""]') == Shade(None, "he said hi")
+    assert parse_shade(('He said "hi"',)) == Shade(None, "he said hi")
+
+
+_SIZE_TEXT = st.builds(
+    "{} {}".format,
+    st.integers(min_value=1, max_value=999),
+    st.sampled_from(["ml", "g", "fl oz", "oz", "l"]),
+)
+
+
+@given(st.lists(_SIZE_TEXT, min_size=2, max_size=5, unique=True))
+def test_two_or_more_distinct_sizes_give_none(items: list[str]) -> None:
+    assert parse_size(repr(items)) is None
+    assert parse_size(tuple(items)) is None
+
+
+@given(
+    st.lists(
+        st.text(min_size=1, max_size=12).map(str.strip).filter(bool),
+        min_size=2,
+        max_size=5,
+        unique=True,
+    )
+)
+def test_two_or_more_distinct_shades_give_none(items: list[str]) -> None:
+    assert parse_shade(repr(items)) is None
+    assert parse_shade(tuple(items)) is None
+
+
 def test_size_same_as_tolerance() -> None:
     fl_oz = parse_size("1 fl oz")
     assert fl_oz is not None
@@ -148,6 +262,12 @@ def test_size_same_as_tolerance() -> None:
 )
 def test_parse_shade(text: str, shade: Shade) -> None:
     assert parse_shade(text) == shade
+
+
+def test_parse_shade_from_list_text() -> None:
+    assert parse_shade("['220 Natural Beige']") == Shade("220", "natural beige")
+    assert parse_shade("['Rose', 'Nude']") is None  # several shades: a parent row
+    assert parse_shade("[]") is None
 
 
 @pytest.mark.parametrize("text", [None, "", "!!"])
@@ -206,3 +326,34 @@ def test_name_tokens_drop_brand_sizes_and_attributes() -> None:
 )
 def test_valid_gtin(gtin: str | None, value: str | None) -> None:
     assert valid_gtin(gtin) == value
+
+
+@pytest.mark.parametrize(
+    ("value", "size"),
+    [
+        (("50", "ml"), Size(Decimal(50), "ml")),  # a JSON array [50, "ml"]
+        ('[50, "ml"]', Size(Decimal(50), "ml")),
+        ("['1.7', 'fl oz']", Size(Decimal("50.27495"), "ml")),
+        (("50", "90"), None),
+        (("ml", "50"), None),
+        (("50", "ml", "g"), None),
+    ],
+)
+def test_a_number_then_its_unit_is_one_size(
+    value: str | tuple[str, ...], size: Size | None
+) -> None:
+    assert parse_size(value) == size
+
+
+@pytest.mark.parametrize(
+    ("text", "size"),
+    [
+        ("[Limited] 50ml", Size(Decimal(50), "ml")),
+        ("[New] 1.7 fl oz", Size(Decimal("50.27495"), "ml")),
+        ("[50] ml", None),  # a real literal: read as a list, and the rest is not one
+        ("['50 ml', '90 ml'", None),  # unclosed list: still a list, still None
+    ],
+)
+def test_a_bracketed_label_is_plain_text(text: str, size: Size | None) -> None:
+    assert not is_listed("[Limited] 50ml")
+    assert parse_size(text) == size

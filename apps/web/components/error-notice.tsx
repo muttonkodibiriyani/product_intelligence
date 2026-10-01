@@ -14,17 +14,10 @@ export function errorText(t: (key: string, values?: Record<string, number>) => s
 export function ErrorNotice({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const t = useTranslations('errors');
   return (
-    <div
-      role="alert"
-      className="flex flex-wrap items-center gap-3 rounded border border-line bg-surface-2 px-4 py-3 text-sm"
-    >
+    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-card bg-rose px-4 py-3 text-sm">
       <span className="text-ink">{errorText(t, error)}</span>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="rounded border border-line px-2 py-1 hover:bg-surface focus-visible:outline-2"
-        >
+        <button type="button" onClick={onRetry} className="btn focus-visible:outline-2">
           {t('retry')}
         </button>
       )}

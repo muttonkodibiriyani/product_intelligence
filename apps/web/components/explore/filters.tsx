@@ -113,7 +113,7 @@ function Checks({
           const b = badge?.(f.key);
           return (
             <li key={f.key}>
-              <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-surface">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-2">
                 <input
                   type="checkbox"
                   checked={selected.includes(f.key)}
@@ -124,7 +124,7 @@ function Checks({
                   {label(f.key)}
                 </span>
                 {b && (
-                  <span className="rounded bg-accent px-1 text-xs text-surface tabular-nums" aria-hidden>
+                  <span className="pill bg-ink px-1.5 text-surface tabular-nums" aria-hidden>
                     {b}
                   </span>
                 )}
@@ -227,14 +227,11 @@ function PriceRange({
                 aria-invalid={tried && bad}
                 aria-describedby={tried && bad ? ids.err : undefined}
                 onChange={(e) => set(e.target.value)}
-                className="w-full rounded border border-line bg-surface px-2 py-1 tabular-nums focus-visible:outline-2"
+                className="w-full field px-2 tabular-nums focus-visible:outline-2"
               />
             </div>
           ))}
-          <button
-            type="submit"
-            className="rounded border border-line bg-surface px-2 py-1 hover:bg-surface-2 focus-visible:outline-2"
-          >
+          <button type="submit" className="btn focus-visible:outline-2">
             {t('apply')}
           </button>
         </div>

@@ -354,6 +354,9 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     (as built: `evidence.url`, null unless it is https on one of that retailer's hosts in
     `PI_API_EVIDENCE_HOSTS`; the FE checks only the scheme),
     `early`, `capturedAt`, `availability`;
+  - `shadeCount` is valid on its own. `meta.capabilities.shades = false` means no shade list
+    (`shades[]`) is served, never "no shades": Sephora publishes a count on about 7,378 offers
+    with no list;
   - `gap {gapAmount: Money, gapPct, cheaper, convention} | null`, with `gapExcludedReason` when
     null;
   - `match {class, reviewState, confidence, rationale}`.
@@ -503,6 +506,34 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     count, generation and apiVersion, and never row content. It goes to the project's default
     `_Default` bucket (30-day retention, within the free allotment). A longer retention sink needs
     the owner's approval and is not proposed.
+
+### Imported retailers (API 1.5.0, `pi_api.dq`)
+
+`ulta_ae` comes from a one-off import, not from PI's collection. Its stored rows and files are
+never changed. At load, once per generation, `pi_api` serves a corrected copy:
+
+- **Was-prices.** Its `regular` series is cleared, so no regular price, discount or `promoPct`
+  is shown. Its promotion share is withheld with reason `was_price_unverified` (summary
+  `withheld[]`, `/v1/promotions` `retailers[].reason`), never measured and never 0%.
+- **Import date.** Its `capturedAt` is the import time. `/v1/summary` serves its `freshness` as
+  `status: snapshot` with `cutoff` = the import time, never `fresh`.
+- **Caveats.** A response involving it carries, in this order, `was_price_unverified` (endpoints
+  showing prices or promotions), `snapshot_import_date` ("ulta_ae: snapshot imported <date>,
+  capture date unknown.") and `parent_listings_included`. "Involving" is the retailer or
+  contexts the request names (`retailer`, the `retailers` pair, `missing_at`/`present_at`), or
+  for a product and its history the contexts with offers or series; a request naming none
+  involves every retailer. The import's aggregate-parent listings are not removed here (the
+  served document has no parent marker). The demo export drops them (#133), so a file
+  exported before that change still includes them.
+
+- **Cutoff (API 1.5.1).** `meta.cutoff` is served as the latest `capturedAt` of the collected
+  (non-imported) offers, so `/meta`, every envelope's `meta.cutoff` and a collected context's
+  `/summary` freshness never show the import time; if every offer is imported, the file's cutoff
+  is kept and `snapshot_import_date` says so. A collected context's `/summary` `asOf` is capped
+  at that cutoff's day, and `/summary` without `retailer` picks a collected context.
+  `meta.dates` and the series are left as published.
+
+A dataset without an imported retailer is served as the same object, byte for byte.
 
 ## 7. Metric rules (owned by `pi_metrics`)
 

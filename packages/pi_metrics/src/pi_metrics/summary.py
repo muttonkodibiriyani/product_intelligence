@@ -173,13 +173,17 @@ class Summary(ContractModel):
     withheld: tuple[Withheld, ...]
 
 
-def default_context(ds: DatasetV3) -> Context:
-    """The context with the most non-early offers observed on the latest date (ties by id)."""
+def default_context(ds: DatasetV3, exclude: frozenset[str] = frozenset()) -> Context:
+    """The context with the most non-early offers observed on the latest date (ties by id).
+
+    Contexts in ``exclude`` are picked only when every context is excluded.
+    """
     i = len(ds.meta.dates) - 1
     counts = Counter(
         cid for p in ds.products for cid, o in p.offers.items() if not o.early and view.seen(o, i)
     )
-    return min(ds.meta.contexts, key=lambda c: (-counts[c.id], c.id))
+    contexts = [c for c in ds.meta.contexts if c.id not in exclude] or ds.meta.contexts
+    return min(contexts, key=lambda c: (-counts[c.id], c.id))
 
 
 def _rank[T](ordered: Sequence[T], pct: int) -> T:
@@ -416,9 +420,11 @@ def _caveats(ctx: Context, shop: RetailerStatus, early: int, mixed: int) -> tupl
 
 
 def _promo_section(
-    ds: DatasetV3, scan: _Scan, i: int, rows: list[str]
+    ds: DatasetV3, scan: _Scan, i: int, rows: list[str], unverified: bool
 ) -> tuple[_Promo, Reason | None]:
     reason = _promo_off(ds)
+    if reason is None and unverified:
+        reason = Reason.WAS_PRICE_UNVERIFIED
     if reason is not None:
         return _Promo(share=None, depth=None, top=None, n=0), reason
     promo = _promotions(list(scan.priced), i, rows)
@@ -433,8 +439,14 @@ def _rating_section(ds: DatasetV3, scan: _Scan) -> tuple[RatingPrice | None, int
     return ratings, mixed, None if ratings is not None else Reason.COHORT_TOO_SMALL
 
 
-def summary(dataset: view.AnyDataset, context_id: str | None) -> Metric[Summary]:
-    """The context's summary on the latest date; ``None`` picks ``default_context``."""
+def summary(
+    dataset: view.AnyDataset, context_id: str | None, unverified: frozenset[str] = frozenset()
+) -> Metric[Summary]:
+    """The context's summary on the latest date; ``None`` picks ``default_context``.
+
+    A context in ``unverified`` has unverified was-prices: its promotions are withheld with
+    that reason, never measured, never 0.
+    """
     ds = view.as_v3(dataset)
     ctx = default_context(ds) if context_id is None else view.context(ds, context_id)
     i = len(ds.meta.dates) - 1
@@ -460,7 +472,7 @@ def summary(dataset: view.AnyDataset, context_id: str | None) -> Metric[Summary]
         by_category[product.category[0]].append(price)
     rows = _top(by_category, CATEGORY_ROWS, str)
     enough = len(prices) >= MIN_COHORT
-    promo, promo_reason = _promo_section(ds, scan, i, rows)
+    promo, promo_reason = _promo_section(ds, scan, i, rows, ctx.id in unverified)
     ratings, mixed, rating_reason = _rating_section(ds, scan)
     withheld = [
         Withheld(section=section, reason=reason)

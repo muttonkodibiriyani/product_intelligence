@@ -1,7 +1,16 @@
-import { EMAIL, expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
+import {
+  EMAIL,
+  expect,
+  golden,
+  mockBackend,
+  noHorizontalScroll,
+  signIn,
+  test,
+  withSummary,
+} from './fixtures';
 
 const meta = golden('meta');
-const ok = { onApi: (r: import('@playwright/test').Route) => r.fulfill({ json: meta }) };
+const ok = { onApi: withSummary((r) => r.fulfill({ json: meta })) };
 
 for (const locale of ['en', 'ar'] as const) {
   const rtl = locale === 'ar';
@@ -79,7 +88,7 @@ for (const locale of ['en', 'ar'] as const) {
     test('503 auth_unavailable: waits, retries, stays signed in', async ({ page }) => {
       let n = 0;
       const mock = await mockBackend(page, {
-        onApi: (r) =>
+        onApi: withSummary((r) =>
           ++n <= 1
             ? r.fulfill({
                 status: 503,
@@ -87,6 +96,7 @@ for (const locale of ['en', 'ar'] as const) {
                 json: { error: { code: 'auth_unavailable', message: 'x' } },
               })
             : r.fulfill({ json: meta }),
+        ),
       });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { name: T.title })).toBeVisible();

@@ -56,7 +56,7 @@ export function CompareView() {
   return (
     <section aria-labelledby="compare-title" className="space-y-6">
       <div>
-        <h1 id="compare-title" className="text-xl font-semibold">
+        <h1 id="compare-title" className="text-2xl font-bold tracking-tight">
           {t('title')}
         </h1>
         <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>
@@ -71,7 +71,7 @@ export function CompareView() {
       />
 
       {!ready ? (
-        <div className="rounded border border-line bg-surface px-4 py-6">
+        <div className="panel px-5 py-6">
           <p className="font-medium">{t('pickPair')}</p>
           <p className="mt-1 text-sm text-ink-2">{t('pickPairHint')}</p>
         </div>
@@ -120,7 +120,7 @@ export function CompareView() {
                       <button
                         type="button"
                         onClick={() => update({ limit: LIMITS[LIMITS.length - 1]! })}
-                        className="rounded border border-line bg-surface px-3 py-1.5 hover:bg-surface-2 focus-visible:outline-2"
+                        className="btn focus-visible:outline-2"
                       >
                         {t('showMore', { n: formatCount(LIMITS[LIMITS.length - 1]!, locale) })}
                       </button>

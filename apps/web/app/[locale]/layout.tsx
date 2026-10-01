@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { AuthProvider } from '@/components/auth-provider';
 import { dirOf, isLocale, locales } from '@/i18n/routing';
+import { loadMessages } from '@/messages/load';
 import '../globals.css';
 
 export const dynamicParams = false;
@@ -32,7 +33,7 @@ export default async function LocaleLayout({
   if (!isLocale(locale)) notFound();
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'app' });
-  const messages = (await import(`../../messages/${locale}.json`)).default;
+  const messages = await loadMessages(locale);
   return (
     <html lang={locale} dir={dirOf(locale)}>
       <body className="min-h-screen font-sans antialiased">
@@ -45,7 +46,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider locale={locale} messages={messages}>
           <AuthProvider>
             <AppHeader />
-            <main id="main" className="mx-auto max-w-screen-2xl px-4 py-6">
+            <main id="main" className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
               {children}
             </main>
           </AuthProvider>
