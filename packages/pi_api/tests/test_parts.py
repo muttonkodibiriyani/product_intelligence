@@ -209,3 +209,36 @@ def test_backoff_is_capped_and_resets_after_a_good_refresh() -> None:
         now[0] += HttpCertSource.BACKOFF_MAX
     assert len(calls) == 10
     assert source.certificates() == {"k": "pem"}
+
+
+class BusyLock:
+    """A lock another thread holds: try-acquire fails, a blocking acquire waits (here: returns)."""
+
+    def __init__(self) -> None:
+        self.waited = 0
+
+    def acquire(self, blocking: bool = True) -> bool:
+        if blocking:
+            self.waited += 1
+        return blocking
+
+    def release(self) -> None:
+        pass
+
+
+def test_a_refresh_in_flight_serves_the_last_good_set_without_waiting() -> None:
+    ok = httpx.Response(200, json={"k": "pem"}, headers={"cache-control": "max-age=10"})
+    client, calls = certs_client([ok, httpx.Response(200, json={"k2": "pem"})])
+    now = [0.0]
+    source = HttpCertSource("https://certs.invalid/", clock=lambda: now[0], client=client)
+    source.certificates()
+    assert not source.stale()
+    busy = BusyLock()
+    source._lock = busy  # type: ignore[assignment]
+    now[0] = 20.0
+    assert source.stale()
+    assert source.certificates() == {"k": "pem"}
+    assert (busy.waited, len(calls)) == (0, 1)
+    now[0] = 10.0 + HttpCertSource.GRACE  # nothing usable: wait for the lock, then refresh
+    assert source.certificates() == {"k2": "pem"}
+    assert (busy.waited, len(calls)) == (1, 2)

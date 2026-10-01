@@ -90,6 +90,11 @@ def test_unavailable_signing_keys_fail_closed_as_retryable_503() -> None:
     assert status_of(f"Bearer {token()}", Broken()) == 503
 
 
+def test_an_unknown_kid_while_serving_stale_keys_is_503_not_a_sign_out() -> None:
+    assert status_of(f"Bearer {token()}", FakeCerts({"other-kid": CERT}, stale=True)) == 503
+    assert status_of(f"Bearer {token()}", FakeCerts({"other-kid": CERT})) == 401
+
+
 def test_an_unreadable_certificate_fails_closed_as_503() -> None:
     assert status_of(f"Bearer {token()}", FakeCerts({KID: "not a pem"})) == 503
 

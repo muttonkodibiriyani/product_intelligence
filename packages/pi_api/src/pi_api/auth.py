@@ -62,6 +62,10 @@ class CertSource(Protocol):
         """
         ...
 
+    def stale(self) -> bool:
+        """True while serving a set past its ``max-age`` (inside the grace period)."""
+        ...
+
 
 class HttpCertSource:
     """Fetches the certificates and keeps them for the response's ``max-age``.
@@ -70,7 +74,7 @@ class HttpCertSource:
     backoff (``BACKOFF_BASE`` doubling to ``BACKOFF_MAX``). Meanwhile the last good set is still
     served for up to ``GRACE`` seconds past its expiry, because Google publishes each key well
     before it signs with it and keeps it after. With no last good set inside the grace, it fails
-    closed.
+    closed. While one thread refreshes, others are served the last good set instead of waiting.
     """
 
     BACKOFF_BASE = 1.0
@@ -92,29 +96,42 @@ class HttpCertSource:
         self._retry_at = 0.0
         self._failures = 0
 
+    def stale(self) -> bool:
+        return self._clock() >= self._expires
+
     def certificates(self) -> Mapping[str, str]:
-        with self._lock:
-            now = self._clock()
-            if now < self._expires:
+        if not self._lock.acquire(blocking=False):
+            certs = self._certs  # a refresh is in flight: don't queue behind it if we can serve
+            if certs and self._clock() < self._expires + self.GRACE:
+                return certs
+            self._lock.acquire()
+        try:
+            return self._locked_certificates()
+        finally:
+            self._lock.release()
+
+    def _locked_certificates(self) -> Mapping[str, str]:
+        now = self._clock()
+        if now < self._expires:
+            return self._certs
+        if now >= self._retry_at:
+            try:
+                self._refresh()
+            except (httpx.HTTPError, ValueError) as error:
+                self._failures += 1
+                backoff = min(self.BACKOFF_MAX, self.BACKOFF_BASE * 2 ** (self._failures - 1))
+                self._retry_at = now + backoff
+                log.warning(
+                    "certificate refresh failed (%s); next attempt in %.0fs",
+                    type(error).__name__,
+                    backoff,
+                )
+            else:
                 return self._certs
-            if now >= self._retry_at:
-                try:
-                    self._refresh()
-                except (httpx.HTTPError, ValueError) as error:
-                    self._failures += 1
-                    backoff = min(self.BACKOFF_MAX, self.BACKOFF_BASE * 2 ** (self._failures - 1))
-                    self._retry_at = now + backoff
-                    log.warning(
-                        "certificate refresh failed (%s); next attempt in %.0fs",
-                        type(error).__name__,
-                        backoff,
-                    )
-                else:
-                    return self._certs
-            if self._certs and now < self._expires + self.GRACE:
-                return self._certs
-            msg = "no signing keys within their grace period"
-            raise CertificatesUnavailableError(msg)
+        if self._certs and now < self._expires + self.GRACE:
+            return self._certs
+        msg = "no signing keys within their grace period"
+        raise CertificatesUnavailableError(msg)
 
     def _refresh(self) -> None:
         response = self._client.get(self._url)
@@ -155,7 +172,8 @@ class TokenVerifier:
         except CertificatesUnavailableError:
             raise _unavailable() from None
         if pem is None:
-            raise _unauthenticated("unknown signing key")
+            # Past max-age, a new kid may be a rotation we couldn't fetch: retry, don't sign out.
+            raise _unavailable() if self._certs.stale() else _unauthenticated("unknown signing key")
         try:
             key = load_pem_x509_certificate(pem.encode()).public_key()
         except ValueError:

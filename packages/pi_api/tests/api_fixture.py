@@ -55,11 +55,15 @@ OTHER_KEY, _ = _key_and_cert()
 
 
 class FakeCerts:
-    def __init__(self, certs: Mapping[str, str] | None = None) -> None:
+    def __init__(self, certs: Mapping[str, str] | None = None, *, stale: bool = False) -> None:
         self.certs = dict(certs if certs is not None else {KID: CERT})
+        self.is_stale = stale
 
     def certificates(self) -> Mapping[str, str]:
         return self.certs
+
+    def stale(self) -> bool:
+        return self.is_stale
 
 
 def claims(**overrides: Any) -> dict[str, Any]:
