@@ -241,6 +241,10 @@ export function createApiClient({
   ): Promise<{ blob: Blob; filename: string }> {
     const accept = `${EXPORT_TYPES[opts.query.format]}, application/json;q=0.5`;
     const { res } = await request(base + path + encodeQuery(opts.query as Query), opts.signal, accept);
+    // Only the type that was asked for is saved: a mis-routed /api answers 200 with the app's
+    // own index.html, which must never land on disk as a .csv.
+    const type = (res.headers.get('Content-Type') ?? '').split(';')[0]!.trim().toLowerCase();
+    if (type !== EXPORT_TYPES[opts.query.format]) throw new ApiError('unexpected', res.status);
     let blob: Blob;
     try {
       blob = await res.blob();

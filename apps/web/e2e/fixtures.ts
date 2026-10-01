@@ -48,6 +48,12 @@ export async function mockBackend(
   page.on('pageerror', (e) => {
     if (!/due to access control checks/.test(String(e))) mock.errors.push(String(e));
   });
+  // The local server sends the production CSP; any block it makes fails the test.
+  await page.addInitScript(() =>
+    document.addEventListener('securitypolicyviolation', (e) =>
+      console.error(`CSP blocked ${e.violatedDirective}: ${e.blockedURI || 'inline'}`),
+    ),
+  );
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const text = m.text();
@@ -123,7 +129,7 @@ export async function mockBackend(
 }
 
 export async function signIn(page: Page, locale: 'en' | 'ar', password = PASSWORD) {
-  await page.goto(`/${locale}/sign-in/`);
+  await page.goto(`/app/${locale}/sign-in/`);
   await page.locator('input[name=email]').fill(EMAIL);
   await page.locator('input[name=password]').fill(password);
   await page.locator('button[type=submit]').click();

@@ -278,9 +278,24 @@ describe('download', () => {
   });
 
   it('asks for JSONL by its media type', async () => {
-    const { api, calls } = client([() => file()]);
+    const { api, calls } = client([() => file({ 'Content-Type': 'application/x-ndjson' })]);
     await api.download('/api/v1/export/products', { ...opts, query: { format: 'jsonl' } });
     expect((calls[0]!.init.headers as Record<string, string>).Accept).toMatch(/^application\/x-ndjson/);
+  });
+
+  it('refuses a body of any other type: a mis-routed /api answers 200 with index.html', async () => {
+    const { api } = client([
+      () => file({ 'Content-Type': 'text/html; charset=utf-8' }),
+      () => file({ 'Content-Type': '' }),
+      () => file(),
+    ]);
+    for (let i = 0; i < 2; i++) {
+      const e = await failure(api.download('/api/v1/export/products', opts));
+      expect([e.code, e.status]).toEqual(['unexpected', 200]);
+    }
+    // The CSV type does not stand in for JSONL either.
+    const e = await failure(api.download('/api/v1/export/products', { ...opts, query: { format: 'jsonl' } }));
+    expect(e.code).toBe('unexpected');
   });
 
   it('uses the fallback name when the header is missing or unsafe', async () => {

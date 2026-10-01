@@ -34,7 +34,7 @@ export default defineConfig({
     ]),
   webServer: {
     command: `node e2e/serve.mjs`,
-    url: `http://127.0.0.1:${port}/en/`,
+    url: `http://127.0.0.1:${port}/app/en/`,
     env: { PORT: String(port) },
     reuseExistingServer: false,
   },

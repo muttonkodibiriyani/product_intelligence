@@ -20,6 +20,10 @@
         }
       },
       {
+        "source": "/app/**",
+        "destination": "/app/404.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
@@ -50,7 +54,7 @@
           },
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            "value": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-BJg7iJC+sk9yXpOWjli39LEm/C0BKJ0mOxlV3jp266Y=' 'sha256-J1fBm4lbPIovYzX1CiqUZomc/wYQ61Ka29MiFOpgX4Y=' 'sha256-KnVhKfZESGn8ToHmMTml5NTz6TZ+ni7XkQD4IkO3nGs=' 'sha256-OBTN3RiyCV4Bq7dFqZ5a2pAXjnCcCYeTJMO2I/LYKeo=' 'sha256-OcA/xDz6mm9UMHxPpHi9h3/ZjCdK7s14Cvbmb8dFVlg=' 'sha256-R28OOaTVnHMh4vv/Cv0wdY2IAlSBMxMwFX8kd65VVe0=' 'sha256-kaDU7m72KLqsC3INfK6CeIv20F0sa+pf0N4Y/KMZroo=' 'sha256-n4IHSjJ/kLfqHZXJdTjQcjB06HUq9c52Rcip4gNOXuA=' 'sha256-uDjBk3ZlBBTIKxMqpxNnRetgbF1npd/1CmA1qXXgRCA=' 'sha256-uY/V+4DM+Y8YUNKulXXfoutfmp9wBpRnuX2MNeBC+0I=' 'sha256-v/ZmzKNhTYMf9AgFI7bfkd8KbJK+pv81T/Mxo3ta1aw='; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
           }
         ]
       },

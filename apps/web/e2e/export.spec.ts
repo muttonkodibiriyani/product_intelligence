@@ -40,7 +40,7 @@ const exportCalls = (mock: Mock) =>
 async function openExplorer(page: import('@playwright/test').Page, locale: 'en' | 'ar', search = '') {
   await signIn(page, locale);
   await expect(page.getByRole('navigation')).toBeVisible();
-  await page.goto(`/${locale}/explore/${search}`);
+  await page.goto(`/app/${locale}/explore/${search}`);
   await expect(page.getByRole('table')).toBeVisible();
 }
 
@@ -136,6 +136,23 @@ test('422 export_too_large: says to narrow the filters; nothing from the server 
   await page.getByRole('button', { name: /as CSV$/ }).click();
   await expect(page.getByText(/^Too many rows to export/)).toBeVisible();
   await expect(page.getByText('60001')).toHaveCount(0);
+});
+
+test('a 200 that is not the asked-for type (index.html from a mis-routed /api) is not saved', async ({
+  page,
+}) => {
+  const mock = await mockBackend(page, {
+    onApi: api((r) =>
+      r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>PI</title>' }),
+    ),
+  });
+  let downloads = 0;
+  page.on('download', () => downloads++);
+  await openExplorer(page, 'en');
+  await page.getByRole('button', { name: /as CSV$/ }).click();
+  await expect(page.getByText("The server sent a response this app can't read.")).toBeVisible();
+  expect(exportCalls(mock)).toHaveLength(1);
+  expect(downloads).toBe(0);
 });
 
 test('over the cap before asking: export is off and says why', async ({ page }) => {

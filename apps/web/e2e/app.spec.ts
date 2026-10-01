@@ -30,8 +30,8 @@ for (const locale of ['en', 'ar'] as const) {
   test.describe(locale, () => {
     test('signed out: home sends you to sign-in', async ({ page }) => {
       const mock = await mockBackend(page, ok);
-      await page.goto(`/${locale}/`);
-      await expect(page).toHaveURL(new RegExp(`/${locale}/sign-in/$`));
+      await page.goto(`/app/${locale}/`);
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/sign-in/$`));
       await expect(page.locator('html')).toHaveAttribute('dir', rtl ? 'rtl' : 'ltr');
       await expect(page.locator('html')).toHaveAttribute('lang', locale);
       await expect(page.getByRole('heading', { name: T.signIn })).toBeVisible();
@@ -44,7 +44,7 @@ for (const locale of ['en', 'ar'] as const) {
     test('sign in, read the dataset with a Bearer token, sign out', async ({ page, context }) => {
       const mock = await mockBackend(page, ok);
       await signIn(page, locale);
-      await expect(page).toHaveURL(new RegExp(`/${locale}/$`));
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/$`));
       await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
       await expect(page.getByRole('heading', { name: T.retailers })).toBeVisible();
       await expect(page.getByRole('rowheader', { name: 'Shop C' })).toBeVisible();
@@ -58,7 +58,7 @@ for (const locale of ['en', 'ar'] as const) {
       expect(await context.cookies()).toEqual([]);
 
       await page.getByRole('button', { name: T.signOut }).click();
-      await expect(page).toHaveURL(new RegExp(`/${locale}/sign-in/$`));
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/sign-in/$`));
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });
@@ -107,7 +107,7 @@ for (const locale of ['en', 'ar'] as const) {
       await signIn(page, locale);
       await expect(page.locator('main').getByRole('alert')).toContainText(T.authDown, { timeout: 15_000 });
       await expect(page.getByRole('button', { name: T.signOut })).toBeVisible();
-      await expect(page).toHaveURL(new RegExp(`/${locale}/$`));
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/$`));
     });
 
     test('500: generic text, nothing from the server echoed', async ({ page }) => {
@@ -127,17 +127,17 @@ for (const locale of ['en', 'ar'] as const) {
 
 test('language switch keeps the page and remembers the choice', async ({ page }) => {
   await mockBackend(page, ok);
-  await page.goto('/en/sign-in/');
+  await page.goto('/app/en/sign-in/');
   await page.getByRole('link', { name: 'Switch to Arabic' }).click();
-  await expect(page).toHaveURL(/\/ar\/sign-in\/$/);
+  await expect(page).toHaveURL(/\/app\/ar\/sign-in\/$/);
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  await page.goto('/');
-  await expect(page).toHaveURL(/\/ar\/sign-in\/$/);
+  await page.goto('/app/');
+  await expect(page).toHaveURL(/\/app\/ar\/sign-in\/$/);
 });
 
 test('keyboard: skip link then the sign-in fields in order', async ({ page }) => {
   await mockBackend(page, ok);
-  await page.goto('/en/sign-in/');
+  await page.goto('/app/en/sign-in/');
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
   for (let i = 0; i < 3; i++) await page.keyboard.press('Tab'); // app name, language, then the form
