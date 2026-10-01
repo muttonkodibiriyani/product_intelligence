@@ -11,7 +11,6 @@
  * is for people; CI spend is bounded by the ci label cap.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 
 import { type ChatAnswer, ChatFlow } from "../flows/chat.js";
 import { NO_THREADS } from "../flows/threads.js";
@@ -20,11 +19,13 @@ import type { Locale } from "../flows/prompt.js";
 import { ALLOWED_PROJECT, VertexChatModel } from "../flows/vertex.js";
 import type { UsageStore } from "../meter/meter.js";
 import { Meter } from "../meter/meter.js";
-import { type PriceTable, Prices } from "../meter/prices.js";
+import { type Prices, loadPrices } from "../meter/prices.js";
 import { TOOLS } from "../tools/definitions.js";
 import { ToolRegistry } from "../tools/registry.js";
 import type { Role } from "../tools/types.js";
 import { FixtureApi, SCENARIOS, type Scenario } from "./fixtures.js";
+
+export { loadPrices };
 
 export const EVAL_LABEL = "ci";
 export const EVIDENCE_HOSTS = ["shop.north.example", "south.example"];
@@ -48,11 +49,6 @@ export class EvalConfigError extends Error {
     super(message);
     this.name = "EvalConfigError";
   }
-}
-
-export function loadPrices(): Prices {
-  const url = new URL("../../config/prices.json", import.meta.url);
-  return new Prices(JSON.parse(readFileSync(url, "utf8")) as PriceTable);
 }
 
 /** Production dependencies: Vertex (ADC) plus the shared Firestore meter. */

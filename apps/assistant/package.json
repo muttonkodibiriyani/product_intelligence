@@ -4,6 +4,7 @@
   "private": true,
   "description": "C13 AI assistant: read-only tools over governed data (design: docs/design/ai-assistant.md)",
   "type": "module",
+  "main": "lib/index.js",
   "engines": {
     "node": ">=20"
   },
@@ -13,11 +14,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run --coverage",
+    "build": "tsc -p tsconfig.build.json",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test"
   },
   "dependencies": {
     "@google/genai": "2.25.0",
     "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.25.2"
   },

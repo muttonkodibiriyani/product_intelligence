@@ -2,6 +2,8 @@
  * Model price table and cost arithmetic (design §9). All money is integer micro-USD (`bigint`);
  * prices are committed as decimal strings (USD per 1 M tokens) and never pass through floats.
  */
+import { readFileSync } from "node:fs";
+
 import { z } from "zod";
 
 /** Integer micro-USD. */
@@ -144,4 +146,10 @@ export class Prices {
       )
     );
   }
+}
+
+/** The committed table, `config/prices.json` (the same relative path from `src/` and `lib/`). */
+export function loadPrices(): Prices {
+  const url = new URL("../../config/prices.json", import.meta.url);
+  return new Prices(JSON.parse(readFileSync(url, "utf8")) as PriceTable);
 }
