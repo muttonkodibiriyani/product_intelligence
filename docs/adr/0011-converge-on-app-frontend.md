@@ -1,8 +1,8 @@
-# ADR-0010: One front end, the API-backed `/app`
+# ADR-0011: One front end, the API-backed `/app`
 
 - Status: accepted. Owner decision relayed by the coordinator on 1 Oct 2026.
 - Date: 2026-10-01
-- Drafted by: the coordinator.
+- Drafted by: the coordinator. Every item below is the owner's decision, as given in the owner chat, including drill-down, cross-filtering, the "Ryzan AI Assistant" name and copying MIT components into the repo.
 
 ## Context
 Two web front ends ship from the same Hosting site:
@@ -35,7 +35,8 @@ Converge on `/app` and retire the static dashboard. Every step keeps the demo wo
 Tooling:
 - ECharts stays the only chart library.
 - Tremor and shadcn/ui are design references only. MIT-licensed components may be copied into the
-  repo, with no CDN and no runtime fetches outside our API, keeping the CSP intact.
+  repo with their licence notices kept, with no CDN and no runtime fetches outside our API, keeping
+  the CSP intact.
 - Google Stitch is for layout mockups only, and no real data is sent to it.
 
 ## Consequences
