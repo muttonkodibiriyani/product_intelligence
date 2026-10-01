@@ -163,5 +163,40 @@
     "thin": "{n, plural, one {# group has} other {# groups have}} too few pairs to count: {list}."
   },
   "priced": "Priced products",
-  "nPairs": "n = {n, plural, one {# comparable pair} other {# comparable pairs}}"
+  "nPairs": "n = {n, plural, one {# comparable pair} other {# comparable pairs}}",
+  "buckets": {
+    "title": "Prices by category",
+    "question": "How do prices compare by category?",
+    "meta": "Full catalogues · 9 shared categories · {date}",
+    "category": "Category",
+    "n": "n",
+    "median": "Median",
+    "mean": "mean",
+    "range": "Price range",
+    "rangeHint": "Middle half of prices as a band, median as a tick, lowest to highest as a thin line; log scale.",
+    "cheaper": "Cheaper",
+    "tooFew": "too few (n = {n})",
+    "same": "About the same",
+    "cheaperBy": "{name} {pct} cheaper",
+    "notAvailable": "Category comparison is not available yet.",
+    "otherShare": "'Other' holds {share} of {name}'s products.",
+    "unmapped": "Not yet in a category: {n}",
+    "tooFewList": "Too few to compare: {list}.",
+    "tooFewItem": "{label} — {sides}",
+    "withheldList": "Withheld: {list}.",
+    "withheldItem": "{label} — {name}",
+    "chartLabel": "Median price gap per category, {other} against {base}: {n, plural, one {# category} other {# categories}}. Positive means {other} is dearer.",
+    "gap": "Gap",
+    "name": {
+      "fragrance": "Fragrance",
+      "skincare": "Skincare",
+      "eyes": "Eyes",
+      "lips": "Lips",
+      "body": "Body",
+      "cheek": "Cheek",
+      "foundation": "Foundation",
+      "concealer": "Concealer",
+      "other": "Other"
+    }
+  }
 }
