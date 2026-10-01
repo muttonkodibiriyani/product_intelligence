@@ -15,6 +15,7 @@ from pi_match.normalise import (
     Size,
     concentration,
     fold,
+    is_listed,
     item_kind,
     list_groups,
     name_tokens,
@@ -325,3 +326,34 @@ def test_name_tokens_drop_brand_sizes_and_attributes() -> None:
 )
 def test_valid_gtin(gtin: str | None, value: str | None) -> None:
     assert valid_gtin(gtin) == value
+
+
+@pytest.mark.parametrize(
+    ("value", "size"),
+    [
+        (("50", "ml"), Size(Decimal(50), "ml")),  # a JSON array [50, "ml"]
+        ('[50, "ml"]', Size(Decimal(50), "ml")),
+        ("['1.7', 'fl oz']", Size(Decimal("50.27495"), "ml")),
+        (("50", "90"), None),
+        (("ml", "50"), None),
+        (("50", "ml", "g"), None),
+    ],
+)
+def test_a_number_then_its_unit_is_one_size(
+    value: str | tuple[str, ...], size: Size | None
+) -> None:
+    assert parse_size(value) == size
+
+
+@pytest.mark.parametrize(
+    ("text", "size"),
+    [
+        ("[Limited] 50ml", Size(Decimal(50), "ml")),
+        ("[New] 1.7 fl oz", Size(Decimal("50.27495"), "ml")),
+        ("[50] ml", None),  # a real literal: read as a list, and the rest is not one
+        ("['50 ml', '90 ml'", None),  # unclosed list: still a list, still None
+    ],
+)
+def test_a_bracketed_label_is_plain_text(text: str, size: Size | None) -> None:
+    assert not is_listed("[Limited] 50ml")
+    assert parse_size(text) == size
