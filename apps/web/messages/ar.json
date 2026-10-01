@@ -502,6 +502,13 @@
       "launches": "المنتجات الجديدة",
       "reviews_summary": "التقييمات",
       "coverage_status": "تغطية البيانات",
+      "price_history": "سجل الأسعار",
+      "availability": "توفر المخزون",
+      "price_ladder": "سلّم الأسعار",
+      "price_distribution": "توزيع الأسعار",
+      "brand_positioning": "تموضع العلامات التجارية",
+      "category_mix": "مزيج الفئات",
+      "assortment_breadth": "اتساع التشكيلة",
       "other": "أداة بيانات",
       "summary": "ملخص السوق"
     },

@@ -502,6 +502,13 @@
       "launches": "Launches",
       "reviews_summary": "Reviews",
       "coverage_status": "Data coverage",
+      "price_history": "Price history",
+      "availability": "Stock availability",
+      "price_ladder": "Price ladder",
+      "price_distribution": "Price distribution",
+      "brand_positioning": "Brand positioning",
+      "category_mix": "Category mix",
+      "assortment_breadth": "Assortment breadth",
       "other": "Data tool",
       "summary": "Market summary"
     },

@@ -33,6 +33,13 @@ export const TOOL_NAMES = [
   'launches',
   'reviews_summary',
   'coverage_status',
+  'price_history',
+  'availability',
+  'price_ladder',
+  'price_distribution',
+  'brand_positioning',
+  'category_mix',
+  'assortment_breadth',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
