@@ -19,8 +19,9 @@ from pydantic import ValidationError
 from api_fixture import Client, bearer, make_client, write
 from pi_api import source as source_module
 from pi_api.floor import FLOOR, FloorView, PriceFlag, caveats, floor_view
-from pi_dataset import DatasetV3
+from pi_dataset import DatasetV3, OfferV3
 from pi_metrics import CaveatCode
+from pi_metrics.view import WithheldOffer, seen
 from v3_fixture import doc, load, offer
 
 API = "/api/v1"
@@ -150,10 +151,23 @@ def test_a_dataset_without_a_low_price_is_served_as_the_same_object() -> None:
 
 def test_the_view_nulls_each_low_value_and_counts_offers_per_retailer() -> None:
     served, view = floor_view(load(planted(LOW)))
-    assert served == load(planted(None))
+    # The served copy is the nulled file on the wire; its offers also remember what was withheld.
+    assert served.model_dump(mode="json") == load(planted(None)).model_dump(mode="json")
     assert {(f.retailer, f.offers) for f in view.floored} == {(SHOP, 1), (ULTA, 2)}
     # Only a latest-date price flags the offer; p03's withheld regular is counted, not flagged.
     assert view.flagged == {("p01", SHOP), ("p02", ULTA)}
+
+
+def test_withheld_days_stay_seen_and_are_never_serialised() -> None:
+    served, _ = floor_view(load(unstocked(-1)))
+    p01 = next(p for p in served.products if p.id == "p01").offers[SHOP]
+    assert isinstance(p01, WithheldOffer)
+    assert p01.withheld == {2}
+    assert p01.series.price[2] is None
+    assert seen(p01, 2)
+    plain = OfferV3.model_validate(p01.model_dump(mode="json", by_alias=True))
+    assert plain.model_dump(mode="json") == p01.model_dump(mode="json")
+    assert not seen(plain, 2)  # the same wire offer, without the record: unobserved that day
 
 
 def test_a_cent_above_the_floor_is_a_price() -> None:
@@ -288,3 +302,81 @@ def test_a_file_without_low_values_is_served_unchanged(tmp_path: Path) -> None:
     body = get(serve(tmp_path, base_doc()), "/products/p01")
     assert floor_caveats(body) == {}
     assert {o["priceFlag"] for o in body["data"]["offers"]} == {None}
+
+
+# ---------------------------------------------------------------- a withheld price is still seen
+
+#: Endpoints that count listings, not prices: what the file says was there.
+PRESENCE = (
+    "/launches",
+    "/coverage",
+    "/availability",
+    f"/assortment-gaps?missingAt={ULTA}&presentAt={SHOP}",
+    f"/assortment-gaps?missingAt={SHOP}&presentAt={ULTA}",
+)
+
+
+def unstocked(index: int) -> dict[str, Any]:
+    """0.01 on p01@shop_a and p02@ulta_ae at ``index`` with no stock state that day: the price is
+    the day's only evidence the listing was there."""
+    d = base_doc()
+    for product, context in (("p01", SHOP), ("p02", ULTA)):
+        series = offer(d, product, context)["series"]
+        series["price"][index] = LOW
+        series["availability"][index] = None
+    return d
+
+
+def unfloored(tmp_path: Path, d: dict[str, Any], path: str, monkeypatch: pytest.MonkeyPatch) -> Any:
+    with monkeypatch.context() as patch:
+        patch.setattr(source_module, "floor_view", lambda ds: (ds, FloorView()))
+        return get(serve(tmp_path / "raw", d), path)
+
+
+@pytest.mark.parametrize("index", [0, -1])
+@pytest.mark.parametrize("path", PRESENCE)
+def test_a_withheld_price_still_counts_the_listing_as_observed(
+    tmp_path: Path, path: str, index: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Withholding a price never moves a launch, coverage, stock or assortment count: each
+    presence response is the one the unfloored file gives."""
+    d = unstocked(index)
+    floored = get(serve(tmp_path / "low", d), path)
+    assert without_floor(floored) == without_floor(unfloored(tmp_path, d, path, monkeypatch))
+
+
+def test_a_first_day_withheld_price_is_not_a_launch(tmp_path: Path) -> None:
+    """The listing was there on the first date, so it is not new on the second."""
+    items = get(serve(tmp_path, unstocked(0)), "/launches")["data"]["items"]
+    assert {(i["id"], i["retailer"]) for i in items}.isdisjoint({("p01", SHOP), ("p02", ULTA)})
+
+
+@pytest.mark.parametrize("retailer", [SHOP, ULTA])
+def test_the_summary_counts_a_withheld_listing_but_not_its_price(
+    tmp_path: Path, retailer: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = f"/summary?retailer={retailer}"
+    d = unstocked(-1)
+    floored = get(serve(tmp_path / "low", d), path)["data"]
+    raw = unfloored(tmp_path, d, path, monkeypatch)["data"]
+    assert floored["products"] == raw["products"]
+    assert floored["priced"] == raw["priced"] - 1
+
+
+def test_a_withheld_pair_is_not_counted_in_compare_or_its_histogram(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """p01 and p02 lose their latest price on one side: both rows stay, uncounted, with no gap,
+    and the summary's n and every histogram bin drop them (here below MIN_COHORT: no summary)."""
+    path = f"/compare?retailers={SHOP},{ULTA}"
+    raw = unfloored(tmp_path, planted(LOW), path, monkeypatch)["data"]
+    floored = get(serve(tmp_path / "low", planted(LOW)), path)["data"]
+    rows = {r["id"]: r for r in floored["rows"]}
+    for pid in ("p01", "p02"):
+        assert rows[pid]["counted"] is False
+        assert rows[pid]["gap"] is None
+        assert rows[pid]["excludedReason"] == "unpriced"
+    assert {r["id"] for r in raw["rows"] if r["counted"]} >= {"p01", "p02"}
+    assert raw["summary"]["n"] == sum(raw["summary"]["gapHist"]["counts"]) == 6
+    assert floored["sides"]["base"]["counted"] == raw["summary"]["n"] - 2 == 4
+    assert floored["summary"] is None

@@ -8,6 +8,8 @@ changed: the view is computed from the validated dataset at load, once per gener
 - **Null in every response.** The value is cleared from the served copy's series, so every
   metric reads it as not observed: no median, mean, histogram, ladder, brand price, promotion
   depth, gap, index or "cheapest" ever counts it, and no response shows it.
+- **Still observed.** A withheld price still means the listing was seen that day, so presence
+  (launches, coverage, assortment, the summary's context pick) reads the offer as observed.
 - **Flagged, not silent.** An offer whose latest-date price was withheld is served with
   ``priceFlag: invalid_low`` (cards: ``priceFlags`` by context), and every priced response that
   involves the retailer carries ``invalid_price_excluded`` with the number of its offers that had
@@ -25,6 +27,7 @@ from enum import StrEnum
 
 from pi_dataset import DatasetV3, MoneyValue, OfferV3, ProductV3
 from pi_metrics import Caveat, CaveatCode
+from pi_metrics.view import WithheldOffer
 
 #: The highest invalid price, in the market currency's major unit.
 FLOOR = Decimal("0.01")
@@ -76,7 +79,11 @@ def _clear(values: tuple[MoneyValue | None, ...]) -> tuple[MoneyValue | None, ..
 
 
 def _floored(offer: OfferV3) -> OfferV3 | None:
-    """The offer with its invalid values cleared, or ``None`` when it has none."""
+    """The offer with its invalid values cleared, or ``None`` when it has none.
+
+    The days whose price was cleared stay *observed* (``view.seen``): the listing was there,
+    only its price is withheld, so no launch, coverage or assortment count moves.
+    """
     series = offer.series
     regular = series.regular or ()
     if not any(invalid(m) for m in (*series.price, *regular)):
@@ -84,7 +91,9 @@ def _floored(offer: OfferV3) -> OfferV3 | None:
     update: dict[str, object] = {"price": _clear(series.price)}
     if series.regular is not None:
         update["regular"] = _clear(series.regular)
-    return offer.model_copy(update={"series": series.model_copy(update=update)})
+    cleared = offer.model_copy(update={"series": series.model_copy(update=update)})
+    withheld = frozenset(i for i, m in enumerate(series.price) if invalid(m))
+    return WithheldOffer.of(cleared, withheld)
 
 
 def floor_view(ds: DatasetV3) -> tuple[DatasetV3, FloorView]:
