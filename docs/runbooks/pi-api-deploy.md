@@ -16,10 +16,9 @@ coordinator entry naming both resources, me-central1, the scaling limits below, 
 against the remaining $25/month budget. That entry, which also approves `--allow-unauthenticated`
 (§6), lands in PR #65; check it is on `main` before §3.
 
-**No Hosting deploy between the merge and §6.** `infra/firebase.json` on `main` already rewrites
-`/api/**` to `pi-api`. Until the service exists (§6), a `firebase deploy --only hosting` from
-`main` would fail or leave `/api` broken. No workflow deploys Hosting automatically; whoever
-deploys it by hand waits for §6, or for teardown, removes the rewrite first (§9).
+**No Hosting deploy from main between the #64 merge and §6 completion** (the `/api` rewrite
+targets a service that doesn't exist yet). No workflow deploys Hosting automatically, so this
+binds whoever deploys it by hand. If Hosting must ship earlier, remove the rewrite first (§9).
 
 ## 1. What gets created
 
@@ -44,9 +43,15 @@ BUCKET=productintelligence-beeb3.firebasestorage.app   # confirm: the bucket pub
 gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_level_access,location)'
 ```
 
-- **Uniform bucket-level access must be on.** IAM conditions on object names need it. If it is
-  off, enabling it is a separate change that the coordinator approves first (it disables object
-  ACLs on the bucket).
+- **Uniform bucket-level access (UBLA) must be on.** IAM conditions on object names need it.
+  Infra found it **off** (PR #64 review); the coordinator **approved enabling it** on 2026-10-01.
+  It is free and reversible for 90 days. Do it in this order:
+  1. Record the ACLs first, in the PR or task thread (not in the repo):
+     `gcloud storage buckets describe gs://$BUCKET --format='yaml(acl,default_object_acl)'`.
+  2. Enable it: `gcloud storage buckets update gs://$BUCKET --uniform-bucket-level-access`.
+  3. Run the EN+AR dashboard smoke afterwards (`infra/scripts/smoke_demo.py`, as in its docstring): the
+     dashboard must still read its dataset through Storage rules, and anonymous reads must still
+     be refused. If it fails, revert with `--no-uniform-bucket-level-access` and stop (stop rule).
 - **Hosting → Cloud Run in me-central1** is supported (Infra confirmed; design §11 Q1). If a
   Hosting deploy still rejects the rewrite, stop and report it (stop rule).
 - Note the datasets to serve: the object paths `publish_dataset.py` writes under `datasets/`
