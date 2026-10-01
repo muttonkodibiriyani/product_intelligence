@@ -13,7 +13,8 @@
       "promotions": "Promotions",
       "launches": "Launches",
       "status": "Dataset",
-      "prices": "Prices"
+      "prices": "Prices",
+      "assistant": "Ryzan AI"
     },
     "mainNav": "Main"
   },
@@ -450,5 +451,36 @@
     "openCompare": "Open compare",
     "byCategory": "By category",
     "byCategoryHint": "{other} vs {base} across both full catalogues."
+  },
+  "assistant": {
+    "title": "Ryzan AI Assistant",
+    "pageTitle": "Ryzan AI Assistant · Product Intelligence",
+    "intro": "Ask about prices, promotions, assortment and launches. Every number is quoted from the platform’s read-only data tools, with its data cutoff and source.",
+    "connect": {
+      "title": "Connect to enable",
+      "body": "Ryzan AI Assistant is not switched on yet. The owner has to turn on the AI model and its spending safeguards first. Until then no answers are generated, so nothing on this page is an AI answer.",
+      "status": "Not connected"
+    },
+    "samples": {
+      "title": "Suggested questions",
+      "badge": "Sample — not live data",
+      "hint": "Examples of what you will be able to ask once the assistant is connected."
+    },
+    "q": {
+      "gaps": "Where are the biggest price gaps today?",
+      "promo": "How much is on promotion at each retailer?",
+      "exclusive": "Which brands are only at one retailer?",
+      "index": "How has the price index moved?",
+      "unit": "Cheapest foundations per ml?",
+      "launches": "What launched in the last 30 days?",
+      "coverage": "How complete is the data for each retailer?"
+    },
+    "composer": {
+      "label": "Your question",
+      "placeholder": "Ask Ryzan AI Assistant…",
+      "send": "Send",
+      "disabled": "Sending is off until the assistant is connected."
+    },
+    "promises": "Read-only tools only. Every number is cited. When the data is not enough, it says so instead of guessing."
   }
 }
