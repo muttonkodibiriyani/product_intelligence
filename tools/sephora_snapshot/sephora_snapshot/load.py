@@ -397,6 +397,10 @@ class Loader:
                 self.bump("trpc_unparsed")
                 self.part_complete = False
             return 0
+        if not isinstance(data, dict):  # e.g. a 200 with "json": null: no stock read at all
+            self.bump("trpc_no_data")
+            self.part_complete = False  # keep the part unledgered so --finish still sees it
+            return 0
         at = datetime.fromisoformat(rec["at"])
         ev = self._evidence("en", rec, uri, "site_api")
         n = 0
@@ -491,6 +495,7 @@ class Loader:
             and c.get("trpc_http_200", 0) == seeded
             and not self.stats.get("trpc_missing_listing")
             and not self.stats.get("trpc_unparsed")
+            and not self.stats.get("trpc_no_data")
         )
 
     def finish(self) -> None:
