@@ -25,7 +25,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, FastAPI, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -34,10 +34,11 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from pi_api import dq, export
+from pi_api import dq, export, floor
 from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
+    CategoryCompareQuery,
     CompareQuery,
     CompareRowsQuery,
     IndexQuery,
@@ -62,6 +63,8 @@ from pi_api.catalog import (
     HistoryQuery,
     InvalidQueryError,
     MetaView,
+    OfferView,
+    ProductCard,
     ProductDetail,
     ProductFilters,
     ProductNotFoundError,
@@ -78,6 +81,9 @@ from pi_api.catalog import (
     product_detail,
     product_page,
 )
+from pi_api.catalogue import CatalogueDetail, CatalogueSource, CatalogueSummary, LoadedCatalogue
+from pi_api.catalogue import detail as catalogue_detail
+from pi_api.catalogue import summary as catalogue_summary
 from pi_api.config import Settings
 from pi_api.source import (
     AmbiguousDatasetError,
@@ -95,14 +101,17 @@ from pi_dataset import ContractModel
 from pi_metrics import (
     AssortmentGaps,
     Availability,
+    CategoryComparison,
     Comparison,
     Launches,
     Metric,
     PriceIndex,
     Promotions,
     ReviewsSummary,
+    Status,
     assortment_gaps,
     availability,
+    category_compare,
     compare,
     launches,
     price_index,
@@ -400,7 +409,7 @@ def _install_handlers(api: FastAPI) -> None:
 
 def _selected(query: ContractModel, data: object) -> frozenset[str]:
     """The retailer or context ids a request is about; empty means every one."""
-    if isinstance(data, Summary):
+    if isinstance(data, Summary | CatalogueDetail | CatalogueSummary):
         return frozenset({data.retailer})
     if isinstance(data, ProductDetail | AdminProductDetail):
         return frozenset(o.retailer for o in data.offers) or frozenset({""})
@@ -422,12 +431,50 @@ def _named(query: ContractModel) -> frozenset[str]:
     return frozenset(named or ())
 
 
+def flagged[T](loaded: Loaded, data: T) -> T:
+    """``data`` with ``priceFlag`` set on each card or offer whose latest price was withheld
+    as invalid (``pi_api.floor``); unchanged when there is none."""
+    marks = loaded.floor.flagged
+    if not marks:
+        return data
+
+    def card(c: ProductCard) -> ProductCard:
+        flags = {
+            ctx: floor.PriceFlag.INVALID_LOW for ctx in sorted(c.prices) if (c.id, ctx) in marks
+        }
+        return c.model_copy(update={"price_flags": flags}) if flags else c
+
+    def offers[O: OfferView](product: str, views: tuple[O, ...]) -> tuple[O, ...]:
+        return tuple(
+            o.model_copy(update={"price_flag": floor.PriceFlag.INVALID_LOW})
+            if (product, o.context) in marks
+            else o
+            for o in views
+        )
+
+    out: object = data
+    if isinstance(data, ProductPage):
+        out = data.model_copy(update={"items": tuple(card(c) for c in data.items)})
+    elif isinstance(data, ProductDetail | AdminProductDetail):
+        out = data.model_copy(
+            update={"card": card(data.card), "offers": offers(data.card.id, data.offers)}
+        )
+    elif isinstance(data, tuple) and all(isinstance(c, ProductCard) for c in data):
+        out = tuple(card(c) for c in data)
+    return cast("T", out)
+
+
 def respond[T](
     loaded: Loaded, endpoint: str, query: ContractModel, metric: Metric[T]
 ) -> Envelope[T]:
-    owed = dq.caveats(loaded.imported, endpoint, _selected(query, metric.data))
+    selected = _selected(query, metric.data)
+    owed = (
+        *dq.caveats(loaded.imported, endpoint, selected),
+        *floor.caveats(loaded.floor, endpoint, selected),
+    )
     if owed:
         metric = metric.model_copy(update={"caveats": (*metric.caveats, *owed)})
+    metric = metric.model_copy(update={"data": flagged(loaded, metric.data)})
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
@@ -440,6 +487,7 @@ def build_api(
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
     clock: Callable[[], datetime] = utc_now,
+    catalogues: CatalogueSource | None = None,
 ) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
@@ -521,7 +569,46 @@ def build_api(
     _metric_routes(api, source)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
+    _catalogue_routes(api, source, catalogues, images)
     return api
+
+
+def _catalogue_routes(
+    api: FastAPI, source: SnapshotSource, catalogues: CatalogueSource | None, images: EvidenceHosts
+) -> None:
+    def selected(retailer: str, query: ScopeQuery) -> tuple[Loaded, LoadedCatalogue]:
+        prices = source.select(query.market, query.scope)
+        if catalogues is None:
+            raise NotFoundError
+        return prices, catalogues.select(retailer, prices)
+
+    @api.get(f"{PREFIX}/catalogues/{{retailer}}", response_model=Envelope[CatalogueSummary])
+    def get_catalogue(
+        retailer: ProductId, query: Annotated[ScopeQuery, Query()], _: Viewer
+    ) -> Envelope[CatalogueSummary]:
+        prices, catalogue = selected(retailer, query)
+        data = catalogue_summary(catalogue)
+        return respond(
+            prices,
+            "catalogue",
+            query,
+            Metric(status=Status.OK, data=data, as_of=data.captured_to.date()),
+        )
+
+    @api.get(
+        f"{PREFIX}/catalogues/{{retailer}}/skus/{{sku}}", response_model=Envelope[CatalogueDetail]
+    )
+    def get_catalogue_sku(
+        retailer: ProductId, sku: ProductId, query: Annotated[ScopeQuery, Query()], _: Viewer
+    ) -> Envelope[CatalogueDetail]:
+        prices, catalogue = selected(retailer, query)
+        data = catalogue_detail(catalogue, sku, images)
+        return respond(
+            prices,
+            "catalogue_sku",
+            query,
+            Metric(status=Status.OK, data=data, as_of=data.record.captured_at.date()),
+        )
 
 
 def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
@@ -535,6 +622,29 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
             loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
         )
         return respond(loaded, "compare", query, capped_comparison(metric, query.limit))
+
+    @api.get(
+        f"{PREFIX}/category-compare",
+        response_model=Envelope[CategoryComparison],
+        description=(
+            "Category-to-category prices across both full catalogues on the latest date: per "
+            "category, each retailer's n, median, mean, p25, p75, min and max, and the gap "
+            "between the two medians. No product matching: like-for-like pairs are /compare. "
+            "A cell with fewer than minCohort products is tooFew (its prices null, never 0) and "
+            "its row has no gap. Gap sign convention: retailers=<base>,<other>; gapPct = "
+            "(other median - base median) / base median x 100, so a positive gap means the "
+            "other retailer's median is higher and `cheaper` names the cheaper side. "
+            "coverage gives each side's priced, mapped and unmapped counts and its share in "
+            "the 'other' bucket; unmapped lists the breadcrumbs taxonomy@1 can't place."
+        ),
+    )
+    def get_category_compare(
+        query: Annotated[CategoryCompareQuery, Query()], _: Viewer
+    ) -> Envelope[CategoryComparison]:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = category_compare(loaded.dataset, base, other, query.level)
+        return respond(loaded, "category_compare", query, metric)
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
     def get_index(query: Annotated[IndexQuery, Query()], _: Viewer) -> Envelope[PriceIndex]:
@@ -698,6 +808,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         metric = product_cards(loaded.dataset, query, images)
+        metric = metric.model_copy(update={"data": flagged(loaded, metric.data)})
         return _download(
             loaded,
             view=view.PRODUCTS,
@@ -808,8 +919,9 @@ def create_app(  # noqa: PLR0913 -- the deployment's settings, keyword-only past
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
     clock: Callable[[], datetime] = utc_now,
+    catalogues: CatalogueSource | None = None,
 ) -> ASGIApp:
-    api = build_api(source, evidence_hosts, image_hosts, clock)
+    api = build_api(source, evidence_hosts, image_hosts, clock, catalogues)
     return NoStore(ServerErrors(Authenticate(RateLimit(api, buckets), verifier)))
 
 
@@ -831,6 +943,8 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         allow_test=settings.allow_test,
     )
     source.load_all()
+    catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)
+    catalogues.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())
     buckets = TokenBuckets(settings.rate_per_second, settings.rate_burst)
     return create_app(
@@ -839,4 +953,5 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         buckets,
         evidence_hosts=settings.evidence_hosts,
         image_hosts=settings.image_hosts,
+        catalogues=catalogues,
     )

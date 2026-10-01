@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import type { Summary } from '@/lib/api/summary';
 import { productHref } from '../explore/product-table';
-import { Money } from '../ui/money';
+import { Price } from '../ui/money';
 import { IMAGE_OWNERS, imageHost, imageSrc, pct, type ImageHost } from './model';
 
 const TH = 'th whitespace-nowrap';
@@ -78,10 +78,10 @@ export function TopDiscountsWidget({
                 {d.category[d.category.length - 1] ?? ''}
               </td>
               <td className={`${TD} text-end font-semibold whitespace-nowrap`}>
-                <Money m={d.price} locale={locale} />
+                <Price of={d} locale={locale} />
               </td>
               <td className={`${TD} text-end whitespace-nowrap text-ink-2 line-through max-sm:hidden`}>
-                <Money m={d.regular} locale={locale} />
+                <Price of={{ price: d.regular }} locale={locale} />
               </td>
               <td className={`${TD} text-end`}>
                 <span className="pill bg-blush font-semibold text-blush-ink tabular-nums">

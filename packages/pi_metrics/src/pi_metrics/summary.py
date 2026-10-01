@@ -17,7 +17,7 @@ import math
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 from enum import StrEnum
 
 from pi_dataset import Context, ContractModel, DatasetV3, MoneyValue, OfferV3, ProductV3
@@ -162,6 +162,9 @@ class Summary(ContractModel):
     brands: int | None
     categories: int | None
     median_price: MoneyValue | None
+    #: The arithmetic mean of the same prices as ``medianPrice``, rounded half-even to the
+    #: currency's exponent; null whenever ``medianPrice`` is.
+    mean_price: MoneyValue | None
     promo_share_pct: Pct | None
     ladder: tuple[LadderRow, ...] | None
     promo_depth: PromoDepth | None
@@ -193,6 +196,15 @@ def _rank[T](ordered: Sequence[T], pct: int) -> T:
 
 def _amount(m: MoneyValue) -> Decimal:
     return m.decimal()
+
+
+def _mean(prices: list[MoneyValue]) -> MoneyValue:
+    """The mean of a non-empty list of one currency, rounded half-even to its exponent."""
+    currency = prices[0].currency
+    exponent = len(prices[0].amount.partition(".")[2])
+    total = sum((_amount(p) for p in prices), Decimal(0))
+    mean = (total / len(prices)).quantize(Decimal(1).scaleb(-exponent), ROUND_HALF_EVEN)
+    return MoneyValue.of(mean, currency)
 
 
 def _sorted(prices: list[MoneyValue]) -> list[MoneyValue]:
@@ -300,6 +312,7 @@ def _empty(ctx: Context, as_of: date, currency: str, reason: Reason) -> Summary:
         brands=None,
         categories=None,
         median_price=None,
+        mean_price=None,
         promo_share_pct=None,
         ladder=None,
         promo_depth=None,
@@ -494,6 +507,7 @@ def summary(
         brands=len({view.fold(p.brand) for p, _ in scan.offered}),
         categories=len({p.category[0] for p, _ in scan.offered}),
         median_price=_rank(prices, 50) if enough else None,
+        mean_price=_mean(prices) if enough else None,
         promo_share_pct=promo.share,
         ladder=_ladder({c: by_category[c] for c in rows}) if enough else None,
         promo_depth=promo.depth,
