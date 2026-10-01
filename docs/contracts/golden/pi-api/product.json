@@ -1,0 +1,119 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "card": {
+      "brand": "Fixture Beauty",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "id": "p01",
+      "image": null,
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "approved"
+        }
+      ],
+      "name": "Product p01",
+      "prices": {
+        "shop_a": {
+          "amount": "90.00",
+          "currency": "AED",
+          "minor": 9000
+        },
+        "shop_b": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      },
+      "size": {
+        "unit": "ml",
+        "value": "50"
+      }
+    },
+    "offers": [
+      {
+        "availability": "in_stock",
+        "early": false,
+        "evidence": {
+          "capturedAt": "2026-09-30T00:00:00Z",
+          "url": null
+        },
+        "price": {
+          "amount": "90.00",
+          "currency": "AED",
+          "minor": 9000
+        },
+        "promoPct": "10.0",
+        "rating": {
+          "average": "4.20",
+          "count": 10,
+          "scale": "5"
+        },
+        "regular": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        },
+        "retailer": "shop_a",
+        "shadeCount": 0,
+        "size": {
+          "unit": "ml",
+          "value": "50"
+        },
+        "sku": null
+      },
+      {
+        "availability": "in_stock",
+        "early": false,
+        "evidence": {
+          "capturedAt": "2026-09-30T00:00:00Z",
+          "url": null
+        },
+        "price": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        },
+        "promoPct": null,
+        "rating": {
+          "average": "4.20",
+          "count": 10,
+          "scale": "5"
+        },
+        "regular": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        },
+        "retailer": "shop_b",
+        "shadeCount": 0,
+        "size": {
+          "unit": "ml",
+          "value": "50"
+        },
+        "sku": null
+      }
+    ]
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.0.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "product",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

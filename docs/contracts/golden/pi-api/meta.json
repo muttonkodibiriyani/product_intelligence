@@ -1,0 +1,111 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "capabilities": {
+      "campaigns": false,
+      "coverage": true,
+      "history": true,
+      "images": false,
+      "promotions": true,
+      "ratings": true,
+      "shades": false,
+      "sizes": true,
+      "stock": true
+    },
+    "categories": [
+      {
+        "children": [],
+        "count": 2,
+        "key": "makeup"
+      },
+      {
+        "children": [
+          {
+            "children": [],
+            "count": 14,
+            "key": "serum"
+          }
+        ],
+        "count": 14,
+        "key": "skincare"
+      }
+    ],
+    "cutoff": "2026-09-30T00:00:00Z",
+    "datasets": [
+      {
+        "cutoff": "2026-09-30T00:00:00Z",
+        "generation": "1790000000000000000",
+        "markets": [
+          "AE"
+        ],
+        "scope": "fixture"
+      }
+    ],
+    "dates": [
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30"
+    ],
+    "fields": {
+      "price": "ok",
+      "rating": "ok",
+      "regular": "ok",
+      "stock": "ok"
+    },
+    "kind": "snapshot",
+    "matchStage": "reviewed",
+    "retailers": [
+      {
+        "country": "AE",
+        "id": "shop_a",
+        "name": "Shop A",
+        "note": null,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "country": "AE",
+        "id": "shop_b",
+        "name": "Shop B",
+        "note": null,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "country": "AE",
+        "id": "shop_c",
+        "name": "Shop C",
+        "note": {
+          "en": "Makeup only."
+        },
+        "since": "2026-09-01",
+        "status": "partial"
+      },
+      {
+        "country": "AE",
+        "id": "shop_d",
+        "name": "Shop D",
+        "note": null,
+        "since": null,
+        "status": "blocked"
+      }
+    ],
+    "test": false,
+    "vertical": "beauty"
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.0.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "meta",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

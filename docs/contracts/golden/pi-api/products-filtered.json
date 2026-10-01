@@ -1,0 +1,51 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "facets": {
+      "brand": [
+        {
+          "count": 2,
+          "key": "Fixture Beauty"
+        }
+      ],
+      "category": [],
+      "retailer": [
+        {
+          "count": 3,
+          "key": "shop_a"
+        },
+        {
+          "count": 3,
+          "key": "shop_b"
+        }
+      ]
+    },
+    "items": [],
+    "nextCursor": null,
+    "total": 0
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.0.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "products",
+    "filters": {
+      "brand": [
+        "Sample Labs"
+      ],
+      "limit": 25,
+      "retailer": [
+        "shop_c"
+      ],
+      "sort": "name"
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

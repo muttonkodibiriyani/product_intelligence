@@ -1,0 +1,168 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "facets": {
+      "brand": [
+        {
+          "count": 13,
+          "key": "Fixture Beauty"
+        },
+        {
+          "count": 3,
+          "key": "Sample Labs"
+        }
+      ],
+      "category": [
+        {
+          "count": 2,
+          "key": "makeup"
+        },
+        {
+          "count": 14,
+          "key": "skincare"
+        }
+      ],
+      "retailer": [
+        {
+          "count": 14,
+          "key": "shop_a"
+        },
+        {
+          "count": 13,
+          "key": "shop_b"
+        },
+        {
+          "count": 2,
+          "key": "shop_c"
+        }
+      ]
+    },
+    "items": [
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "id": "p07",
+        "image": null,
+        "matches": [
+          {
+            "a": "shop_a",
+            "b": "shop_b",
+            "confidence": "0.95",
+            "matchClass": "exact",
+            "reviewState": "proposed"
+          }
+        ],
+        "name": "Product p07",
+        "prices": {
+          "shop_a": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          },
+          "shop_b": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          }
+        },
+        "size": {
+          "unit": "ml",
+          "value": "50"
+        }
+      },
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "id": "p08",
+        "image": null,
+        "matches": [
+          {
+            "a": "shop_a",
+            "b": "shop_b",
+            "confidence": "0.95",
+            "matchClass": "exact",
+            "reviewState": "rejected"
+          }
+        ],
+        "name": "Product p08",
+        "prices": {
+          "shop_a": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          },
+          "shop_b": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          }
+        },
+        "size": {
+          "unit": "ml",
+          "value": "50"
+        }
+      },
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "id": "p09",
+        "image": null,
+        "matches": [
+          {
+            "a": "shop_a",
+            "b": "shop_b",
+            "confidence": "0.95",
+            "matchClass": "family",
+            "reviewState": "approved"
+          }
+        ],
+        "name": "Product p09",
+        "prices": {
+          "shop_a": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          },
+          "shop_b": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          }
+        },
+        "size": {
+          "unit": "ml",
+          "value": "50"
+        }
+      }
+    ],
+    "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjMsImYiOiI0MWZlZTUxNTYxMzJlYWFiIn0",
+    "total": 16
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.0.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "products",
+    "filters": {
+      "limit": 3,
+      "sort": "price_asc"
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

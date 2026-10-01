@@ -1,0 +1,111 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "id": "p05",
+    "series": {
+      "shop_a": [
+        {
+          "availability": "in_stock",
+          "date": "2026-09-28",
+          "price": {
+            "amount": "120.00",
+            "currency": "AED",
+            "minor": 12000
+          },
+          "regular": {
+            "amount": "120.00",
+            "currency": "AED",
+            "minor": 12000
+          }
+        },
+        {
+          "availability": "out_of_stock",
+          "date": "2026-09-29",
+          "price": {
+            "amount": "120.00",
+            "currency": "AED",
+            "minor": 12000
+          },
+          "regular": {
+            "amount": "120.00",
+            "currency": "AED",
+            "minor": 12000
+          }
+        },
+        {
+          "availability": "out_of_stock",
+          "date": "2026-09-30",
+          "price": {
+            "amount": "80.00",
+            "currency": "AED",
+            "minor": 8000
+          },
+          "regular": {
+            "amount": "120.00",
+            "currency": "AED",
+            "minor": 12000
+          }
+        }
+      ],
+      "shop_b": [
+        {
+          "availability": "in_stock",
+          "date": "2026-09-28",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          },
+          "regular": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        {
+          "availability": "in_stock",
+          "date": "2026-09-29",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          },
+          "regular": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        {
+          "availability": "in_stock",
+          "date": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          },
+          "regular": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        }
+      ]
+    }
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.0.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "history",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}
