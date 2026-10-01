@@ -228,16 +228,21 @@ export const IMG = 'https://img-product.sephora.me/v1/p-1.jpg';
 export const IMG_BROKEN = 'https://img-product.sephora.me/v1/p-2.jpg';
 /** Not the retailer's image host: the app must never request it. */
 export const IMG_FOREIGN = 'https://cdn.example.net/p-3.jpg';
-/** Another retailer's own image host: not allowlisted either. */
-export const IMG_ULTA = 'https://media.ulta.com/i/ulta/2583789';
+/** Ulta UAE's image host: shown for ulta_ae only, never on another retailer's snapshot. */
+export const IMG_ULTA = 'https://media.alshaya.com/adobe/assets/urn:aaid:aem:1/as/SK-1_1.png?width=185';
+export const IMG_ULTA_BROKEN =
+  'https://media.alshaya.com/adobe/assets/urn:aaid:aem:2/as/SK-2_1.png?width=185';
 
-/** Top discounts with images: one served, one failing, one from a host outside the allowlist. */
+/**
+ * Sephora UAE's top discounts: one image served, one failing, one from a host outside the
+ * allowlist and one from Ulta's host, which is not Sephora's.
+ */
 export const summaryImages = {
   ...summaryBody,
   data: {
     ...summaryBody.data,
-    // The live file also has Ulta UAE: its images are outside the allowlist, so placeholders.
-    retailer: 'ulta_ae',
+    // The API's id, which /meta here does not name.
+    retailer: 'sephora_me',
     topDiscounts: summaryBody.data.topDiscounts.map((d, i) => ({
       ...d,
       image: [IMG, IMG_BROKEN, IMG_FOREIGN, IMG_ULTA][i] ?? null,
@@ -245,14 +250,15 @@ export const summaryImages = {
   } satisfies Summary,
 };
 
-/** Ulta UAE alone: no image it sends may render, and one Sephora image that fails. */
+/** Ulta UAE: its own host's images render; a failing one, Sephora's and a foreign one do not. */
 export const summaryUlta = {
   ...summaryImages,
   data: {
     ...summaryImages.data,
+    retailer: 'ulta_ae',
     topDiscounts: summaryBody.data.topDiscounts.map((d, i) => ({
       ...d,
-      image: [IMG_ULTA, IMG_BROKEN, null, IMG_ULTA, IMG_FOREIGN][i] ?? null,
+      image: [IMG_ULTA, IMG_ULTA_BROKEN, null, IMG, IMG_FOREIGN][i] ?? null,
     })),
   } satisfies Summary,
 };

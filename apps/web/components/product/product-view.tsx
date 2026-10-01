@@ -17,6 +17,7 @@ import type { BackTo } from '../explore/product-table';
 import { Card } from '../ui/card';
 import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
+import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
 import { Money } from '../ui/money';
 import { GapView, MatchLabel } from '../ui/pair';
@@ -112,31 +113,39 @@ export function ProductView() {
         {backLink}
         <EnvNotes env={env} />
         {d && (
-          <header>
-            {/* bdi isolates the text's own direction but keeps the block on the page's side. */}
-            <p className="text-[13px] font-bold tracking-wide text-ink-2 uppercase">
-              <Link
-                href={`/${locale}/explore/${toSearch({ ...parseState(new URLSearchParams()), brand: [d.card.brand] })}`}
-                className="hover:text-accent hover:underline focus-visible:outline-2"
-              >
-                <bdi>{d.card.brand}</bdi>
-              </Link>
-            </p>
-            <h1 id="product-title" className="mt-1 text-[28px] leading-tight font-bold tracking-tight">
-              <bdi>{d.card.name}</bdi>
-            </h1>
-            <dl className="mt-3 flex flex-wrap gap-2 text-sm">
-              {d.card.size && (
-                <Fact k={t('size')}>
-                  <Size size={d.card.size} />
-                </Fact>
-              )}
-              {d.card.category.length > 0 && (
-                <Fact k={t('category')}>
-                  <span dir="auto">{d.card.category.join(' › ')}</span>
-                </Fact>
-              )}
-            </dl>
+          <header className="flex items-start gap-4">
+            <RowThumb
+              url={d.card.image}
+              label={t('noImage')}
+              px={96}
+              cls="size-24 shrink-0 rounded-card border border-line-2 bg-surface"
+            />
+            <div className="min-w-0">
+              {/* bdi isolates the text's own direction but keeps the block on the page's side. */}
+              <p className="text-[13px] font-bold tracking-wide text-ink-2 uppercase">
+                <Link
+                  href={`/${locale}/explore/${toSearch({ ...parseState(new URLSearchParams()), brand: [d.card.brand] })}`}
+                  className="hover:text-accent hover:underline focus-visible:outline-2"
+                >
+                  <bdi>{d.card.brand}</bdi>
+                </Link>
+              </p>
+              <h1 id="product-title" className="mt-1 text-[28px] leading-tight font-bold tracking-tight">
+                <bdi>{d.card.name}</bdi>
+              </h1>
+              <dl className="mt-3 flex flex-wrap gap-2 text-sm">
+                {d.card.size && (
+                  <Fact k={t('size')}>
+                    <Size size={d.card.size} />
+                  </Fact>
+                )}
+                {d.card.category.length > 0 && (
+                  <Fact k={t('category')}>
+                    <span dir="auto">{d.card.category.join(' › ')}</span>
+                  </Fact>
+                )}
+              </dl>
+            </div>
           </header>
         )}
       </div>
