@@ -73,6 +73,15 @@ describe("/summary views", () => {
     expect((await run("assortment_breadth", body)).result.status).toBe("ok");
   });
 
+  it("a section withheld as was_price_unverified keeps that reason", async () => {
+    const body = withData({
+      ladder: null,
+      withheld: [{ section: "prices", reason: "was_price_unverified" }],
+    });
+    const { result } = await run("price_ladder", body);
+    expect(result.notEnoughData?.reason).toBe("was_price_unverified");
+  });
+
   it("an unknown withheld reason falls back to a closed reason", async () => {
     const body = withData({ brandPrice: null, withheld: [{ section: "prices", reason: "odd" }] });
     expect((await run("brand_positioning", body)).result.notEnoughData?.reason).toBe("no_match");

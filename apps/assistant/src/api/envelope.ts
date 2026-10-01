@@ -20,6 +20,8 @@ export const NOT_ENOUGH_DATA_REASONS = [
   "not_in_scope",
   "currency_mismatch",
   "not_applicable",
+  // API 1.5.0: an imported retailer's was-prices are unverified, so its promotions are withheld.
+  "was_price_unverified",
 ] as const;
 export type NotEnoughDataReason = (typeof NOT_ENOUGH_DATA_REASONS)[number];
 

@@ -231,6 +231,22 @@ describe("pi_metrics v3 (since metricVersion 2026-10-01.2)", () => {
     expect(result.notEnoughData?.reason).toBe("not_applicable");
   });
 
+  it("passes was_price_unverified through and keeps the other retailers' shares", async () => {
+    const body = golden("promotions") as Record<string, unknown>;
+    const withheld = {
+      ...body,
+      status: "not_enough_data",
+      reason: "was_price_unverified",
+      detail: { en: "Was-prices are unverified.", ar: "أسعار ما قبل الخصم غير موثّقة." },
+    };
+    const result = (await new ToolRegistry(TOOLS, new FakeApi(() => withheld), {
+      evidenceHosts: [],
+    }).run("promotions", {}, VIEWER_CALLER, "t")) as ToolEnvelope;
+    expect(result.status).toBe("not_enough_data");
+    expect(result.notEnoughData?.reason).toBe("was_price_unverified");
+    expect(result.data).not.toBeNull();
+  });
+
   it("lists 19 of 25 label caveats plus caveats_truncated instead of failing the envelope", async () => {
     const result = (await run(withCaveats(golden("compare"), labelCaveats(25)))) as ToolEnvelope;
     expect(result.status).toBe("ok");
