@@ -107,7 +107,8 @@ flowchart LR
 | `apps/assistant/src/flows/threads.ts` | Strict callable request schema (`{question, locale, threadId?}`) and the thread store: history is read from the caller's own stored thread, never from the request |
 | `apps/assistant/src/guard/answer.ts` | Server-side answer cleaning: no links, images, HTML, URLs or emails; only product tokens a tool returned |
 | `apps/assistant/src/reports/` | Stage 2–3 generators (`exceljs`, `pdfmake`, `pptxgenjs`) |
-| `apps/assistant/src/killswitch/` | Budget-alert kill switch (§9.4): pure decision on the Pub/Sub budget notification, rules-scoped Firestore write (no Firestore IAM), framework-free handler for the deploy PR to wrap |
+| `apps/assistant/src/killswitch/` | Budget-alert kill switch (§9.4): pure decision on the Pub/Sub budget notification, rules-scoped Firestore write (no Firestore IAM), framework-free handler |
+| `apps/assistant/src/functions/`, `src/index.ts` | Cloud Functions codebase `assistant` (`apps/assistant/firebase.json`, kept out of `infra/firebase.json` so a Hosting or rules deploy never ships functions). `env.ts` refuses to start on a missing or malformed setting (D1); `callable.ts` maps the role claim only through `callerRole` before the meter (D2); `index.ts` holds thin `onMessagePublished`/`onCall` adapters. `npm run build` emits `lib/` |
 | `apps/assistant/src/flows/prompt.ts` | Versioned system prompt (`PROMPT_VERSION`), a TypeScript module rather than Dotprompt files. The version is written into every answer and must equal `assistant_config/current.promptVersion` (AIG-07) |
 | `apps/assistant/evals/` | Separate npm package (own lockfile, promptfoo pinned): config, custom provider running `ChatFlow`, fixtures, gold/refusal/injection suites |
 | `infra/firebase.json` | Adds a `functions` block (codebase `assistant`) |
@@ -375,7 +376,10 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
   unknown roles. It maps the claim to a caller role only through `callerRole`
   (`src/tools/types.ts`), which accepts exactly `viewer` or `admin`. Any other claim, including
   the kill switch's `killswitch` (§9.4), is refused before the meter or any tool runs; it is never
-  treated as a viewer. The same check repeats inside every tool (defence in depth), and pi_api
+  treated as a viewer. This happens in `src/functions/callable.ts`, which the callable
+  `assistantChat` wraps (D2). `test/functions.test.ts` drives a real `ChatFlow` and checks that
+  such a caller gets `permission-denied` and that `meter.startQuestion`, the model and the tools
+  are never called. The same check repeats inside every tool (defence in depth), and pi_api
   returns 403 to it on every `/api/v1` route (`packages/pi_api/tests/test_app.py`).
 - **Abuse protection.** App Check with reCAPTCHA Enterprise (free tier 10 k assessments/month)
   on the callable. It is enforced from stage 1 and only if the owner OKs enabling the API.
@@ -684,7 +688,7 @@ custom role with only `datastore.entities.update` covers every document in the d
 
 - The function's runtime SA, `pi-killswitch@`, has **no Firestore role and no project role**.
   Its only grant is `roles/secretmanager.secretAccessor` on **one** secret,
-  `assistant-killswitch-password`.
+  `KILL_SWITCH_PASSWORD` (Firebase requires secret names in UPPER_SNAKE_CASE).
 - With that password it signs in (Firebase Auth REST) as a dedicated password account whose
   `role` custom claim is `killswitch`. It then writes through the Firestore REST API with that ID
   token, so **security rules apply**.
@@ -696,8 +700,9 @@ custom role with only `datastore.entities.update` covers every document in the d
 - **Blast radius if the password leaks:** someone can switch the assistant off. That is an
   outage of the assistant only, with no spend and no data access.
 - **Rotation** (owner). Reset the account's password through the reset email. Add it as a new
-  version of `assistant-killswitch-password`, then disable (and later destroy) the old versions.
-  The function reads `latest` on each cold start; check with a synthetic message (step 5).
+  version of `KILL_SWITCH_PASSWORD`. Firebase pins the secret version at deploy time, so the
+  function keeps the old password until it is **redeployed** (an owner step that needs OK). Check
+  with a synthetic message (step 5), then disable (and later destroy) the old versions.
 - **Revoke:** disable the Firebase account; sign-in then fails and the function logs
   `kill_switch_failed` at ERROR.
 - Rejected: a custom-token principal. Minting custom tokens needs
@@ -720,15 +725,29 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
 3. Create the Firebase Auth password account (an owner-controlled mailbox, e.g. a plus address)
    and set the claim `{"role": "killswitch"}` with the Admin SDK. The owner sets the password
    through the reset email, so nobody else sees it. Store it as the first version of the secret
-   `assistant-killswitch-password`, and grant `pi-killswitch@` `secretAccessor` on that secret
+   `KILL_SWITCH_PASSWORD`, and grant `pi-killswitch@` `secretAccessor` on that secret
    only.
-4. Deploy the rules (the change in this PR) and the function (the deploy PR wraps
-   `handleBudgetMessage` in `onMessagePublished` with `retry: true`, runtime SA
-   `pi-killswitch@`, secret bound, min instances 0). Deploy config holds the env:
-   `KILL_SWITCH_BUDGET_ID`, `KILL_SWITCH_CURRENCY` (from step 1), the project's Web API key and
-   the account email. No literals in `src/`.
+4. Deploy the rules (`infra/firebase.json`, `--only firestore:rules`) and then the function
+   `budgetKillSwitch` (`apps/assistant/src/index.ts`: `onMessagePublished` on
+   `pi-budget-alerts`, `retry: true`, runtime SA `pi-killswitch@`, secret `KILL_SWITCH_PASSWORD`
+   bound to this function only, min instances 0, max 1, me-central1). The env goes in
+   `apps/assistant/.env.productintelligence-beeb3`, which is gitignored and written by the owner
+   from `.env.example`. It holds:
+   - `KILL_SWITCH_BUDGET_ID` (the budget's UUID);
+   - `KILL_SWITCH_CURRENCY` (ISO code, from step 1);
+   - `KILL_SWITCH_API_KEY` (the project's Web API key);
+   - `KILL_SWITCH_EMAIL` (the account from step 3).
+
+   There are no literals in `src/`. The deploy command, which only the owner runs after an OK, is
+   `firebase deploy --config apps/assistant/firebase.json --project productintelligence-beeb3
+   --only functions:assistant:budgetKillSwitch`. It needs none of the chat settings.
+   **Startup check (D1):** a missing or malformed value makes the container refuse to start, so
+   the revision fails instead of acking alerts it cannot act on. That covers an empty or non-UUID
+   budget id, a currency that is not three capital letters, a missing key, email or password, or
+   a project other than productintelligence-beeb3. The error names the variable, never its value.
 5. Verify once with a **synthetic message**: publish a hand-built notification with a fake
-   `costAmount` ≥ 90 % to the topic, as the owner. Check that `enabled` flips to false and the
+   `costAmount` ≥ 90 % to the topic, as the owner. The attributes must carry the real
+   `budgetId` and `schemaVersion: 1.0`, and the publish must be fresh (under 6 h). Check that `enabled` flips to false and the
    function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove
    `disabledBy` from the admin side. Also check that the function log shows nothing secret.
 
