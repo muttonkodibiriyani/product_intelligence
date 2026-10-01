@@ -5,6 +5,7 @@
 import { EMPTY, toSearch, type ExploreState } from '@/lib/explore';
 import { EMPTY_PROMOTIONS, MIN_PCTS, toPromotionsSearch, type MinPct } from '@/lib/promotions';
 import { num, type Measured, type Summary } from '@/lib/api/summary';
+import type { CaveatView } from '@/lib/api/types';
 
 /** An amount in the user's language with Latin digits, like `formatMoney`; whole units on axes. */
 export function amount(v: string, currency: string, locale: string, whole = false): string {
@@ -116,24 +117,63 @@ export function ratingPoints(r: Summary['ratingPrice']) {
     .filter(([x, y]) => x > 0 && Number.isFinite(y));
 }
 
-/** Product images come only from the retailer's image host, over https (image decision B). */
-export const IMAGE_HOST = 'img-product.sephora.me';
-/** Whose images those are, credited with a link to its public home page. */
-export const IMAGE_OWNER = { name: 'Sephora', home: 'https://www.sephora.me' } as const;
-export function imageSrc(url: string | null | undefined): string | null {
+/**
+ * Product images are hotlinked, never copied, and only from each retailer's own image host, over
+ * https (image decision B; media.alshaya.com only keeps the owner's ulta_ae view live). Each host is
+ * credited with a link to its owner's public home page.
+ */
+export const IMAGE_OWNERS = {
+  'img-product.sephora.me': { name: 'Sephora', home: 'https://www.sephora.me' },
+  'media.alshaya.com': { name: 'Ulta Beauty', home: 'https://www.ulta.ae' },
+} as const;
+export type ImageHost = keyof typeof IMAGE_OWNERS;
+/** The retailer each host serves; a URL is shown only for its own retailer. */
+const HOST_RETAILER: Record<ImageHost, string> = {
+  'img-product.sephora.me': 'sephora_me',
+  'media.alshaya.com': 'ulta_ae',
+};
+
+/** The image host of an allowed URL (https, a listed host, no credentials), else null. */
+export function imageHost(url: string | null | undefined, retailer?: string): ImageHost | null {
   if (!url) return null;
   try {
     const u = new URL(url);
-    return u.protocol === 'https:' && u.hostname === IMAGE_HOST ? u.toString() : null;
+    if (u.protocol !== 'https:' || u.username || u.password || !Object.hasOwn(IMAGE_OWNERS, u.hostname))
+      return null;
+    const host = u.hostname as ImageHost;
+    return retailer && HOST_RETAILER[host] !== retailer ? null : host;
   } catch {
     return null;
   }
 }
 
-/** The freshness badge as /summary rates it, never guessed from the age alone. */
-export function freshness(f: Summary['freshness']): 'fresh' | 'aging' | 'stale' | 'unknown' {
-  return f.status === 'fresh' || f.status === 'aging' || f.status === 'stale' ? f.status : 'unknown';
+/** The URL to render, or null for a placeholder. With a retailer, only that retailer's host. */
+export function imageSrc(url: string | null | undefined, retailer?: string): string | null {
+  return imageHost(url, retailer) ? new URL(url!).toString() : null;
 }
+
+/**
+ * The freshness badge as /summary rates it, never guessed from the age alone. A `snapshot` is an
+ * imported retailer: its cutoff is the import date, not a capture date, so it is never aged.
+ */
+export function freshness(f: Summary['freshness']): 'fresh' | 'aging' | 'stale' | 'snapshot' | 'unknown' {
+  return f.status === 'fresh' || f.status === 'aging' || f.status === 'stale' || f.status === 'snapshot'
+    ? f.status
+    : 'unknown';
+}
+
+/**
+ * When a retailer's data was imported rather than collected, from the API's
+ * `snapshot_import_date` caveat; null for a collected retailer or a caveat without a date.
+ */
+export function importedOn(caveats: readonly CaveatView[], retailer: string): string | null {
+  const c = caveats.find((x) => x.code === 'snapshot_import_date' && x.params.retailer === retailer);
+  return c && /^\d{4}-\d{2}-\d{2}$/.test(c.params.date ?? '') ? c.params.date! : null;
+}
+
+/** Whether the API says a retailer's product count may include parent listings. */
+export const hasParents = (caveats: readonly CaveatView[], retailer: string) =>
+  caveats.some((x) => x.code === 'parent_listings_included' && x.params.retailer === retailer);
 
 /** The reasons the landing words itself; any other reads as a generic "not measured". */
 export const WITHHELD_REASONS = [
@@ -142,6 +182,7 @@ export const WITHHELD_REASONS = [
   'cohort_too_small',
   'retailer_blocked',
   'retailer_partial',
+  'was_price_unverified',
 ] as const;
 
 /** Why a section is withheld, if /summary says it is. */

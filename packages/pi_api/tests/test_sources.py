@@ -11,7 +11,8 @@ import pytest
 from api_fixture import bearer, make_client, write
 from pi_api.config import Settings, dataset_entries
 from pi_api.source import LocalStore, SnapshotSource
-from sources_fixture import SEPHORA, ULTA, days, snapshot
+from pi_dataset import DatasetV3
+from sources_fixture import SEPHORA, ULTA, days, snapshot, snapshot_doc
 
 COMBINED = "datasets/ae/beauty/latest.json"
 SEPHORA_FILE = "datasets/ae/sephora_me/latest.json"
@@ -140,6 +141,31 @@ def test_whole_paths_still_work_beside_a_view(tmp_path: Path) -> None:
     source.load_all()
     assert [d.scope for d in source.datasets()] == ["sa_beauty", "beauty"]
     assert source.select(None, "beauty").path == f"{SEPHORA}={SEPHORA_FILE},{ULTA}={COMBINED}"
+
+
+def test_the_imported_retailer_is_corrected_in_composed_and_whole_views(tmp_path: Path) -> None:
+    """The ``pi_api.dq`` view applies after composition, and to a whole file beside it."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        for offer in product["offers"].values():
+            offer["series"]["regular"] = [
+                m and {**m, "minor": 20_000, "amount": "200.00"} for m in offer["series"]["price"]
+            ]
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    views = {d.path: d for d in source.datasets()}
+    assert sorted(views) == [COMBINED, f"{SEPHORA}={SEPHORA_FILE},{ULTA}={COMBINED}"]
+    for loaded in views.values():
+        assert loaded.unverified == {ULTA}
+        assert [(shop.retailer, shop.was_prices) for shop in loaded.imported] == [(ULTA, 2)]
+        regular = {
+            cid: o.series.regular for p in loaded.dataset.products for cid, o in p.offers.items()
+        }
+        assert regular[ULTA] is None
+    whole = views[COMBINED].dataset
+    assert all(p.offers[SEPHORA].series.regular for p in whole.products if SEPHORA in p.offers)
 
 
 def test_dataset_entries_reads_whole_and_per_source_paths() -> None:

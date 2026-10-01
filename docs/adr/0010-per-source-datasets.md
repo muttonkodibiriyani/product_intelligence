@@ -60,7 +60,7 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
 5. **No silent fallback.** A composed view is first served only once every assigned file has
    loaded. If a file is bad, lacks its source or fails composition, the previous view stays live
    and the reason is logged. A source is never served from another file.
-6. **Backward compatible.** Bare paths behave as in 1.4.x. `apiVersion` 1.5.0 adds only
+6. **Backward compatible.** Bare paths behave as in 1.4.x. `apiVersion` 1.6.0 adds only
    `meta.sources`. A bare path in the same scope as a composed view stays two datasets
    (`422 ambiguous_dataset`), so a deploy uses one form per scope.
 
@@ -68,7 +68,7 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
 - The PI team can publish Sephora on its own cadence without reading or writing Ulta data. No
   migration, and no stored rows are touched.
 - **Union dates.** While the combined file is frozen, Ulta has no values on the newer Sephora
-  dates. In 1.5.0, latest-date metrics (compare, price index, availability, summary) treat Ulta
+  dates. In 1.6.0, latest-date metrics (compare, price index, availability, summary) treat Ulta
   as not observed there, rather than showing its older price as current, and `meta.sources` shows
   each source's own cutoff. A stacked follow-up makes latest-date metrics read each retailer at
   its own latest observed date, with that `asOf` and a `stale_source` caveat. It is gated to land

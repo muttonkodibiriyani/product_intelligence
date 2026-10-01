@@ -827,6 +827,8 @@ class OfferView(ContractModel):
     promo_pct: Annotated[str, Field(pattern=r"^-?\d+(\.\d+)?$")] | None
     rating: Rating | None
     size: Size | None
+    #: The retailer's published number of shades. Valid on its own: ``capabilities.shades =
+    #: false`` means no shade *list* is served, not that the product has no shades.
     shade_count: int | None
     sku: SourceText | None
     early: bool

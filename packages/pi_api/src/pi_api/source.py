@@ -19,11 +19,12 @@ import threading
 import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
+from pi_api.dq import Imported, imported_view
 from pi_dataset import DatasetError, DatasetV3, load_any
 from pi_dataset.compose import SourceInfo, compose, only, source_infos
 from pi_metrics.view import as_v3
@@ -89,6 +90,13 @@ class Loaded:
     generation: str
     #: Each source with its own file's cutoff, dates and capabilities.
     sources: tuple[SourceInfo, ...] = field(default=())
+    #: Imported retailers the served ``dataset`` was corrected for at load (``pi_api.dq``).
+    imported: tuple[Imported, ...] = ()
+
+    @property
+    def unverified(self) -> frozenset[str]:
+        """Context ids whose was-prices are unverified: promotions there are withheld."""
+        return frozenset(c for shop in self.imported for c in shop.contexts)
 
     @property
     def markets(self) -> tuple[str, ...]:
@@ -153,6 +161,8 @@ class SnapshotSource:
         self._clock = clock
         #: The latest good generation of every configured path.
         self._files: dict[str, Loaded] = {}
+        #: Each path's file as served: its latest good generation with the dq view applied.
+        self._served: dict[str, Loaded] = {}
         #: What is served: whole paths by path, composed views by scope.
         self._loaded: dict[str, Loaded] = {}
         self._lock = threading.Lock()
@@ -166,10 +176,12 @@ class SnapshotSource:
             loaded = self._load(path)
             if loaded is not None:
                 self._files[path] = loaded
+                if path in self._paths:
+                    self._served[path] = _corrected(loaded)
                 changed = True
         if not changed:
             return
-        served = {p: self._files[p] for p in self._paths if p in self._files}
+        served = dict(self._served)
         groups = self._composed() if self._assigned else None
         with self._lock:
             kept = {k: v for k, v in self._loaded.items() if k not in self._paths}
@@ -271,4 +283,10 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
     stamp = "|".join(f"{label}@{p.generation}" for label, p in parts)
     generation = "c" + hashlib.sha256(stamp.encode()).hexdigest()[:16]
     path = ",".join(label for label, _ in parts)
-    return Loaded(path, composed.dataset, generation, composed.sources)
+    return _corrected(Loaded(path, composed.dataset, generation, composed.sources))
+
+
+def _corrected(loaded: Loaded) -> Loaded:
+    """The view as served: imported retailers corrected (``pi_api.dq``), the rest unchanged."""
+    dataset, imported = imported_view(loaded.dataset)
+    return replace(loaded, dataset=dataset, imported=imported) if imported else loaded

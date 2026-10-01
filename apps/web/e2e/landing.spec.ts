@@ -5,6 +5,7 @@ import {
   IMG_BROKEN,
   IMG_FOREIGN,
   IMG_ULTA,
+  IMG_ULTA_BROKEN,
   summaryBlocked,
   summaryBody,
   summaryImages,
@@ -61,6 +62,7 @@ for (const locale of ['en', 'ar'] as const) {
         none: 'غير مُقاس',
         noImage: 'لا توجد صورة',
         credit: 'صور المنتجات: Sephora، من img-product.sephora.me.',
+        creditUlta: 'صور المنتجات: Ulta Beauty، من media.alshaya.com.',
       }
     : {
         title: 'Overview',
@@ -86,6 +88,7 @@ for (const locale of ['en', 'ar'] as const) {
         none: 'Not measured',
         noImage: 'No image',
         credit: 'Product images: Sephora, served from img-product.sephora.me.',
+        creditUlta: 'Product images: Ulta Beauty, served from media.alshaya.com.',
       };
   const h2 = (page: Page, name: string) => page.getByRole('heading', { level: 2, name, exact: true });
 
@@ -185,9 +188,9 @@ for (const locale of ['en', 'ar'] as const) {
           : r.fulfill({ status: 404, body: '' });
       });
       await signIn(page, locale);
-      // A retailer /meta doesn't name (ulta_ae) still renders, by its id.
+      // A retailer /meta doesn't name (sephora_me) still renders, by its id.
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.locator('main').getByText('ulta_ae').first()).toBeVisible();
+      await expect(page.locator('main').getByText('sephora_me').first()).toBeVisible();
       const top = page.locator('#w-top');
       await expect(h2(page, T.top)).toBeVisible();
       const rows = top.locator('tbody tr');
@@ -201,7 +204,7 @@ for (const locale of ['en', 'ar'] as const) {
       await top.scrollIntoViewIfNeeded();
       await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
 
-      // A failing image and ones from other hosts (Ulta's included) show the placeholder.
+      // A failing image, a foreign host's and Ulta's (not Sephora's host) show the placeholder.
       for (const i of [1, 2, 3]) {
         await expect(rows.nth(i).locator('img')).toHaveCount(0);
         await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
@@ -214,6 +217,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(owner).toHaveAttribute('href', 'https://www.sephora.me');
       await expect(owner).toHaveAttribute('target', '_blank');
       await expect(owner).toHaveAttribute('rel', 'noopener noreferrer');
+      await expect(top.getByText(T.creditUlta, { exact: true })).toHaveCount(0);
 
       // Only the retailer's host was asked, without a referrer; the foreign host never was.
       expect(images.map((r) => r.url).sort()).toEqual([IMG, IMG_BROKEN]);
@@ -223,24 +227,48 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 
-    test('Ulta UAE: placeholders, never a blank, and no image credit', async ({ page }) => {
+    test('Ulta UAE: its own host renders and is credited; Sephora’s host is never asked', async ({
+      page,
+    }) => {
       const mock = await mockBackend(page, { onApi: api(summaryUlta) });
-      const images: string[] = [];
+      const ulta: { url: string; referer?: string }[] = [];
+      const sephora: string[] = [];
+      await page.route('https://media.alshaya.com/**', (r) => {
+        ulta.push({ url: r.request().url(), referer: r.request().headers()['referer'] });
+        return r.request().url() === IMG_ULTA
+          ? r.fulfill({ contentType: 'image/png', body: PNG })
+          : r.fulfill({ status: 404, body: '' });
+      });
       await page.route('https://img-product.sephora.me/**', (r) => {
-        images.push(r.request().url());
+        sephora.push(r.request().url());
         return r.fulfill({ status: 404, body: '' });
       });
       await signIn(page, locale);
       const top = page.locator('#w-top');
       await expect(h2(page, T.top)).toBeVisible();
       await top.scrollIntoViewIfNeeded();
-      await expect(top.getByRole('img', { name: T.noImage })).toHaveCount(5);
-      await expect(top.locator('img')).toHaveCount(0);
+      const rows = top.locator('tbody tr');
+      await expect(rows).toHaveCount(5);
+      const img = rows.nth(0).locator('img');
+      await expect(img).toHaveAttribute('src', IMG_ULTA);
+      await expect(img).toHaveAttribute('loading', 'lazy');
+      await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
+      await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
+      // Failing, missing, Sephora's host on an Ulta snapshot, and a foreign host: placeholders.
+      for (const i of [1, 2, 3, 4]) {
+        await expect(rows.nth(i).locator('img')).toHaveCount(0);
+        await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
+      }
       await expect(top.getByRole('rowheader')).toHaveCount(5);
-      // Nothing of Sephora's was shown, so nothing is credited to it.
+      // Credited to Ulta's owner only: nothing of Sephora's was shown.
+      await expect(top.getByText(T.creditUlta, { exact: true })).toBeVisible();
+      const owner = top.getByRole('link', { name: 'Ulta Beauty', exact: true });
+      await expect(owner).toHaveAttribute('href', 'https://www.ulta.ae');
+      await expect(owner).toHaveAttribute('rel', 'noopener noreferrer');
       await expect(top.getByText(T.credit, { exact: true })).toHaveCount(0);
-      await expect(top.getByRole('link', { name: 'Sephora', exact: true })).toHaveCount(0);
-      expect(images).toEqual([IMG_BROKEN]);
+      expect(ulta.map((r) => r.url).sort()).toEqual([IMG_ULTA, IMG_ULTA_BROKEN].sort());
+      expect(ulta.every((r) => r.referer === undefined)).toBe(true);
+      expect(sephora).toEqual([]);
       expect(mock.external).toEqual([]);
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });

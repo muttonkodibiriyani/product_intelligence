@@ -62,28 +62,35 @@ def depth(price: MoneyValue, regular: MoneyValue) -> Decimal:
     return (regular.decimal() - price.decimal()) / regular.decimal() * 100
 
 
-def _share(ds: DatasetV3, retailer: str, n: int, on_promo: int) -> RetailerPromo:
+def _share(
+    ds: DatasetV3, retailer: str, n: int, on_promo: int, unverified: frozenset[str]
+) -> RetailerPromo:
     status = view.status(ds, retailer)
     reason = {
         RetailerStatus.BLOCKED: Reason.RETAILER_BLOCKED,
         RetailerStatus.PARTIAL: Reason.RETAILER_PARTIAL,
     }.get(status)
+    if reason is None and retailer in unverified:
+        reason = Reason.WAS_PRICE_UNVERIFIED
     if reason is None and n < MIN_COHORT:
         reason = Reason.COHORT_TOO_SMALL
     share = None if reason is not None else Decimal(on_promo) / n * 100
     return RetailerPromo(retailer=retailer, n=n, on_promo=on_promo, share=share, reason=reason)
 
 
-def promotions(
+def promotions(  # noqa: PLR0913 -- the query's filters plus the keyword-only unverified set
     dataset: view.AnyDataset,
     retailers: tuple[str, ...],
     where: ProductFilter,
     min_pct: Decimal | None = None,
     on: date | None = None,
+    *,
+    unverified: frozenset[str] = frozenset(),
 ) -> Metric[Promotions]:
     """Per-context promo share (n ≥ 5 each) and the promoted items, deepest first.
 
-    ``retailers`` are context ids; empty means every context.
+    ``retailers`` are context ids; empty means every context. A context in ``unverified`` has
+    unverified was-prices: its share is withheld with that reason, never measured, never 0.
     """
     ds = view.as_v3(dataset)
     selected = view.selected_contexts(ds, retailers)
@@ -128,7 +135,7 @@ def promotions(
                             depth_pct=pct,
                         )
                     )
-        shares.append(_share(ds, shop.id, n, on_promo))
+        shares.append(_share(ds, shop.id, n, on_promo, unverified))
     items.sort(key=lambda item: (-item.depth_pct, item.retailer, item.id))
     reason = next((s.reason for s in shares if s.reason is not None), None)
     caveats = tuple(
