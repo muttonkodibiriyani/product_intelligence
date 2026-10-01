@@ -739,8 +739,9 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
    - `KILL_SWITCH_EMAIL` (the account from step 3).
 
    There are no literals in `src/`. The deploy command, which only the owner runs after an OK, is
-   `firebase deploy --config apps/assistant/firebase.json --project productintelligence-beeb3
-   --only functions:assistant:budgetKillSwitch`. It needs none of the chat settings.
+   `npx -y firebase-tools@14.27.0 deploy --config apps/assistant/firebase.json
+   --project productintelligence-beeb3 --only functions:assistant:budgetKillSwitch`. It needs none
+   of the chat settings.
    **Startup check (D1):** a missing or malformed value makes the container refuse to start, so
    the revision fails instead of acking alerts it cannot act on. That covers an empty or non-UUID
    budget id, a currency that is not three capital letters, a missing key, email or password, or

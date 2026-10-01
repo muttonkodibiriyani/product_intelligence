@@ -40,7 +40,7 @@ check: lint types test
 # ---------------------------------------------------------------- local stack (blueprint §3.3)
 # Reads ./.env when present (copy from .env.example); otherwise compose defaults apply.
 COMPOSE := docker compose -f infra/docker-compose.yml $(if $(wildcard .env),--env-file .env)
-# One exact firebase-tools version everywhere (test_firebase_tools_pin.py checks CI and the docs).
+# One exact firebase-tools version everywhere (test_firebase_tools_pin.py scans all tracked files).
 FIREBASE_TOOLS_VERSION ?= 14.27.0
 # demo-* ids make the emulators refuse to reach any real Firebase project or credentials.
 FIREBASE_PROJECT := demo-productintelligence
