@@ -9,7 +9,7 @@ from typing import Any
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.5.2"
+API_VERSION = "1.6.0"
 
 
 class Localized(ContractModel):
