@@ -50,7 +50,12 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
               <Known t={t} k="values" v={m.kind} />
             </Row>
             <Row k={t('cutoff')}>
-              <time dateTime={m.cutoff}>{formatDate(m.cutoff, locale)}</time>
+              {/* With an imported retailer, the cutoff covers the collected retailers only. */}
+              <time dateTime={m.cutoff}>
+                {env.caveats.some((c) => c.code === 'snapshot_import_date')
+                  ? t('cutoffCollected', { date: formatDate(m.cutoff, locale) })
+                  : formatDate(m.cutoff, locale)}
+              </time>
             </Row>
             <Row k={t('days')}>
               <span className="tabular-nums">{m.dates.length}</span>

@@ -72,12 +72,27 @@ const meta = {
   caveats: [C.snap, C.parents],
 };
 
-const api = (summary: unknown) => async (r: Route) => {
-  const p = new URL(r.request().url()).pathname;
-  if (p === '/api/v1/summary') return r.fulfill({ json: summary });
-  if (p === '/api/v1/meta') return r.fulfill({ json: meta });
-  return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+/** A product with one collected and one imported offer: the import time sits in `capturedAt`. */
+const goldenProduct = golden('product') as {
+  data: { card: { id: string }; offers: { retailer: string; evidence: { capturedAt: string } }[] };
+  caveats: unknown[];
 };
+const productMixed = structuredClone(goldenProduct);
+productMixed.data.offers[1]!.retailer = 'ulta_ae';
+productMixed.data.offers[1]!.evidence.capturedAt = '2026-09-30T21:15:00Z';
+productMixed.caveats = [C.was, C.snap];
+const history = golden('history');
+
+const api =
+  (summary: unknown, product: unknown = productMixed) =>
+  async (r: Route) => {
+    const p = new URL(r.request().url()).pathname;
+    if (p === '/api/v1/summary') return r.fulfill({ json: summary });
+    if (p === '/api/v1/meta') return r.fulfill({ json: meta });
+    if (/^\/api\/v1\/products\/[^/]+\/history$/.test(p)) return r.fulfill({ json: history });
+    if (/^\/api\/v1\/products\/[^/]+$/.test(p)) return r.fulfill({ json: product });
+    return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+  };
 
 for (const locale of ['en', 'ar'] as const) {
   const ar = locale === 'ar';
@@ -89,6 +104,11 @@ for (const locale of ['en', 'ar'] as const) {
         products: 'المنتجات المتتبَّعة',
         parents: 'منتجات (لقطة، قد تشمل قوائم رئيسية)',
         compare: 'المقارنة',
+        offers: 'العروض',
+        offersOn: /^العروض بتاريخ /,
+        offerImported: /^استُوردت في .+، وتاريخ جمعها غير معروف$/,
+        captured: /^رُصد /,
+        collected: '(للمتاجر التي نجمع بياناتها)',
         promo: 'ضمن العروض',
         age: /عمرها|جُمعت اليوم|حتى /,
         subtitle: /· لقطة مستوردة في .+، وتاريخ جمعها غير معروف$/,
@@ -104,6 +124,11 @@ for (const locale of ['en', 'ar'] as const) {
         products: 'Products tracked',
         parents: 'Products (snapshot, may include parent listings)',
         compare: 'Compare',
+        offers: 'Offers',
+        offersOn: /^Offers on /,
+        offerImported: /^Imported .+, capture date unknown$/,
+        captured: /^Captured /,
+        collected: '(collected retailers)',
         promo: 'On promotion',
         age: /days? old|collected today|as of /,
         subtitle: /· snapshot imported .+, capture date unknown$/,
@@ -142,6 +167,8 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(
         page.locator('#dataset tr').filter({ hasText: 'Shop A' }).locator('td').nth(1),
       ).not.toHaveText(T.row);
+      // With an imported retailer present, the dataset cutoff says whose it is.
+      await expect(page.locator('#dataset dl').first()).toContainText(T.collected);
       await noHorizontalScroll(page);
 
       // Promotion widgets stay off; on Compare their previews carry the reason, never a figure.
@@ -151,6 +178,40 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.locator('main [role=note]').filter({ hasText: T.withheld })).toHaveCount(2);
       await expect(page.locator('main')).not.toContainText(/\d%/);
       await noHorizontalScroll(page);
+      expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('product page: an imported offer shows its import date, and the heading drops the cutoff', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, { onApi: api(summaryBody) });
+      await signIn(page, locale);
+      await expect(page.getByRole('navigation')).toBeVisible();
+      await page.goto(`/app/${locale}/product/?id=${productMixed.data.card.id}`);
+      await expect(page.getByRole('heading', { name: T.offers, exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: T.offersOn })).toHaveCount(0);
+      const row = (name: string) =>
+        page.locator('article table').first().locator('tbody tr').filter({ hasText: name });
+      await expect(row('Ulta Beauty UAE').locator('time')).toHaveText(T.offerImported);
+      await expect(row('Ulta Beauty UAE')).not.toContainText(T.captured);
+      await expect(row('Shop A').locator('time')).toHaveText(T.captured);
+      await noHorizontalScroll(page);
+      expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('product page: all offers collected keeps "Offers on <cutoff>" and capture dates', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, { onApi: api(summaryBody, goldenProduct) });
+      await signIn(page, locale);
+      await expect(page.getByRole('navigation')).toBeVisible();
+      await page.goto(`/app/${locale}/product/?id=${goldenProduct.data.card.id}`);
+      await expect(page.getByRole('heading', { name: T.offersOn })).toBeVisible();
+      const offers = page.locator('article table').first();
+      await expect(offers.locator('tbody time').first()).toHaveText(T.captured);
+      await expect(offers).not.toContainText(/capture date unknown|وتاريخ جمعها غير معروف/);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });

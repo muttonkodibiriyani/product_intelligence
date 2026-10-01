@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import type { Envelope, Schemas } from '@/lib/api/types';
+import type { CaveatView, Envelope, Schemas } from '@/lib/api/types';
 import { parseCompare, toCompareSearch } from '@/lib/compare';
 import { parseState, toSearch } from '@/lib/explore';
 import { parseLaunches, toLaunchesSearch } from '@/lib/launches';
@@ -22,6 +22,7 @@ import { Known } from '../ui/known';
 import { Money } from '../ui/money';
 import { GapView, MatchLabel } from '../ui/pair';
 import { useMeta, useRetailerName } from '../use-meta';
+import { importedOn } from '../widgets/model';
 import { HistoryChart } from './history-chart';
 
 /** The contract's product id pattern; anything else is not sent to the API. */
@@ -152,8 +153,15 @@ export function ProductView() {
 
       {d && (
         <>
-          <Section title={t('offers', { date: formatDate(env.meta.cutoff, locale) })}>
-            <Offers offers={d.offers} name={name} />
+          {/* An imported offer has no capture date, so the heading only dates collected offers. */}
+          <Section
+            title={
+              d.offers.some((o) => importedOn(env.caveats, o.retailer))
+                ? t('offersUndated')
+                : t('offers', { date: formatDate(env.meta.cutoff, locale) })
+            }
+          >
+            <Offers offers={d.offers} name={name} caveats={env.caveats} />
           </Section>
           {d.pairs.length > 0 && (
             <Section title={t('pairs')} hint={t('pairsHint')}>
@@ -195,12 +203,21 @@ const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-top';
 
 /** One row per retailer. Columns the dataset doesn't collect (per /meta) are left out, not zeroed. */
-function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: string) => string }) {
+function Offers({
+  offers,
+  name,
+  caveats,
+}: {
+  offers: Schemas['OfferView'][];
+  name: (id: string) => string;
+  caveats: readonly CaveatView[];
+}) {
   const t = useTranslations('product');
   const ta = useTranslations('availability');
   const locale = useLocale();
   const caps = useMeta().data?.data?.capabilities;
   const show = { ratings: caps?.ratings ?? true, shades: caps?.shades ?? true, stock: caps?.stock ?? true };
+  const imported = (retailer: string) => importedOn(caveats, retailer);
   if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
   return (
     <div className="relative overflow-x-auto px-2">
@@ -299,9 +316,16 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
                   )}
                 </td>
                 <td className={`${TD} whitespace-nowrap`}>
-                  <time dateTime={o.evidence.capturedAt} className="block text-xs text-ink-2">
-                    {t('captured', { date: formatDate(o.evidence.capturedAt, locale, true) })}
-                  </time>
+                  {/* An imported retailer's capturedAt is its import time, never a capture date. */}
+                  {imported(o.retailer) ? (
+                    <time dateTime={imported(o.retailer)!} className="block text-xs text-ink-2">
+                      {t('imported', { date: formatDate(imported(o.retailer)!, locale) })}
+                    </time>
+                  ) : (
+                    <time dateTime={o.evidence.capturedAt} className="block text-xs text-ink-2">
+                      {t('captured', { date: formatDate(o.evidence.capturedAt, locale, true) })}
+                    </time>
+                  )}
                   {url ? (
                     <a
                       href={url}
