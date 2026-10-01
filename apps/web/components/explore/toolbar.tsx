@@ -40,12 +40,9 @@ export function Toolbar({
           maxLength={120}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t('searchPlaceholder')}
-          className="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-1.5 text-sm focus-visible:outline-2"
+          className="min-w-0 flex-1 field focus-visible:outline-2"
         />
-        <button
-          type="submit"
-          className="rounded border border-line bg-surface px-3 py-1.5 text-sm hover:bg-surface-2 focus-visible:outline-2"
-        >
+        <button type="submit" className="btn focus-visible:outline-2">
           {t('search')}
         </button>
       </form>
@@ -59,7 +56,7 @@ export function Toolbar({
           value={state.sort}
           aria-describedby={pair ? undefined : ids.sortHint}
           onChange={(e) => update({ sort: e.target.value as ProductSort })}
-          className="rounded border border-line bg-surface px-2 py-1.5 text-sm focus-visible:outline-2"
+          className="field focus-visible:outline-2"
         >
           {SORTS.map((s) => (
             <option key={s} value={s} disabled={(s === 'gap' || s === 'gap_asc') && !pair}>
@@ -75,12 +72,12 @@ export function Toolbar({
       </div>
 
       {pair && names && (
-        <div className="flex items-center gap-2 rounded border border-line bg-surface px-3 py-1.5 text-sm">
+        <div className="flex items-center gap-2 panel px-3 py-1.5 text-sm">
           <span>{t('pair', names)}</span>
           <button
             type="button"
             onClick={() => update({ retailer: [pair[1], pair[0]] })}
-            className="rounded px-1.5 text-accent hover:bg-surface-2 focus-visible:outline-2"
+            className="rounded-md px-1.5 text-accent hover:bg-surface-2 focus-visible:outline-2"
           >
             {t('swap')}
           </button>

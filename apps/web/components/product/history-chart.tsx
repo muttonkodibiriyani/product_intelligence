@@ -87,7 +87,7 @@ export function HistoryChart({ series, name }: { series: Series; name: (id: stri
       </ul>
       {/* Time runs left to right in both languages, as in the retailers' own charts. Labels are
           HTML, so they stay readable at any width. */}
-      <div dir="ltr" className="rounded border border-line bg-surface p-3 text-xs text-ink-2">
+      <div dir="ltr" className="panel p-4 text-xs text-ink-2">
         <div className="flex justify-between tabular-nums">
           <bdi dir={dir}>{formatMoney(hi, lc)}</bdi>
         </div>

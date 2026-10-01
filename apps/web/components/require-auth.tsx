@@ -35,7 +35,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
               .catch(() => {})
               .finally(() => setChecking(false));
           }}
-          className="mt-3 rounded border border-line px-3 py-1.5 text-sm hover:bg-surface-2 focus-visible:outline-2 disabled:opacity-60"
+          className="mt-3 btn focus-visible:outline-2"
         >
           {t('recheck')}
         </button>

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { summaryBody } from './summary-fixture';
 import { test as base, expect, type Page, type Route } from '@playwright/test';
 
 export const golden = (name: string): unknown =>
@@ -140,6 +141,12 @@ export async function noHorizontalScroll(page: Page) {
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+}
+
+/** Answers /summary with the landing fixture and everything else with `onApi`. */
+export function withSummary(onApi: (r: Route) => Promise<void> | void, body: unknown = summaryBody) {
+  return (r: Route) =>
+    new URL(r.request().url()).pathname === '/api/v1/summary' ? r.fulfill({ json: body }) : onApi(r);
 }
 
 export const test = base;
