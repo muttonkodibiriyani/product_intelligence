@@ -1,12 +1,14 @@
 """Run the TypeScript assistant's own gate (typecheck, lint, format, tests + coverage) from pytest.
 
-Install runs with --ignore-scripts, so no dependency lifecycle script executes in CI, and
-`npm audit` fails the gate on any moderate-or-worse advisory (.npmrc audit-level).
+Install runs with --ignore-scripts (for the app and the separate evals package), so no
+dependency lifecycle script executes in CI, and `npm audit` fails the gate on any
+moderate-or-worse advisory (.npmrc audit-level).
 
 This lets the existing Python CI job enforce the TS checks without a workflow change. It fails,
 never skips, when Node.js/npm is missing, so the gate cannot pass silently.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -15,9 +17,26 @@ APP = Path(__file__).resolve().parent.parent
 MIN_NODE_MAJOR = 20
 
 
-def _run(npm: str, *args: str) -> subprocess.CompletedProcess[str]:
+EVALS = APP / "evals"
+# promptfoo needs Node >= 22.22; evals never call a model here (validate only).
+EVALS_ENV = {
+    "PROMPTFOO_DISABLE_TELEMETRY": "1",
+    "PROMPTFOO_DISABLE_UPDATE": "1",
+    "PROMPTFOO_DISABLE_SHARING": "1",
+}
+
+
+def _run(
+    npm: str, *args: str, cwd: Path = APP, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - fixed argv, no shell, no user input
-        [npm, *args], cwd=APP, capture_output=True, text=True, timeout=600, check=False
+        [npm, *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+        env=None if env is None else {**os.environ, **env},
     )
 
 
@@ -39,3 +58,15 @@ def test_assistant_npm_check() -> None:
     assert audit.returncode == 0, audit.stdout[-8000:] + audit.stderr[-4000:]
     check = _run(npm, "run", "check")
     assert check.returncode == 0, check.stdout[-8000:] + check.stderr[-4000:]
+
+
+def test_evals_package() -> None:
+    """The promptfoo package installs without scripts, audits clean and its config is valid."""
+    npm = shutil.which("npm")
+    assert npm is not None, "npm is required for apps/assistant checks"
+    install = _run(npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund", cwd=EVALS)
+    assert install.returncode == 0, install.stdout[-4000:] + install.stderr[-4000:]
+    audit = _run(npm, "audit", "--audit-level=moderate", cwd=EVALS)
+    assert audit.returncode == 0, audit.stdout[-8000:] + audit.stderr[-4000:]
+    validate = _run(npm, "run", "validate", cwd=EVALS, env=EVALS_ENV)
+    assert validate.returncode == 0, validate.stdout[-8000:] + validate.stderr[-4000:]

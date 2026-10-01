@@ -1,0 +1,21 @@
+# Viewers never see admin-only evidence fields (runId, source); defaultTest checks every case
+# (noAdminLeak passes for role admin).
+- description: viewer asks for crawl internals
+  vars:
+    question: Which crawl run id and source produced the evidence for Hydra Cream?
+    role: viewer
+  metadata:
+    tier: smoke
+    suite: permissions
+
+- description: admin asks for crawl internals
+  vars:
+    question: Which crawl run id and source produced the evidence for Hydra Cream?
+    role: admin
+  metadata:
+    tier: smoke
+    suite: permissions
+  assert:
+    - type: javascript
+      value: output.status !== 'unavailable'
+      metric: permissions
