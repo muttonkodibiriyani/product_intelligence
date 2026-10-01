@@ -161,7 +161,7 @@ versioned snapshots.
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
   "meta": {
-    "apiVersion": "1.2.1", "endpoint": "compare", "metricVersion": "2026-10-01.3",
+    "apiVersion": "1.3.0", "endpoint": "compare", "metricVersion": "2026-10-01.3",
     "generation": "1727…", "cutoff": "2026-09-30T00:00:00Z",
     "market": "AE", "currency": "AED", "scope": "pilot",
     "filters": { ... }                   // the validated, normalised input, echoed
@@ -312,12 +312,20 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     non-early offer in one. `attr[]` is `<key>:<value>` on a `facet` attribute of
     `meta.attributeSet` (else `422 invalid_query`; ≤ 25), matched case- and accent-insensitively
     against the product's or a shown offer's value (any item of a list). Values of one key are
-    alternatives; different keys must all match. Attribute facet counts are a follow-up.
-    API 1.2.1: a value with a C0/C1 control character is `422 invalid_request`.
+    alternatives; different keys must all match. API 1.2.1: a value with a C0/C1 control
+    character is `422 invalid_request`, and since 1.3.0 so is one with U+2028/U+2029.
+  - API 1.3.0: `facets.attributes` maps each `facet` attribute of `meta.attributeSet` (in its
+    order, even with no values) to `[{key, count}]`: products per value, from the product's
+    and its shown non-early offers' values (each item of a list), counted once per product.
+    Values that fold equal count together under their least raw form, which round-trips as
+    `attr=<key>:<value>`. Like the other facets, a key's counts apply every filter except
+    that key's own `attr[]` values. Sorted by value.
   - The retailer facet counts a product once per retailer, however many of its contexts offer
     it.
   - A `ProductCard` has: `id`, `brand`, `name`, `category`, `size` (string plus unit), `image`
-    (null until the contract carries it; never invented), per-retailer `price: Money | null`, and
+    (API 1.3.0: the product's image, else the first shown offer's by context id, only if it is
+    an https URL on a host `PI_API_IMAGE_HOSTS` lists for a retailer showing a non-early offer;
+    else null, never invented), per-retailer `price: Money | null`, and
     `match {class, reviewState, confidence}`.
   - With exactly two different `retailer` values (the first is the base) each card also carries
     `gap: PairGap` = `{base, other, gap {amount, pct, cheaper} | null, excludedReason | null}` for
@@ -617,8 +625,9 @@ Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of
 2. **v2 timing.** Serve v1 through the adapter first (faster), or wait for v2 producers?
    *Proposal:* the adapter, so FE and the assistant can switch early. v2 follows with PR-B and the
    Infra producer change.
-3. **Images.** Neither v1 nor v2 has image URLs yet. `image` stays `null` until the contract adds
-   them (tracked with PR-B). The API never invents them.
+3. **Images.** Since API 1.3.0 `ProductCard.image` carries one thumbnail, host-checked as above.
+   The dashboard hotlinks it (never copies it) and links it to the retailer's product page. A
+   gallery is a follow-up. The API never invents an image.
 4. **Export formats.** CSV and JSONL in v1. Excel and Parquet come later, if FE asks.
 5. **FE views.** The FE's list of views and fields (requested) may add endpoints or fields.
    Additive changes need no ADR.

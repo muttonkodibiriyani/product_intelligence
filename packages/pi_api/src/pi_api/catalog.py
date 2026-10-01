@@ -14,13 +14,16 @@ import base64
 import binascii
 import hashlib
 import json
+import re
 import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from functools import partial
 from itertools import combinations
+from types import MappingProxyType
 from typing import Annotated, Any
 from urllib.parse import urlsplit
 
@@ -56,11 +59,14 @@ ShortText = Annotated[str, Field(min_length=1, max_length=MAX_TEXT)]
 Values = Annotated[tuple[ShortText, ...], Field(max_length=MAX_VALUES)]
 DecimalText = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,6})?$")]
 #: ``<key>:<value>``; the key is a declared facet attribute (``meta.attributeSet``), the value
-#: has no C0/C1 control characters (a ``\r`` or ``\n`` would split a log line).
-AttrText = Annotated[
-    str,
-    Field(pattern=r"^[a-z][A-Za-z0-9_]{1,62}:[^\x00-\x1f\x7f-\x9f]+$", max_length=MAX_TEXT),
-]
+#: has no C0/C1 control or U+2028/U+2029 characters (each could split a log line).
+_ATTR_TEXT = r"^[a-z][A-Za-z0-9_]{1,62}:[^\x00-\x1f\x7f-\x9f\u2028\u2029]+$"
+AttrText = Annotated[str, Field(pattern=_ATTR_TEXT, max_length=MAX_TEXT)]
+
+
+#: Per retailer, the hosts its evidence (or image) URLs may point at (``Settings``).
+EvidenceHosts = Mapping[str, frozenset[str]]
+NO_HOSTS: EvidenceHosts = MappingProxyType({})
 
 
 class InvalidQueryError(ValueError):
@@ -305,8 +311,9 @@ class ProductCard(ContractModel):
     name: SourceText
     category: tuple[SourceText, ...]
     size: Size | None
-    #: Null until the contract carries images; never invented.
-    image: None = None
+    #: API 1.3.0: the product's image, else the first shown offer's (by context id): an https
+    #: URL on its retailer's ``PI_API_IMAGE_HOSTS``, else null. Never invented.
+    image: SourceText | None = None
     prices: dict[str, MoneyValue | None]
     matches: tuple[CardMatch, ...]
     #: Set when the search names exactly two retailers (base first); otherwise null.
@@ -326,6 +333,11 @@ class Facets(ContractModel):
     brand: tuple[FacetCount, ...]
     category: tuple[FacetCount, ...]
     retailer: tuple[FacetCount, ...]
+    #: API 1.3.0: per ``facet`` attribute of ``meta.attributeSet`` (in its order), the products
+    #: per value. Values that fold equal count once, under their least raw form; send it back as
+    #: ``attr=<key>:<value>``. Only values ``attr`` accepts are listed, at most
+    #: ``ATTR_FACET_LIMIT`` per key: the most products first, then shown in raw order.
+    attributes: dict[str, tuple[FacetCount, ...]]
 
 
 class ProductPage(ContractModel):
@@ -390,6 +402,7 @@ def card(
     product: ProductV3,
     pair: tuple[str, str] | None = None,
     shown: Shown = None,
+    images: EvidenceHosts = NO_HOSTS,
 ) -> ProductCard:
     offers = _visible(product, shown)
     label, system = _first_label(o for _, o in offers)
@@ -411,8 +424,22 @@ def card(
             for e in product.matches
         ),
         gap=None if pair is None else pair_gap(ds, product, *pair),
+        image=card_image(ds, product, offers, images),
         size_label=label,
         size_system=system,
+    )
+
+
+def card_image(
+    ds: DatasetV3, product: ProductV3, offers: Iterable[tuple[str, OfferV3]], hosts: EvidenceHosts
+) -> str | None:
+    """The product's image on a host of a retailer that shows it, else a shown offer's own."""
+    owner = {c.id: c.retailer for c in ds.meta.contexts}
+    shown = sorted((c, o) for c, o in offers if not o.early)
+    retailers = sorted({owner[c] for c, _ in shown})
+    candidates = [(product.image, r) for r in retailers] + [(o.image, owner[c]) for c, o in shown]
+    return next(
+        (url for image, r in candidates if (url := evidence_url(image, r, hosts)) is not None), None
     )
 
 
@@ -447,15 +474,30 @@ def _within(named: frozenset[str] | None, shown: Shown) -> Shown:
     return named if shown is None else named & shown
 
 
-def _attr_values(value: object) -> set[str]:
-    """A stored attribute value as the folded texts a filter value can equal."""
+def _attr_texts(value: object) -> dict[str, str]:
+    """A stored attribute value as ``{folded: raw}`` texts a filter value can equal."""
     if isinstance(value, bool):
-        return {"true" if value else "false"}
+        text = "true" if value else "false"
+        return {text: text}
     if isinstance(value, str | int | Decimal):
-        return {fold(str(value))}
+        return {fold(str(value)): str(value)}
     if isinstance(value, list | tuple):
-        return {text for item in value for text in _attr_values(item)}
-    return set()  # an object never equals a filter value
+        texts: dict[str, str] = {}
+        for item in value:
+            for folded, raw in _attr_texts(item).items():
+                texts[folded] = min(raw, texts.get(folded, raw))
+        return texts
+    return {}  # an object never equals a filter value
+
+
+def _product_attr_texts(product: ProductV3, shown: Shown, key: str) -> dict[str, str]:
+    """``key``'s texts on the product and its shown non-early offers."""
+    texts: dict[str, str] = {}
+    offers = [o for _, o in _visible(product, shown) if not o.early]
+    for source in (product.attributes, *(o.attributes for o in offers)):
+        for folded, raw in _attr_texts(source.get(key)).items():
+            texts[folded] = min(raw, texts.get(folded, raw))
+    return texts
 
 
 def _attr_filters(ds: DatasetV3, query: ProductFilters) -> dict[str, set[str]]:
@@ -470,15 +512,8 @@ def _attr_filters(ds: DatasetV3, query: ProductFilters) -> dict[str, set[str]]:
     return wanted
 
 
-def _has_attrs(product: ProductV3, shown: Shown, wanted: dict[str, set[str]]) -> bool:
-    offers = [o for _, o in _visible(product, shown) if not o.early]
-    return all(
-        any(
-            _attr_values(source.get(key)) & values
-            for source in (product.attributes, *(o.attributes for o in offers))
-        )
-        for key, values in wanted.items()
-    )
+def _has_attr(product: ProductV3, shown: Shown, key: str, values: set[str]) -> bool:
+    return not values.isdisjoint(_product_attr_texts(product, shown, key))
 
 
 Check = Callable[[ProductV3], bool]
@@ -519,8 +554,8 @@ def _predicates(ds: DatasetV3, query: ProductFilters) -> dict[str, Check]:
             )
 
         checks["price"] = priced
-    if wanted:
-        checks["attr"] = lambda p: _has_attrs(p, shown, wanted)
+    for key, values in wanted.items():  # one check per key, so its facet can drop it
+        checks[f"attr:{key}"] = partial(_has_attr, shown=shown, key=key, values=values)
     return checks
 
 
@@ -545,7 +580,42 @@ def _facets(ds: DatasetV3, checks: dict[str, Check], shown: Shown) -> Facets:
     def counts(counter: Counter[str]) -> tuple[FacetCount, ...]:
         return tuple(FacetCount(key=k, count=n) for k, n in sorted(counter.items()))
 
-    return Facets(brand=counts(brand), category=counts(category), retailer=counts(retailer))
+    return Facets(
+        brand=counts(brand),
+        category=counts(category),
+        retailer=counts(retailer),
+        attributes={
+            a.key: _attr_facet(ds, checks, shown, a.key) for a in ds.meta.attribute_set if a.facet
+        },
+    )
+
+
+#: Values per attribute facet; a long tail of one-off retailer texts would swamp the chips.
+ATTR_FACET_LIMIT = 50
+_ATTR_FILTER = re.compile(_ATTR_TEXT)
+
+
+def _filterable(key: str, value: str) -> bool:
+    """Whether ``attr=<key>:<value>`` passes ``AttrText``, so a listed value never 422s."""
+    text = f"{key}:{value}"
+    return len(text) <= MAX_TEXT and _ATTR_FILTER.match(text) is not None
+
+
+def _attr_facet(
+    ds: DatasetV3, checks: dict[str, Check], shown: Shown, key: str
+) -> tuple[FacetCount, ...]:
+    """Products per folded value of ``key``, under every filter but ``key``'s own."""
+    counter: Counter[str] = Counter()
+    raw: dict[str, str] = {}
+    for p in ds.products:
+        if _passes(p, checks, f"attr:{key}"):
+            texts = _product_attr_texts(p, shown, key)
+            counter.update(texts.keys())
+            for folded, text in texts.items():
+                raw[folded] = min(text, raw.get(folded, text))
+    listed = [(f, n) for f, n in counter.items() if _filterable(key, raw[f])]
+    top = sorted(listed, key=lambda i: (-i[1], raw[i[0]]))[:ATTR_FACET_LIMIT]
+    return tuple(FacetCount(key=raw[f], count=n) for f, n in sorted(top, key=lambda i: raw[i[0]]))
 
 
 #: Filters added in API 1.2.0: left out of the digest while unset, so a cursor issued before
@@ -664,7 +734,9 @@ def _ordered(
     return hits
 
 
-def product_page(ds: DatasetV3, generation: str, query: ProductQuery) -> Metric[ProductPage]:
+def product_page(
+    ds: DatasetV3, generation: str, query: ProductQuery, images: EvidenceHosts = NO_HOSTS
+) -> Metric[ProductPage]:
     _unknown_values(ds, query)
     pair = _search_pair(ds, query)
     checks = _predicates(ds, query)
@@ -679,14 +751,16 @@ def product_page(ds: DatasetV3, generation: str, query: ProductQuery) -> Metric[
         data=ProductPage(
             total=len(hits),
             next_cursor=encode_cursor(generation, end, digest) if end < len(hits) else None,
-            items=tuple(card(ds, p, pair, shown) for p in page),
+            items=tuple(card(ds, p, pair, shown, images) for p in page),
             facets=_facets(ds, checks, shown),
         ),
         as_of=ds.meta.dates[-1],
     )
 
 
-def product_cards(ds: DatasetV3, query: ProductFilters) -> Metric[tuple[ProductCard, ...]]:
+def product_cards(
+    ds: DatasetV3, query: ProductFilters, images: EvidenceHosts = NO_HOSTS
+) -> Metric[tuple[ProductCard, ...]]:
     """Every card ``/v1/products`` would page through for these filters, in the same order."""
     _unknown_values(ds, query)
     pair = _search_pair(ds, query)
@@ -694,16 +768,12 @@ def product_cards(ds: DatasetV3, query: ProductFilters) -> Metric[tuple[ProductC
     shown = shown_contexts(ds, query)
     return Metric[tuple[ProductCard, ...]](
         status=Status.OK,
-        data=tuple(card(ds, p, pair, shown) for p in hits),
+        data=tuple(card(ds, p, pair, shown, images) for p in hits),
         as_of=ds.meta.dates[-1],
     )
 
 
 # ---------------------------------------------------------------- detail and history
-
-
-#: Per retailer, the hosts its evidence URLs may point at (``Settings.evidence_hosts``).
-EvidenceHosts = Mapping[str, frozenset[str]]
 
 
 class Evidence(ContractModel):
@@ -826,7 +896,7 @@ def find(ds: DatasetV3, product_id: str) -> ProductV3:
 
 
 def product_detail(
-    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts
+    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts, images: EvidenceHosts = NO_HOSTS
 ) -> Metric[ProductDetail]:
     offers = tuple(
         OfferView(
@@ -839,13 +909,15 @@ def product_detail(
     )
     return Metric[ProductDetail](
         status=Status.OK,
-        data=ProductDetail(card=card(ds, product), offers=offers, pairs=pair_gaps(ds, product)),
+        data=ProductDetail(
+            card=card(ds, product, images=images), offers=offers, pairs=pair_gaps(ds, product)
+        ),
         as_of=ds.meta.dates[-1],
     )
 
 
 def admin_product_detail(
-    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts
+    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts, images: EvidenceHosts = NO_HOSTS
 ) -> Metric[AdminProductDetail]:
     offers = tuple(
         AdminOfferView(
@@ -862,7 +934,7 @@ def admin_product_detail(
     return Metric[AdminProductDetail](
         status=Status.OK,
         data=AdminProductDetail(
-            card=card(ds, product), offers=offers, pairs=pair_gaps(ds, product)
+            card=card(ds, product, images=images), offers=offers, pairs=pair_gaps(ds, product)
         ),
         as_of=ds.meta.dates[-1],
     )

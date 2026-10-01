@@ -401,7 +401,11 @@ def respond[T](
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
-def build_api(source: SnapshotSource, evidence_hosts: EvidenceHosts | None = None) -> FastAPI:
+def build_api(
+    source: SnapshotSource,
+    evidence_hosts: EvidenceHosts | None = None,
+    image_hosts: EvidenceHosts | None = None,
+) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
         title="Product Intelligence API",
@@ -414,6 +418,7 @@ def build_api(source: SnapshotSource, evidence_hosts: EvidenceHosts | None = Non
     )
     _install_handlers(api)
     hosts: EvidenceHosts = {} if evidence_hosts is None else evidence_hosts
+    images: EvidenceHosts = {} if image_hosts is None else image_hosts
 
     @api.get(f"{PREFIX}/meta", response_model=Envelope[MetaView], response_model_by_alias=True)
     def get_meta(
@@ -436,7 +441,7 @@ def build_api(source: SnapshotSource, evidence_hosts: EvidenceHosts | None = Non
         query: Annotated[ProductQuery, Query()], _: Annotated[Principal, Depends(principal)]
     ) -> Envelope[ProductPage]:
         loaded = source.select(query.market, query.scope)
-        page = product_page(loaded.dataset, loaded.generation, query)
+        page = product_page(loaded.dataset, loaded.generation, query, images)
         return respond(loaded, "products", query, page)
 
     @api.get(f"{PREFIX}/products/{{product_id}}", response_model=Envelope[ProductDetail])
@@ -446,7 +451,7 @@ def build_api(source: SnapshotSource, evidence_hosts: EvidenceHosts | None = Non
         _: Annotated[Principal, Depends(principal)],
     ) -> Envelope[ProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = product_detail(loaded.dataset, find(loaded.dataset, product_id), hosts)
+        detail = product_detail(loaded.dataset, find(loaded.dataset, product_id), hosts, images)
         return respond(loaded, "product", query, detail)
 
     @api.get(f"{PREFIX}/admin/products/{{product_id}}", response_model=Envelope[AdminProductDetail])
@@ -456,7 +461,9 @@ def build_api(source: SnapshotSource, evidence_hosts: EvidenceHosts | None = Non
         _: Annotated[Principal, Depends(admin)],
     ) -> Envelope[AdminProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = admin_product_detail(loaded.dataset, find(loaded.dataset, product_id), hosts)
+        detail = admin_product_detail(
+            loaded.dataset, find(loaded.dataset, product_id), hosts, images
+        )
         return respond(loaded, "admin_product", query, detail)
 
     @api.get(f"{PREFIX}/products/{{product_id}}/history", response_model=Envelope[History])
@@ -477,7 +484,7 @@ def build_api(source: SnapshotSource, evidence_hosts: EvidenceHosts | None = Non
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
     _metric_routes(api, source)
-    _export_routes(api, source)
+    _export_routes(api, source, images)
     return api
 
 
@@ -624,7 +631,7 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
         raise
 
 
-def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
+def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
     """One route per exportable view, each taking that view's filters plus ``format``."""
     route = {
         "response_class": StreamingResponse,
@@ -638,7 +645,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
         query: Annotated[ProductsExport, Query()], who: Viewer
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
-        metric = product_cards(loaded.dataset, query)
+        metric = product_cards(loaded.dataset, query, images)
         return _download(
             loaded,
             view=view.PRODUCTS,
@@ -741,8 +748,9 @@ def create_app(
     verifier: TokenVerifier,
     buckets: TokenBuckets,
     evidence_hosts: EvidenceHosts | None = None,
+    image_hosts: EvidenceHosts | None = None,
 ) -> ASGIApp:
-    api = build_api(source, evidence_hosts)
+    api = build_api(source, evidence_hosts, image_hosts)
     return NoStore(ServerErrors(Authenticate(RateLimit(api, buckets), verifier)))
 
 
@@ -766,4 +774,4 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
     source.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())
     buckets = TokenBuckets(settings.rate_per_second, settings.rate_burst)
-    return create_app(source, verifier, buckets, settings.evidence_hosts)
+    return create_app(source, verifier, buckets, settings.evidence_hosts, settings.image_hosts)

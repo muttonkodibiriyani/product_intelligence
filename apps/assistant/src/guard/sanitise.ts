@@ -14,7 +14,8 @@
  * (for example a map keyed by brand name) are dropped, because keys are not wrapped.
  *
  * Also dropped: `minor` (the integer minor-unit copy of every money amount; the model quotes
- * `amount`, and an integer like 9000 must not count as a supported number) and, for callers
+ * `amount`, and an integer like 9000 must not count as a supported number), `image` (the card
+ * thumbnail URL; thumbnails are attached server-side from productIds, §7) and, for callers
  * below admin, the admin-only evidence keys `runId` and `source`.
  */
 import { DECIMAL_TEXT } from "./decimal.js";
@@ -77,7 +78,7 @@ export const SOURCE_TEXT_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /** Always removed (see the module comment). */
-export const DROPPED_KEYS: ReadonlySet<string> = new Set(["minor"]);
+export const DROPPED_KEYS: ReadonlySet<string> = new Set(["minor", "image"]);
 
 /** Admin-only evidence fields, removed for viewers as defence in depth. */
 export const ADMIN_ONLY_KEYS: ReadonlySet<string> = new Set(["runId", "source"]);

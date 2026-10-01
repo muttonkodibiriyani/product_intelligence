@@ -106,7 +106,7 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
   --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
   --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
-  --set-env-vars="PI_API_FIREBASE_PROJECT=$PROJECT,PI_API_BUCKET=$BUCKET,PI_API_DATASETS=<paths from §2>,PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me"
+  --set-env-vars="PI_API_FIREBASE_PROJECT=$PROJECT,PI_API_BUCKET=$BUCKET,PI_API_DATASETS=<paths from §2>,PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me,PI_API_IMAGE_HOSTS=sephora_me=img-product.sephora.me"
 ```
 
 - **No `--concurrency`** (default), no `--add-cloudsql-instances`, no `--vpc-connector`, no
@@ -120,6 +120,9 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   out and its links stay null. A typo nulls every link without an error, which is why §8 checks
   one. For two or more pairs, the commas clash with `--set-env-vars`. Switch the delimiter:
   `--set-env-vars="^@^PI_API_EVIDENCE_HOSTS=a=x.example,b=y.example@PI_API_BUCKET=..."`.
+- **Card thumbnails** (API 1.3.0) need `PI_API_IMAGE_HOSTS`, in the same format: the hosts the
+  dashboard may hotlink images from. Today's value is `sephora_me=img-product.sephora.me`, the
+  one host in the Hosting CSP `img-src`. Without it every `ProductCard.image` is null.
 - **`--allow-unauthenticated` is deliberate.** Hosting rewrites call the service without an IAM
   identity, so `allUsers` gets `run.invoker`. Every route, unknown paths included, verifies the
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
