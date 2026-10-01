@@ -519,9 +519,12 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
   `status: snapshot` with `cutoff` = the import time, never `fresh`.
 - **Caveats.** A response involving it carries, in this order, `was_price_unverified` (endpoints
   showing prices or promotions), `snapshot_import_date` ("ulta_ae: snapshot imported <date>,
-  capture date unknown.") and `parent_listings_included`. The import's aggregate-parent
-  listings are not removed here (the served document has no parent marker); the export drops
-  them.
+  capture date unknown.") and `parent_listings_included`. "Involving" is the retailer or
+  contexts the request names (`retailer`, the `retailers` pair, `missing_at`/`present_at`), or
+  for a product and its history the contexts with offers or series; a request naming none
+  involves every retailer. The import's aggregate-parent listings are not removed here (the
+  served document has no parent marker). The demo export drops them (#133), so a file
+  exported before that change still includes them.
 
 - **Cutoff (API 1.5.1).** `meta.cutoff` is served as the latest `capturedAt` of the collected
   (non-imported) offers, so `/meta`, every envelope's `meta.cutoff` and a collected context's

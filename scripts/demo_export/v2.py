@@ -67,6 +67,7 @@ from scripts.demo_export.export import (
     parse_utc,
     retailer_status,
 )
+from scripts.demo_export.tidy import tidy_rows
 
 MARKET = MarketInfo(country="AE", currency="AED", time_zone="Asia/Dubai", locales=("en", "ar"))
 #: v1 slot -> (source-register key, display name).
@@ -88,6 +89,10 @@ BRAND_NAV = ("BRANDS", "Brands")
 NOT_A_CATEGORY = frozenset({"PID Unicity", "without_pid"})
 #: Hosts whose image URLs are published (owner decision: hotlinked from the retailer's CDN only).
 IMAGE_HOSTS = frozenset({"img-product.sephora.me"})
+#: The retailer's "no image" placeholder (``.../images/noimagemedium.png``) is not a product image.
+PLACEHOLDER_IMAGE = re.compile(r"/noimage[^/]*$", re.IGNORECASE)
+#: Published prices outside this band are listed in the run log for a manual check (never changed).
+PRICE_REVIEW_BAND = (Decimal(1), Decimal(3000))
 
 
 def product_id(token: str) -> str:
@@ -126,7 +131,7 @@ def availability(value: str | None) -> AvailabilityState | None:
 
 def image(value: str | None) -> HttpUrl | None:
     """An absolute https URL on an allowlisted host, without credentials or a fragment (even an
-    empty trailing ``#``); else None."""
+    empty trailing ``#``), that is not the retailer's placeholder; else None."""
     if not value:
         return None
     try:
@@ -140,6 +145,7 @@ def image(value: str | None) -> HttpUrl | None:
         or port not in (None, 443)
         or parts.username is not None
         or "#" in value
+        or PLACEHOLDER_IMAGE.search(parts.path)
     ):
         return None
     return HttpUrl(value)
@@ -181,6 +187,24 @@ def category_notes(rows: Sequence[ListingRow]) -> dict[str, int]:
         for note in breadcrumb(row.category_path)[1]:
             counts[note] += 1
     return counts
+
+
+def price_review(dataset: Dataset) -> dict[str, list[str]]:
+    """The SKUs whose published price is below or above ``PRICE_REVIEW_BAND``, for the run log.
+    A flag for a manual check against the stored page, never a change to the price."""
+    low, high = PRICE_REVIEW_BAND
+    review: dict[str, list[str]] = {"below": [], "above": []}
+    for product in dataset.products:
+        for offer in product.offers.values():
+            price = offer.series.price[0]
+            if price is None:
+                continue
+            amount = Decimal(price.amount)
+            if amount < low:
+                review["below"].append(offer.sku or product.id)
+            elif amount > high:
+                review["above"].append(offer.sku or product.id)
+    return {side: sorted(skus) for side, skus in review.items()}
 
 
 def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
@@ -342,7 +366,7 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     day = cutoff.astimezone(zone).date()
     stale = Stale(day)
 
-    groups = group_rows(rows)
+    groups = group_rows(tidy_rows(rows))
     pairs, unpaired = pair_groups(groups, matches)
     products = [
         product(
