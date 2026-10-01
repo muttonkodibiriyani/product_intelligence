@@ -535,6 +535,36 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
 
 A dataset without an imported retailer is served as the same object, byte for byte.
 
+### Stable product links (planned; `pi_api.ids`)
+
+Owner requirement (task 01a0f907): a shared or product-page link still finds its product after
+the export pairs it with the other shop or splits a pair. "Not found" is only for a product no
+shop sells any more. The fix is read-side only: the served file is never changed or re-exported.
+
+- **Why ids change.** The export (`scripts/demo_export/v2.py`) gives a listing on its own the
+  token `<u|s>-<family>-<size>-<unit>`, and a pair `m-<ulta token>-<sephora token>`. The id is
+  the token, or `p-<sha256[:24]>` when the token is over 128 characters or has another
+  character.
+- **Read-time aliases.** An unhashed pair id holds both members' tokens. So at load, each
+  member's own id becomes an alias of the pair. An old pair id is read the same way, and each
+  half is looked up now. A family may hold `-`, so every `m-<u-…>-<s-…>` reading is tried.
+- **Rules.** An exact id always wins, so today's answers are unchanged. An alias two products
+  claim is dropped, never guessed. An old pair id whose readings name different products finds
+  nothing. A split answers both halves, the one at a `supported` retailer first, then in the
+  old id's order. Anything else is `404 not_found`. A removed product is never swapped for a
+  lookalike.
+- **Wire.** `/v1/products/{id}`, `/v1/products/{id}/history` and `/v1/admin/products/{id}`
+  answer with `resolvedFrom {requestedId, currentIds[1..2]}` on the envelope (`null` on an
+  exact match). `data` is the first current id. Clients rewrite their link to `currentIds`.
+  There is no HTTP redirect: a split has two targets, and `fetch()` hides redirects. The list
+  filters (`id=` on `/compare`, `/reviews-summary`) stay exact.
+- **Known gap.** A pair whose own id is hashed hides its members' tokens. Links to that pair's
+  id, or to its members' old ids, stay not found. Each load logs the count ("N pairs with
+  hashed ids"), with the alias and dropped counts. After deploy the owner reads it. Only if it
+  is above 0 does closing the gap become an export proposal (each product would list its
+  members' ids). An id that changes for another reason (a family re-assigned) is outside any
+  read-side fix.
+
 ### Price floor (API 1.7.1, planned; `pi_api.floor`)
 
 A price or regular price of **0.01 or less** is not a real shelf price (a placeholder or a parse

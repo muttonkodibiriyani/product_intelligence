@@ -961,20 +961,6 @@ export interface components {
                 [key: string]: string;
             };
         };
-        /** Envelope[AdminProductDetail] */
-        Envelope_AdminProductDetail_: {
-            /**
-             * Caveats
-             * @default []
-             */
-            caveats: components["schemas"]["CaveatView"][];
-            cohort?: components["schemas"]["Cohort"] | null;
-            data: components["schemas"]["AdminProductDetail"] | null;
-            detail?: components["schemas"]["Localized"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            reason?: components["schemas"]["Reason"] | null;
-            status: components["schemas"]["Status"];
-        };
         /** Envelope[AssortmentGaps] */
         Envelope_AssortmentGaps_: {
             /**
@@ -1073,20 +1059,6 @@ export interface components {
             reason?: components["schemas"]["Reason"] | null;
             status: components["schemas"]["Status"];
         };
-        /** Envelope[History] */
-        Envelope_History_: {
-            /**
-             * Caveats
-             * @default []
-             */
-            caveats: components["schemas"]["CaveatView"][];
-            cohort?: components["schemas"]["Cohort"] | null;
-            data: components["schemas"]["History"] | null;
-            detail?: components["schemas"]["Localized"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            reason?: components["schemas"]["Reason"] | null;
-            status: components["schemas"]["Status"];
-        };
         /** Envelope[Launches] */
         Envelope_Launches_: {
             /**
@@ -1138,20 +1110,6 @@ export interface components {
             caveats: components["schemas"]["CaveatView"][];
             cohort?: components["schemas"]["Cohort"] | null;
             data: components["schemas"]["PriceIndex"] | null;
-            detail?: components["schemas"]["Localized"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            reason?: components["schemas"]["Reason"] | null;
-            status: components["schemas"]["Status"];
-        };
-        /** Envelope[ProductDetail] */
-        Envelope_ProductDetail_: {
-            /**
-             * Caveats
-             * @default []
-             */
-            caveats: components["schemas"]["CaveatView"][];
-            cohort?: components["schemas"]["Cohort"] | null;
-            data: components["schemas"]["ProductDetail"] | null;
             detail?: components["schemas"]["Localized"] | null;
             meta: components["schemas"]["ApiMeta"];
             reason?: components["schemas"]["Reason"] | null;
@@ -1680,6 +1638,51 @@ export interface components {
             /** Pairs */
             pairs: components["schemas"]["PairGap"][];
         };
+        /** ProductEnvelope[AdminProductDetail] */
+        ProductEnvelope_AdminProductDetail_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["AdminProductDetail"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            resolvedFrom?: components["schemas"]["ResolvedFrom"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** ProductEnvelope[History] */
+        ProductEnvelope_History_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["History"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            resolvedFrom?: components["schemas"]["ResolvedFrom"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** ProductEnvelope[ProductDetail] */
+        ProductEnvelope_ProductDetail_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["ProductDetail"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            resolvedFrom?: components["schemas"]["ResolvedFrom"] | null;
+            status: components["schemas"]["Status"];
+        };
         /** ProductPage */
         ProductPage: {
             facets: components["schemas"]["Facets"];
@@ -1804,6 +1807,16 @@ export interface components {
             /** Sku */
             sku: string;
             sourceIds: components["schemas"]["SourceIds"] | null;
+        };
+        /**
+         * ResolvedFrom
+         * @description An old product id answered with the products it names now (``pi_api.ids``).
+         */
+        ResolvedFrom: {
+            /** Currentids */
+            currentIds: string[];
+            /** Requestedid */
+            requestedId: string;
         };
         /** RetailerAvailability */
         RetailerAvailability: {
@@ -2112,7 +2125,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope_AdminProductDetail_"];
+                    "application/json": components["schemas"]["ProductEnvelope_AdminProductDetail_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
@@ -4033,7 +4046,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope_ProductDetail_"];
+                    "application/json": components["schemas"]["ProductEnvelope_ProductDetail_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
@@ -4132,7 +4145,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope_History_"];
+                    "application/json": components["schemas"]["ProductEnvelope_History_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */

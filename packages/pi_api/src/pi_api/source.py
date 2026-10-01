@@ -14,11 +14,13 @@ import time
 import zlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Protocol
 
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
+from pi_api.ids import ProductIds, product_ids
 from pi_dataset import DatasetError, DatasetV3, load_any
 from pi_metrics.view import as_v3
 
@@ -90,6 +92,11 @@ class Loaded:
     def unverified(self) -> frozenset[str]:
         """Context ids whose was-prices are unverified: promotions there are withheld."""
         return frozenset(c for shop in self.imported for c in shop.contexts)
+
+    @cached_property
+    def ids(self) -> ProductIds:
+        """Current and old product ids (``pi_api.ids``), built once per generation at load."""
+        return product_ids(self.dataset)
 
     @property
     def markets(self) -> tuple[str, ...]:
@@ -181,7 +188,16 @@ class SnapshotSource:
                 continue
             with self._lock:
                 self._loaded = {**self._loaded, path: loaded}  # one reference swap
-            log.info("dataset %s loaded at generation %s", path, generation)
+            ids = loaded.ids
+            log.info(
+                "dataset %s loaded at generation %s: %d old product ids, %d dropped as "
+                "ambiguous, %d pairs with hashed ids (their members' old ids can't be found)",
+                path,
+                generation,
+                len(ids.aliases),
+                ids.dropped,
+                ids.opaque_pairs,
+            )
 
     def maybe_refresh(self) -> None:
         """Starts a background check if one is due; returns at once."""
