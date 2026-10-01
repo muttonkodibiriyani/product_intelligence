@@ -632,6 +632,17 @@ def load_rows(
     )
 
 
+def is_ulta(source: str) -> bool:
+    """Any spelling of an Ulta source (``ulta``, ``ULTA_AE``, ``ulta_ae``)."""
+    return source.strip().casefold().startswith("ulta")
+
+
+def missing_sources(rows: Iterable[ListingRow], sources: Sequence[str]) -> list[str]:
+    """The named sources that have no exported rows."""
+    present = {row.source_name for row in rows}
+    return [source for source in sources if source not in present]
+
+
 def in_sources(rows: Iterable[ListingRow], sources: Sequence[str]) -> list[ListingRow]:
     """Only the rows of the exported sources (the SQL filters too; this guards other callers).
     Matches need no filter: a pair is emitted only when both of its variants are in the rows."""
@@ -947,8 +958,11 @@ def check_args(args: argparse.Namespace) -> None:
         )
     if not args.sources:
         raise SystemExit("--sources must name at least one source")
-    if "ulta_ae" in args.sources and not args.ulta_unblocked:
-        raise SystemExit("--sources ulta_ae needs --ulta-unblocked: Ulta is blocked by ruling")
+    if any(is_ulta(source) for source in args.sources):
+        if not args.ulta_unblocked:
+            raise SystemExit("an Ulta source needs --ulta-unblocked: Ulta is blocked by ruling")
+    elif args.ulta_early_fixture is not None:
+        raise SystemExit("--ulta-early-fixture needs an Ulta source in --sources")
     notes = (args.ulta_blocked_note, args.ulta_blocked_note_ar)
     if (notes[0] is None) != (notes[1] is None):
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must be supplied together")
@@ -960,6 +974,10 @@ def main() -> None:
     args = parser().parse_args()
     check_args(args)
     rows, matches = load_rows(args.database_url, args.sources)
+    empty = missing_sources(rows, args.sources)
+    if empty:
+        # A typo (or a source with no eligible run) must not become a silently empty export.
+        raise SystemExit(f"--sources {','.join(empty)}: no rows in pi_db")
     early: list[dict[str, Any]] = []
     if args.ulta_early_fixture is not None:
         early.append(
@@ -1000,6 +1018,7 @@ def main() -> None:
             ulta_early=early,
             scope=args.scope,
             producer_commit=args.producer_commit,
+            ulta_in_scope=any(is_ulta(source) for source in args.sources),
         )
         body = dump_dataset(v2)
         load_dataset(body)  # the publisher's strict load, credential scan included

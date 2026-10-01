@@ -20,8 +20,10 @@ from scripts.demo_export.export import (
     contains_secret,
     group_rows,
     in_sources,
+    is_ulta,
     json_money,
     matched_products,
+    missing_sources,
     offer_for,
     parse_size_label,
     parse_ulta_early_fixture,
@@ -408,3 +410,24 @@ def test_sources_default_to_sephora_only_and_ulta_needs_the_unblocked_flag() -> 
     )
     with pytest.raises(SystemExit, match="at least one source"):
         check_args(parser().parse_args([*BASE_ARGS, "--sources", " , "]))
+
+
+@pytest.mark.parametrize("source", ["ulta", "ULTA_AE", " Ulta_ae", "ulta_ae"])
+def test_any_spelling_of_ulta_is_refused_while_blocked(source: str) -> None:
+    assert is_ulta(source)
+    with pytest.raises(SystemExit, match="needs --ulta-unblocked"):
+        check_args(parser().parse_args([*BASE_ARGS, "--sources", f"sephora_me,{source}"]))
+
+
+def test_ulta_early_fixture_needs_an_ulta_source() -> None:
+    extra = ["--ulta-early-fixture", "f.json", "--ulta-captured-at", "2026-09-30T20:40:00Z"]
+    extra += ["--ulta-fixture-commit", "abc", "--ulta-recon-observed-count", "3"]
+    extra += ["--ulta-recon-source", "recon"]
+    with pytest.raises(SystemExit, match="needs an Ulta source"):
+        check_args(parser().parse_args([*BASE_ARGS, *extra]))
+
+
+def test_a_named_source_without_rows_is_reported() -> None:
+    rows = [row()]
+    assert missing_sources(rows, ("sephora_me",)) == []
+    assert missing_sources(rows, ("sephora_me", "sephora_typo")) == ["sephora_typo"]

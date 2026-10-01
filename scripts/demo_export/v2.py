@@ -283,8 +283,11 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     ulta_early: Sequence[Mapping[str, Any]] = (),
     scope: str = "beauty",
     producer_commit: str | None = None,
+    ulta_in_scope: bool = True,
 ) -> Dataset:
-    """``ulta_note`` is v1's ``meta.retailers[u].note``, so both versions say the same thing."""
+    """``ulta_note`` is v1's ``meta.retailers[u].note``, so both versions say the same thing.
+    Without ``ulta_in_scope`` (no Ulta source exported, ADR-0010 scheme A) the file is about
+    Sephora alone: no Ulta retailer and no Ulta not-observed range."""
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
     captures = [row.evidence_retrieved_at or row.observed_at for row in rows]
@@ -361,6 +364,9 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
                 },
             ),
         )
+    if not ulta_in_scope:
+        retailers = [r for r in retailers if r.id != RETAILERS["u"][0]]
+        not_observed = ()
     meta = Meta(
         kind="snapshot",
         cutoff=cutoff,

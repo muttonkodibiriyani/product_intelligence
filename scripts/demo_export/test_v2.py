@@ -355,3 +355,20 @@ def test_v2_by_default_ulta_rows_in_the_db_export_no_ulta_products_and_no_pairs(
     assert all(p["offers"].get("u") is None for p in d["products"])
     assert all(p.get("match") is None for p in d["products"])
     assert d["meta"]["retailers"][0]["status"] == RetailerStatus.BLOCKED
+
+
+def test_v2_without_an_ulta_source_lists_only_sephora() -> None:
+    """ADR-0010 scheme A: the sephora_me file is about Sephora alone."""
+    ds = build_dataset_v2(
+        [row()],
+        [],
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, 20, 55, tzinfo=UTC)),
+        ulta_note=NOTE,
+        ulta_in_scope=False,
+    )
+    body = dump_dataset(ds)
+    load_dataset(body)
+    d = json.loads(body)
+    assert [r["id"] for r in d["meta"]["retailers"]] == ["sephora_me"]
+    assert d["notObserved"] == []
