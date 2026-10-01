@@ -18,9 +18,41 @@ uv run pi-match --left ulta.jsonl --right sephora.jsonl --out out/match --cutoff
 
 Each JSONL line is a `ProductRecord`:
 - required: `source`, `source_key`, `brand` and `name`;
-- optional: `url`, `size`, `shade`, `gtin`, `category`, `price` (a decimal string) and `currency`.
+- optional: `url`, `size`, `shade`, `gtin`, `category`, `price` (a decimal string), `currency`
+  and `aggregate` (default `false`).
+
+`aggregate: true` marks a product-level row that groups other rows (its variants). Such rows are
+skipped before matching and in the brand overlap, and `summary.json` counts them in
+`aggregates_skipped`. Skipping is in memory only: nothing is written back. No PI loader sets
+it; the draft export SQL reads `labels.aggregate_parent` when an import wrote it, and treats
+only JSON `true` or the text `'true'` as true.
+
+`size` and `shade` may be a list: a JSON array (kept as a list), or list text such as
+`"['100'] ['ML']"` (one or more flat lists side by side, each parsed with `json`, else
+`ast.literal_eval`; at most 512 characters). A list gives a value only when it holds exactly
+one: one distinct item, or for sizes one distinct number beside one distinct unit. Several
+sizes, units or shades are ambiguous and give none (never the first), as does any parse failure
+or other shape. An ambiguous size list never falls back to a size in the name.
+
+A list whose only group is a number and then its unit (`[50, "ml"]`) is that size. A leading
+bracketed label that is not a literal (`"[Limited] 50ml"`) is plain text, not a list.
 
 A bad line fails the run and names the line number.
+
+## Unit price (`pi_match.unit_price`)
+
+`derive_unit_price(price, size_text)` gives the price per 100 ml, per 100 g or per unit
+(`BasePrice(amount, basis)`, rounded half-even to 0.0001), using `parse_size` above or a piece
+count ("60 capsules"). It gives None rather than guess when:
+
+- the price is missing or not positive;
+- the size is missing, unparsed or ambiguous (a list of several sizes);
+- the label is a multi-pack ("2 x 50 ml", "pack of 3", "duo"), because the published size is
+  per item, not per pack;
+- the label holds both a size and a piece count.
+
+`price_per_base(price, size, count=, pack=)` takes the parsed parts. Both are pure: nothing calls
+them yet, and nothing is written. `UnitPrice` in `MatchPair` (per 1 ml or 1 g) is unchanged.
 
 ## Outputs (`--out`)
 
@@ -28,7 +60,7 @@ A bad line fails the run and names the line number.
 |---|---|
 | `matches.json` | One-to-one pairs with bucket, score, reasons, prices, unit prices and the price gap |
 | `brand_overlap.json` | Brand keys found in both snapshots, only-left and only-right |
-| `summary.json` | Counts per bucket, brand overlap sizes, and pairs with a comparable price |
+| `summary.json` | Counts per bucket, brand overlap sizes, pairs with a comparable price, and skipped aggregate rows |
 | `precision_sample.csv` | Up to 50 pairs, round-robin across buckets and hash-ordered, for **hand** labelling (`label` = correct / wrong / unsure). Nothing is pre-labelled |
 
 Identical inputs give byte-identical outputs. `--cutoff` is a label, never a clock.

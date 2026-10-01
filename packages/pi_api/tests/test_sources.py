@@ -11,7 +11,8 @@ import pytest
 from api_fixture import bearer, make_client, write
 from pi_api.config import Settings, dataset_entries
 from pi_api.source import LocalStore, SnapshotSource
-from sources_fixture import SEPHORA, ULTA, days, snapshot
+from pi_dataset import DatasetV3
+from sources_fixture import SEPHORA, ULTA, days, snapshot, snapshot_doc
 
 COMBINED = "datasets/ae/beauty/latest.json"
 SEPHORA_FILE = "datasets/ae/sephora_me/latest.json"
@@ -78,6 +79,21 @@ def test_meta_lists_each_source_with_its_own_cutoff(tmp_path: Path) -> None:
     assert sorted(r["id"] for r in data["retailers"]) == [SEPHORA, ULTA]
 
 
+def test_a_composed_source_cutoff_is_its_own_latest_capture(tmp_path: Path) -> None:
+    """Reviewer, #120: a slice keeps its file's meta, so the cutoff comes from the source's
+    offers, not from another retailer's later capture in the same file."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        product["offers"][ULTA]["evidence"]["capturedAt"] = "2026-09-21T12:00:00Z"
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    for loaded in source.datasets():
+        cutoffs = {s.source: s.cutoff.isoformat() for s in loaded.sources}
+        assert cutoffs[ULTA] == "2026-09-21T12:00:00+00:00", loaded.path
+
+
 def test_the_view_waits_for_every_assigned_file(tmp_path: Path) -> None:
     write(tmp_path, snapshot({"p1": BOTH}, dates=OLD), COMBINED)
     source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
@@ -140,6 +156,31 @@ def test_whole_paths_still_work_beside_a_view(tmp_path: Path) -> None:
     source.load_all()
     assert [d.scope for d in source.datasets()] == ["sa_beauty", "beauty"]
     assert source.select(None, "beauty").path == f"{SEPHORA}={SEPHORA_FILE},{ULTA}={COMBINED}"
+
+
+def test_the_imported_retailer_is_corrected_in_composed_and_whole_views(tmp_path: Path) -> None:
+    """The ``pi_api.dq`` view applies after composition, and to a whole file beside it."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        for offer in product["offers"].values():
+            offer["series"]["regular"] = [
+                m and {**m, "minor": 20_000, "amount": "200.00"} for m in offer["series"]["price"]
+            ]
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    views = {d.path: d for d in source.datasets()}
+    assert sorted(views) == [COMBINED, f"{SEPHORA}={SEPHORA_FILE},{ULTA}={COMBINED}"]
+    for loaded in views.values():
+        assert loaded.unverified == {ULTA}
+        assert [(shop.retailer, shop.was_prices) for shop in loaded.imported] == [(ULTA, 2)]
+        regular = {
+            cid: o.series.regular for p in loaded.dataset.products for cid, o in p.offers.items()
+        }
+        assert regular[ULTA] is None
+    whole = views[COMBINED].dataset
+    assert all(p.offers[SEPHORA].series.regular for p in whole.products if SEPHORA in p.offers)
 
 
 def test_dataset_entries_reads_whole_and_per_source_paths() -> None:
@@ -271,6 +312,28 @@ def test_a_latest_gap_is_never_claimed_from_a_stale_source(tmp_path: Path) -> No
     assert stale(body) == [STALE]
 
 
+def test_the_latest_date_view_keeps_the_imported_correction(tmp_path: Path) -> None:
+    """A stale Ulta read at its own last date never brings back its cleared was-prices."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        series = product["offers"][ULTA]["series"]
+        series["regular"] = [{"amount": "99.00", "minor": 9900, "currency": "AED"}] * len(
+            series["price"]
+        )
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
+    source.load_all()
+    (loaded,) = source.datasets()
+    assert loaded.latest is not None
+    assert loaded.unverified
+    for ds in (loaded.dataset, loaded.latest):
+        for product in ds.products:
+            for cid, offer in product.offers.items():
+                if cid in loaded.unverified:
+                    assert offer.series.regular is None
+
+
 def test_a_whole_file_has_no_stale_source(tmp_path: Path) -> None:
     write(tmp_path, snapshot({"p1": BOTH, "p2": (ULTA,)}, dates=OLD), COMBINED)
     client, source = make_client(tmp_path, paths=(COMBINED,))
@@ -282,7 +345,8 @@ def test_a_whole_file_has_no_stale_source(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("shop", "as_of", "cutoff", "status"),
     [
-        (ULTA, "2026-09-22", "2026-09-22T00:00:00Z", "stale"),
+        # Ulta is imported: its freshness is the import snapshot (``pi_api.dq``, API 1.5.0).
+        (ULTA, "2026-09-22", "2026-09-22T00:00:00Z", "snapshot"),
         (SEPHORA, "2026-09-30", "2026-09-30T00:00:00Z", "aging"),
     ],
 )

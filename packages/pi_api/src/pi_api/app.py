@@ -34,7 +34,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from pi_api import export
+from pi_api import dq, export
 from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
@@ -112,6 +112,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
+from pi_metrics.summary import Summary
 from pi_metrics.view import AmbiguousContext, UnknownInput
 
 log = logging.getLogger(__name__)
@@ -399,9 +400,38 @@ def _install_handlers(api: FastAPI) -> None:
 # ---------------------------------------------------------------- the app
 
 
+def _selected(query: ContractModel, data: object) -> frozenset[str]:
+    """The retailer or context ids a request is about; empty means every one."""
+    if isinstance(data, Summary):
+        return frozenset({data.retailer})
+    if isinstance(data, ProductDetail | AdminProductDetail):
+        return frozenset(o.retailer for o in data.offers) or frozenset({""})
+    if isinstance(data, History):
+        return frozenset(data.series) or frozenset({""})
+    return _named(query)
+
+
+def _named(query: ContractModel) -> frozenset[str]:
+    """The retailer or context ids a query names, from every field that names one (the union, so
+    a ``retailers`` pair never hides a ``retailer`` list); empty when it names none."""
+    if isinstance(query, AssortmentQuery):
+        return frozenset({query.missing_at, query.present_at})
+    pair = getattr(query, "retailers", None)
+    named = getattr(query, "retailer", None)
+    return frozenset(
+        (
+            *(pair.split(",") if isinstance(pair, str) else ()),
+            *((named,) if isinstance(named, str) else named or ()),
+        )
+    )
+
+
 def respond[T](
     loaded: Loaded, endpoint: str, query: ContractModel, metric: Metric[T]
 ) -> Envelope[T]:
+    owed = dq.caveats(loaded.imported, endpoint, _selected(query, metric.data))
+    if owed:
+        metric = metric.model_copy(update={"caveats": (*metric.caveats, *owed)})
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
@@ -566,7 +596,12 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
     ) -> Envelope[Promotions]:
         loaded = source.select(query.market, query.scope)
         metric = promotions(
-            read_at(loaded, query.on), query.retailer, query.where(), query.min_depth(), query.on
+            read_at(loaded, query.on),
+            query.retailer,
+            query.where(),
+            query.min_depth(),
+            query.on,
+            unverified=loaded.unverified,
         )
         if query.on is None:
             metric = stale_first(loaded, metric, query.retailer)
@@ -623,7 +658,7 @@ def _summary_route(
         loaded = source.select(query.market, query.scope)
         metric = cache.get(loaded, query.retailer)
         metric, cutoff = own_source(loaded, stale_first(loaded, metric, (metric.data.retailer,)))
-        view = summary_view(metric, cutoff, clock())
+        view = summary_view(metric, loaded, cutoff, clock())
         return respond(loaded, "summary", query, view)
 
 
@@ -774,7 +809,12 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         metric = promotions(
-            read_at(loaded, query.on), query.retailer, query.where(), query.min_depth(), query.on
+            read_at(loaded, query.on),
+            query.retailer,
+            query.where(),
+            query.min_depth(),
+            query.on,
+            unverified=loaded.unverified,
         )
         if query.on is None:
             metric = stale_first(loaded, metric, query.retailer)

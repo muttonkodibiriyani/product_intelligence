@@ -42,7 +42,7 @@ A competitive product and price intelligence platform. It collects **complete pu
 | Markets | KSA (SAR, VAT 15%) first; UAE (AED, VAT 5%) as fallback and second market |
 | Coverage | Full catalogue: every category and variant, all visible fields, all images |
 | Channel | Online (web/app); offline store audits importable |
-| Cadence | **One-time baseline snapshot per source, then on-demand refreshes only** (owner decision 2026-09-30, cost). No automatic daily/weekly schedules. Images fetched once per distinct URL/content hash, never re-downloaded |
+| Cadence | **One-time baseline snapshot per source, then on-demand refreshes only** (owner decision 2026-09-30, cost), except `sephora_me`: nightly listing sweep + weekly variant/AR passes (ADR-0009, build after the landing ships). No other schedules. Images fetched once per distinct URL/content hash, never re-downloaded |
 
 ### 1.2 Discovery item (week 1)
 
@@ -302,6 +302,7 @@ parse(evidence) -> ListingRecord[]       # pure; every variant, field, image URL
 ### 6.4 Cadence
 
 Owner decision 2026-09-30 (cost): collection is **one-time and on-demand**, not scheduled.
+**Exception, `sephora_me` only (ADR-0009, owner decision 2026-10-01):** a nightly product-level listing sweep, a weekly variant-level pass and weekly AR + discovery, ~$4–5/month. It is built after the landing dashboard ships; until then the rows below apply to it too.
 
 | Job | Frequency |
 |---|---|
@@ -312,9 +313,9 @@ Owner decision 2026-09-30 (cost): collection is **one-time and on-demand**, not 
 | Reviews | On demand only |
 | Search ranks | On demand only |
 
-- **No Cloud Scheduler jobs** (disabled or absent). No recurring crawl of any source.
+- **No Cloud Scheduler jobs** (disabled or absent), except one for `sephora_me`, owner-approved (ADR-0009). No recurring crawl of any other source.
 - **On-demand trigger:** a `make`/CLI command (later an admin button) runs a refresh for a chosen site or category and records the run's cost in its run manifest.
-- **Storage:** every snapshot is kept, append-only, in the DB and in the Firebase demo export, so history grows only when the owner chooses to refresh. Data is reused without re-crawling.
+- **Storage:** every snapshot is kept, append-only, in the DB and in the Firebase demo export, so history grows on the `sephora_me` schedule (ADR-0009) and, for every other source, only when the owner chooses to refresh. Data is reused without re-crawling.
 - **If rung 5 is ever approved, proxy traffic is kept minimal:** heavy assets are blocked in the browser, and images are fetched directly from the CDN, never through the proxy.
 
 ### 6.5 Images
@@ -457,7 +458,7 @@ A Google budget alerts but does not cap spending. Controls: alerts at 50/90/100%
 
 | Item | Est. monthly |
 |---|---|
-| Crawling: one baseline snapshot per source, then on-demand refreshes only (no schedules; each run records its cost) | $0–3 |
+| Crawling: one baseline snapshot per source, then on-demand refreshes only (each run records its cost); `sephora_me` recurring per ADR-0009 (~$4–5) | $0–8 |
 | Dev + CI | $0 |
 | Auth / Firestore / Hosting | ~$0–1 |
 | Storage (images + evidence) | ~$0.5 |

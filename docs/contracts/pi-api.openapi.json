@@ -244,7 +244,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.6.0",
+            "default": "1.8.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -697,6 +697,9 @@
           "size_labels_differ",
           "channel_differs",
           "size_labels_differ_total",
+          "was_price_unverified",
+          "snapshot_import_date",
+          "parent_listings_included",
           "stale_source"
         ],
         "title": "CaveatCode",
@@ -2263,7 +2266,8 @@
         "enum": [
           "fresh",
           "aging",
-          "stale"
+          "stale",
+          "snapshot"
         ],
         "title": "FreshnessStatus",
         "type": "string"
@@ -3737,7 +3741,8 @@
           "no_match",
           "not_in_scope",
           "currency_mismatch",
-          "not_applicable"
+          "not_applicable",
+          "was_price_unverified"
         ],
         "title": "Reason",
         "type": "string"
@@ -4575,7 +4580,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.6.0"
+    "version": "1.8.0"
   },
   "openapi": "3.1.0",
   "paths": {

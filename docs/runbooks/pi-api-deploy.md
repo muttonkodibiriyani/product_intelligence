@@ -56,7 +56,7 @@ gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_leve
   Hosting deploy still rejects the rewrite, stop and report it (stop rule).
 - Note the datasets to serve: the object paths `publish_dataset.py` writes under `datasets/`
   (e.g. `datasets/ae/beauty/latest.json`). They become `PI_API_DATASETS`.
-  With per-source files (API ≥ 1.5.0, ADR-0010), assign each source to its file instead, e.g.
+  With per-source files (API ≥ 1.7.0, ADR-0010), assign each source to its file instead, e.g.
   `sephora_me=datasets/ae/sephora_me/latest.json,ulta_ae=datasets/ae/beauty/latest.json`. Don't
   also list one of those paths bare in the same scope.
 
@@ -109,8 +109,12 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
   --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
   --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
-  --set-env-vars="PI_API_FIREBASE_PROJECT=$PROJECT,PI_API_BUCKET=$BUCKET,PI_API_DATASETS=<paths from §2>,PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me,PI_API_IMAGE_HOSTS=sephora_me=img-product.sephora.me"
+  --set-env-vars="^@^PI_API_FIREBASE_PROJECT=$PROJECT@PI_API_BUCKET=$BUCKET@PI_API_DATASETS=<paths from §2>@PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me,ulta_ae=www.ulta.ae@PI_API_IMAGE_HOSTS=sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com"
 ```
+
+This full form is for a first deploy or a deliberate config change only. The values above are the
+live ones on `pi-api-00004-9b6` (2026-10-01). An image-only redeploy passes `--image` and nothing
+else, so every env var stays as it is.
 
 - **No `--concurrency`** (default), no `--add-cloudsql-instances`, no `--vpc-connector`, no
   `--set-secrets`. Never set `PI_API_ALLOW_TEST` in production.
@@ -118,14 +122,16 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   `<source_key>=<host>,<source_key>=<host>`, the exact hosts the connectors fetch). Without
   it the service runs, but every offer's `evidence.url` is null. A host the API should not link
   to is simply left out; there are no wildcards.
-  Today's value is `sephora_me=www.sephora.me`: that is the only source with URLs in the
-  published dataset, confirmed by the connectors' owner. `ulta_ae` has no offers, so it is left
-  out and its links stay null. A typo nulls every link without an error, which is why §8 checks
-  one. For two or more pairs, the commas clash with `--set-env-vars`. Switch the delimiter:
+  Today's value (set on `pi-api-00004-9b6`, 2026-10-01) is
+  `sephora_me=www.sephora.me,ulta_ae=www.ulta.ae`. A redeploy that changes only the image keeps
+  it: never pass `--set-env-vars` for an image-only deploy. A typo nulls every link without an
+  error, which is why §8 checks one. For two or more pairs, the commas clash with
+  `--set-env-vars`. Switch the delimiter:
   `--set-env-vars="^@^PI_API_EVIDENCE_HOSTS=a=x.example,b=y.example@PI_API_BUCKET=..."`.
 - **Card thumbnails** (API 1.3.0) need `PI_API_IMAGE_HOSTS`, in the same format: the hosts the
-  dashboard may hotlink images from. Today's value is `sephora_me=img-product.sephora.me`, the
-  one host in the Hosting CSP `img-src`. Without it every `ProductCard.image` is null.
+  dashboard may hotlink images from. Today's value is
+  `sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com`, the two external hosts in the
+  Hosting CSP `img-src` (decision log, 2026-10-01). Without it every `ProductCard.image` is null.
 - **`--allow-unauthenticated` is deliberate.** Hosting rewrites call the service without an IAM
   identity, so `allUsers` gets `run.invoker`. Every route, unknown paths included, verifies the
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
@@ -186,9 +192,9 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
   another from the published file (stored gzip-encoded; `gunzip -cf` also passes plain JSON):
   `gcloud storage cat gs://$BUCKET/datasets/ae/beauty/latest.json | gunzip -cf | jq -r '[.products[] | select(.offers.sephora_me.url) | .id][0]'`.
 - **Negative check:** an offer from a retailer that is not in `PI_API_EVIDENCE_HOSTS`, or whose url
-  is on another host, must have `evidence.url: null`. Today no such offer exists (`ulta_ae` has
-  none), so this is covered by the pi_api tests from #72. Once a second retailer has offers, run
-  the same `GET` on one of its ids before adding its host, and expect null.
+  is on another host, must have `evidence.url: null`. Both live retailers (`sephora_me`,
+  `ulta_ae`) are listed, so this is covered by the pi_api tests from #72. Before adding a new
+  retailer's host, run the same `GET` on one of its ids and expect null.
 - Check the describe output: `autoscaling.knative.dev/maxScale: '3'`, no `minScale` (or 0), no
   Cloud SQL or VPC annotations, the `pi-api@` account, memory 1Gi, timeout 30.
 

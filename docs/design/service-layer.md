@@ -78,7 +78,7 @@ versioned snapshots.
 
   A document that fails validation is **never served**. The previous good generation stays live,
   and if there is none the endpoint returns `503 data_unavailable`.
-- **Per-source files (API 1.5.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
+- **Per-source files (API 1.7.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
   `PI_API_DATASETS` entry may be `source=path` instead of a bare path. Each source (a retailer id)
   is then served only from its own file. The assigned files of one scope are composed into **one
   view** by `pi_dataset.compose`, so `select()` sees one dataset per scope, not several. Each
@@ -94,7 +94,7 @@ versioned snapshots.
     edges come only from a file that holds both retailers, so no edge is made across files.
   - A bare path in the same scope as a composed view is two datasets and stays
     `422 ambiguous_dataset`; don't mix the two forms in one scope.
-  - **Per-source as-of (API 1.6.0).** A source whose file ends before the view's last date is
+  - **Per-source as-of (API 1.8.0).** A source whose file ends before the view's last date is
     *stale*. Latest-date reads (`/compare`, `/promotions` and `/availability` with no `date`,
     `/summary`, `/products`, `/products/{id}` and the matching exports) read it at its own last
     date: `pi_dataset.compose.latest` builds that projection once per generation. Every response
@@ -378,6 +378,9 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     (as built: `evidence.url`, null unless it is https on one of that retailer's hosts in
     `PI_API_EVIDENCE_HOSTS`; the FE checks only the scheme),
     `early`, `capturedAt`, `availability`;
+  - `shadeCount` is valid on its own. `meta.capabilities.shades = false` means no shade list
+    (`shades[]`) is served, never "no shades": Sephora publishes a count on about 7,378 offers
+    with no list;
   - `gap {gapAmount: Money, gapPct, cheaper, convention} | null`, with `gapExcludedReason` when
     null;
   - `match {class, reviewState, confidence, rationale}`.
@@ -527,6 +530,41 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     count, generation and apiVersion, and never row content. It goes to the project's default
     `_Default` bucket (30-day retention, within the free allotment). A longer retention sink needs
     the owner's approval and is not proposed.
+
+### Imported retailers (API 1.5.0, `pi_api.dq`)
+
+`ulta_ae` comes from a one-off import, not from PI's collection. Its stored rows and files are
+never changed. At load, once per generation, `pi_api` serves a corrected copy:
+
+- **Was-prices.** Its `regular` series is cleared, so no regular price, discount or `promoPct`
+  is shown. Its promotion share is withheld with reason `was_price_unverified` (summary
+  `withheld[]`, `/v1/promotions` `retailers[].reason`), never measured and never 0%.
+- **Import date.** Its `capturedAt` is the import time. `/v1/summary` serves its `freshness` as
+  `status: snapshot` with `cutoff` = the import time, never `fresh`.
+- **Caveats.** A response involving it carries, in this order, `was_price_unverified` (endpoints
+  showing prices or promotions), `snapshot_import_date` ("ulta_ae: snapshot imported <date>,
+  capture date unknown.") and `parent_listings_included`. "Involving" is the retailer or
+  contexts the request names (`retailer`, the `retailers` pair, `missing_at`/`present_at`), or
+  for a product and its history the contexts with offers or series; a request naming none
+  involves every retailer. The import's aggregate-parent listings are not removed here (the
+  served document has no parent marker). The demo export drops them (#133), so a file
+  exported before that change still includes them.
+
+- **Cutoff (API 1.5.1).** `meta.cutoff` is served as the latest `capturedAt` of the collected
+  (non-imported) offers, so `/meta`, every envelope's `meta.cutoff` and a collected context's
+  `/summary` freshness never show the import time; if every offer is imported, the file's cutoff
+  is kept and `snapshot_import_date` says so. A collected context's `/summary` `asOf` is capped
+  at that cutoff's day, and `/summary` without `retailer` picks a collected context.
+  `meta.dates` and the series are left as published.
+- **Import day and per-source views (API 1.7.0).** The `snapshot_import_date` `<date>` is the
+  import's local day in the market time zone, the day `meta.dates` count in (an import at
+  21:15Z is 1 October in Dubai). The view applies to every served view: a whole file, and a
+  composed per-source view after composition from the unchanged files. `/meta` `sources[].cutoff`
+  is each source's own latest `capturedAt` (the file's cutoff only for a source without
+  offers), and a collected source's is never after the served `meta.cutoff`, so in a mixed file
+  only the imported source shows the import time.
+
+A dataset without an imported retailer is served as the same object, byte for byte.
 
 ## 7. Metric rules (owned by `pi_metrics`)
 

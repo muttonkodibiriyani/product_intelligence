@@ -4,6 +4,9 @@ The numbers come from ``pi_metrics.summary``, computed once per snapshot generat
 context and cached. This module adds what depends on the request or the deployment: the
 snapshot's freshness at request time and the ``topDiscounts`` thumbnails, which follow the
 ``ProductCard.image`` rules (an https URL on the retailer's ``PI_API_IMAGE_HOSTS``, else null).
+An imported retailer's freshness is a ``snapshot`` of its import date (API 1.5.0). The default
+context is a collected one, and a collected context's ``asOf`` and freshness never come from an
+import (API 1.5.1).
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from pydantic import Field
 
 from pi_api.analytics import RetailerId
 from pi_api.catalog import EvidenceHosts, ScopeQuery, card_image
+from pi_api.dq import collected_day
 from pi_api.source import Loaded
 from pi_dataset import ContractModel
 from pi_metrics import Metric, view
@@ -44,10 +48,13 @@ class FreshnessStatus(StrEnum):
     FRESH = "fresh"
     AGING = "aging"
     STALE = "stale"
+    #: An imported retailer (API 1.5.0): ``cutoff`` is the import date, the capture date is
+    #: unknown, so the data is never called fresh however recent the import.
+    SNAPSHOT = "snapshot"
 
 
 class Freshness(ContractModel):
-    #: The snapshot's cutoff (``meta.cutoff``).
+    #: The snapshot's cutoff (``meta.cutoff``); for a ``snapshot``, when it was imported.
     cutoff: datetime
     #: Whole days from the cutoff to the request.
     age_days: int
@@ -103,14 +110,18 @@ class SummaryCache:
 
     def get(self, loaded: Loaded, retailer: str | None) -> Metric[Summary]:
         ds = loaded.current
-        ctx = (default_context(ds) if retailer is None else view.context(ds, retailer)).id
+        ctx = (
+            default_context(ds, loaded.unverified)
+            if retailer is None
+            else view.context(ds, retailer)
+        ).id
         key = (loaded.generation, ctx)
         with self._lock:
             hit = self._entries.get(key)
             if hit is not None:
                 self._entries.move_to_end(key)
                 return hit
-        metric = _with_images(loaded, summary(ds, ctx), self._images)
+        metric = _with_images(loaded, summary(ds, ctx, loaded.unverified), self._images)
         with self._lock:
             self._entries[key] = metric
             self._entries.move_to_end(key)
@@ -134,13 +145,34 @@ def own_source(loaded: Loaded, metric: Metric[Summary]) -> tuple[Metric[Summary]
     return metric.model_copy(update={"data": data, "as_of": own.last_date}), own.cutoff
 
 
-def summary_view(metric: Metric[Summary], cutoff: datetime, now: datetime) -> Metric[SummaryView]:
-    data = SummaryView(**dict(metric.data), freshness=freshness(cutoff, now))
+def _freshness(loaded: Loaded, ctx: str, cutoff: datetime, now: datetime) -> Freshness:
+    for shop in loaded.imported:
+        if ctx in shop.contexts:
+            age = max((now - shop.imported_at).days, 0)
+            return Freshness(cutoff=shop.imported_at, age_days=age, status=FreshnessStatus.SNAPSHOT)
+    return freshness(cutoff, now)
+
+
+def summary_view(
+    metric: Metric[Summary], loaded: Loaded, cutoff: datetime, now: datetime
+) -> Metric[SummaryView]:
+    """``cutoff`` is the context's own (``own_source``): a collected one's ``asOf`` is never
+    after its day, and an imported one's freshness is its import snapshot."""
+    ds = loaded.dataset
+    ctx = metric.data.retailer
+    time_zone = ds.market_of(view.context(ds, ctx).retailer).time_zone
+    as_of = (
+        metric.as_of
+        if ctx in loaded.unverified
+        else collected_day(loaded.imported, metric.as_of, cutoff, time_zone)
+    )
+    fields = dict(metric.data) | {"as_of": as_of}
+    data = SummaryView(**fields, freshness=_freshness(loaded, ctx, cutoff, now))
     return Metric[SummaryView](
         status=metric.status,
         data=data,
         reason=metric.reason,
         cohort=metric.cohort,
         caveats=metric.caveats,
-        as_of=metric.as_of,
+        as_of=as_of,
     )

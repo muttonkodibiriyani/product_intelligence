@@ -7,8 +7,8 @@ import { productHref } from '../explore/product-table';
 import { GapView } from '../ui/pair';
 import { Money } from '../ui/money';
 
-const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
-const TD = 'px-3 py-2 align-top';
+const TH = 'th whitespace-nowrap';
+const TD = 'px-3 py-2.5 align-top';
 
 /** Every product either side sells, largest gaps first; one not counted says why. */
 export function CompareRows({
@@ -22,12 +22,9 @@ export function CompareRows({
 }) {
   const t = useTranslations('compare');
   const locale = useLocale();
-  if (data.rows.length === 0)
-    return (
-      <p className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink-2">{t('noRows')}</p>
-    );
+  if (data.rows.length === 0) return <p className="panel px-4 py-3 text-sm text-ink-2">{t('noRows')}</p>;
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto panel">
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>

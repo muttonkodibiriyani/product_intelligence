@@ -14,6 +14,7 @@ PARAMS = {
     "base": "M",
     "other": "Medium",
     "pairs": "7",
+    "date": "2026-09-30",
     "asOf": "2026-09-22",
 }
 
