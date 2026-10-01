@@ -3,9 +3,9 @@
  * Cell / Coverage / UnmappedPath), which lib/api/category-compare.ts reads into the app's model.
  *
  * SAMPLE DATA: the product counts per bucket are the live Sephora/Ulta counts at the time of
- * writing; every price (median, mean, quartiles, min, max, gap) is made up to be plausible in AED,
- * and Ulta's concealer side is overridden to n = 3 so the too-few path is exercised. The app never
- * ships this file.
+ * writing (none is too few today); every price (median, mean, quartiles, min, max, gap) is made up
+ * to be plausible in AED. A test that needs a too-few side passes its own counts (`THIN`). The app
+ * never ships this file.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -32,11 +32,16 @@ const ROWS: Record<BucketKey, { n: [number, number]; median: [number, number]; l
   body: { n: [618, 440], median: [110, 98], label: ['Body', 'الجسم'] },
   cheek: { n: [174, 118], median: [140, 150], label: ['Cheek', 'الخدود'] },
   foundation: { n: [136, 135], median: [165, 160], label: ['Foundation', 'كريم الأساس'] },
-  concealer: { n: [104, 3], median: [110, 95], label: ['Concealer', 'الكونسيلر'] },
+  concealer: { n: [104, 67], median: [110, 95], label: ['Concealer', 'الكونسيلر'] },
   other: { n: [2486, 1870], median: [95, 88], label: ['Other', 'أخرى'] },
 };
 
 const MIN_COHORT = 5;
+
+/** Per-bucket counts (base, other) that replace the live ones. */
+export type Counts = Partial<Record<BucketKey, [number, number]>>;
+/** Ulta's concealer side cut to n = 3, below the minimum cohort: the too-few path. */
+export const THIN: Counts = { concealer: [104, 3] };
 
 /** A wire Cell with a plausible spread: quartiles at ±35 %, whiskers at ÷4 and ×6. */
 function cell(retailer: string, n: number, median: number, withMean = true) {
@@ -68,9 +73,10 @@ function cell(retailer: string, n: number, median: number, withMean = true) {
 }
 
 /** The CategoryComparison for a pair, rows ranked by the smaller count as the API sends them. */
-export function categoryCompareData(base = 'shop_a', other = 'shop_b') {
+export function categoryCompareData(base = 'shop_a', other = 'shop_b', counts: Counts = {}) {
+  const nOf = (k: BucketKey) => counts[k] ?? ROWS[k].n;
   const rows = BUCKETS.map((key) => {
-    const r = ROWS[key];
+    const r = { ...ROWS[key], n: nOf(key) };
     const a = cell(base, r.n[0], r.median[0]);
     // 'body' has no mean on the other side, so the UI's "omit a null mean" path is covered too.
     const b = cell(other, r.n[1], r.median[1], key !== 'body');
@@ -94,7 +100,7 @@ export function categoryCompareData(base = 'shop_a', other = 'shop_b') {
     };
   });
   rows.sort((x, y) => Math.min(y.base.n, y.other.n) - Math.min(x.base.n, x.other.n));
-  const total = (i: 0 | 1) => BUCKETS.reduce((s, k) => s + ROWS[k].n[i], 0);
+  const total = (i: 0 | 1) => BUCKETS.reduce((s, k) => s + nOf(k)[i], 0);
   const coverage = (retailer: string, i: 0 | 1, unmapped: number, noBreadcrumb: number) => {
     const mapped = total(i);
     return {
@@ -103,8 +109,8 @@ export function categoryCompareData(base = 'shop_a', other = 'shop_b') {
       mapped,
       unmapped,
       noBreadcrumb,
-      otherBucket: ROWS.other.n[i],
-      otherPct: ((ROWS.other.n[i] / mapped) * 100).toFixed(1),
+      otherBucket: nOf('other')[i],
+      otherPct: ((nOf('other')[i] / mapped) * 100).toFixed(1),
     };
   };
   return {
@@ -125,10 +131,10 @@ export function categoryCompareData(base = 'shop_a', other = 'shop_b') {
 }
 
 /** The whole envelope, with the golden /meta's meta block and the pair-scoped caveats. */
-export function categoryCompareBody(base = 'shop_a', other = 'shop_b') {
+export function categoryCompareBody(base = 'shop_a', other = 'shop_b', counts: Counts = {}) {
   return {
     status: 'ok',
-    data: categoryCompareData(base, other),
+    data: categoryCompareData(base, other, counts),
     meta: {
       ...goldenMeta,
       endpoint: '/api/v1/category-compare',

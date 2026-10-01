@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { categoryCompareBody, categoryCompareData } from '@/e2e/category-compare-fixture';
+import { THIN, categoryCompareBody, categoryCompareData } from '@/e2e/category-compare-fixture';
 import { BUCKETS, parseCategoryCompare, type Bucket, type CategoryCompare } from '@/lib/api/category-compare';
 import { ApiError } from '@/lib/api/client';
 import type { Envelope } from '@/lib/api/types';
@@ -29,9 +29,9 @@ const pair = {
   name: (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id,
 };
 
-const parsed = () => parseCategoryCompare(categoryCompareData())!;
+const parsed = () => parseCategoryCompare(categoryCompareData('shop_a', 'shop_b', THIN))!;
 const envelope = (): Envelope<CategoryCompare> => {
-  const body = categoryCompareBody();
+  const body = categoryCompareBody('shop_a', 'shop_b', THIN);
   return { ...body, data: parseCategoryCompare(body.data) } as unknown as Envelope<CategoryCompare>;
 };
 type Q = Parameters<typeof pairState<CategoryCompare>>[0];
@@ -52,7 +52,7 @@ const text = (el: Element | null | undefined) => el?.textContent ?? '';
 
 describe('parseCategoryCompare', () => {
   it('reads a good body into the nine buckets in the fixed order, whatever order the API ranked them', () => {
-    const raw = categoryCompareData();
+    const raw = categoryCompareData('shop_a', 'shop_b', THIN);
     expect(raw.rows.map((r) => r.key)).not.toEqual([...BUCKETS]);
     const d = parsed();
     expect(d.retailers).toEqual(['shop_a', 'shop_b']);
@@ -92,7 +92,7 @@ describe('parseCategoryCompare', () => {
   });
 
   it('rejects a body that is not the contract', () => {
-    const good = categoryCompareData();
+    const good = categoryCompareData('shop_a', 'shop_b', THIN);
     expect(parseCategoryCompare(null)).toBeNull();
     expect(parseCategoryCompare([])).toBeNull();
     expect(parseCategoryCompare({ ...good, level: 'subcategory' })).toBeNull();
@@ -102,7 +102,7 @@ describe('parseCategoryCompare', () => {
   });
 
   it('fills a missing row as too few on both sides, with nothing dropped', () => {
-    const good = categoryCompareData();
+    const good = categoryCompareData('shop_a', 'shop_b', THIN);
     const d = parseCategoryCompare({ ...good, rows: good.rows.filter((r) => r.key !== 'lips') })!;
     expect(d.buckets).toHaveLength(9);
     const lips = d.buckets[3]!;
@@ -122,7 +122,7 @@ describe('parseCategoryCompare', () => {
   });
 
   it('reads a blocked retailer as blocked, not too few, and withholds the gap', () => {
-    const good = categoryCompareData();
+    const good = categoryCompareData('shop_a', 'shop_b', THIN);
     const row = good.rows.find((r) => r.key === 'lips')!;
     const blockedRow = {
       ...row,
@@ -161,13 +161,12 @@ describe('CategoryCompareCard', () => {
     const concealer = rows[7]!;
     expect(text(concealer)).toContain('too few (n = 3)');
     const cells = within(concealer).getAllByRole('cell');
-    // n, median, range for Shop A; n and the too-few note (spanning median + range) for Shop B; then the chip.
-    expect(cells).toHaveLength(6);
-    expect(text(cells[3])).toContain('3');
-    expect(text(cells[4])).toContain('too few (n = 3)');
-    expect(within(cells[4]!).queryByRole('img', { hidden: true })).toBeNull();
-    expect(cells[4]!.querySelector('svg')).toBeNull();
-    expect(text(cells[5])).toContain('–');
+    // n, median, range for Shop A; one too-few note across Shop B's three columns, its n said once; then the chip.
+    expect(cells).toHaveLength(5);
+    expect(cells[3]!.getAttribute('colspan')).toBe('3');
+    expect(text(cells[3])).toBe('too few (n = 3)');
+    expect(cells[3]!.querySelector('svg')).toBeNull();
+    expect(text(cells[4])).toBe('–');
     expect(screen.getByText('Full catalogues · 9 shared categories · 30 Sept 2026')).toBeTruthy();
     expect(await screen.findByTestId('bucket-chart')).toBeTruthy();
   });
@@ -218,7 +217,7 @@ describe('CategoryCompareCard', () => {
   });
 
   it('shows the blocked side as withheld, in the reason wording, not as too few', () => {
-    const good = categoryCompareData();
+    const good = categoryCompareData('shop_a', 'shop_b', THIN);
     const row = good.rows.find((r) => r.key === 'lips')!;
     const blocked = {
       ...good,
@@ -233,7 +232,7 @@ describe('CategoryCompareCard', () => {
       ),
     };
     const env = {
-      ...categoryCompareBody(),
+      ...categoryCompareBody('shop_a', 'shop_b', THIN),
       data: parseCategoryCompare(blocked),
     } as unknown as Envelope<CategoryCompare>;
     show(pairState(ready(env), (d) => d.buckets.length > 0));

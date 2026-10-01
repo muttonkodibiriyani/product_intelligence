@@ -89,8 +89,8 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
   /** The cheaper chip, or a muted dash when the row has no gap. */
   const chip = (b: Bucket) => {
     if (b.status !== 'ok' || b.gapPct === null) return <span className="text-ink-2">–</span>;
-    if (b.cheaper === 'same' || Math.abs(Number(b.gapPct)) < 1)
-      return <span className="pill bg-surface-2 text-ink-2">{t('same')}</span>;
+    // The API decides when two medians are the same; its verdict is not second-guessed here.
+    if (b.cheaper === 'same') return <span className="pill bg-surface-2 text-ink-2">{t('same')}</span>;
     const who = b.cheaper ?? (Number(b.gapPct) > 0 ? pair.base : pair.other);
     const tone = TONE[ids.indexOf(who)] ?? TONE[0];
     return (
@@ -152,13 +152,12 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
                 </th>
                 {ids.map((id, i) => {
                   const s = b.sides[id]!;
+                  // No figures: one cell across n, median and range, saying why (its n is in the note).
                   if (s.status !== 'ok')
                     return (
-                      <SideCells key={id} n={s.status === 'blocked' ? null : s.n} locale={locale}>
-                        <td colSpan={2} className="py-2 pe-3 text-ink-2">
-                          {sideNote(s)}
-                        </td>
-                      </SideCells>
+                      <td key={id} colSpan={3} className="py-2 pe-3 text-ink-2">
+                        {sideNote(s)}
+                      </td>
                     );
                   return (
                     <SideCells key={id} n={s.n} locale={locale}>
@@ -191,7 +190,7 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
                   <div key={id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
                     <dt className={`pill ${TONE[i]}`}>{pair.name(id)}</dt>
                     <dd className="text-xs text-ink-2 tabular-nums">
-                      {s.status === 'blocked' ? null : `${t('n')} = ${formatCount(s.n, locale)}`}
+                      {s.status === 'ok' ? `${t('n')} = ${formatCount(s.n, locale)}` : null}
                     </dd>
                     <dd className="min-w-0 flex-1 tabular-nums">
                       {s.status === 'ok' ? figures(s) : <span className="text-ink-2">{sideNote(s)}</span>}
@@ -280,11 +279,11 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
   );
 }
 
-/** The n cell then whatever the side's figures are; the count is never shown as 0 for a blocked side. */
-function SideCells({ n, locale, children }: { n: number | null; locale: string; children: ReactNode }) {
+/** The n cell then the side's figures. */
+function SideCells({ n, locale, children }: { n: number; locale: string; children: ReactNode }) {
   return (
     <>
-      <td className="py-2 pe-3 text-ink-2 tabular-nums">{n === null ? '–' : formatCount(n, locale)}</td>
+      <td className="py-2 pe-3 text-ink-2 tabular-nums">{formatCount(n, locale)}</td>
       {children}
     </>
   );
