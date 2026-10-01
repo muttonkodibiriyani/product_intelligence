@@ -32,6 +32,11 @@ export const EXCLUDED: readonly { readonly pattern: RegExp; readonly reason: str
     reason:
       "page bootstrap (attribute sets, labels, dates); coverage_status covers retailers and freshness",
   },
+  {
+    pattern: /^\/api\/v1\/catalogues\//,
+    reason:
+      "SKU galleries and identity links for the product page (display only); no prices or counts to answer with",
+  },
 ];
 
 const METHODS = ["get", "post", "put", "patch", "delete"];

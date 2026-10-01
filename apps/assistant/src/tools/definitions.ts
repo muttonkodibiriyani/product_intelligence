@@ -416,6 +416,32 @@ export const assortmentBreadth = defineTool({
   view: summaryView(["products", "priced", "brands", "categories"], undefined),
 });
 
+export const categoryCompare = defineTool({
+  name: "category_compare",
+  version: "1",
+  description:
+    "Category-to-category prices between two retailers (base and other, ids from " +
+    "coverage_status) across both full catalogues on the latest date. No product matching: " +
+    "for like-for-like pairs use compare. level bucket (default) is the nine top-level " +
+    "categories; common is the finer taxonomy read from retailer breadcrumbs. Each row has " +
+    "each side's n and price stats (median, mean, p25, p75, min, max) and gap {amount, pct, " +
+    "cheaper} between the two medians. A side with fewer than minCohort products has its " +
+    "prices null and the row has no gap (gapReason says why); say there is not enough data, " +
+    "never 0. A category gap reflects each retailer's range in that category, not the same " +
+    "items being cheaper; say so. coverage gives each side's priced, mapped and unmapped counts.",
+  minRole: "viewer",
+  input: z
+    .object({ retailers: retailerPair, level: z.enum(["bucket", "common"]).optional() })
+    .strict(),
+  request: (input) => get("/category-compare", input),
+  // The unmapped breadcrumb list is for writing taxonomy rules (retailer text, unbounded); the
+  // answer keeps only its count, unmappedPaths.
+  view: (data) => {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return { data };
+    return { data: Object.fromEntries(Object.entries(data).filter(([key]) => key !== "unmapped")) };
+  },
+});
+
 export const TOOLS = [
   searchProducts,
   getProduct,
@@ -433,4 +459,5 @@ export const TOOLS = [
   brandPositioning,
   categoryMix,
   assortmentBreadth,
+  categoryCompare,
 ] as const;

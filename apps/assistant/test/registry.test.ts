@@ -337,3 +337,88 @@ describe("ToolRegistry", () => {
     expect(() => registry(api, [adminOnly, adminOnly])).toThrow("duplicate");
   });
 });
+
+describe("category_compare (API 1.8.0)", () => {
+  const aed = (amount: string) => ({ amount, currency: "AED", minor: Number(amount) * 100 });
+  const cell = (n: number, median: string | null) => ({
+    n,
+    median: median === null ? null : aed(median),
+    mean: null,
+    p25: null,
+    p75: null,
+    min: null,
+    max: null,
+    reason: median === null ? "cohort_too_small" : null,
+  });
+  // No zero anywhere, so "0.00" can only be supported by a null price read as zero.
+  const side = { priced: 40, mapped: 35, unmapped: 2, noBreadcrumb: 3, otherBucket: 1 };
+  const DATA = {
+    base: "north",
+    other: "south",
+    level: "bucket",
+    minCohort: 5,
+    taxonomy: "taxonomy@1",
+    convention: "gap compares the two cells' medians",
+    rows: [
+      {
+        key: "skincare",
+        label: { en: "Skincare", ar: "العناية بالبشرة" },
+        base: cell(12, "80.00"),
+        other: cell(9, "96.00"),
+        shared: true,
+        gap: { amount: aed("16.00"), pct: "20.0", cheaper: "base" },
+        gapReason: null,
+      },
+      {
+        key: "fragrance",
+        label: { en: "Fragrance", ar: "العطور" },
+        base: cell(3, null),
+        other: cell(7, "210.00"),
+        shared: true,
+        gap: null,
+        gapReason: "cohort_too_small",
+      },
+    ],
+    coverage: {
+      base: { retailer: "north", ...side, otherPct: "2.5" },
+      other: { retailer: "south", ...side, otherPct: null },
+    },
+    unmapped: [{ retailer: "south", path: [INJECTION], reason: "no_rule", n: 2 }],
+    unmappedPaths: 1,
+  };
+
+  it("keeps rows and counts, drops the breadcrumb list, and never makes a too-few side 0", async () => {
+    const api = new FakeApi(() => okEnvelope(DATA));
+    const result = (await registry(api).run(
+      "category_compare",
+      { ...PAIR, level: "bucket" },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(api.calls[0]?.request).toEqual({
+      method: "GET",
+      path: "/api/v1/category-compare",
+      query: { retailers: ["north,south"], level: ["bucket"] },
+    });
+    expect(result.status).toBe("ok");
+    const data = result.data as Record<string, unknown>;
+    expect(data).not.toHaveProperty("unmapped");
+    expect(data.unmappedPaths).toBe(1);
+    expect(JSON.stringify(result)).not.toContain(INJECTION);
+    const rows = data.rows as { gapReason: unknown; base: { median: unknown } }[];
+    expect(rows[1]?.gapReason).toBe("cohort_too_small");
+    expect(rows[1]?.base.median).toBeNull();
+    expect(verifyAnswerNumbers("Skincare: median 80.00 vs 96.00, a 20.0% gap.", [result]).ok).toBe(
+      true,
+    );
+    expect(verifyAnswerNumbers("Fragrance at north: median 0.00.", [result]).ok).toBe(false);
+  });
+
+  it("rejects a same-retailer pair and an unknown level", () => {
+    const tool = TOOLS.find((t) => t.name === "category_compare");
+    expect(tool?.input.safeParse({ retailers: { base: "north", other: "north" } }).success).toBe(
+      false,
+    );
+    expect(tool?.input.safeParse({ ...PAIR, level: "leaf" }).success).toBe(false);
+  });
+});

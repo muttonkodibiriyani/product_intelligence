@@ -39,6 +39,8 @@ export const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
   "reviewState",
   "excludedReason",
   "gapExcludedReason",
+  // CategoryRow.gapReason (API 1.8.0): the pi_metrics reason a category row has no gap.
+  "gapReason",
   "summaryUnavailable",
   "label",
   "unit",

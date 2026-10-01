@@ -23,12 +23,14 @@ const NEW_IN_S6 = new Set([
   "brand_positioning",
   "category_mix",
   "assortment_breadth",
+  // API 1.8.0 (#148).
+  "category_compare",
 ]);
 
 const VERSION_BUMPS: Readonly<Record<string, string>> = { get_product: "3", compare: "4" };
 
 describe("tool definitions", () => {
-  it("has sixteen uniquely named, viewer-level, read-only tools", () => {
+  it("has seventeen uniquely named, viewer-level, read-only tools", () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual([
       "search_products",
       "get_product",
@@ -46,6 +48,7 @@ describe("tool definitions", () => {
       "brand_positioning",
       "category_mix",
       "assortment_breadth",
+      "category_compare",
     ]);
     for (const tool of TOOLS) {
       expect(tool.minRole).toBe("viewer");
