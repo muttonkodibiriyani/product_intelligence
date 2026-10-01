@@ -192,7 +192,7 @@ def seed_config() -> None:
 
 def update_config(data: dict[str, Any], tok: str | None, path: str = CONFIG) -> int:
     """A masked update, as the kill switch sends it (only the listed fields change)."""
-    params = [("updateMask.fieldPaths", key) for key in data] + [("currentDocument.exists", "true")]
+    params = {"updateMask.fieldPaths": list(data), "currentDocument.exists": "true"}
     headers = {"Authorization": f"Bearer {tok}"} if tok else {}
     return httpx.patch(
         _doc_url(path), params=params, headers=headers, json={"fields": _fields(data)}, timeout=10
