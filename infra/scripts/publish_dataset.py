@@ -1,10 +1,15 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["firebase-admin>=6.5", "pi-dataset", "pi-core"]
+# dependencies = [
+#     "firebase-admin>=6.5", "pi-dataset", "pi-core", "pi-profiles", "pi-metrics", "pi-api",
+# ]
 #
 # [tool.uv.sources]
 # pi-dataset = { path = "../../packages/pi_dataset", editable = true }
 # pi-core = { path = "../../packages/pi_core", editable = true }
+# pi-profiles = { path = "../../packages/pi_profiles", editable = true }
+# pi-metrics = { path = "../../packages/pi_metrics", editable = true }
+# pi-api = { path = "../../packages/pi_api", editable = true }
 # ///
 """Publish a pi.dataset JSON file to the demo app (Storage + a Firestore meta mirror).
 
@@ -16,6 +21,10 @@ and mirrors meta to Firestore.
 - v2 (ADR-0007 §6): checked by pi_dataset's strict ``load_dataset``; prefix
   ``datasets/<country>/<scope>`` (e.g. datasets/ae/beauty), meta in demo_meta/v2_<country>_<scope>.
   v1 stays readable until the dashboard moves to v2, so both are published side by side.
+  A v2 file must also load through pi-api's own serving parse (``pi_api.source.parse``, which
+  upgrades it to v3). pi-api skips a dataset it can't load, so uploading one would leave the API
+  with no data: such a file is held, never uploaded (decision 2026-10-01, after the v3 upgrade
+  refused shared-url size variants).
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
         --project productintelligence-beeb3 dataset.json [--dry-run] [--allow-test]
@@ -75,9 +84,23 @@ def validate_v2(raw: str, *, allow_test: bool) -> tuple[Any, list[str]]:
     from pi_dataset import DatasetError, load_dataset  # noqa: PLC0415 (v1 runs without it)
 
     try:
-        return load_dataset(raw, allow_test=allow_test), []
+        dataset = load_dataset(raw, allow_test=allow_test)
     except DatasetError as exc:
         return None, list(exc.errors)
+    errors = serve_check(raw, allow_test=allow_test)
+    return (None, errors) if errors else (dataset, [])
+
+
+def serve_check(raw: str, *, allow_test: bool) -> list[str]:
+    """pi-api's own load of the file (v2 upgraded to v3); empty when the API can serve it."""
+    from pi_api.source import parse  # noqa: PLC0415 (v1 runs without it)
+
+    try:
+        parse(raw.encode("utf-8"), allow_test=allow_test)
+    except ValueError as exc:  # DatasetError and UpgradeError are ValueErrors
+        problems = getattr(exc, "errors", None) or [str(exc)]
+        return [f"HOLD, pi-api cannot serve this file ({len(problems)}): {p}" for p in problems]
+    return []
 
 
 def package_v2(dataset: Any) -> tuple[bytes, list[str], dict[str, Any], str]:

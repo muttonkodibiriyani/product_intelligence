@@ -177,8 +177,8 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
 - **Evidence links:** signed in, `GET /api/v1/products/s-P10000765-unknown-unknown` → the
   `sephora_me` offer's `evidence.url` is non-null and starts with `https://www.sephora.me/`. If it
   is null, `PI_API_EVIDENCE_HOSTS` is missing or misspelt. If that id has left the dataset, pick
-  another from the published file:
-  `jq -r '[.products[] | select(.offers.sephora_me.url) | .id][0]' <datasets/ae/beauty/latest.json>`.
+  another from the published file (stored gzip-encoded; `gunzip -cf` also passes plain JSON):
+  `gcloud storage cat gs://$BUCKET/datasets/ae/beauty/latest.json | gunzip -cf | jq -r '[.products[] | select(.offers.sephora_me.url) | .id][0]'`.
 - **Negative check:** an offer from a retailer that is not in `PI_API_EVIDENCE_HOSTS`, or whose url
   is on another host, must have `evidence.url: null`. Today no such offer exists (`ulta_ae` has
   none), so this is covered by the pi_api tests from #72. Once a second retailer has offers, run

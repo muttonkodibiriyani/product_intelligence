@@ -8,13 +8,11 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 PINNED = re.compile(r"firebase-tools@(\$\(FIREBASE_TOOLS_VERSION\)|[^\s`)\"']+)")
 # A global `firebase` binary runs whatever version happens to be installed.
-BARE = re.compile(r"(?<![\w@/.-])firebase (deploy|emulators:\w+)")
+BARE = re.compile(r"(?<![\w@/.-])firebase(?:\s|\\)+(deploy|emulators:\w+)\b")
 SKIP = re.compile(r"(^|/)(package-lock\.json|pnpm-lock\.yaml|uv\.lock)$")
 # Files allowed to keep a bare `firebase …` mention, and why. Pinned refs are checked everywhere.
 EXCLUDED = {
-    "apps/web/README.md": "FE-owned prose; the coordinator routes the pin to the FE",
     "apps/assistant/.env.example": "a comment pointing at the design §9.4 command",
-    "infra/tests/test_firebase_tools_pin.py": "this test",
 }
 
 
@@ -66,5 +64,5 @@ def test_no_bare_firebase_cli_invocations() -> None:
 
 def test_exclusions_are_current() -> None:
     texts = _tracked_texts()
-    stale = [rel for rel in EXCLUDED if rel not in texts]
-    assert not stale, f"remove stale EXCLUDED entries: {stale}"
+    stale = [rel for rel in EXCLUDED if rel not in texts or not BARE.search(texts[rel])]
+    assert not stale, f"remove EXCLUDED entries that no longer need it: {stale}"
