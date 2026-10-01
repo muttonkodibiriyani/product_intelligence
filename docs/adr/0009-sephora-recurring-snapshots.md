@@ -104,10 +104,17 @@ have variants at different prices.
    - The gate is the existing publish gate (`infra/scripts/publish_dataset.py`), extended with
      the no-count-drop and newer-cutoff holds that Infra runs by hand today. Infra does that
      extension as an infra PR when this is built.
-   - The host uses a dedicated publisher service account. It can read the run outputs and write
-     `datasets/**` in the Firebase bucket plus Firestore `demo_meta`, with no other roles. Its key
-     is a 0600 file on the host, never in the repo. The nightly path does not use the broad
-     Firebase admin key.
+   - Proposed, **not approved by this ADR**: the host uses a dedicated publisher service account
+     whose key is a 0600 file on the host, never in the repo. The nightly path would then not use
+     the broad Firebase admin key.
+   - Target scope (what IAM can enforce, stated at build time):
+     - read the run outputs, and write `datasets/**` in the Firebase bucket only through an IAM
+       Condition on the object-name prefix;
+     - Firestore `demo_meta`-only is **not** IAM-enforceable. IAM grants database-level roles,
+       and the Admin SDK bypasses security rules. The build PR states the actual Firestore grant,
+       or a separate database, as the residual scope.
+   - Creating any service account or key (this publisher SA and the Scheduler invoker SA) needs
+     the owner's explicit OK at build time.
    - There is no new runtime. There are no tokens in a crontab, the repo or a log.
    - If the agent safety classifier refuses to install the systemd timer, the owner installs the
      unit files from `infra/`, as with the backup cron.
@@ -143,5 +150,6 @@ have variants at different prices.
   - The Crawl Engineer builds the listing parser and fixtures (synthetic only), the product-level
     observation path and the in-job planner.
   - The Deep Coder builds v3 `offer.series.listing`.
-  - Infra builds the service accounts, Scheduler, timer and gate wiring.
+  - Infra builds the Scheduler, timer and gate wiring. The service accounts and key are created
+    only after the owner's explicit OK at build time; this ADR does not approve them.
 - Until the build lands, Sephora history comes only from approved one-off runs.
