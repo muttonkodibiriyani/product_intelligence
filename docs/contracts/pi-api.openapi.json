@@ -1,0 +1,2730 @@
+{
+  "components": {
+    "schemas": {
+      "AdminEvidence": {
+        "additionalProperties": false,
+        "description": "Admins only (design §4): where the observation came from.",
+        "properties": {
+          "capturedAt": {
+            "format": "date-time",
+            "title": "Capturedat",
+            "type": "string"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runid"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "capturedAt",
+          "url",
+          "source",
+          "runId"
+        ],
+        "title": "AdminEvidence",
+        "type": "object"
+      },
+      "AdminOfferView": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailabilityState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "early": {
+            "title": "Early",
+            "type": "boolean"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/AdminEvidence"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "promoPct": {
+            "anyOf": [
+              {
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promopct"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rating"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regular": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "shadeCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shadecount"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Size"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          }
+        },
+        "required": [
+          "retailer",
+          "price",
+          "regular",
+          "promoPct",
+          "rating",
+          "size",
+          "shadeCount",
+          "sku",
+          "early",
+          "availability",
+          "evidence"
+        ],
+        "title": "AdminOfferView",
+        "type": "object"
+      },
+      "AdminProductDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/ProductCard"
+          },
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/AdminOfferView"
+            },
+            "title": "Offers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "card",
+          "offers"
+        ],
+        "title": "AdminProductDetail",
+        "type": "object"
+      },
+      "ApiMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "default": "1.0.0",
+            "title": "Apiversion",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "title": "Filters",
+            "type": "object"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "market": {
+            "title": "Market",
+            "type": "string"
+          },
+          "metricVersion": {
+            "default": "2026-10-01.1",
+            "title": "Metricversion",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint",
+          "generation",
+          "cutoff",
+          "market",
+          "currency",
+          "scope",
+          "filters"
+        ],
+        "title": "ApiMeta",
+        "type": "object"
+      },
+      "AvailabilityState": {
+        "description": "Observed availability of an offer. A failed crawl is never OUT_OF_STOCK (DAT-06).",
+        "enum": [
+          "in_stock",
+          "low_stock",
+          "out_of_stock",
+          "not_deliverable",
+          "removed",
+          "not_observed",
+          "blocked",
+          "unknown"
+        ],
+        "title": "AvailabilityState",
+        "type": "string"
+      },
+      "Capabilities": {
+        "additionalProperties": false,
+        "description": "What this snapshot can answer. All explicit: a consumer never guesses from absence.",
+        "properties": {
+          "campaigns": {
+            "title": "Campaigns",
+            "type": "boolean"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "boolean"
+          },
+          "history": {
+            "title": "History",
+            "type": "boolean"
+          },
+          "images": {
+            "title": "Images",
+            "type": "boolean"
+          },
+          "promotions": {
+            "title": "Promotions",
+            "type": "boolean"
+          },
+          "ratings": {
+            "title": "Ratings",
+            "type": "boolean"
+          },
+          "shades": {
+            "title": "Shades",
+            "type": "boolean"
+          },
+          "sizes": {
+            "title": "Sizes",
+            "type": "boolean"
+          },
+          "stock": {
+            "title": "Stock",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "history",
+          "promotions",
+          "campaigns",
+          "stock",
+          "sizes",
+          "shades",
+          "coverage",
+          "images",
+          "ratings"
+        ],
+        "title": "Capabilities",
+        "type": "object"
+      },
+      "CardMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "string"
+          },
+          "b": {
+            "title": "B",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "matchClass": {
+            "$ref": "#/components/schemas/MatchClass"
+          },
+          "reviewState": {
+            "$ref": "#/components/schemas/ReviewState"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "matchClass",
+          "reviewState",
+          "confidence"
+        ],
+        "title": "CardMatch",
+        "type": "object"
+      },
+      "CategoryNode": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CategoryNode"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string",
+            "x-pi-source-text": true
+          }
+        },
+        "required": [
+          "key",
+          "count"
+        ],
+        "title": "CategoryNode",
+        "type": "object"
+      },
+      "CaveatCode": {
+        "description": "Machine-readable caveats; the API renders their text per locale.",
+        "enum": [
+          "retailer_partial",
+          "early_excluded",
+          "launches_withheld",
+          "removed_unconfirmed",
+          "not_observed_excluded",
+          "history_off",
+          "rating_scale_mixed"
+        ],
+        "title": "CaveatCode",
+        "type": "string"
+      },
+      "CaveatView": {
+        "additionalProperties": false,
+        "properties": {
+          "ar": {
+            "title": "Ar",
+            "type": "string"
+          },
+          "code": {
+            "$ref": "#/components/schemas/CaveatCode"
+          },
+          "en": {
+            "title": "En",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "params",
+          "en",
+          "ar"
+        ],
+        "title": "CaveatView",
+        "type": "object"
+      },
+      "Cohort": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "description",
+          "n"
+        ],
+        "title": "Cohort",
+        "type": "object"
+      },
+      "Coverage": {
+        "additionalProperties": false,
+        "properties": {
+          "retailers": {
+            "items": {
+              "$ref": "#/components/schemas/RetailerCoverage"
+            },
+            "title": "Retailers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "retailers"
+        ],
+        "title": "Coverage",
+        "type": "object"
+      },
+      "Envelope_AdminProductDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdminProductDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[AdminProductDetail]",
+        "type": "object"
+      },
+      "Envelope_Coverage_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Coverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Coverage]",
+        "type": "object"
+      },
+      "Envelope_History_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/History"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[History]",
+        "type": "object"
+      },
+      "Envelope_MetaView_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetaView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[MetaView]",
+        "type": "object"
+      },
+      "Envelope_ProductDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[ProductDetail]",
+        "type": "object"
+      },
+      "Envelope_ProductPage_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductPage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[ProductPage]",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "Evidence": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedAt": {
+            "format": "date-time",
+            "title": "Capturedat",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "capturedAt",
+          "url"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
+      "FacetCount": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string",
+            "x-pi-source-text": true
+          }
+        },
+        "required": [
+          "key",
+          "count"
+        ],
+        "title": "FacetCount",
+        "type": "object"
+      },
+      "Facets": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Brand",
+            "type": "array"
+          },
+          "category": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Category",
+            "type": "array"
+          },
+          "retailer": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Retailer",
+            "type": "array"
+          }
+        },
+        "required": [
+          "brand",
+          "category",
+          "retailer"
+        ],
+        "title": "Facets",
+        "type": "object"
+      },
+      "FieldStatus": {
+        "enum": [
+          "ok",
+          "partial",
+          "not_collected",
+          "not_published",
+          "parse_failure",
+          "blocked"
+        ],
+        "title": "FieldStatus",
+        "type": "string"
+      },
+      "History": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "series": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/HistoryPoint"
+              },
+              "type": "array"
+            },
+            "title": "Series",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "series"
+        ],
+        "title": "History",
+        "type": "object"
+      },
+      "HistoryPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailabilityState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regular": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "price",
+          "regular",
+          "availability"
+        ],
+        "title": "HistoryPoint",
+        "type": "object"
+      },
+      "Localized": {
+        "additionalProperties": false,
+        "properties": {
+          "ar": {
+            "title": "Ar",
+            "type": "string"
+          },
+          "en": {
+            "title": "En",
+            "type": "string"
+          }
+        },
+        "required": [
+          "en",
+          "ar"
+        ],
+        "title": "Localized",
+        "type": "object"
+      },
+      "MatchClass": {
+        "description": "Relationship classes between variants (MAT-01).",
+        "enum": [
+          "exact",
+          "family",
+          "size_normalized",
+          "substitute"
+        ],
+        "title": "MatchClass",
+        "type": "string"
+      },
+      "MetaView": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryNode"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeRef"
+            },
+            "title": "Datasets",
+            "type": "array"
+          },
+          "dates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Dates",
+            "type": "array"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldStatus"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "matchStage": {
+            "title": "Matchstage",
+            "type": "string"
+          },
+          "retailers": {
+            "items": {
+              "$ref": "#/components/schemas/RetailerView"
+            },
+            "title": "Retailers",
+            "type": "array"
+          },
+          "test": {
+            "title": "Test",
+            "type": "boolean"
+          },
+          "vertical": {
+            "title": "Vertical",
+            "type": "string"
+          }
+        },
+        "required": [
+          "datasets",
+          "kind",
+          "vertical",
+          "cutoff",
+          "dates",
+          "matchStage",
+          "retailers",
+          "capabilities",
+          "fields",
+          "categories",
+          "test"
+        ],
+        "title": "MetaView",
+        "type": "object"
+      },
+      "MoneyValue": {
+        "additionalProperties": false,
+        "description": "An exact amount at its currency's ISO 4217 exponent, as text plus integer minor units.",
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "minor": {
+            "title": "Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "minor",
+          "currency"
+        ],
+        "title": "MoneyValue",
+        "type": "object"
+      },
+      "OfferView": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailabilityState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "early": {
+            "title": "Early",
+            "type": "boolean"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "promoPct": {
+            "anyOf": [
+              {
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promopct"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rating"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regular": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "shadeCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shadecount"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Size"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          }
+        },
+        "required": [
+          "retailer",
+          "price",
+          "regular",
+          "promoPct",
+          "rating",
+          "size",
+          "shadeCount",
+          "sku",
+          "early",
+          "availability",
+          "evidence"
+        ],
+        "title": "OfferView",
+        "type": "object"
+      },
+      "ProductCard": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "category": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Category",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "title": "Image",
+            "type": "null"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/CardMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "prices": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MoneyValue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Prices",
+            "type": "object"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Size"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "brand",
+          "name",
+          "category",
+          "size",
+          "prices",
+          "matches"
+        ],
+        "title": "ProductCard",
+        "type": "object"
+      },
+      "ProductDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/ProductCard"
+          },
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/OfferView"
+            },
+            "title": "Offers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "card",
+          "offers"
+        ],
+        "title": "ProductDetail",
+        "type": "object"
+      },
+      "ProductPage": {
+        "additionalProperties": false,
+        "properties": {
+          "facets": {
+            "$ref": "#/components/schemas/Facets"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProductCard"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "nextCursor",
+          "items",
+          "facets"
+        ],
+        "title": "ProductPage",
+        "type": "object"
+      },
+      "ProductSort": {
+        "enum": [
+          "name",
+          "price_asc",
+          "price_desc"
+        ],
+        "title": "ProductSort",
+        "type": "string"
+      },
+      "Rating": {
+        "additionalProperties": false,
+        "description": "The retailer's published rating on its own ``scale`` (e.g. ``\"5\"`` for 0-5 stars).\n\nThe producer never rescales; consumers compare ratings only on the same scale or after\nnormalising ``average / scale`` themselves.",
+        "properties": {
+          "average": {
+            "pattern": "^\\d+(\\.\\d+)?$",
+            "title": "Average",
+            "type": "string"
+          },
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "scale": {
+            "pattern": "^\\d+(\\.\\d+)?$",
+            "title": "Scale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "average",
+          "scale",
+          "count"
+        ],
+        "title": "Rating",
+        "type": "object"
+      },
+      "Reason": {
+        "description": "The closed ``not_enough_data`` reasons (design §5).",
+        "enum": [
+          "capability_off",
+          "field_not_collected",
+          "retailer_blocked",
+          "retailer_partial",
+          "cohort_too_small",
+          "matches_unreviewed",
+          "no_match",
+          "not_in_scope",
+          "currency_mismatch"
+        ],
+        "title": "Reason",
+        "type": "string"
+      },
+      "RetailerCoverage": {
+        "additionalProperties": false,
+        "properties": {
+          "freshness": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "matchedCount": {
+            "title": "Matchedcount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "pattern": "\\S",
+                  "type": "string"
+                },
+                "minProperties": 1,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "productCount": {
+            "title": "Productcount",
+            "type": "integer"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RetailerStatus"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "since",
+          "note",
+          "productCount",
+          "matchedCount",
+          "freshness"
+        ],
+        "title": "RetailerCoverage",
+        "type": "object"
+      },
+      "RetailerStatus": {
+        "description": "Coverage of a retailer in this snapshot. Only ``supported`` backs an absence claim.",
+        "enum": [
+          "supported",
+          "partial",
+          "blocked",
+          "pending",
+          "retired"
+        ],
+        "title": "RetailerStatus",
+        "type": "string"
+      },
+      "RetailerView": {
+        "additionalProperties": false,
+        "properties": {
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "note": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string",
+                  "x-pi-source-text": true
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RetailerStatus"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "country",
+          "status",
+          "since",
+          "note"
+        ],
+        "title": "RetailerView",
+        "type": "object"
+      },
+      "ReviewState": {
+        "description": "Lifecycle of a match edge (MAT-05, MAT-07).",
+        "enum": [
+          "proposed",
+          "approved",
+          "rejected",
+          "locked"
+        ],
+        "title": "ReviewState",
+        "type": "string"
+      },
+      "ScopeRef": {
+        "additionalProperties": false,
+        "properties": {
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "markets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Markets",
+            "type": "array"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "markets",
+          "scope",
+          "cutoff",
+          "generation"
+        ],
+        "title": "ScopeRef",
+        "type": "object"
+      },
+      "Size": {
+        "additionalProperties": false,
+        "description": "The pack size as published, e.g. ``{\"value\": \"50\", \"unit\": \"ml\"}``. Never converted.",
+        "properties": {
+          "unit": {
+            "pattern": "\\S",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^\\d+(\\.\\d+)?$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "unit"
+        ],
+        "title": "Size",
+        "type": "object"
+      },
+      "Status": {
+        "enum": [
+          "ok",
+          "not_enough_data"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "securitySchemes": {
+      "firebase": {
+        "bearerFormat": "Firebase ID token",
+        "description": "Every route, including unknown paths, needs a Firebase ID token carrying a `role` claim (viewer or admin). Cookies are ignored. Every response is `Cache-Control: private, no-store`.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Product Intelligence API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/products/{product_id}": {
+      "get": {
+        "operationId": "get_admin_product_api_v1_admin_products__product_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_AdminProductDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+          }
+        },
+        "summary": "Get Admin Product"
+      }
+    },
+    "/api/v1/coverage": {
+      "get": {
+        "operationId": "get_coverage_api_v1_coverage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retailer",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Retailer",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Coverage_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+          }
+        },
+        "summary": "Get Coverage"
+      }
+    },
+    "/api/v1/meta": {
+      "get": {
+        "operationId": "get_meta_api_v1_meta_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_MetaView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+          }
+        },
+        "summary": "Get Meta"
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "operationId": "get_products_api_v1_products_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Brand",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Category",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retailer",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Retailer",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "matched",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Matched"
+            }
+          },
+          {
+            "in": "query",
+            "name": "priceMin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{1,12}(\\.\\d{1,6})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pricemin"
+            }
+          },
+          {
+            "in": "query",
+            "name": "priceMax",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{1,12}(\\.\\d{1,6})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pricemax"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ProductSort",
+              "default": "name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ProductPage_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+          }
+        },
+        "summary": "Get Products"
+      }
+    },
+    "/api/v1/products/{product_id}": {
+      "get": {
+        "operationId": "get_product_api_v1_products__product_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ProductDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+          }
+        },
+        "summary": "Get Product"
+      }
+    },
+    "/api/v1/products/{product_id}/history": {
+      "get": {
+        "operationId": "get_history_api_v1_products__product_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_History_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+          }
+        },
+        "summary": "Get History"
+      }
+    }
+  },
+  "security": [
+    {
+      "firebase": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
+}

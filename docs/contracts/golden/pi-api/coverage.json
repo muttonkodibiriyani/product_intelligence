@@ -1,0 +1,64 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "retailers": [
+      {
+        "freshness": "2026-09-30",
+        "id": "shop_a",
+        "matchedCount": 10,
+        "name": "Shop A",
+        "note": null,
+        "productCount": 14,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "freshness": "2026-09-30",
+        "id": "shop_b",
+        "matchedCount": 9,
+        "name": "Shop B",
+        "note": null,
+        "productCount": 13,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "freshness": "2026-09-30",
+        "id": "shop_c",
+        "matchedCount": 1,
+        "name": "Shop C",
+        "note": {
+          "en": "Makeup only."
+        },
+        "productCount": 2,
+        "since": "2026-09-01",
+        "status": "partial"
+      },
+      {
+        "freshness": null,
+        "id": "shop_d",
+        "matchedCount": 0,
+        "name": "Shop D",
+        "note": null,
+        "productCount": 0,
+        "since": null,
+        "status": "blocked"
+      }
+    ]
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.0.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "coverage",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

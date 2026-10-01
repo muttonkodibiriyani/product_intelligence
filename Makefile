@@ -1,4 +1,4 @@
-.PHONY: install lint format types test uat uat-status check up down db-shell emulators migrate
+.PHONY: install lint format types test uat uat-status openapi check up down db-shell emulators migrate
 
 install:
 	uv sync
@@ -28,6 +28,11 @@ uat:
 # Regenerate docs/requirements/uat_status.md after adding or implementing UAT cases.
 uat-status:
 	PYTHONPATH=tests uv run python -m uat.report
+
+# Regenerate the pi_api OpenAPI document and its golden responses after an intended change.
+openapi:
+	uv run pi-api openapi > docs/contracts/pi-api.openapi.json
+	PI_API_REGENERATE=1 uv run pytest packages/pi_api/tests/test_contract.py --no-cov -q
 
 # Everything CI runs. Must pass before any PR is merged.
 check: lint types test

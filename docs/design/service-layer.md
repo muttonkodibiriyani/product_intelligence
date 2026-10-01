@@ -82,11 +82,9 @@ versioned snapshots.
   every 60 s: one metadata GET. A new generation loads in the background and swaps in atomically,
   so readers see either the old dataset or the new one, never a mix. `meta.generation` and
   `meta.cutoff` are on every response.
-- **ETag cache.** A response's `ETag` is the hash of the dataset generation, the API version and
-  the canonical request, **and the caller's role and a digest of their scope claims**, so two
-  users who may see different fields or datasets never share a validator. Clients send
-  `If-None-Match` and get `304` while nothing has changed.
-  `Cache-Control: private, max-age=60`, never `public`, because responses depend on the user.
+- **No HTTP caching (S2, superseding the ETag plan).** Every `/api` response, errors included,
+  is `Cache-Control: private, no-store` (hosting requirement 2), so there is no `ETag`/`304` and no
+  `max-age`. Paging stays consistent through cursors bound to the generation (`409 stale_cursor`).
 - **Size.** Today's pilot dataset is a few MB. The budget is ≤ 50 MB of JSON per instance; beyond
   that, history moves to the fact extracts and is read lazily per product. The instance has
   512 MiB.
@@ -273,6 +271,7 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 | `/v1/products` | `search_products` | Search and filter product cards |
 | `/v1/products/{id}` | `get_product` | Card plus per-retailer offers, gap and match |
 | `/v1/products/{id}/history` | – | Price, regular and promo series per retailer |
+| `/v1/admin/products/{id}` | – | Admins only (`403` otherwise): `/v1/products/{id}` plus evidence `source` and `runId`, in separate models |
 | `POST /v1/compare` | `compare` | Pair rows plus summary |
 | `/v1/index` | `index_trend` | Fixed-basket price index points |
 | `/v1/promotions` | `promotions` | Promo share and items |
@@ -283,7 +282,7 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 | `/v1/coverage` | `coverage_status` | Per-retailer coverage and trust |
 | `/v1/matches` | – | Match edges and rationale |
 | `/v1/export/{view}` | – | CSV/JSONL of a view |
-| `/healthz`, `/readyz` | – | Liveness; readiness means a validated dataset is loaded. No auth, no data |
+| ~~`/healthz`, `/readyz`~~ | – | Dropped in S2: no route is unauthenticated, and Cloud Run reserves some `…z` paths. Cloud Run uses a TCP startup probe; `503 data_unavailable` covers "no dataset yet" |
 
 **Common filters** on the list and metric endpoints: `market`, `scope`, `retailers`
 (`<base>,<other>`) or `retailer[]` (N retailers, for coverage, availability and assortment),
@@ -502,8 +501,8 @@ Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of
   - scope claims with enforcement on and off;
   - viewer responses contain no admin-only field (a schema walk);
   - strict inputs return `422`;
-  - `ETag`/`304`, with different ETags for a viewer and an admin (and for different scope
-    claims) on the same request, and a stale cursor returns `409`;
+  - `Cache-Control: private, no-store` on every response (any status, any path), and a stale
+    cursor returns `409`;
   - the `503` path on an invalid dataset;
   - the atomic reload on a generation change (fake storage client).
 - **Contract tests:**
