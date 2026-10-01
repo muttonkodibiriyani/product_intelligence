@@ -155,7 +155,7 @@ are **numbers**.
 |---|---|---|
 | `enabled` | boolean | `false` |
 | `model` | string | `gemini-2.5-flash` |
-| `promptVersion` | string | `chat-2026-10-01.3` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` at switch-on) |
+| `promptVersion` | string | `chat-2026-10-01.3` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` on the deployed commit; re-checked in the section 10 version pre-check) |
 | `priceTableVersion` | string | `2026-09-30-planning` (must equal `version` in `apps/assistant/config/prices.json`) |
 | `caps.monthUsd` | string | `5.00` |
 | `caps.labelMonthUsd.ci` | string | `1.50` |
@@ -341,7 +341,27 @@ Not part of this handover. It will hold:
 - the `functions:assistant:assistantChat` deploy;
 - the web build with `NEXT_PUBLIC_ASSISTANT_ENABLED=true` and `NEXT_PUBLIC_RECAPTCHA_SITE`;
 - the §10.1 checklist re-run;
-- flipping `enabled` to `true`;
+- the version pre-check below, then flipping `enabled` to `true`;
 - a one-question smoke as a viewer, with its metered cost read back.
 
 Its off path is the instant off above, then deleting `assistantChat`.
+
+**Version pre-check (before flipping `enabled`).** The assistant refuses every question with
+`prompt_version_mismatch` (or `price_table_mismatch`) when the config does not match the
+deployed code. The value seeded in section 4 can be stale: each prompt change bumps it. Run this
+in the exact checkout you deployed `assistantChat` from:
+
+```bash
+git rev-parse --short HEAD    # the deployed commit; note it
+grep -o 'PROMPT_VERSION = "[^"]*"' apps/assistant/src/flows/prompt.ts
+grep -o '"version": *"[^"]*"' apps/assistant/config/prices.json
+```
+
+In the Firebase console, set `assistant_config/current.promptVersion` to exactly the quoted
+`PROMPT_VERSION` value, and `priceTableVersion` to exactly the quoted `version` value. Copy each
+one; do not retype it.
+
+**Verify:** both fields equal the grep output character for character, and `enabled` is still
+`false`. Only then flip `enabled`.
+
+**Off:** set `enabled` to `false`. A mismatch only refuses questions, so nothing is spent.
