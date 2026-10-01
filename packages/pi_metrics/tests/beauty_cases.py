@@ -127,8 +127,21 @@ def outputs(convert: Callable[[Dataset], Any]) -> dict[str, Any]:
     for name, ds, call in cases():
         if id(ds) not in converted:
             converted[id(ds)] = convert(ds)
-        result[name] = call(converted[id(ds)]).model_dump(mode="json", by_alias=True)
+        result[name] = _pre_v3(call(converted[id(ds)]).model_dump(mode="json", by_alias=True))
     return result
+
+
+def _pre_v3(output: Any) -> Any:
+    """The output without fields added since v2, so it can equal the pre-v3 golden.
+
+    ``coverage`` rows gained ``contexts`` in ADR-0008 step 4; every other field is unchanged.
+    """
+    retailers = output.get("data", {}).get("retailers") if isinstance(output, dict) else None
+    if isinstance(retailers, list):
+        for row in retailers:
+            if isinstance(row, dict):
+                row.pop("contexts", None)
+    return output
 
 
 def digest(output: Any) -> str:

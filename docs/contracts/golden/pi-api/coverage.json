@@ -4,6 +4,33 @@
   "data": {
     "retailers": [
       {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": true
+              },
+              {
+                "date": "2026-09-29",
+                "observed": true
+              },
+              {
+                "date": "2026-09-30",
+                "observed": true
+              }
+            ],
+            "freshness": "2026-09-30",
+            "id": "shop_a",
+            "label": {
+              "en": "Shop A"
+            },
+            "location": null,
+            "productCount": 14,
+            "status": "supported"
+          }
+        ],
         "freshness": "2026-09-30",
         "id": "shop_a",
         "matchedCount": 10,
@@ -14,6 +41,33 @@
         "status": "supported"
       },
       {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": true
+              },
+              {
+                "date": "2026-09-29",
+                "observed": true
+              },
+              {
+                "date": "2026-09-30",
+                "observed": true
+              }
+            ],
+            "freshness": "2026-09-30",
+            "id": "shop_b",
+            "label": {
+              "en": "Shop B"
+            },
+            "location": null,
+            "productCount": 13,
+            "status": "supported"
+          }
+        ],
         "freshness": "2026-09-30",
         "id": "shop_b",
         "matchedCount": 9,
@@ -24,6 +78,33 @@
         "status": "supported"
       },
       {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": true
+              },
+              {
+                "date": "2026-09-29",
+                "observed": true
+              },
+              {
+                "date": "2026-09-30",
+                "observed": true
+              }
+            ],
+            "freshness": "2026-09-30",
+            "id": "shop_c",
+            "label": {
+              "en": "Shop C"
+            },
+            "location": null,
+            "productCount": 2,
+            "status": "partial"
+          }
+        ],
         "freshness": "2026-09-30",
         "id": "shop_c",
         "matchedCount": 1,
@@ -36,6 +117,33 @@
         "status": "partial"
       },
       {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": false
+              },
+              {
+                "date": "2026-09-29",
+                "observed": false
+              },
+              {
+                "date": "2026-09-30",
+                "observed": false
+              }
+            ],
+            "freshness": null,
+            "id": "shop_d",
+            "label": {
+              "en": "Shop D"
+            },
+            "location": null,
+            "productCount": 0,
+            "status": "blocked"
+          }
+        ],
         "freshness": null,
         "id": "shop_d",
         "matchedCount": 0,
@@ -56,7 +164,7 @@
     "filters": {},
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.2",
+    "metricVersion": "2026-10-01.3",
     "scope": "fixture"
   },
   "reason": null,

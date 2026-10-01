@@ -418,7 +418,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-01.2
+             * @default 2026-10-01.3
              */
             metricVersion: string;
             /** Scope */
@@ -517,7 +517,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total";
         /** CaveatView */
         CaveatView: {
             /** Ar */
@@ -530,6 +530,12 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /**
+         * Channel
+         * @description Commercial channel of an observation (PRC-14). Pickup is never dine-in.
+         * @enum {string}
+         */
+        Channel: "online" | "marketplace" | "delivery" | "pickup" | "dine_in_evidenced" | "offline_audit";
         /**
          * Cheaper
          * @enum {string}
@@ -586,6 +592,34 @@ export interface components {
              * @default false
              */
             truncated: boolean;
+        };
+        /** ContextCoverage */
+        ContextCoverage: {
+            channel: components["schemas"]["Channel"];
+            /** Dates */
+            dates: components["schemas"]["ContextDay"][];
+            /** Freshness */
+            freshness: string | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: {
+                [key: string]: string;
+            };
+            location: components["schemas"]["Location"] | null;
+            /** Productcount */
+            productCount: number;
+            status: components["schemas"]["RetailerStatus"];
+        };
+        /** ContextDay */
+        ContextDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Observed */
+            observed: boolean;
         };
         /** Coverage */
         Coverage: {
@@ -955,6 +989,22 @@ export interface components {
             en: string;
         };
         /**
+         * Location
+         * @description A branch or area. No coordinates on the wire.
+         */
+        Location: {
+            /** Area */
+            area: string | null;
+            /** City */
+            city: string | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: {
+                [key: string]: string;
+            };
+        };
+        /**
          * MatchClass
          * @description Relationship classes between variants (MAT-01).
          * @enum {string}
@@ -1206,6 +1256,8 @@ export interface components {
         };
         /** RetailerCoverage */
         RetailerCoverage: {
+            /** Contexts */
+            contexts: components["schemas"]["ContextCoverage"][];
             /** Freshness */
             freshness: string | null;
             /** Id */

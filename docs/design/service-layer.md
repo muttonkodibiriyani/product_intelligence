@@ -161,7 +161,7 @@ versioned snapshots.
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
   "meta": {
-    "apiVersion": "1.1.0", "endpoint": "compare", "metricVersion": "2026-10-01.2",
+    "apiVersion": "1.1.0", "endpoint": "compare", "metricVersion": "2026-10-01.3",
     "generation": "1727…", "cutoff": "2026-09-30T00:00:00Z",
     "market": "AE", "currency": "AED", "scope": "pilot",
     "filters": { ... }                   // the validated, normalised input, echoed
@@ -363,7 +363,9 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 - **`/v1/reviews-summary`:** one of `id[]` (repeated, ≤ 25), `brand` or `category`. Returns `{n, avgRating, ratingCount}` per
   retailer. The rating distribution and themes → `field_not_collected`. There is no review text.
 - **`/v1/coverage`:** `retailer[]`. Returns `retailers[{id, name, status, since, note,
-  productCount, matchedCount, freshness}]`, `capabilities`, `fields` and `notObserved`. Admins also
+  productCount, matchedCount, freshness, contexts[{id, channel, location, label, status,
+  productCount, freshness, dates[{date, observed}]}]}]`, `capabilities`, `fields` and
+  `notObserved`. Admins also
   get rungs, run ids and block counts.
 - **`/v1/matches`:** `class`, `reviewState`, `retailers`, `brand`, `limit`, `cursor`. Returns
   `{total, nextCursor, items[{productId, brand, name, a, b, matchClass, reviewState, decidedBy,

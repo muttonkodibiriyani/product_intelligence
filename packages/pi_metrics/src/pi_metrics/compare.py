@@ -44,6 +44,9 @@ COHORT_DESCRIPTION = "exact approved/locked pairs, same size, both priced, not e
 PROFILES = EVERY_PROFILE
 #: The published size labels of a counted pair whose equal measures carry different labels.
 LabelPair = tuple[str, str]
+#: At most this many ``size_labels_differ`` caveats, the most frequent; beyond it the
+#: ``size_labels_differ_total`` caveat leads the list with the full counts.
+LABEL_CAVEAT_CAP = 5
 
 
 class Gap(ContractModel):
@@ -230,8 +233,21 @@ def pair_row(ds: DatasetV3, product: ProductV3, base: str, other: str, i: int) -
 
 
 def pair_caveats(ds: DatasetV3, base: str, other: str, labels: list[LabelPair]) -> list[Caveat]:
-    """``channel_differs`` and one ``size_labels_differ`` per distinct label pair (ADR-0008)."""
+    """``channel_differs`` and one ``size_labels_differ`` per distinct label pair (ADR-0008).
+
+    The order is a contract with the assistant, which shows only the first caveats: past
+    ``LABEL_CAVEAT_CAP`` distinct label pairs, ``size_labels_differ_total`` comes first, then
+    ``channel_differs``, then the ``LABEL_CAVEAT_CAP`` most frequent pairs by (-count, labels).
+    """
     caveats = []
+    counts = Counter(labels)
+    if len(counts) > LABEL_CAVEAT_CAP:
+        caveats.append(
+            Caveat(
+                code=CaveatCode.SIZE_LABELS_DIFFER_TOTAL,
+                params={"count": str(len(labels)), "pairs": str(len(counts))},
+            )
+        )
     channels = view.context(ds, base).channel, view.context(ds, other).channel
     if channels[0] != channels[1]:
         caveats.append(
@@ -240,8 +256,8 @@ def pair_caveats(ds: DatasetV3, base: str, other: str, labels: list[LabelPair]) 
                 params={"base": str(channels[0]), "other": str(channels[1])},
             )
         )
-    counts = Counter(labels)
-    for (base_label, other_label), n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:LABEL_CAVEAT_CAP]
+    for (base_label, other_label), n in ranked:
         caveats.append(
             Caveat(
                 code=CaveatCode.SIZE_LABELS_DIFFER,
