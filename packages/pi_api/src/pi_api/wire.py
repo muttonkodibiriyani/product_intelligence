@@ -9,7 +9,7 @@ from typing import Any
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.7.0"
+API_VERSION = "1.8.0"
 
 
 class Localized(ContractModel):
@@ -148,6 +148,26 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         ar=(
             "عروض لدى {retailer} بسعر 0.01 أو أقل، حُجب سعرها لعدم صحته واستُبعد من كل الأرقام:"
             " {count}."
+        ),
+    ),
+    CaveatCode.UNMAPPED_CATEGORY: Localized(
+        en=(
+            "{count} {retailer} {count:item|items} could not be placed in a common category"
+            " and {count:is|are} listed as unmapped, not in any row."
+        ),
+        ar=(
+            "منتجات لدى {retailer} تعذّر تصنيفها في فئة مشتركة،"
+            " فهي مدرجة كغير مصنّفة لا في أي صف: {count}."
+        ),
+    ),
+    CaveatCode.BREADCRUMB_MISSING: Localized(
+        en=(
+            "{count} {retailer} {count:item has|items have} no category breadcrumb in this data,"
+            " so only the broad category is known; fine categories need a future export."
+        ),
+        ar=(
+            "منتجات لدى {retailer} بلا تسلسل فئات في هذه البيانات، فلا تُعرف إلا فئتها العامة؛"
+            " الفئات الدقيقة تتطلب تصديرًا لاحقًا: {count}."
         ),
     ),
 }

@@ -38,6 +38,7 @@ from pi_api import dq, export, floor
 from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
+    CategoryCompareQuery,
     CompareQuery,
     CompareRowsQuery,
     IndexQuery,
@@ -100,6 +101,7 @@ from pi_dataset import ContractModel
 from pi_metrics import (
     AssortmentGaps,
     Availability,
+    CategoryComparison,
     Comparison,
     Launches,
     Metric,
@@ -109,6 +111,7 @@ from pi_metrics import (
     Status,
     assortment_gaps,
     availability,
+    category_compare,
     compare,
     launches,
     price_index,
@@ -619,6 +622,29 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
             loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
         )
         return respond(loaded, "compare", query, capped_comparison(metric, query.limit))
+
+    @api.get(
+        f"{PREFIX}/category-compare",
+        response_model=Envelope[CategoryComparison],
+        description=(
+            "Category-to-category prices across both full catalogues on the latest date: per "
+            "category, each retailer's n, median, mean, p25, p75, min and max, and the gap "
+            "between the two medians. No product matching: like-for-like pairs are /compare. "
+            "A cell with fewer than minCohort products is tooFew (its prices null, never 0) and "
+            "its row has no gap. Gap sign convention: retailers=<base>,<other>; gapPct = "
+            "(other median - base median) / base median x 100, so a positive gap means the "
+            "other retailer's median is higher and `cheaper` names the cheaper side. "
+            "coverage gives each side's priced, mapped and unmapped counts and its share in "
+            "the 'other' bucket; unmapped lists the breadcrumbs taxonomy@1 can't place."
+        ),
+    )
+    def get_category_compare(
+        query: Annotated[CategoryCompareQuery, Query()], _: Viewer
+    ) -> Envelope[CategoryComparison]:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = category_compare(loaded.dataset, base, other, query.level)
+        return respond(loaded, "category_compare", query, metric)
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
     def get_index(query: Annotated[IndexQuery, Query()], _: Viewer) -> Envelope[PriceIndex]:

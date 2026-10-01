@@ -32,6 +32,7 @@ from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
 from pi_metrics.compare import Comparison, PairRow
 from pi_metrics.launches import Launch, Launches
 from pi_metrics.promotions import PromoItem, Promotions
+from pi_metrics.taxonomy import Level
 
 RetailerId = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{1,62}$")]
 RetailerIds = Annotated[tuple[RetailerId, ...], Field(max_length=25)]
@@ -55,6 +56,24 @@ class FilterQuery(ScopeQuery):
 
 class PairQuery(FilterQuery):
     retailers: RetailerPair
+
+    def pair(self) -> tuple[str, str]:
+        base, other = self.retailers.split(",")
+        return base, other
+
+
+class CategoryCompareQuery(ScopeQuery):
+    """``/category-compare``: whole catalogues, so no brand, category or product filter."""
+
+    retailers: RetailerPair
+    level: Level = Field(
+        default=Level.BUCKET,
+        description=(
+            "bucket: the exporter's nine top-level categories (every product has one). "
+            "common: taxonomy@1's finer categories, read from the retailer breadcrumb; a file "
+            "without breadcrumbs places nothing there (caveat breadcrumb_missing)."
+        ),
+    )
 
     def pair(self) -> tuple[str, str]:
         base, other = self.retailers.split(",")

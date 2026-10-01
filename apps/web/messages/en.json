@@ -36,6 +36,8 @@
     "resetNeedsEmail": "Enter your email above first.",
     "resetSent": "If {email} has an account, a reset link is on its way.",
     "errors": {
+      "invalidEmail": "Enter a valid email address.",
+      "resetLater": "Couldn't send right now. Please try again later.",
       "badCredentials": "Email or password is incorrect.",
       "tooMany": "Too many attempts. Wait a few minutes, then try again.",
       "network": "No connection. Check your network and try again.",
