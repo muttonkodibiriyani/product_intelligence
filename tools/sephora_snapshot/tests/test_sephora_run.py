@@ -54,6 +54,25 @@ def test_plan_default_reads_stock_then_ar(job: tuple[run.Job, list[str]]) -> Non
     assert progress["counts"]["trpc_http_200"] == 2
 
 
+def test_price_plan_rereads_en_pages_then_only_the_listed_stock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, job: tuple[run.Job, list[str]]
+) -> None:
+    j, calls = job
+    price = {
+        "order": ["P100", "P101"],
+        "seed": {"P100": {"en": "https://www.sephora.me/ae-en/p/x/P100"}, "P101": {"en": "e"}},
+        "trpc": ["P101"],
+        "meta": {"phase": "price"},
+    }
+    (tmp_path / "price.json.gz").write_bytes(gzip.compress(json.dumps(price).encode()))
+    j.run_stock("price.json.gz")
+    assert calls == ["html", "html", "json"]
+    assert j.counts["pdp_en_ok"] == 2
+    assert j.counts["trpc_http_200"] == 1
+    out = Path(j.local or "") / "out"
+    assert sorted(p.name for p in (out / "pdp_en").iterdir()) == ["part-0000.jsonl.gz"]
+
+
 class _Resp:
     def __init__(self, status: int, text: str) -> None:
         self.status_code = status

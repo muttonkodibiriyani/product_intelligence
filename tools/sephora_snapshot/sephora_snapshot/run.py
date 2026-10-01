@@ -7,8 +7,9 @@ for Sephora). Order: sitemaps -> EN PDPs -> tRPC availability -> AR PDPs, until 
 Stop rules: a challenge or 401/403 -> stop the whole job (source blocked; nothing is retried from
 this or any other egress). 429 -> back off 60 s doubling; 3 consecutive -> stop. Items not fetched
 by the cutoff are simply absent (not_observed as of the cutoff).
-With PLAN=<object> the job skips seeding/EN and runs tRPC in the plan's order (unless TRPC=0), then
-AR PDPs for the plan entries that carry an AR URL.
+With PLAN=<object> the job skips seeding. A ``price`` plan first re-reads the EN PDPs in the plan's
+order (a new dated price read). Then tRPC runs (unless TRPC=0) for the plan's ``trpc`` list, or the
+whole order if it has none. Last come AR PDPs for the plan entries that carry an AR URL.
 Output: batched jsonl.gz parts + progress.json under gs://$BUCKET/$PREFIX/.
 """
 
@@ -235,23 +236,32 @@ class Job:
         self.count(f"trpc_http_{status}")
         self.emit("trpc", rec)
 
-    def load_plan(self, name: str) -> tuple[list[str], dict[str, dict[str, str]]]:
-        """Read a gzipped plan: ``{"order": [pid], "seed": {pid: {lang: url}}}`` (see plan.py)."""
+    def load_plan(self, name: str) -> dict[str, Any]:
+        """Read a gzipped plan: ``{"order": [pid], "seed": {pid: {lang: url}}, "trpc"?: [pid],
+        "meta": {"phase": ...}}`` (see plan.py)."""
         if self.local is not None:
             with open(os.path.join(self.local, name), "rb") as fh:
                 raw = fh.read()
         else:
             raw = self.bucket.blob(name).download_as_bytes()
-        plan = json.loads(gzip.decompress(raw))
-        return list(plan["order"]), dict(plan["seed"])
+        plan: dict[str, Any] = json.loads(gzip.decompress(raw))
+        return plan
 
     def run_stock(self, plan_name: str) -> None:
-        """PLAN continuation run: tRPC stock reads (unless TRPC=0), then the plan's AR PDPs."""
-        order, ids = self.load_plan(plan_name)
+        """PLAN continuation run: EN PDPs (price plan only), tRPC stock reads (unless TRPC=0),
+        then the plan's AR PDPs."""
+        plan = self.load_plan(plan_name)
+        order: list[str] = list(plan["order"])
+        ids: dict[str, dict[str, str]] = dict(plan["seed"])
         self.counts["plan_pids"] = len(order)
         self.progress()
-        if self.trpc_on:  # TRPC=0: AR-only plan run
+        if (plan.get("meta") or {}).get("phase") == "price":
             for pid in order:
+                if "en" in ids.get(pid, {}):
+                    self.pdp(pid, "en", ids[pid]["en"])
+            self.flush("pdp_en")
+        if self.trpc_on:  # TRPC=0: AR-only plan run
+            for pid in plan.get("trpc", order):
                 self.trpc(pid)
             self.flush("trpc")
         for pid in order:

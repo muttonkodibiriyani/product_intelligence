@@ -57,3 +57,26 @@ def test_main_with_extra_done_folder(tmp_path: Path) -> None:
     assert plan.main([str(root), str(dest), "--phase", "stock", "--done", str(prior)]) == 0
     got = json.loads(gzip.decompress(dest.read_bytes()))
     assert {"P100", "P104"}.isdisjoint(got["order"])
+
+
+def test_price_phase_rereads_every_en_page_and_reads_only_missing_stock(tmp_path: Path) -> None:
+    root = _snapshot(tmp_path / "snap")
+    out = plan.build(root, "price", set(), stock_done=plan.done_pids([root], "stock"))
+    assert sorted(out["order"]) == sorted([*PIDS, "P999"])  # every EN page, already read or not
+    assert all(set(v) == {"en"} for v in out["seed"].values())
+    assert out["trpc"] == [p for p in out["order"] if p != "P100"]  # P100's stock is read
+    assert out["meta"]["phase"] == "price"
+    assert out["meta"]["trpc"] == len(out["order"]) - 1
+
+
+def test_main_price_phase(tmp_path: Path) -> None:
+    root = _snapshot(tmp_path / "snap")
+    later = tmp_path / "later"
+    later.mkdir()
+    write_part(later, "trpc", [trpc_rec("P101")])
+    out = tmp_path / "plan.json.gz"
+    assert plan.main([str(root), str(out), "--phase", "price", "--done", str(later)]) == 0
+    built = json.loads(gzip.decompress(out.read_bytes()))
+    assert len(built["order"]) == len(PIDS) + 1
+    assert "P100" not in built["trpc"]
+    assert "P101" not in built["trpc"]

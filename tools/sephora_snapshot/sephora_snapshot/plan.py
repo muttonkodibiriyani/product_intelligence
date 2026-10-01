@@ -2,13 +2,15 @@
 
 Usage::
 
-    python -m sephora_snapshot.plan <snapshot_dir> <out.json.gz> --phase stock|ar
+    python -m sephora_snapshot.plan <snapshot_dir> <out.json.gz> --phase stock|ar|price
         [--done <dir> ...] [--brands <brands.txt>] [--matched <pids.txt>]
 
 ``snapshot_dir`` holds the main run's ``seed.json`` and ``pdp_en`` parts. ``--phase stock``
 keeps EN seeds only (so the job reads stock and fetches no AR page) and skips products whose
 stock was already read (tRPC HTTP 200) in ``snapshot_dir`` or any ``--done`` folder.
 ``--phase ar`` keeps AR seeds only (run it with ``TRPC=0``) and skips AR pages already fetched.
+``--phase price`` keeps every EN seed (a price re-read is a new dated observation, so nothing is
+skipped) and adds a ``trpc`` list: only the products whose stock is not read yet, in plan order.
 
 Order: matched P-ids (if given) -> products of the listed brands (if given) -> everything else,
 each tier in the main job's seeded-shuffle order, so a cutoff still leaves a fair sample.
@@ -61,14 +63,17 @@ def done_pids(folders: list[Path], phase: str) -> set[str]:
     return done
 
 
-def build(
+def build(  # noqa: PLR0913 - one argument per plan input
     root: Path,
     phase: str,
     done: set[str],
+    *,
     brands: set[str] | None = None,
     matched: list[str] | None = None,
+    stock_done: set[str] | None = None,
 ) -> dict[str, Any]:
-    lang = "en" if phase == "stock" else "ar"
+    """``stock_done`` (price phase) is left out of the plan's ``trpc`` list."""
+    lang = "ar" if phase == "ar" else "en"
     full: dict[str, dict[str, str]] = json.loads(gzip.decompress((root / "seed.json").read_bytes()))
     seed = {pid: {lang: urls[lang]} for pid, urls in full.items() if lang in urls}
     base = sorted(seed)
@@ -89,26 +94,28 @@ def build(
     seen |= set(tier)
     rest = [p for p in base if p not in seen]
     order = first + tier + rest
-    return {
-        "order": order,
-        "seed": {p: seed[p] for p in order},
-        "meta": {
-            "phase": phase,
-            "seeded": len(seed),
-            "already_done": len(done & set(seed)),
-            "planned": len(order),
-            "matched": len(first),
-            "brand_tier": len(tier),
-            "rest": len(rest),
-        },
+    out: dict[str, Any] = {"order": order, "seed": {p: seed[p] for p in order}}
+    if phase == "price":
+        out["trpc"] = [p for p in order if p not in (stock_done or set())]
+    out["meta"] = {
+        "phase": phase,
+        "seeded": len(seed),
+        "already_done": len(done & set(seed)),
+        "planned": len(order),
+        "matched": len(first),
+        "brand_tier": len(tier),
+        "rest": len(rest),
     }
+    if phase == "price":
+        out["meta"]["trpc"] = len(out["trpc"])
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="sephora_snapshot.plan")
     ap.add_argument("snapshot_dir", type=Path)
     ap.add_argument("out", type=Path)
-    ap.add_argument("--phase", choices=["stock", "ar"], required=True)
+    ap.add_argument("--phase", choices=["stock", "ar", "price"], required=True)
     ap.add_argument("--done", type=Path, action="append", default=[])
     ap.add_argument("--brands", type=Path)
     ap.add_argument("--matched", type=Path)
@@ -123,8 +130,15 @@ def main(argv: list[str] | None = None) -> int:
         else None
     )
     matched = args.matched.read_text().split() if args.matched else None
-    done = done_pids([args.snapshot_dir, *args.done], args.phase)
-    plan = build(args.snapshot_dir, args.phase, done, brands, matched)
+    folders = [args.snapshot_dir, *args.done]
+    if args.phase == "price":
+        done: set[str] = set()
+        stock_done = done_pids(folders, "stock")
+    else:
+        done, stock_done = done_pids(folders, args.phase), set()
+    plan = build(
+        args.snapshot_dir, args.phase, done, brands=brands, matched=matched, stock_done=stock_done
+    )
     args.out.write_bytes(gzip.compress(json.dumps(plan, ensure_ascii=False).encode()))
     print(json.dumps(plan["meta"]))
     return 0
