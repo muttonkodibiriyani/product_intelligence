@@ -763,7 +763,9 @@ def build_dataset(
 ) -> dict[str, Any]:
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
-    groups = group_rows(rows)
+    from scripts.demo_export.tidy import tidy_rows  # noqa: PLC0415 - tidy imports ListingRow
+
+    groups = group_rows(tidy_rows(rows))
     products = matched_products(groups, matches)
     existing_ids = {product["id"] for product in products}
     products.extend(product for product in ulta_early if product["id"] not in existing_ids)
@@ -999,7 +1001,12 @@ def main() -> None:
     if args.output_v2 is not None or args.output_v3 is not None:
         # Build v2 (and v3) first: if the contract refuses the data, no file is written.
         from pi_dataset import dump_dataset, load_any, load_dataset  # noqa: PLC0415
-        from scripts.demo_export.v2 import build_dataset_v2, category_notes, to_v3  # noqa: PLC0415
+        from scripts.demo_export.v2 import (  # noqa: PLC0415
+            build_dataset_v2,
+            category_notes,
+            price_review,
+            to_v3,
+        )
 
         v2 = build_dataset_v2(
             rows,
@@ -1029,6 +1036,12 @@ def main() -> None:
             f"wrote v2 {len(v2.products)} products to {args.output_v2} "
             f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)} "
             f"category_listings={category_notes(rows)}"
+        )
+        review = price_review(v2)
+        print(
+            f"v2 listing rows={len(rows)}; prices to check by hand (never changed): "
+            f"below={len(review['below'])} {review['below'][:20]} "
+            f"above={len(review['above'])} {review['above'][:20]}"
         )
     if args.output_v3 is not None:
         write_bytes(args.output_v3, body_v3)
