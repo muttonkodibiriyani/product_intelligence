@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
 from typing import Annotated, Any
 
 import pytest
@@ -81,6 +83,13 @@ def test_python_names_are_refused_not_dropped() -> None:
 def test_type_errors_are_validation_errors() -> None:
     with pytest.raises(ValidationError):
         BEAUTY_V1.validate_attributes({"finish": 1})
+
+
+@pytest.mark.parametrize("value", [Decimal("1.5"), float("nan"), date(2026, 10, 1)])
+def test_non_json_values_are_value_errors(value: object) -> None:
+    """Not a raw TypeError (#79 Reviewer nit): the documented error is ``ValueError``."""
+    with pytest.raises(ValueError, match="attributes are not plain JSON values"):
+        BEAUTY_V1.validate_attributes({"finish": value})
 
 
 def test_get_profile() -> None:

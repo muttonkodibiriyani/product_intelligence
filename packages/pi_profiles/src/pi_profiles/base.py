@@ -128,6 +128,11 @@ class VerticalProfile:
         if unknown:
             msg = f"{self.ref}: undeclared attribute keys {unknown}"
             raise ValueError(msg)
-        model = self.attributes.model_validate_json(json.dumps(dict(raw)), strict=True)
+        try:
+            payload = json.dumps(dict(raw), allow_nan=False)
+        except (TypeError, ValueError) as exc:  # Decimal, datetime, NaN...: not JSON values
+            msg = f"{self.ref}: attributes are not plain JSON values ({exc})"
+            raise ValueError(msg) from exc
+        model = self.attributes.model_validate_json(payload, strict=True)
         dumped: dict[str, JsonValue] = model.model_dump(mode="json", exclude_defaults=True)
         return dumped

@@ -75,6 +75,13 @@ def test_brand_aliases_are_reviewed_data() -> None:
         ('{"dior": ["ck"], "ck": ["calvin klein"]}', "itself a canonical"),
         ('{"dior": ["Christian Dior"]}', "not folded"),
         ('{"Dior": ["christian dior"]}', "not folded"),
+        # #79 Reviewer: json.loads would keep only the last "dior" ...
+        ('{"dior": ["christian dior"], "dior": ["cd"]}', "canonical brand listed twice"),
+        # ... and iterate a bare string as one alias per character (c -> dior, d -> dior).
+        ('{"dior": "cd"}', "must map to a list of strings"),
+        ('{"dior": [1]}', "must map to a list of strings"),
+        ('{"dior": null}', "must map to a list of strings"),
+        ('["dior"]', "expected an object"),
     ],
 )
 def test_parse_brand_aliases_rejects(raw: str, error: str) -> None:
