@@ -48,6 +48,10 @@ Record:
   in the console URL of the budget).
 - `<BUDGET_AMOUNT>`: the budget amount in `<CURRENCY>`.
 
+The owner reads every report and billing figure in **AED**. If `<CURRENCY>` is AED, the budget
+is about AED 91.81 (the $25 total cap). If it is USD, write the AED equivalent next to each
+amount you record, at the fixed peg of 3.6725 AED per USD.
+
 **Verify**
 
 - The budget still shows the 50/90/100 % thresholds and the email recipients.
@@ -172,6 +176,17 @@ questions a day), and the four `limits` are the meter's tested defaults. Both ar
 the Coordinator **on the condition that they stay inside the owner's $5/month AI slice**. The
 meter enforces `caps.monthUsd = 5.00` before every call, across every label, CI included.
 Raising any of them needs the owner's OK.
+
+The config stays in USD because the meter prices tokens from a USD list-price table
+(`apps/assistant/config/prices.json`). The owner reads the caps in AED, at the fixed peg of
+3.6725 AED per USD:
+
+| Cap | AED (displayed) | USD (config) |
+|---|---|---|
+| Total GCP, all services | AED 91.81 | $25.00 |
+| AI month, every label (`caps.monthUsd`) | AED 18.36 | $5.00 |
+| CI month (`caps.labelMonthUsd.ci`) | AED 5.51 | $1.50 |
+| Chat day (`caps.labelDayUsd.chat`) | AED 1.47 | $0.40 |
 
 **Verify:** the document shows exactly these fields and types.
 
