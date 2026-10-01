@@ -9,7 +9,8 @@ export const LIMITS = [100, 500] as const;
 export type Limit = (typeof LIMITS)[number];
 const MAX_VALUES = 25;
 const MAX_LEN = 120;
-const RETAILER = /^[a-z0-9_-]{1,64}$/;
+/** A retailer id as the API accepts it. */
+const RETAILER = /^[a-z][a-z0-9_]{1,62}$/;
 
 /**
  * A comparison is described by the URL: the pair (base first), the grouping, the filters and how

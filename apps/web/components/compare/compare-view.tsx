@@ -106,7 +106,11 @@ export function CompareView() {
               <Summary data={data} cohort={env.cohort ?? null} name={name} />
               <Sides data={data} name={name} />
               {data.groupBy && data.groups.length > 0 && (
-                <Groups data={data} name={name} onPick={(k) => update({ [data.groupBy!]: [k] })} />
+                <Groups
+                  data={data}
+                  name={name}
+                  onPick={(k) => update({ [data.groupBy!]: [k], limit: LIMITS[0] })}
+                />
               )}
               <section aria-labelledby="rows-title" id="rows">
                 <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">

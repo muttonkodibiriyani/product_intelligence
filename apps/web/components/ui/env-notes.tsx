@@ -18,8 +18,9 @@ export function EnvNotes({ env, className = '' }: { env: Envelope<unknown>; clas
       {env.status === 'not_enough_data' && env.reason && (
         <p>{loc(env.detail, locale) || <Known t={tr} v={env.reason} />}</p>
       )}
-      {env.caveats.map((c) => (
-        <p key={c.code} className="text-ink-2">
+      {/* A code can repeat (retailer_partial once per side), so the index is part of the key. */}
+      {env.caveats.map((c, i) => (
+        <p key={`${c.code}:${i}`} className="text-ink-2">
           {locale === 'ar' ? c.ar || c.en : c.en}
         </p>
       ))}

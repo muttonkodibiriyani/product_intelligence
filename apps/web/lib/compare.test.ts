@@ -12,7 +12,14 @@ describe('compare URL state', () => {
   });
 
   it('drops what the API would refuse', () => {
-    for (const q of ['retailers=shop_a', 'retailers=shop_a,shop_a', 'retailers=a,b,c', 'retailers=A%20B,b'])
+    for (const q of [
+      'retailers=shop_a',
+      'retailers=shop_a,shop_a',
+      'retailers=a,b,c',
+      'retailers=A%20B,b',
+      'retailers=1shop,shop_b',
+      'retailers=shop-a,shop_b',
+    ])
       expect(parse(q)).toMatchObject({ base: '', other: '' });
     expect(parse('groupBy=retailer').groupBy).toBeNull();
     expect(parse('limit=1000').limit).toBe(100);
