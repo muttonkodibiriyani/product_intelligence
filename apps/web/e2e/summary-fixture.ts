@@ -1,5 +1,5 @@
 /**
- * A /summary (API 1.4.0) body for the landing tests, checked against `Summary` (#104's SummaryView). Test data only: the app
+ * A /summary (API 1.4.0) body for the landing tests, checked against `Summary` (SummaryView). Test data only: the app
  * never ships it. Images are null here so the run makes no request beyond localhost;
  * `summaryImages` has real ones for the test that answers the image host itself.
  */
