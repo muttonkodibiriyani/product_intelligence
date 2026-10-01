@@ -165,6 +165,8 @@ def test_attr_filters_on_a_declared_facet(split: Client) -> None:
         "attr=finish:matte%0D",  # a control character in the value
         "attr=finish:a%0Ab",
         "attr=finish:%C2%85",  # C1 NEL
+        "attr=finish:a%E2%80%A8b",  # U+2028 line separator
+        "attr=finish:a%E2%80%A9b",  # U+2029 paragraph separator
         "&".join(["attr=finish:x"] * 26),
         "location=" + "x" * 60,
         "channel=teleport",
@@ -212,3 +214,55 @@ def test_history_is_keyed_by_context(split: Client) -> None:
     series = get(split, "products/p01/history")["data"]["series"]
     assert {APP, WEB} <= set(series)
     assert "shop_a" not in series
+
+
+def faceted_doc() -> dict[str, Any]:
+    d = split_doc()
+    attrs = {
+        "p01": {"finish": "Matte", "concentration": "EDP"},
+        "p02": {"finish": "matte", "shadeFamilies": ["Nude"]},
+        "p03": {"finish": "Gloss", "shadeFamilies": ["Red", "red", "Nude"]},
+    }
+    for product in d["products"]:
+        product["attributes"] = attrs.get(product["id"], {})
+    return d
+
+
+@pytest.fixture
+def faceted(tmp_path: Path) -> Client:
+    write(tmp_path, DatasetV3.model_validate(faceted_doc()))
+    return make_client(tmp_path)[0]
+
+
+def attr_facets(client: Client, query: str = "") -> dict[str, dict[str, int]]:
+    facets = get(client, f"products?{query}")["data"]["facets"]["attributes"]
+    return {k: {f["key"]: f["count"] for f in v} for k, v in facets.items()}
+
+
+def test_attribute_facets_count_products_per_folded_value(faceted: Client) -> None:
+    facets = attr_facets(faceted)
+    assert list(facets) == ["finish", "concentration", "shadeFamilies"]  # attributeSet order
+    assert facets["finish"] == {"Gloss": 1, "Matte": 2}  # "matte" folds into the least raw form
+    assert facets["concentration"] == {"EDP": 1}
+    assert facets["shadeFamilies"] == {"Nude": 2, "Red": 1}  # a list counts a product once
+
+
+def test_an_attribute_facet_drops_only_its_own_filter(faceted: Client) -> None:
+    facets = attr_facets(faceted, "attr=finish:matte")
+    assert facets["finish"] == {"Gloss": 1, "Matte": 2}
+    assert facets["concentration"] == {"EDP": 1}
+    assert facets["shadeFamilies"] == {"Nude": 1}
+    assert attr_facets(faceted, "attr=concentration:edp")["finish"] == {"Matte": 1}
+    assert attr_facets(faceted, "brand=no-such-brand")["finish"] == {}
+
+
+def test_a_facet_value_round_trips_as_a_filter(faceted: Client) -> None:
+    for key, values in attr_facets(faceted).items():
+        for value, count in values.items():
+            assert len(ids(get(faceted, f"products?attr={key}:{value}&limit=100"))) == count
+
+
+def test_beauty_lists_every_facet_attribute(beauty: Client) -> None:
+    facets = get(beauty, "products")["data"]["facets"]["attributes"]
+    keys = [a["key"] for a in get(beauty, "meta")["data"]["attributeSet"] if a["facet"]]
+    assert list(facets) == keys

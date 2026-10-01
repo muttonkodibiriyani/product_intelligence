@@ -20,6 +20,7 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from functools import partial
 from itertools import combinations
 from typing import Annotated, Any
 from urllib.parse import urlsplit
@@ -56,10 +57,12 @@ ShortText = Annotated[str, Field(min_length=1, max_length=MAX_TEXT)]
 Values = Annotated[tuple[ShortText, ...], Field(max_length=MAX_VALUES)]
 DecimalText = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,6})?$")]
 #: ``<key>:<value>``; the key is a declared facet attribute (``meta.attributeSet``), the value
-#: has no C0/C1 control characters (a ``\r`` or ``\n`` would split a log line).
+#: has no C0/C1 control or U+2028/U+2029 characters (each could split a log line).
 AttrText = Annotated[
     str,
-    Field(pattern=r"^[a-z][A-Za-z0-9_]{1,62}:[^\x00-\x1f\x7f-\x9f]+$", max_length=MAX_TEXT),
+    Field(
+        pattern=r"^[a-z][A-Za-z0-9_]{1,62}:[^\x00-\x1f\x7f-\x9f\u2028\u2029]+$", max_length=MAX_TEXT
+    ),
 ]
 
 
@@ -326,6 +329,10 @@ class Facets(ContractModel):
     brand: tuple[FacetCount, ...]
     category: tuple[FacetCount, ...]
     retailer: tuple[FacetCount, ...]
+    #: API 1.3.0: per ``facet`` attribute of ``meta.attributeSet`` (in its order), the products
+    #: per value. Values that fold equal count once, under their least raw form; send it back as
+    #: ``attr=<key>:<value>``.
+    attributes: dict[str, tuple[FacetCount, ...]]
 
 
 class ProductPage(ContractModel):
@@ -447,15 +454,30 @@ def _within(named: frozenset[str] | None, shown: Shown) -> Shown:
     return named if shown is None else named & shown
 
 
-def _attr_values(value: object) -> set[str]:
-    """A stored attribute value as the folded texts a filter value can equal."""
+def _attr_texts(value: object) -> dict[str, str]:
+    """A stored attribute value as ``{folded: raw}`` texts a filter value can equal."""
     if isinstance(value, bool):
-        return {"true" if value else "false"}
+        text = "true" if value else "false"
+        return {text: text}
     if isinstance(value, str | int | Decimal):
-        return {fold(str(value))}
+        return {fold(str(value)): str(value)}
     if isinstance(value, list | tuple):
-        return {text for item in value for text in _attr_values(item)}
-    return set()  # an object never equals a filter value
+        texts: dict[str, str] = {}
+        for item in value:
+            for folded, raw in _attr_texts(item).items():
+                texts[folded] = min(raw, texts.get(folded, raw))
+        return texts
+    return {}  # an object never equals a filter value
+
+
+def _product_attr_texts(product: ProductV3, shown: Shown, key: str) -> dict[str, str]:
+    """``key``'s texts on the product and its shown non-early offers."""
+    texts: dict[str, str] = {}
+    offers = [o for _, o in _visible(product, shown) if not o.early]
+    for source in (product.attributes, *(o.attributes for o in offers)):
+        for folded, raw in _attr_texts(source.get(key)).items():
+            texts[folded] = min(raw, texts.get(folded, raw))
+    return texts
 
 
 def _attr_filters(ds: DatasetV3, query: ProductFilters) -> dict[str, set[str]]:
@@ -470,15 +492,8 @@ def _attr_filters(ds: DatasetV3, query: ProductFilters) -> dict[str, set[str]]:
     return wanted
 
 
-def _has_attrs(product: ProductV3, shown: Shown, wanted: dict[str, set[str]]) -> bool:
-    offers = [o for _, o in _visible(product, shown) if not o.early]
-    return all(
-        any(
-            _attr_values(source.get(key)) & values
-            for source in (product.attributes, *(o.attributes for o in offers))
-        )
-        for key, values in wanted.items()
-    )
+def _has_attr(product: ProductV3, shown: Shown, key: str, values: set[str]) -> bool:
+    return not values.isdisjoint(_product_attr_texts(product, shown, key))
 
 
 Check = Callable[[ProductV3], bool]
@@ -519,8 +534,8 @@ def _predicates(ds: DatasetV3, query: ProductFilters) -> dict[str, Check]:
             )
 
         checks["price"] = priced
-    if wanted:
-        checks["attr"] = lambda p: _has_attrs(p, shown, wanted)
+    for key, values in wanted.items():  # one check per key, so its facet can drop it
+        checks[f"attr:{key}"] = partial(_has_attr, shown=shown, key=key, values=values)
     return checks
 
 
@@ -545,7 +560,31 @@ def _facets(ds: DatasetV3, checks: dict[str, Check], shown: Shown) -> Facets:
     def counts(counter: Counter[str]) -> tuple[FacetCount, ...]:
         return tuple(FacetCount(key=k, count=n) for k, n in sorted(counter.items()))
 
-    return Facets(brand=counts(brand), category=counts(category), retailer=counts(retailer))
+    return Facets(
+        brand=counts(brand),
+        category=counts(category),
+        retailer=counts(retailer),
+        attributes={
+            a.key: _attr_facet(ds, checks, shown, a.key) for a in ds.meta.attribute_set if a.facet
+        },
+    )
+
+
+def _attr_facet(
+    ds: DatasetV3, checks: dict[str, Check], shown: Shown, key: str
+) -> tuple[FacetCount, ...]:
+    """Products per folded value of ``key``, under every filter but ``key``'s own."""
+    counter: Counter[str] = Counter()
+    raw: dict[str, str] = {}
+    for p in ds.products:
+        if _passes(p, checks, f"attr:{key}"):
+            texts = _product_attr_texts(p, shown, key)
+            counter.update(texts.keys())
+            for folded, text in texts.items():
+                raw[folded] = min(text, raw.get(folded, text))
+    return tuple(
+        FacetCount(key=raw[f], count=n) for f, n in sorted(counter.items(), key=lambda i: raw[i[0]])
+    )
 
 
 #: Filters added in API 1.2.0: left out of the digest while unset, so a cursor issued before

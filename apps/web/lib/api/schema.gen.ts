@@ -405,7 +405,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.2.1
+             * @default 1.3.0
              */
             apiVersion: string;
             /** Currency */
@@ -936,6 +936,10 @@ export interface components {
         };
         /** Facets */
         Facets: {
+            /** Attributes */
+            attributes: {
+                [key: string]: components["schemas"]["FacetCount"][];
+            };
             /** Brand */
             brand: components["schemas"]["FacetCount"][];
             /** Category */

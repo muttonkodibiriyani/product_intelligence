@@ -244,7 +244,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.2.1",
+            "default": "1.3.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -2059,6 +2059,16 @@
       "Facets": {
         "additionalProperties": false,
         "properties": {
+          "attributes": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/FacetCount"
+              },
+              "type": "array"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
           "brand": {
             "items": {
               "$ref": "#/components/schemas/FacetCount"
@@ -2084,7 +2094,8 @@
         "required": [
           "brand",
           "category",
-          "retailer"
+          "retailer",
+          "attributes"
         ],
         "title": "Facets",
         "type": "object"
@@ -3885,7 +3896,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.2.1"
+    "version": "1.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5877,7 +5888,7 @@
               "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
               "items": {
                 "maxLength": 120,
-                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:[^\\x00-\\x1f\\x7f-\\x9f]+$",
+                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:[^\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+$",
                 "type": "string"
               },
               "maxItems": 25,
@@ -7207,7 +7218,7 @@
               "description": "Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match.",
               "items": {
                 "maxLength": 120,
-                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:[^\\x00-\\x1f\\x7f-\\x9f]+$",
+                "pattern": "^[a-z][A-Za-z0-9_]{1,62}:[^\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+$",
                 "type": "string"
               },
               "maxItems": 25,
