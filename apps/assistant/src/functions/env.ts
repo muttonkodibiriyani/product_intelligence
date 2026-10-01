@@ -15,7 +15,10 @@ type Env = Readonly<Record<string, string | undefined>>;
 export const THRESHOLD_PCT = 90;
 export const MAX_ALERT_AGE_MS = 6 * 3600_000;
 
-/** Names of the params and the secret; `src/index.ts` declares them so the CLI asks for each. */
+/**
+ * Variable names. The values come from the gitignored `.env.productintelligence-beeb3` (see
+ * `.env.example`); only the password is a declared secret (`defineSecret` in `src/index.ts`).
+ */
 export const ENV = {
   budgetId: "KILL_SWITCH_BUDGET_ID",
   currency: "KILL_SWITCH_CURRENCY",

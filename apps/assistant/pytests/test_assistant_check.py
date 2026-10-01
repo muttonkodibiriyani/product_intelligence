@@ -1,4 +1,4 @@
-"""Run the TypeScript assistant's own gate (typecheck, lint, format, tests + coverage) from pytest.
+"""Run the TypeScript assistant's gate (typecheck, lint, format, tests + coverage, build).
 
 Install runs with --ignore-scripts (for the app and the separate evals package), so no
 dependency lifecycle script executes in CI, and `npm audit` fails the gate on any
@@ -58,6 +58,9 @@ def test_assistant_npm_check() -> None:
     assert audit.returncode == 0, audit.stdout[-8000:] + audit.stderr[-4000:]
     check = _run(npm, "run", "check")
     assert check.returncode == 0, check.stdout[-8000:] + check.stderr[-4000:]
+    # The Functions deploy ships lib/ (codebase "assistant", firebase.json); the build must pass.
+    build = _run(npm, "run", "build")
+    assert build.returncode == 0, build.stdout[-8000:] + build.stderr[-4000:]
 
 
 def test_evals_package() -> None:
