@@ -18,7 +18,7 @@ from scripts.demo_export.export import (
     build_dataset,
 )
 from scripts.demo_export.test_export import row
-from scripts.demo_export.v2 import build_dataset_v2, product_id
+from scripts.demo_export.v2 import build_dataset_v2, category_notes, product_id
 
 NOW = datetime(2026, 9, 30, 22, 0, tzinfo=UTC)
 NOTE = {"en": ULTA_BLOCKED_NOTE, "ar": ULTA_BLOCKED_NOTE_AR}
@@ -323,6 +323,7 @@ def test_the_main_image_is_the_offer_and_product_thumbnail() -> None:
         "https://user@img-product.sephora.me/p1.jpg",
         "https://img-product.sephora.me:8443/p1.jpg",
         "https://img-product.sephora.me/p1.jpg#x",
+        "https://img-product.sephora.me/p1.jpg#",
     ],
 )
 def test_an_image_off_the_allowlist_is_null_never_guessed(url: str | None) -> None:
@@ -337,3 +338,49 @@ def test_image_is_partial_when_only_some_products_have_one() -> None:
     d = doc([with_image(SEPHORA_IMG), with_image(None, family=11, variant=101)])
     assert d["meta"]["fields"]["image"] == "partial"
     assert d["meta"]["capabilities"]["images"] is True
+
+
+def with_path(path: str | None, **kw: Any) -> ListingRow:
+    return ListingRow(**(row(**kw).__dict__ | {"category_path": path}))
+
+
+@pytest.mark.parametrize(
+    ("path", "category"),
+    [
+        ("Makeup > Face > Foundation", ["foundation", "Makeup", "Face", "Foundation"]),
+        ("Fragrance > Unisex Fragrances", ["foundation", "Fragrance", "Unisex Fragrances"]),
+        ("A > B > C > D > E", ["foundation", "A", "B", "C"]),  # cut after three levels
+        (
+            "BRANDS > Brands > Chanel > MAKEUP > Lips > Lipsticks",
+            ["foundation", "MAKEUP", "Lips", "Lipsticks"],
+        ),
+        ("BRANDS > Brands > Chanel", ["foundation"]),  # nothing left after the brand prefix
+        ("brands > Brands > Chanel > Lips", ["foundation", "brands", "Brands", "Chanel"]),
+        ("Makeup > BRANDS > Brands > X", ["foundation", "Makeup", "BRANDS", "Brands"]),
+        ("Fragrance > For Him > ", ["foundation", "Fragrance", "For Him"]),
+        (" > ", ["foundation"]),
+        ("PID Unicity", ["foundation"]),
+        ("without_pid", ["foundation"]),
+        # a mid-path pseudo-crumb is spliced out, not turned into (code,)
+        ("Makeup > PID Unicity > Lips", ["foundation", "Makeup", "Lips"]),
+        (None, ["foundation"]),
+    ],
+)
+def test_category_is_the_code_then_the_retailers_breadcrumb(
+    path: str | None, category: list[str]
+) -> None:
+    assert doc([with_path(path)])["products"][0]["category"] == category
+
+
+def test_a_matched_pair_takes_the_naming_offers_breadcrumb() -> None:
+    sephora = with_path("Makeup > Lips > Lipstick")
+    ulta = with_path("Lips > Other", source="ulta_ae", family=20, variant=200)
+    pair = MatchRow(100, 200, "exact", Decimal("0.97"), "gtin-v1", "approved", human=True)
+    d = doc([sephora, ulta], [pair])
+    assert [p["category"] for p in d["products"]] == [["foundation", "Makeup", "Lips", "Lipstick"]]
+
+
+def test_the_run_log_counts_cut_and_cleaned_breadcrumbs() -> None:
+    paths = ["A > B > C > D", "BRANDS > Brands > Chanel > MAKEUP > Lips", "PID Unicity", "A > B"]
+    rows = [with_path(path, variant=100 + i) for i, path in enumerate(paths)]
+    assert category_notes(rows) == {"internal": 1, "brand_nav": 1, "truncated": 1}

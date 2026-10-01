@@ -6,8 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { signInErrorKey } from '@/lib/auth/firebase';
 import { useAuth } from './auth-provider';
 
-const field =
-  'mt-1 block w-full rounded border border-line bg-surface px-3 py-2 text-ink focus-visible:outline-2';
+const field = 'mt-1 block w-full field py-2 text-base focus-visible:outline-2';
 
 export function SignInForm() {
   const t = useTranslations('signIn');
@@ -53,7 +52,7 @@ export function SignInForm() {
 
   return (
     <form onSubmit={onSubmit} className="w-full max-w-sm" noValidate>
-      <h1 className="text-xl font-semibold">{t('title')}</h1>
+      <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
       <p className="mt-1 text-sm text-ink-2">{t('intro')}</p>
       <label className="mt-6 block text-sm font-medium">
         {t('email')}
@@ -94,7 +93,7 @@ export function SignInForm() {
       <button
         type="submit"
         disabled={busy || !auth}
-        className="mt-6 w-full rounded bg-ink px-3 py-2 font-medium text-surface disabled:opacity-60 focus-visible:outline-2"
+        className="btn btn-primary mt-6 w-full py-2.5 text-base font-medium focus-visible:outline-2"
       >
         {busy ? t('submitting') : t('submit')}
       </button>

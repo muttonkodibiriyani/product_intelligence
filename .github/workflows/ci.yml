@@ -22,6 +22,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          # Keep the downloaded wheels: a pruned cache re-downloads them (13 min on #107).
+          prune-cache: false
       - name: Install
         run: uv sync --locked
       # Real-browser tests (pytest -m browser) need all three engines; each skips itself when its
@@ -68,6 +70,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          # Keep the downloaded wheels: a pruned cache re-downloads them (13 min on #107).
+          prune-cache: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -102,7 +106,7 @@ jobs:
   database:
     name: Database — migrations up/down, schema tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -124,6 +128,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          # Keep the downloaded wheels: a pruned cache re-downloads them (13 min on #107).
+          prune-cache: false
       - name: Install
         run: uv sync --locked
       - name: alembic upgrade head (CLI path)

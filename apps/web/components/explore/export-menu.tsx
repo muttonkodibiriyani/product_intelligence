@@ -68,7 +68,7 @@ export function ExportMenu({ state, total, n }: { state: ExploreState; total: nu
   }
 
   const button =
-    'rounded px-2 py-1 text-sm hover:bg-surface-2 focus-visible:outline-2 disabled:cursor-not-allowed disabled:text-ink-2 disabled:hover:bg-transparent';
+    'rounded-lg px-2.5 py-1 text-sm hover:bg-surface focus-visible:outline-2 disabled:cursor-not-allowed disabled:text-ink-2 disabled:hover:bg-transparent';
   const message =
     total === 0
       ? null
@@ -89,7 +89,7 @@ export function ExportMenu({ state, total, n }: { state: ExploreState; total: nu
       <div
         role="group"
         aria-label={t('label')}
-        className="flex items-center gap-1 rounded border border-line bg-surface ps-2"
+        className="flex items-center gap-1 rounded-ctl bg-surface-2 p-0.5 ps-2.5"
       >
         <span className="text-xs text-ink-2" aria-hidden>
           {t('label')}

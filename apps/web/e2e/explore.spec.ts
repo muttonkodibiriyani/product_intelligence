@@ -1,5 +1,14 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  noHorizontalScroll,
+  signIn,
+  test,
+  withSummary,
+  type Mock,
+} from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const clone = <T>(v: T): T => structuredClone(v);
@@ -11,6 +20,28 @@ const emptyPage = golden('products-filtered') as Json; // total 0
 const product = golden('product') as Json;
 const history = golden('history') as Json;
 const stale = golden('error-stale-cursor') as Json;
+
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  'base64',
+);
+const IMG = 'https://img-product.sephora.me/v1/p07.jpg';
+const IMG_BROKEN = 'https://img-product.sephora.me/v1/p08.jpg';
+/** Ulta UAE's own image host, allowlisted for its view (owner decision). */
+const IMG_ULTA = 'https://media.alshaya.com/adobe/assets/urn:aaid:aem:1/as/SK-1_1.png?width=185';
+/** A look-alike host: only the exact hostname is allowed. */
+const IMG_LOOKALIKE = 'https://img-product.sephora.me.evil.example/v1/p09.jpg';
+
+/** The products golden with the given images, row by row, for a list of `retailer`'s products. */
+function withImages(retailer: string, images: (string | null)[]): Json {
+  const page = clone(products);
+  page.data.items = page.data.items.map((c: Json, i: number) => ({
+    ...c,
+    image: images[i] ?? null,
+    prices: { [retailer]: c.prices.shop_a },
+  }));
+  return page;
+}
 
 /** The explorer's API: answers by path and by query, and records what was asked. */
 function api(over: { products?: (u: URL) => Json; product?: Json; history?: Json; meta?: Json } = {}) {
@@ -57,6 +88,7 @@ for (const locale of ['en', 'ar'] as const) {
         source: 'افتح الصفحة',
         noSource: 'لا رابط للصفحة',
         filters: 'عوامل التصفية',
+        noImage: 'لا صورة',
       }
     : {
         nav: 'Products',
@@ -77,6 +109,7 @@ for (const locale of ['en', 'ar'] as const) {
         source: 'Open page',
         noSource: 'No page link',
         filters: 'Filters',
+        noImage: 'No image',
       };
 
   /** Opens the filters on a narrow screen, where they start folded away. */
@@ -175,6 +208,112 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors).toEqual([]);
     });
 
+    test('Sephora UAE thumbnails: hotlinked lazily without a referrer; a failing one is a placeholder', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, {
+        onApi: withSummary(api({ products: () => withImages('sephora_ae', [IMG, IMG_BROKEN, null]) })),
+      });
+      const images: { url: string; referer?: string }[] = [];
+      await page.route('https://img-product.sephora.me/**', (r) => {
+        images.push({ url: r.request().url(), referer: r.request().headers()['referer'] });
+        return r.request().url() === IMG
+          ? r.fulfill({ contentType: 'image/png', body: PNG })
+          : r.fulfill({ status: 404, body: '' });
+      });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/explore/`);
+      const rows = page.getByRole('table').locator('tbody tr');
+      await expect(rows).toHaveCount(3);
+
+      const img = rows.nth(0).locator('img');
+      await expect(img).toHaveAttribute('src', IMG);
+      await expect(img).toHaveAttribute('loading', 'lazy');
+      await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
+      await expect(img).toHaveAttribute('width', '48');
+      await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
+      // Never through an image proxy or loader: the browser asks the image host itself.
+      expect(await img.getAttribute('srcset')).toBeNull();
+
+      for (const i of [1, 2]) {
+        await expect(rows.nth(i).locator('img')).toHaveCount(0);
+        await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
+      }
+      // The product name stays the row's link, next to the picture.
+      await expect(rows.nth(0).getByRole('link', { name: products.data.items[0].name })).toBeVisible();
+      await noHorizontalScroll(page);
+      expect(images.map((r) => r.url).sort()).toEqual([IMG, IMG_BROKEN]);
+      for (const r of images) expect(r.referer).toBeUndefined();
+      expect(mock.external).toEqual([]);
+      expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
+    });
+
+    test('Ulta UAE thumbnails: its own host renders lazily without a referrer; a look-alike host never', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, {
+        onApi: withSummary(api({ products: () => withImages('ulta_ae', [IMG_ULTA, IMG_LOOKALIKE, null]) })),
+      });
+      const images: { url: string; referer?: string }[] = [];
+      await page.route('https://media.alshaya.com/**', (r) => {
+        images.push({ url: r.request().url(), referer: r.request().headers()['referer'] });
+        return r.fulfill({ contentType: 'image/png', body: PNG });
+      });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/explore/`);
+      const rows = page.getByRole('table').locator('tbody tr');
+      await expect(rows).toHaveCount(3);
+      const img = rows.nth(0).locator('img');
+      await expect(img).toHaveAttribute('src', IMG_ULTA);
+      await expect(img).toHaveAttribute('loading', 'lazy');
+      await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
+      await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
+      for (const i of [1, 2]) {
+        await expect(rows.nth(i).locator('img')).toHaveCount(0);
+        await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
+      }
+      await noHorizontalScroll(page);
+      expect(images.map((r) => r.url)).toEqual([IMG_ULTA]);
+      for (const r of images) expect(r.referer).toBeUndefined();
+      expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    for (const [host, url] of [
+      ['img-product.sephora.me', IMG],
+      ['media.alshaya.com', IMG_ULTA],
+    ] as const)
+      test(`product page: the ${host} image beside the name; a failing one is a placeholder`, async ({
+        page,
+      }) => {
+        const p = clone(product);
+        p.data.card.image = url;
+        const mock = await mockBackend(page, { onApi: api({ product: p }) });
+        let ok = true;
+        await page.route(`https://${host}/**`, (r) =>
+          ok ? r.fulfill({ contentType: 'image/png', body: PNG }) : r.fulfill({ status: 404, body: '' }),
+        );
+        await signedIn(page, locale);
+        await page.goto(`/app/${locale}/product/?id=${p.data.card.id}`);
+        await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
+        const header = page.locator('article header');
+        const img = header.locator('img');
+        await expect(img).toHaveAttribute('src', url);
+        await expect(img).toHaveAttribute('loading', 'lazy');
+        await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
+        await expect(img).toHaveAttribute('width', '96');
+        await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
+        await noHorizontalScroll(page);
+
+        ok = false;
+        await page.reload();
+        await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
+        await expect(header.getByRole('img', { name: T.noImage })).toBeVisible();
+        await expect(header.locator('img')).toHaveCount(0);
+        expect(mock.external).toEqual([]);
+        expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
+      });
+
     test('no results: says so plainly', async ({ page }) => {
       await mockBackend(page, { onApi: api({ products: () => emptyPage }) });
       await signedIn(page, locale);
@@ -258,7 +397,8 @@ for (const locale of ['en', 'ar'] as const) {
 test('S2: an unknown retailer status renders as sent, not as a key path', async ({ page }) => {
   const m = clone(meta);
   m.data.retailers[0].status = 'paused';
-  await mockBackend(page, { onApi: (r) => r.fulfill({ json: m }) });
+  // The landing's dataset table lists the retailers; /summary gets its own fixture.
+  await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: m })) });
   await signIn(page, 'ar');
   await expect(page.getByRole('cell', { name: 'paused', exact: true })).toBeVisible();
   await expect(page.getByText('status.paused')).toHaveCount(0);
