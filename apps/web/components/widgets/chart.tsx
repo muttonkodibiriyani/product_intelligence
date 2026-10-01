@@ -10,7 +10,9 @@ export type Palette = Record<
   | 'ink2'
   | 'line'
   | 'line2'
+  | 'line3'
   | 'surface'
+  | 'surface2'
   | 'a'
   | 'b'
   | 'lav'
@@ -32,7 +34,9 @@ const VARS: Record<Exclude<keyof Palette, 'font'>, string> = {
   ink2: '--color-ink-2',
   line: '--color-line',
   line2: '--color-line-2',
+  line3: '--color-line-3',
   surface: '--color-surface',
+  surface2: '--color-surface-2',
   a: '--color-series-a',
   b: '--color-series-b',
   lav: '--color-lav',
@@ -100,12 +104,15 @@ function load(): Promise<Loaded> {
   ]).then(([core, charts, comps, renderers]) => {
     core.use([
       charts.BarChart,
+      charts.LineChart,
       charts.CustomChart,
       charts.BoxplotChart,
       charts.HeatmapChart,
       charts.ScatterChart,
       charts.TreemapChart,
       comps.GridComponent,
+      comps.LegendComponent,
+      comps.MarkLineComponent,
       comps.TooltipComponent,
       comps.VisualMapComponent,
       comps.AriaComponent,

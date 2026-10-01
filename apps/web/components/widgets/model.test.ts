@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activeRetailers,
   amount,
   brandShare,
   bandFloor,
+  cheaperCells,
+  cheaperShares,
+  crossCells,
+  compareHref,
+  gapRows,
+  scopedCaveats,
+  trendPoints,
   categoryNodeHref,
   categoryNodes,
   exploreHref,
@@ -230,5 +238,167 @@ describe('imported retailers (API 1.5.0)', () => {
     } as unknown as Parameters<typeof promotions>[0]);
     expect(p).toEqual({ measured: false, reason: 'was_price_unverified' });
     expect(WITHHELD_REASONS).toContain('was_price_unverified');
+  });
+});
+
+describe('head-to-head helpers', () => {
+  const cav = (code: string, params: Record<string, string>) =>
+    ({ code, params, en: '', ar: '' }) as unknown as CaveatView;
+
+  it('drops a caveat about a retailer outside the request (API < 1.5.2 does not scope them)', () => {
+    const own = cav('parent_listings_included', { retailer: 'sephora_me' });
+    const foreign = cav('snapshot_import_date', { retailer: 'ulta_ae', date: '2026-09-30' });
+    const global = cav('early_excluded', { count: '1' });
+    expect(scopedCaveats([own, foreign, global], ['sephora_me'])).toEqual([own, global]);
+    expect(scopedCaveats([own, foreign, global], ['sephora_me', 'ulta_ae'])).toHaveLength(3);
+  });
+
+  it('reports only collected or partly collected retailers', () => {
+    const r = (id: string, status: string) => ({ id, status }) as never;
+    expect(
+      activeRetailers({
+        retailers: [r('a', 'supported'), r('b', 'blocked'), r('c', 'partial'), r('d', 'pending')],
+      }),
+    ).toEqual(['a', 'c']);
+    expect(activeRetailers(null)).toEqual([]);
+  });
+
+  it('draws a trend only when the API says so and two days carry an index', () => {
+    const pt = (date: string, index: string | null) => ({ date, index, n: 7, reason: null });
+    expect(trendPoints(null)).toBeNull();
+    expect(
+      trendPoints({ trendAvailable: false, points: [pt('2026-09-28', '98.0'), pt('2026-09-29', '99.0')] }),
+    ).toBeNull();
+    expect(trendPoints({ trendAvailable: true, points: [pt('2026-09-28', '98.0')] })).toBeNull();
+    expect(
+      trendPoints({ trendAvailable: true, points: [pt('2026-09-28', '98.0'), pt('2026-09-29', null)] }),
+    ).toBeNull();
+    expect(
+      trendPoints({
+        trendAvailable: true,
+        points: [pt('2026-09-28', '98.0'), pt('2026-09-29', null), pt('2026-09-30', '103.3')],
+      }),
+    ).toHaveLength(2);
+  });
+
+  it('plots only counted pairs with two real prices, widest gap first', () => {
+    const aed = (amount: string) => ({ amount, currency: 'AED', minor: Math.round(Number(amount) * 100) });
+    const row = (id: string, base: string, other: string, pct: string, counted = true) =>
+      ({
+        id,
+        name: id,
+        brand: 'B',
+        category: ['c'],
+        counted,
+        excludedReason: null,
+        basePrice: aed(base),
+        otherPrice: aed(other),
+        gap: { amount: aed('0.00'), pct, cheaper: 'equal' },
+      }) as never;
+    const rows = gapRows([
+      row('small', '100.00', '102.00', '2.0'),
+      row('placeholder', '0.01', '100.00', '999.0'),
+      row('big', '100.00', '80.00', '-20.0'),
+      row('excluded', '100.00', '50.00', '-50.0', false),
+    ]);
+    expect(rows.map((r) => r.id)).toEqual(['big', 'small']);
+  });
+
+  it('turns group summaries into heatmap cells and keeps thin groups apart', () => {
+    const g = (key: string, a: number, eq: number, b: number) => ({
+      key,
+      n: a + eq + b,
+      status: 'ok',
+      reason: null,
+      summary: {
+        n: a + eq + b,
+        cheaperCounts: { a, b },
+        equalCount: eq,
+        medianGapPct: '0',
+        meanGapPct: '0',
+        basket: {},
+      },
+    });
+    const thin = { key: 'thin', n: 2, status: 'not_enough_data', reason: 'cohort_too_small', summary: null };
+    const out = cheaperCells([g('lips', 3, 1, 2), thin, g('skin', 0, 0, 5)] as never, 'a', 'b');
+    expect(out.rows.map((r) => r.key)).toEqual(['lips', 'skin']);
+    expect(out.thin.map((r) => r.key)).toEqual(['thin']);
+    expect(out.cells).toEqual([
+      [0, 0, 3],
+      [1, 0, 1],
+      [2, 0, 2],
+      [0, 1, 0],
+      [1, 1, 0],
+      [2, 1, 5],
+    ]);
+    expect(out.max).toBe(5);
+  });
+
+  it('builds the category × brand grid from counted pairs and marks thin cells, never 0', () => {
+    const aed = (amount: string) => ({ amount, currency: 'AED', minor: Math.round(Number(amount) * 100) });
+    const row = (
+      i: number,
+      category: string,
+      brand: string,
+      cheaper: 'base' | 'other' | 'equal',
+      counted = true,
+    ) =>
+      ({
+        id: `p${i}`,
+        name: `p${i}`,
+        brand,
+        category: [category, 'leaf'],
+        counted,
+        excludedReason: counted ? null : 'no_match',
+        basePrice: aed('100.00'),
+        otherPrice: aed(cheaper === 'base' ? '110.00' : cheaper === 'other' ? '90.00' : '100.00'),
+        gap: { amount: aed('0.00'), pct: '0', cheaper },
+      }) as never;
+    const rows = [
+      ...Array.from({ length: 5 }, (_, i) => row(i, 'Skincare', 'Acme', i < 4 ? 'base' : 'other')),
+      row(10, 'Skincare', 'Zed', 'other'),
+      row(11, 'Skincare', 'Zed', 'equal'),
+      row(12, 'Makeup', 'Acme', 'other'),
+      row(13, 'Makeup', 'Acme', 'other', false),
+    ];
+    const out = crossCells(rows, { min: 5 });
+    expect(out.cats).toEqual(['Skincare', 'Makeup']);
+    expect(out.brands).toEqual(['Acme', 'Zed']);
+    expect(out.pairs).toBe(8);
+    const full = out.cells.find((c) => c.row === 0 && c.col === 0)!;
+    expect(full).toMatchObject({ n: 5, baseWins: 4, otherWins: 1, equal: 0, value: 0.6 });
+    const thin = out.cells.find((c) => c.row === 0 && c.col === 1)!;
+    expect(thin).toMatchObject({ n: 2, value: null });
+    expect(out.cells.find((c) => c.row === 1 && c.col === 1)).toBeUndefined();
+    expect(out.thin).toBe(2);
+    // The busiest rows and columns only.
+    expect(crossCells(rows, { min: 5, maxRows: 1, maxCols: 1 }).cells).toHaveLength(1);
+  });
+
+  it('turns group summaries into cheaper shares, base-heavy first, and skips thin groups', () => {
+    const g = (key: string, a: number, eq: number, b: number) => ({
+      key,
+      n: a + eq + b,
+      status: 'ok',
+      reason: null,
+      summary: {
+        n: a + eq + b,
+        cheaperCounts: { a, b },
+        equalCount: eq,
+        medianGapPct: '0',
+        meanGapPct: '0',
+        basket: {},
+      },
+    });
+    const thin = { key: 'thin', n: 2, status: 'not_enough_data', reason: 'cohort_too_small', summary: null };
+    const out = cheaperShares([g('lips', 1, 1, 2), thin, g('skin', 3, 0, 1)] as never, 'a', 'b');
+    expect(out.map((r) => r.key)).toEqual(['skin', 'lips']);
+    expect(out[0]).toMatchObject({ n: 4, base: 0.75, same: 0, other: 0.25, baseN: 3, sameN: 0, otherN: 1 });
+  });
+
+  it('links a group to the comparison narrowed to it', () => {
+    expect(compareHref('en', { base: 'a', other: 'b', groupBy: 'category', category: 'lips' })).toBe(
+      '/en/compare/?retailers=a%2Cb&groupBy=category&category=lips',
+    );
   });
 });

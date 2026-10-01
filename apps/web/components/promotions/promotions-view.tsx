@@ -23,7 +23,7 @@ import { Card } from '../ui/card';
 import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
 import { Known } from '../ui/known';
-import { Money } from '../ui/money';
+import { Price } from '../ui/money';
 import { RetailerChecks } from '../ui/retailer-checks';
 import { PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
@@ -255,10 +255,10 @@ function Items({
                 <bdi className="tabular-nums whitespace-nowrap" dir="ltr">{`−${i.depthPct}%`}</bdi>
               </td>
               <td className={`${TD} text-end`}>
-                <Money m={i.price} locale={locale} />
+                <Price of={i} locale={locale} />
               </td>
               <td className={`${TD} text-end text-ink-2`}>
-                <Money m={i.regular} locale={locale} />
+                <Price of={{ price: i.regular }} locale={locale} />
               </td>
             </tr>
           ))}

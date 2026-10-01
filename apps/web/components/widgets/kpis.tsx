@@ -4,90 +4,196 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { Summary } from '@/lib/api/summary';
+import { num } from '@/lib/api/summary';
+import type { Schemas } from '@/lib/api/types';
 import { formatCount, formatDate } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
 import type { CaveatView } from '@/lib/api/types';
 import { exploreHref, freshness, hasParents, importedOn, pct, promotions, promotionsHref } from './model';
 
-/**
- * The headline numbers; the promotion share only once regular prices are collected. Each tile opens
- * the list it counts. `caveats` are the envelope's: an imported retailer's count and date say so.
- */
-export function KpiWidget({
-  data,
-  locale,
-  caveats = [],
-}: {
+/** One retailer's /summary, fetched with an explicit `?retailer=`, and the caveats scoped to it. */
+export interface RetailerSummary {
+  retailer: string;
+  name: string;
   data: Summary;
-  locale: string;
-  caveats?: readonly CaveatView[];
-}) {
+  caveats: readonly CaveatView[];
+}
+
+/**
+ * The headline numbers, one row per retailer inside each tile so the catalogues read side by side:
+ * products, brands, categories, median price, the promotion share where it is measured, and
+ * freshness. Each tile opens the list it counts. An imported retailer's count and date say so; a
+ * null count is withheld by /summary, never zero.
+ */
+export function KpiWidget({ rows, locale }: { rows: readonly RetailerSummary[]; locale: string }) {
   const t = useTranslations('widgets.kpi');
   const lc = locale === 'ar' ? 'ar' : 'en';
-  const f = freshness(data.freshness);
-  // An import date, never a capture date: no 'as of' and no age (owner rule, API 1.5.0).
-  const imported = f === 'snapshot' ? (importedOn(caveats, data.retailer) ?? data.freshness.cutoff) : null;
-  const promo = promotions(data);
   const all = exploreHref(locale, {});
-  // A null count is withheld by /summary, not zero.
+  const many = rows.length > 1;
+  const promoRows = rows.filter((r) => promotions(r.data).measured);
   const count = (v: number | null) => (v === null ? <None>{t('none')}</None> : formatCount(v, locale));
+  const per = (f: (r: RetailerSummary) => ReactNode, sub?: (r: RetailerSummary) => ReactNode) =>
+    rows.map((r) => (
+      <Row key={r.retailer} name={many ? r.name : undefined} sub={sub?.(r)}>
+        {f(r)}
+      </Row>
+    ));
   return (
     <dl
-      className={`grid grid-cols-2 gap-4 sm:grid-cols-3 ${promo.measured ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}
+      className={`grid grid-cols-2 gap-4 sm:grid-cols-3 ${promoRows.length ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}
     >
-      <Tile
-        k={t('products')}
-        href={all}
-        tone="bg-lav"
-        sub={hasParents(caveats, data.retailer) ? t('productsParents') : undefined}
-      >
-        {count(data.products)}
+      <Tile k={t('products')} href={all} tone="bg-lav">
+        {per(
+          (r) => count(r.data.products),
+          (r) => (hasParents(r.caveats, r.retailer) ? t('productsParents') : undefined),
+        )}
       </Tile>
       <Tile k={t('brands')} href={all} tone="bg-sky">
-        {count(data.brands)}
+        {per((r) => count(r.data.brands))}
       </Tile>
       <Tile k={t('categories')} href={all} tone="bg-mint">
-        {count(data.categories)}
+        {per((r) => count(r.data.categories))}
       </Tile>
       <Tile k={t('median')} href={exploreHref(locale, { sort: 'price_asc' })} tone="bg-butter">
-        {data.medianPrice ? formatMoney(data.medianPrice, lc) : <None>{t('none')}</None>}
+        {per((r) => (r.data.medianPrice ? formatMoney(r.data.medianPrice, lc) : <None>{t('none')}</None>))}
       </Tile>
-      {promo.measured && (
-        <Tile k={t('promo')} href={promotionsHref(locale, {})} tone="bg-blush" sub={t('promoOf')}>
-          {pct(promo.share, locale)}
+      {promoRows.length > 0 && (
+        <Tile
+          k={t('promo')}
+          href={promotionsHref(locale, {})}
+          tone="bg-blush"
+          sub={
+            many && promoRows.length === 1 ? t('promoOnly', { retailer: promoRows[0]!.name }) : t('promoOf')
+          }
+        >
+          {per((r) => {
+            const p = promotions(r.data);
+            // Withheld promotions show as not measured, never as 0%.
+            return p.measured ? pct(p.share, locale) : <None>{t('withheld')}</None>;
+          })}
         </Tile>
       )}
+      <Tile k={t('freshness')} href="#dataset" tone="bg-surface-2">
+        {per(
+          (r) => (
+            <FreshPill data={r.data} caveats={r.caveats} />
+          ),
+          (r) => (
+            <FreshNote data={r.data} caveats={r.caveats} locale={locale} />
+          ),
+        )}
+      </Tile>
+    </dl>
+  );
+}
+
+function FreshPill({ data, caveats }: { data: Summary; caveats: readonly CaveatView[] }) {
+  const t = useTranslations('widgets.kpi');
+  const f = freshness(data.freshness);
+  // An imported snapshot reads as a snapshot even when the API's status is a collected one.
+  const k =
+    f === 'fresh' || f === 'aging' || f === 'stale'
+      ? importedOn(caveats, data.retailer)
+        ? 'snapshot'
+        : f
+      : f;
+  const tone =
+    k === 'fresh'
+      ? 'bg-mint text-mint-ink'
+      : k === 'aging'
+        ? 'bg-butter text-butter-ink'
+        : k === 'stale'
+          ? 'bg-rose text-rose-ink'
+          : 'bg-surface-2 text-ink';
+  return <span className={`pill text-sm ${tone}`}>{t(k)}</span>;
+}
+
+/** An import date, never a capture date: no 'as of' and no age (owner rule, API 1.5.0). */
+function FreshNote({
+  data,
+  caveats,
+  locale,
+}: {
+  data: Summary;
+  caveats: readonly CaveatView[];
+  locale: string;
+}) {
+  const t = useTranslations('widgets.kpi');
+  const f = freshness(data.freshness);
+  const imported =
+    f === 'snapshot'
+      ? (importedOn(caveats, data.retailer) ?? data.freshness.cutoff)
+      : importedOn(caveats, data.retailer);
+  if (imported) return <>{t('imported', { date: formatDate(imported, locale) })}</>;
+  return (
+    <>
+      {t('asOf', { date: formatDate(data.freshness.cutoff, locale) })}
+      {' · '}
+      {t('age', { days: data.freshness.ageDays })}
+    </>
+  );
+}
+
+/**
+ * The head-to-head numbers for one pair, on the matched set only: how many comparable pairs, the
+ * median gap on them, and who is cheaper how often. Every tile names the pair count, so none reads
+ * as a full-catalogue comparison. A null summary is too few pairs, never zero.
+ */
+export function PairKpis({
+  data,
+  pair,
+  locale,
+  href,
+}: {
+  data: Schemas['Comparison'];
+  pair: { base: string; other: string; name: (id: string) => string };
+  locale: string;
+  href: string;
+}) {
+  const t = useTranslations('widgets.kpi');
+  const tr = useTranslations('reasons');
+  const s = data.summary;
+  const base = pair.name(pair.base);
+  const other = pair.name(pair.other);
+  const reason = data.sides.base.reason ?? data.sides.other.reason;
+  const none = <None>{reason && tr.has(reason) ? tr(reason) : t('none')}</None>;
+  const gap = s ? num(s.medianGapPct) : NaN;
+  return (
+    <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <Tile k={t('pairs')} href={href} tone="bg-lav" sub={t('pairsOf', { base, other })}>
+        <Row>{s ? formatCount(s.n, locale) : none}</Row>
+      </Tile>
       <Tile
-        k={t('freshness')}
-        href="#dataset"
-        tone={
-          f === 'fresh' ? 'bg-mint' : f === 'aging' ? 'bg-butter' : f === 'stale' ? 'bg-rose' : 'bg-surface-2'
-        }
-        sub={
-          imported ? (
-            t('imported', { date: formatDate(imported, locale) })
-          ) : (
-            <>
-              {t('asOf', { date: formatDate(data.freshness.cutoff, locale) })}
-              {' · '}
-              {t('age', { days: data.freshness.ageDays })}
-            </>
-          )
-        }
+        k={t('index')}
+        href={href}
+        tone="bg-sky"
+        sub={s ? t('indexOf', { other, base, n: formatCount(s.n, locale) }) : undefined}
       >
-        <span
-          className={`pill text-base ${
-            f === 'fresh'
-              ? 'bg-mint text-mint-ink'
-              : f === 'aging'
-                ? 'bg-butter text-butter-ink'
-                : f === 'stale'
-                  ? 'bg-rose text-rose-ink'
-                  : 'bg-surface-2'
-          }`}
-        >
-          {t(f)}
-        </span>
+        <Row>
+          {s && Number.isFinite(gap) ? (
+            <span className={gap > 0 ? 'text-series-a' : gap < 0 ? 'text-series-b' : undefined}>
+              {gap > 0 ? '+' : ''}
+              {pct(s.medianGapPct, locale)}
+            </span>
+          ) : (
+            none
+          )}
+        </Row>
+      </Tile>
+      <Tile
+        k={t('cheaper')}
+        href={href}
+        tone="bg-mint"
+        sub={s ? t('same', { n: formatCount(s.equalCount, locale) }) : undefined}
+      >
+        {s ? (
+          <>
+            <Row name={base}>{formatCount(s.cheaperCounts[pair.base] ?? 0, locale)}</Row>
+            <Row name={other}>{formatCount(s.cheaperCounts[pair.other] ?? 0, locale)}</Row>
+          </>
+        ) : (
+          <Row>{none}</Row>
+        )}
       </Tile>
     </dl>
   );
@@ -114,9 +220,20 @@ function Tile({
           {k}
         </Link>
       </dt>
-      <dd className="mt-1.5 text-2xl font-bold tracking-tight tabular-nums">{children}</dd>
-      {sub && <dd className="mt-0.5 text-xs text-ink-2">{sub}</dd>}
+      <div className="mt-1.5 space-y-1.5">{children}</div>
+      {sub && <dd className="mt-1 text-xs text-ink-2">{sub}</dd>}
     </div>
+  );
+}
+
+/** One retailer's value in a tile; the name only when the tile holds more than one. */
+function Row({ name, sub, children }: { name?: string; sub?: ReactNode; children: ReactNode }) {
+  return (
+    <dd className="min-w-0">
+      {name && <span className="block truncate text-xs font-medium text-ink-2">{name}</span>}
+      <span className="block text-2xl leading-tight font-bold tracking-tight tabular-nums">{children}</span>
+      {sub && <span className="mt-0.5 block text-xs text-ink-2">{sub}</span>}
+    </dd>
   );
 }
 

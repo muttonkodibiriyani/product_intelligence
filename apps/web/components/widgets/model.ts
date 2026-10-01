@@ -5,7 +5,9 @@
 import { EMPTY, toSearch, type ExploreState } from '@/lib/explore';
 import { EMPTY_PROMOTIONS, MIN_PCTS, toPromotionsSearch, type MinPct } from '@/lib/promotions';
 import { num, type Measured, type Summary } from '@/lib/api/summary';
-import type { CaveatView } from '@/lib/api/types';
+import type { CaveatView, Schemas } from '@/lib/api/types';
+import { EMPTY_COMPARE, toCompareSearch, type GroupBy } from '@/lib/compare';
+import { isValidAmount, isValidPrice } from '@/lib/money';
 
 /** An amount in the user's language with Latin digits, like `formatMoney`; whole units on axes. */
 export function amount(v: string, currency: string, locale: string, whole = false): string {
@@ -37,6 +39,20 @@ export const promotionsHref = (locale: string, s: { category?: string; minPct?: 
     ...EMPTY_PROMOTIONS,
     category: s.category ? [s.category] : [],
     minPct: (MIN_PCTS as readonly string[]).includes(s.minPct ?? '') ? (s.minPct as MinPct) : '',
+  })}`;
+
+/** The comparison page for a pair, optionally grouped or narrowed to one category or brand. */
+export const compareHref = (
+  locale: string,
+  s: { base: string; other: string; groupBy?: GroupBy | null; category?: string; brand?: string },
+) =>
+  `/${locale}/compare/${toCompareSearch({
+    ...EMPTY_COMPARE,
+    base: s.base,
+    other: s.other,
+    groupBy: s.groupBy ?? null,
+    category: s.category ? [s.category] : [],
+    brand: s.brand ? [s.brand] : [],
   })}`;
 
 /** The lower bound of a discount band label ("20-30", "20–30%", "50+"), or '' if it has none. */
@@ -112,9 +128,13 @@ export function histBins(h: Summary['priceHist']) {
 /** Scatter points [price, rating, reviews], dropping unplaceable ones. */
 export function ratingPoints(r: Summary['ratingPrice']) {
   if (!r) return [];
-  return r.points
-    .map((p) => [num(p.price), num(p.rating), p.count] as [number, number, number])
-    .filter(([x, y]) => x > 0 && Number.isFinite(y));
+  return (
+    r.points
+      // A placeholder price (0.01 or less) is not a point.
+      .filter((p) => isValidAmount(p.price))
+      .map((p) => [num(p.price), num(p.rating), p.count] as [number, number, number])
+      .filter(([x, y]) => x > 0 && Number.isFinite(y))
+  );
 }
 
 /**
@@ -225,4 +245,154 @@ export function brandShare(brands: Summary['brandPrice'], priced: number | null)
       cum += b.n;
       return { brand: b.brand, n: b.n, share: (b.n / priced) * 100, cum: (cum / priced) * 100 };
     });
+}
+
+/** Retailers the dashboard reports on: collected or partly collected, never blocked or pending. */
+export function activeRetailers(meta: Pick<Schemas['MetaView'], 'retailers'> | null | undefined): string[] {
+  return (meta?.retailers ?? [])
+    .filter((r) => r.status === 'supported' || r.status === 'partial')
+    .map((r) => r.id);
+}
+
+/**
+ * Only the caveats about the retailers in a request. On API < 1.5.2 an imported retailer's
+ * caveats are not scoped, so an Ulta caveat can arrive on a Sephora-only request; a caveat that
+ * names another retailer is dropped here. One without a retailer applies to the whole response.
+ */
+export function scopedCaveats(caveats: readonly CaveatView[], retailers: readonly string[]): CaveatView[] {
+  return caveats.filter((c) => !c.params?.retailer || retailers.includes(c.params.retailer));
+}
+
+type IndexPoint = Schemas['IndexPoint'];
+
+/**
+ * The index points a trend line may draw: only when the API says a trend exists AND at least two
+ * days carry an index (owner rule: no line over time until real multi-day history exists). Null
+ * means "no line": the card says history begins once nightly collection runs.
+ */
+export function trendPoints(
+  index: Pick<Schemas['PriceIndex'], 'points' | 'trendAvailable'> | null | undefined,
+): (IndexPoint & { index: string })[] | null {
+  if (!index?.trendAvailable) return null;
+  const pts = index.points.filter((p): p is IndexPoint & { index: string } => p.index !== null);
+  return pts.length >= 2 ? pts : null;
+}
+
+type PairRow = Schemas['PairRow'];
+
+/** Counted pairs with two real prices, widest gap first: the rows a head-to-head chart may plot. */
+export function gapRows(rows: readonly PairRow[], top = 10) {
+  return rows
+    .filter(
+      (r): r is PairRow & { gap: Schemas['Gap'] } =>
+        r.counted &&
+        !!r.gap &&
+        isValidPrice(r.basePrice) &&
+        isValidPrice(r.otherPrice) &&
+        Number.isFinite(num(r.gap.pct)),
+    )
+    .sort((a, b) => Math.abs(num(b.gap.pct)) - Math.abs(num(a.gap.pct)))
+    .slice(0, top);
+}
+
+/** Who is cheaper per group, for the heatmap: [column, row, count], columns base / same / other. */
+export function cheaperCells(groups: readonly Schemas['Group'][], base: string, other: string) {
+  const measured = groups.filter((g) => g.summary);
+  const thin = groups.filter((g) => !g.summary);
+  const cells: [number, number, number][] = [];
+  let max = 0;
+  measured.forEach((g, ri) => {
+    const s = g.summary!;
+    [s.cheaperCounts[base] ?? 0, s.equalCount, s.cheaperCounts[other] ?? 0].forEach((n, ci) => {
+      max = Math.max(max, n);
+      cells.push([ci, ri, n]);
+    });
+  });
+  return { rows: measured, thin, cells, max };
+}
+
+/** One cell of the category × brand heatmap: who is cheaper how often on the pairs in it. */
+export interface CrossCell {
+  col: number;
+  row: number;
+  n: number;
+  baseWins: number;
+  otherWins: number;
+  equal: number;
+  /** (base wins − other wins) / n, −1…1; null under the cohort minimum: "too few pairs", never 0. */
+  value: number | null;
+}
+
+/**
+ * Who is cheaper per category (rows) and brand (columns), computed from /compare's counted rows:
+ * only for a response that is not truncated, so every pair is in. The busiest categories and
+ * brands by pairs are kept; a category is the first step of the row's path, like the treemap.
+ */
+export function crossCells(
+  rows: readonly PairRow[],
+  opts: { min?: number; maxRows?: number; maxCols?: number } = {},
+) {
+  const { min = 5, maxRows = 12, maxCols = 8 } = opts;
+  const counted = rows.filter(
+    (r): r is PairRow & { gap: Schemas['Gap'] } =>
+      r.counted && !!r.gap && isValidPrice(r.basePrice) && isValidPrice(r.otherPrice),
+  );
+  const top = (key: (r: PairRow) => string, k: number) => {
+    const n = new Map<string, number>();
+    for (const r of counted) n.set(key(r), (n.get(key(r)) ?? 0) + 1);
+    return [...n.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, k)
+      .map(([v]) => v);
+  };
+  const cat = (r: PairRow) => r.category[0] ?? '';
+  const cats = top(cat, maxRows);
+  const brands = top((r) => r.brand, maxCols);
+  const cells: CrossCell[] = [];
+  let pairs = 0;
+  cats.forEach((c, row) =>
+    brands.forEach((b, col) => {
+      const inCell = counted.filter((r) => cat(r) === c && r.brand === b);
+      if (inCell.length === 0) return;
+      const baseWins = inCell.filter((r) => r.gap.cheaper === 'base').length;
+      const otherWins = inCell.filter((r) => r.gap.cheaper === 'other').length;
+      const equal = inCell.length - baseWins - otherWins;
+      const n = inCell.length;
+      pairs += n;
+      cells.push({
+        col,
+        row,
+        n,
+        baseWins,
+        otherWins,
+        equal,
+        value: n >= min ? (baseWins - otherWins) / n : null,
+      });
+    }),
+  );
+  return { cats, brands, cells, pairs, thin: cells.filter((c) => c.value === null).length };
+}
+
+/** Each group's cheaper shares for the fallback bars: base / same / other as fractions of its pairs. */
+export function cheaperShares(groups: readonly Schemas['Group'][], base: string, other: string) {
+  return groups
+    .filter(
+      (g): g is Schemas['Group'] & { summary: Schemas['CompareSummary'] } => !!g.summary && g.summary.n > 0,
+    )
+    .map((g) => {
+      const s = g.summary;
+      const b = s.cheaperCounts[base] ?? 0;
+      const o = s.cheaperCounts[other] ?? 0;
+      return {
+        key: g.key,
+        n: s.n,
+        base: b / s.n,
+        same: s.equalCount / s.n,
+        other: o / s.n,
+        baseN: b,
+        otherN: o,
+        sameN: s.equalCount,
+      };
+    })
+    .sort((a, b) => b.base - a.base || b.n - a.n);
 }
