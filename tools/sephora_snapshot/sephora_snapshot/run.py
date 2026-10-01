@@ -10,7 +10,11 @@ by the cutoff are simply absent (not_observed as of the cutoff).
 With PLAN=<object> the job skips seeding. A ``price`` plan first re-reads the EN PDPs in the plan's
 order (a new dated price read). Then tRPC runs (unless TRPC=0) for the plan's ``trpc`` list, or the
 whole order if it has none. Last come AR PDPs for the plan entries that carry an AR URL.
-Output: batched jsonl.gz parts + progress.json under gs://$BUCKET/$PREFIX/.
+With AUTO=1 (unattended, ADR-0009) the job derives PREFIX and CUTOFF itself, refuses to fetch
+outside the 18:00Z-02:00Z window, seeds from the sitemaps and orders the night gap-first from what
+earlier runs covered (see cadence.py); each product gets its EN page, then its stock read.
+Output: batched jsonl.gz parts + progress.json under gs://$BUCKET/$PREFIX/. Every run ends with
+covered.json.gz (what it read, for the next plan) and status.json (the terminal marker).
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from typing import Any
 
 import httpx
 
-from sephora_snapshot import extract
+from sephora_snapshot import cadence, extract
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -53,15 +57,31 @@ def headers(locale: str, kind: str) -> dict[str, str]:
 
 class Job:
     def __init__(self) -> None:
+        self.started = datetime.now(UTC)
         self.bucket_name = os.environ["BUCKET"]
-        self.prefix = os.environ["PREFIX"]
-        self.cutoff = datetime.fromisoformat(os.environ["CUTOFF"])
+        self.auto = os.environ.get("AUTO") == "1"
+        self.outside: str | None = None
+        if self.auto:
+            # A stale one-shot env must not ride along with a scheduled run.
+            given = [k for k in ("PREFIX", "CUTOFF", "PLAN") if os.environ.get(k)]
+            if given:
+                raise ValueError(
+                    f"AUTO=1 derives PREFIX and CUTOFF and builds its plan: unset {given}"
+                )
+            self.prefix = cadence.auto_prefix(self.started)
+            try:
+                self.cutoff = cadence.auto_cutoff(self.started)
+            except cadence.OutsideWindow as exc:
+                self.outside, self.cutoff = str(exc), self.started
+        else:
+            self.prefix = os.environ["PREFIX"]
+            self.cutoff = datetime.fromisoformat(os.environ["CUTOFF"])
         self.pace_s = float(os.environ.get("PACE", "1.0"))
         if self.pace_s < MIN_PACE_S:
             raise ValueError(f"PACE must be >= {MIN_PACE_S} s (politeness floor, ADR-0005)")
         # Recorded in progress.json: the loader only marks a run 'succeeded' for an unlimited
         # full run with the stock pass on (see load.Loader.finish).
-        self.mode = "plan" if os.environ.get("PLAN") else "full"
+        self.mode = "auto" if self.auto else "plan" if os.environ.get("PLAN") else "full"
         self.limit = int(os.environ.get("LIMIT", "0"))
         self.trpc_on = os.environ.get("TRPC", "1") == "1"
         self.local = (
@@ -78,8 +98,9 @@ class Job:
         self.counts: dict[str, int] = {}
         self.rl_streak = 0
         self.err_streak = 0
-        self.started = datetime.now(UTC)
         self.stopped: str | None = None
+        # What this run read, by product: the next AUTO run plans from it.
+        self.covered: dict[str, dict[str, dict[str, Any]]] = {"pdp_en": {}, "trpc": {}}
 
     # ---------------------------------------------------------------- output
     def put(self, name: str, data: bytes, gz: bool = True) -> None:
@@ -216,6 +237,11 @@ class Job:
             self.put(f"raw/{lang}-{pid}.html.gz", body)
             return
         self.count(f"pdp_{lang}_ok")
+        if lang == "en":
+            self.covered["pdp_en"][pid] = {
+                "at": meta["at"],
+                "multi_price": cadence.multi_price(rec["extract"]["productDetails"]),
+            }
         n = self.counts[f"pdp_{lang}_ok"]
         if n in (1, 10, 100) or n % 500 == 0:
             print(json.dumps({"milestone": f"pdp_{lang}_ok", "n": n, "at": meta["at"]}), flush=True)
@@ -234,6 +260,8 @@ class Job:
         except json.JSONDecodeError:
             rec["text"] = body[:2000].decode("utf-8", "replace")
         self.count(f"trpc_http_{status}")
+        if status == 200:
+            self.covered["trpc"][pid] = {"at": meta["at"]}
         self.emit("trpc", rec)
 
     def load_plan(self, name: str) -> dict[str, Any]:
@@ -268,7 +296,64 @@ class Job:
             if "ar" in ids.get(pid, {}):
                 self.pdp(pid, "ar", ids[pid]["ar"])
 
+    def read_covered(self) -> list[dict[str, Any]]:
+        """Every earlier run's covered.json.gz still in the bucket (retention is 14 days)."""
+        name = "covered.json.gz"
+        blobs: list[bytes] = []
+        if self.local is not None:
+            for entry in sorted(os.listdir(self.local)):
+                path = os.path.join(self.local, entry, name)
+                if entry != self.prefix and os.path.isfile(path):
+                    with open(path, "rb") as fh:
+                        blobs.append(fh.read())
+        else:
+            for blob in self.bucket.client.list_blobs(self.bucket, match_glob=f"*/{name}"):
+                if blob.name != f"{self.prefix}/{name}":
+                    blobs.append(blob.download_as_bytes())
+        return [json.loads(gzip.decompress(raw)) for raw in blobs]
+
+    def run_auto(self) -> None:
+        """Unattended run: seed, plan gap-first from earlier runs, then EN page + stock per
+        product until the cutoff. No AR pages (ADR-0009: AR is the weekly discovery pass)."""
+        if self.outside is not None:
+            print(json.dumps({"outside_window": self.outside}), flush=True)
+            raise Stop("outside_window")
+        ids = self.seed()
+        history = self.read_covered()
+        order, tiers = cadence.gap_first(
+            (pid for pid, urls in ids.items() if "en" in urls), cadence.merge_covered(history)
+        )
+        order = order[: self.limit or None]
+        self.counts |= {"plan_pids": len(order), "plan_history_runs": len(history)}
+        self.counts |= {f"plan_{tier}": n for tier, n in tiers.items()}
+        self.put("plan.json.gz", json.dumps({"order": order, "tiers": tiers}).encode())
+        self.progress()
+        for pid in order:
+            self.pdp(pid, "en", ids[pid]["en"])
+            if self.trpc_on:
+                self.trpc(pid)
+
+    def finish(self) -> None:
+        """The terminal marker: covered.json.gz, then status.json, written once per run."""
+        self.put("covered.json.gz", json.dumps(self.covered).encode())
+        status = {
+            "state": "finished",
+            "outcome": cadence.outcome(self.stopped),
+            "stopped": self.stopped,
+            "prefix": self.prefix,
+            "mode": self.mode,
+            "started": self.started.isoformat(),
+            "finished": datetime.now(UTC).isoformat(),
+            "cutoff": self.cutoff.isoformat(),
+            "loadable": cadence.loadable(self.counts),
+            "counts": self.counts,
+        }
+        self.put("status.json", json.dumps(status).encode(), gz=False)
+
     def run(self) -> None:
+        if self.auto:
+            self.run_auto()
+            return
         plan = os.environ.get("PLAN")
         if plan:
             self.run_stock(plan)
@@ -302,17 +387,21 @@ def main() -> int:
     print(
         json.dumps({"start": job.started.isoformat(), "cutoff": job.cutoff.isoformat()}), flush=True
     )
+    code = 0
     try:
         job.run()
         job.stopped = "complete"
     except Stop as exc:
         job.stopped = str(exc)
+    except Exception as exc:
+        job.stopped, code = f"error: {exc!r}", 1
     finally:
         for stream in list(job.buf):
             job.flush(stream)
         job.progress()
+        job.finish()
         print(json.dumps({"stopped": job.stopped, "counts": job.counts}), flush=True)
-    return 0
+    return code
 
 
 if __name__ == "__main__":
