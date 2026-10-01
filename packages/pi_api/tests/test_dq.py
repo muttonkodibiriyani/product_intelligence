@@ -227,6 +227,20 @@ def test_a_later_import_never_sets_the_cutoff_or_as_of_of_collected_data(tmp_pat
     }
 
 
+def test_the_as_of_cap_is_the_cutoff_day_in_the_market_time_zone(tmp_path: Path) -> None:
+    """Reviewer, #135: 21:30Z on 29 Sep is 30 Sep 01:30 in Dubai, the day meta.dates count in."""
+    d = late_import_doc()
+    for product in d["products"]:
+        for cid, o in product["offers"].items():
+            if cid != ULTA:
+                o["evidence"]["capturedAt"] = "2026-09-29T21:30:00Z"
+    write(tmp_path, load(d))
+    client = make_client(tmp_path)[0]
+    assert get(client, "/meta")["data"]["cutoff"] == "2026-09-29T21:30:00Z"
+    for path in ("/summary", "/summary?retailer=shop_a"):
+        assert get(client, path)["data"]["asOf"] == "2026-09-30"
+
+
 def test_the_default_summary_is_a_collected_context_even_if_the_import_is_larger() -> None:
     d = ulta_doc()
     for pid in ("p01", "p02", "p04"):

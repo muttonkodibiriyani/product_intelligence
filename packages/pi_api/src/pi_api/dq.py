@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from pi_dataset import DatasetV3, OfferV3, ProductV3
 from pi_metrics import Caveat, CaveatCode
@@ -131,6 +132,9 @@ def caveats(
     return tuple(out)
 
 
-def collected_day(imported: tuple[Imported, ...], day: date, cutoff: datetime) -> date:
-    """The as-of day of collected data: with an import served, never after the cutoff's day."""
-    return min(day, cutoff.date()) if imported else day
+def collected_day(
+    imported: tuple[Imported, ...], day: date, cutoff: datetime, time_zone: str
+) -> date:
+    """The as-of day of collected data: with an import served, never after the cutoff's local
+    day in the market's ``time_zone`` (the day ``meta.dates`` are counted in)."""
+    return min(day, cutoff.astimezone(ZoneInfo(time_zone)).date()) if imported else day

@@ -139,11 +139,13 @@ def _freshness(loaded: Loaded, ctx: str, now: datetime) -> Freshness:
 
 
 def summary_view(metric: Metric[Summary], loaded: Loaded, now: datetime) -> Metric[SummaryView]:
+    ds = loaded.dataset
     ctx = metric.data.retailer
+    time_zone = ds.market_of(view.context(ds, ctx).retailer).time_zone
     as_of = (
         metric.as_of
         if ctx in loaded.unverified
-        else collected_day(loaded.imported, metric.as_of, loaded.dataset.meta.cutoff)
+        else collected_day(loaded.imported, metric.as_of, ds.meta.cutoff, time_zone)
     )
     fields = dict(metric.data) | {"as_of": as_of}
     data = SummaryView(**fields, freshness=_freshness(loaded, ctx, now))
