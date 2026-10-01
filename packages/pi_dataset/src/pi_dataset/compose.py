@@ -6,11 +6,15 @@ match edges between two of them. :func:`compose` joins those slices into one ``D
 
 * every slice has the same scope, vertical, profile and attribute set, and a market shared by
   two slices has one currency and time zone, else :class:`CompositionError`;
-* the dates are the union of the slices'; a source's series are null on a date its file lacks
-  (not observed that day, never carried forward);
+* the dates are the union of the slices'; a source's series are null on a date its file lacks,
+  and a retailer-wide ``notObserved`` window covers each run of such dates, so the date never
+  backs an absence claim (a launch, a removal or a gap) and is never carried forward;
 * a product id in two slices is one product: its offers are the union (a source's contexts are
-  its own, so offers never collide), its product fields come from the first slice that has it,
-  and the merge is reported in :attr:`Composed.merged_ids`;
+  its own, so offers never collide), and the merge is reported in :attr:`Composed.merged_ids`.
+  Merging by id assumes canonical, source-disjoint ids: the exporter derives one id per product
+  token, whichever source offers it. No source owns a product id, so its product fields (brand,
+  name, category, ...) come from the slice that sorts first by its smallest retailer id, whatever
+  the order the slices are given in;
 * a match edge is kept only from a file that holds both of its retailers' offers, so no edge is
   ever made across two files;
 * ``capabilities`` are or-ed, a ``fields`` status that differs between slices is ``partial``,
@@ -34,7 +38,7 @@ from pi_dataset.models import (
     MatchEdge,
     Producer,
 )
-from pi_dataset.v3 import DatasetV3, MetaV3, OfferV3, ProductV3
+from pi_dataset.v3 import DatasetV3, MetaV3, NotObservedV3, OfferV3, ProductV3
 
 #: The ``meta.producer`` of a composed view; each source's own is in its file.
 PRODUCER = Producer(name="pi_dataset.compose", version="1")
@@ -131,6 +135,7 @@ def compose(slices: Sequence[DatasetV3]) -> Composed:
     if not slices:
         msg = "nothing to compose"
         raise CompositionError(msg)
+    slices = sorted(slices, key=lambda s: min(r.id for r in s.meta.retailers))
     first = slices[0].meta
     for s in slices[1:]:
         _check_same_scope(first, s.meta)
@@ -177,13 +182,38 @@ def compose(slices: Sequence[DatasetV3]) -> Composed:
         schema_id="pi.dataset/v3",
         meta=meta,
         products=tuple(products.values()),
-        not_observed=tuple(w for s in slices for w in s.not_observed),
+        not_observed=tuple(w for s in slices for w in (*s.not_observed, *_outside(s.meta, dates))),
     )
     return Composed(
         dataset=dataset,
         sources=tuple(i for s in slices for i in source_infos(s)),
         merged_ids=tuple(sorted(merged)),
     )
+
+
+def _outside(meta: MetaV3, dates: tuple[date, ...]) -> list[NotObservedV3]:
+    """Retailer-wide windows over each run of view dates that the slice's file lacks."""
+    own = set(meta.dates)
+    runs: list[list[date]] = []
+    for k, day in enumerate(dates):
+        if day in own:
+            continue
+        if runs and dates[k - 1] == runs[-1][-1]:
+            runs[-1].append(day)
+        else:
+            runs.append([day])
+    first, last = meta.dates[0], meta.dates[-1]
+    why = {
+        "en": f"Not in this source's file, which covers {first} to {last}.",
+        "ar": f"خارج تواريخ ملف هذا المصدر ({first} إلى {last}).",
+    }
+    return [
+        NotObservedV3(
+            retailer=r.id, start=run[0], end=run[-1], categories=None, why=why, context=None
+        )
+        for r in meta.retailers
+        for run in runs
+    ]
 
 
 def _check_same_scope(a: MetaV3, b: MetaV3) -> None:
