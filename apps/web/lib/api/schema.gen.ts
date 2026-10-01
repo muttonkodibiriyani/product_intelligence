@@ -422,7 +422,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.5.1
+             * @default 1.6.0
              */
             apiVersion: string;
             /** Currency */
@@ -1224,6 +1224,8 @@ export interface components {
             profile: components["schemas"]["ProfileInfo"];
             /** Retailers */
             retailers: components["schemas"]["RetailerView"][];
+            /** Sources */
+            sources: components["schemas"]["SourceInfo"][];
             /** Test */
             test: boolean;
             /** Vertical */
@@ -1619,6 +1621,38 @@ export interface components {
             unit: string;
             /** Value */
             value: string;
+        };
+        /**
+         * SourceInfo
+         * @description One source of a view, as its own file has it.
+         */
+        SourceInfo: {
+            capabilities: components["schemas"]["Capabilities"];
+            /**
+             * Cutoff
+             * Format: date-time
+             */
+            cutoff: string;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldStatus"];
+            };
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            /**
+             * Lastdate
+             * Format: date
+             */
+            lastDate: string;
+            /** Matchstage */
+            matchStage: string;
+            /** Products */
+            products: number;
+            /** Source */
+            source: string;
         };
         /**
          * Status
