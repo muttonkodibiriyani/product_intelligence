@@ -19,6 +19,8 @@ import { BRANDS_TOP } from '../widgets/constants';
 import {
   brandShare,
   categoryNodes,
+  freshness,
+  importedOn,
   ladderRows,
   pct,
   promotions,
@@ -95,11 +97,16 @@ function Subtitle() {
   const name = useRetailerName();
   const s = useSummaryData();
   if (s.kind !== 'ready') return null;
+  // An imported retailer's date is when it was imported; it is never called a snapshot date.
+  const imported =
+    freshness(s.data.freshness) === 'snapshot'
+      ? (importedOn(s.env.caveats, s.data.retailer) ?? s.data.freshness.cutoff)
+      : null;
   return (
     <p className="mt-1 text-sm text-ink-2">
-      {t('subtitle', {
+      {t(imported ? 'subtitleImported' : 'subtitle', {
         retailer: name(s.data.retailer),
-        date: formatDate(s.data.asOf, locale),
+        date: formatDate(imported ?? s.data.asOf, locale),
       })}
     </p>
   );
@@ -198,7 +205,7 @@ function Overview() {
     <div className="space-y-6">
       <EnvNotes env={s.env} />
       <WithheldNote withheld={data.withheld} />
-      <KpiWidget data={data} locale={locale} />
+      <KpiWidget data={data} locale={locale} caveats={s.env.caveats} />
       <p className="text-xs text-ink-2">{tw('drill')}</p>
       <CardGrid>
         {/* Two per row; an odd one out takes the full row. */}
@@ -214,7 +221,7 @@ function Overview() {
               </Link>
             }
           >
-            <TopDiscountsWidget data={promo.top} locale={locale} />
+            <TopDiscountsWidget data={promo.top} locale={locale} retailer={data.retailer} />
           </Card>
         )}
       </CardGrid>

@@ -43,7 +43,7 @@
     "en": "A selected retailer could not be collected."
   },
   "meta": {
-    "apiVersion": "1.4.1",
+    "apiVersion": "1.5.2",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "summary",
