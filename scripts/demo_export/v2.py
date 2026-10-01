@@ -14,8 +14,9 @@ dataset runs every contract rule: an invalid document cannot be written. What ch
   ``null`` there (contract rule 6: never carried forward), and the field is reported ``partial``;
 - ``category`` is the one-level code followed by the naming offer's own breadcrumb (at most three
   levels, verbatim; see ``category_path``);
-- ``image`` is the retailer's own main image URL, hotlinked (never rehosted) and only from an
-  allowlisted https host (``IMAGE_HOSTS``); anything else is ``null``, never a guess;
+- ``image`` is the retailer's own main image URL, hotlinked (never rehosted) and only from that
+  retailer's allowlisted https host (``IMAGE_HOSTS``); anything else, including another
+  retailer's host, is ``null``, never a guess;
 - Ulta's status is the owner's statement (``UltaContext``), not inferred from whether rows exist.
 
 ``to_v3`` (``--output-v3``, opt-in) upgrades that v2 snapshot under ``beauty@1`` and states each
@@ -93,8 +94,13 @@ CATEGORY_DEPTH = 3
 BRAND_NAV = ("BRANDS", "Brands")
 #: Sephora-internal pseudo-crumbs that name no category.
 NOT_A_CATEGORY = frozenset({"PID Unicity", "without_pid"})
-#: Hosts whose image URLs are published (owner decision: hotlinked from the retailer's CDN only).
-IMAGE_HOSTS = frozenset({"img-product.sephora.me"})
+#: Per retailer (register key, as in ``RETAILERS``, never the raw ``source.name``), the hosts whose
+#: image URLs are published (owner decision: hotlinked from the retailer's own CDN only; decision
+#: log 2026-10-01). Another retailer's host is never accepted.
+IMAGE_HOSTS: dict[str, frozenset[str]] = {
+    "sephora_me": frozenset({"img-product.sephora.me"}),
+    "ulta_ae": frozenset({"media.alshaya.com"}),
+}
 #: The retailer's "no image" placeholder (``.../images/noimagemedium.png``) is not a product image.
 PLACEHOLDER_IMAGE = re.compile(r"/noimage[^/]*$", re.IGNORECASE)
 #: Published prices outside this band are listed in the run log for a manual check (never changed).
@@ -135,9 +141,9 @@ def availability(value: str | None) -> AvailabilityState | None:
     return AvailabilityState(value)
 
 
-def image(value: str | None) -> HttpUrl | None:
-    """An absolute https URL on an allowlisted host, without credentials or a fragment (even an
-    empty trailing ``#``), that is not the retailer's placeholder; else None."""
+def image(value: str | None, retailer: str) -> HttpUrl | None:
+    """An absolute https URL on one of ``retailer``'s allowlisted hosts, without credentials or
+    a fragment (even an empty trailing ``#``), that is not the retailer's placeholder; else None."""
     if not value:
         return None
     try:
@@ -147,7 +153,7 @@ def image(value: str | None) -> HttpUrl | None:
         return None
     if (
         parts.scheme != "https"
-        or parts.hostname not in IMAGE_HOSTS
+        or parts.hostname not in IMAGE_HOSTS.get(retailer, frozenset())
         or port not in (None, 443)
         or parts.username is not None
         or "#" in value
@@ -257,7 +263,7 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
             source=f"{rep.source_name} · local pi_db snapshot",
             run_id=str(run_id),
         ),
-        image=image(rep.image),
+        image=image(rep.image, RETAILERS[rep.retailer][0]),
     )
 
 
