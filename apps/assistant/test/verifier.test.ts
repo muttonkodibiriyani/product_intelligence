@@ -48,6 +48,25 @@ describe("normalisation", () => {
     expect(extractNumbers("37. cheaper", times)).toEqual(["37"]);
   });
 
+  it("takes only cutoff from a citation, never the echoed filters (review #51)", () => {
+    const probe = {
+      data: { price: "129.00" },
+      citation: {
+        cutoff: "2026-09-15T20:00:00Z",
+        filters: { from: "2026-08-12T11:45:00Z", nested: { to: "2026-07-01" } },
+      },
+      filters: { from: "2026-06-30T09:15:00Z" },
+    };
+    const times = collectToolTimes([probe]);
+    expect([...times.dates].some((d) => d.startsWith("2026-08-12"))).toBe(false);
+    expect([...times.dates].some((d) => d.startsWith("2026-07-01"))).toBe(false);
+    expect([...times.dates].some((d) => d.startsWith("2026-06-30"))).toBe(false);
+    expect([...times.clocks]).toEqual(["20:00", "20:00:00"]);
+    expect(verifyAnswerNumbers("11:45 AED cheaper", [probe]).ok).toBe(false);
+    expect(verifyAnswerNumbers("Price 2026-08-12", [probe]).ok).toBe(false);
+    expect(verifyAnswerNumbers("As of 2026-09-15 20:00, 129.00 AED", [probe]).ok).toBe(true);
+  });
+
   it("does not collect times from untrusted text", () => {
     const times = collectToolTimes([{ data: { note: { untrusted: "2099-12-31T12:30:00Z" } } }]);
     expect(times.dates.size + times.clocks.size).toBe(0);

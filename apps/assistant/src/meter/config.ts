@@ -11,6 +11,9 @@ const usd = z.string().regex(/^\d{1,6}(?:\.\d{1,6})?$/, "USD decimal text");
 const label = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/);
 const tokenCount = z.number().int().min(1).max(1_000_000);
 
+/** Largest prompt the price table prices correctly (base tier of every listed model). */
+export const MAX_INPUT_TOKENS = 200_000;
+
 export const AssistantConfigSchema = z
   .object({
     enabled: z.boolean(),
@@ -29,7 +32,11 @@ export const AssistantConfigSchema = z
       .strict(),
     limits: z
       .object({
-        maxInputTokens: tokenCount,
+        /**
+         * At most 200k: Gemini Pro bills prompts above 200k tokens at a higher tier, and the
+         * price table models only the base tier, so the cap keeps every call inside it.
+         */
+        maxInputTokens: tokenCount.max(MAX_INPUT_TOKENS),
         maxOutputTokens: tokenCount,
         thinkingBudget: z.number().int().min(0).max(100_000),
         maxModelCallsPerQuestion: z.number().int().min(1).max(10),

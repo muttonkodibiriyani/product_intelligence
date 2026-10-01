@@ -537,7 +537,11 @@ Worst-case chat alone would use too much of the $25 shared with Cloud SQL and cr
     until next month or an owner-approved raise;
   - daily $0.40;
   - per-user daily question caps (§6);
-  - per-question hard token ceiling.
+  - per-question hard token ceiling; `maxInputTokens` is capped at 200k by schema, because
+    Gemini Pro bills prompts above 200k tokens at a higher tier that the price table does not
+    model.
+  - The kill switch and config are re-read before **every** model call, not only at question
+    start, so switching off stops a running question at its next call.
 - **CI evals:** at most $1.50/month, tracked through a separate CI label. Full runs are
   manual-dispatch only once the smoke budget is used.
 - **Kill switch:** `assistant_config/current.enabled = false`. It is also flipped automatically
@@ -562,7 +566,8 @@ owner's OK via the Coordinator.
 | GitHub protected environment `assistant-evals` + eval workflow job (`.github` change, owner pushes) | **needs owner** | – | Model evals in CI |
 | Service-layer API deployed with `/v1/*` (#39) | Deep Coder's track | – | Stage 1c |
 | `recaptchaenterprise` + App Check | optional, **needs OK** | free ≤ 10 k/month | Stage 1 hardening |
-| Budget → Pub/Sub → kill-switch subscriber | optional, **needs OK** | free | Auto kill switch |
+| Budget → Pub/Sub → kill-switch subscriber | **required before Vertex enablement** (Coordinator, 2026-10-01); own PR after the Genkit/promptfoo PR; deploy **needs OK** | free | Auto kill switch; catches spend around the meter |
+| Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `messages` (collection groups) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
 | Rules changes (threads read-own; no client report reads) | with the stage 1 PR, emulator-tested | – | Stage 1 |

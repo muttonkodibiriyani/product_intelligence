@@ -52,6 +52,28 @@ describe("kill switch and config", () => {
     expect(await refusal(meter.startQuestion(VIEWER, "chat"))).toBe(code);
   });
 
+  it("re-reads the kill switch before every call (review #51)", async () => {
+    const { store, meter } = setup();
+    const question = await meter.startQuestion(VIEWER, "chat");
+    let calls = 0;
+    const call = () => {
+      calls += 1;
+      return Promise.resolve({ usage: USAGE, value: "ok" });
+    };
+    await meter.call(question, call);
+    store.config = { ...CONFIG, enabled: false };
+    expect(await refusal(meter.call(question, call))).toBe("disabled");
+    store.config = null;
+    expect(await refusal(meter.call(question, call))).toBe("config_invalid");
+    expect(calls).toBe(1);
+  });
+
+  it("caps maxInputTokens at the 200k base price tier (review #51)", async () => {
+    const config = { ...CONFIG, limits: { ...CONFIG.limits, maxInputTokens: 200_001 } };
+    const { meter } = setup(config);
+    expect(await refusal(meter.startQuestion(VIEWER, "chat"))).toBe("config_invalid");
+  });
+
   it("refuses when the store is unreachable", async () => {
     const broken: UsageStore = {
       readConfig: () => Promise.reject(new Error("down")),

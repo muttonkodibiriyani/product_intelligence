@@ -96,7 +96,11 @@ function clockKey(hours: string, minutes: string, seconds?: string): string {
   return seconds === undefined ? base : `${base}:${seconds}`;
 }
 
-/** Collect ISO dates/datetimes from tool outputs (any key; `{untrusted}` values excluded). */
+/**
+ * Collect ISO dates/datetimes from tool output. Of a citation only `cutoff` counts: `filters`
+ * echo the model's own tool input and must not let a date or time the model chose through.
+ * Echoed `filters` are skipped wherever they appear, and `{untrusted}` values are excluded.
+ */
 export function collectToolTimes(outputs: readonly unknown[]): ToolTimes {
   const dates = new Set<string>();
   const clocks = new Set<string>();
@@ -116,7 +120,13 @@ export function collectToolTimes(outputs: readonly unknown[]): ToolTimes {
     } else if (Array.isArray(value)) {
       value.forEach(visit);
     } else if (typeof value === "object" && value !== null && !("untrusted" in value)) {
-      Object.values(value).forEach(visit);
+      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+        if (key === "citation") {
+          if (typeof child === "object" && child !== null && "cutoff" in child) visit(child.cutoff);
+        } else if (key !== "filters") {
+          visit(child);
+        }
+      }
     }
   };
   outputs.forEach(visit);

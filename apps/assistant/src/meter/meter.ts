@@ -176,6 +176,9 @@ export class Meter {
     question: Question,
     call: (limits: ReturnType<typeof limitsOf>, model: string) => Promise<MeteredCall<T>>,
   ): Promise<T> {
+    // The kill switch is re-read before every call, so turning it off stops a question that
+    // is already running at its next model call. Limits and caps stay the question's snapshot.
+    await this.config();
     question.claimCall();
     const { config, label, uid, day, month } = question;
     const limits = limitsOf(config);
