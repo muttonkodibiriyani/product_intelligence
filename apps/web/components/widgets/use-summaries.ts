@@ -6,7 +6,7 @@ import type { Envelope } from '@/lib/api/types';
 import { useAuth } from '../auth-provider';
 import { useRetailerName } from '../use-meta';
 import type { RetailerSummary } from './kpis';
-import { scopedCaveats } from './model';
+import { displayName, scopedCaveats } from './model';
 
 /**
  * One /summary per retailer, each with an explicit `?retailer=` (the live API has no multi-retailer
@@ -48,7 +48,7 @@ export function useSummaries(ids: readonly string[]): {
       if (rows.some((r) => r.retailer === retailer)) return;
       rows.push({
         retailer,
-        name: name(retailer),
+        name: displayName(name, retailer, ids[i]!),
         data: env.data,
         caveats: scopedCaveats(env.caveats, [retailer, ids[i]!]),
       });

@@ -44,7 +44,9 @@
     "title": "Promotion depth",
     "question": "How many discounted products each category has, by depth of discount.",
     "off": "{band} off",
-    "label": "Discounted products by category and discount band."
+    "label": "Discounted products by category and discount band.",
+    "more": "more products",
+    "fewer": "fewer products"
   },
   "brands": {
     "title": "Brand price positioning",
@@ -96,7 +98,6 @@
     "ratings": "The rating chart isn't shown."
   },
   "pairs": "{n, plural, one {# comparable pair} other {# comparable pairs}}",
-  "onPairs": "On {n, plural, one {# comparable pair} other {# comparable pairs}} ({desc}).",
   "matchedOnly": "Matched products only, not the full catalogues.",
   "index": {
     "title": "Price index over time",
@@ -120,7 +121,9 @@
     "otherCheaper": "{r} cheaper",
     "median": "Median gap",
     "thin": "{n, plural, one {# category has} other {# categories have}} too few pairs to count: {list}.",
-    "label": "Pairs won per retailer per category, {n} categories."
+    "label": "Pairs won per retailer per category, {n} categories.",
+    "more": "more pairs",
+    "fewer": "fewer pairs"
   },
   "groupGap": {
     "title": "Price gap by brand",
@@ -156,7 +159,9 @@
     "label": "Share of pairs won per retailer per {by}, {n} groups.",
     "byCategory": "category",
     "byBrand": "brand",
-    "same": "Same price"
+    "same": "Same price",
+    "thin": "{n, plural, one {# group has} other {# groups have}} too few pairs to count: {list}."
   },
-  "priced": "Priced products"
+  "priced": "Priced products",
+  "nPairs": "n = {n, plural, one {# comparable pair} other {# comparable pairs}}"
 }

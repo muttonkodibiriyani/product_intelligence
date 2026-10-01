@@ -468,13 +468,14 @@ function HeadToHead({ pair }: { pair: Pair }) {
       <section className="space-y-4">
         {heading}
         <p className="text-sm text-ink-2">
-          {t('noPairs')} {cmp.env.reason && <Known t={tr} v={cmp.env.reason} />}
+          {t('noPairs')} {cmp.env?.reason && <Known t={tr} v={cmp.env.reason} />}
         </p>
       </section>
     );
   const data = cmp.data;
-  const n = data.summary?.n ?? 0;
-  const on = (q: string) => tw('onPairs', { n, desc: q });
+  const n = data.summary?.n;
+  // The n every head-to-head card is on; without a summary there is nothing to put a count to.
+  const nPairs = n === undefined ? null : tw('nPairs', { n });
   const gaps = gapRows(data.rows, 10);
   const cross = truncated
     ? null
@@ -487,11 +488,10 @@ function HeadToHead({ pair }: { pair: Pair }) {
       title={tw('cheaperShare.title', {
         by: tw(groupBy === 'brand' ? 'cheaperShare.byBrand' : 'cheaperShare.byCategory'),
       })}
-      question={on(
-        tw('cheaperShare.question', {
-          by: tw(groupBy === 'brand' ? 'cheaperShare.byBrand' : 'cheaperShare.byCategory'),
-        }),
-      )}
+      meta={nPairs}
+      question={tw('cheaperShare.question', {
+        by: tw(groupBy === 'brand' ? 'cheaperShare.byBrand' : 'cheaperShare.byCategory'),
+      })}
       span={6}
       state={state.kind === 'loading' ? 'loading' : state.kind === 'error' ? 'error' : 'ready'}
       skeleton="chart"
@@ -507,7 +507,7 @@ function HeadToHead({ pair }: { pair: Pair }) {
         />
       ) : state.kind === 'ready' ? (
         <p className="text-sm text-ink-2">
-          {tw('cheaper.thin', {
+          {tw('cheaperShare.thin', {
             n: state.data.groups.length,
             list: state.data.groups.map((g) => g.key).join(', '),
           })}
@@ -521,7 +521,13 @@ function HeadToHead({ pair }: { pair: Pair }) {
       <PairKpis data={data} pair={pair} locale={locale} href={href} />
       <CardGrid>
         {cross && cross.cells.length > 0 && (
-          <Card id="w-cross" title={tw('cross.title')} question={on(tw('cross.question'))} span={12}>
+          <Card
+            id="w-cross"
+            title={tw('cross.title')}
+            meta={nPairs}
+            question={tw('cross.question')}
+            span={12}
+          >
             <CrossHeatmapWidget data={data.rows} currency={currency} locale={locale} pair={pair} />
           </Card>
         )}
@@ -533,14 +539,15 @@ function HeadToHead({ pair }: { pair: Pair }) {
           </>
         )}
         {gaps.length > 0 && (
-          <Card id="w-gaps" title={tw('gaps.title')} question={on(tw('gaps.question'))} span={8}>
+          <Card id="w-gaps" title={tw('gaps.title')} meta={nPairs} question={tw('gaps.question')} span={8}>
             <TopGapsWidget data={data.rows} currency={currency} locale={locale} pair={pair} />
           </Card>
         )}
         <Card
           id="w-index"
           title={tw('index.title')}
-          question={on(tw('index.question', names))}
+          meta={nPairs}
+          question={tw('index.question', names)}
           span={gaps.length > 0 ? 4 : 12}
           state={idx.kind === 'loading' ? 'loading' : 'ready'}
           skeleton="chart"

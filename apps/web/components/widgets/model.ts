@@ -5,7 +5,8 @@
 import { EMPTY, toSearch, type ExploreState } from '@/lib/explore';
 import { EMPTY_PROMOTIONS, MIN_PCTS, toPromotionsSearch, type MinPct } from '@/lib/promotions';
 import { num, type Measured, type Summary } from '@/lib/api/summary';
-import type { CaveatView, Schemas } from '@/lib/api/types';
+import type { CaveatView, Envelope, Schemas } from '@/lib/api/types';
+import { ApiError } from '@/lib/api/client';
 import { EMPTY_COMPARE, toCompareSearch, type GroupBy } from '@/lib/compare';
 import { isValidAmount, isValidPrice } from '@/lib/money';
 
@@ -295,15 +296,28 @@ export function gapRows(rows: readonly PairRow[], top = 10) {
     .slice(0, top);
 }
 
+/**
+ * A group whose summary carries a count for both retailers; one with a missing count is not
+ * drawn (a missing count is unknown, never 0 wins).
+ */
+type Counted = Schemas['Group'] & { summary: Schemas['CompareSummary'] };
+const counted =
+  (base: string, other: string) =>
+  (g: Schemas['Group']): g is Counted =>
+    !!g.summary &&
+    typeof g.summary.cheaperCounts[base] === 'number' &&
+    typeof g.summary.cheaperCounts[other] === 'number';
+
 /** Who is cheaper per group, for the heatmap: [column, row, count], columns base / same / other. */
 export function cheaperCells(groups: readonly Schemas['Group'][], base: string, other: string) {
-  const measured = groups.filter((g) => g.summary);
-  const thin = groups.filter((g) => !g.summary);
+  const ok = counted(base, other);
+  const measured = groups.filter(ok);
+  const thin = groups.filter((g) => !ok(g));
   const cells: [number, number, number][] = [];
   let max = 0;
   measured.forEach((g, ri) => {
-    const s = g.summary!;
-    [s.cheaperCounts[base] ?? 0, s.equalCount, s.cheaperCounts[other] ?? 0].forEach((n, ci) => {
+    const s = g.summary;
+    [s.cheaperCounts[base]!, s.equalCount, s.cheaperCounts[other]!].forEach((n, ci) => {
       max = Math.max(max, n);
       cells.push([ci, ri, n]);
     });
@@ -376,13 +390,12 @@ export function crossCells(
 /** Each group's cheaper shares for the fallback bars: base / same / other as fractions of its pairs. */
 export function cheaperShares(groups: readonly Schemas['Group'][], base: string, other: string) {
   return groups
-    .filter(
-      (g): g is Schemas['Group'] & { summary: Schemas['CompareSummary'] } => !!g.summary && g.summary.n > 0,
-    )
+    .filter(counted(base, other))
+    .filter((g) => g.summary.n > 0)
     .map((g) => {
       const s = g.summary;
-      const b = s.cheaperCounts[base] ?? 0;
-      const o = s.cheaperCounts[other] ?? 0;
+      const b = s.cheaperCounts[base]!;
+      const o = s.cheaperCounts[other]!;
       return {
         key: g.key,
         n: s.n,
@@ -395,4 +408,43 @@ export function cheaperShares(groups: readonly Schemas['Group'][], base: string,
       };
     })
     .sort((a, b) => b.base - a.base || b.n - a.n);
+}
+
+/** What a head-to-head query can be in; `ready` carries the body and its envelope. */
+export type PairState<T> =
+  | { kind: 'loading' }
+  | { kind: 'error'; error: unknown; retry: () => void }
+  | { kind: 'empty'; env: Envelope<T> | null }
+  | { kind: 'ready'; data: T; env: Envelope<T> };
+
+/**
+ * Folds a query's result into one state. A body without the arrays a chart draws from is `empty`,
+ * never handed to a chart. With `notFoundIsEmpty`, a 404 / `not_found` is also `empty`: the
+ * resource does not exist in this dataset yet, which is no data, not a failure. Every other
+ * failure (5xx, network) stays an error with a retry.
+ */
+export function pairState<T>(
+  q: { data?: Envelope<T>; isError: boolean; error: unknown; refetch: () => unknown },
+  shaped: (d: T) => boolean,
+  opts: { notFoundIsEmpty?: boolean } = {},
+): PairState<T> {
+  if (q.isError && !q.data) {
+    const e = q.error;
+    if (opts.notFoundIsEmpty && e instanceof ApiError && (e.code === 'not_found' || e.status === 404))
+      return { kind: 'empty', env: null };
+    return { kind: 'error', error: e, retry: () => void q.refetch() };
+  }
+  if (!q.data) return { kind: 'loading' };
+  if (!q.data.data || q.data.status !== 'ok' || !shaped(q.data.data)) return { kind: 'empty', env: q.data };
+  return { kind: 'ready', data: q.data.data, env: q.data };
+}
+
+/**
+ * The display name for a /summary row: the name of the retailer the API answered for when /meta
+ * knows it, else the name of the retailer asked for; the raw id only when neither is known.
+ */
+export function displayName(lookup: (id: string) => string, answered: string, asked: string): string {
+  const a = lookup(answered);
+  if (a !== answered) return a;
+  return lookup(asked);
 }

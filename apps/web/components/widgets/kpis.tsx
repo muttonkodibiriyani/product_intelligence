@@ -171,7 +171,11 @@ export function PairKpis({
       >
         <Row>
           {s && Number.isFinite(gap) ? (
-            <span className={gap > 0 ? 'text-series-a' : gap < 0 ? 'text-series-b' : undefined}>
+            // The sign stays in front of the number in Arabic too.
+            <span
+              dir="ltr"
+              className={`inline-block ${gap > 0 ? 'text-blush-ink' : gap < 0 ? 'text-sky-ink' : ''}`}
+            >
               {gap > 0 ? '+' : ''}
               {pct(s.medianGapPct, locale)}
             </span>
@@ -188,8 +192,8 @@ export function PairKpis({
       >
         {s ? (
           <>
-            <Row name={base}>{formatCount(s.cheaperCounts[pair.base] ?? 0, locale)}</Row>
-            <Row name={other}>{formatCount(s.cheaperCounts[pair.other] ?? 0, locale)}</Row>
+            <Row name={base}>{wins(s.cheaperCounts[pair.base], locale)}</Row>
+            <Row name={other}>{wins(s.cheaperCounts[pair.other], locale)}</Row>
           </>
         ) : (
           <Row>{none}</Row>
@@ -198,6 +202,10 @@ export function PairKpis({
     </dl>
   );
 }
+
+/** A retailer's wins; a count the API did not send is unknown, shown as a dash, never 0. */
+const wins = (n: number | undefined, locale: string) =>
+  typeof n === 'number' ? formatCount(n, locale) : <None>–</None>;
 
 function Tile({
   k,

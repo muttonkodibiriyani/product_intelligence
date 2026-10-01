@@ -283,7 +283,9 @@ export function PromoDepthWidget({ data, locale, height, onPick }: Props<Measure
           itemHeight: 120,
           itemWidth: 10,
           inverse: rtl,
-          textStyle: { color: p.ink2 },
+          // text[0] sits at the high end, which `inverse` moves to the left in Arabic.
+          text: [t('more'), t('fewer')],
+          textStyle: { color: p.ink2, fontSize: 11 },
           inRange: { color: [p.line2, p.blush, p.a] },
         },
         tooltip: {
@@ -763,11 +765,21 @@ export function TopGapsWidget({
             rows.map((r) => short(r.name, 26)),
             p,
           ) + 12;
+        // The value labels sit at each bar's outer end, so the grid leaves room for them past the
+        // longest bar on each side the data reaches; mirrored in Arabic.
+        const valW =
+          labelWidth(
+            rows.map((r) => signedPct(r.gap.pct, locale)),
+            p,
+            11,
+          ) + 8;
+        const pos = rows.some((r) => num(r.gap.pct) > 0) ? valW : 16;
+        const neg = rows.some((r) => num(r.gap.pct) < 0) ? valW : 0;
         return {
           ...base(p, rtl),
           grid: {
-            left: rtl ? 16 : gutter,
-            right: rtl ? gutter : 16,
+            left: rtl ? pos : gutter + neg,
+            right: rtl ? gutter + neg : pos,
             top: 4,
             bottom: 24,
             outerBoundsMode: 'none',
@@ -814,6 +826,8 @@ export function TopGapsWidget({
                 name: r.name,
                 value: num(r.gap.pct),
                 itemStyle: { color: gapColor(p, num(r.gap.pct)) },
+                // Outer end of the bar: past zero on the side the bar runs to.
+                label: { position: num(r.gap.pct) < 0 ? (rtl ? 'right' : 'left') : rtl ? 'left' : 'right' },
               })),
               barMaxWidth: 14,
               itemStyle: { borderRadius: 3 },
@@ -854,7 +868,7 @@ export function CheaperHeatmapWidget({
     <>
       <Chart
         label={t('label', { n: rows.length })}
-        height={height ?? Math.max(200, rows.length * 30 + 70)}
+        height={height ?? Math.max(120, rows.length * 30 + 76)}
         deps={[data, locale]}
         onPick={(_, d) => {
           const v = d as [number, number, number] | undefined;
@@ -891,7 +905,8 @@ export function CheaperHeatmapWidget({
             itemHeight: 120,
             itemWidth: 10,
             inverse: rtl,
-            textStyle: { color: p.ink2 },
+            text: [t('more'), t('fewer')],
+            textStyle: { color: p.ink2, fontSize: 11 },
             inRange: { color: [p.line2, p.lav, p.lavInk] },
           },
           tooltip: {
@@ -1054,6 +1069,7 @@ export function CrossHeatmapWidget({
   const baseName = pair.name(pair.base);
   const otherName = pair.name(pair.other);
   const points = cells.map((c) => ({
+    // A thin cell carries no result; its 0 only parks a transparent, unlabelled tile for the layout.
     value: [c.col, c.row, c.value ?? 0] as [number, number, number],
     cell: c,
     itemStyle: c.value === null ? { color: 'transparent', borderColor: 'transparent' } : undefined,
@@ -1063,7 +1079,8 @@ export function CrossHeatmapWidget({
     <>
       <Chart
         label={t('label', { rows: cats.length, cols: brands.length })}
-        height={height ?? Math.max(240, cats.length * 34 + 90)}
+        // Sized to the rows it has (one row stays a short strip, not a tall panel).
+        height={height ?? Math.max(120, cats.length * 34 + 80)}
         deps={[data, locale]}
         onPick={(_, d) => {
           const c = (d as { cell?: CrossCell } | undefined)?.cell;
@@ -1105,9 +1122,8 @@ export function CrossHeatmapWidget({
             itemHeight: 140,
             itemWidth: 10,
             inverse: rtl,
-            text: rtl
-              ? [t('baseSide', { r: baseName }), t('otherSide', { r: otherName })]
-              : [t('baseSide', { r: baseName }), t('otherSide', { r: otherName })],
+            // text[0] sits at the high end (base cheaper); `inverse` mirrors the bar in Arabic.
+            text: [t('baseSide', { r: baseName }), t('otherSide', { r: otherName })],
             textStyle: { color: p.ink2, fontSize: 11 },
             inRange: { color: [p.b, p.line2, p.a] },
           },

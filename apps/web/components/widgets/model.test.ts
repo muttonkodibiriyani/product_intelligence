@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError } from '@/lib/api/client';
 import {
   activeRetailers,
   amount,
@@ -8,6 +9,8 @@ import {
   cheaperShares,
   crossCells,
   compareHref,
+  displayName,
+  pairState,
   gapRows,
   scopedCaveats,
   trendPoints,
@@ -400,5 +403,72 @@ describe('head-to-head helpers', () => {
     expect(compareHref('en', { base: 'a', other: 'b', groupBy: 'category', category: 'lips' })).toBe(
       '/en/compare/?retailers=a%2Cb&groupBy=category&category=lips',
     );
+  });
+  it('skips a group whose summary lacks a retailer count instead of drawing 0 wins', () => {
+    const g = (key: string, counts: Record<string, number>) => ({
+      key,
+      n: 6,
+      status: 'ok',
+      reason: null,
+      summary: { n: 6, cheaperCounts: counts, equalCount: 1, medianGapPct: '0', meanGapPct: '0', basket: {} },
+    });
+    const groups = [g('full', { a: 3, b: 2 }), g('half', { a: 5 })] as never;
+    expect(cheaperShares(groups, 'a', 'b').map((r) => r.key)).toEqual(['full']);
+    const cells = cheaperCells(groups, 'a', 'b');
+    expect(cells.rows.map((r) => r.key)).toEqual(['full']);
+    expect(cells.thin.map((r) => r.key)).toEqual(['half']);
+  });
+});
+
+describe('head-to-head query state', () => {
+  type Q = Parameters<typeof pairState<{ points?: unknown }>>[0];
+  const q = (over: Partial<Q>): Q => ({ isError: false, error: null, refetch: () => undefined, ...over });
+  const env = (data: unknown, status = 'ok') =>
+    ({ status, data, reason: null, caveats: [], meta: { generation: 'g' } }) as never;
+  const shaped = (d: { points?: unknown }) => Array.isArray(d.points);
+
+  it('treats a 404 as no data for the index (the honest empty state), not as an error', () => {
+    const s = pairState(q({ isError: true, error: new ApiError('not_found', 404) }), shaped, {
+      notFoundIsEmpty: true,
+    });
+    expect(s).toEqual({ kind: 'empty', env: null });
+  });
+
+  it('keeps a 404 an error where the caller did not opt in, and every 5xx or network failure', () => {
+    expect(pairState(q({ isError: true, error: new ApiError('not_found', 404) }), shaped).kind).toBe('error');
+    expect(
+      pairState(q({ isError: true, error: new ApiError('data_unavailable', 503) }), shaped, {
+        notFoundIsEmpty: true,
+      }).kind,
+    ).toBe('error');
+    expect(
+      pairState(q({ isError: true, error: new TypeError('offline') }), shaped, { notFoundIsEmpty: true })
+        .kind,
+    ).toBe('error');
+  });
+
+  it('is loading without a body, empty for a wrong shape or a non-ok status, ready otherwise', () => {
+    expect(pairState(q({}), shaped).kind).toBe('loading');
+    expect(pairState(q({ data: env({ nope: 1 }) }), shaped).kind).toBe('empty');
+    expect(pairState(q({ data: env(null, 'not_enough_data') }), shaped).kind).toBe('empty');
+    const s = pairState(q({ data: env({ points: [] }) }), shaped);
+    expect(s.kind).toBe('ready');
+    if (s.kind === 'ready') expect(s.data).toEqual({ points: [] });
+  });
+});
+
+describe('retailer display name', () => {
+  const lookup = (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id;
+
+  it('names the retailer the API answered for when /meta knows it', () => {
+    expect(displayName(lookup, 'shop_b', 'shop_a')).toBe('Shop B');
+  });
+
+  it('falls back to the retailer asked for, never a raw id /meta can name', () => {
+    expect(displayName(lookup, 'sephora_ae', 'shop_a')).toBe('Shop A');
+  });
+
+  it('shows the id only when neither is known', () => {
+    expect(displayName(lookup, 'x', 'y')).toBe('y');
   });
 });

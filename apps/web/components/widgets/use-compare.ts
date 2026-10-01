@@ -3,39 +3,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { GroupBy } from '@/lib/compare';
-import type { Envelope, Schemas } from '@/lib/api/types';
+import type { Schemas } from '@/lib/api/types';
 import { useAuth } from '../auth-provider';
 import { useMeta, useRetailerName } from '../use-meta';
-import { activeRetailers } from './model';
+import { activeRetailers, pairState, type PairState } from './model';
+
+export type { PairState };
 
 /*
  * The head-to-head data for one pair, on the matched set only. Every consumer shows the
  * comparable-pair count (`summary.n`) next to what it draws, so no number reads as a
  * full-catalogue comparison.
  */
-
-/** What the head-to-head hooks can be in; `ready` carries the body and its envelope. */
-export type PairState<T> =
-  | { kind: 'loading' }
-  | { kind: 'error'; error: unknown; retry: () => void }
-  | { kind: 'empty'; env: Envelope<T> }
-  | { kind: 'ready'; data: T; env: Envelope<T> };
-
-function state<T>(
-  q: {
-    data?: Envelope<T>;
-    isError: boolean;
-    error: unknown;
-    refetch: () => unknown;
-  },
-  shaped: (d: T) => boolean,
-): PairState<T> {
-  if (q.isError && !q.data) return { kind: 'error', error: q.error, retry: () => void q.refetch() };
-  if (!q.data) return { kind: 'loading' };
-  // A body without the arrays we draw from is treated as no data, never handed to a chart.
-  if (!q.data.data || q.data.status !== 'ok' || !shaped(q.data.data)) return { kind: 'empty', env: q.data };
-  return { kind: 'ready', data: q.data.data, env: q.data };
-}
 
 /** The retailers the dashboard reports on (collected or partly collected), and the first two as the pair. */
 export function useRetailers() {
@@ -62,7 +41,7 @@ export function useCompareData(
       }),
     enabled: !!api && !!pair,
   });
-  return state(q, (d) => Array.isArray(d.rows) && Array.isArray(d.groups));
+  return pairState(q, (d) => Array.isArray(d.rows) && Array.isArray(d.groups));
 }
 
 /** /index for a pair: the basket index per collection day, drawn only when a real trend exists. */
@@ -74,5 +53,6 @@ export function useIndexData(pair: { base: string; other: string } | null): Pair
       api!.get('/api/v1/index', { query: { retailers: `${pair!.base},${pair!.other}` }, signal }),
     enabled: !!api && !!pair,
   });
-  return state(q, (d) => Array.isArray(d.points));
+  // An index that is not in the dataset yet is no history, not an error.
+  return pairState(q, (d) => Array.isArray(d.points), { notFoundIsEmpty: true });
 }

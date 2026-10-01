@@ -377,13 +377,14 @@ function HeadToHead({
       <section aria-labelledby="head-to-head" className="space-y-4">
         {head}
         <p className="text-sm text-ink-2">
-          {t('noPairs')} {cmp.env.reason && <Known t={tr} v={cmp.env.reason} />}
+          {t('noPairs')} {cmp.env?.reason && <Known t={tr} v={cmp.env.reason} />}
         </p>
       </section>
     );
   const data = cmp.data;
-  const n = data.summary?.n ?? 0;
-  const on = (q: string) => tw('onPairs', { n, desc: q });
+  const n = data.summary?.n;
+  // The n every head-to-head card is on; without a summary there is nothing to put a count to.
+  const nPairs = n === undefined ? null : tw('nPairs', { n });
   const gaps = gapRows(data.rows, top);
   const cross = truncated
     ? null
@@ -395,7 +396,8 @@ function HeadToHead({
     <Card
       id={`p-share-${g}`}
       title={tw('cheaperShare.title', { by: by(g) })}
-      question={on(tw('cheaperShare.question', { by: by(g) }))}
+      meta={nPairs}
+      question={tw('cheaperShare.question', { by: by(g) })}
       span={span}
       state={state.kind === 'loading' ? 'loading' : state.kind === 'error' ? 'error' : 'ready'}
       skeleton="chart"
@@ -417,11 +419,17 @@ function HeadToHead({
   return (
     <section aria-labelledby="head-to-head" className="space-y-4">
       {head}
-      <p className="text-sm">{t('pairsNote', { n, ...names })}</p>
+      {n !== undefined && <p className="text-sm">{t('pairsNote', { n, ...names })}</p>}
       <PairKpis data={data} pair={pair} locale={locale} href={href} />
       <CardGrid>
         {cross && cross.cells.length > 0 && (
-          <Card id="p-cross" title={tw('cross.title')} question={on(tw('cross.question'))} span={12}>
+          <Card
+            id="p-cross"
+            title={tw('cross.title')}
+            meta={nPairs}
+            question={tw('cross.question')}
+            span={12}
+          >
             <CrossHeatmapWidget data={data.rows} currency={currency} locale={locale} pair={pair} />
           </Card>
         )}
@@ -435,7 +443,8 @@ function HeadToHead({
         <Card
           id="p-group-gap"
           title={groupBy === 'brand' ? tw('groupGap.title') : tw('groupGap.titleCategory')}
-          question={on(tw('groupGap.question', { by: by(groupBy), other: names.other }))}
+          meta={nPairs}
+          question={tw('groupGap.question', { by: by(groupBy), other: names.other })}
           span={12}
           state={grouped.kind === 'loading' ? 'loading' : grouped.kind === 'error' ? 'error' : 'ready'}
           skeleton="chart"
@@ -466,14 +475,15 @@ function HeadToHead({
           ) : null}
         </Card>
         {gaps.length > 0 && (
-          <Card id="p-gaps" title={tw('gaps.title')} question={on(tw('gaps.question'))} span={8}>
+          <Card id="p-gaps" title={tw('gaps.title')} meta={nPairs} question={tw('gaps.question')} span={8}>
             <TopGapsWidget data={data.rows} currency={currency} locale={locale} pair={pair} top={top} />
           </Card>
         )}
         <Card
           id="p-index"
           title={tw('index.title')}
-          question={on(tw('index.question', names))}
+          meta={nPairs}
+          question={tw('index.question', names)}
           span={gaps.length > 0 ? 4 : 12}
           state={idx.kind === 'loading' ? 'loading' : 'ready'}
           skeleton="chart"
@@ -497,5 +507,5 @@ function thinText(
   groups: readonly { key: string; summary: unknown }[],
 ) {
   const thin = groups.filter((g) => !g.summary);
-  return tw('cheaper.thin', { n: thin.length, list: thin.map((g) => g.key).join(', ') });
+  return tw('cheaperShare.thin', { n: thin.length, list: thin.map((g) => g.key).join(', ') });
 }

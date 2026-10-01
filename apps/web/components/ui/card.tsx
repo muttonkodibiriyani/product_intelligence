@@ -20,6 +20,7 @@ const SPAN = {
 export function Card({
   title,
   question,
+  meta,
   tools,
   span = 12,
   state = 'ready',
@@ -31,6 +32,8 @@ export function Card({
 }: {
   title: ReactNode;
   question?: ReactNode;
+  /** One short line of facts under the question, e.g. the pair count a head-to-head card is on. */
+  meta?: ReactNode;
   tools?: ReactNode;
   span?: keyof typeof SPAN;
   state?: CardState;
@@ -58,6 +61,7 @@ export function Card({
             {title}
           </h2>
           {question && <p className="mt-0.5 text-sm text-ink-2">{question}</p>}
+          {meta && <p className="mt-1 text-xs font-medium text-ink-2 tabular-nums">{meta}</p>}
         </div>
         {tools && <div className="flex flex-wrap items-center gap-2">{tools}</div>}
       </header>
