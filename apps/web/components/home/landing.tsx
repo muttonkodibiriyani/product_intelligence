@@ -9,9 +9,11 @@ import { DatasetStatus } from '../dataset-status';
 import { ErrorNotice } from '../error-notice';
 import { Card, CardGrid } from '../ui/card';
 import { EnvNotes } from '../ui/env-notes';
+import { Known } from '../ui/known';
 import { useRetailerName } from '../use-meta';
 import { KpiWidget } from '../widgets/kpis';
 import { TopDiscountsWidget } from '../widgets/top-discounts';
+import type { Summary } from '@/lib/api/summary';
 import { useSummaryData } from '../widgets/use-summary';
 import { BRANDS_TOP } from '../widgets/constants';
 import {
@@ -195,6 +197,7 @@ function Overview() {
   return (
     <div className="space-y-6">
       <EnvNotes env={s.env} />
+      <WithheldNote withheld={data.withheld} />
       <KpiWidget data={data} locale={locale} />
       <p className="text-xs text-ink-2">{tw('drill')}</p>
       <CardGrid>
@@ -211,11 +214,34 @@ function Overview() {
               </Link>
             }
           >
-            <TopDiscountsWidget data={promo.top} locale={locale} />
+            <TopDiscountsWidget data={promo.top} locale={locale} retailer={data.retailer} />
           </Card>
         )}
       </CardGrid>
       <Dataset />
+    </div>
+  );
+}
+
+/**
+ * Why price or rating cards are missing: /summary's own reason per withheld section. Promotions
+ * are left out; they wait on the Compare tab with their reason as the caption.
+ */
+function WithheldNote({ withheld }: { withheld: Summary['withheld'] }) {
+  const t = useTranslations('widgets.withheld');
+  const tr = useTranslations('reasons');
+  const shown = withheld.filter(
+    (w): w is Summary['withheld'][number] & { section: 'prices' | 'ratings' } =>
+      w.section === 'prices' || w.section === 'ratings',
+  );
+  if (shown.length === 0) return null;
+  return (
+    <div role="note" className="space-y-1 panel px-4 py-3 text-sm">
+      {shown.map((w) => (
+        <p key={w.section}>
+          {t(w.section)} <Known t={tr} v={w.reason} />
+        </p>
+      ))}
     </div>
   );
 }

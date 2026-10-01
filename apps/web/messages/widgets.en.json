@@ -14,7 +14,7 @@
     "unknown": "Age unknown",
     "asOf": "as of {date}",
     "age": "{days, plural, =0 {collected today} one {# day old} other {# days old}}",
-    "none": "Not sent",
+    "none": "Not measured",
     "aging": "Aging"
   },
   "ladder": {
@@ -67,7 +67,8 @@
     "was": "Was",
     "off": "Off",
     "all": "All promotions",
-    "noImage": "No image"
+    "noImage": "No image",
+    "credit": "Product images: {retailer}, served from {host}."
   },
   "share": {
     "title": "Brand concentration",
@@ -76,5 +77,9 @@
     "share": "Share of products",
     "cum": "Running total",
     "label": "Share of products per brand, {n} largest brands."
+  },
+  "withheld": {
+    "prices": "Price charts aren't shown.",
+    "ratings": "The rating chart isn't shown."
   }
 }

@@ -1,6 +1,21 @@
 import type { Page, Route } from '@playwright/test';
 import { expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
-import { summaryBlocked, summaryBody, summaryNoPromo } from './summary-fixture';
+import {
+  IMG,
+  IMG_BROKEN,
+  IMG_FOREIGN,
+  summaryBlocked,
+  summaryBody,
+  summaryImages,
+  summaryNoPromo,
+  summaryPricesWithheld,
+} from './summary-fixture';
+
+// The smallest valid PNG: one transparent pixel.
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  'base64',
+);
 
 const meta = golden('meta');
 
@@ -38,6 +53,12 @@ for (const locale of ['en', 'ar'] as const) {
         preview: 'معاينة للتصميم',
         index: 'مؤشر الأسعار عبر الزمن',
         blocked: 'هذا المتجر يمنع الجمع.',
+        pricesOff: 'مخططات الأسعار غير معروضة. هذا الحقل غير مُجمَّع بعد.',
+        ratingsOff: 'مخطط التقييم غير معروض. غير مُجمَّع لهذا المتجر.',
+        median: 'السعر الوسيط',
+        none: 'غير مُقاس',
+        noImage: 'لا توجد صورة',
+        credit: 'صور المنتجات: Shop A، من img-product.sephora.me.',
       }
     : {
         title: 'Overview',
@@ -57,6 +78,12 @@ for (const locale of ['en', 'ar'] as const) {
         preview: 'Layout preview',
         index: 'Price index over time',
         blocked: 'This retailer blocks collection.',
+        pricesOff: "Price charts aren't shown. This field isn't collected yet.",
+        ratingsOff: "The rating chart isn't shown. Not collected for this retailer.",
+        median: 'Median price',
+        none: 'Not measured',
+        noImage: 'No image',
+        credit: 'Product images: Shop A, served from img-product.sephora.me.',
       };
   const h2 = (page: Page, name: string) => page.getByRole('heading', { level: 2, name, exact: true });
 
@@ -112,6 +139,67 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page).toHaveURL(/\/explore\/\?category=Lipstick$/);
 
       expect(mock.external).toEqual([]);
+      expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
+    });
+
+    test('prices and ratings withheld: the note says why their cards are missing', async ({ page }) => {
+      const mock = await mockBackend(page, { onApi: api(summaryPricesWithheld) });
+      await signIn(page, locale);
+      const note = page.locator('main [role=note]');
+      await expect(note).toHaveCount(1);
+      await expect(note.locator('p')).toHaveText([T.pricesOff, T.ratingsOff]);
+      // Measured tiles stay; the median price reads as not measured, never as zero.
+      await expect(page.getByText(T.products, { exact: true })).toBeVisible();
+      await expect(page.getByText(T.median, { exact: true }).locator('..')).toContainText(T.none);
+      for (const name of [T.ladder, T.brands, T.hist, T.rating, T.share, T.depth, T.top])
+        await expect(h2(page, name)).toHaveCount(0);
+      await expect(h2(page, T.mix)).toBeVisible();
+      await chartsDrawn(page, 1);
+      await noHorizontalScroll(page);
+      expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('product images: lazy, no referrer, the retailer host only, a placeholder otherwise', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, { onApi: api(summaryImages) });
+      const images: { url: string; referer?: string }[] = [];
+      // Registered after mockBackend, so it answers the image host before the catch-all does.
+      await page.route('https://img-product.sephora.me/**', (r) => {
+        images.push({ url: r.request().url(), referer: r.request().headers()['referer'] });
+        return r.request().url() === IMG
+          ? r.fulfill({ contentType: 'image/png', body: PNG })
+          : r.fulfill({ status: 404, body: '' });
+      });
+      await signIn(page, locale);
+      const top = page.locator('#w-top');
+      await expect(h2(page, T.top)).toBeVisible();
+      const rows = top.locator('tbody tr');
+      await expect(rows).toHaveCount(5);
+
+      // Hotlinked by decision B: lazy, and without telling the host which page asked.
+      const img = rows.nth(0).locator('img');
+      await expect(img).toHaveAttribute('loading', 'lazy');
+      await expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
+      await expect(img).toHaveAttribute('src', IMG);
+      await top.scrollIntoViewIfNeeded();
+      await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
+
+      // A failing image and one from another host both show the placeholder.
+      for (const i of [1, 2]) {
+        await expect(rows.nth(i).locator('img')).toHaveCount(0);
+        await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
+      }
+      // The two placeholder rows without an image at all, too.
+      for (const i of [3, 4]) await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
+      await expect(top.getByText(T.credit, { exact: true })).toBeVisible();
+
+      // Only the retailer's host was asked, without a referrer; the foreign host never was.
+      expect(images.map((r) => r.url).sort()).toEqual([IMG, IMG_BROKEN]);
+      expect(images.every((r) => r.referer === undefined)).toBe(true);
+      expect(mock.external).toEqual([]);
+      expect(mock.external).not.toContain(IMG_FOREIGN);
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 

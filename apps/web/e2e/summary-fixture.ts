@@ -1,7 +1,7 @@
 /**
  * A /summary (API 1.4.0) body for the landing tests, checked against `Summary` (#104's SummaryView). Test data only: the app
- * never ships it. Images are null so the run makes no request beyond localhost; the image path is
- * unit-tested.
+ * never ships it. Images are null here so the run makes no request beyond localhost;
+ * `summaryImages` has real ones for the test that answers the image host itself.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -199,6 +199,43 @@ export const summaryBlocked = {
     withheld: (['prices', 'promotions', 'ratings'] as const).map((section) => ({
       section,
       reason: 'retailer_blocked' as const,
+    })),
+  } satisfies Summary,
+};
+
+/** Prices and ratings withheld, promotions with them: only the counts and the category mix remain. */
+export const summaryPricesWithheld = {
+  ...summaryNoPromo,
+  data: {
+    ...summaryNoPromo.data,
+    priced: null,
+    medianPrice: null,
+    ladder: null,
+    brandPrice: null,
+    priceHist: null,
+    ratingPrice: null,
+    withheld: [
+      { section: 'prices', reason: 'field_not_collected' },
+      { section: 'promotions', reason: 'field_not_collected' },
+      { section: 'ratings', reason: 'capability_off' },
+    ],
+  } satisfies Summary,
+};
+
+export const IMG = 'https://img-product.sephora.me/v1/p-1.jpg';
+export const IMG_BROKEN = 'https://img-product.sephora.me/v1/p-2.jpg';
+/** Not the retailer's image host: the app must never request it. */
+export const IMG_FOREIGN = 'https://cdn.example.net/p-3.jpg';
+
+/** Top discounts with images: one served, one failing, one from a host outside the allowlist. */
+export const summaryImages = {
+  ...summaryBody,
+  data: {
+    ...summaryBody.data,
+    retailer: 'shop_a', // named in the golden /meta, for the image credit
+    topDiscounts: summaryBody.data.topDiscounts.map((d, i) => ({
+      ...d,
+      image: [IMG, IMG_BROKEN, IMG_FOREIGN][i] ?? null,
     })),
   } satisfies Summary,
 };

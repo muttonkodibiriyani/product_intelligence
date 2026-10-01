@@ -6,7 +6,8 @@ import { useState } from 'react';
 import type { Summary } from '@/lib/api/summary';
 import { productHref } from '../explore/product-table';
 import { Money } from '../ui/money';
-import { imageSrc, pct } from './model';
+import { useRetailerName } from '../use-meta';
+import { IMAGE_HOST, imageSrc, pct } from './model';
 
 const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-middle';
@@ -15,11 +16,16 @@ const TD = 'px-3 py-2.5 align-middle';
 export function TopDiscountsWidget({
   data,
   locale,
+  retailer,
 }: {
   data: NonNullable<Summary['topDiscounts']>;
   locale: string;
+  retailer: string;
 }) {
   const t = useTranslations('widgets.top');
+  const name = useRetailerName();
+  // The images are the retailer's, shown from its own host: say so whenever one is shown.
+  const credit = data.some((d) => imageSrc(d.image) !== null);
   return (
     <div className="relative overflow-x-auto px-2">
       <table className="w-full text-sm">
@@ -81,6 +87,11 @@ export function TopDiscountsWidget({
           ))}
         </tbody>
       </table>
+      {credit && (
+        <p className="px-3 pt-2 pb-3 text-xs text-ink-2">
+          {t('credit', { retailer: name(retailer), host: IMAGE_HOST })}
+        </p>
+      )}
     </div>
   );
 }

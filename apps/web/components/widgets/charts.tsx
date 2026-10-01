@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import type { Measured, Summary } from '@/lib/api/summary';
+import type { Measured } from '@/lib/api/summary';
 import { num } from '@/lib/api/summary';
 import { formatCount } from '@/lib/format';
 import { base, Chart, labelWidth, type Palette } from './chart';
