@@ -150,6 +150,26 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
             " {count}."
         ),
     ),
+    CaveatCode.UNMAPPED_CATEGORY: Localized(
+        en=(
+            "{count} {retailer} {count:item|items} could not be placed in a common category"
+            " and {count:is|are} listed as unmapped, not in any row."
+        ),
+        ar=(
+            "منتجات لدى {retailer} تعذّر تصنيفها في فئة مشتركة،"
+            " فهي مدرجة كغير مصنّفة لا في أي صف: {count}."
+        ),
+    ),
+    CaveatCode.BREADCRUMB_MISSING: Localized(
+        en=(
+            "{count} {retailer} {count:item has|items have} no category breadcrumb in this data,"
+            " so only the broad category is known; fine categories need a future export."
+        ),
+        ar=(
+            "منتجات لدى {retailer} بلا تسلسل فئات في هذه البيانات، فلا تُعرف إلا فئتها العامة؛"
+            " الفئات الدقيقة تتطلب تصديرًا لاحقًا: {count}."
+        ),
+    ),
 }
 
 

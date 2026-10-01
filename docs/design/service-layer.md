@@ -548,6 +548,9 @@ artefact). The dataset contract already refuses 0.00 and below, so such a file i
 - **Flags.** An offer whose latest price was withheld carries `priceFlag: "invalid_low"`
   (`null` otherwise), and a product card carries `priceFlags` by context. A withheld regular
   price alone is counted but not flagged.
+- **Still observed.** A withheld price still means the listing was there that day: presence
+  (launches, coverage, assortment gaps, the summary's product count and context pick) reads the
+  offer as observed, so a 0.01 on a day without a stock state is never a false launch.
 - **Caveat.** A priced response involving a retailer with withheld values carries
   `invalid_price_excluded` with `{retailer, count}` ("<count> <retailer> items had a price of
   0.01 or less …"), scoped like the imported-retailer caveats.
@@ -558,6 +561,38 @@ Additive summary fields in the same version: `/v1/summary` `meanPrice` (half-eve
 same prices as `medianPrice`, `null` below the minimum sample) and `/v1/compare`
 `summary.gapHist` (fixed edges −50 … 50 percent, 11 counts over every counted pair, not the
 page, so the counts sum to `summary.n`).
+
+### Category comparison (`/v1/category-compare`, planned; `pi_metrics.category_compare`)
+
+`GET /v1/category-compare?retailers=<base>,<other>&level=bucket|common` compares the two full
+catalogues category by category on the **latest date only** (no trend). There is no product
+matching (like-for-like pairs are `/compare`): every non-early product a context prices that
+day, in the market currency and above the price floor, counts in exactly one category per side.
+
+- **Rows.** Per category: `key` (stable, for client i18n), `label {en, ar}`, `shared` (both
+  sides price at least one product), and a cell per side with `n`, `median`, `mean`
+  (half-even), `p25`, `p75`, `min`, `max`. Ordered by the smaller side's `n`, then the total,
+  then the key. At `level=bucket` all nine buckets are rows (an empty one has `n = 0`).
+- **Thin cells.** A cell with fewer than `minCohort` (5) products is `tooFew` with
+  `reason: cohort_too_small`: `n` is served, every price figure is `null`, never 0. A blocked
+  side's cells are `retailer_blocked`.
+- **Gap.** Only when both cells have figures: `gap {amount, pct, cheaper}` from the two
+  medians, `pct = (other median − base median) / base median × 100`, so a positive gap means
+  the other retailer is dearer. `convention` states it on every response; `gapReason` says why
+  a gap is `null`. A category gap reflects each retailer's range, not like-for-like items.
+- **Levels.** `bucket` (default) is the exporter's nine codes; every product has one. `common`
+  is taxonomy@1 (`pi_metrics.taxonomy`): finer categories read from the retailer breadcrumb at
+  serve time, so a new rule is a code change, never a re-export. It also corrects the
+  exporter's keyword order (an eye cream is `eye_care`, bucket `skincare`).
+- **Coverage, honestly.** `coverage.{base,other}` gives `priced`, `mapped`, `unmapped`,
+  `noBreadcrumb`, and `otherBucket`/`otherPct` (the share in the catch-all `other` bucket).
+  `unmapped[]` lists the most frequent unplaced breadcrumbs (`no_breadcrumb`, `no_rule`,
+  `ambiguous`; at most 50, `unmappedPaths` counts them all). At `level=common` the caveats
+  `breadcrumb_missing` and `unmapped_category` carry `{retailer, count}`. Today's served file
+  holds the code only, so `common` places nothing and says so; finer categories need
+  breadcrumbs in the export (a future decision).
+- **Caveats** are scoped to the pair like `/compare`: early excluded, partial retailer, channel,
+  the imported-retailer notes and `invalid_price_excluded`.
 
 ## 7. Metric rules (owned by `pi_metrics`)
 

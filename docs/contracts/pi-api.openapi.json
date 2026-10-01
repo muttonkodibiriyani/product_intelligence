@@ -643,6 +643,69 @@
         "title": "CardMatch",
         "type": "object"
       },
+      "CategoryComparison": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "convention": {
+            "default": "gap compares the two cells' medians: gapAmount = other median - base median; gapPct = (other median - base median) / base median x 100. A positive gap means the other retailer's median is higher (dearer) than the base's; see cheaper. A category-level gap reflects each retailer's range in the category, not like-for-like items.",
+            "title": "Convention",
+            "type": "string"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageSides"
+          },
+          "level": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "minCohort": {
+            "default": 5,
+            "title": "Mincohort",
+            "type": "integer"
+          },
+          "other": {
+            "title": "Other",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "taxonomy": {
+            "default": "taxonomy@1",
+            "title": "Taxonomy",
+            "type": "string"
+          },
+          "unmapped": {
+            "items": {
+              "$ref": "#/components/schemas/UnmappedPath"
+            },
+            "title": "Unmapped",
+            "type": "array"
+          },
+          "unmappedPaths": {
+            "title": "Unmappedpaths",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base",
+          "other",
+          "level",
+          "rows",
+          "coverage",
+          "unmapped",
+          "unmappedPaths"
+        ],
+        "title": "CategoryComparison",
+        "type": "object"
+      },
       "CategoryNode": {
         "additionalProperties": false,
         "properties": {
@@ -669,6 +732,59 @@
           "count"
         ],
         "title": "CategoryNode",
+        "type": "object"
+      },
+      "CategoryRow": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/Cell"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gapReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "$ref": "#/components/schemas/Label"
+          },
+          "other": {
+            "$ref": "#/components/schemas/Cell"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "base",
+          "other",
+          "shared",
+          "gap",
+          "gapReason"
+        ],
+        "title": "CategoryRow",
         "type": "object"
       },
       "CategoryShare": {
@@ -710,7 +826,9 @@
           "was_price_unverified",
           "snapshot_import_date",
           "parent_listings_included",
-          "invalid_price_excluded"
+          "invalid_price_excluded",
+          "unmapped_category",
+          "breadcrumb_missing"
         ],
         "title": "CaveatCode",
         "type": "string"
@@ -744,6 +862,108 @@
           "ar"
         ],
         "title": "CaveatView",
+        "type": "object"
+      },
+      "Cell": {
+        "additionalProperties": false,
+        "description": "One context's prices in one category. Below ``MIN_COHORT`` only ``n`` is served.",
+        "properties": {
+          "max": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "median": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "p25": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "p75": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "tooFew": {
+            "title": "Toofew",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "retailer",
+          "n",
+          "tooFew",
+          "reason",
+          "median",
+          "mean",
+          "p25",
+          "p75",
+          "min",
+          "max"
+        ],
+        "title": "Cell",
         "type": "object"
       },
       "Channel": {
@@ -1043,21 +1263,21 @@
         "title": "ContextDay",
         "type": "object"
       },
-      "Coverage": {
+      "CoverageSides": {
         "additionalProperties": false,
         "properties": {
-          "retailers": {
-            "items": {
-              "$ref": "#/components/schemas/RetailerCoverage"
-            },
-            "title": "Retailers",
-            "type": "array"
+          "base": {
+            "$ref": "#/components/schemas/pi_metrics__category_compare__Coverage"
+          },
+          "other": {
+            "$ref": "#/components/schemas/pi_metrics__category_compare__Coverage"
           }
         },
         "required": [
-          "retailers"
+          "base",
+          "other"
         ],
-        "title": "Coverage",
+        "title": "CoverageSides",
         "type": "object"
       },
       "DecidedBy": {
@@ -1291,6 +1511,72 @@
         "title": "Envelope[Availability]",
         "type": "object"
       },
+      "Envelope_CategoryComparison_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoryComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[CategoryComparison]",
+        "type": "object"
+      },
       "Envelope_Comparison_": {
         "additionalProperties": false,
         "properties": {
@@ -1381,7 +1667,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Coverage"
+                "$ref": "#/components/schemas/pi_metrics__coverage__Coverage"
               },
               {
                 "type": "null"
@@ -2548,6 +2834,25 @@
         "title": "IndexPoint",
         "type": "object"
       },
+      "Label": {
+        "additionalProperties": false,
+        "properties": {
+          "ar": {
+            "title": "Ar",
+            "type": "string"
+          },
+          "en": {
+            "title": "En",
+            "type": "string"
+          }
+        },
+        "required": [
+          "en",
+          "ar"
+        ],
+        "title": "Label",
+        "type": "object"
+      },
       "LadderRow": {
         "additionalProperties": false,
         "properties": {
@@ -2644,6 +2949,14 @@
         ],
         "title": "Launches",
         "type": "object"
+      },
+      "Level": {
+        "enum": [
+          "bucket",
+          "common"
+        ],
+        "title": "Level",
+        "type": "string"
       },
       "Localized": {
         "additionalProperties": false,
@@ -4563,6 +4876,47 @@
         "title": "TopDiscount",
         "type": "object"
       },
+      "Unmapped": {
+        "enum": [
+          "no_breadcrumb",
+          "no_rule",
+          "ambiguous"
+        ],
+        "title": "Unmapped",
+        "type": "string"
+      },
+      "UnmappedPath": {
+        "additionalProperties": false,
+        "description": "A breadcrumb taxonomy@1 doesn't place at ``common``, so the next rule can be written.",
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Unmapped"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "retailer",
+          "path",
+          "reason",
+          "n"
+        ],
+        "title": "UnmappedPath",
+        "type": "object"
+      },
       "Withheld": {
         "additionalProperties": false,
         "properties": {
@@ -4578,6 +4932,74 @@
           "reason"
         ],
         "title": "Withheld",
+        "type": "object"
+      },
+      "pi_metrics__category_compare__Coverage": {
+        "additionalProperties": false,
+        "properties": {
+          "mapped": {
+            "title": "Mapped",
+            "type": "integer"
+          },
+          "noBreadcrumb": {
+            "title": "Nobreadcrumb",
+            "type": "integer"
+          },
+          "otherBucket": {
+            "title": "Otherbucket",
+            "type": "integer"
+          },
+          "otherPct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otherpct"
+          },
+          "priced": {
+            "title": "Priced",
+            "type": "integer"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "unmapped": {
+            "title": "Unmapped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "priced",
+          "mapped",
+          "unmapped",
+          "noBreadcrumb",
+          "otherBucket",
+          "otherPct"
+        ],
+        "title": "Coverage",
+        "type": "object"
+      },
+      "pi_metrics__coverage__Coverage": {
+        "additionalProperties": false,
+        "properties": {
+          "retailers": {
+            "items": {
+              "$ref": "#/components/schemas/RetailerCoverage"
+            },
+            "title": "Retailers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "retailers"
+        ],
+        "title": "Coverage",
         "type": "object"
       }
     },
@@ -5144,6 +5566,165 @@
           }
         },
         "summary": "Get Availability"
+      }
+    },
+    "/api/v1/category-compare": {
+      "get": {
+        "description": "Category-to-category prices across both full catalogues on the latest date: per category, each retailer's n, median, mean, p25, p75, min and max, and the gap between the two medians. No product matching: like-for-like pairs are /compare. A cell with fewer than minCohort products is tooFew (its prices null, never 0) and its row has no gap. Gap sign convention: retailers=<base>,<other>; gapPct = (other median - base median) / base median x 100, so a positive gap means the other retailer's median is higher and `cheaper` names the cheaper side. coverage gives each side's priced, mapped and unmapped counts and its share in the 'other' bucket; unmapped lists the breadcrumbs taxonomy@1 can't place.",
+        "operationId": "get_category_compare_api_v1_category_compare_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "description": "Ordered pair <base>,<other>; the first is the base.",
+            "in": "query",
+            "name": "retailers",
+            "required": true,
+            "schema": {
+              "description": "Ordered pair <base>,<other>; the first is the base.",
+              "pattern": "^[a-z][a-z0-9_]{1,62},[a-z][a-z0-9_]{1,62}$",
+              "title": "Retailers",
+              "type": "string"
+            }
+          },
+          {
+            "description": "bucket: the exporter's nine top-level categories (every product has one). common: taxonomy@1's finer categories, read from the retailer breadcrumb; a file without breadcrumbs places nothing there (caveat breadcrumb_missing).",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Level",
+              "default": "bucket",
+              "description": "bucket: the exporter's nine top-level categories (every product has one). common: taxonomy@1's finer categories, read from the retailer breadcrumb; a file without breadcrumbs places nothing there (caveat breadcrumb_missing)."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CategoryComparison_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Category Compare"
       }
     },
     "/api/v1/compare": {

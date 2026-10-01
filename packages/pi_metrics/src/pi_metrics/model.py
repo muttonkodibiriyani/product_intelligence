@@ -118,6 +118,12 @@ class CaveatCode(StrEnum):
     PARENT_LISTINGS_INCLUDED = "parent_listings_included"
     #: ``count`` of a retailer's offers had a price at or below 0.01 withheld as invalid.
     INVALID_PRICE_EXCLUDED = "invalid_price_excluded"
+    #: ``count`` of a retailer's priced products whose breadcrumb no taxonomy@1 rule places (or
+    #: two place equally) in a common category.
+    UNMAPPED_CATEGORY = "unmapped_category"
+    #: ``count`` of a retailer's priced products with no breadcrumb in the served file, so no
+    #: common category: only their bucket is known.
+    BREADCRUMB_MISSING = "breadcrumb_missing"
 
 
 class Caveat(ContractModel):

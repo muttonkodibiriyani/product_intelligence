@@ -40,6 +40,7 @@ PRICED = frozenset(
         "admin_product",
         "history",
         "compare",
+        "category_compare",
         "index",
         "promotions",
         "summary",

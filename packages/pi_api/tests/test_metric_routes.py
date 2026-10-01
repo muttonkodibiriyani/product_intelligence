@@ -36,6 +36,7 @@ def body(client: Client, path: str, status: int = 200, **overrides: Any) -> Any:
 
 METRIC_PATHS = [
     f"/compare?{PAIR}",
+    f"/category-compare?{PAIR}",
     f"/index?{PAIR}",
     "/promotions",
     f"/assortment-gaps?missingAt={B}&presentAt={A}",
@@ -335,3 +336,41 @@ def test_the_summary_serves_a_mean_price_beside_the_median(client: Client) -> No
     data = body(client, f"/summary?retailer={A}")["data"]
     assert data["meanPrice"]["currency"] == data["medianPrice"]["currency"] == "AED"
     assert Decimal(data["meanPrice"]["amount"]) > 0
+
+
+def test_category_compare_serves_both_ladders_the_threshold_and_the_convention(
+    client: Client,
+) -> None:
+    doc = body(client, f"/category-compare?{PAIR}")
+    data = doc["data"]
+    assert (data["base"], data["other"], data["level"]) == (A, B, "bucket")
+    assert (data["taxonomy"], data["minCohort"]) == ("taxonomy@1", 5)
+    assert "(other median - base median) / base median" in data["convention"]
+    row = data["rows"][0]
+    assert set(row["label"]) == {"en", "ar"}
+    for side in ("base", "other"):
+        cell = row[side]
+        assert cell["tooFew"] is False
+        assert {k: cell[k]["currency"] for k in ("min", "p25", "median", "mean", "p75", "max")} == (
+            dict.fromkeys(("min", "p25", "median", "mean", "p75", "max"), "AED")
+        )
+    assert row["gap"]["cheaper"] in {"base", "other", "equal"}
+    thin = [r for r in data["rows"] if r["base"]["tooFew"] or r["other"]["tooFew"]]
+    assert thin
+    assert all(r["gap"] is None and r["gapReason"] == "cohort_too_small" for r in thin)
+    assert {r["base"]["median"] for r in thin if r["base"]["tooFew"]} == {None}
+
+
+def test_category_compare_at_common_level_says_the_breadcrumb_is_missing(client: Client) -> None:
+    doc = body(client, f"/category-compare?{PAIR}&level=common")
+    missing = [c for c in doc["caveats"] if c["code"] == "breadcrumb_missing"]
+    # The fixture's p14 at shop_b has its code alone; every other product has a breadcrumb.
+    assert [c["params"] for c in missing] == [{"retailer": B, "count": "1"}]
+    assert doc["data"]["coverage"]["other"]["noBreadcrumb"] == 1
+    for caveat in missing:
+        assert "no category breadcrumb" in caveat["en"]
+        assert caveat["ar"]
+
+
+def test_category_compare_refuses_an_unknown_level(client: Client) -> None:
+    assert body(client, f"/category-compare?{PAIR}&level=shade", 422)["error"]["code"]
