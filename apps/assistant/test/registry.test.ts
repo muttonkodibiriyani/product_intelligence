@@ -58,20 +58,20 @@ describe("ToolRegistry", () => {
     expect(result.status).toBe("ok");
     expect(result.citation).toEqual({
       tool: "compare",
-      toolVersion: "2",
+      toolVersion: "3",
       apiVersion: "1.0.0",
       metricVersion: "m1",
       datasetGeneration: "gen-42",
       cutoff: META.cutoff,
       market: "AE",
       currency: "AED",
-      filters: { ...PAIR, ids: ["p01", "n04"] },
+      filters: { ...PAIR, ids: ["p01", "n04"], limit: 25 },
       cohort: { description: { untrusted: "exact, reviewed, same-size matched pairs" }, n: 8 },
     });
     expect(api.calls[0]?.request).toEqual({
       method: "GET",
       path: "/api/v1/compare",
-      query: { retailers: ["north,south"], id: ["p01", "n04"] },
+      query: { retailers: ["north,south"], limit: ["25"], id: ["p01", "n04"] },
     });
     expect(result.caveats).toEqual([
       {

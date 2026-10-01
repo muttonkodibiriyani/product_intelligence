@@ -7,6 +7,7 @@ import {
   coverageStatus,
   getProduct,
   indexTrend,
+  launches,
   promotions,
   reviewsSummary,
   searchProducts,
@@ -29,7 +30,8 @@ describe("tool definitions", () => {
     ]);
     for (const tool of TOOLS) {
       expect(tool.minRole).toBe("viewer");
-      expect(tool.version).toBe("2");
+      // v3 adds the row limit to the three list tools (API 1.1.0).
+      expect(tool.version).toBe(tool.listKey === undefined ? "2" : "3");
       const request = tool.request(tool.input.parse(MINIMAL[tool.name] ?? {}) as never);
       expect(request.path.startsWith("/api/v1/")).toBe(true);
       expect(request.method).toBe("GET");
@@ -66,6 +68,7 @@ describe("tool definitions", () => {
         id: ["p1", "p2"],
         date: ["2026-09-30"],
         groupBy: ["brand"],
+        limit: ["25"],
       },
     });
     expect(coverageStatus.request({})).toEqual({
@@ -82,7 +85,7 @@ describe("tool definitions", () => {
       {
         method: "GET",
         path: "/api/v1/promotions",
-        query: { retailer: ["north"], minPct: ["10"] },
+        query: { retailer: ["north"], limit: ["25"], minPct: ["10"] },
       },
     );
     expect(toQuery({ a: undefined, b: true, c: [1, 2] })).toEqual({ b: ["true"], c: ["1", "2"] });
@@ -105,7 +108,10 @@ describe("tool definitions", () => {
       [compare, { ...PAIR, ids: [] }],
       [compare, { ...PAIR, ids: ["p1", "p2"], brand: ["A"] }],
       [compare, { ...PAIR, groupBy: "retailer" }],
-      [compare, { ...PAIR, limit: 10 }],
+      [compare, { ...PAIR, limit: 26 }],
+      [compare, { ...PAIR, limit: 0 }],
+      [promotions, { limit: 2.5 }],
+      [launches, { limit: 500 }],
       [compare, { retailers: { base: "north", other: "north" } }],
       [compare, { retailers: ["north", "south"] }],
       [indexTrend, {}],

@@ -9,9 +9,17 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { SOURCE_TEXT_KEYS, STRUCTURAL_KEYS } from "../src/guard/sanitise.js";
+import { verifyAnswerNumbers } from "../src/guard/verifier.js";
 import { TOOLS } from "../src/tools/definitions.js";
-import { ToolRegistry, type ToolEnvelope, type ToolResult } from "../src/tools/registry.js";
+import {
+  ToolRegistry,
+  type ToolEnvelope,
+  type ToolResult,
+  truncation,
+} from "../src/tools/registry.js";
 import { FakeApi, MINIMAL } from "./fake-api.js";
+
+const VIEWER_CALLER = { uid: "u", role: "viewer" } as const;
 
 const CONTRACTS = new URL("../../../docs/contracts/", import.meta.url);
 
@@ -104,6 +112,7 @@ const GOLDENS: readonly [string, string, unknown][] = [
   ["product", "get_product", { id: "p01" }],
   ["compare", "compare", MINIMAL.compare],
   ["compare-blocked", "compare", MINIMAL.compare],
+  ["compare-limited", "compare", MINIMAL.compare],
   ["index", "index_trend", MINIMAL.index_trend],
   ["promotions", "promotions", {}],
   ["assortment-gaps", "assortment_gaps", MINIMAL.assortment_gaps],
@@ -123,5 +132,58 @@ describe("golden responses through the registry", () => {
     expect(text).not.toContain('"minor"');
     expect(text).not.toContain('"runId"');
     expect(text).not.toMatch(/"url":"(?!null)/);
+  });
+});
+
+describe("a cut list (API 1.1.0 limit)", () => {
+  it("adds shown and a truncated caveat, so 'top N of total' passes the verifier", async () => {
+    const body = golden("compare-limited");
+    const registry = new ToolRegistry(TOOLS, new FakeApi(() => body), { evidenceHosts: [] });
+    const result = (await registry.run(
+      "compare",
+      MINIMAL.compare,
+      VIEWER_CALLER,
+      "t",
+    )) as ToolEnvelope;
+    expect(result.data).toMatchObject({ total: 15, truncated: true, shown: 3 });
+    expect(result.caveats.at(-1)).toEqual({
+      code: "truncated",
+      en: {
+        untrusted:
+          "Only the first 3 of 15 rows are listed, the row limit. Any summary covers all 15.",
+      },
+      ar: {
+        untrusted:
+          "تُعرض أول 3 من أصل 15 صفًا فقط بسبب حد الصفوف. أي ملخص يشمل جميع الصفوف وعددها 15.",
+      },
+    });
+    expect(verifyAnswerNumbers("Top 3 of 15 pairs.", [result]).ok).toBe(true);
+  });
+
+  it.each(["compare", "promotions", "launches"])(
+    "%s adds nothing when not truncated",
+    async (name) => {
+      const body = golden(name === "compare" ? "compare" : name);
+      const registry = new ToolRegistry(TOOLS, new FakeApi(() => body), { evidenceHosts: [] });
+      const input = name === "compare" ? MINIMAL.compare : {};
+      const result = (await registry.run(name, input, VIEWER_CALLER, "t")) as ToolEnvelope;
+      expect(result.caveats.map((caveat) => caveat.code)).not.toContain("truncated");
+      expect(result.data).not.toHaveProperty("shown");
+    },
+  );
+});
+
+describe("truncation", () => {
+  it.each([
+    [{ rows: [1, 2], total: 9, truncated: true }, "rows", { shown: 2, total: 9 }],
+    [{ rows: [1, 2], total: 2, truncated: false }, "rows", null],
+    [{ rows: [1, 2], total: 9, truncated: true }, undefined, null],
+    [{ rows: [1, 2], total: "9", truncated: true }, "rows", null],
+    [{ items: [1], total: 9, truncated: true }, "rows", null],
+    [{ rows: [1], total: 9, truncated: "true" }, "rows", null],
+    [null, "rows", null],
+    [[1, 2], "rows", null],
+  ])("%j via %s → %j", (data, key, expected) => {
+    expect(truncation(data, key)).toEqual(expected);
   });
 });

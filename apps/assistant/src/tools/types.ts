@@ -32,6 +32,11 @@ export interface ToolDef<I extends z.ZodTypeAny> {
   readonly description: string;
   readonly minRole: Role;
   readonly input: I;
+  /**
+   * The row list a `limit` can cut (API 1.1.0). When the response says `truncated`, the registry
+   * adds `shown` and a `truncated` caveat so the answer can say "top N of total".
+   */
+  readonly listKey?: string;
   request(input: z.output<I>): ApiRequest;
 }
 
@@ -42,6 +47,7 @@ export interface AnyToolDef {
   readonly description: string;
   readonly minRole: Role;
   readonly input: z.ZodTypeAny;
+  readonly listKey?: string;
   /** Only ever called with the output of `input.safeParse`. */
   request(input: never): ApiRequest;
 }

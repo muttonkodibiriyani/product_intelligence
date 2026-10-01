@@ -253,10 +253,16 @@ drops `Money.minor` so the model only ever sees the decimal `amount` text.
 
 Common input limits:
 
-- Only `search_products` takes `limit` (≤ 25, default 10), so the assistant never pages. The S3
-  endpoints have no `limit`; a large result is refused with `output_too_large` (below) and the
-  model is told to narrow the filters. A `limit` on compare/promotions/launches is an open ask
-  to the API owner.
+- `search_products` takes `limit` (≤ 25, default 10), so the assistant never pages.
+- `compare`, `promotions` and `launches` (tool version 3, API 1.1.0 #70) always send `limit`
+  (≤ 25, default 25). The API keeps a documented order when it cuts the list (largest `|gap.pct|`,
+  deepest discount, newest first). `data.total` counts every row, and summaries and shares cover
+  every row. When `data.truncated` is true, the registry adds a server-computed `shown` count
+  and a `truncated` caveat ("Only the first N of total rows are listed"). The answer says "top N
+  of total": the caveat is always shown by the UI, and both numbers are tool numbers, so the
+  verifier accepts them. No prompt change was needed (prompt version unchanged).
+- A result that is still too large is refused with `output_too_large` (below), and the model is
+  told to narrow the filters.
 - List inputs (ids, retailers, brands, categories) ≤ 25, as in the OpenAPI `maxItems`.
 - Free text ≤ 120 chars.
 - Retailer ids match #39's `^[a-z][a-z0-9_]{1,62}$`; stage 1b generates the input schemas' patterns from the OpenAPI contract so they cannot drift.
@@ -267,7 +273,7 @@ Results over 16,000 chars are refused with `output_too_large` rather than trunca
 
 **Contract source of truth:** `docs/contracts/pi-api.openapi.json` and the goldens under
 `docs/contracts/golden/pi-api/` (S2 #55, S3 metric endpoints #61, both on main). All tools are
-`GET` under `/api/v1` (tool version 2). `test/contract.test.ts` fails the build if a tool's path,
+`GET` under `/api/v1` (tool version 2; 3 for the three list tools above). `test/contract.test.ts` fails the build if a tool's path,
 query parameters or required parameters drift from the OpenAPI document, if an
 `x-pi-source-text` field is not sanitised as untrusted text, or if any golden fails the
 registry's envelope checks.
@@ -280,11 +286,11 @@ base|other|equal}` with `gapAmount = other − base`; the `convention` string tr
 |---|---|---|---|
 | `search_products` | `GET /api/v1/products` | `q?`, `brand[]?`, `category[]?`, `retailer[]?`, `matched?`, `priceMin?/priceMax?` (decimal text in `meta.currency`), `sort? name\|price_asc\|price_desc\|gap\|gap_asc`, `limit` | `items[]` cards: per-retailer `prices{<retailer>: Money}`, `matches[]`, `gap {base, other, gap, excludedReason}` or null; `facets`, `total` |
 | `get_product` | `GET /api/v1/products/{id}` | `id` | `card` as above plus `offers[]` (price, regular, promoPct, rating, availability, `evidence {capturedAt, url}`) |
-| `compare` | `GET /api/v1/compare` | `retailers` (required), `id` (repeated, ≤ 25) **or** `brand?/category?`, `date?`, `groupBy? brand\|category` | `base`, `other`, `convention`; `rows[] {id, brand, name, category, basePrice, otherPrice, gap, counted, excludedReason}`; `summary {n, medianGapPct, meanGapPct, cheaperCounts {base, other}, equalCount, basket {base, other}}` only when n ≥ 5; optional `groups` |
+| `compare` | `GET /api/v1/compare` | `retailers` (required), `id` (repeated, ≤ 25) **or** `brand?/category?`, `date?`, `groupBy? brand\|category`, `limit` (≤ 25, default 25) | `base`, `other`, `convention`; `rows[] {id, brand, name, category, basePrice, otherPrice, gap, counted, excludedReason}`; `summary {n, medianGapPct, meanGapPct, cheaperCounts {base, other}, equalCount, basket {base, other}}` only when n ≥ 5; optional `groups` |
 | `index_trend` | `GET /api/v1/index` | `retailers` (required), `brand?`, `category?`, `from?/to?` | `points[{date, index, n, reason}]`, `definition`; trend needs history, otherwise `capability_off` |
-| `promotions` | `GET /api/v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?` (sent as decimal text), `date?` | `retailers[] {retailer, share, n, onPromo, reason}`; `items[]` with `depthPct` = (regular − price) / regular × 100 |
+| `promotions` | `GET /api/v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?` (sent as decimal text), `date?`, `limit` (≤ 25, default 25) | `retailers[] {retailer, share, n, onPromo, reason}`; `items[]` with `depthPct` = (regular − price) / regular × 100 |
 | `assortment_gaps` | `GET /api/v1/assortment-gaps` | `missingAt`, `presentAt` (both required), `brand?`, `category?`, `date?` | `items[]`, `byBrand[]`, `total`; absence rules as in §3.2.4 |
-| `launches` | `GET /api/v1/launches` | `retailer[]?`, `brand?`, `category?`, `since?` | `items[] {id, name, retailer, firstSeen}`; needs two or more runs, otherwise `capability_off` |
+| `launches` | `GET /api/v1/launches` | `retailer[]?`, `brand?`, `category?`, `since?`, `limit` (≤ 25, default 25) | `items[] {id, name, retailer, firstSeen}`; needs two or more runs, otherwise `capability_off` |
 | `reviews_summary` | `GET /api/v1/reviews-summary` | `id` (repeated, ≤ 25) **or** `brand?/category?`, `retailer[]?` | `retailers[] {retailer, n, avgRating, ratingCount, scale, reason}`. Distribution and themes → `field_not_collected` |
 | `coverage_status` | `GET /api/v1/coverage` | `retailer[]?` | `retailers[] {id, name, status supported\|partial\|blocked\|pending\|retired, productCount, matchedCount, freshness, since, note}` |
 
