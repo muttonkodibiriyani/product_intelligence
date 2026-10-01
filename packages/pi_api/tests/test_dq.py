@@ -18,6 +18,7 @@ from pi_api.dq import IMPORTED, caveats, imported_view
 from pi_dataset import DatasetV3
 from pi_metrics import CaveatCode, Reason, promotions, summary
 from pi_metrics.model import ProductFilter
+from pi_metrics.summary import default_context
 from v3_fixture import doc, load, offer
 
 API = "/api/v1"
@@ -80,7 +81,7 @@ def test_the_view_clears_only_the_imported_was_prices_and_finds_the_import_date(
                 assert o.series.price == before.offers[cid].series.price
             else:
                 assert o is before.offers[cid]  # untouched, so byte-identical
-    assert view.meta is ds.meta
+    assert view.meta == ds.meta  # own captures end at the cutoff
 
 
 def test_without_the_view_ulta_was_prices_would_be_measured() -> None:
@@ -187,3 +188,80 @@ def test_a_sephora_only_dataset_has_no_dq_caveats(tmp_path: Path) -> None:
     client = make_client(tmp_path)[0]
     for path in ("/summary", "/promotions", "/products?limit=5", "/coverage"):
         assert not {"snapshot_import_date", "was_price_unverified"} & set(codes(get(client, path)))
+
+
+COLLECTED_AT = "2026-09-29T10:00:00Z"
+
+
+def late_import_doc() -> dict[str, Any]:
+    """Collected offers end on 29 Sep; the Ulta import, later, set the file's cutoff and date."""
+    d = ulta_doc()
+    for product in d["products"]:
+        for cid, o in product["offers"].items():
+            if cid != ULTA:
+                o["evidence"]["capturedAt"] = COLLECTED_AT
+    d["meta"]["cutoff"] = IMPORTED_AT  # as an export that counted the Ulta capture wrote it
+    d["meta"]["generatedAt"] = "2026-09-30T22:00:00Z"
+    return d
+
+
+def test_a_later_import_never_sets_the_cutoff_or_as_of_of_collected_data(tmp_path: Path) -> None:
+    """Coordinator and Reviewer, before #134: /meta and /summary read collected offers only."""
+    write(tmp_path, load(late_import_doc()))
+    client = make_client(tmp_path)[0]
+    meta = get(client, "/meta")
+    assert (meta["data"]["cutoff"], meta["meta"]["cutoff"]) == (COLLECTED_AT, COLLECTED_AT)
+    assert meta["data"]["dates"][-1] == "2026-09-30"  # the series dates are left as published
+    for path in ("/summary", "/summary?retailer=shop_a"):
+        body = get(client, path)
+        assert body["data"]["retailer"] != ULTA
+        assert body["data"]["asOf"] == "2026-09-29"
+        assert body["data"]["freshness"]["cutoff"] == COLLECTED_AT
+        assert body["data"]["freshness"]["status"] != "snapshot"
+    ulta = get(client, f"/summary?retailer={ULTA}")
+    assert ulta["data"]["asOf"] == "2026-09-30"  # unchanged since 1.5.0
+    assert ulta["data"]["freshness"] == {
+        "cutoff": IMPORTED_AT,
+        "ageDays": ulta["data"]["freshness"]["ageDays"],
+        "status": "snapshot",
+    }
+
+
+def test_the_as_of_cap_is_the_cutoff_day_in_the_market_time_zone(tmp_path: Path) -> None:
+    """Reviewer, #135: 21:30Z on 29 Sep is 30 Sep 01:30 in Dubai, the day meta.dates count in."""
+    d = late_import_doc()
+    for product in d["products"]:
+        for cid, o in product["offers"].items():
+            if cid != ULTA:
+                o["evidence"]["capturedAt"] = "2026-09-29T21:30:00Z"
+    write(tmp_path, load(d))
+    client = make_client(tmp_path)[0]
+    assert get(client, "/meta")["data"]["cutoff"] == "2026-09-29T21:30:00Z"
+    for path in ("/summary", "/summary?retailer=shop_a"):
+        assert get(client, path)["data"]["asOf"] == "2026-09-30"
+
+
+def test_the_default_summary_is_a_collected_context_even_if_the_import_is_larger() -> None:
+    d = ulta_doc()
+    for pid in ("p01", "p02", "p04"):
+        offer(d, pid, "shop_a")["early"] = True  # leaves ulta_ae with the most counted offers
+    ds = load(d)
+    assert default_context(ds).id == ULTA
+    assert default_context(ds, frozenset({ULTA})).id == "shop_a"
+    assert default_context(ds, frozenset(c.id for c in ds.meta.contexts)).id == ULTA
+
+
+def test_an_import_only_dataset_keeps_its_cutoff_and_says_it_is_a_snapshot(
+    tmp_path: Path,
+) -> None:
+    d = late_import_doc()
+    for product in d["products"]:
+        product["offers"] = {c: o for c, o in product["offers"].items() if c == ULTA}
+        product["matches"] = []
+    d["products"] = [p for p in d["products"] if p["offers"]]
+    ds = load(d)
+    assert imported_view(ds)[0].meta.cutoff == ds.meta.cutoff
+    write(tmp_path, ds)
+    meta = get(make_client(tmp_path)[0], "/meta")
+    assert meta["data"]["cutoff"] == IMPORTED_AT
+    assert "snapshot_import_date" in codes(meta)
