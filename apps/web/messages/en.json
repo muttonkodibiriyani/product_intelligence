@@ -502,7 +502,8 @@
       "launches": "Launches",
       "reviews_summary": "Reviews",
       "coverage_status": "Data coverage",
-      "other": "Data tool"
+      "other": "Data tool",
+      "summary": "Market summary"
     },
     "answer": {
       "product": "Product",
@@ -541,6 +542,15 @@
       "network": "The assistant could not be reached. Check your connection and try again.",
       "timeout": "The answer took too long. Please try again.",
       "generic": "Something went wrong. No answer was generated."
+    },
+    "sample": {
+      "title": "What an answer looks like",
+      "hint": "Assembled by this page from the platform’s data, not written by the AI model.",
+      "question": "What does the latest snapshot look like?",
+      "catalogue": "**{retailer}** lists **{products}** products.",
+      "priced": "**{priced}** of them have a price.",
+      "median": "The median price is **{median}**.",
+      "promo": "**{pct}%** of priced products are on promotion."
     }
   }
 }

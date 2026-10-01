@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { isToolName, progressKey } from '@/lib/assistant/answer';
+import { progressKey, toolKey } from '@/lib/assistant/answer';
 import type { ChatProgress } from '@/lib/assistant/types';
 
 /** Live steps while a question runs: stages and the tools used (no model text, no numbers). */
@@ -17,7 +17,7 @@ export function ProgressChips({ steps, done }: { steps: readonly ChatProgress[];
           step.type === 'status'
             ? t(step.stage)
             : t(step.status === 'ok' ? 'tool' : step.status === 'error' ? 'toolError' : 'toolEmpty', {
-                tool: isToolName(step.name) ? tool(step.name) : tool('other'),
+                tool: tool(toolKey(step.name)),
               });
         return (
           <li

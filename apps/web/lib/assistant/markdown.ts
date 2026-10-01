@@ -20,7 +20,7 @@ export type Block =
       readonly rows: readonly (readonly (readonly Inline[])[])[];
     };
 
-const TOKEN = /\\([\\`*_{}[\]()#+!|<>~&"])|\*\*(.+?)\*\*|\[\[product:([^\]\s]{1,200})\]\]/g;
+const TOKEN = /\\([\\`*_{}[\]()#+!|<>~&"])|\*\*((?:\\.|[^\\*])+?)\*\*|\[\[product:([^\]\s]{1,200})\]\]/g;
 
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
@@ -110,3 +110,8 @@ export const inlineText = (c: readonly Inline[]): string =>
   c.map((x) => (x.t === 'text' ? x.v : x.t === 'strong' ? inlineText(x.c) : `[${x.id}]`)).join('');
 
 export { unescapeMd };
+
+const SPECIALS = /[\\`*_{}[\]()#+!|<>~&"]/g;
+
+/** Escapes server data placed into page-built Markdown (the same set the assistant escapes). */
+export const escapeMd = (text: string): string => text.replace(SPECIALS, '\\$&');

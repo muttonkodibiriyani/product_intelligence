@@ -40,6 +40,10 @@ export type ToolName = (typeof TOOL_NAMES)[number];
 export const isToolName = (name: string): name is ToolName =>
   (TOOL_NAMES as readonly string[]).includes(name);
 
+/** The label key for a tool name; `summary` is the page's own sample source (/api/v1/summary). */
+export const toolKey = (name: string): ToolName | 'summary' | 'other' =>
+  isToolName(name) || name === 'summary' ? name : 'other';
+
 /** Progress chips: one per stage or tool call, in arrival order. */
 export const progressKey = (p: ChatProgress, i: number): string =>
   p.type === 'status' ? `s-${p.stage}-${i}` : `t-${p.name}-${i}`;

@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { Fragment } from 'react';
-import { firstTable, isToolName, unavailableNote } from '@/lib/assistant/answer';
+import { firstTable, toolKey, unavailableNote } from '@/lib/assistant/answer';
 import { type Block, type Inline, parseAnswer } from '@/lib/assistant/markdown';
 import { useReveal } from '@/lib/assistant/reveal';
 import type { ChatAnswer, Citation, UntrustedBilingual } from '@/lib/assistant/types';
@@ -103,8 +103,7 @@ function CitationChip({ c, n }: { c: Citation; n: number }) {
       <details className="rounded-ctl border border-line-2 bg-surface px-2 py-1 text-xs">
         <summary className="cursor-pointer list-none">
           <span className="me-1 rounded bg-surface-2 px-1 font-medium tabular-nums">{n}</span>
-          {isToolName(c.tool) ? tool(c.tool) : tool('other')} · {t('cutoff')}{' '}
-          <bdi className="tabular-nums">{c.cutoff}</bdi>
+          {tool(toolKey(c.tool))} · {t('cutoff')} <bdi className="tabular-nums">{c.cutoff}</bdi>
           {c.cohort && (
             <>
               {' '}
@@ -186,7 +185,7 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
               return (
                 <figure key={i} className="space-y-1">
                   <figcaption className="text-xs font-medium text-ink-2">
-                    {isToolName(r.citation.tool) ? tool(r.citation.tool) : tool('other')}
+                    {tool(toolKey(r.citation.tool))}
                     {table.total > table.rows.length &&
                       ` · ${t('shown', { shown: table.rows.length, total: table.total })}`}
                   </figcaption>

@@ -7,6 +7,7 @@ import { type Ask, assistantClient } from '@/lib/assistant/client';
 import { isPending, MAX_QUESTION_CHARS, type Turn, useAssistantChat } from '@/lib/assistant/use-chat';
 import { AnswerView } from './answer-view';
 import { ProgressChips } from './progress-chips';
+import { SampleAnswer } from './sample-answer';
 
 function TurnView({ turn }: { turn: Turn }) {
   const t = useTranslations('assistant');
@@ -113,6 +114,7 @@ export function AssistantView({
           </ul>
         </div>
       )}
+      {chat.turns.length === 0 && <SampleAnswer />}
 
       <form
         onSubmit={(e) => {

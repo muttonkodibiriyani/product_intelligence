@@ -23,6 +23,13 @@ describe('parseAnswer', () => {
     ]);
   });
 
+  it('bold never ends inside an escape', () => {
+    expect(parseInline('**\\*\\*x\\*\\*** y')).toEqual([
+      { t: 'strong', c: [{ t: 'text', v: '**x**' }] },
+      { t: 'text', v: ' y' },
+    ]);
+  });
+
   it('never yields links, images or HTML: they stay plain text', () => {
     const md = '[click](https://evil.example) ![x](https://evil.example/a.png) <script>alert(1)</script>';
     const blocks = parseAnswer(md);

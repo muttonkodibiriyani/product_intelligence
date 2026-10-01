@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -52,9 +53,11 @@ function fake() {
 
 const show = (client: () => Promise<Ask>, locale: 'en' | 'ar' = 'en') =>
   render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'en' ? en : ar}>
-      <AssistantView connected client={client} />
-    </NextIntlClientProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NextIntlClientProvider locale={locale} messages={locale === 'en' ? en : ar}>
+        <AssistantView connected client={client} />
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
   );
 
 const ask = async (text: string) => {
