@@ -48,6 +48,12 @@ export async function mockBackend(
   page.on('pageerror', (e) => {
     if (!/due to access control checks/.test(String(e))) mock.errors.push(String(e));
   });
+  // The local server sends the production CSP; any block it makes fails the test.
+  await page.addInitScript(() =>
+    document.addEventListener('securitypolicyviolation', (e) =>
+      console.error(`CSP blocked ${e.violatedDirective}: ${e.blockedURI || 'inline'}`),
+    ),
+  );
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const text = m.text();
