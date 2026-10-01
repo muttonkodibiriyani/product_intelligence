@@ -11,6 +11,7 @@ import {
   amount,
   bandFloor,
   brandShare,
+  categoryNodeHref,
   categoryNodes,
   exploreHref,
   heatCells,
@@ -451,8 +452,8 @@ export function CategoryMixWidget({ data, locale, height }: Props<Measured<'cate
       height={height ?? 320}
       deps={[data, locale]}
       onPick={(_, d) => {
-        const name = (d as TreeNode | undefined)?.name;
-        if (name) router.push(exploreHref(locale, { category: [name] }));
+        const node = d as TreeNode | undefined;
+        if (node?.trail.length) router.push(categoryNodeHref(locale, node));
       }}
       build={(p) => {
         const colors = [p.lav, p.mint, p.sky, p.blush, p.butter, p.rose];

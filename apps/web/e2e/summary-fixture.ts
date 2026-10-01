@@ -78,17 +78,19 @@ export const summaryBody = {
       ],
     },
     brandPrice: brands.map(([brand, median], i) => ({ brand, n: 210 - i * 15, median: aed(median) })),
-    // Category paths, one level deep like Sephora UAE's live categories.
-    categoryMix: [
-      ['Fragrance', 1120],
-      ['Skincare', 1430],
-      ['Makeup', 1090],
-      ['Hair', 380],
-      ['Bath & Body', 292],
-      ['Tools & Brushes', 260],
-      ['Men', 140],
-      ['Gifts', 100],
-    ].map(([c, n]) => ({ category: [c as string], n: n as number })),
+    // Category paths: the first step is the category code the explorer filters on (#111).
+    categoryMix: (
+      [
+        [['Skincare', 'Moisturizers'], 1430],
+        [['Fragrance', 'Women'], 1120],
+        [['Makeup', 'Lips', 'Liquid Lipstick'], 1090],
+        [['Hair'], 380],
+        [['Bath & Body'], 292],
+        [['Tools & Brushes'], 260],
+        [['Men'], 140],
+        [['Gifts'], 100],
+      ] as const
+    ).map(([category, n]) => ({ category: [...category], n })),
     priceHist: {
       edges: ['0', '50', '100', '150', '200', '300', '500', '1000'],
       counts: [610, 1140, 1020, 760, 690, 430, 162],

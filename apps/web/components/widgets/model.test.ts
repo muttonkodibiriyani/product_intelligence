@@ -3,6 +3,7 @@ import {
   amount,
   brandShare,
   bandFloor,
+  categoryNodeHref,
   categoryNodes,
   exploreHref,
   freshness,
@@ -78,6 +79,13 @@ describe('widget model', () => {
       { name: 'Makeup', trail: ['Makeup'], value: 13 },
     ]);
     expect(categoryNodes(null)).toEqual([]);
+  });
+
+  it('drills a tile into its category code, the first step of its path, never the leaf', () => {
+    const [serum] = categoryNodes([{ category: ['Skincare', 'Serum'], n: 20 }]);
+    expect(categoryNodeHref('en', serum!)).toBe('/en/explore/?category=Skincare');
+    const [lips] = categoryNodes([{ category: ['Makeup', 'Lips', 'Liquid Lipstick'], n: 4 }]);
+    expect(categoryNodeHref('ar', lips!)).toBe('/ar/explore/?category=Makeup');
   });
 
   it('keeps promotions off unless measured, with the reason /summary gives', () => {

@@ -138,6 +138,15 @@ for (const locale of ['en', 'ar'] as const) {
       await page.mouse.click(box.x + box.width / 2, box.y + 26);
       await expect(page).toHaveURL(/\/explore\/\?category=Lipstick$/);
 
+      // A treemap tile drills into its category code, the path's first step, not the leaf.
+      await page.goBack();
+      const mix = page.locator('#w-mix [role=img]');
+      await expect(mix.locator('svg')).toBeVisible({ timeout: 15_000 });
+      await mix.scrollIntoViewIfNeeded();
+      const tile = (await mix.boundingBox())!;
+      await page.mouse.click(tile.x + 12, tile.y + 12); // the largest tile, Skincare › Moisturizers
+      await expect(page).toHaveURL(/\/explore\/\?category=Skincare$/);
+
       expect(mock.external).toEqual([]);
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });

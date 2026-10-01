@@ -75,9 +75,9 @@ export function heatCells(d: Measured<'promoDepth'>) {
 }
 
 export interface TreeNode {
-  /** The category's own name, the last step of its path: what the tile shows and the drill filters on. */
+  /** The category's own name, the last step of its path: what the tile shows. */
   name: string;
-  /** The whole path, for the tooltip. */
+  /** The whole path, for the tooltip; its first step is the category code the drill filters on. */
   trail: string[];
   value: number;
 }
@@ -88,6 +88,14 @@ export function categoryNodes(mix: Summary['categoryMix']): TreeNode[] {
     .filter((c) => c.category.length > 0 && c.n > 0)
     .map((c) => ({ name: c.category[c.category.length - 1]!, trail: c.category, value: c.n }))
     .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * The explorer for a tile's category. The API filters on the category code, the path's first step
+ * (#111), so a leaf like "Liquid Lipstick" would open an empty list.
+ */
+export function categoryNodeHref(locale: string, n: TreeNode): string {
+  return exploreHref(locale, { category: n.trail.slice(0, 1) });
 }
 
 /** Histogram bins with their bounds kept as the API's strings, for labels and drill links. */
