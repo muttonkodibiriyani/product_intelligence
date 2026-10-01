@@ -27,6 +27,7 @@ export const TOOL_NAMES = [
   'search_products',
   'get_product',
   'compare',
+  'category_compare',
   'index_trend',
   'promotions',
   'assortment_gaps',
