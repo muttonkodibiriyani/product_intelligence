@@ -12,6 +12,8 @@ dataset runs every contract rule: an invalid document cannot be written. What ch
 - a match edge carries the ``pi_db`` review state verbatim and who decided it, never who;
 - one date (the cutoff's day in Dubai): a price, regular or stock value captured on another day is
   ``null`` there (contract rule 6: never carried forward), and the field is reported ``partial``;
+- ``category`` is the one-level code followed by the naming offer's own breadcrumb (at most three
+  levels, verbatim; see ``category_path``);
 - ``image`` is the retailer's own main image URL, hotlinked (never rehosted) and only from an
   allowlisted https host (``IMAGE_HOSTS``); anything else is ``null``, never a guess;
 - Ulta's status is the owner's statement (``UltaContext``), not inferred from whether rows exist.
@@ -77,6 +79,13 @@ STATUS = {
 }
 PRODUCT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 MATCH_STAGE = "first-pass"
+#: Retailer breadcrumb levels published below the one-level code (Home is never stored).
+CATEGORY_DEPTH = 3
+#: Sephora's brand-navigation prefix ("BRANDS > Brands > <brand> > ..."): the brand is already
+#: ``Product.brand``, so the path starts after it.
+BRAND_NAV = ("BRANDS", "Brands")
+#: Sephora-internal pseudo-crumbs that name no category.
+NOT_A_CATEGORY = frozenset({"PID Unicity", "without_pid"})
 #: Hosts whose image URLs are published (owner decision: hotlinked from the retailer's CDN only).
 IMAGE_HOSTS = frozenset({"img-product.sephora.me"})
 
@@ -116,7 +125,8 @@ def availability(value: str | None) -> AvailabilityState | None:
 
 
 def image(value: str | None) -> HttpUrl | None:
-    """An absolute https URL on an allowlisted host, without credentials or fragment; else None."""
+    """An absolute https URL on an allowlisted host, without credentials or a fragment (even an
+    empty trailing ``#``); else None."""
     if not value:
         return None
     try:
@@ -129,10 +139,44 @@ def image(value: str | None) -> HttpUrl | None:
         or parts.hostname not in IMAGE_HOSTS
         or port not in (None, 443)
         or parts.username is not None
-        or parts.fragment
+        or "#" in value
     ):
         return None
     return HttpUrl(value)
+
+
+def breadcrumb(path: str | None) -> tuple[tuple[str, ...], frozenset[str]]:
+    """The retailer's breadcrumb levels to publish (verbatim, at most ``CATEGORY_DEPTH``) and what
+    was done to get them: ``internal`` (a pseudo-crumb dropped), ``brand_nav`` (the brand-navigation
+    prefix dropped), ``truncated`` (levels below ``CATEGORY_DEPTH`` cut)."""
+    levels = [level.strip() for level in (path or "").split(" > ")]
+    levels = [level for level in levels if level]
+    notes: set[str] = set()
+    if any(level in NOT_A_CATEGORY for level in levels):
+        notes.add("internal")
+        levels = [level for level in levels if level not in NOT_A_CATEGORY]
+    if tuple(levels[: len(BRAND_NAV)]) == BRAND_NAV:
+        notes.add("brand_nav")
+        levels = levels[len(BRAND_NAV) + 1 :]
+    if len(levels) > CATEGORY_DEPTH:
+        notes.add("truncated")
+    return tuple(levels[:CATEGORY_DEPTH]), frozenset(notes)
+
+
+def category_path(row: ListingRow) -> tuple[str, ...]:
+    """The one-level code, then the retailer's own breadcrumb (``breadcrumb``); no breadcrumb
+    gives the code alone."""
+    return (category_for(row), *breadcrumb(row.category_path)[0])
+
+
+def category_notes(rows: Sequence[ListingRow]) -> dict[str, int]:
+    """Per-run counts of the listings whose breadcrumb was cut or cleaned (for the run log, so a
+    new pseudo-crumb or a deeper tree shows up instead of leaking through)."""
+    counts = dict.fromkeys(("internal", "brand_nav", "truncated"), 0)
+    for row in rows:
+        for note in breadcrumb(row.category_path)[1]:
+            counts[note] += 1
+    return counts
 
 
 def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
@@ -220,7 +264,7 @@ def product(
         id=product_id(token),
         brand=rep.brand,
         name=rep.name,
-        category=(category_for(rep),),
+        category=category_path(rep),
         unit=keys[0].size_unit,
         offers=offers,
         matches=tuple(matches),
