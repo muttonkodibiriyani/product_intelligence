@@ -280,3 +280,11 @@ def test_held_file_is_never_uploaded(
     monkeypatch.setattr("sys.argv", argv)  # not --dry-run: it must stop before Firebase
     assert publish_dataset.main() == 1
     assert "INVALID: HOLD, pi-api cannot serve this file" in capsys.readouterr().err
+
+
+def test_generated_at_is_normalised_to_utc_and_needs_a_timezone() -> None:
+    gen = publish_dataset.generated_at(b'{"meta": {"generatedAt": "2026-10-01T10:47:18+04:00"}}')
+    path = publish_dataset.revision_path("datasets/ae/beauty/20261001T032000Z.json", gen)
+    assert path == "datasets/ae/beauty/20261001T032000Z-g20261001T064718Z.json"
+    with pytest.raises(ValueError, match="no timezone"):
+        publish_dataset.generated_at(b'{"meta": {"generatedAt": "2026-10-01T06:47:18"}}')
