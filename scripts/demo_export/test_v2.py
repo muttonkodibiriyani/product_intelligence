@@ -184,3 +184,73 @@ def test_credential_like_scraped_text_blocks_the_export() -> None:
     leaky = ListingRow(**(row().__dict__ | {"name": "Serum x-algolia-api-key"}))
     with pytest.raises(DatasetError, match="credential-like"):
         build([leaky])
+
+
+def at(when: datetime, **changes: Any) -> ListingRow:
+    base = row(**changes)
+    return ListingRow(**(base.__dict__ | {"observed_at": when, "evidence_retrieved_at": when}))
+
+
+def test_a_value_captured_on_another_day_is_null_never_carried_forward() -> None:
+    """Contract rule 6: Sephora on 30 Sep, Ulta on 28 Sep -> only Sephora has values on 30 Sep."""
+    fresh = at(datetime(2026, 9, 30, 10, 0, tzinfo=UTC), availability="in_stock")
+    old = at(
+        datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+        source="ulta_ae",
+        family=20,
+        variant=200,
+        availability="in_stock",
+    )
+    d = doc([fresh, old])
+    assert d["meta"]["dates"] == ["2026-09-30"]
+    offers = {rid: o for p in d["products"] for rid, o in p["offers"].items()}
+    assert offers["sephora_me"]["series"]["price"] == [
+        {"amount": "100.00", "minor": 10000, "currency": "AED"}
+    ]
+    assert offers["sephora_me"]["series"]["availability"] == ["in_stock"]
+    assert offers["ulta_ae"]["series"]["price"] == [None]
+    assert "regular" not in offers["ulta_ae"]["series"] or offers["ulta_ae"]["series"][
+        "regular"
+    ] in (None, [None])
+    assert offers["ulta_ae"]["series"]["availability"] == [None]
+    assert offers["ulta_ae"]["evidence"]["capturedAt"] == "2026-09-28T12:00:00Z"
+    fields = d["meta"]["fields"]
+    assert (fields["price"], fields["regular"], fields["stock"]) == ("partial",) * 3
+
+
+def test_stock_has_its_own_capture_time() -> None:
+    """A fresh stock observation keeps its value; an old price does not ride along with it."""
+    today = datetime(2026, 9, 30, 10, 0, tzinfo=UTC)
+    base = at(today, availability="in_stock")
+    mixed = ListingRow(
+        **(
+            base.__dict__
+            | {
+                "price_observed_at": datetime(2026, 9, 29, 9, 0, tzinfo=UTC),
+                "price_evidence_retrieved_at": datetime(2026, 9, 29, 9, 0, tzinfo=UTC),
+                "price_run_id": 3,
+            }
+        )
+    )
+    d = doc([mixed])
+    offer = only_offer(d)
+    assert offer["series"]["price"] == [None]
+    assert offer["series"]["availability"] == ["in_stock"]
+    # The evidence is the observation that was published: the stock one, not the old price.
+    assert offer["evidence"]["capturedAt"] == "2026-09-30T10:00:00Z"
+    assert offer["evidence"]["runId"] == "7"
+    assert d["meta"]["fields"]["price"] == "partial"
+    assert d["meta"]["fields"]["stock"] == "ok"
+
+
+def test_ulta_stays_blocked_even_when_older_ulta_rows_exist() -> None:
+    d = doc([row(), row(source="ulta_ae", family=20, variant=200)])
+    ulta = d["meta"]["retailers"][0]
+    assert ulta["status"] == RetailerStatus.BLOCKED
+    assert ulta["note"] == NOTE
+    assert [w["retailer"] for w in d["notObserved"]] == ["ulta_ae"]
+
+
+def test_size_is_partial_when_only_some_products_have_one() -> None:
+    fields = doc([row(), row(family=11, variant=101, size=None, unit=None)])["meta"]["fields"]
+    assert fields["size"] == "partial"

@@ -9,7 +9,10 @@ dataset runs every contract rule: an invalid document cannot be written. What ch
 - ratings keep the retailer's own scale (v1 rescaled to 5);
 - there is no promo series (the metric layer derives depth from ``price`` and ``regular``);
 - availability is a series, with ``null`` for "not observed";
-- a match edge carries the ``pi_db`` review state verbatim and who decided it, never who.
+- a match edge carries the ``pi_db`` review state verbatim and who decided it, never who;
+- one date (the cutoff's day in Dubai): a price, regular or stock value captured on another day is
+  ``null`` there (contract rule 6: never carried forward), and the field is reported ``partial``;
+- Ulta's status is the owner's statement (``UltaContext``), not inferred from whether rows exist.
 """
 
 from __future__ import annotations
@@ -17,7 +20,8 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -80,6 +84,18 @@ def product_id(token: str) -> str:
     return "p-" + hashlib.sha256(token.encode()).hexdigest()[:24]
 
 
+@dataclass
+class Stale:
+    """Values not published because they were captured on another day than ``meta.dates``."""
+
+    day: date
+    prices: int = 0
+    stock: int = 0
+
+    def on_day(self, moment: datetime) -> bool:
+        return moment.astimezone(ZoneInfo(MARKET.time_zone)).date() == self.day
+
+
 def money(value: Decimal | None, currency: str) -> MoneyValue | None:
     """A positive price, or ``None`` (not observed). Zero or negative is not a price."""
     if value is None or value <= 0:
@@ -93,12 +109,24 @@ def availability(value: str | None) -> AvailabilityState | None:
     return AvailabilityState(value)
 
 
-def offer(rows: Sequence[ListingRow], currency: str) -> Offer:
+def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
+    """Price and regular come from the price capture, stock from the row's own (newest)
+    observation; each is published only when captured on ``stale.day``. The evidence is the
+    price capture when the price is published, else the stock observation."""
     rep = choose_representative(rows)
     unit, size = rep.effective_size
-    captured, price_run_id = rep.price_capture
+    price_at, price_run_id = rep.price_capture
+    stock_at, stock_run_id = rep.evidence_retrieved_at or rep.observed_at, rep.run_id
     price = money(rep.price, currency)
+    if price is not None and not stale.on_day(price_at):
+        price = None
+        stale.prices += 1
     regular = money(rep.regular, currency) if price is not None else None
+    stock = availability(rep.availability)
+    if stock is not None and not stale.on_day(stock_at):
+        stock = None
+        stale.stock += 1
+    captured, run_id = (price_at, price_run_id) if price is not None else (stock_at, stock_run_id)
     rating = None
     if rep.rating is not None and rep.rating_scale is not None and rep.rating_count is not None:
         rating = Rating(
@@ -117,12 +145,12 @@ def offer(rows: Sequence[ListingRow], currency: str) -> Offer:
         series=Series(
             price=(price,),
             regular=(regular,) if regular is not None else None,
-            availability=(availability(rep.availability),),
+            availability=(stock,),
         ),
         evidence=Evidence(
             captured_at=captured,
             source=f"{rep.source_name} · local pi_db snapshot",
-            run_id=str(price_run_id),
+            run_id=str(run_id),
         ),
     )
 
@@ -150,6 +178,7 @@ def product(
     groups: Mapping[GroupKey, Sequence[ListingRow]],
     keys: Sequence[GroupKey],
     token: str,
+    stale: Stale,
     matches: Sequence[MatchEdge] = (),
 ) -> Product:
     """One product: the first key's rows name it (Sephora for a matched pair, as in v1)."""
@@ -162,21 +191,27 @@ def product(
         name=rep.name,
         category=(category_for(rep),),
         unit=keys[0].size_unit,
-        offers={RETAILERS[key.retailer][0]: offer(groups[key], MARKET.currency) for key in keys},
+        offers={
+            RETAILERS[key.retailer][0]: offer(groups[key], MARKET.currency, stale) for key in keys
+        },
         matches=tuple(matches),
         shades=tuple(sorted({row.shade_hex.lower() for row in rows if row.shade_hex})[:12]),
         attributes={"shadeFamilies": list(shade_families)} if shade_families else {},
     )
 
 
-def early_product(v1: Mapping[str, Any]) -> Product:
+def early_product(v1: Mapping[str, Any], stale: Stale) -> Product:
     """A recon sample from the v1 early-example dict (``parse_ulta_early_fixture``)."""
     src = v1["offers"]["u"]
+    captured = parse_utc(src["evidence"]["capturedAt"])
     rating = None
     if src["rating"] is not None:
         average, count = src["rating"]
         rating = Rating(average=decimal_text(Decimal(str(average))), scale="5", count=count)
     price = money(Decimal(str(src["series"]["price"][0])), MARKET.currency)
+    if price is not None and not stale.on_day(captured):
+        price = None
+        stale.prices += 1
     return Product(
         id=product_id(v1["id"]),
         brand=v1["brand"],
@@ -194,7 +229,7 @@ def early_product(v1: Mapping[str, Any]) -> Product:
                 early=True,
                 series=Series(price=(price,), availability=(None,)),
                 evidence=Evidence(
-                    captured_at=parse_utc(src["evidence"]["capturedAt"]),
+                    captured_at=captured,
                     source=src["evidence"]["source"],
                     run_id=src["evidence"]["runId"],
                 ),
@@ -221,6 +256,13 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     """``ulta_note`` is v1's ``meta.retailers[u].note``, so both versions say the same thing."""
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
+    captures = [row.evidence_retrieved_at or row.observed_at for row in rows]
+    captures += [parse_utc(p["offers"]["u"]["evidence"]["capturedAt"]) for p in ulta_early]
+    cutoff = max(captures)
+    zone = ZoneInfo(MARKET.time_zone)
+    day = cutoff.astimezone(zone).date()
+    stale = Stale(day)
+
     groups = group_rows(rows)
     pairs, unpaired = pair_groups(groups, matches)
     products = [
@@ -228,20 +270,15 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
             groups,
             (sephora, ulta_key),
             f"m-{ulta_key.stable_token}-{sephora.stable_token}",
+            stale,
             (edge(match),),
         )
         for ulta_key, sephora, match in pairs
     ]
-    products += [product(groups, (key,), key.stable_token) for key in unpaired]
+    products += [product(groups, (key,), key.stable_token, stale) for key in unpaired]
     known = {p.id for p in products}
-    products += [p for p in map(early_product, ulta_early) if p.id not in known]
+    products += [early_product(v1, stale) for v1 in ulta_early if product_id(v1["id"]) not in known]
     products.sort(key=lambda p: p.id)
-
-    captures = [row.evidence_retrieved_at or row.observed_at for row in rows]
-    captures += [parse_utc(p["offers"]["u"]["evidence"]["capturedAt"]) for p in ulta_early]
-    cutoff = max(captures)
-    zone = ZoneInfo(MARKET.time_zone)
-    day = cutoff.astimezone(zone).date()
 
     offers = [o for p in products for o in p.offers.values()]
     collected = [o for o in offers if not o.early]
@@ -254,7 +291,8 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     has_shades = any(p.shades for p in products)
     has_rating = any(o.rating is not None for o in offers)
 
-    ulta_status = STATUS[retailer_status(rows, "u")]
+    # The owner's statement, not row presence: rows from before the block must not hide it.
+    ulta_status = RetailerStatus.BLOCKED
     retailers = [
         Retailer(
             id=RETAILERS["u"][0],
@@ -315,17 +353,25 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
         fields={
             "price": status_of(
                 "parse_failure"
-                if bad_prices and not has_price
+                if bad_prices and not has_price and not stale.prices
                 else "partial"
-                if bad_prices
+                if bad_prices or stale.prices
                 else "ok"
                 if has_price
                 else "not_collected"
             ),
-            "regular": status_of("ok" if has_regular else "not_collected"),
-            "stock": status_of("ok" if has_stock else "not_collected"),
+            "regular": status_of(
+                ("partial" if stale.prices else "ok") if has_regular else "not_collected"
+            ),
+            "stock": status_of(
+                "partial" if stale.stock else "ok" if has_stock else "not_collected"
+            ),
             "size": status_of(
-                "ok" if all(p.unit is not None for p in products) else "not_published"
+                "ok"
+                if all(p.unit is not None for p in products)
+                else "partial"
+                if has_size
+                else "not_published"
             ),
             "shades": status_of("ok" if has_shades else "not_collected"),
             "rating": status_of("ok" if has_rating else "not_collected"),

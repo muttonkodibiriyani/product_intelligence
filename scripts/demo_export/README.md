@@ -24,6 +24,14 @@ The v2 file is built from the same rows, groups and pairs as v1 (same product id
 invalid v2 document fails the whole export. `--scope` (default `beauty`) names the storage folder
 `datasets/ae/<scope>/`. v1 stays the dashboard's input until it moves to v2 (ADR-0007 §6).
 
+v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
+value captured on any other day is published as `null`, never carried forward (contract rule 6),
+and `meta.fields.price` / `regular` / `stock` say `partial`. Stock has its own capture time (the
+row's newest observation), separate from the price capture. An offer's evidence is its price
+capture when the price is published, else its stock observation. Ulta's `blocked` status and window
+come from the owner's statement (`--ulta-blocked-since` and the notes), not from whether Ulta rows
+exist.
+
 For the pilot, ulta.ae is blocked (owner decision, 2026-09-30): the Ulta status line is
 `--ulta-blocked-note` / `--ulta-blocked-note-ar`, defaulting to "ulta.ae: blocked by site security
 (Cloudflare) via Gulf datacenter and UAE residential; 0 products". Pass both notes or neither;
