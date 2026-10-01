@@ -23,6 +23,7 @@ pytestmark = pytest.mark.db
 
 Conn = psycopg.Connection[dict[str, object]]
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
+SEPHORA = {"sources": ["sephora_me"]}
 
 
 def _libpq(url: str) -> str:
@@ -134,7 +135,7 @@ class World:
         )
 
     def latest(self) -> dict[str, tuple[object, object]]:
-        rows = self.conn.execute(LATEST_LISTINGS_SQL).fetchall()
+        rows = self.conn.execute(LATEST_LISTINGS_SQL, SEPHORA).fetchall()
         return {str(r["source_listing_key"]): (r["run_id"], r["price"]) for r in rows}
 
 
@@ -228,7 +229,7 @@ STOCK_ONLY = '{"price_current": "unknown", "availability_state": "observed"}'
 
 
 def _row(world: World, key: str) -> dict[str, object]:
-    rows = world.conn.execute(LATEST_LISTINGS_SQL).fetchall()
+    rows = world.conn.execute(LATEST_LISTINGS_SQL, SEPHORA).fetchall()
     return next(dict(r) for r in rows if r["source_listing_key"] == key)
 
 
@@ -360,3 +361,27 @@ def test_the_main_image_comes_from_the_latest_content(conn: Conn) -> None:
         )
     assert _row(world, "A")["image"] == "https://img-product.sephora.me/new.jpg"
     assert _row(world, "B")["image"] is None  # no content row at all
+
+
+def test_ulta_rows_in_the_db_stay_out_unless_named_in_sources(conn: Conn) -> None:
+    world = World(conn)
+    world.observe(world.run("succeeded", 1), "s1", 1, "10")
+    ulta = World.__new__(World)
+    ulta.conn, ulta.listings = conn, {}
+    ulta.source = _id(
+        conn, "INSERT INTO source (name, kind) VALUES ('ulta_ae', 'web') RETURNING id"
+    )
+    ulta.context = _id(
+        conn,
+        "INSERT INTO source_context (source_id, country, channel, locale, time_zone)"
+        " VALUES (%s, 'AE', 'online', 'en-AE', 'Asia/Dubai') RETURNING id",
+        (ulta.source,),
+    )
+    ulta.observe(ulta.run("partial", 2), "u1", 2, "20")
+
+    def keys(sources: list[str]) -> set[str]:
+        rows = conn.execute(LATEST_LISTINGS_SQL, {"sources": sources}).fetchall()
+        return {str(r["source_listing_key"]) for r in rows}
+
+    assert keys(["sephora_me"]) == {"s1"}
+    assert keys(["sephora_me", "ulta_ae"]) == {"s1", "u1"}

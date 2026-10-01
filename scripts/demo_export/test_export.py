@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from scripts.demo_export.export import (
+    DEFAULT_SOURCES,
     ULTA_BLOCKED_NOTE,
     ULTA_BLOCKED_NOTE_AR,
     ListingRow,
@@ -18,6 +19,7 @@ from scripts.demo_export.export import (
     choose_representative,
     contains_secret,
     group_rows,
+    in_sources,
     json_money,
     matched_products,
     offer_for,
@@ -341,7 +343,9 @@ def test_cli_refuses_half_translated_or_contradictory_ulta_notes(
 def test_real_ulta_rows_are_partial_not_early() -> None:
     ulta = row(source="ulta_ae")
     ulta = ListingRow(**(ulta.__dict__ | {"run_status": "running", "coverage_status": "partial"}))
-    dataset = build_dataset([ulta], [], generated_at=NOW, ulta=UltaContext(blocked_since=NOW))
+    dataset = build_dataset(
+        [ulta], [], generated_at=NOW, ulta=UltaContext(blocked_since=NOW, blocked=False)
+    )
     assert dataset["meta"]["retailers"][0]["status"] == "partial"
     assert "early" not in dataset["products"][0]["offers"]["u"]
     assert "notObserved" not in dataset
@@ -355,3 +359,52 @@ def test_offer_evidence_dates_the_price_not_a_newer_stock_read() -> None:
     evidence = offer_for([listing])["evidence"]
     assert (evidence["capturedAt"], evidence["runId"]) == ("2026-09-30T18:00:00Z", "5")
     assert offer_for([row()])["evidence"]["runId"] == "7"  # no price row: the newest row
+
+
+def ulta_and_sephora_pair() -> tuple[list[ListingRow], list[MatchRow]]:
+    """A Sephora row, an Ulta row of the same size, and an exact match between them."""
+    rows = [row(), row(source="ulta_ae", family=20, variant=200)]
+    return rows, [match(200, 100, "0.99")]
+
+
+def test_by_default_ulta_rows_in_the_db_export_no_ulta_products_and_no_pairs() -> None:
+    rows, matches = ulta_and_sephora_pair()
+    assert DEFAULT_SOURCES == ("sephora_me",)
+    selected = in_sources(rows, DEFAULT_SOURCES)
+    dataset = build_dataset(
+        selected, matches, generated_at=NOW, ulta=UltaContext(blocked_since=NOW)
+    )
+    assert [p["id"] for p in dataset["products"] if p["id"].startswith("m-")] == []
+    assert all(p["offers"]["u"] is None for p in dataset["products"])
+    assert len(dataset["products"]) == 1
+    assert dataset["meta"]["retailers"][0]["status"] == "blocked"
+
+
+def test_a_pair_needs_both_sides_in_the_sources() -> None:
+    rows, matches = ulta_and_sephora_pair()
+    both = build_dataset(
+        in_sources(rows, ("sephora_me", "ulta_ae")),
+        matches,
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=NOW, blocked=False),
+    )
+    assert [p["id"][:2] for p in both["products"]] == ["m-"]
+
+
+def test_v1_ulta_status_comes_from_the_ruling_not_from_ulta_rows() -> None:
+    rows, _ = ulta_and_sephora_pair()
+    dataset = build_dataset(rows, [], generated_at=NOW, ulta=UltaContext(blocked_since=NOW))
+    assert dataset["meta"]["retailers"][0]["status"] == "blocked"
+
+
+def test_sources_default_to_sephora_only_and_ulta_needs_the_unblocked_flag() -> None:
+    assert parser().parse_args(BASE_ARGS).sources == ("sephora_me",)
+    args = parser().parse_args([*BASE_ARGS, "--sources", "sephora_me, ulta_ae"])
+    assert args.sources == ("sephora_me", "ulta_ae")
+    with pytest.raises(SystemExit, match="needs --ulta-unblocked"):
+        check_args(args)
+    check_args(
+        parser().parse_args([*BASE_ARGS, "--sources", "sephora_me,ulta_ae", "--ulta-unblocked"])
+    )
+    with pytest.raises(SystemExit, match="at least one source"):
+        check_args(parser().parse_args([*BASE_ARGS, "--sources", " , "]))

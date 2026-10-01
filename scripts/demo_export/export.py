@@ -158,6 +158,12 @@ ULTA_BLOCKED_NOTE_AR = (
 )
 
 
+#: The sources this process exports by default. Ulta stays out unless it is named explicitly with
+#: --sources (owner ruling 2026-10-01: our process never publishes Ulta rows that happen to be in
+#: pi_db); a match pair needs both of its sides in the exported sources.
+DEFAULT_SOURCES = ("sephora_me",)
+
+
 @dataclass(frozen=True)
 class UltaContext:
     blocked_since: datetime
@@ -178,7 +184,7 @@ WITH scoped_runs AS (
   JOIN source s ON s.id = sc.source_id
   WHERE sc.country = 'AE'
     AND sc.locale = 'en-AE'
-    AND (s.name LIKE 'sephora%' OR s.name LIKE 'ulta%')
+    AND s.name = ANY(%(sources)s)
 ),
 -- The baseline is the newest SUCCEEDED run per context: a running, failed or partial refresh
 -- must never hide it (that would publish false removals).
@@ -349,7 +355,7 @@ LEFT JOIN LATERAL (
   ORDER BY content.observed_at DESC
   LIMIT 1
 ) lc ON true
-WHERE s.name LIKE 'sephora%' OR s.name LIKE 'ulta%'
+WHERE s.name = ANY(%(sources)s)
 ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 """
 
@@ -610,18 +616,26 @@ def review_state_for_ui(value: str) -> str:
         raise ValueError(f"unsupported non-rejected review state {value!r}") from error
 
 
-def load_rows(database_url: str) -> tuple[list[ListingRow], list[MatchRow]]:
+def load_rows(
+    database_url: str, sources: Sequence[str] = DEFAULT_SOURCES
+) -> tuple[list[ListingRow], list[MatchRow]]:
     with psycopg.connect(psycopg_database_url(database_url), row_factory=dict_row) as connection:
         connection.read_only = True
         with connection.cursor() as cursor:
-            cursor.execute(LATEST_LISTINGS_SQL)
+            cursor.execute(LATEST_LISTINGS_SQL, {"sources": list(sources)})
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
     return (
-        [ListingRow(**row) for row in listing_dicts],
+        in_sources([ListingRow(**row) for row in listing_dicts], sources),
         [MatchRow(**row) for row in match_dicts],
     )
+
+
+def in_sources(rows: Iterable[ListingRow], sources: Sequence[str]) -> list[ListingRow]:
+    """Only the rows of the exported sources (the SQL filters too; this guards other callers).
+    Matches need no filter: a pair is emitted only when both of its variants are in the rows."""
+    return [row for row in rows if row.source_name in sources]
 
 
 def parse_ulta_early_fixture(
@@ -763,7 +777,8 @@ def build_dataset(
             f"تمت ملاحظة {ulta.recon_observed_count} منتجات أثناء الاستطلاع فقط؛ لا توجد "
             f"منتجات استطلاع في قاعدة البيانات. المصدر: {ulta.recon_source}. "
         )
-    ulta_status = retailer_status(rows, "u")
+    # The ruling, not the presence of Ulta rows, decides that Ulta is blocked (as in v2).
+    ulta_status = "blocked" if ulta.blocked else retailer_status(rows, "u")
     sephora_status = retailer_status(rows, "s")
     ulta_status_note, ulta_status_note_ar = (
         (ulta.blocked_note, ulta.blocked_note_ar)
@@ -893,11 +908,17 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--ulta-recon-observed-count", type=int)
     result.add_argument("--ulta-recon-source")
     result.add_argument("--generated-at")
+    result.add_argument(
+        "--sources",
+        type=lambda value: tuple(name.strip() for name in value.split(",") if name.strip()),
+        default=DEFAULT_SOURCES,
+        help="comma-separated source names to export (default: sephora_me only)",
+    )
     result.add_argument("--ulta-blocked-since", default="2026-09-30T20:55:00Z")
     result.add_argument(
         "--ulta-unblocked",
         action="store_true",
-        help="v2: Ulta is collected again; its status then comes from its rows (default: blocked)",
+        help="Ulta is collected again; its status then comes from its rows (default: blocked)",
     )
     result.add_argument("--ulta-blocked-note", help="Ulta status line while blocked (EN)")
     result.add_argument("--ulta-blocked-note-ar", help="the same line in Arabic (required with EN)")
@@ -924,6 +945,10 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit(
             "--ulta-early-fixture needs --ulta-recon-observed-count and --ulta-recon-source"
         )
+    if not args.sources:
+        raise SystemExit("--sources must name at least one source")
+    if "ulta_ae" in args.sources and not args.ulta_unblocked:
+        raise SystemExit("--sources ulta_ae needs --ulta-unblocked: Ulta is blocked by ruling")
     notes = (args.ulta_blocked_note, args.ulta_blocked_note_ar)
     if (notes[0] is None) != (notes[1] is None):
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must be supplied together")
@@ -934,7 +959,7 @@ def check_args(args: argparse.Namespace) -> None:
 def main() -> None:
     args = parser().parse_args()
     check_args(args)
-    rows, matches = load_rows(args.database_url)
+    rows, matches = load_rows(args.database_url, args.sources)
     early: list[dict[str, Any]] = []
     if args.ulta_early_fixture is not None:
         early.append(
@@ -952,6 +977,7 @@ def main() -> None:
         ulta_early=early,
         ulta=UltaContext(
             blocked_since=parse_utc(args.ulta_blocked_since),
+            blocked=not args.ulta_unblocked,
             recon_observed_count=args.ulta_recon_observed_count,
             recon_source=args.ulta_recon_source,
             blocked_note=args.ulta_blocked_note or ULTA_BLOCKED_NOTE,

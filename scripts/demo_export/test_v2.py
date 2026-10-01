@@ -10,14 +10,16 @@ import pytest
 
 from pi_dataset import DatasetError, RetailerStatus, dump_dataset, load_dataset
 from scripts.demo_export.export import (
+    DEFAULT_SOURCES,
     ULTA_BLOCKED_NOTE,
     ULTA_BLOCKED_NOTE_AR,
     ListingRow,
     MatchRow,
     UltaContext,
     build_dataset,
+    in_sources,
 )
-from scripts.demo_export.test_export import row
+from scripts.demo_export.test_export import match, row
 from scripts.demo_export.v2 import build_dataset_v2, product_id
 
 NOW = datetime(2026, 9, 30, 22, 0, tzinfo=UTC)
@@ -337,3 +339,19 @@ def test_image_is_partial_when_only_some_products_have_one() -> None:
     d = doc([with_image(SEPHORA_IMG), with_image(None, family=11, variant=101)])
     assert d["meta"]["fields"]["image"] == "partial"
     assert d["meta"]["capabilities"]["images"] is True
+
+
+def test_v2_by_default_ulta_rows_in_the_db_export_no_ulta_products_and_no_pairs() -> None:
+    rows = [row(), row(source="ulta_ae", family=20, variant=200)]
+    ds = build_dataset_v2(
+        in_sources(rows, DEFAULT_SOURCES),
+        [match(200, 100, "0.99")],
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, 20, 55, tzinfo=UTC)),
+        ulta_note=NOTE,
+    )
+    d = json.loads(dump_dataset(ds))
+    assert len(d["products"]) == 1
+    assert all(p["offers"].get("u") is None for p in d["products"])
+    assert all(p.get("match") is None for p in d["products"])
+    assert d["meta"]["retailers"][0]["status"] == RetailerStatus.BLOCKED
