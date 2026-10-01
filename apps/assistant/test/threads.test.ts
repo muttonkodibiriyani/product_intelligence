@@ -51,7 +51,7 @@ describe("FirestoreThreadStore", () => {
       { role: "model", text: "second" },
     ]);
     expect(seen).toEqual({
-      path: ["users", "u1", "assistant_threads", "t1", "messages"],
+      path: ["users", "u1", "assistant_threads", "t1", "assistant_messages"],
       orderBy: ["createdAt", "desc"],
       limit: 10,
     });

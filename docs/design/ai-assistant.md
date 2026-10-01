@@ -403,7 +403,7 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
 | Daily question cap (default) | 40 | 150 |
 
 - **Firestore** (written only by functions through the Admin SDK; clients never write):
-  - `users/{uid}/assistant_threads/{threadId}` and `…/messages/{msgId}`:
+  - `users/{uid}/assistant_threads/{threadId}` and `…/assistant_messages/{msgId}`:
     - Contents: role, text, citations, tool calls (names + validated inputs + result hash, not
       full results), model id, prompt version, dataset generation, tokens and cost.
     - Client rule: read if `request.auth.uid == uid` and the role claim is valid.
@@ -484,7 +484,7 @@ reaches the model through tool output.
    `cleanAnswer` (links, images, tags, URLs of any scheme, emails) is the second.
 6. **Chat history is server-side.** The callable accepts only `{question, locale, threadId?}`
    (strict; unknown keys such as `history` are rejected). Earlier turns are loaded from
-   `users/{uid}/assistant_threads/{threadId}/messages`, which only the function writes, so a
+   `users/{uid}/assistant_threads/{threadId}/assistant_messages`, which only the function writes, so a
    client cannot forge model turns, and a thread id from another user finds nothing. History is
    read before the meter opens the question: if the read fails, the answer is
    `unavailable` (`history_unavailable`) and nothing is reserved or counted against the daily cap.
@@ -806,7 +806,7 @@ month (the secret version; Pub/Sub and Functions stay in the free tier).
 | Service-layer API deployed with `/v1/*` (#39) | Deep Coder's track | – | Stage 1c |
 | `recaptchaenterprise` + App Check | optional, **needs OK** | free ≤ 10 k/month | Stage 1 hardening |
 | Budget → Pub/Sub → kill-switch subscriber (§9.4) | **required before Vertex enablement** (Coordinator, 2026-10-01). Code, rules and tests are in the kill-switch PR. Topic, SA, secret, Auth account and deploy are **owner steps, each needs OK** | ≈ $0.06/month (secret version) | Backstop for spend the meter cannot see |
-| Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `messages` (collection groups) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
+| Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `assistant_messages` (collection groups; every group name carries the `assistant_` prefix so a TTL policy cannot reach another collection) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
 | Rules changes (threads read-own; no client report reads) | with the stage 1 PR, emulator-tested | – | Stage 1 |

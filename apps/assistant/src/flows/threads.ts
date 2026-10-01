@@ -3,7 +3,7 @@
  * #63). A client could otherwise forge "model" turns, putting words in the assistant's mouth
  * that the next answer would build on. The callable accepts only a question, a locale and a
  * thread id (`ChatRequestSchema`, strict); the flow loads earlier turns from
- * `users/{uid}/assistant_threads/{threadId}/messages`, which only the function writes. The
+ * `users/{uid}/assistant_threads/{threadId}/assistant_messages`, which only the function writes. The
  * path is under the caller's own uid, so a thread id from another user finds nothing.
  */
 import type { Firestore } from "firebase-admin/firestore";
@@ -67,7 +67,7 @@ export class FirestoreThreadStore implements ThreadStore {
       .doc(uid)
       .collection("assistant_threads")
       .doc(threadId)
-      .collection("messages")
+      .collection("assistant_messages")
       .orderBy("createdAt", "desc")
       .limit(limit)
       .get();
