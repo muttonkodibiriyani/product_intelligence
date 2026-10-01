@@ -2,13 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from './auth-provider';
 
 /** Renders children only for a signed-in user with a role; otherwise says why. */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const t = useTranslations('auth');
-  const { state } = useAuth();
+  const { state, auth } = useAuth();
+  const [checking, setChecking] = useState(false);
   const router = useRouter();
   const locale = useLocale();
 
@@ -18,6 +19,28 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (state.kind === 'unavailable') return <Notice>{t('configUnavailable')}</Notice>;
   if (state.kind !== 'signed_in') return <Notice busy>{t('loading')}</Notice>;
+  // The claims could not be read (identity outage): the role is unknown, not missing.
+  if (!state.session.verified)
+    return (
+      <section className="max-w-prose" role="status">
+        <p className="text-ink">{t('verifying')}</p>
+        <button
+          type="button"
+          disabled={checking}
+          onClick={() => {
+            setChecking(true);
+            // A refreshed token re-runs the claims check through `watch`; a failure keeps this screen.
+            void auth
+              ?.recheck()
+              .catch(() => {})
+              .finally(() => setChecking(false));
+          }}
+          className="mt-3 rounded border border-line px-3 py-1.5 text-sm hover:bg-surface-2 focus-visible:outline-2 disabled:opacity-60"
+        >
+          {t('recheck')}
+        </button>
+      </section>
+    );
   if (!state.session.role)
     return (
       <section className="max-w-prose">

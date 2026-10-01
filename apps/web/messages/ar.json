@@ -5,14 +5,20 @@
     "switchLang": "English",
     "switchLangLabel": "التبديل إلى الإنجليزية",
     "signOut": "تسجيل الخروج",
-    "signedInAs": "مسجّل الدخول باسم {email}"
+    "signedInAs": "مسجّل الدخول باسم {email}",
+    "nav": {
+      "status": "البيانات",
+      "explore": "المنتجات"
+    },
+    "mainNav": "الرئيسية"
   },
   "auth": {
     "loading": "جارٍ التحقق من جلستك…",
     "configUnavailable": "تسجيل الدخول غير متاح على هذا العنوان. افتح التطبيق من عنوان Firebase Hosting الخاص به.",
     "noRoleTitle": "لا توجد صلاحية بعد",
     "noRole": "تم تسجيل دخولك لكن حسابك بلا دور. اطلب من المسؤول منحك صلاحية العرض، ثم سجّل الدخول مجددًا.",
-    "verifying": "تعذّر تأكيد صلاحيتك الآن. ما زلت مسجّل الدخول."
+    "verifying": "تعذّر تأكيد صلاحيتك الآن. ما زلت مسجّل الدخول.",
+    "recheck": "أعد المحاولة"
   },
   "signIn": {
     "title": "تسجيل الدخول",
@@ -86,5 +92,140 @@
       "proposed": "مقترحة، غير مراجعة",
       "unreviewed": "غير مراجعة"
     }
+  },
+  "explore": {
+    "title": "المنتجات",
+    "searchLabel": "ابحث في المنتجات",
+    "searchPlaceholder": "العلامة أو الاسم أو رمز المنتج",
+    "search": "بحث",
+    "filters": "عوامل التصفية",
+    "brand": "العلامة التجارية",
+    "category": "الفئة",
+    "retailer": "المتجر",
+    "retailerHint": "اختر متجرين لرؤية فرق السعر. المتجر الأول هو الأساس.",
+    "matched": "مطابَق بين المتاجر",
+    "matchedAny": "الكل",
+    "matchedYes": "المطابَق فقط",
+    "matchedNo": "غير المطابَق فقط",
+    "price": "السعر ({currency})",
+    "priceMin": "من",
+    "priceMax": "إلى",
+    "priceInvalid": "اكتب رقمًا مثل 120 أو 89.50.",
+    "apply": "تطبيق",
+    "clear": "مسح كل عوامل التصفية",
+    "showFilters": "عوامل التصفية ({count})",
+    "hideFilters": "إخفاء عوامل التصفية",
+    "sort": "الترتيب",
+    "sorts": {
+      "name": "الاسم، أ–ي",
+      "price_asc": "السعر، من الأقل",
+      "price_desc": "السعر، من الأعلى",
+      "gap": "الفرق: {other} الأغلى أولًا",
+      "gap_asc": "الفرق: {other} الأرخص أولًا"
+    },
+    "gapNeedsPair": "اختر متجرين للترتيب حسب الفرق.",
+    "pair": "الفرق: {other} مقابل {base}",
+    "swap": "بدّل الأساس",
+    "count": "{total, plural, =0 {لا منتجات} one {منتج واحد} two {منتجان} few {{n} منتجات} many {{n} منتجًا} other {{n} منتج}}",
+    "showing": "يُعرض {shown} من {total}",
+    "more": "اعرض {n} أخرى",
+    "loadingMore": "جارٍ التحميل…",
+    "loading": "جارٍ تحميل المنتجات…",
+    "restarted": "تحدّثت البيانات أثناء التصفح، لذا تبدأ القائمة من أولها.",
+    "empty": "لا منتجات تطابق عوامل التصفية هذه.",
+    "emptyHint": "أزل أحد عوامل التصفية أو امسحها كلها.",
+    "colProduct": "المنتج",
+    "colMatch": "المطابقة",
+    "colGap": "الفرق",
+    "notOffered": "غير معروض",
+    "gapHeader": "{other} مقابل {base}",
+    "more_facets": "اعرض الكل ({n})",
+    "fewer_facets": "اعرض أقل",
+    "results": "النتائج"
+  },
+  "gap": {
+    "otherDearer": "{other} أغلى",
+    "otherCheaper": "{other} أرخص",
+    "equal": "السعر نفسه",
+    "notCounted": "غير محسوب",
+    "excluded": {
+      "not_offered": "غير معروض في المتجرين",
+      "early": "جديد جدًا للمقارنة",
+      "no_match": "لا توجد مطابقة",
+      "match_rejected": "رُفضت المطابقة",
+      "match_unreviewed": "لم تُراجَع المطابقة بعد",
+      "match_not_exact": "ليس المنتج نفسه",
+      "unpriced": "بلا سعر",
+      "currency_mismatch": "عملتان مختلفتان",
+      "size_mismatch": "حجمان مختلفان",
+      "size_unknown": "الحجم غير معروف"
+    }
+  },
+  "match": {
+    "class": {
+      "exact": "مطابق تمامًا",
+      "family": "العائلة نفسها",
+      "size_normalized": "حجم آخر",
+      "substitute": "بديل"
+    },
+    "review": {
+      "proposed": "مقترحة",
+      "approved": "معتمدة",
+      "rejected": "مرفوضة",
+      "locked": "مثبّتة"
+    },
+    "none": "لا مطابقة",
+    "confidence": "الثقة {value}",
+    "between": "{a} – {b}"
+  },
+  "availability": {
+    "in_stock": "متوفر",
+    "low_stock": "كمية قليلة",
+    "out_of_stock": "نفد",
+    "not_deliverable": "لا يُوصَّل",
+    "removed": "أُزيل",
+    "not_observed": "لم يُرصد",
+    "blocked": "محجوب",
+    "unknown": "غير معروف"
+  },
+  "product": {
+    "missingId": "لم يُحدَّد منتج. افتح منتجًا من القائمة.",
+    "loading": "جارٍ تحميل المنتج…",
+    "back": "العودة إلى المنتجات",
+    "size": "الحجم",
+    "category": "الفئة",
+    "offers": "العروض بتاريخ {date}",
+    "retailer": "المتجر",
+    "price": "السعر",
+    "regular": "السعر العادي",
+    "promo": "الخصم",
+    "availability": "التوفر",
+    "rating": "التقييم",
+    "ratingValue": "{average} من {scale}",
+    "ratingCount": "{count, plural, zero {لا مراجعات} one {مراجعة واحدة} two {مراجعتان} few {{n} مراجعات} many {{n} مراجعة} other {{n} مراجعة}}",
+    "shades": "الدرجات",
+    "sku": "رمز المنتج لدى المتجر",
+    "evidence": "الدليل",
+    "captured": "رُصد {date}",
+    "source": "افتح الصفحة",
+    "noSource": "لا رابط للصفحة",
+    "early": "منتج جديد: لم يدخل المقارنات بعد",
+    "noOffers": "لا يعرض أي متجر هذا المنتج في هذا التاريخ.",
+    "pairs": "فروق الأسعار",
+    "pairsHint": "الفرق هو سعر المتجر الآخر ناقص سعر الأساس، في آخر تاريخ.",
+    "pairBase": "الأساس",
+    "pairOther": "الآخر",
+    "pairGap": "الفرق",
+    "matches": "المطابقات",
+    "matchClass": "النوع",
+    "matchReview": "المراجعة",
+    "matchConfidence": "الثقة",
+    "history": "سجل الأسعار",
+    "historyLoading": "جارٍ تحميل سجل الأسعار…",
+    "historyEmpty": "لا يوجد سجل أسعار لهذا المنتج بعد.",
+    "historyTable": "اعرض كجدول",
+    "date": "التاريخ",
+    "chartLabel": "السعر اليومي في {retailers}",
+    "noPrice": "بلا سعر"
   }
 }

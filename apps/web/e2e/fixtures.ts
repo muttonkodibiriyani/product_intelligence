@@ -45,9 +45,22 @@ export async function mockBackend(
   opts: { role?: string | null; onApi: (route: Route) => Promise<void> | void },
 ): Promise<Mock> {
   const mock: Mock = { api: [], external: [], errors: [] };
-  page.on('pageerror', (e) => mock.errors.push(String(e)));
+  page.on('pageerror', (e) => {
+    if (!/due to access control checks/.test(String(e))) mock.errors.push(String(e));
+  });
   page.on('console', (m) => {
-    if (m.type() === 'error') mock.errors.push(m.text());
+    if (m.type() !== 'error') return;
+    const text = m.text();
+    // WebKit logs these for requests the app itself cancelled (a superseded query, a prefetch
+    // dropped on navigation) and for every non-2xx answer the test chose to send. External
+    // requests are caught by `external`, and statuses are asserted by each test.
+    if (
+      /due to access control checks|^Failed to load resource: the server responded with a status of/.test(
+        text,
+      )
+    )
+      return;
+    mock.errors.push(text);
   });
 
   await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, async (route) => {

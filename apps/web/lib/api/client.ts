@@ -158,6 +158,8 @@ export function createApiClient({
     }
 
     if (!res.ok) {
+      // A 401 here, even after the auth_unavailable retries above, means the identity service
+      // answered and refused this token: that is a real sign-out.
       const code = errorCode(json);
       if (res.status === 401) onUnauthenticated?.();
       throw new ApiError(
