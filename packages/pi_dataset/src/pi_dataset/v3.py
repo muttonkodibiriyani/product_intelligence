@@ -55,7 +55,6 @@ from pi_dataset.profiles import (
 SCHEMA_ID_V3 = "pi.dataset/v3"
 #: The profile whose snapshots must stay measured, online-only and on the committed key set.
 BEAUTY = "beauty"
-_MONEY_KEYS = frozenset({"amount", "minor", "currency"})
 _DECIMAL = re.compile(DECIMAL_TEXT)
 
 
@@ -414,13 +413,13 @@ def _type_problem(spec: AttributeDef, value: JsonValue) -> str | None:
             ok = isinstance(value, str) and value.strip() != ""
         case AttributeType.ENUM:
             allowed = {v.id for v in spec.values or ()}
-            if value not in allowed:
+            if not isinstance(value, str) or value not in allowed:
                 return f"{value!r} is not one of {sorted(allowed)}"
             return None
         case AttributeType.DECIMAL:
             ok = isinstance(value, str) and _DECIMAL.fullmatch(value) is not None
         case AttributeType.MONEY:
-            ok = isinstance(value, dict) and set(value) == _MONEY_KEYS
+            ok = _is_money(value)  # its shape is checked strictly by _money_in
         case AttributeType.BOOL:
             ok = isinstance(value, bool)
         case AttributeType.TEXT_LIST:
@@ -430,10 +429,15 @@ def _type_problem(spec: AttributeDef, value: JsonValue) -> str | None:
     return None if ok else f"value is not of type {spec.type}"
 
 
+def _is_money(value: JsonValue) -> bool:
+    """Any object with a ``currency`` is money, so a malformed one is an error, not text."""
+    return isinstance(value, dict) and "currency" in value
+
+
 def _money_in(value: JsonValue, path: str) -> Iterator[tuple[str, MoneyValue | str]]:
-    """Every money-shaped object under ``value``, walking into objects and lists (§2, nit 4)."""
+    """Every money object under ``value``, walking into objects and lists (§2, nit 4)."""
     if isinstance(value, dict):
-        if set(value) == _MONEY_KEYS:
+        if _is_money(value):
             try:
                 yield path, MoneyValue.model_validate(value, strict=True)
             except ValidationError as exc:

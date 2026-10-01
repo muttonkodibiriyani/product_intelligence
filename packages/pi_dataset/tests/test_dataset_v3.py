@@ -422,6 +422,22 @@ def test_good_offer_attributes(key: str, value: Any) -> None:
             "fees.tiers.0.x: money in USD",
         ),
         ("fees", ["not", "an", "object"], "not of type object"),
+        # An enum value that isn't a string is an error, not an unhashable TypeError (#75 M1).
+        ("daypart", ["breakfast"], "['breakfast'] is not one of ['breakfast']"),
+        ("daypart", {"id": "breakfast"}, "is not one of ['breakfast']"),
+        # Any object with a currency is money and is checked strictly (#75 M2).
+        (
+            "fees",
+            {"delivery": {"amount": "7.00", "minor": 700, "currency": "USD", "note": "x"}},
+            "fees.delivery: bad money",
+        ),
+        ("fees", {"delivery": {"amount": "7.00", "currency": "USD"}}, "fees.delivery: bad money"),
+        ("fees", {"delivery": {"currency": "AED"}}, "fees.delivery: bad money"),
+        (
+            "price_band",
+            {"amount": "10.00", "minor": 1000, "currency": "AED", "note": "x"},
+            "price_band: bad money",
+        ),
     ],
 )
 def test_bad_offer_attributes(key: str, value: Any, message: str) -> None:
@@ -497,3 +513,12 @@ def test_attribute_declarations() -> None:
         ProfileDeclaration.model_validate(
             BEAUTY.model_dump() | {"attributeSet": [_attr("kk", "text")] * 2}
         )
+
+
+@pytest.mark.parametrize("value", [["breakfast"], {"id": "breakfast"}])
+def test_load_any_reports_a_non_string_enum_as_a_dataset_error(value: Any) -> None:
+    doc = _v3_doc()
+    _menu(doc)
+    doc["products"][0]["offers"][N]["attributes"] = {"daypart": value}
+    with pytest.raises(DatasetError, match="is not one of"):
+        load_any(json.dumps(doc), allow_test=True)
