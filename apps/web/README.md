@@ -85,7 +85,7 @@ The Next export has inline scripts, so `infra/firebase.json` pins their `sha256`
 hashes; `npm run build` fails when they no longer match. After a change, run `npm run csp:write`
 and commit `infra/firebase.json` with it.
 
-The owner runs `firebase deploy --only hosting` from `infra/` (see
+The owner runs `npx -y firebase-tools@14.27.0 deploy --only hosting` from `infra/` (see
 `docs/runbooks/pi-api-deploy.md` §7). To roll back, redeploy with the legacy dashboard alone
 (the first `cp` above, without `/app`), or roll back the release in the Hosting console.
 
