@@ -332,7 +332,9 @@ SELECT
       CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
     ) img
     WHERE img ->> 'role' = 'main'
-    ORDER BY CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST
+    ORDER BY
+      CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
+      img ->> 'url'
     LIMIT 1
   ) AS image
 FROM latest
