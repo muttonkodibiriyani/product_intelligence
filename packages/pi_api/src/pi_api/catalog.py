@@ -169,8 +169,13 @@ class ProductSort(StrEnum):
     NAME = "name"
     PRICE_ASC = "price_asc"
     PRICE_DESC = "price_desc"
-    #: Needs exactly two ``retailer`` values (base first): largest gap pct first, uncounted last.
+    #: Need exactly two ``retailer`` values (base first). Signed gap pct, so direction is kept:
+    #: ``gap`` puts other-dearest first, ``gap_asc`` other-cheapest first; uncounted last by id.
     GAP = "gap"
+    GAP_ASC = "gap_asc"
+
+
+GAP_SORTS = frozenset({ProductSort.GAP, ProductSort.GAP_ASC})
 
 
 class ProductQuery(ContractModel):
@@ -181,7 +186,15 @@ class ProductQuery(ContractModel):
     q: ShortText | None = None
     brand: Values = ()
     category: Values = ()
-    retailer: Values = ()
+    retailer: Annotated[
+        Values,
+        Field(
+            description=(
+                "Repeatable. With exactly two different values the order matters: the first is "
+                "the base of each card's gap and of sort=gap/gap_asc."
+            )
+        ),
+    ] = ()
     matched: bool | None = None
     price_min: DecimalText | None = None
     price_max: DecimalText | None = None
@@ -421,16 +434,20 @@ def _unknown_values(ds: Dataset, query: ProductQuery) -> None:
 def _search_pair(query: ProductQuery) -> tuple[str, str] | None:
     if len(query.retailer) == 2 and query.retailer[0] != query.retailer[1]:
         return query.retailer[0], query.retailer[1]
-    if query.sort is ProductSort.GAP:
-        msg = "sort=gap needs exactly two different retailer values (base first)"
+    if query.sort in GAP_SORTS:
+        msg = f"sort={query.sort} needs exactly two different retailer values (base first)"
         raise InvalidQueryError(msg)
     return None
 
 
-def _by_gap(ds: Dataset, hits: list[Product], pair: tuple[str, str]) -> list[Product]:
+def _by_gap(
+    ds: Dataset, hits: list[Product], pair: tuple[str, str], *, ascending: bool
+) -> list[Product]:
+    sign = 1 if ascending else -1
     gaps = [(p, pair_gap(ds, p, *pair).gap) for p in hits]
+    # Ties break on id ascending in both directions, as the price sorts do.
     counted = sorted(
-        ((p, g) for p, g in gaps if g is not None), key=lambda pg: (-pg[1].pct, pg[0].id)
+        ((p, g) for p, g in gaps if g is not None), key=lambda pg: (sign * pg[1].pct, pg[0].id)
     )
     return [p for p, _ in counted] + sorted((p for p, g in gaps if g is None), key=lambda p: p.id)
 
@@ -445,8 +462,8 @@ def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[Pr
     visible = tuple(query.retailer)
     if query.sort is ProductSort.NAME:
         hits.sort(key=lambda p: (fold(p.name), p.id))
-    elif query.sort is ProductSort.GAP and pair is not None:
-        hits = _by_gap(ds, hits, pair)
+    elif query.sort in GAP_SORTS and pair is not None:
+        hits = _by_gap(ds, hits, pair, ascending=query.sort is ProductSort.GAP_ASC)
     else:
         priced = [(p, _low_price(ds, p, visible)) for p in hits]
         sign = -1 if query.sort is ProductSort.PRICE_DESC else 1
