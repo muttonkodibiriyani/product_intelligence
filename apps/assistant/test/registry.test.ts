@@ -58,7 +58,7 @@ describe("ToolRegistry", () => {
     expect(result.status).toBe("ok");
     expect(result.citation).toEqual({
       tool: "compare",
-      toolVersion: "3",
+      toolVersion: "4",
       apiVersion: "1.0.0",
       metricVersion: "m1",
       datasetGeneration: "gen-42",
@@ -105,6 +105,36 @@ describe("ToolRegistry", () => {
     expect(verifyAnswerNumbers("2 prices were excluded as invalid", [result]).ok).toBe(true);
     // The count in the caveat's own text is not a source.
     expect(verifyAnswerNumbers("7 prices were excluded", [result]).ok).toBe(false);
+  });
+
+  it("passes an invalid_low price flag through and never supports a 0 price for it", async () => {
+    const [north, south] = PRODUCT_DATA.offers;
+    const flagged = { ...south, price: null, priceFlag: "invalid_low" };
+    const api = new FakeApi(() =>
+      okEnvelope(
+        { ...PRODUCT_DATA, offers: [north, flagged] },
+        {
+          caveats: [
+            {
+              code: "invalid_price_excluded",
+              params: { retailer: "south", count: "1" },
+              en: "1 price at or below 0.01 was excluded.",
+              ar: "استُبعد سعر واحد.",
+            },
+          ],
+        },
+      ),
+    );
+    const result = (await registry(api).run(
+      "get_product",
+      { id: "p01" },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    const offers = (result.data as { offers: Record<string, unknown>[] }).offers;
+    expect(offers[1]).toMatchObject({ retailer: "south", price: null, priceFlag: "invalid_low" });
+    expect(verifyAnswerNumbers("South's price, 0.00 AED, is free", [result]).ok).toBe(false);
+    expect(verifyAnswerNumbers("1 South price was withheld as invalid", [result]).ok).toBe(true);
   });
 
   it("rejects a caveat with more than MAX_CAVEAT_PARAMS params as upstream_invalid", async () => {

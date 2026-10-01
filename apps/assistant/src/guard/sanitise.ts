@@ -28,6 +28,8 @@ export const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
   "base",
   "other",
   "cheaper",
+  // OfferView.priceFlag ("invalid_low": a price at or below 0.01, withheld at read time).
+  "priceFlag",
   "currency",
   "market",
   "id",

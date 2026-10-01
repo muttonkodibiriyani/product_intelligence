@@ -25,6 +25,8 @@ const NEW_IN_S6 = new Set([
   "assortment_breadth",
 ]);
 
+const VERSION_BUMPS: Readonly<Record<string, string>> = { get_product: "3", compare: "4" };
+
 describe("tool definitions", () => {
   it("has sixteen uniquely named, viewer-level, read-only tools", () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual([
@@ -47,9 +49,11 @@ describe("tool definitions", () => {
     ]);
     for (const tool of TOOLS) {
       expect(tool.minRole).toBe("viewer");
-      // v3 adds the row limit to the three list tools (API 1.1.0).
+      // v3 adds the row limit to the three list tools (API 1.1.0); API 1.5.2's price floor adds
+      // priceFlag to get_product (v3) and gapHist to compare (v4).
       expect(tool.version).toBe(
-        NEW_IN_S6.has(tool.name) ? "1" : tool.listKey === undefined ? "2" : "3",
+        VERSION_BUMPS[tool.name] ??
+          (NEW_IN_S6.has(tool.name) ? "1" : tool.listKey === undefined ? "2" : "3"),
       );
       const request = tool.request(tool.input.parse(MINIMAL[tool.name] ?? {}) as never);
       expect(request.path.startsWith("/api/v1/")).toBe(true);

@@ -103,13 +103,15 @@ export const searchProducts = defineTool({
 
 export const getProduct = defineTool({
   name: "get_product",
-  version: "2",
+  version: "3",
   description:
     "Full detail for one product id. Returns:\n" +
     "- the offer at each retailer: price, regular price, promo %, rating, size, availability;\n" +
     "- per retailer pair, the price gap and the cheaper side (base, other or equal), when the " +
     "product is a reviewed exact same-size match, otherwise the excluded reason;\n" +
-    "- match details and evidence links.",
+    "- match details and evidence links.\n" +
+    "An offer with price null and priceFlag invalid_low had a shown price at or below 0.01, " +
+    "withheld as invalid (see the invalid_price_excluded caveat); say so, never call it 0 or free.",
   minRole: "viewer",
   input: z.object({ id: productId }).strict(),
   request: ({ id }) => get(`/products/${encodeURIComponent(id)}`),
@@ -117,14 +119,16 @@ export const getProduct = defineTool({
 
 export const compare = defineTool({
   name: "compare",
-  version: "3",
+  version: "4",
   description:
     "Compare prices between two retailers (base and other, ids from coverage_status). Pass up " +
     "to 25 product ids, or brand/category filters. Only exact, approved or locked, same-size " +
     "pairs count. Each row has gap {amount, pct, cheaper}; cheaper is base, other or equal. For " +
     "5 or more counted pairs it adds the median and mean gap %, cheaper-at counts and basket " +
     "totals; groupBy brand or category adds the same summary per group. The summary always " +
-    "covers every row; a cut list keeps the largest |gap pct| first." +
+    "covers every row; a cut list keeps the largest |gap pct| first. summary.gapHist bins the " +
+    "counted pairs' gap % at its 10 edges (-50 to 50) into 11 counts, below the first edge to " +
+    "at or above the last; each bin is [lo, hi) and the counts sum to n." +
     TRUNCATED_NOTE,
   minRole: "viewer",
   listKey: "rows",
