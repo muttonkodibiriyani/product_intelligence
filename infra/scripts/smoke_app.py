@@ -14,7 +14,9 @@
    request is a problem. Screenshots go to --out; downloads are read in memory and never kept.
 3. Always deletes the temporary user.
 
-Run in mcr.microsoft.com/playwright/python:v1.63.0-noble from the repo root, SA key mounted :ro:
+Run in mcr.microsoft.com/playwright/python:v1.63.0-noble from the repo root, SA key mounted :ro.
+The image has the browsers but not the Python package, so install all three dependencies:
+    pip install "firebase-admin>=6.5" "playwright==1.63.0" "requests>=2.32"
     python infra/scripts/smoke_app.py --project productintelligence-beeb3 \
         --engine firefox --out <dir>
 """
@@ -33,6 +35,7 @@ import firebase_admin
 import requests
 from firebase_admin import auth
 from playwright.sync_api import Page, Response, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 REPO = Path(__file__).resolve().parents[2]
 LEGACY_ASSET = re.compile(r"\b(?:app|styles)\.[0-9a-f]{10}\.(?:js|css)\b")
@@ -192,9 +195,12 @@ def explore_and_product(page: Page, base: str, problems: list[str]) -> None:
     page.get_by_role("heading", level=1).wait_for(timeout=TIMEOUT)
     page.wait_for_load_state("networkidle")
     page.get_by_role("link", name="Back to products").click()
-    page.get_by_role("table").wait_for(timeout=TIMEOUT)
-    if page.url != explore_url:
+    # Wait for the URL, not a table: the product page has one too (its offers).
+    try:
+        page.wait_for_url(explore_url, timeout=TIMEOUT)
+    except PlaywrightTimeout:
         problems.append(f"back to products: {page.url} is not {explore_url}")
+    page.get_by_role("table").wait_for(timeout=TIMEOUT)
 
 
 def export_guard(page: Page, problems: list[str]) -> None:
