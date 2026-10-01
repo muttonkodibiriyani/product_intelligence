@@ -18,6 +18,7 @@ from sqlalchemy.engine import make_url
 import pi_core
 from pi_db import APP_ROLE, IMAGE_EMBEDDING_DIM, TEXT_EMBEDDING_DIM, alembic_config
 from pi_db.migrations.versions.v0001_schema_v1 import APPEND_ONLY_TABLES, SCHEMA_ENUMS, TABLES
+from pi_db.migrations.versions.v0003_offline_import import NEW_FETCH_METHODS
 
 pytestmark = pytest.mark.db
 
@@ -689,6 +690,8 @@ def test_low_stock_flag_agrees(conn: Conn, state: str, flag: bool | None, ok: bo
         (2, "playwright", True),
         (4, "egress_variation", True),
         (5, "residential_proxy", True),
+        (0, "offline_import", True),
+        (1, "offline_import", False),
         (1, "playwright", False),
         (3, "playwright", False),
         (2, "egress_variation", False),
@@ -734,7 +737,9 @@ def test_forbidden_rung_is_rejected_everywhere(conn: Conn) -> None:
 
 def test_fetch_method_enum_matches_migration(conn: Conn) -> None:
     labels = _one(conn, "SELECT enum_range(NULL::fetch_method)::text[]")
-    assert tuple(labels) == SCHEMA_ENUMS["fetch_method"]  # type: ignore[arg-type]
+    # 0001's labels, then the ones 0003 appended (ALTER TYPE ... ADD VALUE appends).
+    expected = SCHEMA_ENUMS["fetch_method"] + NEW_FETCH_METHODS
+    assert tuple(labels) == expected  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("month", ["1999-12-01", "2099-01-01"])

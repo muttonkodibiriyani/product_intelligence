@@ -24,10 +24,24 @@ PI_CORE_ENUM_TYPES: dict[str, type[StrEnum]] = {
 }
 
 
-def migration_0001() -> ModuleType:
-    script = ScriptDirectory.from_config(alembic_config()).get_revision("0001")
+def _migration(revision: str) -> ModuleType:
+    script = ScriptDirectory.from_config(alembic_config()).get_revision(revision)
     assert script is not None
     return script.module
+
+
+def migration_0001() -> ModuleType:
+    return _migration("0001")
+
+
+def migration_0003() -> ModuleType:
+    return _migration("0003")
+
+
+def schema_enum_at_head(pg_type: str) -> tuple[str, ...]:
+    """0001's labels plus the ones later revisions appended (0003: fetch_method)."""
+    added: tuple[str, ...] = migration_0003().NEW_FETCH_METHODS if pg_type == "fetch_method" else ()
+    return tuple(migration_0001().SCHEMA_ENUMS[pg_type]) + added
 
 
 def test_database_url_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,8 +63,8 @@ def test_alembic_config_escapes_percent_in_url() -> None:
 
 def test_single_linear_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0002"]
-    assert [r.revision for r in script.walk_revisions()] == ["0002", "0001"]
+    assert script.get_heads() == ["0003"]
+    assert [r.revision for r in script.walk_revisions()] == ["0003", "0002", "0001"]
 
 
 def test_0002_only_qualifies_the_enum() -> None:
@@ -63,6 +77,10 @@ def test_0002_only_qualifies_the_enum() -> None:
     # Still inlinable: plain SQL, no SET clause.
     assert "LANGUAGE sql STABLE AS" in FIELD_STATE_VALID_SQL
     assert "SET search_path" not in FIELD_STATE_VALID_SQL
+
+
+def test_0003_follows_0002() -> None:
+    assert migration_0003().down_revision == "0002"
 
 
 # Schema enums whose pi_core class lands in PR3 (#6); checked as soon as pi_core exports it.
@@ -91,7 +109,7 @@ def test_migration_enum_values_match_pi_core(pg_type: str, enum: type[StrEnum]) 
 @pytest.mark.parametrize(("pg_type", "class_name"), SCHEMA_ENUM_CLASSES.items())
 def test_schema_enum_values_match_pi_core(pg_type: str, class_name: str) -> None:
     enum = _pi_core_str_enums()[class_name]
-    assert migration_0001().SCHEMA_ENUMS[pg_type] == tuple(m.value for m in enum)
+    assert schema_enum_at_head(pg_type) == tuple(m.value for m in enum)
 
 
 def test_migration_covers_every_pi_core_str_enum() -> None:
@@ -103,9 +121,13 @@ def test_migration_covers_every_pi_core_str_enum() -> None:
 
 
 def test_fetch_method_rungs_match_pi_core() -> None:
-    module = migration_0001()
-    assert set(module.FETCH_METHOD_RUNG) == set(module.SCHEMA_ENUMS["fetch_method"])
-    assert {m.value: int(m.rung) for m in pi_core.FetchMethod} == module.FETCH_METHOD_RUNG
+    v1, v3 = migration_0001(), migration_0003()
+    assert set(v1.FETCH_METHOD_RUNG) == set(v1.SCHEMA_ENUMS["fetch_method"])
+    # 0003 widens 0001's map without changing any existing method's rung.
+    assert v1.FETCH_METHOD_RUNG == v3.FETCH_METHOD_RUNG_BEFORE
+    assert set(v3.FETCH_METHOD_RUNG) == set(schema_enum_at_head("fetch_method"))
+    assert {m.value: int(m.rung) for m in pi_core.FetchMethod} == v3.FETCH_METHOD_RUNG
+    assert v3.FETCH_METHOD_RUNG["offline_import"] == int(pi_core.LadderRung.SITE_DATA)
 
 
 def test_forbidden_rungs_match_pi_core_policy() -> None:
@@ -130,3 +152,5 @@ def test_offline_sql_renders(capsys: pytest.CaptureFixture[str]) -> None:
     assert "PARTITION BY RANGE (observed_at)" in sql
     assert f"vector({pi_db.IMAGE_EMBEDDING_DIM})" in sql
     assert "GRANT SELECT, INSERT ON evidence" in sql
+    assert "ALTER TYPE fetch_method ADD VALUE IF NOT EXISTS 'offline_import'" in sql
+    assert "WHEN 'offline_import' THEN 0" in sql

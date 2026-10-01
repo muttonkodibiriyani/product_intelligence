@@ -168,6 +168,11 @@ class FetchMethod(StrEnum):
     PLAYWRIGHT = "playwright"
     EGRESS_VARIATION = "egress_variation"
     RESIDENTIAL_PROXY = "residential_proxy"
+    # A catalogue feed (CSV/XLSX/JSON) handed to us by a customer or partner and imported
+    # offline (tools/offline_import). Nothing is fetched from the source's site, so no ladder
+    # rung is climbed and no evasion is involved: it sits on SITE_DATA (0) with the other
+    # first-party data methods. Added by pi_db migration 0003.
+    OFFLINE_IMPORT = "offline_import"
 
     @property
     def rung(self) -> LadderRung:
@@ -183,6 +188,7 @@ _METHOD_RUNG: dict[FetchMethod, LadderRung] = {
     FetchMethod.PLAYWRIGHT: LadderRung.BROWSER,
     FetchMethod.EGRESS_VARIATION: LadderRung.EGRESS_VARIATION,
     FetchMethod.RESIDENTIAL_PROXY: LadderRung.PAID_PROXY,
+    FetchMethod.OFFLINE_IMPORT: LadderRung.SITE_DATA,
 }
 
 

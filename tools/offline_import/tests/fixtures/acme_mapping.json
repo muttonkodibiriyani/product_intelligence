@@ -1,0 +1,38 @@
+{
+  "source": {
+    "name": "acme_beauty_partner_feed",
+    "kind": "offline",
+    "base_url": "https://acme-beauty.example",
+    "notes": "Synthetic partner feed used by the offline_import tests"
+  },
+  "country": "AE",
+  "locale": "en-AE",
+  "currency": "AED",
+  "time_zone": "Asia/Dubai",
+  "observed_at": "2026-09-15T08:00:00+04:00",
+  "complete_catalogue": false,
+  "columns": {
+    "listing_key": "Variant ID",
+    "sku": "SKU",
+    "gtin": "EAN",
+    "name": "Product Name",
+    "name_ar": "Product Name AR",
+    "brand": "Brand",
+    "category_path": "Category",
+    "size": "Size",
+    "shade": "Shade",
+    "price_regular": "Price",
+    "price_promo": "Sale Price",
+    "availability": "In Stock",
+    "stock_qty": "Qty",
+    "image_url": "Image"
+  },
+  "availability_map": {
+    "yes": "in_stock",
+    "1": "in_stock",
+    "low": "low_stock",
+    "no": "out_of_stock",
+    "0": "out_of_stock"
+  },
+  "url_template": "https://acme-beauty.example/p/{listing_key}"
+}

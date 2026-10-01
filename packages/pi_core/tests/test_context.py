@@ -53,6 +53,13 @@ def test_every_permitted_rung_has_a_method_and_no_forbidden_one_does() -> None:
     assert [int(r) for r in LadderRung] == [0, 1, 2, 3, 4, 5]
 
 
+def test_offline_import_is_site_data() -> None:
+    """A partner-supplied feed climbs no ladder rung (pi_db migration 0003)."""
+    assert FetchMethod("offline_import") is FetchMethod.OFFLINE_IMPORT
+    assert FetchMethod.OFFLINE_IMPORT.rung is LadderRung.SITE_DATA
+    assert list(FetchMethod)[-1] is FetchMethod.OFFLINE_IMPORT  # appended, like the DB enum
+
+
 def test_forbidden_rung_refused_regardless_of_cap() -> None:
     with pytest.raises(ValidationError, match="STEALTH_BROWSER is forbidden"):
         source_context(ladder_rung_current=LadderRung.STEALTH_BROWSER)

@@ -56,3 +56,45 @@ def test_upgrade_downgrade_upgrade_on_fresh_db(empty_db: str) -> None:
 
     command.upgrade(config, "head")
     assert _objects(empty_db)[0] == {*TABLES, "alembic_version"}
+
+
+def _evidence_checks(url: str) -> dict[str, str]:
+    with psycopg.connect(_libpq(url)) as conn:
+        return {
+            str(name): str(definition)
+            for name, definition in conn.execute(
+                "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint"
+                " WHERE conrelid = 'evidence'::regclass AND contype = 'c'"
+                " AND pg_get_constraintdef(oid) LIKE '%fetch_method%'"
+            )
+        }
+
+
+def _fetch_methods(url: str) -> list[str]:
+    with psycopg.connect(_libpq(url)) as conn:
+        row = conn.execute("SELECT enum_range(NULL::fetch_method)::text[]").fetchone()
+    assert row is not None
+    return list(row[0])
+
+
+def test_0003_offline_import_up_down(empty_db: str) -> None:
+    """0003 adds offline_import on rung 0; its downgrade restores 0001's CHECK, keeps the label."""
+    config = alembic_config(empty_db)
+
+    command.upgrade(config, "0002")
+    before = _evidence_checks(empty_db)
+    assert set(before) == {"evidence_check"}
+    assert "offline_import" not in _fetch_methods(empty_db)
+
+    command.upgrade(config, "0003")
+    after = _evidence_checks(empty_db)
+    assert set(after) == {"evidence_method_rung_check"}
+    assert "WHEN 'offline_import'::text THEN 0" in after["evidence_method_rung_check"]
+    assert _fetch_methods(empty_db)[-1] == "offline_import"
+
+    command.downgrade(config, "0002")
+    assert _evidence_checks(empty_db) == before
+    assert "offline_import" in _fetch_methods(empty_db)  # PostgreSQL cannot drop enum labels
+
+    command.upgrade(config, "head")  # ADD VALUE IF NOT EXISTS: re-upgrade is a no-op
+    assert _evidence_checks(empty_db) == after

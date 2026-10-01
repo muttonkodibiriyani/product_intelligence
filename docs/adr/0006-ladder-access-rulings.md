@@ -36,6 +36,7 @@ cart/checkout, polite pacing, and every escalation audit-logged.
 | Rung | `FetchMethod` values |
 |---|---|
 | 0 | `site_api`, `embedded_json`, `sitemap` |
+| 0 | `offline_import`: owner-supplied export, no fetching (Amendment 3) |
 | 1 | `plain_http` |
 | 2 | `playwright` |
 | 3 | *(none: disabled)* |
@@ -166,3 +167,10 @@ consent-based pool, which we have not verified independently.
 
 **Proxy Decision Report (#19):** superseded by this amendment. It is closed as answered, with the
 owner's decision recorded here.
+
+## Amendment 3 (2026-10-01 UTC): `offline_import` fetch method
+
+`offline_import`: owner-supplied export, no fetching. A CSV, XLSX or JSON export given to us by the owner is loaded with `tools/offline_import`. Nothing is requested from the source's site, so no rung is climbed and no access rule applies. The method is recorded on rung 0.
+- The enum value and the widened method↔rung CHECK are added by pi_db migration 0002; migration 0001 is unchanged.
+- The pi_core parity test covers the new mapping.
+- An imported run is `partial` unless its mapping declares `complete_catalogue: true`. This means a feed never implies that listings missing from it were removed.
