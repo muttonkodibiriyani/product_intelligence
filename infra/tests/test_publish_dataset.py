@@ -102,6 +102,7 @@ class Blob:
     bucket: "Bucket"
     name: str
     md5_hash: str | None = None
+    data: bytes = b""
     content_encoding: str | None = None
     cache_control: str | None = None
 
@@ -115,6 +116,10 @@ class Blob:
             raise PreconditionFailedError(self.name)
         self.bucket.stored[self.name] = body
         self.bucket.uploads.append(self.name)
+
+    def download_as_bytes(self, *, raw_download: bool = False) -> bytes:
+        assert raw_download  # the stored gzip body, not a transcoded one
+        return self.data
 
 
 @dataclass
@@ -130,7 +135,8 @@ class Bucket:
     def get_blob(self, name: str) -> Blob | None:
         if name not in self.stored:
             return None
-        return Blob(self, name, md5_hash=publish_dataset.blob_md5(self.stored[name]))
+        body = self.stored[name]
+        return Blob(self, name, md5_hash=publish_dataset.blob_md5(body), data=body)
 
 
 BODY, PATHS, _ = publish_dataset.package(DOC, "datasets/uae")
@@ -149,11 +155,56 @@ def test_identical_republish_leaves_the_snapshot_and_refreshes_latest() -> None:
     assert bucket.uploads == [LATEST]
 
 
-def test_different_content_for_a_published_cutoff_is_refused_and_latest_untouched() -> None:
-    bucket = Bucket(stored={SNAPSHOT: b"older", LATEST: b"older"})
+def export_of_same_cutoff(generated_at: str, price: float = 98.0) -> bytes:
+    """Another export of DOC's cutoff: different content, the given generatedAt."""
+    doc = copy.deepcopy(DOC)
+    doc["meta"]["generatedAt"] = generated_at
+    doc["products"][0]["offers"]["r1"]["series"]["price"] = [price]
+    return publish_dataset.package(doc, "datasets/uae")[0]
+
+
+REVISION = "datasets/uae/20260930T213228Z-g20260930T214000Z.json"  # DOC's generatedAt
+
+
+@pytest.mark.parametrize(
+    "published_at", ["2026-09-30T21:40:00Z", "2026-09-30T21:50:00Z"], ids=["equal", "older"]
+)
+def test_same_cutoff_not_generated_later_is_refused_and_latest_untouched(published_at: str) -> None:
+    old = export_of_same_cutoff(published_at)  # this file (BODY) was generated 21:40
+    bucket = Bucket(stored={SNAPSHOT: old, LATEST: old})
     assert publish_dataset.upload(bucket, PATHS, BODY) == 1
     assert bucket.uploads == []
-    assert bucket.stored[LATEST] == b"older"
+    assert bucket.stored == {SNAPSHOT: old, LATEST: old}
+
+
+def test_later_export_of_a_published_cutoff_gets_a_revision_copy_then_latest() -> None:
+    old = export_of_same_cutoff("2026-09-30T21:35:00Z")
+    bucket = Bucket(stored={SNAPSHOT: old, LATEST: old})
+    assert publish_dataset.upload(bucket, PATHS, BODY) == 0
+    assert bucket.uploads == [REVISION, LATEST]
+    assert bucket.stored == {SNAPSHOT: old, REVISION: BODY, LATEST: BODY}  # original kept
+
+
+def test_identical_revision_republish_leaves_it_and_refreshes_latest() -> None:
+    old = export_of_same_cutoff("2026-09-30T21:35:00Z")
+    bucket = Bucket(stored={SNAPSHOT: old, REVISION: BODY, LATEST: old})
+    assert publish_dataset.upload(bucket, PATHS, BODY) == 0
+    assert bucket.uploads == [LATEST]
+
+
+def test_revision_existing_with_different_content_is_refused_and_latest_untouched() -> None:
+    old = export_of_same_cutoff("2026-09-30T21:35:00Z")
+    other = export_of_same_cutoff("2026-09-30T21:40:00Z", price=97.0)  # same revision key
+    bucket = Bucket(stored={SNAPSHOT: old, REVISION: other, LATEST: old})
+    assert publish_dataset.upload(bucket, PATHS, BODY) == 1
+    assert bucket.uploads == []
+    assert bucket.stored == {SNAPSHOT: old, REVISION: other, LATEST: old}
+
+
+def test_revision_key_uses_whole_seconds_of_a_fractional_generated_at() -> None:
+    gen = publish_dataset.generated_at(b'{"meta": {"generatedAt": "2026-10-01T06:47:18.016114Z"}}')
+    path = publish_dataset.revision_path("datasets/ae/beauty/20261001T032000Z.json", gen)
+    assert path == "datasets/ae/beauty/20261001T032000Z-g20261001T064718Z.json"
 
 
 def test_other_upload_errors_propagate() -> None:
