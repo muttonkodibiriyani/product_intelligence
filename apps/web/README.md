@@ -13,12 +13,18 @@ apps/web/build.sh verify     # build dist/ and compare it byte-for-byte with dep
 apps/web/build.sh artifact   # artifact/: offline build with in-browser sample data (no network)
 ```
 
-Needs `node` (only for `node --check`) and coreutils. `dist/` and `artifact/` are git-ignored.
+Needs `node` and coreutils, with no npm packages. Every build runs `node --check` and
+`test/escape.test.js`. That test renders every page in both languages from a snapshot whose brand,
+name, unit, id and colour fields hold markup, and fails if any of it reaches the DOM unescaped.
+`dist/` and `artifact/` are git-ignored.
 
-`deployed.sha256` pins the build that is live now (Phase 1: `app.5abcc636ee.js`,
-`styles.10948c25be.css`). Run `verify` before every deploy; a source change must update that file in the
+`deployed.sha256` pins the build that should be live (`app.05ce45f162.js`, `styles.4e6093a7e9.css`). Run `verify` before every deploy; a source change must update that file in the
 same PR (run `build.sh`, then regenerate it as in the `verify` step) and the new hashes are
 what Infra deploys.
+
+CI checks source → pin (that `dist/` matches `deployed.sha256`), not pin → live. After each deploy,
+check the live site serves the pinned files: open https://productintelligence-beeb3.web.app, view the
+page source and compare the `app.*.js` and `styles.*.css` names with `deployed.sha256`.
 
 ## Deploy
 
@@ -47,6 +53,13 @@ Hash routes, all served by `/index.html` (unknown routes fall back to `#/dashboa
 `#/dashboard`, `#/explorer`, `#/pricing`, `#/promotions`, `#/assortment`, `#/availability`,
 `#/compare`, `#/assistant`, `#/coverage`, `#/product/<id>`, `#/signin`, `#/forgot`.
 `/auth/action` is the password-reset landing page (Firebase email action URL).
+
+## Partial data
+
+With real data, a page drops panels that need data the snapshot does not have (the other retailer,
+history, promotions, stock), shows panels this snapshot can fill (price bands, categories, brands,
+ratings, shade ranges), and lists what is missing, and why, in one "Not available yet" card.
+Categories outside the beauty list show as "Other".
 
 ## Known issues (next build)
 

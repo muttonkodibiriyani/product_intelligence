@@ -1,5 +1,13 @@
 /* English and Arabic strings. Digits stay Western in both; charts stay LTR. */
 const I18N={en:{
+productsH:'Products',kMedPrice:'Median shelf price',kMedPriceSub:n=>`${n} priced products, today`,midHalf:'Middle half',kBrands:'Brands',kBrandsSub:(b,n)=>`Most products: ${b} (${n})`,top3Share:p=>`Top 3 brands hold ${p}% of products`,
+kRating:'Average rating',kRatingSub:(n,r)=>`${n} rated products · ${r} reviews`,lowRated:n=>`${n} rated below 4`,
+wBandGrid:'Price bands by category',wBandGridSub:'Products by lowest current price. Click a cell, band or category to filter every page.',bandFoot:'Percent = share of that category in each band.',
+wBrands:'Brands',wBrandsSub:'Range size, price position and rating per brand. Click a brand to filter.',categories:'Categories',priceRange:'Price range',ratingL:'Rating',
+wCats:'Categories',wCatsSub:'How each category is priced today. Click a category to filter.',brandsL:'Brands',
+wShadeTop:'Widest shade ranges',wShadeTopSub:'Products with the most shades listed today',noShades:'No product in this filter lists more than one shade.',shadeTopFoot:(n,N)=>`${n} of ${N} products come in more than one shade`,
+comingT:'Not available yet on this page',comingP:'These panels switch on by themselves when the data arrives. Nothing is estimated in the meantime.',
+comingNext:'Next release (Phase 2): a customisable dashboard with an advanced analytics library, and drill-down from category to brand, product, shade, price history and evidence.',useNow:'Available now:',
 appName:'Product Intelligence',appSub:'Ulta UAE vs Sephora UAE',primary:'Primary',skip:'Skip to content',
 mockLabel:'Illustrative mockup — sample data',testFixture:'TEST FIXTURE',srcLabel:s=>`Source: ${s}`,cutoffLabel:c=>`Data cutoff ${c}`,firstPass:'first-pass matches',reviewedMatches:'reviewed matches',
 footNote:'Every number links to its evidence. Not observed is never shown as out of stock.',dataset:'Dataset',snapshot:'Snapshot',sampleData:'Sample data',cutoff:'Cutoff',
@@ -89,6 +97,14 @@ actVerifyT:'Checking your link…',newPwT:'Choose a new password',newPwP:e=>`For
 pwDoneT:'Password updated',pwDoneP:'Sign in with your new password.',goSignIn:'Go to sign in',linkExpT:'This link has expired',linkExpP:'Reset links work for a limited time. Request a new one.',linkBadT:"This link can't be used",linkBadP:'It may have been used already or copied incompletely. Request a new one.',linkModeT:'Unsupported link',linkModeP:'This page only handles password resets.',reqNew:'Request a new link',showPw:'Show password',hidePw:'Hide password',checkEmailT:'Check your email',errSave:'Could not save the password. Try again.',techDetails:'Technical details'
 },
 ar:{
+productsH:'المنتجات',kMedPrice:'متوسط سعر الرف (الوسيط)',kMedPriceSub:n=>`${n} منتجًا مسعّرًا اليوم`,midHalf:'النصف الأوسط',kBrands:'العلامات التجارية',kBrandsSub:(b,n)=>`الأكثر منتجات: ${b} (${n})`,top3Share:p=>`أكبر 3 علامات تمثل ${p}% من المنتجات`,
+kRating:'متوسط التقييم',kRatingSub:(n,r)=>`${n} منتجًا مقيّمًا · ${r} مراجعة`,lowRated:n=>`${n} بتقييم أقل من 4`,
+wBandGrid:'شرائح الأسعار حسب الفئة',wBandGridSub:'المنتجات حسب أقل سعر حالي. اضغط على خلية أو شريحة أو فئة لتصفية كل الصفحات.',bandFoot:'النسبة = حصة الفئة في كل شريحة.',
+wBrands:'العلامات التجارية',wBrandsSub:'حجم التشكيلة وموقع السعر والتقييم لكل علامة. اضغط على العلامة للتصفية.',categories:'الفئات',priceRange:'نطاق السعر',ratingL:'التقييم',
+wCats:'الفئات',wCatsSub:'تسعير كل فئة اليوم. اضغط على الفئة للتصفية.',brandsL:'العلامات',
+wShadeTop:'أوسع تشكيلات الدرجات',wShadeTopSub:'المنتجات التي تعرض أكبر عدد من الدرجات اليوم',noShades:'لا يوجد منتج في هذه التصفية بأكثر من درجة واحدة.',shadeTopFoot:(n,N)=>`${n} من ${N} منتجًا بأكثر من درجة`,
+comingT:'غير متاح بعد في هذه الصفحة',comingP:'تعمل هذه اللوحات تلقائيًا عند وصول البيانات. لا نقدّر أي رقم في الأثناء.',
+comingNext:'الإصدار القادم (المرحلة 2): لوحة قابلة للتخصيص مع مكتبة تحليلات متقدمة، وتعمّق من الفئة إلى العلامة والمنتج والدرجة وسجل الأسعار والدليل.',useNow:'المتاح الآن:',
 appName:'ذكاء المنتجات',appSub:'ألتا الإمارات مقابل سيفورا الإمارات',primary:'التنقل الرئيسي',skip:'تخطَّ إلى المحتوى',
 mockLabel:'نموذج توضيحي — بيانات تجريبية',testFixture:'بيانات اختبار',srcLabel:s=>`المصدر: ${s}`,cutoffLabel:c=>`آخر تحديث للبيانات ${c}`,firstPass:'مطابقة أولية',reviewedMatches:'مطابقة مُراجَعة',
 footNote:'كل رقم يرتبط بدليله. غير المرصود لا يُعرض أبداً على أنه نافد.',dataset:'مجموعة البيانات',snapshot:'لقطة',sampleData:'بيانات تجريبية',cutoff:'آخر تحديث',

@@ -508,3 +508,41 @@ table.cmp2{border-collapse:collapse;width:100%;table-layout:fixed;min-width:720p
 table.mx{min-width:max-content}
 /* scroll hint: soft edge shadows show only while more columns are off-screen */
 .mxwrap{background:linear-gradient(to right,var(--surface) 30%,rgba(255,255,255,0)) left/40px 100% no-repeat local,linear-gradient(to left,var(--surface) 30%,rgba(255,255,255,0)) right/40px 100% no-repeat local,radial-gradient(farthest-side at 0 50%,rgba(29,33,48,.14),transparent) left/14px 100% no-repeat scroll,radial-gradient(farthest-side at 100% 50%,rgba(29,33,48,.14),transparent) right/14px 100% no-repeat scroll}
+
+/* explorer filter rail (wide screens); the drawer button covers narrower ones */
+.exwrap{display:grid;grid-template-columns:248px minmax(0,1fr);gap:24px;align-items:start}
+.frail{position:sticky;top:160px;max-height:calc(100vh - 176px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--sh-1)}
+.frh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.frh h2{font-size:14px;margin:0}
+.frail .fsec .popl.tall{max-height:240px}
+.frail .fsec .popl label{padding:5px 6px}
+@media (min-width:1180px){.exfb{display:none}}
+@media (max-width:1179px){.exwrap{display:block}.frail{display:none}}
+
+/* available-now panels */
+.linkbtn.strong{color:var(--ink);font-weight:600;font-size:13px;text-decoration:none}
+.linkbtn.strong:hover,.linkbtn.strong:focus-visible{text-decoration:underline}
+.tscroll{overflow-x:auto;min-width:0}
+.bandg td,.bandg th{vertical-align:middle}
+.bandg .hcell{all:unset;box-sizing:border-box;display:inline-block;min-width:48px;padding:4px 8px;border-radius:6px;text-align:center;font-weight:600;cursor:pointer;color:var(--ink);background:rgba(94,154,212,calc(var(--a,0) * .5 + .08))}
+.bandg .hcell:hover{outline:1.5px solid var(--sky-ink)}
+.bandg .hcell:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.bandg .hcell:disabled{background:none;color:var(--muted);cursor:default;outline:none}
+.bandg .pc{display:inline-block;min-width:3.2em;font-size:11px;color:var(--muted);margin-inline-start:6px}
+.bandg tr.tot td{border-top:1px solid var(--line-3)}
+
+/* what is missing, and why */
+.coming .ch{display:flex;gap:12px;align-items:flex-start}
+.coming h2{font-size:16px;margin:0 0 2px}
+.coming p{margin:0}
+.clist{list-style:none;padding:0;margin:14px 0;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.clist li{display:grid;gap:2px;padding:10px 12px;background:var(--sunk);border-radius:10px;font-size:13.5px}
+.clist span{color:var(--muted);font-size:12.5px}
+.coming .cnext{font-size:13.5px;color:var(--ink-2);margin-bottom:6px}
+.coming .cnow{font-size:13.5px}
+.coming .cnow a{font-weight:600;color:var(--sky-ink)}
+
+/* phones: show every section, no hidden scroll */
+@media (max-width:860px){.nav{flex-wrap:wrap;overflow-x:visible;gap:4px}.nav a{padding:6px 10px;gap:8px;font-size:13px;background:var(--sunk)}.nav a[aria-current=page]{background:var(--lav)}}
+.coming{margin:0 0 20px}
+.dgrid+.coming{margin:20px 0 0}
