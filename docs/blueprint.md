@@ -315,7 +315,7 @@ Owner decision 2026-09-30 (cost): collection is **one-time and on-demand**, not 
 
 - **No Cloud Scheduler jobs** (disabled or absent), except one for `sephora_me`, owner-approved (ADR-0009). No recurring crawl of any other source.
 - **On-demand trigger:** a `make`/CLI command (later an admin button) runs a refresh for a chosen site or category and records the run's cost in its run manifest.
-- **Storage:** every snapshot is kept, append-only, in the DB and in the Firebase demo export, so history grows only when the owner chooses to refresh. Data is reused without re-crawling.
+- **Storage:** every snapshot is kept, append-only, in the DB and in the Firebase demo export, so history grows on the `sephora_me` schedule (ADR-0009) and, for every other source, only when the owner chooses to refresh. Data is reused without re-crawling.
 - **If rung 5 is ever approved, proxy traffic is kept minimal:** heavy assets are blocked in the browser, and images are fetched directly from the CDN, never through the proxy.
 
 ### 6.5 Images

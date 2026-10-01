@@ -57,8 +57,13 @@ have variants at different prices.
 
 ## Decision
 1. **Nightly listing sweep** (product-level, ~100% of the catalogue).
-   - For each top-level category, page `products.getProducts` from offset 0 to `total`,
-     back-to-back, with the client's own arguments.
+   - For each top-level category, page `products.getProducts` from offset 0 to `total` with the
+     client's own arguments, sequentially at PACE with jitter, during the UAE night.
+   - Basis: `/api/trpc` is robots-disallowed. Collecting it is covered by ADR-0005 decision 2, the
+     owner's approval of Sephora's robots-disallowed paths at polite pacing (~1 req/s with jitter,
+     off-peak UAE night, no login, cart, checkout or account routes). Per ADR-0005's consequences
+     and the recon doc, every such fetch is tagged robots-disallowed in the audit log (the job
+     runs with robots `tag_only`). This ADR adds a schedule, not a new path or a faster rate.
    - About 8.3k / 36 ≈ 235 calls, and at most ~380 if the sweep has to use leaf categories.
    - About 5–13 minutes at PACE 1.0–2.0.
    - The sweep dedupes by product id and counts unique products against `total`. Any shortfall
@@ -92,12 +97,24 @@ have variants at different prices.
      has `run.invoker` on that job only.
    - The job builds its own plan from the previous runs' outputs, so no laptop or agent session is
      in the loop.
-   - Infra owns the host-side wiring: wait for the run's status file → load → finish → export →
-     **publish only through the gate**.
-   - There are no tokens in a crontab, the repo or a log.
+   - Infra owns the host-side wiring, on the **existing pilot host**: the VM that runs the pi
+     Postgres (Docker Compose), where the loader, export and publish already run. A systemd timer
+     there waits for the run's status file → load → finish → export → **publish only through the
+     gate**.
+   - The gate is the existing publish gate (`infra/scripts/publish_dataset.py`), extended with
+     the no-count-drop and newer-cutoff holds that Infra runs by hand today. Infra does that
+     extension as an infra PR when this is built.
+   - The host uses a dedicated publisher service account. It can read the run outputs and write
+     `datasets/**` in the Firebase bucket plus Firestore `demo_meta`, with no other roles. Its key
+     is a 0600 file on the host, never in the repo. The nightly path does not use the broad
+     Firebase admin key.
+   - There is no new runtime. There are no tokens in a crontab, the repo or a log.
+   - If the agent safety classifier refuses to install the systemd timer, the owner installs the
+     unit files from `infra/`, as with the backup cron.
 7. **Guards.**
    - Any block or challenge stops the run, and the run is partial.
-   - The gate refuses to publish when counts drop beyond its threshold or the run failed.
+   - The gate holds the publish when the run failed, the cutoff is not newer than the live
+     dataset, or counts drop.
    - Pausing the Scheduler job stops everything.
    - Changes to pacing, window or scope need the owner's approval.
 
@@ -105,6 +122,9 @@ have variants at different prices.
 - Nightly sweep: ~$0.01–0.02/night, which is under $1/month.
 - Weekly variant pass and weekly AR + discovery: ~$3–4/month.
 - **Total: about $4–5/month.** There is no proxy spend.
+- Cloud Scheduler: one job, inside the free tier (3 jobs per billing account), so $0.
+- Host side: no new runtime and no new cost beyond the job runs already budgeted. The publisher
+  service account is free.
 
 ## Alternatives considered
 - **PDP halves nightly:** variant-level price and stock for half the catalogue each night, about
