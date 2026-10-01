@@ -1,7 +1,7 @@
 # ADR-0008: Vertical profiles on the wire (`pi.dataset/v3`): portion as Size, selling contexts, declared attribute sets
 
-- Status: proposed (drafted by the Deep Coder on the coordinator's brief, 1 Oct 2026). Revision 2:
-  rewritten on the coordinator's v3 ruling and the Reviewer's #57 findings
+- Status: proposed (drafted by the Deep Coder on the coordinator's brief, 1 Oct 2026). Revision 3:
+  rewritten on the coordinator's v3 ruling and the Reviewer's #57 findings (rounds 1 and 2)
 - Date: 2026-10-01
 - Extends: ADR-0007 §4 (vertical profiles), §5 (matching) and §6 (dataset contract v2 and UI)
 - Applies to: `pi_dataset`, `pi_metrics`, `pi_api`, the dashboard, the publisher, and the
@@ -57,8 +57,21 @@ ADR claimed otherwise, and that was wrong (Reviewer, #57 MUST 1).
   a v3 document refuses it on the schema id, with a clear error (`unsupported schema
   pi.dataset/v3`), not on a field-level failure deep in the document.
 - **Readers.** A new reader accepts both ids and parses each with its own model. `pi_dataset`
-  exposes `load_any() -> DatasetV2 | DatasetV3`, plus `upgrade(v2) -> v3`. `upgrade` is a pure,
-  total function and the only path from v2 to v3; consumers compute on v3 only.
+  exposes `load_any() -> DatasetV2 | DatasetV3`, plus `upgrade(v2, profile) -> v3`. Consumers
+  compute on v3 only.
+- **Schema id first.** `load_any`, and from step 1 the v2 loader too, read `schema` before any
+  model validation and refuse an unknown id with one error: `unsupported schema <id>; this
+  reader accepts <ids>`. Today a v2 reader reports the id mismatch as one Literal error buried
+  among dozens of extra-key errors.
+- **`upgrade` is pure and deterministic, but not total.** It is the only path from v2 to v3, and
+  it fails loudly instead of dropping data: a v2 attribute key that the profile doesn't declare
+  raises `UpgradeError`, and nothing is emitted.
+- **Where `upgrade` gets the profile.** It takes a `ProfileDeclaration`: the attribute set plus
+  the size flags. That declaration is data, committed in `pi_dataset` as
+  `contracts/profiles/<name>@<version>.json`, so `pi_dataset` never imports PR-E code.
+  - Step 1 ships `beauty@1.json`, written from today's v2 beauty keys.
+  - From step 2, a PR-E test asserts that each `VerticalProfile` exports exactly its committed
+    JSON, so the profile code and the file can't drift.
 - **Dual-write, then retire.**
   - Once `pi_api`, `pi_metrics` and the dashboard read v3, Infra's publisher writes both a v2 and a
     v3 document per generation for a transition window.
@@ -160,6 +173,14 @@ Product.offers: dict[context id, Offer]
 - `upgrade(v2)` gives every retailer exactly one context `{id: <retailer id>, channel: online,
   location: null}`. So every v2 offer key is a valid v3 context id, and beauty results don't
   change.
+- **Ids are stable across generations and never reused** (round 2, nit 3).
+  - The same `(retailer, channel, location.id)` keeps the same context id in every generation.
+  - A retired context's id is never reassigned to a different `(retailer, channel, location)`.
+  - The producer derives ids from a per-source context register (data, next to the source
+    register).
+  - The publisher compares each new generation's `meta.contexts` with the previous published
+    one, and refuses an id whose `(retailer, channel, location.id)` changed.
+  - This is what lets a cursor, a saved view or a history series name a context safely.
 
 **Identity across contexts** (MUST 2):
 - **Same retailer, several contexts.** The producer puts several contexts of one retailer under
@@ -174,12 +195,39 @@ Product.offers: dict[context id, Offer]
     stated basis.
 - **Without a stable key, nothing is grouped.** If the source has no stable item key, or the
   connector would have to group by name, by fuzzy similarity or across separate channel apps that
-  don't share ids, each context's item is **its own product**. Any pair between them then needs an
-  exact, approved or locked edge, like any cross-retailer pair. Grouping by name is an identity
+  don't share ids, each context's item is **its own product**. Grouping by name is an identity
   decision, and identity decisions are reviewed.
+  - Two items of one retailer in **different** products are never compared. Match edges are
+    retailer-keyed (`a < b`) and live inside one product, so no edge can link them on the wire.
+    Linking them would need a product-level identity record that v3 doesn't have; it is out of
+    scope, and the fail-safe result is that the pair simply doesn't exist (round 2, MUST).
 - **Different retailers** need that retailer pair's exact, approved or locked edge, as in v2.
   Edges stay keyed by retailer (`a`, `b` are retailer ids), because identity doesn't depend on
-  channel. The edge links the retailers' stable-key groups within the product.
+  channel. Within a product, the edge links retailer A's offers to retailer B's offers. Rule (c)
+  below keeps "A's offers" unambiguous.
+
+**Validator rules for identity** (round 2, MUST). These make the rules above checkable on the
+wire. Each one is enforced by the `pi_dataset` v3 validator, and the metric layer also applies the
+fail-safe reading, so a document that slipped past validation still can't miscount.
+
+- **(a) One source item, one product.**
+  - A keyed source item, `(retailer, evidence.itemKey)`, appears in exactly one product. A second
+    product carrying the same pair is a validation error.
+  - For unkeyed offers, the producer must emit each source listing once. The validator rejects
+    two unkeyed offers of one retailer with the same canonical `url` in different products.
+  - Without this rule, one item could be counted twice in promotions, availability and assortment
+    gaps, and two A items could share one B identity.
+- **(b) Same-retailer pairs need a shared key.**
+  - Two offers of one retailer in one product are compared only when both carry the same
+    `itemKey`. Otherwise the pair is `no_match`.
+  - With rule (c) this can't arise in a valid document; the metric layer still applies it.
+- **(c) An unkeyed offer is its retailer's sole offer in the product.**
+  - An offer with no `itemKey` may appear in a product only as its retailer's **only** offer
+    (context) in that product. The validator rejects anything else.
+  - So a cross-retailer edge always names either one keyed group or one unkeyed offer per side,
+    never a guess between several.
+  - Fail-safe: if the metric layer ever sees an unkeyed offer next to another offer of the same
+    retailer in one product, every pair involving that retailer in that product is `no_match`.
 - **No transitive identity.**
   - An edge from retailer A's delivery item to B doesn't give A's pickup item a B identity. That
     happens only if A's own `itemKey` links the two A contexts in one product.
@@ -210,6 +258,10 @@ Product.offers: dict[context id, Offer]
   - Delivery, service and minimum-order fees go in `Offer.attributes.fees` as `MoneyValue`s **in
     the offer's currency**. The validator rejects any other currency, as it already does for
     series money.
+  - The currency check walks **into** values (round 2, nit 4): every `MoneyValue` anywhere under
+    `Offer.attributes` is checked, including inside an `object`-typed value such as `fees`
+    (`{delivery, service, minimumOrder}`) and inside lists. Product-level money attributes are
+    checked against the market currency.
   - Fees are shown next to the price, and are never folded into `series.price`, a gap or an index.
 
 **API surface (when `pi_api` reads v3; migration step 4):**
@@ -306,14 +358,14 @@ series, ratings, match edges, the field statuses and capabilities are all identi
 | `schema` | `"pi.dataset/v2"` | `"pi.dataset/v3"` | `"pi.dataset/v3"` |
 | `meta.vertical` | required `SourceKey` | **kept**, required, must equal `meta.profile.name` | unchanged |
 | `meta.profile` | — | **new, required**: `{name, version, sizeLabelsComparable, sizeSystemRequired}` | `{name: <vertical>, version: 1, false, false}` |
-| `meta.attributeSet` | — | **new, required** (may be empty) | the profile's declared set for the v2 keys present; empty if none |
+| `meta.attributeSet` | — | **new, required** (may be empty) | `ProfileDeclaration.attributeSet` (from `contracts/profiles/beauty@1.json` for beauty) |
 | `meta.contexts` | — | **new, required**, ≥ 1 per retailer, collision rule §2 | one `{id: <retailer id>, retailer, channel: online, location: null, label: <retailer name>}` per retailer |
 | `Size.value`, `Size.unit` | required | nullable, set together (§1) | unchanged |
 | `Size.label`, `Size.system` | — | **new**, nullable | `null` |
 | `Product.offers` keys | retailer id | **context** id | unchanged (retailer id = sole context id) |
-| `Product.attributes` | free `dict[str, JsonValue]` | declared keys only (§3) | unchanged; an undeclared key fails the upgrade loudly |
+| `Product.attributes` | free `dict[str, JsonValue]` | declared keys only (§3) | unchanged; a key the `ProfileDeclaration` doesn't declare raises `UpgradeError` |
 | `Offer.attributes` | — | **new**, declared offer-level keys; `fees` in the offer currency | `{}` |
-| `Offer.evidence.itemKey`, `itemKeyKind` | — | **new**, nullable; required when a retailer has more than one context in a product | `null` |
+| `Offer.evidence.itemKey`, `itemKeyKind` | — | **new**, nullable; required when a retailer has more than one context in a product; rules (a)–(c) of §2 | `null` (each v2 retailer has one offer per product, so rule (c) holds) |
 | `notObserved[].context` | — | **new**, nullable (null = whole retailer) | `null` |
 | `MatchEdge.a`, `.b` | retailer ids | retailer ids (unchanged) | unchanged |
 
@@ -334,11 +386,11 @@ Small PRs. Until step 5, beauty production output stays byte-identical v2.
 
 | Step | Scope | Gate |
 |---|---|---|
-| 1 | `pi_dataset`: the `DatasetV3` models and validator (§1–§4), `load_any`, `upgrade(v2)`, the v3 JSON Schema; the v2 model frozen by a test. Literal-guard allowlist for `FAMS`/categories | This ADR accepted |
+| 1 | `pi_dataset`: the `DatasetV3` models and validator (§1–§4, identity rules (a)–(c)), the schema-id-first check in `load_any` and the v2 loader, `upgrade(v2, profile)`, `contracts/profiles/beauty@1.json`, the v3 JSON Schema; the v2 model frozen by a test. Literal-guard allowlist for `FAMS`/categories | This ADR accepted |
 | 2 | PR-E: `VerticalProfile` registry (`beauty@1` first, exporting its attribute set and size flags); `variant.attributes_schema` append-only migration; brand aliases as data (ADR-0007 §4) | Step 1 |
 | 3 | `pi_metrics` on v3: context pairs with the stable-key rule, the symmetric label same-size rule, `size_labels_differ`, `channel_differs`, `not_applicable`; one `metricVersion` bump; beauty equality test on `upgrade(v2)` | Step 1 |
 | 4 | Consumers read v3: `pi_api` (`load_any` + `upgrade`, context ids, `ambiguous_context`, `channel`/`location`/`attr` filters, per-context coverage) and the dashboard client | Steps 1, 3 |
-| 5 | Infra: the publisher dual-writes v2 + v3 per generation; a test pins v3 = `upgrade(v2)` | Step 4 deployed |
+| 5 | Infra: the publisher dual-writes v2 + v3 per generation; a test pins v3 = `upgrade(v2)`; the context-id stability check against the previous generation | Step 4 deployed |
 | 6 | `food_menu@1` and `apparel@1` with synthetic fixtures (no live sources); dashboard modules driven by `attributeSet` blocks; `FAMS`/categories allowlist removed | Steps 2, 4 |
 | 7 | Retire v2 | A later ADR |
 
