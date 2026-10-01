@@ -174,10 +174,15 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
   "pi-api.export/v1", ...}`. Logs Explorer shows one entry with
   `jsonPayload.event="pi_api.export"` and `outcome="ok"` (uid, view, filters, row count; no row
   content).
-- **Evidence links:** signed in, `GET /api/v1/products/s-P10000765-unknown-unknown` (any id
-  whose dataset offer has a `sephora_me` url) → the `sephora_me` offer's `evidence.url` is non-null
-  and starts with `https://www.sephora.me/`. If it is null, `PI_API_EVIDENCE_HOSTS` is missing
-  or misspelt.
+- **Evidence links:** signed in, `GET /api/v1/products/s-P10000765-unknown-unknown` → the
+  `sephora_me` offer's `evidence.url` is non-null and starts with `https://www.sephora.me/`. If it
+  is null, `PI_API_EVIDENCE_HOSTS` is missing or misspelt. If that id has left the dataset, pick
+  another from the published file:
+  `jq -r '[.products[] | select(.offers.sephora_me.url) | .id][0]' <datasets/ae/beauty/latest.json>`.
+- **Negative check:** an offer from a retailer that is not in `PI_API_EVIDENCE_HOSTS`, or whose url
+  is on another host, must have `evidence.url: null`. Today no such offer exists (`ulta_ae` has
+  none), so this is covered by the pi_api tests from #72. Once a second retailer has offers, run
+  the same `GET` on one of its ids before adding its host, and expect null.
 - Check the describe output: `autoscaling.knative.dev/maxScale: '3'`, no `minScale` (or 0), no
   Cloud SQL or VPC annotations, the `pi-api@` account, memory 1Gi, timeout 30.
 
