@@ -67,6 +67,8 @@ class Reason(StrEnum):
     CURRENCY_MISMATCH = "currency_mismatch"
     #: The metric doesn't apply to the snapshot's vertical profile (ADR-0008 §3).
     NOT_APPLICABLE = "not_applicable"
+    #: The retailer's was (regular) prices are unverified, so its promotions are not measured.
+    WAS_PRICE_UNVERIFIED = "was_price_unverified"
 
 
 class Excluded(StrEnum):
@@ -108,6 +110,12 @@ class CaveatCode(StrEnum):
     #: More distinct label pairs than ``LABEL_CAVEAT_CAP``: the totals, emitted first, so a
     #: client that shows only the first caveats never drops them.
     SIZE_LABELS_DIFFER_TOTAL = "size_labels_differ_total"
+    #: A retailer's was-prices are unverified: its discounts and promotions are not shown.
+    WAS_PRICE_UNVERIFIED = "was_price_unverified"
+    #: A retailer's data is a snapshot imported on ``date``; its capture date is unknown.
+    SNAPSHOT_IMPORT_DATE = "snapshot_import_date"
+    #: A retailer's products may include parent listings that duplicate their variants.
+    PARENT_LISTINGS_INCLUDED = "parent_listings_included"
 
 
 class Caveat(ContractModel):
