@@ -1,6 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
@@ -21,16 +21,17 @@ const INPUTS = [
 /**
  * A build id from the inputs' content, not a random one: the inline scripts carry it, so the same
  * source always gives the same script hashes (the CSP in infra/firebase.json lists them), and a
- * changed source gives new ones.
+ * changed source gives new ones. Only files git tracks count, so a clean checkout (CI, the
+ * deploy) hashes exactly what a local tree does; tests do not count.
  */
 function contentBuildId(): string {
+  const files = execFileSync('git', ['ls-files', '-z', '--', ...INPUTS], { encoding: 'utf8' })
+    .split('\0')
+    .filter((f) => f && !/\.test\.tsx?$/.test(f))
+    .sort();
+  if (!files.includes('next.config.ts')) throw new Error('build id: run the build inside the git checkout');
   const h = createHash('sha256');
-  const walk = (p: string): void => {
-    if (statSync(p).isDirectory()) {
-      for (const name of readdirSync(p).sort()) if (!/\.test\.tsx?$/.test(name)) walk(join(p, name));
-    } else h.update(p).update('\0').update(readFileSync(p)).update('\0');
-  };
-  for (const input of INPUTS) walk(input);
+  for (const f of files) h.update(f).update('\0').update(readFileSync(f)).update('\0');
   return h.digest('hex').slice(0, 20);
 }
 
