@@ -171,10 +171,10 @@ have variants at different prices.
 - One-off first-run backfill (amended Decision 2): ≈ $0.40 for EN and ≈ $0.75 with AR, over 2
   nights. PDP HTML is ~1–4 GB inbound; inbound and same-region GCS writes are free.
 - **First month: about $5–6**, including the backfill.
-- **Spend not yet approved.** The added spend is about +$0.5–1/month over the $4–5 above, plus the
-  one-off ≈ $0.75 backfill. On 1 Oct 2026 the coordinator relayed the estimate to the owner and
-  asked to keep the AR leaf sweep. The owner's approval of this spend is not yet recorded. It must
-  be recorded (relayed by the coordinator, with the date) before the build schedules it.
+- Owner approved gap-fill Sephora crawling (subcategory depth + shade/size variants) on
+  2026-10-01, within the $25/month cap, folded into the approved cadence (relayed by the
+  coordinator). That adds about +$0.5–1/month over the $4–5 above, plus the one-off ≈ $0.75
+  backfill.
 - Cloud Scheduler: one job, inside the free tier (3 jobs per billing account), so $0.
 - Host side: no new runtime and no new cost beyond the job runs already budgeted. The publisher
   service account is free.
