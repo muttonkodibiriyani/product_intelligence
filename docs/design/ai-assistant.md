@@ -255,12 +255,13 @@ drops `Money.minor` so the model only ever sees the decimal `amount` text.
 Common input limits:
 
 - `search_products` takes `limit` (≤ 25, default 10), so the assistant never pages.
-- `compare`, `promotions` and `launches` (tool version 3, API 1.1.0 #70) always send `limit`
+- `compare`, `promotions` and `launches` (API 1.1.0, #70) always send `limit`
   (≤ 25, default 25). The API keeps a documented order when it cuts the list (largest `|gap.pct|`,
   deepest discount, newest first). `data.total` counts every row, and summaries and shares cover
   every row. When `data.truncated` is true, the registry adds a server-computed `shown` count
-  and a `truncated` caveat ("Only the first N of total rows are listed"). The answer says "top N
-  of total": the caveat is always shown by the UI, and both numbers are tool numbers, so the
+  and a `truncated` caveat: "Only the first N of total rows are listed …". It adds that any
+  summary is computed over all rows, with its own n (for compare, the counted pairs). The answer
+  says "top N of total": the caveat is always shown by the UI, and both numbers are tool numbers, so the
   verifier accepts them. No prompt change was needed (prompt version unchanged).
 - A result that is still too large is refused with `output_too_large` (below), and the model is
   told to narrow the filters.
@@ -274,7 +275,7 @@ Results over 16,000 chars are refused with `output_too_large` rather than trunca
 
 **Contract source of truth:** `docs/contracts/pi-api.openapi.json` and the goldens under
 `docs/contracts/golden/pi-api/` (S2 #55, S3 metric endpoints #61, both on main). All tools are
-`GET` under `/api/v1` (tool version 2; 3 for the three list tools above). `test/contract.test.ts` fails the build if a tool's path,
+`GET` under `/api/v1`; each tool's `version` lives in `src/tools/definitions.ts` and is written into every citation. `test/contract.test.ts` fails the build if a tool's path,
 query parameters or required parameters drift from the OpenAPI document, if an
 `x-pi-source-text` field is not sanitised as untrusted text, or if any golden fails the
 registry's envelope checks.
@@ -702,7 +703,8 @@ custom role with only `datastore.entities.update` covers every document in the d
 - **Rotation** (owner). Reset the account's password through the reset email. Add it as a new
   version of `KILL_SWITCH_PASSWORD`. Firebase pins the secret version at deploy time, so the
   function keeps the old password until it is **redeployed** (an owner step that needs OK). Check
-  with a synthetic message (step 5), then disable (and later destroy) the old versions.
+  with a synthetic message (step 5) and re-run the single-account check (step 3), then disable
+  (and later destroy) the old versions.
 - **Revoke:** disable the Firebase account; sign-in then fails and the function logs
   `kill_switch_failed` at ERROR.
 - Rejected: a custom-token principal. Minting custom tokens needs
@@ -727,6 +729,14 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
    through the reset email, so nobody else sees it. Store it as the first version of the secret
    `KILL_SWITCH_PASSWORD`, and grant `pi-killswitch@` `secretAccessor` on that secret
    only.
+   **Single-account check:** exactly one user holds `role: killswitch`. Run it after creating
+   the account, and again at step 5, at every rotation and in the enablement checklist (§10.1).
+   As the owner, list users with the Admin SDK (`auth.list_users()` / `listUsers()`, paging to
+   the end) and count those whose custom claims have `role == "killswitch"`. Expect exactly 1,
+   and expect it to be the account in `KILL_SWITCH_EMAIL`. The check prints only the count and a
+   masked email. If there are none, the switch cannot sign in. If there is more than one, every extra
+   account is an unexplained identity that can switch the assistant off: disable it, remove its
+   claim and find out how it was set.
 4. Deploy the rules (`infra/firebase.json`, `--only firestore:rules`) and then the function
    `budgetKillSwitch` (`apps/assistant/src/index.ts`: `onMessagePublished` on
    `pi-budget-alerts`, `retry: true`, runtime SA `pi-killswitch@`, secret `KILL_SWITCH_PASSWORD`
@@ -747,9 +757,10 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
    a project other than productintelligence-beeb3. The error names the variable, never its value.
 5. Verify once with a **synthetic message**: publish a hand-built notification with a fake
    `costAmount` ≥ 90 % to the topic, as the owner. The attributes must carry the real
-   `budgetId` and `schemaVersion: 1.0`, and the publish must be fresh (under 6 h). Check that `enabled` flips to false and the
-   function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove
-   `disabledBy` from the admin side. Also check that the function log shows nothing secret.
+   `budgetId` and `schemaVersion: 1.0`, and the publish must be fresh (under 6 h). Check that
+   `enabled` flips to false and the function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove
+   `disabledBy` from the admin side. Also check that the function log shows nothing secret, and
+   re-run the single-account check (step 3).
 
 Cost: Pub/Sub, one function invoked a few times a day, and one secret version. That is ≈ $0.06 a
 month (the secret version; Pub/Sub and Functions stay in the free tier).
@@ -781,7 +792,8 @@ All of these must hold before Vertex is enabled or the chat callable is deployed
 
 1. #51 is merged, the kill-switch PR is merged, the owner has set the $5 slice alert, and the
    Coordinator gives an explicit OK.
-2. The kill switch is deployed and verified with a synthetic message (§9.4, step 5).
+2. The kill switch is deployed and verified with a synthetic message (§9.4, step 5), and exactly
+   one user holds `role: killswitch` (single-account check, §9.4 step 3).
 3. `assistant_config/current` is written by an admin, and it passes `AssistantConfigSchema`:
    - `promptVersion` **must equal `PROMPT_VERSION`** in `src/flows/prompt.ts`, currently
      `chat-2026-10-01.2`. If it does not, every question is refused with
