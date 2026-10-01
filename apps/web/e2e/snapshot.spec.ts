@@ -87,7 +87,8 @@ for (const locale of ['en', 'ar'] as const) {
         snapshot: 'لقطة مستوردة',
         imported: /^استُوردت في .+، وتاريخ جمعها غير معروف$/,
         products: 'المنتجات المتتبَّعة',
-        parents: 'لقطة؛ قد تشمل قوائم رئيسية',
+        parents: 'منتجات (لقطة، قد تشمل قوائم رئيسية)',
+        compare: 'المقارنة',
         promo: 'ضمن العروض',
         age: /عمرها|جُمعت اليوم|حتى /,
         subtitle: /· لقطة مستوردة في .+، وتاريخ جمعها غير معروف$/,
@@ -101,7 +102,8 @@ for (const locale of ['en', 'ar'] as const) {
         snapshot: 'Snapshot',
         imported: /^Imported .+, capture date unknown$/,
         products: 'Products tracked',
-        parents: 'Snapshot; may include parent listings',
+        parents: 'Products (snapshot, may include parent listings)',
+        compare: 'Compare',
         promo: 'On promotion',
         age: /days? old|collected today|as of /,
         subtitle: /· snapshot imported .+, capture date unknown$/,
@@ -133,10 +135,6 @@ for (const locale of ['en', 'ar'] as const) {
       // The API's own caveat text, in the user's language.
       for (const c of [C.was, C.snap, C.parents])
         await expect(page.getByText(ar ? c.ar : c.en, { exact: true }).first()).toBeVisible();
-      // Promotion widgets stay off; their previews carry the reason, never a measured figure.
-      for (const name of [T.top, T.depth])
-        await expect(page.getByRole('heading', { level: 2, name, exact: true })).toHaveCount(0);
-      await expect(page.getByText(T.withheld).first()).toBeVisible();
 
       // The dataset panel: the imported retailer has an import date, the others keep "since".
       const row = page.locator('#dataset tr').filter({ hasText: 'Ulta Beauty UAE' });
@@ -144,6 +142,14 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(
         page.locator('#dataset tr').filter({ hasText: 'Shop A' }).locator('td').nth(1),
       ).not.toHaveText(T.row);
+      await noHorizontalScroll(page);
+
+      // Promotion widgets stay off; on Compare their previews carry the reason, never a figure.
+      for (const name of [T.top, T.depth])
+        await expect(page.getByRole('heading', { level: 2, name, exact: true })).toHaveCount(0);
+      await page.getByRole('tab', { name: T.compare }).click();
+      await expect(page.locator('main [role=note]').filter({ hasText: T.withheld })).toHaveCount(2);
+      await expect(page.locator('main')).not.toContainText(/\d%/);
       await noHorizontalScroll(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);

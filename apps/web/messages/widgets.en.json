@@ -18,7 +18,7 @@
     "aging": "Aging",
     "snapshot": "Snapshot",
     "imported": "Imported {date}, capture date unknown",
-    "productsParents": "Snapshot; may include parent listings"
+    "productsParents": "Products (snapshot, may include parent listings)"
   },
   "ladder": {
     "title": "Price ladder by category",
