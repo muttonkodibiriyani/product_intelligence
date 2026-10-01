@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Iterator
@@ -338,3 +339,24 @@ def test_stock_provenance_is_the_stock_row_not_a_newer_page_read(conn: Conn) -> 
     )
     assert (a["stock_observed_at"], a["stock_run_id"]) == (T0.replace(hour=1), stock)
     assert (b["stock_observed_at"], b["stock_run_id"]) == (None, None)  # no stock read at all
+
+
+def test_the_main_image_comes_from_the_latest_content(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    world.observe(run, "A", 1, "80")
+    world.observe(run, "B", 1, "90")
+    old = [{"role": "main", "position": 0, "url": "https://img-product.sephora.me/old.jpg"}]
+    new = [
+        {"role": "swatch", "position": 0, "url": "?sw=1248"},
+        {"role": "alt", "position": 1, "url": "https://img-product.sephora.me/alt.jpg"},
+        {"role": "main", "position": 0, "url": "https://img-product.sephora.me/new.jpg"},
+    ]
+    for hour, images in ((1, old), (2, new)):
+        conn.execute(
+            "INSERT INTO listing_content (listing_id, observed_at, labels, content_hash)"
+            " VALUES (%s, %s, %s::jsonb, %s)",
+            (world.listings["A"], T0.replace(hour=hour), json.dumps({"images": images}), str(hour)),
+        )
+    assert _row(world, "A")["image"] == "https://img-product.sephora.me/new.jpg"
+    assert _row(world, "B")["image"] is None  # no content row at all

@@ -88,6 +88,8 @@ class ListingRow:
     stock_observed_at: datetime | None = None
     stock_evidence_retrieved_at: datetime | None = None
     stock_run_id: int | None = None
+    #: The retailer's main image URL from the latest content; only v2 reads it (allowlisted there).
+    image: str | None = None
 
     @property
     def price_capture(self) -> tuple[datetime, int]:
@@ -323,7 +325,16 @@ SELECT
   latest.price_run_id,
   latest.stock_observed_at,
   latest.stock_evidence_retrieved_at,
-  latest.stock_run_id
+  latest.stock_run_id,
+  (
+    SELECT img ->> 'url'
+    FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
+    ) img
+    WHERE img ->> 'role' = 'main'
+    ORDER BY img ->> 'position'
+    LIMIT 1
+  ) AS image
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id

@@ -12,6 +12,8 @@ dataset runs every contract rule: an invalid document cannot be written. What ch
 - a match edge carries the ``pi_db`` review state verbatim and who decided it, never who;
 - one date (the cutoff's day in Dubai): a price, regular or stock value captured on another day is
   ``null`` there (contract rule 6: never carried forward), and the field is reported ``partial``;
+- ``image`` is the retailer's own main image URL, hotlinked (never rehosted) and only from an
+  allowlisted https host (``IMAGE_HOSTS``); anything else is ``null``, never a guess;
 - Ulta's status is the owner's statement (``UltaContext``), not inferred from whether rows exist.
 """
 
@@ -24,6 +26,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from pydantic import HttpUrl
@@ -74,6 +77,8 @@ STATUS = {
 }
 PRODUCT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 MATCH_STAGE = "first-pass"
+#: Hosts whose image URLs are published (owner decision: hotlinked from the retailer's CDN only).
+IMAGE_HOSTS = frozenset({"img-product.sephora.me"})
 
 
 def product_id(token: str) -> str:
@@ -108,6 +113,26 @@ def availability(value: str | None) -> AvailabilityState | None:
     if value is None or value == AvailabilityState.NOT_OBSERVED:
         return None
     return AvailabilityState(value)
+
+
+def image(value: str | None) -> HttpUrl | None:
+    """An absolute https URL on an allowlisted host, without credentials or fragment; else None."""
+    if not value:
+        return None
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        return None
+    if (
+        parts.scheme != "https"
+        or parts.hostname not in IMAGE_HOSTS
+        or port not in (None, 443)
+        or parts.username is not None
+        or parts.fragment
+    ):
+        return None
+    return HttpUrl(value)
 
 
 def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
@@ -154,6 +179,7 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
             source=f"{rep.source_name} · local pi_db snapshot",
             run_id=str(run_id),
         ),
+        image=image(rep.image),
     )
 
 
@@ -187,18 +213,21 @@ def product(
     rows = groups[keys[0]]
     rep = choose_representative(rows)
     shade_families = sorted({row.shade_family for row in rows if row.shade_family})
+    offers = {
+        RETAILERS[key.retailer][0]: offer(groups[key], MARKET.currency, stale) for key in keys
+    }
     return Product(
         id=product_id(token),
         brand=rep.brand,
         name=rep.name,
         category=(category_for(rep),),
         unit=keys[0].size_unit,
-        offers={
-            RETAILERS[key.retailer][0]: offer(groups[key], MARKET.currency, stale) for key in keys
-        },
+        offers=offers,
         matches=tuple(matches),
         shades=tuple(sorted({row.shade_hex.lower() for row in rows if row.shade_hex})[:12]),
         attributes={"shadeFamilies": list(shade_families)} if shade_families else {},
+        # the naming offer's thumbnail, else the first other offer that has one
+        image=next((o.image for o in offers.values() if o.image is not None), None),
     )
 
 
@@ -292,6 +321,7 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     has_size = any(p.unit is not None for p in products)
     has_shades = any(p.shades for p in products)
     has_rating = any(o.rating is not None for o in offers)
+    with_image = sum(p.image is not None for p in products)
 
     # The owner's statement, not row presence: rows from before the block must not hide it.
     ulta_status = RetailerStatus.BLOCKED if ulta.blocked else STATUS[retailer_status(rows, "u")]
@@ -349,7 +379,7 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
             sizes=has_size,
             shades=has_shades,
             coverage=False,
-            images=False,
+            images=with_image > 0,
             ratings=has_rating,
         ),
         fields={
@@ -378,7 +408,13 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
             "shades": status_of("ok" if has_shades else "not_collected"),
             "rating": status_of("ok" if has_rating else "not_collected"),
             "gtin": status_of("not_published"),
-            "image": status_of("not_collected"),
+            "image": status_of(
+                "ok"
+                if with_image == len(products)
+                else "partial"
+                if with_image
+                else "not_collected"
+            ),
         },
         producer=Producer(name="demo_export", version="2", commit=producer_commit),
         test=False,
