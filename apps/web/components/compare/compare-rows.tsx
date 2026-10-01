@@ -40,14 +40,14 @@ export function CompareRows({
             <th scope="col" className={TH}>
               {t('product')}
             </th>
+            <th scope="col" className={TH}>
+              {t('gap')}
+            </th>
             <th scope="col" className={`${TH} text-end`}>
               {name(data.base)}
             </th>
             <th scope="col" className={`${TH} text-end`}>
               {name(data.other)}
-            </th>
-            <th scope="col" className={TH}>
-              {t('gap')}
             </th>
           </tr>
         </thead>
@@ -65,6 +65,12 @@ export function CompareRows({
                   {r.brand}
                 </span>
               </th>
+              <td className={`${TD} min-w-40`}>
+                <GapView
+                  pair={{ base: data.base, other: data.other, gap: r.gap, excludedReason: r.excludedReason }}
+                  name={name}
+                />
+              </td>
               <td className={`${TD} text-end`}>
                 {r.basePrice ? (
                   <Money m={r.basePrice} locale={locale} />
@@ -78,12 +84,6 @@ export function CompareRows({
                 ) : (
                   <span className="text-ink-2">–</span>
                 )}
-              </td>
-              <td className={`${TD} min-w-40`}>
-                <GapView
-                  pair={{ base: data.base, other: data.other, gap: r.gap, excludedReason: r.excludedReason }}
-                  name={name}
-                />
               </td>
             </tr>
           ))}
