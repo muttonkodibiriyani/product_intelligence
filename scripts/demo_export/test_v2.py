@@ -364,6 +364,8 @@ def with_path(path: str | None, **kw: Any) -> ListingRow:
         (" > ", ["foundation"]),
         ("PID Unicity", ["foundation"]),
         ("without_pid", ["foundation"]),
+        # a mid-path pseudo-crumb is spliced out, not turned into (code,)
+        ("Makeup > PID Unicity > Lips", ["foundation", "Makeup", "Lips"]),
         (None, ["foundation"]),
     ],
 )

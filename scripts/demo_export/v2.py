@@ -154,7 +154,11 @@ def image(value: str | None) -> HttpUrl | None:
 def breadcrumb(path: str | None) -> tuple[tuple[str, ...], frozenset[str]]:
     """The retailer's breadcrumb levels to publish (verbatim, at most ``CATEGORY_DEPTH``) and what
     was done to get them: ``internal`` (a pseudo-crumb dropped), ``brand_nav`` (the brand-navigation
-    prefix dropped), ``truncated`` (levels below ``CATEGORY_DEPTH`` cut)."""
+    prefix dropped), ``truncated`` (levels below ``CATEGORY_DEPTH`` cut).
+
+    A pseudo-crumb is removed wherever it sits: a path of pseudo-crumbs only gives no levels (the
+    product is ``(code,)``), while one in the middle of a real path is spliced out and the levels
+    around it are kept."""
     levels = [level.strip() for level in (path or "").split(" > ")]
     levels = [level for level in levels if level]
     notes: set[str] = set()
