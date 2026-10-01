@@ -727,7 +727,7 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
    `gcloud services list --enabled`): `pubsub`, `secretmanager`, `cloudfunctions`, `run`,
    `cloudbuild`, `artifactregistry` and `eventarc`. Add `billingbudgets` only to read the budget
    id with `gcloud billing budgets list` (as in `.env.example`); skip it if the id is read in the
-   console. This is the §10 "needs OK" row. It is an explicit step because `firebase deploy`
+   console. This is the §10 "needs OK" row. It is an explicit step because the Firebase CLI deploy
    would otherwise enable them silently.
 1. Create the topic `pi-budget-alerts` (me-central1 storage policy). Connect the
    `pi-monthly-25usd` budget to it **in the console** (*Billing → Budgets → Manage notifications
