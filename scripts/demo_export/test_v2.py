@@ -337,6 +337,43 @@ def test_an_image_off_the_allowlist_is_null_never_guessed(url: str | None) -> No
     assert d["meta"]["fields"]["image"] == "not_collected"
 
 
+ULTA_IMG = "https://media.alshaya.com/adobe/assets/urn:aaid:aem:0000/as/p1.jpg?width=450"
+
+
+def test_an_ulta_image_on_its_own_cdn_is_published_for_ulta() -> None:
+    d = doc([with_image(ULTA_IMG, source="ulta_ae", family=20, variant=200)])
+    assert only_offer(d)["image"] == ULTA_IMG
+    assert d["products"][0]["image"] == ULTA_IMG
+    assert d["meta"]["capabilities"]["images"] is True
+    assert d["meta"]["fields"]["image"] == "ok"
+
+
+@pytest.mark.parametrize("source", ["ulta_ae", "ulta_ae_owner_import", "ulta"])
+def test_the_image_host_follows_the_retailer_not_the_raw_source_name(source: str) -> None:
+    """An Ulta source named other than exactly ulta_ae still gets the Ulta host (never a silent
+    null); the allowlist is keyed by the retailer's register key."""
+    d = doc([with_image(ULTA_IMG, source=source, family=20, variant=200)])
+    assert only_offer(d)["image"] == ULTA_IMG
+
+
+@pytest.mark.parametrize(
+    ("url", "source"),
+    [
+        (SEPHORA_IMG, "ulta_ae"),  # a Sephora URL on an Ulta offer
+        (ULTA_IMG, "sephora_me"),  # an Ulta URL on a Sephora offer
+        ("http://media.alshaya.com/p1.jpg", "ulta_ae"),
+        ("https://user@media.alshaya.com/p1.jpg", "ulta_ae"),
+        ("https://media.alshaya.com.evil.test/p1.jpg", "ulta_ae"),
+    ],
+)
+def test_an_image_on_another_retailers_host_is_null(url: str, source: str) -> None:
+    d = doc([with_image(url, source=source, family=20, variant=200)])
+    assert only_offer(d)["image"] is None
+    assert d["products"][0]["image"] is None
+    assert d["meta"]["capabilities"]["images"] is False
+    assert d["meta"]["fields"]["image"] == "not_collected"
+
+
 def test_image_is_partial_when_only_some_products_have_one() -> None:
     d = doc([with_image(SEPHORA_IMG), with_image(None, family=11, variant=101)])
     assert d["meta"]["fields"]["image"] == "partial"
