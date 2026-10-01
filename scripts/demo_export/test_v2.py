@@ -348,6 +348,14 @@ def test_an_ulta_image_on_its_own_cdn_is_published_for_ulta() -> None:
     assert d["meta"]["fields"]["image"] == "ok"
 
 
+@pytest.mark.parametrize("source", ["ulta_ae", "ulta_ae_owner_import", "ulta"])
+def test_the_image_host_follows_the_retailer_not_the_raw_source_name(source: str) -> None:
+    """An Ulta source named other than exactly ulta_ae still gets the Ulta host (never a silent
+    null); the allowlist is keyed by the retailer's register key."""
+    d = doc([with_image(ULTA_IMG, source=source, family=20, variant=200)])
+    assert only_offer(d)["image"] == ULTA_IMG
+
+
 @pytest.mark.parametrize(
     ("url", "source"),
     [

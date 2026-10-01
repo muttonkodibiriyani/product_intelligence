@@ -88,8 +88,9 @@ CATEGORY_DEPTH = 3
 BRAND_NAV = ("BRANDS", "Brands")
 #: Sephora-internal pseudo-crumbs that name no category.
 NOT_A_CATEGORY = frozenset({"PID Unicity", "without_pid"})
-#: Per source, the hosts whose image URLs are published (owner decision: hotlinked from the
-#: retailer's own CDN only; decision log 2026-10-01). Another source's host is never accepted.
+#: Per retailer (register key, as in ``RETAILERS``, never the raw ``source.name``), the hosts whose
+#: image URLs are published (owner decision: hotlinked from the retailer's own CDN only; decision
+#: log 2026-10-01). Another retailer's host is never accepted.
 IMAGE_HOSTS: dict[str, frozenset[str]] = {
     "sephora_me": frozenset({"img-product.sephora.me"}),
     "ulta_ae": frozenset({"media.alshaya.com"}),
@@ -134,8 +135,8 @@ def availability(value: str | None) -> AvailabilityState | None:
     return AvailabilityState(value)
 
 
-def image(value: str | None, source_name: str) -> HttpUrl | None:
-    """An absolute https URL on one of ``source_name``'s allowlisted hosts, without credentials or
+def image(value: str | None, retailer: str) -> HttpUrl | None:
+    """An absolute https URL on one of ``retailer``'s allowlisted hosts, without credentials or
     a fragment (even an empty trailing ``#``), that is not the retailer's placeholder; else None."""
     if not value:
         return None
@@ -146,7 +147,7 @@ def image(value: str | None, source_name: str) -> HttpUrl | None:
         return None
     if (
         parts.scheme != "https"
-        or parts.hostname not in IMAGE_HOSTS.get(source_name, frozenset())
+        or parts.hostname not in IMAGE_HOSTS.get(retailer, frozenset())
         or port not in (None, 443)
         or parts.username is not None
         or "#" in value
@@ -256,7 +257,7 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
             source=f"{rep.source_name} · local pi_db snapshot",
             run_id=str(run_id),
         ),
-        image=image(rep.image, rep.source_name),
+        image=image(rep.image, RETAILERS[rep.retailer][0]),
     )
 
 
