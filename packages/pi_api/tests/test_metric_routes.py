@@ -10,8 +10,9 @@ from typing import Any
 import pytest
 
 from api_fixture import Client, bearer, make_client, served_dataset, write
-from metrics_fixture import A, B, C, D
+from metrics_fixture import A, B, C, D, offer, product
 from pi_api.analytics import capped_launches
+from pi_dataset import Dataset
 from pi_metrics import Metric, Status
 from pi_metrics.launches import Launch, Launches
 
@@ -180,6 +181,23 @@ def test_launches_limit_keeps_the_newest_first() -> None:
 def test_launches_limit_on_the_route(client: Client) -> None:
     data = body(client, "/launches?limit=1")["data"]
     assert (len(data["items"]), data["total"], data["truncated"]) == (1, 1, False)
+
+
+def test_launches_limit_truncates_on_the_route(tmp_path: Path) -> None:
+    """A second launch at b (same first-seen day as p14), so ``limit=1`` really cuts one."""
+    ds = served_dataset()
+    extra = product("p17", {B: offer(B, [None, "61.00", "61.00"])}, category=("makeup",))
+    write(
+        tmp_path,
+        Dataset.model_validate(
+            ds.model_copy(update={"products": (*ds.products, extra)}).model_dump()
+        ),
+    )
+    client = make_client(tmp_path)[0]
+    full = body(client, "/launches")["data"]
+    assert [(i["id"], i["retailer"]) for i in full["items"]] == [("p14", B), ("p17", B)]
+    data = body(client, "/launches?limit=1")["data"]
+    assert (data["items"], data["total"], data["truncated"]) == (full["items"][:1], 2, True)
 
 
 def test_promotions_availability_launches_reviews(client: Client) -> None:
