@@ -191,9 +191,16 @@ class Loader:
         else:
             bid = self._one("SELECT id FROM brand WHERE %s = ANY(aliases)", (alias,))
             if bid:
-                self.c.execute(
-                    "UPDATE brand SET name_ar=COALESCE(name_ar,%s) WHERE id=%s", (name, bid)
+                # Only fill a missing Arabic name on a row Sephora alone owns: a row that also
+                # carries another source's alias (e.g. ulta_ae merged in) is never written, and
+                # neither is a row whose name_ar is already set (no no-op row versions).
+                cur = self.c.execute(
+                    "UPDATE brand SET name_ar=%s WHERE id=%s AND name_ar IS NULL AND NOT EXISTS"
+                    " (SELECT 1 FROM unnest(aliases) a WHERE a NOT LIKE 'sephora\\_me:%%')",
+                    (name, bid),
                 )
+                if cur.rowcount == 0:
+                    self.bump("brand_name_ar_skipped")
         if bid:
             self.brands[bid_key] = bid
         return bid

@@ -292,3 +292,41 @@ def test_a_sephora_brand_is_created_once_and_reused(db: str, tmp_path: Path) -> 
         rows = conn.execute("SELECT aliases FROM brand WHERE name = 'Own Brand'").fetchall()
         assert rows == [(["sephora_me:b1"],)]
         assert "brand_name_clash" not in stats
+
+
+def _en_then_ar(conn: psycopg.Connection[Any], root: Path, pid: str, d: dict[str, Any]) -> int:
+    """An EN load, then a separate AR load (as production runs them); returns the AR skips."""
+    write_part(_folder(root / "en", {"stopped": "cutoff"}), "pdp_en", [pdp_rec(pid, "en", d)])
+    _load(conn, root / "en")
+    write_part(_folder(root / "ar", {"stopped": "cutoff"}), "pdp_ar", [pdp_rec(pid, "ar", d)])
+    stats = _load(conn, root / "ar")
+    conn.commit()
+    return stats.get("brand_name_ar_skipped", 0)
+
+
+def test_a_brand_row_shared_with_another_source_is_never_written(db: str, tmp_path: Path) -> None:
+    """A row carrying both a sephora_me: and a ulta_ae: alias (the Ulta loader merges aliases on
+    a name clash) gets no AR name and no new row version from Sephora loads."""
+    d = details("P920", brand="Shared Brand") | {"c_brand": {"id": "b920", "name": "Shared Brand"}}
+    with psycopg.connect(db) as conn:
+        conn.execute(
+            "INSERT INTO brand (name, aliases) VALUES"
+            " ('Shared Brand', ARRAY['sephora_me:b920', 'ulta_ae:Shared Brand'])"
+        )
+        conn.commit()
+        query = "SELECT xmin::text, name, name_ar, aliases FROM brand WHERE name = 'Shared Brand'"
+        before = conn.execute(query).fetchall()
+        assert _en_then_ar(conn, tmp_path, "P920", d) == 1
+        assert conn.execute(query).fetchall() == before
+        assert before[0][2] is None
+
+
+def test_a_sephora_only_brand_gets_its_arabic_name_once(db: str, tmp_path: Path) -> None:
+    d = details("P930", brand="Solo Brand") | {"c_brand": {"id": "b930", "name": "Solo Brand"}}
+    with psycopg.connect(db) as conn:
+        assert _en_then_ar(conn, tmp_path / "1", "P930", d) == 0
+        query = "SELECT xmin::text, name_ar FROM brand WHERE name = 'Solo Brand'"
+        first = conn.execute(query).fetchall()
+        assert first[0][1] == "Solo Brand"
+        assert _en_then_ar(conn, tmp_path / "2", "P930", d) == 1
+        assert conn.execute(query).fetchall() == first
