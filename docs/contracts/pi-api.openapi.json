@@ -244,7 +244,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.4.1",
+            "default": "1.5.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -631,6 +631,248 @@
           "confidence"
         ],
         "title": "CardMatch",
+        "type": "object"
+      },
+      "CatalogueDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedSku"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "duplicateImagesRemoved": {
+            "title": "Duplicateimagesremoved",
+            "type": "integer"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/GalleryImage"
+            },
+            "title": "Images",
+            "type": "array"
+          },
+          "importedAt": {
+            "format": "date-time",
+            "title": "Importedat",
+            "type": "string"
+          },
+          "parents": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedSku"
+            },
+            "title": "Parents",
+            "type": "array"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/CatalogueRecord"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "retailer",
+          "generation",
+          "importedAt",
+          "provenance",
+          "record",
+          "parents",
+          "children",
+          "images",
+          "duplicateImagesRemoved"
+        ],
+        "title": "CatalogueDetail",
+        "type": "object"
+      },
+      "CatalogueRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedAt": {
+            "format": "date-time",
+            "title": "Capturedat",
+            "type": "string"
+          },
+          "children": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkuReference"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "excludedParentSummary": {
+            "title": "Excludedparentsummary",
+            "type": "boolean"
+          },
+          "groupingMasterSku": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Groupingmastersku",
+            "type": "string"
+          },
+          "imageIds": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+              "type": "string"
+            },
+            "title": "Imageids",
+            "type": "array"
+          },
+          "isVariant": {
+            "title": "Isvariant",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "optionValues": {
+            "additionalProperties": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Optionvalues",
+            "type": "object"
+          },
+          "parents": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkuReference"
+            },
+            "title": "Parents",
+            "type": "array"
+          },
+          "productType": {
+            "title": "Producttype",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "sku": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Sku",
+            "type": "string"
+          },
+          "sourceIds": {
+            "$ref": "#/components/schemas/SourceIds"
+          }
+        },
+        "required": [
+          "sku",
+          "name",
+          "productType",
+          "isVariant",
+          "sourceIds",
+          "groupingMasterSku",
+          "excludedParentSummary",
+          "capturedAt"
+        ],
+        "title": "CatalogueRecord",
+        "type": "object"
+      },
+      "CatalogueSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedFrom": {
+            "format": "date-time",
+            "title": "Capturedfrom",
+            "type": "string"
+          },
+          "capturedTo": {
+            "format": "date-time",
+            "title": "Capturedto",
+            "type": "string"
+          },
+          "excludedParentSummaries": {
+            "title": "Excludedparentsummaries",
+            "type": "integer"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "title": "Generatedat",
+            "type": "string"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "imageAssets": {
+            "title": "Imageassets",
+            "type": "integer"
+          },
+          "importedAt": {
+            "format": "date-time",
+            "title": "Importedat",
+            "type": "string"
+          },
+          "parentChildLinks": {
+            "title": "Parentchildlinks",
+            "type": "integer"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "skuRecords": {
+            "title": "Skurecords",
+            "type": "integer"
+          },
+          "skusWithImages": {
+            "title": "Skuswithimages",
+            "type": "integer"
+          },
+          "sourceSha256": {
+            "title": "Sourcesha256",
+            "type": "string"
+          },
+          "uniqueImageContents": {
+            "title": "Uniqueimagecontents",
+            "type": "integer"
+          },
+          "unresolvedSkus": {
+            "title": "Unresolvedskus",
+            "type": "integer"
+          },
+          "variantSkus": {
+            "title": "Variantskus",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "generation",
+          "generatedAt",
+          "importedAt",
+          "capturedFrom",
+          "capturedTo",
+          "sourceSha256",
+          "provenance",
+          "skuRecords",
+          "variantSkus",
+          "excludedParentSummaries",
+          "parentChildLinks",
+          "unresolvedSkus",
+          "imageAssets",
+          "uniqueImageContents",
+          "skusWithImages"
+        ],
+        "title": "CatalogueSummary",
         "type": "object"
       },
       "CategoryNode": {
@@ -1271,6 +1513,138 @@
           "meta"
         ],
         "title": "Envelope[Availability]",
+        "type": "object"
+      },
+      "Envelope_CatalogueDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogueDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[CatalogueDetail]",
+        "type": "object"
+      },
+      "Envelope_CatalogueSummary_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogueSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[CatalogueSummary]",
         "type": "object"
       },
       "Envelope_Comparison_": {
@@ -2266,6 +2640,76 @@
         ],
         "title": "FreshnessStatus",
         "type": "string"
+      },
+      "GalleryImage": {
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "title": "Assetid",
+            "type": "string"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assetId",
+          "url",
+          "sourceUrl",
+          "sha256",
+          "width",
+          "height",
+          "caption",
+          "roles"
+        ],
+        "title": "GalleryImage",
+        "type": "object"
       },
       "Gap": {
         "additionalProperties": false,
@@ -3733,6 +4177,67 @@
         "title": "Reason",
         "type": "string"
       },
+      "RelatedSku": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "selectionLabels": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Selectionlabels",
+            "type": "array"
+          },
+          "selections": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Selections",
+            "type": "array"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string"
+          },
+          "sourceIds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sku",
+          "resolved",
+          "name",
+          "sourceIds",
+          "selections",
+          "selectionLabels"
+        ],
+        "title": "RelatedSku",
+        "type": "object"
+      },
       "RetailerAvailability": {
         "additionalProperties": false,
         "properties": {
@@ -4213,6 +4718,102 @@
         "title": "Size",
         "type": "object"
       },
+      "SkuReference": {
+        "additionalProperties": false,
+        "properties": {
+          "selections": {
+            "default": [],
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Selections",
+            "type": "array"
+          },
+          "sku": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Sku",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku"
+        ],
+        "title": "SkuReference",
+        "type": "object"
+      },
+      "SourceIds": {
+        "additionalProperties": false,
+        "properties": {
+          "catalogueId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalogueid"
+          },
+          "externalId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalid"
+          },
+          "stockId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stockid"
+          },
+          "structuredId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structuredid"
+          },
+          "structuredProductId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structuredproductid"
+          }
+        },
+        "title": "SourceIds",
+        "type": "object"
+      },
       "Status": {
         "enum": [
           "ok",
@@ -4511,7 +5112,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.4.1"
+    "version": "1.5.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5063,6 +5664,312 @@
           }
         },
         "summary": "Get Availability"
+      }
+    },
+    "/api/v1/catalogues/{retailer}": {
+      "get": {
+        "operationId": "get_catalogue_api_v1_catalogues__retailer__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "retailer",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Retailer",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CatalogueSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Catalogue"
+      }
+    },
+    "/api/v1/catalogues/{retailer}/skus/{sku}": {
+      "get": {
+        "operationId": "get_catalogue_sku_api_v1_catalogues__retailer__skus__sku__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "retailer",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Retailer",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sku",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Sku",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CatalogueDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Catalogue Sku"
       }
     },
     "/api/v1/compare": {

@@ -9,7 +9,7 @@ const src = ['data.js', 'model.js', 'charts.js', 'i18n.js', 'app.js'].map(f => f
 const handlers = {}, el = () => ({ style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, focus() {} });
 const root = el();
 const sandbox = {
- console, Intl, Date, Math, JSON, Set, Map, URLSearchParams, setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: () => 0,
+ console, Intl, Date, URL, Math, JSON, Set, Map, URLSearchParams, setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: () => 0,
  localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
  location: { hostname: 'test', search: '', hash: '', pathname: '/' }, history: { replaceState() {}, pushState() {} }, navigator: {},
  matchMedia: () => ({ matches: false, addEventListener() {} }), innerWidth: 1440, innerHeight: 900, scrollTo() {}, addEventListener() {},
@@ -18,7 +18,7 @@ const sandbox = {
 sandbox.window = sandbox; sandbox.self = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(src + `
-;globalThis.__t = { hydrate, sampleContract, fixtureContract, useDS, resetAll, afterData, W, ctx, S, render, SETF_KEYS };`, sandbox, { filename: 'app-bundle.js' });
+;globalThis.__t = { hydrate, sampleContract, fixtureContract, useDS, resetAll, afterData, W, ctx, S, render, SETF_KEYS, PRESETS, viewById };`, sandbox, { filename: 'app-bundle.js' });
 const T = sandbox.__t;
 
 const EVIL = '<b>x</b><zz>';
@@ -53,4 +53,42 @@ click({ setf: '__proto__:x|constructor:y|toString:z|brand:Dior' });
 assert.strictEqual(Object.keys(T.S.f).sort().join(), before, 'setf added a filter key');
 assert.strictEqual(({}).x, undefined, 'setf polluted Object.prototype');
 assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
+
+// real data leads every dashboard tab: what waits on data sits only in the one strip at the bottom
+{
+ const DS = T.hydrate(T.fixtureContract('blocked'));
+ T.useDS(DS); T.resetAll(); T.afterData();
+ assert.strictEqual(T.S.viewId, 'snap', 'a real snapshot opens on the snapshot tab');
+ for (const lang of ['en', 'ar']) for (const v of T.PRESETS) {
+  T.S.lang = lang; T.S.route = 'dashboard'; T.S.edit = false; T.S.viewId = v.id; T.S.layout = T.viewById(v.id).w.map(x => x.slice());
+  root.innerHTML = ''; T.render();
+  const h = String(root.innerHTML), strip = h.indexOf('class="card coming"');
+  const gateAt = h.search(/class="wempty gate/);
+  assert(gateAt < 0 || (strip >= 0 && gateAt > strip), `${v.id}/${lang}: a gated panel renders above the real data`);
+  assert(strip < 0 || h.indexOf('class="widget', strip) < 0, `${v.id}/${lang}: the waiting strip is not last`);
+  assert((h.match(/class="widget kpiw/g) || []).length <= 4, `${v.id}/${lang}: more than one row of KPI tiles`);
+  assert(/class="widget(?! kpiw)/.test(h.slice(0, strip < 0 ? undefined : strip)), `${v.id}/${lang}: no real chart or table`);
+ }
+}
+
+// images: only https on the offer's own retailer host, escaped; anything else falls back to the rendering
+{
+ const j = T.fixtureContract('partial');
+ const [a, b, c, d] = j.products;
+ const off = (q, k, image) => { if (q.offers?.[k]) q.offers[k].image = image };
+ off(a, 's', 'https://img-product.sephora.me/p/1.jpg?x="><zz>');
+ off(b, 's', 'https://media.alshaya.com/p/2.png');           // wrong retailer's host
+ off(c, 's', 'http://img-product.sephora.me/p/3.jpg');       // not https
+ d.image = 'https://user:pw@img-product.sephora.me/p/4.jpg'; // credentials
+ for (const q of [b, c, d]) for (const k of ['u', 's']) if (q.offers?.[k] && q.offers[k].image === undefined) q.offers[k].image = 'https://evil.example/x.jpg';
+ const DS = T.hydrate(j), by = Object.fromEntries(DS.products.map(p => [p.id, p]));
+ const P = id => by[String(id).replace(/[^\w.:-]/g, '_')];
+ assert(P(a.id) && a.offers?.s, 'fixture: first product needs a Sephora offer');
+ assert.strictEqual(P(a.id).img, 'https://img-product.sephora.me/p/1.jpg?x=%22%3E%3Czz%3E');
+ for (const q of [b, c, d]) if (P(q.id)) assert.strictEqual(P(q.id).img ?? null, null, `${q.id}: off-allowlist image kept`);
+ T.useDS(DS); T.resetAll(); T.afterData();
+ T.S.lang = 'en'; T.S.route = 'product'; T.S.param = P(a.id)?.id; root.innerHTML = ''; T.render();
+ const h = String(root.innerHTML);
+ if (P(a.id)) assert(h.includes('class="pphoto"') && h.includes('referrerpolicy="no-referrer"') && h.includes('loading="lazy"') && !bad(h), 'product photo missing or unsafe');
+}
 console.log('escape.test.js: ok');

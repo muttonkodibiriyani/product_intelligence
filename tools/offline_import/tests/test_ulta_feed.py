@@ -12,11 +12,14 @@ import pytest
 from alembic import command
 from sqlalchemy.engine import make_url
 
+from offline_import.ulta_catalogue import enrich
+from offline_import.ulta_catalogue import export as export_catalogue
 from offline_import.ulta_feed import export, image_url, load, prepare
+from pi_dataset.catalogue import CatalogueDataset
 from pi_db import DATABASE_URL_ENV, alembic_config
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def db() -> Iterator[str]:
     url = os.environ.get(DATABASE_URL_ENV)
     if not url:
@@ -166,3 +169,79 @@ def test_database_replay_evidence_and_combined_export(
     assert offers["unknown"]["image"] is None
     assert offers["unknown"]["url"] is None
     assert offers["fractional"]["series"]["price"] == [None]
+
+
+def test_catalogue_append_replay_and_price_history_preserved(db: str, tmp_path: Path) -> None:
+    image = {
+        "asset_id": "image1",
+        "download_url": "https://media.alshaya.com/a.jpg",
+        "source_url": "https://media.alshaya.com/a.jpg",
+        "sha256": "a" * 64,
+        "width": 533,
+        "height": 800,
+        "bytes": 4000,
+        "content_type": "image/jpeg",
+        "status": "downloaded",
+        "product_skus": ["parent", "child"],
+    }
+    parent = source_record(
+        "parent",
+        product_type="configurable",
+        images=[image],
+        variants=[{"sku": "child"}, {"sku": "missing"}],
+    )
+    child = source_record(
+        "child", parent_products=[{"sku": "parent"}], images=[image], is_variant=True
+    )
+    folder = tmp_path / "prepared"
+    prepare(feed(tmp_path, [parent, child]), folder)
+    load(folder, db)
+    audited = []
+    for r in [parent, child]:
+        audited.append(
+            {
+                "sku": r["sku"],
+                "name": r["name"],
+                "product_type": r["product_type"],
+                "is_variant": bool(r.get("is_variant")),
+                "source_ids": {"stock_id": 100},
+                "parents": r.get("parent_products", []),
+                "children": r.get("variants", []),
+                "grouping_master_sku": "parent",
+                "excluded_parent_summary": r["sku"] == "parent",
+            }
+        )
+    audit = tmp_path / "audit.jsonl"
+    audit.write_text("".join(json.dumps(r) + "\n" for r in audited))
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps([image]))
+    with psycopg.connect(db) as conn:
+        before = conn.execute(
+            "SELECT row_to_json(o) FROM offer_observation o ORDER BY idempotency_key"
+        ).fetchall()
+        original = conn.execute(
+            "SELECT listing_id,observed_at,labels FROM listing_content ORDER BY listing_id"
+        ).fetchall()
+    assert enrich(db, audit, manifest, "b" * 64)["content_rows_to_append"] == 2
+    assert enrich(db, audit, manifest, "b" * 64, apply=True)["content_rows_to_append"] == 2
+    assert enrich(db, audit, manifest, "b" * 64, apply=True)["content_rows_to_append"] == 0
+    output = tmp_path / "catalogue.json"
+    export_catalogue(db, output)
+    catalogue = CatalogueDataset.model_validate_json(output.read_bytes())
+    assert set(catalogue.records) == {"parent", "child"}
+    assert len(catalogue.records["parent"].children) == 2
+    assert catalogue.records["child"].captured_at.isoformat() == "2026-10-01T00:00:00+00:00"
+    assert catalogue.imported_at > catalogue.records["child"].captured_at
+    with psycopg.connect(db) as conn:
+        assert (
+            conn.execute(
+                "SELECT row_to_json(o) FROM offer_observation o ORDER BY idempotency_key"
+            ).fetchall()
+            == before
+        )
+        for lid, observed_at, labels in original:
+            assert conn.execute(
+                "SELECT labels FROM listing_content WHERE listing_id=%s AND observed_at=%s",
+                (lid, observed_at),
+            ).fetchone() == (labels,)
+        assert conn.execute("SELECT count(*) FROM listing_content").fetchone() == (4,)

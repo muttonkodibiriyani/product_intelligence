@@ -1,6 +1,7 @@
 {
   "app": {
     "name": "Product Intelligence",
+    "tagline": "UAE retail pricing",
     "skip": "Skip to content",
     "switchLang": "العربية",
     "switchLangLabel": "Switch to Arabic",
@@ -96,6 +97,33 @@
       "reviewed": "Reviewed by people",
       "proposed": "Proposed, not reviewed",
       "unreviewed": "Not reviewed"
+    },
+    "landing": {
+      "overview": "Overview",
+      "compareTab": "Compare",
+      "tabs": "Dashboard views",
+      "subtitle": "{retailer} · one snapshot, {date}",
+      "sample": "Data: {retailer}, {market}.",
+      "compareNote": "Comparison needs a second retailer or a second collection day. These cards show the layout they will use.",
+      "indexTitle": "Price index over time",
+      "indexQuestion": "How the basket's price moves against the base retailer, day by day.",
+      "indexReason": "Needs more than one collection day; this dataset has one snapshot.",
+      "gapTitle": "Price gap distribution",
+      "gapQuestion": "How far matched products' prices sit apart between two retailers.",
+      "gapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "overlapTitle": "Assortment overlap",
+      "overlapQuestion": "Which products both retailers carry, and which only one does.",
+      "overlapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "openCompare": "Open compare",
+      "datasetTitle": "Dataset",
+      "withheld": {
+        "capability_off": "Promotions are not collected for this retailer yet.",
+        "field_not_collected": "Needs regular prices to measure discounts; this snapshot does not collect them.",
+        "cohort_too_small": "Too few products carry both a price and a regular price to measure discounts.",
+        "other": "Discounts can't be measured in this snapshot.",
+        "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
+        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions."
+      }
     }
   },
   "explore": {
@@ -158,7 +186,8 @@
       "overCap": "Exports stop at 50,000 rows. Narrow the filters to export.",
       "busy": "Two exports are already running. Try again in {seconds} s.",
       "nothing": "Nothing to export."
-    }
+    },
+    "noImage": "No image"
   },
   "gap": {
     "otherDearer": "{other} dearer",
@@ -246,7 +275,8 @@
     "noPrice": "No price",
     "backCompare": "Back to comparison",
     "backPromotions": "Back to promotions",
-    "backLaunches": "Back to launches"
+    "backLaunches": "Back to launches",
+    "noImage": "No image"
   },
   "compare": {
     "title": "Compare prices",
@@ -347,5 +377,33 @@
   "retailerChecks": {
     "legend": "Retailers",
     "hint": "None ticked shows every retailer."
+  },
+  "card": {
+    "loading": "Loading…",
+    "preview": "Layout preview — not collected yet.",
+    "empty": "Nothing to show for this selection."
+  },
+  "catalogue": {
+    "title": "Images and variants",
+    "hint": "Choose a SKU to view its images. The prices above belong to the offer SKU.",
+    "loading": "Loading images and variants…",
+    "returnSku": "Return to offer SKU {sku}",
+    "capture": "Source captured {captured} · metadata imported {imported}",
+    "type": "Record type",
+    "variant": "Variant SKU",
+    "listing": "Product listing",
+    "stockId": "Stock system ID",
+    "unknown": "Unknown",
+    "identifiers": "Source identifiers",
+    "catalogueId": "Catalogue product ID",
+    "externalId": "External product ID",
+    "parentSummary": "This parent listing groups its variants and is excluded from product counts.",
+    "parents": "Parent products",
+    "variants": "Variant SKUs",
+    "noImages": "No captured image available",
+    "images": "Product images",
+    "imageNumber": "Image {n} of {count}",
+    "openImage": "Open image",
+    "notCaptured": "Not captured"
   }
 }
