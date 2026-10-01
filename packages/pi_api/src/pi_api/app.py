@@ -78,6 +78,9 @@ from pi_api.catalog import (
     product_detail,
     product_page,
 )
+from pi_api.catalogue import CatalogueDetail, CatalogueSource, CatalogueSummary, LoadedCatalogue
+from pi_api.catalogue import detail as catalogue_detail
+from pi_api.catalogue import summary as catalogue_summary
 from pi_api.config import Settings
 from pi_api.source import (
     AmbiguousDatasetError,
@@ -101,6 +104,7 @@ from pi_metrics import (
     PriceIndex,
     Promotions,
     ReviewsSummary,
+    Status,
     assortment_gaps,
     availability,
     compare,
@@ -400,7 +404,7 @@ def _install_handlers(api: FastAPI) -> None:
 
 def _selected(query: ContractModel, data: object) -> frozenset[str]:
     """The retailer or context ids a request is about; empty means every one."""
-    if isinstance(data, Summary):
+    if isinstance(data, Summary | CatalogueDetail | CatalogueSummary):
         return frozenset({data.retailer})
     if isinstance(data, ProductDetail | AdminProductDetail):
         return frozenset(o.retailer for o in data.offers) or frozenset({""})
@@ -440,6 +444,7 @@ def build_api(
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
     clock: Callable[[], datetime] = utc_now,
+    catalogues: CatalogueSource | None = None,
 ) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
@@ -521,7 +526,46 @@ def build_api(
     _metric_routes(api, source)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
+    _catalogue_routes(api, source, catalogues, images)
     return api
+
+
+def _catalogue_routes(
+    api: FastAPI, source: SnapshotSource, catalogues: CatalogueSource | None, images: EvidenceHosts
+) -> None:
+    def selected(retailer: str, query: ScopeQuery) -> tuple[Loaded, LoadedCatalogue]:
+        prices = source.select(query.market, query.scope)
+        if catalogues is None:
+            raise NotFoundError
+        return prices, catalogues.select(retailer, prices)
+
+    @api.get(f"{PREFIX}/catalogues/{{retailer}}", response_model=Envelope[CatalogueSummary])
+    def get_catalogue(
+        retailer: ProductId, query: Annotated[ScopeQuery, Query()], _: Viewer
+    ) -> Envelope[CatalogueSummary]:
+        prices, catalogue = selected(retailer, query)
+        data = catalogue_summary(catalogue)
+        return respond(
+            prices,
+            "catalogue",
+            query,
+            Metric(status=Status.OK, data=data, as_of=data.captured_to.date()),
+        )
+
+    @api.get(
+        f"{PREFIX}/catalogues/{{retailer}}/skus/{{sku}}", response_model=Envelope[CatalogueDetail]
+    )
+    def get_catalogue_sku(
+        retailer: ProductId, sku: ProductId, query: Annotated[ScopeQuery, Query()], _: Viewer
+    ) -> Envelope[CatalogueDetail]:
+        prices, catalogue = selected(retailer, query)
+        data = catalogue_detail(catalogue, sku, images)
+        return respond(
+            prices,
+            "catalogue_sku",
+            query,
+            Metric(status=Status.OK, data=data, as_of=data.record.captured_at.date()),
+        )
 
 
 def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
@@ -808,8 +852,9 @@ def create_app(  # noqa: PLR0913 -- the deployment's settings, keyword-only past
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
     clock: Callable[[], datetime] = utc_now,
+    catalogues: CatalogueSource | None = None,
 ) -> ASGIApp:
-    api = build_api(source, evidence_hosts, image_hosts, clock)
+    api = build_api(source, evidence_hosts, image_hosts, clock, catalogues)
     return NoStore(ServerErrors(Authenticate(RateLimit(api, buckets), verifier)))
 
 
@@ -831,6 +876,8 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         allow_test=settings.allow_test,
     )
     source.load_all()
+    catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)
+    catalogues.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())
     buckets = TokenBuckets(settings.rate_per_second, settings.rate_burst)
     return create_app(
@@ -839,4 +886,5 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         buckets,
         evidence_hosts=settings.evidence_hosts,
         image_hosts=settings.image_hosts,
+        catalogues=catalogues,
     )

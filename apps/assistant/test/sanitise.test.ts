@@ -48,6 +48,12 @@ describe("sanitiseData", () => {
     });
   });
 
+  it("wraps catalogue captions and identifiers and drops maps keyed by retailer option IDs", () => {
+    expect(
+      sanitiseData({ caption: "50", catalogueId: "123", optionValues: { unsafe: "50" } }, hosts),
+    ).toEqual({ caption: { untrusted: "50" }, catalogueId: { untrusted: "123" } });
+  });
+
   it("filters URLs", () => {
     expect(
       sanitiseData({ url: "https://evil.example/", imageUrl: "https://shop.example/i.png" }, hosts),
