@@ -59,6 +59,13 @@ def test_a_pack_of_one_is_not_a_multipack() -> None:
     ("text", "count"),
     [
         ("2 x 50 ml", 2),
+        ("50 ml x 2", 2),
+        ("50ml \u00d72", 2),
+        ("50ML X 2", 2),
+        ("x2 50ml", 2),
+        ("\u00d7 3 30 g", 3),
+        ("1.5 x 30ml", Decimal("1.5")),
+        ("30ml x 1,5", Decimal("1.5")),
         ("3x15ml", 3),
         ("Pack of 4", 4),
         ("set of 3", 3),
@@ -68,10 +75,12 @@ def test_a_pack_of_one_is_not_a_multipack() -> None:
         ("['2 x 30 ml']", 2),
         ("50 ml", None),
         ("SPF 50", None),
+        ("Max 50 ml", None),
+        ("1.7 fl ozx2", 2),
         (None, None),
     ],
 )
-def test_pack_count(text: str | None, count: int | None) -> None:
+def test_pack_count(text: str | None, count: int | Decimal | None) -> None:
     assert pack_count(text) == count
 
 
@@ -100,6 +109,13 @@ def test_parse_count(text: str, count: int | None) -> None:
         (Decimal(90), "60 capsules", BasePrice(Decimal("1.5000"), Basis.PER_UNIT)),
         (Decimal(120), "['50', '90'] ['ML']", None),  # ambiguous size list
         (Decimal(120), "2 x 50 ml", None),  # multi-pack
+        (Decimal(120), "50 ml x 2", None),
+        (Decimal(120), "50ml \u00d72", None),
+        (Decimal(120), "x2 50ml", None),
+        (Decimal(120), "1.5 x 30ml", None),  # a non-integer multiplier is ambiguous
+        (Decimal(120), "1 x 50 ml", BasePrice(Decimal("240.0000"), Basis.PER_100_ML)),
+        (Decimal(120), "Kit 3 pieces", None),  # kits and sets hold different items
+        (Decimal(120), "Gift Set 50 ml", None),
         (Decimal(120), "60 capsules, 30 ml", None),  # size and count: which basis?
         (Decimal(120), "[Limited] 50 ml", BasePrice(Decimal("240.0000"), Basis.PER_100_ML)),
         (Decimal(120), "NOSIZE", None),
@@ -135,3 +151,18 @@ def test_scaling_the_count_by_k_divides_the_unit_price_by_k(price: Decimal, n: i
     assert base is not None
     assert scaled is not None
     assert abs(scaled.amount - base.amount / k) <= UNIT_PRICE_Q
+
+
+_SIZES = st.builds(
+    lambda n, unit, space: f"{n}{space}{unit}",
+    st.integers(min_value=1, max_value=1000),
+    st.sampled_from(["ml", "ML", "g", "fl oz"]),
+    st.sampled_from(["", " "]),
+)
+_TIMES = st.sampled_from([" x ", "x", " X ", "\u00d7", " \u00d7 ", "x ", " x"])
+
+
+@given(_PRICES, _SIZES, st.integers(min_value=2, max_value=48), _TIMES)
+def test_a_multipack_never_gets_a_unit_price(price: Decimal, size: str, n: int, times: str) -> None:
+    for label in (f"{size}{times}{n}", f"{n}{times}{size}", f"x{n} {size}"):
+        assert derive_unit_price(price, label) is None, label

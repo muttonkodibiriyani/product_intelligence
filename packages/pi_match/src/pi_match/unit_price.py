@@ -17,12 +17,18 @@ UNIT_PRICE_Q = Decimal("0.0001")
 #: Volume and mass are quoted per 100 base units (the usual shelf-label basis).
 PER = Decimal(100)
 
+_N = r"(\d+(?:[.,]\d+)?)"  # a multiplier; a non-integer one ("1.5 x 30ml") is ambiguous
+_X = r"\s*[x\u00d7]\s*"  # x, X or the multiplication sign, with or without spaces
 _PACK_RES = (
-    re.compile(r"(?<![\w.])(\d+)\s*[x\u00d7]\s*\d", re.IGNORECASE),  # "2 x 50 ml", "3x15ml"
+    re.compile(rf"(?<![\w.]){_N}{_X}\d", re.IGNORECASE),  # "2 x 50 ml", "3x15ml", "1.5 x 30ml"
+    re.compile(rf"\d\s*(?:[a-z.]+\s*){{0,3}}{_X}{_N}(?![\w.])", re.IGNORECASE),  # "50 ml x 2"
+    re.compile(rf"(?<![\w.])[x\u00d7]\s*{_N}(?![\w.])", re.IGNORECASE),  # "x2 50ml"
     re.compile(r"\b(?:pack|set|box) of (\d+)\b", re.IGNORECASE),
     re.compile(r"\b(\d+)[\s-]*(?:pack|pk)\b", re.IGNORECASE),
 )
 _PACK_WORDS = re.compile(r"\b(duo|trio)\b", re.IGNORECASE)
+#: Kits and sets hold different items, so neither a size nor a count prices them.
+_KIT_RE = re.compile(r"\b(?:kits?|sets?|bundles?|collections?)\b", re.IGNORECASE)
 _COUNT_RE = re.compile(
     r"(?<![\w.])(\d+)\s*(?:pcs?|pieces?|capsules?|sheets?|wipes?|pads?|patches|count|ct)\b",
     re.IGNORECASE,
@@ -45,19 +51,20 @@ class BasePrice:
     basis: Basis
 
 
-def pack_count(text: str | None) -> int | None:
-    """The item count of a multi-pack in ``text`` ("2 x 50 ml", "pack of 3"), else None.
+def pack_count(text: str | None) -> Decimal | None:
+    """The multiplier of a multi-pack in ``text`` ("2 x 50 ml", "50 ml x 2", "pack of 3"), or None.
 
-    A list (see ``list_groups``) is read item by item; any item naming a pack counts.
+    A list (see ``list_groups``) is read item by item; any item naming a pack counts. The
+    multiplier may be a non-integer ("1.5 x 30ml"); ``price_per_base`` refuses anything but 1.
     """
     for item in _texts(text):
         for pattern in _PACK_RES:
             match = pattern.search(item)
             if match is not None:
-                return int(match.group(1))
+                return Decimal(match.group(1).replace(",", "."))
         word = _PACK_WORDS.search(item)
         if word is not None:
-            return 2 if word.group(1).lower() == "duo" else 3
+            return Decimal(2 if word.group(1).lower() == "duo" else 3)
     return None
 
 
@@ -72,7 +79,7 @@ def price_per_base(
     size: Size | None = None,
     *,
     count: int | None = None,
-    pack: int | None = None,
+    pack: Decimal | int | None = None,
 ) -> BasePrice | None:
     """``price`` per 100 ml / 100 g (from ``size``) or per unit (from ``count``), else None.
 
@@ -95,8 +102,10 @@ def derive_unit_price(price: Decimal | None, size_text: str | None) -> BasePrice
     """``price_per_base`` from a published size label, parsed here.
 
     The label gives a size (``parse_size``: an ambiguous list gives none) or a piece count; both
-    at once, or a multi-pack, give None.
+    at once, a multi-pack, or a kit or set give None.
     """
+    if any(_KIT_RE.search(item) for item in _texts(size_text)):
+        return None
     size, count = parse_size(size_text), parse_count(size_text)
     return price_per_base(price, size, count=count, pack=pack_count(size_text))
 
