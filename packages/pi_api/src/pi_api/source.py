@@ -287,6 +287,19 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
 
 
 def _corrected(loaded: Loaded) -> Loaded:
-    """The view as served: imported retailers corrected (``pi_api.dq``), the rest unchanged."""
+    """The view as served: imported retailers corrected (``pi_api.dq``), the rest unchanged.
+
+    A collected source's ``cutoff`` is its own latest capture (``source_infos``); one without
+    offers would fall back to the file's, so it is capped at the served (collected) cutoff and
+    never reads as the import time.
+    """
     dataset, imported = imported_view(loaded.dataset)
-    return replace(loaded, dataset=dataset, imported=imported) if imported else loaded
+    if not imported:
+        return loaded
+    shops = {shop.retailer for shop in imported}
+    cutoff = dataset.meta.cutoff
+    sources = tuple(
+        s if s.source in shops or s.cutoff <= cutoff else s.model_copy(update={"cutoff": cutoff})
+        for s in loaded.sources
+    )
+    return replace(loaded, dataset=dataset, imported=imported, sources=sources)

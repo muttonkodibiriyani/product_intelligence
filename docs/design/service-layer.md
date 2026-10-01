@@ -548,7 +548,10 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
 - **Import day and per-source views (API 1.6.0).** The `snapshot_import_date` `<date>` is the
   import's local day in the market time zone, the day `meta.dates` count in (an import at
   21:15Z is 1 October in Dubai). The view applies to every served view: a whole file, and a
-  composed per-source view after composition from the unchanged files.
+  composed per-source view after composition from the unchanged files. `/meta` `sources[].cutoff`
+  is each source's own latest `capturedAt` (the file's cutoff only for a source without
+  offers), and a collected source's is never after the served `meta.cutoff`, so in a mixed file
+  only the imported source shows the import time.
 
 A dataset without an imported retailer is served as the same object, byte for byte.
 

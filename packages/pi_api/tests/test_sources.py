@@ -79,6 +79,21 @@ def test_meta_lists_each_source_with_its_own_cutoff(tmp_path: Path) -> None:
     assert sorted(r["id"] for r in data["retailers"]) == [SEPHORA, ULTA]
 
 
+def test_a_composed_source_cutoff_is_its_own_latest_capture(tmp_path: Path) -> None:
+    """Reviewer, #120: a slice keeps its file's meta, so the cutoff comes from the source's
+    offers, not from another retailer's later capture in the same file."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        product["offers"][ULTA]["evidence"]["capturedAt"] = "2026-09-21T12:00:00Z"
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    for loaded in source.datasets():
+        cutoffs = {s.source: s.cutoff.isoformat() for s in loaded.sources}
+        assert cutoffs[ULTA] == "2026-09-21T12:00:00+00:00", loaded.path
+
+
 def test_the_view_waits_for_every_assigned_file(tmp_path: Path) -> None:
     write(tmp_path, snapshot({"p1": BOTH}, dates=OLD), COMBINED)
     source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)

@@ -243,6 +243,20 @@ def test_a_later_import_never_sets_the_cutoff_or_as_of_of_collected_data(tmp_pat
     }
 
 
+def test_meta_sources_never_give_a_collected_source_the_import_time(tmp_path: Path) -> None:
+    """Reviewer, #120: each source's cutoff is its own latest capture, in a whole mixed file too;
+    a source without offers is capped at the collected cutoff."""
+    write(tmp_path, load(late_import_doc()))
+    sources = get(make_client(tmp_path)[0], "/meta")["data"]["sources"]
+    cutoffs = {s["source"]: s["cutoff"] for s in sources}
+    assert cutoffs == {
+        "shop_a": COLLECTED_AT,
+        "shop_c": COLLECTED_AT,
+        "shop_d": COLLECTED_AT,  # no offers: the file's cutoff, capped
+        ULTA: IMPORTED_AT,  # the import keeps its own
+    }
+
+
 def test_the_as_of_cap_is_the_cutoff_day_in_the_market_time_zone(tmp_path: Path) -> None:
     """Reviewer, #135: 21:30Z on 29 Sep is 30 Sep 01:30 in Dubai, the day meta.dates count in."""
     d = late_import_doc()

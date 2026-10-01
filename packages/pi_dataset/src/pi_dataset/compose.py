@@ -73,17 +73,23 @@ class Composed:
 
 
 def source_infos(ds: DatasetV3) -> tuple[SourceInfo, ...]:
-    """One entry per retailer of ``ds``, each with the file's own meta."""
+    """One entry per retailer of ``ds``, each with the file's own meta, except ``cutoff``: the
+    latest ``capturedAt`` of the retailer's own offers (the file's cutoff if it has none), so a
+    file holding several retailers never gives one of them another's later capture."""
     retailer_of = {c.id: c.retailer for c in ds.meta.contexts}
     products: dict[str, int] = {r.id: 0 for r in ds.meta.retailers}
+    latest: dict[str, datetime] = {}
     for product in ds.products:
         for retailer in {retailer_of[cid] for cid in product.offers}:
             products[retailer] += 1
+        for cid, offer in product.offers.items():
+            at, retailer = offer.evidence.captured_at, retailer_of[cid]
+            latest[retailer] = max(latest.get(retailer, at), at)
     m = ds.meta
     return tuple(
         SourceInfo(
             source=r.id,
-            cutoff=m.cutoff,
+            cutoff=latest.get(r.id, m.cutoff),
             generated_at=m.generated_at,
             last_date=m.dates[-1],
             match_stage=m.match_stage,
