@@ -1,0 +1,16 @@
+{
+  "benefit": ["benefit cosmetics"],
+  "bobbi brown": ["bobbi brown cosmetics"],
+  "dior": ["christian dior"],
+  "fenty beauty": ["fenty", "fenty beauty by rihanna"],
+  "huda beauty": ["huda", "hudabeauty"],
+  "kiehls": ["kiehls since 1851"],
+  "kylie": ["kylie cosmetics by kylie jenner", "kylie jenner"],
+  "loreal paris": ["loreal"],
+  "mac": ["m a c", "mac cosmetics"],
+  "nars": ["nars cosmetics"],
+  "rare beauty": ["rare"],
+  "the ordinary": ["the ordinary deciem"],
+  "too faced": ["too faced cosmetics"],
+  "yves saint laurent": ["ysl", "ysl beauty", "yves saint laurent beaute"]
+}

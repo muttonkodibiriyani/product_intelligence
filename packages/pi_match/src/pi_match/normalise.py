@@ -4,35 +4,15 @@ Nothing is inferred beyond the text: a size, shade or concentration that is not 
 the record stays ``None``.
 """
 
+import json
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
-
-#: Brand spellings that differ between retailers, keyed by the normalised spelling.
-BRAND_ALIASES: dict[str, str] = {
-    "ysl": "yves saint laurent",
-    "ysl beauty": "yves saint laurent",
-    "yves saint laurent beaute": "yves saint laurent",
-    "christian dior": "dior",
-    "m a c": "mac",
-    "mac cosmetics": "mac",
-    "benefit cosmetics": "benefit",
-    "nars cosmetics": "nars",
-    "too faced cosmetics": "too faced",
-    "bobbi brown cosmetics": "bobbi brown",
-    "the ordinary deciem": "the ordinary",
-    "kiehls since 1851": "kiehls",
-    "loreal": "loreal paris",
-    "fenty": "fenty beauty",
-    "rare": "rare beauty",
-    "huda": "huda beauty",
-    "hudabeauty": "huda beauty",
-    "kylie cosmetics by kylie jenner": "kylie",
-    "kylie jenner": "kylie",
-    "fenty beauty by rihanna": "fenty beauty",
-}
+from importlib import resources
+from types import MappingProxyType
 
 #: Trailing words dropped from a brand when something remains, e.g. "Nars Cosmetics".
 _BRAND_SUFFIXES = ("cosmetics", "makeup", "skincare", "paris", "london", "new york")
@@ -105,6 +85,53 @@ def fold(text: str) -> str:
     lowered = ascii_text.lower().replace("&", " and ").replace("+", " and ")
     lowered = re.sub("['\u2019`]", "", lowered)  # "Kiehl's" -> "kiehls", "L'Oréal" -> "loreal"
     return " ".join(t.replace(",", ".") for t in _TOKEN_RE.findall(lowered))
+
+
+def _unique_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """``json.loads`` hook: a repeated key is an error, not "the last one wins"."""
+    keys = [key for key, _ in pairs]
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    if duplicates:
+        msg = f"brand aliases: canonical brand listed twice: {duplicates}"
+        raise ValueError(msg)
+    return dict(pairs)
+
+
+def parse_brand_aliases(raw: str) -> dict[str, str]:
+    """``brand_aliases.json`` (``{canonical: [alias, ...]}``, the shape of ``brand.aliases``)
+    inverted to ``alias -> canonical``. Every spelling must already be ``fold``ed.
+
+    Raises ``ValueError`` on any other shape: a repeated canonical, a value that isn't a list of
+    strings (a bare string would otherwise become one alias per character), a repeated alias,
+    an alias that is itself canonical, or an unfolded spelling.
+    """
+    data = json.loads(raw, object_pairs_hook=_unique_keys)
+    if not isinstance(data, dict):
+        msg = "brand aliases: expected an object {canonical: [alias, ...]}"
+        raise ValueError(msg)
+    aliases: dict[str, str] = {}
+    for canonical, spellings in data.items():
+        if not isinstance(spellings, list) or not all(isinstance(a, str) for a in spellings):
+            msg = f"brand aliases: {canonical!r} must map to a list of strings"
+            raise ValueError(msg)
+        for alias in spellings:
+            if alias in aliases or alias in data:
+                msg = f"brand alias {alias!r} is listed twice or is itself a canonical brand"
+                raise ValueError(msg)
+            if fold(alias) != alias or fold(canonical) != canonical:
+                msg = f"brand alias {alias!r} -> {canonical!r} is not folded"
+                raise ValueError(msg)
+            aliases[alias] = canonical
+    return aliases
+
+
+#: Brand spellings that differ between retailers, keyed by the normalised spelling. Data, not
+#: code (ADR-0007 §4): edit ``brand_aliases.json``, which a reviewer reads as a plain list.
+BRAND_ALIASES: Mapping[str, str] = MappingProxyType(
+    parse_brand_aliases(
+        resources.files("pi_match").joinpath("brand_aliases.json").read_text(encoding="utf-8")
+    )
+)
 
 
 def normalise_brand(brand: str) -> str:

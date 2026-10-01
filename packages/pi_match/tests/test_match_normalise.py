@@ -1,10 +1,13 @@
+import json
 from decimal import Decimal
+from importlib import resources
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from pi_match.normalise import (
+    BRAND_ALIASES,
     Concentration,
     ItemKind,
     Shade,
@@ -14,6 +17,7 @@ from pi_match.normalise import (
     item_kind,
     name_tokens,
     normalise_brand,
+    parse_brand_aliases,
     parse_shade,
     parse_size,
     valid_gtin,
@@ -52,6 +56,37 @@ from pi_match.normalise import (
 )
 def test_normalise_brand(raw: str, key: str) -> None:
     assert normalise_brand(raw) == key
+
+
+def test_brand_aliases_are_reviewed_data() -> None:
+    """ADR-0007 §4: a sorted ``{canonical: [aliases]}`` file, the shape of ``brand.aliases``."""
+    raw = resources.files("pi_match").joinpath("brand_aliases.json").read_text(encoding="utf-8")
+    data: dict[str, list[str]] = json.loads(raw)
+    assert list(data) == sorted(data)
+    assert all(spellings == sorted(spellings) and spellings for spellings in data.values())
+    assert dict(BRAND_ALIASES) == {a: c for c, spellings in data.items() for a in spellings}
+    assert BRAND_ALIASES["ysl"] == "yves saint laurent"
+
+
+@pytest.mark.parametrize(
+    ("raw", "error"),
+    [
+        ('{"dior": ["christian dior"], "ck": ["christian dior"]}', "listed twice"),
+        ('{"dior": ["ck"], "ck": ["calvin klein"]}', "itself a canonical"),
+        ('{"dior": ["Christian Dior"]}', "not folded"),
+        ('{"Dior": ["christian dior"]}', "not folded"),
+        # #79 Reviewer: json.loads would keep only the last "dior" ...
+        ('{"dior": ["christian dior"], "dior": ["cd"]}', "canonical brand listed twice"),
+        # ... and iterate a bare string as one alias per character (c -> dior, d -> dior).
+        ('{"dior": "cd"}', "must map to a list of strings"),
+        ('{"dior": [1]}', "must map to a list of strings"),
+        ('{"dior": null}', "must map to a list of strings"),
+        ('["dior"]', "expected an object"),
+    ],
+)
+def test_parse_brand_aliases_rejects(raw: str, error: str) -> None:
+    with pytest.raises(ValueError, match=error):
+        parse_brand_aliases(raw)
 
 
 def test_fold() -> None:

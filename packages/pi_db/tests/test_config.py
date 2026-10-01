@@ -9,6 +9,7 @@ from alembic.script import ScriptDirectory
 
 import pi_core
 import pi_db
+import pi_profiles
 from pi_db import DATABASE_URL_ENV, DatabaseUrlMissingError, alembic_config, database_url
 
 PI_CORE_ENUM_TYPES: dict[str, type[StrEnum]] = {
@@ -63,8 +64,8 @@ def test_alembic_config_escapes_percent_in_url() -> None:
 
 def test_single_linear_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0003"]
-    assert [r.revision for r in script.walk_revisions()] == ["0003", "0002", "0001"]
+    assert script.get_heads() == ["0004"]
+    assert [r.revision for r in script.walk_revisions()] == ["0004", "0003", "0002", "0001"]
 
 
 def test_0002_only_qualifies_the_enum() -> None:
@@ -154,3 +155,9 @@ def test_offline_sql_renders(capsys: pytest.CaptureFixture[str]) -> None:
     assert "GRANT SELECT, INSERT ON evidence" in sql
     assert "ALTER TYPE fetch_method ADD VALUE IF NOT EXISTS 'offline_import'" in sql
     assert "WHEN 'offline_import' THEN 0" in sql
+    assert "ADD COLUMN attributes_schema text" in sql
+
+
+def test_attributes_schema_pattern_matches_pi_profiles() -> None:
+    """The DB CHECK and the profile registry accept exactly the same refs."""
+    assert pi_profiles.REF_PATTERN.pattern == _migration("0004").REF_PATTERN
