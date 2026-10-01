@@ -1,9 +1,9 @@
 {
   "caveats": [
     {
-      "ar": "1 تقييمات في shop_a تستخدم مقياساً آخر واستُبعدت.",
+      "ar": "تقييمات في shop_a تستخدم مقياساً آخر واستُبعدت: 1.",
       "code": "rating_scale_mixed",
-      "en": "1 ratings at shop_a use another scale and are left out.",
+      "en": "1 rating at shop_a uses another scale and is left out.",
       "params": {
         "count": "1",
         "retailer": "shop_a"
@@ -52,7 +52,7 @@
     "en": "Fewer than 5 comparable items: no summary is shown."
   },
   "meta": {
-    "apiVersion": "1.2.0",
+    "apiVersion": "1.2.1",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "reviews_summary",

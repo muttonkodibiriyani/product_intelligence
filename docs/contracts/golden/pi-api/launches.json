@@ -1,9 +1,9 @@
 {
   "caveats": [
     {
-      "ar": "1 عناصر ظهرت لأول مرة بعد جمع غير مكتمل لا تُعرض كإطلاقات.",
+      "ar": "عناصر ظهرت لأول مرة بعد جمع غير مكتمل ولا تُعرض كإطلاقات: 1.",
       "code": "launches_withheld",
-      "en": "1 items first seen after an incomplete run are not shown as launches.",
+      "en": "1 item first seen after an incomplete run is not shown as launches.",
       "params": {
         "count": "1"
       }
@@ -24,7 +24,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.2.0",
+    "apiVersion": "1.2.1",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "launches",

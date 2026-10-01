@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import string
 import unicodedata
 from datetime import datetime
 from typing import Annotated, Any
@@ -12,7 +13,7 @@ from pydantic import Field, PlainSerializer
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.2.0"
+API_VERSION = "1.2.1"
 _CONTROLS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
 
@@ -82,32 +83,41 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         en="{retailer} is only partly collected.", ar="بيانات {retailer} مجمّعة جزئياً."
     ),
     CaveatCode.EARLY_EXCLUDED: Localized(
-        en="{count} early sample items are not counted.",
-        ar="لم تُحتسب {count} من عناصر العينة المبكرة.",
+        en="{count} early sample {count:item is|items are} not counted.",
+        ar="عناصر العينة المبكرة غير المحتسبة: {count}.",
     ),
     CaveatCode.LAUNCHES_WITHHELD: Localized(
-        en="{count} items first seen after an incomplete run are not shown as launches.",
-        ar="{count} عناصر ظهرت لأول مرة بعد جمع غير مكتمل لا تُعرض كإطلاقات.",
+        en=(
+            "{count} {count:item|items} first seen after an incomplete run"
+            " {count:is|are} not shown as launches."
+        ),
+        ar="عناصر ظهرت لأول مرة بعد جمع غير مكتمل ولا تُعرض كإطلاقات: {count}.",
     ),
     CaveatCode.REMOVED_UNCONFIRMED: Localized(
-        en="{count} removals are unconfirmed and shown as not observed.",
-        ar="{count} حالات إزالة غير مؤكدة وتُعرض كغير مرصودة.",
+        en="{count} {count:removal is|removals are} unconfirmed and shown as not observed.",
+        ar="حالات إزالة غير مؤكدة وتُعرض كغير مرصودة: {count}.",
     ),
     CaveatCode.NOT_OBSERVED_EXCLUDED: Localized(
-        en="{count} items were not observed and are left out.",
-        ar="{count} عناصر لم تُرصد واستُبعدت.",
+        en="{count} {count:item was|items were} not observed and {count:is|are} left out.",
+        ar="عناصر لم تُرصد واستُبعدت: {count}.",
     ),
     CaveatCode.HISTORY_OFF: Localized(
         en="History is not collected: only the latest date is shown.",
         ar="لا يُجمع السجل: يُعرض آخر تاريخ فقط.",
     ),
     CaveatCode.RATING_SCALE_MIXED: Localized(
-        en="{count} ratings at {retailer} use another scale and are left out.",
-        ar="{count} تقييمات في {retailer} تستخدم مقياساً آخر واستُبعدت.",
+        en=(
+            "{count} {count:rating|ratings} at {retailer} {count:uses|use} another scale"
+            " and {count:is|are} left out."
+        ),
+        ar="تقييمات في {retailer} تستخدم مقياساً آخر واستُبعدت: {count}.",
     ),
     CaveatCode.SIZE_LABELS_DIFFER: Localized(
-        en="{count} items have equal sizes labelled differently: {base} vs {other}.",
-        ar="{count} عناصر بأحجام متساوية وتسميات مختلفة: {base} مقابل {other}.",
+        en=(
+            "{count} {count:item has|items have} equal sizes labelled differently:"
+            " {base} vs {other}."
+        ),
+        ar="عناصر بأحجام متساوية وتسميات مختلفة ({base} مقابل {other}): {count}.",
     ),
     CaveatCode.CHANNEL_DIFFERS: Localized(
         en="The two sides are different channels: {base} vs {other}.",
@@ -115,11 +125,11 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
     ),
     CaveatCode.SIZE_LABELS_DIFFER_TOTAL: Localized(
         en=(
-            "{count} items have equal sizes labelled differently across {pairs} label pairs;"
-            " the most frequent are listed."
+            "{count} {count:item has|items have} equal sizes labelled differently across"
+            " {pairs} label {pairs:pair|pairs}; the most frequent are listed."
         ),
         ar=(
-            "{count} عناصر بأحجام متساوية وتسميات مختلفة عبر {pairs} أزواج من التسميات؛"
+            "عناصر بأحجام متساوية وتسميات مختلفة: {count}، عبر أزواج من التسميات عددها {pairs}؛"
             " نعرض الأكثر تكرارًا."
         ),
     ),
@@ -133,13 +143,27 @@ class CaveatView(ContractModel):
     ar: str
 
 
+class _Plural(string.Formatter):
+    """``{n:one|other}`` picks by the count param, which is a decimal string."""
+
+    def format_field(self, value: Any, format_spec: str) -> str:
+        one, bar, other = format_spec.partition("|")
+        if bar:
+            return one if value == "1" else other
+        return str(super().format_field(value, format_spec))
+
+
+_PLURAL = _Plural()
+
+
 def render(caveat: Caveat) -> CaveatView:
+    """English counts agree in number; Arabic ends in ``…: n``, which reads right for any n."""
     text = CAVEAT_TEXT[caveat.code]
     return CaveatView(
         code=caveat.code,
         params=caveat.params,
-        en=text.en.format_map(caveat.params),
-        ar=text.ar.format_map(caveat.params),
+        en=_PLURAL.vformat(text.en, (), caveat.params),
+        ar=_PLURAL.vformat(text.ar, (), caveat.params),
     )
 
 

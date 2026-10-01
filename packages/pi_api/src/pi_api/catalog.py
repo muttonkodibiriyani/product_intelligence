@@ -55,8 +55,12 @@ MAX_TEXT = 120
 ShortText = Annotated[str, Field(min_length=1, max_length=MAX_TEXT)]
 Values = Annotated[tuple[ShortText, ...], Field(max_length=MAX_VALUES)]
 DecimalText = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,6})?$")]
-#: ``<key>:<value>``; the key is a declared facet attribute (``meta.attributeSet``).
-AttrText = Annotated[str, Field(pattern=r"^[a-z][A-Za-z0-9_]{1,62}:.+$", max_length=MAX_TEXT)]
+#: ``<key>:<value>``; the key is a declared facet attribute (``meta.attributeSet``), the value
+#: has no C0/C1 control characters (a ``\r`` or ``\n`` would split a log line).
+AttrText = Annotated[
+    str,
+    Field(pattern=r"^[a-z][A-Za-z0-9_]{1,62}:[^\x00-\x1f\x7f-\x9f]+$", max_length=MAX_TEXT),
+]
 
 
 class InvalidQueryError(ValueError):
@@ -310,7 +314,7 @@ class ProductCard(ContractModel):
     #: The first published size label of the shown offers, if any (``size`` is the measure),
     #: and the label's system (``eu``, ``alpha``) where it matters.
     size_label: SourceText | None = None
-    size_system: str | None = None
+    size_system: SourceText | None = None
 
 
 class FacetCount(ContractModel):
@@ -756,7 +760,7 @@ class OfferView(ContractModel):
     #: The context's location id; null for a context with no location (online).
     location: str | None
     size_label: SourceText | None
-    size_system: str | None
+    size_system: SourceText | None
 
 
 class AdminOfferView(OfferView):

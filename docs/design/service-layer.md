@@ -161,7 +161,7 @@ versioned snapshots.
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
   "meta": {
-    "apiVersion": "1.2.0", "endpoint": "compare", "metricVersion": "2026-10-01.3",
+    "apiVersion": "1.2.1", "endpoint": "compare", "metricVersion": "2026-10-01.3",
     "generation": "1727…", "cutoff": "2026-09-30T00:00:00Z",
     "market": "AE", "currency": "AED", "scope": "pilot",
     "filters": { ... }                   // the validated, normalised input, echoed
@@ -175,6 +175,9 @@ versioned snapshots.
   withheld but rows exist (compare rows with n < 5, index points, availability counts for a
   partial retailer), the response is `not_enough_data` **with** `data`, and the withheld part is
   `null`. Clients read `status` for the headline and `data` for the rows.
+- **Caveat text.** Each caveat has `code`, `params` (strings; counts are digit strings) and the
+  rendered `en`/`ar`. English agrees in number (`1 item is`, `2 items are`). Arabic ends in
+  `…: n`, which reads correctly for any count. Numbers always stay digits (API 1.2.1).
 
 **The `not_enough_data` reasons** form a closed enum:
 - `capability_off`
@@ -310,6 +313,7 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     `meta.attributeSet` (else `422 invalid_query`; ≤ 25), matched case- and accent-insensitively
     against the product's or a shown offer's value (any item of a list). Values of one key are
     alternatives; different keys must all match. Attribute facet counts are a follow-up.
+    API 1.2.1: a value with a C0/C1 control character is `422 invalid_request`.
   - The retailer facet counts a product once per retailer, however many of its contexts offer
     it.
   - A `ProductCard` has: `id`, `brand`, `name`, `category`, `size` (string plus unit), `image`
@@ -322,7 +326,8 @@ context per retailer, under the retailer's id) answers 1.1.x requests exactly as
     applies). `PairGap.sizeLabels` is `[baseLabel, otherLabel]` on a counted pair whose equal
     measures carry different published labels (the `size_labels_differ` caveat), else null.
   - API 1.2.0: `size` stays the measure (null for a label-only size). `sizeLabel` (source text)
-    is the first shown offer's published label, if any, and `sizeSystem` its system (`eu`).
+    is the first shown offer's published label, if any, and `sizeSystem` its system (`eu`;
+    source text since 1.2.1, because it can come from the page).
   - `sort=gap` and `sort=gap_asc` need that pair (else `422 invalid_query`, or
     `422 ambiguous_context` for a retailer with several contexts). Both sort on the
     **signed** `gap.pct`, so the direction is kept (FE, 1 Oct). `gap` puts other dearest
