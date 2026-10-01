@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { sanitiseData } from "../src/guard/sanitise.js";
 
-const hosts = ["shop.example"];
+const hosts = { evidenceHosts: ["shop.example"], admin: false };
 
 describe("sanitiseData", () => {
   it("keeps decimals, dates, colours and structural identifiers", () => {
@@ -58,6 +58,20 @@ describe("sanitiseData", () => {
     expect(
       sanitiseData({ x: { untrusted: "<b>" }, "Aurel Cream": 3, ok_key: [1, "a"] }, hosts),
     ).toEqual({ x: { untrusted: "\\<b\\>" }, ok_key: [1, { untrusted: "a" }] });
+  });
+
+  it("drops minor units always and admin-only evidence keys for viewers", () => {
+    const offer = {
+      price: { amount: "90.00", currency: "XTS", minor: 9000 },
+      evidence: { capturedAt: "2026-09-30T00:00:00Z", runId: "run-7", source: "feed" },
+    };
+    expect(sanitiseData(offer, hosts)).toEqual({
+      price: { amount: "90.00", currency: "XTS" },
+      evidence: { capturedAt: "2026-09-30T00:00:00Z" },
+    });
+    expect(sanitiseData(offer, { ...hosts, admin: true })).toMatchObject({
+      evidence: { runId: "run-7", source: { untrusted: "feed" } },
+    });
   });
 
   it("bounds depth and drops non-JSON values", () => {

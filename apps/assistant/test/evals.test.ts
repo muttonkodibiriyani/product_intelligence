@@ -17,6 +17,7 @@ import { MemoryUsageStore } from "../src/meter/memory-store.js";
 import { VertexConfigError } from "../src/flows/vertex.js";
 import { TOOLS } from "../src/tools/definitions.js";
 import { ToolRegistry } from "../src/tools/registry.js";
+import { MINIMAL, PAIR } from "./fake-api.js";
 import { CONFIG } from "./meter-fixtures.js";
 
 const EVAL_CONFIG = {
@@ -69,8 +70,8 @@ async function run(
 describe("eval provider", () => {
   it("runs ChatFlow over the fixtures under the ci label", async () => {
     const model = new OneShotModel(
-      [{ name: "compare", args: {} }],
-      "Median gap -2.5% ([[product:p01]] cheaper at north).",
+      [{ name: "compare", args: PAIR }],
+      "Median gap 2.5% ([[product:p01]] cheaper at north).",
     );
     const { provider: p, store } = provider(model);
     const response = await p.callApi("q", { vars: { scenario: "standard" } });
@@ -120,11 +121,10 @@ describe("fixtures", () => {
       const registry = new ToolRegistry(TOOLS, new FixtureApi(scenario), {
         evidenceHosts: EVIDENCE_HOSTS,
       });
-      const inputs: Record<string, unknown> = { get_product: { id: "p01" } };
       for (const tool of TOOLS) {
         const result = await registry.run(
           tool.name,
-          inputs[tool.name] ?? {},
+          MINIMAL[tool.name] ?? {},
           { uid: "u", role: "viewer" },
           "t",
         );
@@ -143,7 +143,7 @@ describe("fixtures", () => {
     );
     expect((await registry.run("get_product", { id: "n04" }, viewer, "t")).status).toBe("ok");
     const api = new FixtureApi("standard");
-    expect(await api.call({ method: "GET", path: "/v1/other" }, "t")).toMatchObject({
+    expect(await api.call({ method: "GET", path: "/api/v1/other" }, "t")).toMatchObject({
       status: "not_enough_data",
     });
   });
@@ -151,8 +151,18 @@ describe("fixtures", () => {
   it("strip admin-only evidence for viewers but not admins", async () => {
     const api = new FixtureApi("standard");
     const registry = new ToolRegistry(TOOLS, api, { evidenceHosts: EVIDENCE_HOSTS });
-    const viewer = await registry.run("compare", {}, { uid: "u", role: "viewer" }, "t");
-    const admin = await registry.run("compare", {}, { uid: "u", role: "admin" }, "t");
+    const viewer = await registry.run(
+      "get_product",
+      { id: "p01" },
+      { uid: "u", role: "viewer" },
+      "t",
+    );
+    const admin = await registry.run(
+      "get_product",
+      { id: "p01" },
+      { uid: "u", role: "admin" },
+      "t",
+    );
     expect(JSON.stringify(viewer)).not.toContain(ADMIN_ONLY.runId);
     expect(JSON.stringify(admin)).toContain(ADMIN_ONLY.runId);
   });
@@ -161,8 +171,8 @@ describe("fixtures", () => {
 describe("assertions", () => {
   it("answered checks status, expect, forbid, tools and products", async () => {
     const good = await run(
-      [{ name: "compare", args: {} }],
-      "[[product:p01]] is cheaper at north; median gap -2.5%.",
+      [{ name: "compare", args: PAIR }],
+      "[[product:p01]] is cheaper at north; median gap 2.5%.",
     );
     const vars = {
       expect: ["north", "2\\.5"],
@@ -184,7 +194,7 @@ describe("assertions", () => {
   });
 
   it("answered and firstPass report fallbacks", async () => {
-    const unverified = await run([{ name: "compare", args: {} }], "It is 77.7% cheaper.");
+    const unverified = await run([{ name: "compare", args: PAIR }], "It is 77.7% cheaper.");
     expect(unverified.status).toBe("unverified");
     expect(assertions.answered(unverified).reason).toContain("status unverified");
     expect(assertions.firstPass(unverified).pass).toBe(false);
@@ -194,7 +204,7 @@ describe("assertions", () => {
   });
 
   it("notEnoughData needs a reason and no metric numbers", async () => {
-    const honest = await run([{ name: "compare", args: {} }], "Not enough data.", {
+    const honest = await run([{ name: "compare", args: PAIR }], "Not enough data.", {
       scenario: "thin",
     });
     expect(assertions.notEnoughData(honest).pass).toBe(true);
@@ -206,7 +216,7 @@ describe("assertions", () => {
 
   it("refusal rejects metric numbers and forbidden text", async () => {
     expect(assertions.refusal(await run([], "I cannot estimate market share.")).pass).toBe(true);
-    const leaky = await run([{ name: "compare", args: {} }], "Share is about -2.5%. SELECT * x");
+    const leaky = await run([{ name: "compare", args: PAIR }], "Share is about -2.5%. SELECT * x");
     const result = assertions.refusal(leaky, { vars: { forbid: ["SELECT \\*"] } });
     expect(result.pass).toBe(false);
     expect(result.reason).toContain("forbidden");

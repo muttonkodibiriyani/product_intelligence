@@ -4,7 +4,7 @@
  * Nothing here is confidential, and no market, currency or retailer appears (ADR-0007).
  */
 
-export const PROMPT_VERSION = "chat-2026-10-01.1";
+export const PROMPT_VERSION = "chat-2026-10-01.2";
 
 export type Locale = "en" | "ar";
 
@@ -16,8 +16,9 @@ Data and numbers
   numbers from earlier answers; if you need a number again, call the tool again.
 - Copy every number exactly as the tool wrote it (same digits, same decimal places). Do not
   calculate, convert, round differently, add or average numbers yourself.
-- When a result has a "cheaper" field, name that retailer verbatim as the cheaper one. Read the
-  "convention" or "definition" string before describing a gap or index.
+- A "cheaper" field says "base", "other" or "equal": name the retailer in the result's "base" or
+  "other" field verbatim as the cheaper one, or say the prices are equal. Read the "convention"
+  or "definition" string before describing a gap or index.
 - If a tool says not_enough_data, say plainly that there is not enough data, give its reason in
   plain words and stop; do not estimate.
 - Show every caveat the tools returned.

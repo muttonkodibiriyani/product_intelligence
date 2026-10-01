@@ -7,10 +7,12 @@ import {
   coverageStatus,
   getProduct,
   indexTrend,
+  promotions,
   reviewsSummary,
   searchProducts,
   toQuery,
 } from "../src/tools/definitions.js";
+import { MINIMAL, PAIR } from "./fake-api.js";
 
 describe("tool definitions", () => {
   it("has nine uniquely named, viewer-level, read-only tools", () => {
@@ -27,12 +29,11 @@ describe("tool definitions", () => {
     ]);
     for (const tool of TOOLS) {
       expect(tool.minRole).toBe("viewer");
-      const request = tool.request(
-        tool.input.parse(tool.name === "get_product" ? { id: "p1" } : {}) as never,
-      );
-      expect(request.path.startsWith("/v1/")).toBe(true);
-      // The only POST is compare, which is a read with a structured body.
-      expect(request.method === "GET" || tool.name === "compare").toBe(true);
+      expect(tool.version).toBe("2");
+      const request = tool.request(tool.input.parse(MINIMAL[tool.name] ?? {}) as never);
+      expect(request.path.startsWith("/api/v1/")).toBe(true);
+      expect(request.method).toBe("GET");
+      expect(request.body).toBeUndefined();
     }
   });
 
@@ -43,7 +44,7 @@ describe("tool definitions", () => {
       ),
     ).toEqual({
       method: "GET",
-      path: "/v1/products",
+      path: "/api/v1/products",
       query: {
         q: ["cream"],
         brand: ["A", "B"],
@@ -52,22 +53,44 @@ describe("tool definitions", () => {
         limit: ["10"],
       },
     });
-    expect(getProduct.request({ id: "a/b" }).path).toBe("/v1/products/a%2Fb");
-    expect(compare.request(compare.input.parse({ ids: ["p1", "p2"] }))).toEqual({
-      method: "POST",
-      path: "/v1/compare",
-      body: { ids: ["p1", "p2"], limit: 10 },
+    expect(getProduct.request({ id: "a.b:c" }).path).toBe("/api/v1/products/a.b%3Ac");
+    expect(
+      compare.request(
+        compare.input.parse({ ...PAIR, ids: ["p1", "p2"], date: "2026-09-30", groupBy: "brand" }),
+      ),
+    ).toEqual({
+      method: "GET",
+      path: "/api/v1/compare",
+      query: {
+        retailers: ["north,south"],
+        id: ["p1", "p2"],
+        date: ["2026-09-30"],
+        groupBy: ["brand"],
+      },
     });
-    expect(coverageStatus.request({})).toEqual({ method: "GET", path: "/v1/coverage" });
+    expect(coverageStatus.request({})).toEqual({
+      method: "GET",
+      path: "/api/v1/coverage",
+      query: {},
+    });
     expect(reviewsSummary.request(reviewsSummary.input.parse({ ids: ["p1", "p2"] }))).toEqual({
       method: "GET",
-      path: "/v1/reviews-summary",
+      path: "/api/v1/reviews-summary",
       query: { id: ["p1", "p2"] },
     });
+    expect(promotions.request(promotions.input.parse({ minPct: 10, retailer: ["north"] }))).toEqual(
+      {
+        method: "GET",
+        path: "/api/v1/promotions",
+        query: { retailer: ["north"], minPct: ["10"] },
+      },
+    );
     expect(toQuery({ a: undefined, b: true, c: [1, 2] })).toEqual({ b: ["true"], c: ["1", "2"] });
-    expect(
-      indexTrend.request(indexTrend.input.parse({ retailers: { base: "north", other: "south" } })),
-    ).toEqual({ method: "GET", path: "/v1/index", query: { retailers: ["north,south"] } });
+    expect(indexTrend.request(indexTrend.input.parse(PAIR))).toEqual({
+      method: "GET",
+      path: "/api/v1/index",
+      query: { retailers: ["north,south"] },
+    });
   });
 
   it("rejects unknown keys, floats for money, SQL-ish and malformed values", () => {
@@ -78,12 +101,18 @@ describe("tool definitions", () => {
       [searchProducts, { limit: 26 }],
       [searchProducts, { retailer: ["North Beauty"] }],
       [getProduct, { id: "p1; drop table" }],
-      [compare, { ids: ["p1"] }],
-      [compare, { ids: ["p1", "p2"], brand: ["A"] }],
+      [compare, {}],
+      [compare, { ...PAIR, ids: [] }],
+      [compare, { ...PAIR, ids: ["p1", "p2"], brand: ["A"] }],
+      [compare, { ...PAIR, groupBy: "retailer" }],
+      [compare, { ...PAIR, limit: 10 }],
       [compare, { retailers: { base: "north", other: "north" } }],
       [compare, { retailers: ["north", "south"] }],
-      [indexTrend, { from: "2026-09-15", to: "2026-09-01" }],
+      [indexTrend, {}],
+      [indexTrend, { ...PAIR, from: "2026-09-15", to: "2026-09-01" }],
       [assortmentGaps, { missingAt: "north", presentAt: "north" }],
+      [assortmentGaps, { missingAt: "north" }],
+      [promotions, { minPct: 10.5 }],
       [reviewsSummary, { ids: ["p1"], category: ["X"] }],
       [coverageStatus, { anything: 1 }],
     ];
