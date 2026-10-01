@@ -75,6 +75,8 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
    - **Never a trend or an absence claim.** An explicit date, history, the index points,
      launches and gaps read the view itself. A stale value is never carried to an earlier date
      or used as evidence that something was present or absent.
+   - A one-retailer `/summary` is as of its own source: `asOf` is the source's last date and
+     `freshness` uses the source's own cutoff, so a stale source's badge reads stale.
    - A whole-path dataset has no stale source and is unchanged.
 7. **Backward compatible.** Bare paths behave as in 1.4.x. `apiVersion` 1.5.0 adds only
    `meta.sources`. A bare path in the same scope as a composed view stays two datasets

@@ -119,6 +119,21 @@ class SummaryCache:
         return metric
 
 
+def own_source(loaded: Loaded, metric: Metric[Summary]) -> tuple[Metric[Summary], datetime]:
+    """The summary and cutoff of its context's own source in a per-source view (ADR-0010).
+
+    One context's figures are as of its source's last date, and their freshness is its source's
+    cutoff, not the view's: a stale source's summary says it is stale. A whole file has no
+    sources, so the snapshot's own date and cutoff stand.
+    """
+    shop = view.context(loaded.dataset, metric.data.retailer).retailer
+    own = next((s for s in loaded.sources if s.source == shop), None)
+    if own is None:
+        return metric, loaded.dataset.meta.cutoff
+    data = metric.data.model_copy(update={"as_of": own.last_date})
+    return metric.model_copy(update={"data": data, "as_of": own.last_date}), own.cutoff
+
+
 def summary_view(metric: Metric[Summary], cutoff: datetime, now: datetime) -> Metric[SummaryView]:
     data = SummaryView(**dict(metric.data), freshness=freshness(cutoff, now))
     return Metric[SummaryView](

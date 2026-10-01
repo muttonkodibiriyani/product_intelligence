@@ -277,3 +277,21 @@ def test_a_whole_file_has_no_stale_source(tmp_path: Path) -> None:
     (loaded,) = source.datasets()
     assert (loaded.latest, loaded.stale) == (None, ())
     assert stale(get(client, f"compare?retailers={ULTA},{SEPHORA}")) == []
+
+
+@pytest.mark.parametrize(
+    ("shop", "as_of", "cutoff", "status"),
+    [
+        (ULTA, "2026-09-22", "2026-09-22T00:00:00Z", "stale"),
+        (SEPHORA, "2026-09-30", "2026-09-30T00:00:00Z", "aging"),
+    ],
+)
+def test_a_summary_is_as_fresh_as_its_own_source(
+    tmp_path: Path, shop: str, as_of: str, cutoff: str, status: str
+) -> None:
+    """The Reviewer's #126 probe: a stale source's summary is labelled with its own date."""
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    data = get(client, f"summary?retailer={shop}")["data"]
+    assert data["asOf"] == as_of
+    assert (data["freshness"]["cutoff"], data["freshness"]["status"]) == (cutoff, status)

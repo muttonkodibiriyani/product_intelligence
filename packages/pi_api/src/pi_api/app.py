@@ -89,7 +89,7 @@ from pi_api.source import (
     ObjectStore,
     SnapshotSource,
 )
-from pi_api.summary import SummaryCache, SummaryQuery, SummaryView, summary_view
+from pi_api.summary import SummaryCache, SummaryQuery, SummaryView, own_source, summary_view
 from pi_api.wire import API_VERSION, ApiMeta, Envelope, ErrorBody, envelope, error_body
 from pi_dataset import ContractModel, DatasetV3
 from pi_metrics import (
@@ -622,8 +622,8 @@ def _summary_route(
     def get_summary(query: Annotated[SummaryQuery, Query()], _: Viewer) -> Envelope[SummaryView]:
         loaded = source.select(query.market, query.scope)
         metric = cache.get(loaded, query.retailer)
-        metric = stale_first(loaded, metric, (metric.data.retailer,))
-        view = summary_view(metric, loaded.dataset.meta.cutoff, clock())
+        metric, cutoff = own_source(loaded, stale_first(loaded, metric, (metric.data.retailer,)))
+        view = summary_view(metric, cutoff, clock())
         return respond(loaded, "summary", query, view)
 
 
