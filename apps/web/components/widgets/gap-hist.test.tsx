@@ -100,10 +100,13 @@ describe('GapHistWidget', () => {
     ]);
   });
 
-  it('in Arabic, with no bidi marks in the axis labels', () => {
+  it('in Arabic: opens with a word, each bound an LTR isolate, no bidi marks', () => {
     const { option } = draw(hist, 'ar');
-    expect(option.yAxis.data[0]).toBe('< −50%');
-    expect(option.yAxis.data[1]).toBe('−50% إلى −25%');
-    expect(option.yAxis.data.join('')).not.toMatch(/[‎‏]/);
+    const iso = (v: string) => `\u2066${v}\u2069`;
+    expect(option.yAxis.data[0]).toBe(`أقل من ${iso('−50%')}`);
+    expect(option.yAxis.data[1]).toBe(`من ${iso('−50%')} إلى ${iso('−25%')}`);
+    expect(option.yAxis.data[10]).toBe(`بدءًا من ${iso('+50%')}`);
+    expect(option.yAxis.data.every((l) => /^[\u0600-\u06ff]/.test(l))).toBe(true);
+    expect(option.yAxis.data.join('')).not.toMatch(/[\u200e\u200f]/);
   });
 });

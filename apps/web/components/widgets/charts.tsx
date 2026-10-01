@@ -1031,11 +1031,17 @@ export function GroupGapWidget({
   );
 }
 
-/** A gap bound for an axis label: signed, a true minus, and no bidi marks (Firefox drops SVG text that starts with one). */
-const gapBound = (v: string, locale: string) =>
-  signedPct(v, locale)
+/**
+ * A gap bound for an axis label: signed, with a true minus. Intl's own bidi marks are dropped (Firefox
+ * drops SVG text that starts with one); in Arabic each bound is an LTR isolate instead, so its sign
+ * stays put, and the Arabic labels open with a word, never with the isolate.
+ */
+const gapBound = (v: string, locale: string) => {
+  const s = signedPct(v, locale)
     .replace(/[\u200e\u200f]/g, '')
     .replace(/^-/, '\u2212');
+  return locale === 'ar' ? `\u2066${s}\u2069` : s;
+};
 
 /**
  * How the matched pairs spread by price gap, from the API's own histogram: one bar per bin, named
