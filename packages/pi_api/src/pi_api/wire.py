@@ -113,6 +113,16 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         en="The two sides are different channels: {base} vs {other}.",
         ar="الجانبان قناتان مختلفتان: {base} مقابل {other}.",
     ),
+    CaveatCode.SIZE_LABELS_DIFFER_TOTAL: Localized(
+        en=(
+            "{count} items have equal sizes labelled differently across {pairs} label pairs;"
+            " the most frequent are listed."
+        ),
+        ar=(
+            "{count} عناصر بأحجام متساوية وتسميات مختلفة عبر {pairs} أزواج من التسميات؛"
+            " نعرض الأكثر تكرارًا."
+        ),
+    ),
 }
 
 

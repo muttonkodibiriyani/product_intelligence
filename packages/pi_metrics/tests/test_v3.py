@@ -1,4 +1,4 @@
-"""The v3 rules of ADR-0008 step 3: contexts, identity, the same-size rule and applicability."""
+"""ADR-0008 steps 3-4: contexts, identity, sizes, caveats, coverage and applicability."""
 
 from __future__ import annotations
 
@@ -26,9 +26,10 @@ from pi_metrics import (
     reviews_summary,
     view,
 )
+from pi_metrics.compare import LABEL_CAVEAT_CAP
 from pi_metrics.model import CaveatCode, Excluded, Reason, Status
 from pi_metrics.view import SizeMatch, same_size
-from v3_fixture import APP, WEB, load, offer, profile, size, split_shop_a
+from v3_fixture import APP, APP_PRODUCTS, WEB, load, offer, profile, size, split_shop_a
 from v3_fixture import doc as base_doc
 
 
@@ -201,6 +202,42 @@ def test_label_only_sizes_compare_on_the_folded_label(label: str, expected: str 
     assert rows(load(d), WEB, APP)["p01"] == expected
 
 
+def labelled(distinct: int) -> DatasetV3:
+    """Every APP product counted on equal measures; ``p01`` and ``p02`` share label pair 0."""
+    d = menu()
+    for n, pid in enumerate(APP_PRODUCTS):
+        pair = max(0, min(n - 1, distinct - 1))
+        offer(d, pid, WEB)["size"] = size("50", "ml", f"w{pair}")
+        offer(d, pid, APP)["size"] = size("50", "ml", f"a{pair}")
+    return load(d)
+
+
+def test_label_caveats_up_to_the_cap_are_all_listed_with_no_total() -> None:
+    ds = labelled(LABEL_CAVEAT_CAP)
+    assert all(rows(ds, WEB, APP)[p] is None for p in APP_PRODUCTS)
+    metric = compare(ds, WEB, APP, EVERYTHING)
+    assert [c.code for c in metric.caveats if c.code is not CaveatCode.SIZE_LABELS_DIFFER] == [
+        CaveatCode.CHANNEL_DIFFERS
+    ]
+    assert len(caveats(metric, CaveatCode.SIZE_LABELS_DIFFER)) == LABEL_CAVEAT_CAP
+
+
+@pytest.mark.parametrize("metric", [compare, price_index])
+def test_past_the_cap_the_total_leads_and_only_the_most_frequent_pairs_follow(
+    metric: Callable[..., Metric[Any]],
+) -> None:
+    ds = labelled(7)
+    got = [(c.code, c.params) for c in metric(ds, WEB, APP, EVERYTHING).caveats]
+    labels = [(code, params) for code, params in got if code.startswith("size_labels_differ")]
+    channel = (CaveatCode.CHANNEL_DIFFERS, {"base": "online", "other": "delivery"})
+    total = (CaveatCode.SIZE_LABELS_DIFFER_TOTAL, {"count": "8", "pairs": "7"})
+    assert got[-(LABEL_CAVEAT_CAP + 2) :] == [total, channel, *labels[1:]]
+    assert labels[1:] == [
+        (CaveatCode.SIZE_LABELS_DIFFER, {"base": f"w{i}", "other": f"a{i}", "count": c})
+        for i, c in [(0, "2"), (1, "1"), (2, "1"), (3, "1"), (4, "1")]
+    ]
+
+
 # ------------------------------------------------------------------ notObserved per context
 
 
@@ -251,6 +288,46 @@ def test_a_metric_on_its_profiles_is_unchanged(name: str, vertical: str) -> None
 def test_coverage_applies_to_every_profile() -> None:
     ds = load(profile(base_doc(), "test_menu"))
     assert coverage(ds, ()) == coverage(load(base_doc()), ())
+
+
+# ------------------------------------------------------------------ coverage per context
+
+
+def contexts_of(ds: DatasetV3, shop: str) -> dict[str, list[bool]]:
+    row = next(r for r in coverage(ds, ()).data.retailers if r.id == shop)
+    return {c.id: [d.observed for d in c.dates] for c in row.contexts}
+
+
+def test_a_sole_context_is_the_retailer_and_mirrors_its_freshness() -> None:
+    ds = load(base_doc())
+    for row in coverage(ds, ()).data.retailers:
+        (ctx,) = row.contexts
+        assert (ctx.id, ctx.status, ctx.product_count) == (row.id, row.status, row.product_count)
+        assert ctx.freshness == (row.freshness if row.status.value != "blocked" else None)
+        assert [d.date for d in ctx.dates] == list(DATES)
+
+
+def test_coverage_lists_each_context_and_the_dates_it_was_observed() -> None:
+    d = menu()
+    day = {"retailer": "shop_a", "start": str(DATES[1]), "end": str(DATES[1]), "why": {"en": "x"}}
+    d["notObserved"] = [
+        {**day, "categories": None, "context": APP},
+        # A window over some categories leaves the context observed that day.
+        {**day, "categories": ["skincare"], "context": WEB},
+    ]
+    ds = load(d)
+    assert contexts_of(ds, "shop_a") == {WEB: [True, True, True], APP: [True, False, True]}
+    row = next(r for r in coverage(ds, ()).data.retailers if r.id == "shop_a")
+    web, app = row.contexts
+    assert (web.channel, app.channel) == ("online", "delivery")
+    assert app.product_count < web.product_count == row.product_count
+
+
+def test_a_blocked_retailers_contexts_are_never_observed() -> None:
+    d = base_doc()
+    assert any(contexts_of(load(d), B)[B])
+    next(r for r in d["meta"]["retailers"] if r["id"] == B)["status"] = "blocked"
+    assert contexts_of(load(d), B) == {B: [False] * len(DATES)}
 
 
 # ------------------------------------------------------------------ the upgrade cache

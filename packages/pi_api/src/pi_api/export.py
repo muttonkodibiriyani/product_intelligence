@@ -199,8 +199,15 @@ def safe_cell(text: str) -> str:
     return text
 
 
-def columns_of(flat: Iterable[Mapping[str, str]]) -> list[str]:
-    """Every key in first-seen order, minus a key that another key nests under.
+#: Columns added after a view first shipped go last, whatever row they are first seen in, so a
+#: reader that relied on the earlier column positions keeps them.
+TRAILING: Mapping[ExportView, tuple[str, ...]] = {
+    ExportView.COVERAGE: ("contexts",),  # ADR-0008 step 4
+}
+
+
+def columns_of(flat: Iterable[Mapping[str, str]], trailing: tuple[str, ...] = ()) -> list[str]:
+    """Every key in first-seen order, minus a key that another key nests under, ``trailing`` last.
 
     A null object (say an uncounted row's ``gap``) flattens to one empty ``gap`` cell, while a
     present one gives ``gap.amount.amount`` and so on; the nested columns win, and the null row
@@ -212,7 +219,8 @@ def columns_of(flat: Iterable[Mapping[str, str]]) -> list[str]:
     for parent in parents:
         parts = parent.split(".")
         nested.update(".".join(parts[: i + 1]) for i in range(len(parts)))
-    return [key for key in seen if key not in nested]
+    kept = [key for key in seen if key not in nested]
+    return [key for key in kept if key not in trailing] + [k for k in trailing if k in kept]
 
 
 def _line(writer_buffer: io.StringIO, writer: Any, cells: Sequence[str]) -> bytes:
@@ -235,7 +243,7 @@ def encode_csv(head: ExportManifest, rows: Sequence[ContractModel]) -> Iterator[
     ever a cell of its own that could run as a formula. Rows are flattened twice (once for the
     columns, once to write) so the flattened copy of every row is never held at once.
     """
-    names = columns_of(_flat(row) for row in rows)
+    names = columns_of((_flat(row) for row in rows), TRAILING.get(head.view, ()))
     buffer = io.StringIO()
     cell = "# " + _json(head.model_dump(mode="json", by_alias=True)).decode()
     csv.writer(buffer, lineterminator="\r\n", quoting=csv.QUOTE_ALL).writerow([cell])

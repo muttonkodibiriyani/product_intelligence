@@ -362,3 +362,24 @@ def test_columns_drop_a_null_object_column_when_its_fields_exist() -> None:
 )
 def test_safe_cell_neutralises_formulas_only(cell: str, safe: str) -> None:
     assert export.safe_cell(cell) == safe
+
+
+def test_coverage_contexts_is_the_last_csv_column_whatever_row_shows_it_first() -> None:
+    """``contexts`` (ADR-0008 step 4) never moves a column a positional reader relied on."""
+    rows = [
+        {"id": "a", "note": "", "contexts": "[]"},
+        {"id": "b", "note.en": "x", "contexts": "[]"},
+    ]
+    assert export.columns_of(rows) == ["id", "contexts", "note.en"]
+    assert export.columns_of(rows, export.TRAILING[export.ExportView.COVERAGE]) == [
+        "id", "note.en", "contexts",
+    ]  # fmt: skip
+
+
+def test_the_coverage_csv_header_keeps_the_v2_columns_then_contexts(client: Client) -> None:
+    lines = get(client, "export/coverage").text.lstrip("\ufeff").splitlines()
+    header = next(csv.reader([lines[1]]))
+    assert header == [
+        "id", "name", "status", "since", "productCount", "matchedCount", "freshness", "note.en",
+        "contexts",
+    ]  # fmt: skip

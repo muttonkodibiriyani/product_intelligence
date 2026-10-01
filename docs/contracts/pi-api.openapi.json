@@ -228,7 +228,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-01.2",
+            "default": "2026-10-01.3",
             "title": "Metricversion",
             "type": "string"
           },
@@ -495,7 +495,8 @@
           "history_off",
           "rating_scale_mixed",
           "size_labels_differ",
-          "channel_differs"
+          "channel_differs",
+          "size_labels_differ_total"
         ],
         "title": "CaveatCode",
         "type": "string"
@@ -530,6 +531,19 @@
         ],
         "title": "CaveatView",
         "type": "object"
+      },
+      "Channel": {
+        "description": "Commercial channel of an observation (PRC-14). Pickup is never dine-in.",
+        "enum": [
+          "online",
+          "marketplace",
+          "delivery",
+          "pickup",
+          "dine_in_evidenced",
+          "offline_audit"
+        ],
+        "title": "Channel",
+        "type": "string"
       },
       "Cheaper": {
         "enum": [
@@ -673,6 +687,95 @@
           "total"
         ],
         "title": "Comparison",
+        "type": "object"
+      },
+      "ContextCoverage": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "dates": {
+            "items": {
+              "$ref": "#/components/schemas/ContextDay"
+            },
+            "title": "Dates",
+            "type": "array"
+          },
+          "freshness": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minProperties": 1,
+            "title": "Label",
+            "type": "object"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "productCount": {
+            "title": "Productcount",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RetailerStatus"
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "location",
+          "label",
+          "status",
+          "productCount",
+          "freshness",
+          "dates"
+        ],
+        "title": "ContextCoverage",
+        "type": "object"
+      },
+      "ContextDay": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "date",
+          "observed"
+        ],
+        "title": "ContextDay",
         "type": "object"
       },
       "Coverage": {
@@ -2086,6 +2189,58 @@
         "title": "Localized",
         "type": "object"
       },
+      "Location": {
+        "additionalProperties": false,
+        "description": "A branch or area. No coordinates on the wire.",
+        "properties": {
+          "area": {
+            "anyOf": [
+              {
+                "pattern": "\\S",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "pattern": "\\S",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{1,62}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minProperties": 1,
+            "title": "Label",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "city",
+          "area"
+        ],
+        "title": "Location",
+        "type": "object"
+      },
       "MatchClass": {
         "description": "Relationship classes between variants (MAT-01).",
         "enum": [
@@ -2938,6 +3093,13 @@
       "RetailerCoverage": {
         "additionalProperties": false,
         "properties": {
+          "contexts": {
+            "items": {
+              "$ref": "#/components/schemas/ContextCoverage"
+            },
+            "title": "Contexts",
+            "type": "array"
+          },
           "freshness": {
             "anyOf": [
               {
@@ -3006,7 +3168,8 @@
           "note",
           "productCount",
           "matchedCount",
-          "freshness"
+          "freshness",
+          "contexts"
         ],
         "title": "RetailerCoverage",
         "type": "object"
