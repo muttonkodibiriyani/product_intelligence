@@ -38,7 +38,7 @@
     "mid": "Mid",
     "premium": "Premium",
     "median": "Median",
-    "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. Log scale.",
+    "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. The price axis grows by multiples, not fixed amounts (a log scale), so cheap and expensive categories fit on one chart.",
     "label": "Price ranges by category, {n} categories."
   },
   "promo": {
