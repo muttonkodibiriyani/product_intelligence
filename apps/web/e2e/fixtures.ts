@@ -123,7 +123,7 @@ export async function mockBackend(
 }
 
 export async function signIn(page: Page, locale: 'en' | 'ar', password = PASSWORD) {
-  await page.goto(`/${locale}/sign-in/`);
+  await page.goto(`/app/${locale}/sign-in/`);
   await page.locator('input[name=email]').fill(EMAIL);
   await page.locator('input[name=password]').fill(password);
   await page.locator('button[type=submit]').click();

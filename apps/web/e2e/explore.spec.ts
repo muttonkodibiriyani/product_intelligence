@@ -93,7 +93,7 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api() });
       await signIn(page, locale);
       await page.getByRole('navigation').getByRole('link', { name: T.nav }).click();
-      await expect(page).toHaveURL(new RegExp(`/${locale}/explore/$`));
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/explore/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
       await expect(page.getByText(T.count16)).toBeVisible();
       const rows = page.getByRole('table').getByRole('row');
@@ -124,7 +124,7 @@ for (const locale of ['en', 'ar'] as const) {
         }),
       });
       await signedIn(page, locale);
-      await page.goto(`/${locale}/explore/`);
+      await page.goto(`/app/${locale}/explore/`);
       await expect(page.getByRole('table')).toBeVisible();
       const sort = page.getByLabel(T.sort);
       await expect(sort.locator('option[value=gap]')).toBeDisabled();
@@ -161,7 +161,7 @@ for (const locale of ['en', 'ar'] as const) {
         },
       });
       await signedIn(page, locale);
-      await page.goto(`/${locale}/explore/`);
+      await page.goto(`/app/${locale}/explore/`);
       await page.getByRole('button', { name: T.more }).click();
       await expect(page.getByText(T.restarted)).toBeVisible();
       // Restarted from page 1: the list is not doubled.
@@ -178,7 +178,7 @@ for (const locale of ['en', 'ar'] as const) {
     test('no results: says so plainly', async ({ page }) => {
       await mockBackend(page, { onApi: api({ products: () => emptyPage }) });
       await signedIn(page, locale);
-      await page.goto(`/${locale}/explore/?brand=Sample+Labs&retailer=shop_c`);
+      await page.goto(`/app/${locale}/explore/?brand=Sample+Labs&retailer=shop_c`);
       await expect(page.getByText(T.empty)).toBeVisible();
       await expect(page.getByRole('table')).toHaveCount(0);
     });
@@ -189,9 +189,11 @@ for (const locale of ['en', 'ar'] as const) {
       p.data.offers[1].evidence.url = 'javascript:alert(1)';
       const mock = await mockBackend(page, { onApi: api({ product: p }) });
       await signedIn(page, locale);
-      await page.goto(`/${locale}/explore/?brand=Fixture+Beauty`);
+      await page.goto(`/app/${locale}/explore/?brand=Fixture+Beauty`);
       await page.getByRole('link', { name: products.data.items[0].name }).click();
-      await expect(page).toHaveURL(new RegExp(`/${locale}/product/\\?id=${products.data.items[0].id}&from=`));
+      await expect(page).toHaveURL(
+        new RegExp(`/app/${locale}/product/\\?id=${products.data.items[0].id}&from=`),
+      );
 
       await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
       await expect(page.getByRole('heading', { name: new RegExp(T.offers) })).toBeVisible();
@@ -214,7 +216,7 @@ for (const locale of ['en', 'ar'] as const) {
       expect(paths).toContain(`/api/v1/products/${products.data.items[0].id}/history`);
 
       await page.getByRole('link', { name: T.back }).click();
-      await expect(page).toHaveURL(new RegExp(`/${locale}/explore/\\?brand=Fixture\\+Beauty$`));
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/explore/\\?brand=Fixture\\+Beauty$`));
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });
@@ -226,7 +228,7 @@ for (const locale of ['en', 'ar'] as const) {
       p.data.offers[0].availability = 'teleported';
       await mockBackend(page, { onApi: api({ product: p }) });
       await signedIn(page, locale);
-      await page.goto(`/${locale}/product/?id=p01`);
+      await page.goto(`/app/${locale}/product/?id=p01`);
       await expect(page.getByText(T.notCounted)).toBeVisible();
       await expect(page.getByText('teleported', { exact: true })).toHaveAttribute('dir', 'ltr');
       await expect(page.getByText('availability.teleported')).toHaveCount(0);
@@ -240,12 +242,12 @@ for (const locale of ['en', 'ar'] as const) {
             : route.fulfill({ status: 404, json: { error: { code: 'not_found', message: '<b>p999</b>' } } }),
       });
       await signedIn(page, locale);
-      await page.goto(`/${locale}/product/?id=p999`);
+      await page.goto(`/app/${locale}/product/?id=p999`);
       await expect(page.locator('main').getByRole('alert')).toBeVisible();
       await expect(page.locator('main')).not.toContainText('<b>');
 
       const before = mock.api.length;
-      await page.goto(`/${locale}/product/?id=${encodeURIComponent('../admin')}`);
+      await page.goto(`/app/${locale}/product/?id=${encodeURIComponent('../admin')}`);
       await expect(page.getByRole('link', { name: T.back })).toBeVisible();
       await expect(page.getByRole('heading', { level: 1 })).toHaveCount(0);
       expect(mock.api.slice(before).some((r) => new URL(r.url).pathname.includes('admin'))).toBe(false);
@@ -265,10 +267,10 @@ test('S2: an unknown retailer status renders as sent, not as a key path', async 
 test('language switch on a product keeps the product and the filters', async ({ page }) => {
   await mockBackend(page, { onApi: api() });
   await signedIn(page, 'en');
-  await page.goto('/en/product/?id=p01&from=brand%3DFixture%2BBeauty');
+  await page.goto('/app/en/product/?id=p01&from=brand%3DFixture%2BBeauty');
   await expect(page.getByRole('heading', { level: 1, name: product.data.card.name })).toBeVisible();
   await page.getByRole('link', { name: 'Switch to Arabic' }).click();
-  await expect(page).toHaveURL(/\/ar\/product\/\?id=p01&from=brand%3DFixture%2BBeauty$/);
+  await expect(page).toHaveURL(/\/app\/ar\/product\/\?id=p01&from=brand%3DFixture%2BBeauty$/);
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   await expect(page.getByRole('heading', { level: 1, name: product.data.card.name })).toBeVisible();
 });
@@ -276,11 +278,11 @@ test('language switch on a product keeps the product and the filters', async ({ 
 test('keyboard: the product list is reachable and opens a product with Enter', async ({ page }) => {
   await mockBackend(page, { onApi: api() });
   await signedIn(page, 'en');
-  await page.goto('/en/explore/');
+  await page.goto('/app/en/explore/');
   const link = page.getByRole('link', { name: products.data.items[0].name });
   await expect(link).toBeVisible();
   await link.focus();
   await expect(link).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/en\/product\/\?id=/);
+  await expect(page).toHaveURL(/\/app\/en\/product\/\?id=/);
 });
