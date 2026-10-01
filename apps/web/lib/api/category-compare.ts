@@ -61,8 +61,13 @@ export interface Bucket {
   gapAmount: Money | null;
   /** The cheaper retailer's id, 'same', or null when not computed. */
   cheaper: string | null;
-  /** 'ok' only when both sides are ok and a gap was computed. */
-  status: 'ok' | 'too_few' | 'blocked';
+  /** Why the API sent no gap for this row, when it said. */
+  gapReason: SideReason | null;
+  /**
+   * 'ok' only when both sides are ok and a gap was computed; 'no_gap' when both sides are ok but
+   * the API sent no gap (see `gapReason`).
+   */
+  status: 'ok' | 'too_few' | 'blocked' | 'no_gap';
 }
 
 export type UnmappedReason = 'no_breadcrumb' | 'no_rule' | 'ambiguous';
@@ -156,12 +161,15 @@ function bucket(key: BucketKey, raw: unknown, retailers: [string, string], minN:
         : gap?.cheaper === 'equal'
           ? 'same'
           : null;
+  const gapReason: SideReason | null =
+    typeof row.gapReason === 'string' && row.gapReason.length > 0 ? row.gapReason : null;
   const blocked =
     sides[base]!.status === 'blocked' ||
     sides[other]!.status === 'blocked' ||
-    row.gapReason === 'retailer_blocked';
+    gapReason === 'retailer_blocked';
+  const bothOk = !blocked && sides[base]!.status === 'ok' && sides[other]!.status === 'ok';
   // The API's gap is the figure; without one (gap null) the row's gap and chip are suppressed.
-  const ok = !blocked && sides[base]!.status === 'ok' && sides[other]!.status === 'ok' && gapPct !== null;
+  const ok = bothOk && gapPct !== null;
   return {
     key,
     label,
@@ -169,7 +177,8 @@ function bucket(key: BucketKey, raw: unknown, retailers: [string, string], minN:
     gapPct: ok ? gapPct : null,
     gapAmount: ok && gap ? money(gap.amount) : null,
     cheaper: ok ? cheaper : null,
-    status: blocked ? 'blocked' : ok ? 'ok' : 'too_few',
+    gapReason: ok ? null : gapReason,
+    status: blocked ? 'blocked' : ok ? 'ok' : bothOk ? 'no_gap' : 'too_few',
   };
 }
 

@@ -182,16 +182,69 @@ describe('CategoryCompareCard', () => {
     expect(text(cells[4])).toMatch(/AED\s98\.00/);
   });
 
-  it('names the cheaper retailer with the gap size, and says about the same under 1 %', () => {
+  it("reads the served gap as the other retailer's against the base, and says about the same under 1 %", () => {
     show(pairState(ready(), (d) => d.buckets.length > 0));
     const table = screen.getByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'Median gap' })).toBeTruthy();
     const rows = within(table).getAllByRole('row').slice(2);
-    // Fragrance: 395 against 420 is −6 %, so Shop B (other) is cheaper.
-    expect(text(within(rows[0]!).getAllByRole('cell').at(-1))).toContain('Shop B 6% cheaper');
-    // Lips: 102 against 95 is +7.4 %, so Shop A (base) is cheaper.
-    expect(text(within(rows[3]!).getAllByRole('cell').at(-1))).toContain('Shop A 7.4% cheaper');
-    expect(text(within(rows[2]!).getAllByRole('cell').at(-1))).toContain('About the same');
+    const chip = (i: number) => text(within(rows[i]!).getAllByRole('cell').at(-1));
+    // Fragrance: the API's −6.0 (395 against 420): Shop B's median is 6 % below Shop A's.
+    expect(chip(0)).toBe('Shop B 6% cheaper than Shop A');
+    // Lips: the API's +7.4 (102 against 95): Shop B's median is 7.4 % above Shop A's.
+    expect(chip(3)).toBe('Shop B 7.4% dearer than Shop A');
+    expect(chip(2)).toContain('About the same');
     expect(screen.queryByText(/0% cheaper/)).toBeNull();
+  });
+
+  it('keeps a large gap as served: base 50 against other 150 is Shop B 200% dearer, not a 200% discount', () => {
+    const good = categoryCompareData('shop_a', 'shop_b', THIN);
+    const row = good.rows.find((r) => r.key === 'lips')!;
+    const aed = (amount: string) => ({ amount, currency: 'AED', minor: Number(amount.replace('.', '')) });
+    const wide = {
+      ...row,
+      base: { ...row.base, median: aed('50.00') },
+      other: { ...row.other, median: aed('150.00') },
+      gap: { amount: aed('100.00'), pct: '200.0', cheaper: 'base' },
+    };
+    const env = {
+      ...categoryCompareBody('shop_a', 'shop_b', THIN),
+      data: parseCategoryCompare({ ...good, rows: good.rows.map((r) => (r.key === 'lips' ? wide : r)) }),
+    } as unknown as Envelope<CategoryCompare>;
+    show(pairState(ready(env), (d) => d.buckets.length > 0));
+    const lips = within(screen.getByRole('table')).getAllByRole('row')[5]!;
+    expect(text(within(lips).getAllByRole('cell').at(-1))).toBe('Shop B 200% dearer than Shop A');
+    expect(text(lips)).not.toContain('cheaper');
+  });
+
+  it("shows the API's reason when both sides are priced but no gap was sent, and keeps it off the chart and the too-few list", async () => {
+    const good = categoryCompareData('shop_a', 'shop_b', THIN);
+    const rows = good.rows.map((r) =>
+      r.key === 'lips' ? { ...r, gap: null, gapReason: 'currency_mismatch' } : r,
+    );
+    const d = parseCategoryCompare({ ...good, rows })!;
+    const lipsBucket = d.buckets.find((b) => b.key === 'lips')!;
+    expect(lipsBucket).toMatchObject({ status: 'no_gap', gapReason: 'currency_mismatch', gapPct: null });
+    const env = {
+      ...categoryCompareBody('shop_a', 'shop_b', THIN),
+      data: d,
+    } as unknown as Envelope<CategoryCompare>;
+    show(pairState(ready(env), (x) => x.buckets.length > 0));
+    const lips = within(screen.getByRole('table')).getAllByRole('row')[5]!;
+    expect(text(within(lips).getAllByRole('cell').at(-1))).toBe('Prices are in different currencies.');
+    await screen.findByTestId('bucket-chart');
+    expect(charted.at(-1)!.map((b) => b.key)).not.toContain('lips');
+    expect(screen.getByText('Too few to compare: Concealer — Shop B n = 3.')).toBeTruthy();
+  });
+
+  it('says the figures are category medians, not like-for-like products, in both languages', () => {
+    show(pairState(ready(), (d) => d.buckets.length > 0));
+    expect(screen.getByText(/not like-for-like products/)).toBeTruthy();
+    cleanup();
+    show(
+      pairState(ready(), (d) => d.buckets.length > 0),
+      'ar',
+    );
+    expect(screen.getByText(/وليس مقارنة بين المنتجات نفسها/)).toBeTruthy();
   });
 
   it('leaves the too-few bucket out of the chart and lists it with its n', async () => {
@@ -212,6 +265,7 @@ describe('CategoryCompareCard', () => {
     expect(screen.getByText('كيف تقارن الأسعار حسب الفئة؟')).toBeTruthy();
     expect(screen.getAllByText('عدد قليل جدًا (n = 3)').length).toBeGreaterThan(0);
     expect(screen.getAllByText('متقاربان تقريبًا').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Shop B أغلى من Shop A بنسبة 7.4\u200e%\u200e').length).toBeGreaterThan(0);
     const table = screen.getByRole('table');
     expect(text(within(table).getAllByRole('rowheader')[0])).toContain('العطور');
   });

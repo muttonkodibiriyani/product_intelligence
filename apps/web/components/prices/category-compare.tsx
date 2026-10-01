@@ -86,18 +86,31 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
       t('tooFew', { n: formatCount(s.n, locale) })
     );
 
-  /** The cheaper chip, or a muted dash when the row has no gap. */
+  /**
+   * The gap chip: the API's pct as sent, read the way it is defined, as the other retailer's median
+   * against the base's ((other − base) / base), so it is never recomputed or turned into the base's
+   * discount. Tinted for the cheaper side. The API's reason when it sent no gap; else a muted dash.
+   */
   const chip = (b: Bucket) => {
+    if (b.status === 'no_gap' && b.gapReason)
+      return (
+        <span className="text-xs text-ink-2">
+          <Known t={tr} v={b.gapReason} />
+        </span>
+      );
     if (b.status !== 'ok' || b.gapPct === null) return <span className="text-ink-2">–</span>;
     // The API decides when two medians are the same; its verdict is not second-guessed here.
-    if (b.cheaper === 'same') return <span className="pill bg-surface-2 text-ink-2">{t('same')}</span>;
-    const who = b.cheaper ?? (Number(b.gapPct) > 0 ? pair.base : pair.other);
+    if (b.cheaper === 'same' || /^-?0+(\.0+)?$/.test(b.gapPct))
+      return <span className="pill bg-surface-2 text-ink-2">{t('same')}</span>;
+    const otherCheaper = b.gapPct.startsWith('-');
+    const who = b.cheaper ?? (otherCheaper ? pair.other : pair.base);
     const tone = TONE[ids.indexOf(who)] ?? TONE[0];
-    return (
-      <span className={`pill ${tone}`}>
-        {t('cheaperBy', { name: pair.name(who), pct: pct(String(Math.abs(Number(b.gapPct))), locale) })}
-      </span>
-    );
+    const args = {
+      other: pair.name(pair.other),
+      base: pair.name(pair.base),
+      pct: pct(b.gapPct.replace(/^-/, ''), locale),
+    };
+    return <span className={`pill ${tone}`}>{t(otherCheaper ? 'otherCheaper' : 'otherDearer', args)}</span>;
   };
 
   const price = (m: Money) => (isValidPrice(m) ? formatMoney(m, lc) : null);
@@ -116,6 +129,7 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
 
   return (
     <div className="space-y-5">
+      <p className="text-sm text-ink-2">{t('basis')}</p>
       <div className="hidden overflow-x-auto sm:block">
         <table className="w-full text-sm">
           <colgroup>
@@ -135,7 +149,7 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
                 </th>
               ))}
               <th scope="col" rowSpan={2} className="th text-start">
-                {t('cheaper')}
+                {t('gapCol')}
               </th>
             </tr>
             <tr>
