@@ -10,10 +10,11 @@ the representative variant is the lowest-priced in-stock variant (or the lowest-
 variant when stock is unknown). Current match edges pair Ulta and Sephora groups greedily by
 highest confidence; excess many-to-one edges remain unmatched.
 
-Run from the repository root:
+Run from the repository root, as a module (`--output-v2` imports `scripts.demo_export.v2`, so the
+file-path form `python scripts/demo_export/export.py` fails with `No module named 'scripts'`):
 
 ```sh
-uv run python scripts/demo_export/export.py \
+uv run python -m scripts.demo_export.export \
   --database-url "$PI_DATABASE_URL" \
   --output "$OUTPUT_PATH" \
   --output-v2 "$OUTPUT_V2_PATH" --producer-commit "$(git rev-parse HEAD)"
@@ -47,7 +48,7 @@ the cutoff and SHA-256, then exits. It never polls or waits for a crawl.
 Only after the reviewed Ulta fixture is present on `main`, an early recon sample may be added:
 
 ```sh
-uv run python scripts/demo_export/export.py \
+uv run python -m scripts.demo_export.export \
   --database-url "$PI_DATABASE_URL" \
   --output "$OUTPUT_PATH" \
   --ulta-early-fixture /path/to/committed/ulta_ae_pdp_trimmed.html \
