@@ -91,4 +91,27 @@ assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
  const h = String(root.innerHTML);
  if (P(a.id)) assert(h.includes('class="pphoto"') && h.includes('referrerpolicy="no-referrer"') && h.includes('loading="lazy"') && !bad(h), 'product photo missing or unsafe');
 }
+// prices of 0.01 or less are feed errors: read as no price for both retailers, never shown or summed
+{
+ const j = T.sampleContract(), N = j.meta.dates.length;
+ const both = j.products.filter(q => q.offers?.u?.series?.price && q.offers?.s?.series?.price);
+ assert(both.length >= 2, 'fixture: need two products listed at both retailers');
+ const cases = [[both[0], 0.01], [both[1], 0]];
+ for (const [q, v] of cases) for (const k of ['u', 's']) {
+  const sr = q.offers[k].series;
+  sr.price[N - 1] = v;
+  sr.regular = sr.regular || new Array(N).fill(null);
+  sr.regular[N - 1] = v;
+ }
+ const DS = T.hydrate(j), by = Object.fromEntries(DS.products.map(p => [p.id, p]));
+ for (const [q, v] of cases) for (const k of ['u', 's']) {
+  const p = by[String(q.id).replace(/[^\w.:-]/g, '_')];
+  assert(p, `${q.id}: product dropped`);
+  assert.strictEqual(p.d[k].price[N - 1], null, `${k} price ${v} kept`);
+  assert.strictEqual(p.d[k].regular[N - 1], null, `${k} regular ${v} kept`);
+  assert(p.reg[k] == null || p.reg[k] > 0.01, `${k} regular price ${p.reg[k]} at or under 0.01`);
+ }
+ const kept = T.hydrate(T.sampleContract()).products.find(p => p.id === by[String(both[0].id).replace(/[^\w.:-]/g, '_')].id);
+ assert(kept.d.u.price.some(x => x > 0.01), 'a real price must survive the guard');
+}
 console.log('escape.test.js: ok');
