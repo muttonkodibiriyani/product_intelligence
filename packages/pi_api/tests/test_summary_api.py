@@ -99,9 +99,9 @@ def test_summaries_are_computed_once_per_generation_and_context(
     calls: list[str | None] = []
     real = module.summary
 
-    def counting(ds: Any, ctx: str | None) -> Any:
+    def counting(ds: Any, ctx: str | None, unverified: frozenset[str]) -> Any:
         calls.append(ctx)
-        return real(ds, ctx)
+        return real(ds, ctx, unverified)
 
     monkeypatch.setattr(module, "summary", counting)
     client = served(tmp_path)

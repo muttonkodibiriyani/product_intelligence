@@ -34,7 +34,25 @@ one: one distinct item, or for sizes one distinct number beside one distinct uni
 sizes, units or shades are ambiguous and give none (never the first), as does any parse failure
 or other shape. An ambiguous size list never falls back to a size in the name.
 
+A list whose only group is a number and then its unit (`[50, "ml"]`) is that size. A leading
+bracketed label that is not a literal (`"[Limited] 50ml"`) is plain text, not a list.
+
 A bad line fails the run and names the line number.
+
+## Unit price (`pi_match.unit_price`)
+
+`derive_unit_price(price, size_text)` gives the price per 100 ml, per 100 g or per unit
+(`BasePrice(amount, basis)`, rounded half-even to 0.0001), using `parse_size` above or a piece
+count ("60 capsules"). It gives None rather than guess when:
+
+- the price is missing or not positive;
+- the size is missing, unparsed or ambiguous (a list of several sizes);
+- the label is a multi-pack ("2 x 50 ml", "pack of 3", "duo"), because the published size is
+  per item, not per pack;
+- the label holds both a size and a piece count.
+
+`price_per_base(price, size, count=, pack=)` takes the parsed parts. Both are pure: nothing calls
+them yet, and nothing is written. `UnitPrice` in `MatchPair` (per 1 ml or 1 g) is unchanged.
 
 ## Outputs (`--out`)
 

@@ -9,7 +9,7 @@ from typing import Any
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.4.1"
+API_VERSION = "1.5.1"
 
 
 class Localized(ContractModel):
@@ -57,6 +57,10 @@ REASON_TEXT: dict[Reason, Localized] = {
     Reason.NOT_APPLICABLE: Localized(
         en="This view does not apply to this kind of catalogue.",
         ar="هذا العرض لا ينطبق على هذا النوع من الكتالوجات.",
+    ),
+    Reason.WAS_PRICE_UNVERIFIED: Localized(
+        en="A selected retailer's was-prices are unverified, so its promotions are not measured.",
+        ar="أسعار ما قبل الخصم لدى أحد المتاجر المحددة غير موثّقة، لذا لا تُقاس عروضه.",
     ),
 }
 
@@ -113,6 +117,27 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         ar=(
             "عناصر بأحجام متساوية وتسميات مختلفة: {count}، عبر أزواج من التسميات عددها {pairs}؛"
             " نعرض الأكثر تكرارًا."
+        ),
+    ),
+    CaveatCode.WAS_PRICE_UNVERIFIED: Localized(
+        en=(
+            "{retailer}'s was-prices are unverified: its discounts and promotions are not"
+            " shown or measured."
+        ),
+        ar="أسعار ما قبل الخصم لدى {retailer} غير موثّقة: لا تُعرض خصوماته وعروضه ولا تُقاس.",
+    ),
+    CaveatCode.SNAPSHOT_IMPORT_DATE: Localized(
+        en="{retailer}: snapshot imported {date}, capture date unknown.",
+        ar="{retailer}: لقطة بيانات مستوردة بتاريخ {date}، وتاريخ جمعها غير معروف.",
+    ),
+    CaveatCode.PARENT_LISTINGS_INCLUDED: Localized(
+        en=(
+            "{retailer}'s products may include parent listings that repeat their variants,"
+            " so its counts can overstate distinct products."
+        ),
+        ar=(
+            "قد تتضمن منتجات {retailer} قوائم رئيسية تكرّر متغيراتها،"
+            " فقد تزيد أعداده عن المنتجات الفعلية."
         ),
     ),
 }

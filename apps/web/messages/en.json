@@ -68,7 +68,8 @@
     "no_match": "No matching product at the other retailer.",
     "not_in_scope": "Outside the current dataset.",
     "currency_mismatch": "Prices are in different currencies.",
-    "not_applicable": "This view doesn't apply to this kind of catalogue."
+    "not_applicable": "This view doesn't apply to this kind of catalogue.",
+    "was_price_unverified": "This retailer's was-prices are unverified, so its promotions are not measured."
   },
   "home": {
     "title": "Current dataset",
@@ -76,11 +77,13 @@
     "vertical": "Vertical",
     "kind": "Kind",
     "cutoff": "Data as of",
+    "cutoffCollected": "{date} (collected retailers)",
     "days": "Collection days",
     "matchStage": "Matching",
     "retailers": "Retailers",
     "testData": "Test data — not for decisions",
     "since": "since {date}",
+    "imported": "snapshot imported {date}, capture date unknown",
     "notCollected": "not collected",
     "status": {
       "supported": "Collected",
@@ -103,6 +106,7 @@
       "compareTab": "Compare",
       "tabs": "Dashboard views",
       "subtitle": "{retailer} · one snapshot, {date}",
+      "subtitleImported": "{retailer} · snapshot imported {date}, capture date unknown",
       "sample": "Data: {retailer}, {market}.",
       "compareNote": "Comparison needs a second retailer or a second collection day. These cards show the layout they will use.",
       "indexTitle": "Price index over time",
@@ -122,7 +126,8 @@
         "cohort_too_small": "Too few products carry both a price and a regular price to measure discounts.",
         "other": "Discounts can't be measured in this snapshot.",
         "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
-        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions."
+        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions.",
+        "was_price_unverified": "This retailer's was-prices are unverified, so its discounts and promotions are not shown."
       }
     }
   },
@@ -186,7 +191,8 @@
       "overCap": "Exports stop at 50,000 rows. Narrow the filters to export.",
       "busy": "Two exports are already running. Try again in {seconds} s.",
       "nothing": "Nothing to export."
-    }
+    },
+    "noImage": "No image"
   },
   "gap": {
     "otherDearer": "{other} dearer",
@@ -240,6 +246,7 @@
     "size": "Size",
     "category": "Category",
     "offers": "Offers on {date}",
+    "offersUndated": "Offers",
     "retailer": "Retailer",
     "price": "Price",
     "regular": "Regular price",
@@ -252,6 +259,7 @@
     "sku": "Retailer SKU",
     "evidence": "Evidence",
     "captured": "Captured {date}",
+    "imported": "Imported {date}, capture date unknown",
     "source": "Open page",
     "noSource": "No page link",
     "early": "New listing: not in comparisons yet",
@@ -274,7 +282,8 @@
     "noPrice": "No price",
     "backCompare": "Back to comparison",
     "backPromotions": "Back to promotions",
-    "backLaunches": "Back to launches"
+    "backLaunches": "Back to launches",
+    "noImage": "No image"
   },
   "compare": {
     "title": "Compare prices",
