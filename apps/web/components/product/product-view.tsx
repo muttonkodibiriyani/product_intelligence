@@ -217,7 +217,6 @@ function Offers({
   const locale = useLocale();
   const caps = useMeta().data?.data?.capabilities;
   const show = { ratings: caps?.ratings ?? true, shades: caps?.shades ?? true, stock: caps?.stock ?? true };
-  const imported = (retailer: string) => importedOn(caveats, retailer);
   if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
   return (
     <div className="relative overflow-x-auto px-2">
@@ -265,6 +264,7 @@ function Offers({
         <tbody>
           {offers.map((o) => {
             const url = safeHttpUrl(o.evidence.url);
+            const importedAt = importedOn(caveats, o.retailer);
             return (
               <tr key={o.retailer} className="border-t border-line first:border-t-0">
                 <th scope="row" className={`${TD} text-start font-medium whitespace-nowrap`}>
@@ -317,9 +317,9 @@ function Offers({
                 </td>
                 <td className={`${TD} whitespace-nowrap`}>
                   {/* An imported retailer's capturedAt is its import time, never a capture date. */}
-                  {imported(o.retailer) ? (
-                    <time dateTime={imported(o.retailer)!} className="block text-xs text-ink-2">
-                      {t('imported', { date: formatDate(imported(o.retailer)!, locale) })}
+                  {importedAt ? (
+                    <time dateTime={importedAt} className="block text-xs text-ink-2">
+                      {t('imported', { date: formatDate(importedAt, locale) })}
                     </time>
                   ) : (
                     <time dateTime={o.evidence.capturedAt} className="block text-xs text-ink-2">

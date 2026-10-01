@@ -41,12 +41,27 @@ for (const [name, mk] of [['sample', () => T.sampleContract()], ['partial', () =
   const h = String(root.innerHTML);
   assert(h.length > 500, `${name} ${r}/${lang}: page rendered nothing`);
   assert(!bad(h), `${name} ${r}/${lang}: dataset string reached the DOM as markup near: ` + h.match(/.{0,80}(<zz|<b>x<\/b>).{0,40}/)?.[0]);
+  assert(!h.includes('${'), `${name} ${r}/${lang}: an uninterpolated \${...} reached the DOM near: ` + h.match(/.{0,80}\$\{.{0,40}/)?.[0]);
  }
 }
 
 // data-setf only touches whitelisted filter keys
 assert.deepStrictEqual([...T.SETF_KEYS].sort(), ['band', 'brand', 'cat', 'shade']);
 const click = d => handlers.click.forEach(f => f({ target: { closest: () => ({ dataset: d, closest: () => null, matches: () => false, tagName: 'BUTTON' }) }, preventDefault() {}, stopPropagation() {} }));
+// a selected promo campaign is outlined with the theme ink, never a literal ${...}
+{
+ T.useDS(T.hydrate(T.sampleContract())); T.resetAll(); T.afterData();
+ const html = () => { root.innerHTML = ''; T.render(); return String(root.innerHTML) };
+ T.S.route = 'promotions'; T.S.lang = 'en';
+ const id = html().match(/data-act="pc:([^"]+)"/)?.[1];
+ assert(id, 'promotions renders a clickable campaign');
+ click({ act: 'pc:' + id });
+ const h = html();
+ assert(T.S.sel && T.S.sel.src === 'promocal', 'clicking a campaign selects it');
+ assert(!h.includes('${'), 'no uninterpolated ${...} with a campaign selected');
+ assert(/stroke="#[0-9A-Fa-f]{6}" stroke-width="1.5"/.test(h), 'the selected campaign has an outline');
+ T.resetAll();
+}
 T.resetAll();
 const before = Object.keys(T.S.f).sort().join();
 click({ setf: '__proto__:x|constructor:y|toString:z|brand:Dior' });
@@ -68,6 +83,30 @@ assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
   assert(strip < 0 || h.indexOf('class="widget', strip) < 0, `${v.id}/${lang}: the waiting strip is not last`);
   assert((h.match(/class="widget kpiw/g) || []).length <= 4, `${v.id}/${lang}: more than one row of KPI tiles`);
   assert(/class="widget(?! kpiw)/.test(h.slice(0, strip < 0 ? undefined : strip)), `${v.id}/${lang}: no real chart or table`);
+ }
+}
+
+// a blocked retailer says so without promising a re-test; an imported snapshot is dated by its import, never by a capture
+{
+ const render = (j, lang) => { T.useDS(T.hydrate(j)); T.resetAll(); T.afterData(); T.S.lang = lang; T.S.route = 'coverage'; root.innerHTML = ''; T.render(); return String(root.innerHTML) };
+ const W = { en: ['automated collection blocked', 'snapshot imported 30 Sep 2026, capture date unknown · not in this view', /re-test/],
+  ar: ['الجمع الآلي محجوب', 'لقطة مستوردة في 30 سبتمبر 2026، وتاريخ جمعها غير معروف · ليست ضمن هذا العرض', /إعادة الاختبار/] };
+ for (const lang of ['en', 'ar']) {
+  const [blocked, snap, retest] = W[lang];
+  let h = render(T.fixtureContract('blocked'), lang);
+  assert(h.includes(blocked), `${lang}: a blocked retailer reads as blocked`);
+  assert(!retest.test(h), `${lang}: no re-test promise`);
+  const j = T.fixtureContract('blocked'), u = j.meta.retailers.find(r => r.id === 'u');
+  // importedAt is a market-local (Dubai) date, rendered as is
+  Object.assign(u, { status: 'snapshot', importedAt: '2026-09-30' });
+  h = render(j, lang);
+  assert(h.includes(snap), `${lang}: an imported snapshot reads as imported, with its import date`);
+  const none = lang === 'ar' ? 'وتاريخ جمعها غير معروف' : 'capture date unknown';
+  // a timestamp is not the contract (2026-09-30T21:15Z is 1 Oct in Dubai), nor is an impossible or missing date
+  for (const v of ['2026-09-30T21:15:00Z', '2026-09-31', 'not a date', undefined]) {
+   u.importedAt = v;
+   assert(!render(j, lang).includes(none), `${lang}: no import wording for importedAt=${v}`);
+  }
  }
 }
 
