@@ -64,7 +64,8 @@
     "matches_unreviewed": "The product matches haven't been reviewed yet.",
     "no_match": "No matching product at the other retailer.",
     "not_in_scope": "Outside the current dataset.",
-    "currency_mismatch": "Prices are in different currencies."
+    "currency_mismatch": "Prices are in different currencies.",
+    "not_applicable": "This view doesn't apply to this kind of catalogue."
   },
   "home": {
     "title": "Current dataset",
