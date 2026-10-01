@@ -19,3 +19,10 @@ aggregate at analytical scale.
 ## Consequences
 One project, one bill. PostgreSQL is the only fixed monthly cost; it is created only with owner
 approval and kept at the smallest tier during the pilot.
+
+## Amended 2026-10-01: Genkit → `@google/genai` (Vertex/ADC)
+The AI assistant calls Gemini through the official `@google/genai` SDK in Vertex mode with
+Application Default Credentials only, instead of Genkit. Reason: Genkit's Firebase plugin
+brought 49 npm advisories (7 high) through its telemetry dependencies, and the assistant runs its
+own metered tool loop anyway. Gemini, Vertex AI and server-side read-only tools are unchanged.
+See the decision log (2026-10-01) and `docs/design/ai-assistant.md` §2.

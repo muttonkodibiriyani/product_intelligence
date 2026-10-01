@@ -42,23 +42,23 @@ import {
   systemPrompt,
   verifierRetry,
 } from "./prompt.js";
+import {
+  type ChatRequest,
+  ChatRequestSchema,
+  MAX_HISTORY_ANSWER_CHARS,
+  MAX_HISTORY_TURNS,
+  MAX_QUESTION_CHARS,
+  type ThreadStore,
+} from "./threads.js";
 
 export const MAX_TOOL_CALLS = 6;
-export const MAX_QUESTION_CHARS = 2_000;
-export const MAX_HISTORY_TURNS = 10;
 export const TEMPERATURE = 0.2;
 
-export interface HistoryTurn {
-  readonly role: "user" | "model";
-  readonly text: string;
-}
-
-export interface ChatInput {
-  readonly question: string;
-  readonly locale: Locale;
-  /** Earlier turns of this thread, text only (no tool results carry over). */
-  readonly history?: readonly HistoryTurn[];
-}
+/**
+ * One question. History is never part of the input: earlier turns of `threadId` are loaded
+ * from the caller's stored thread (text only; no tool results carry over).
+ */
+export type ChatInput = ChatRequest;
 
 export type AnswerStatus =
   /** Verified answer. */
@@ -159,17 +159,19 @@ export class ChatFlow {
       readonly meter: Meter;
       readonly model: ChatModel;
       readonly registry: ToolRegistry;
+      readonly threads: ThreadStore;
       readonly label?: string;
       readonly maxToolCalls?: number;
     },
   ) {}
 
   async answer(input: ChatInput, caller: CallerContext, idToken: string): Promise<ChatAnswer> {
-    const { locale } = input;
-    const question = input.question.trim();
-    if (question.length === 0 || question.length > MAX_QUESTION_CHARS) {
-      return this.unavailable(locale, "invalid_question", null, null);
+    // Strict parse here too: a request carrying `history` or any other extra key is refused.
+    const parsed = ChatRequestSchema.safeParse(input);
+    if (!parsed.success) {
+      return this.unavailable(input.locale === "ar" ? "ar" : "en", "invalid_question", null, null);
     }
+    const { locale, question } = parsed.data;
 
     let open: Question;
     try {
@@ -182,15 +184,21 @@ export class ChatFlow {
       return this.unavailable(locale, "prompt_version_mismatch", open, null);
     }
 
+    const history =
+      input.threadId === undefined
+        ? []
+        : await this.deps.threads.history(caller.uid, input.threadId, MAX_HISTORY_TURNS);
     const state: FlowState = {
       turns: [
-        ...(input.history ?? [])
-          .slice(-MAX_HISTORY_TURNS)
-          .map((turn): Turn =>
-            turn.role === "user"
-              ? { role: "user", text: turn.text.slice(0, MAX_QUESTION_CHARS) }
-              : { role: "model", text: turn.text.slice(0, 4 * MAX_QUESTION_CHARS), toolCalls: [] },
-          ),
+        ...history.slice(-MAX_HISTORY_TURNS).map((turn): Turn =>
+          turn.role === "user"
+            ? { role: "user", text: turn.text.slice(0, MAX_QUESTION_CHARS) }
+            : {
+                role: "model",
+                text: turn.text.slice(0, MAX_HISTORY_ANSWER_CHARS),
+                toolCalls: [],
+              },
+        ),
         { role: "user", text: question },
       ],
       results: [],

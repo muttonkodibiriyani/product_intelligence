@@ -37,6 +37,18 @@ describe("cleanAnswer", () => {
     expect(result.removed).toBeGreaterThanOrEqual(8);
   });
 
+  it("removes emails and mailto, tel, sms, file and vbscript links", () => {
+    const result = cleanAnswer(
+      "Write to a.b+c@evil.example or mailto:x@evil.example, call tel:+97100, sms:123, " +
+        "open file:///etc/passwd or VBScript:msgbox(1). Price 12.50.",
+      KNOWN,
+    );
+    expect(result.markdown).not.toMatch(/evil|mailto|tel:|sms:|file:|vbscript|@/i);
+    expect(result.markdown).toContain("[email removed]");
+    expect(result.markdown).toContain("Price 12.50.");
+    expect(result.removed).toBe(6);
+  });
+
   it("does not let link syntax swallow a product token", () => {
     const result = cleanAnswer("[[[product:p01]]](https://evil.example)", KNOWN);
     expect(result.markdown).toBe("[[product:p01]]");

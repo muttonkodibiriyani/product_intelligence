@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { type ChatAnswer, ChatFlow } from "../flows/chat.js";
+import { NO_THREADS } from "../flows/threads.js";
 import type { ChatModel } from "../flows/model.js";
 import type { Locale } from "../flows/prompt.js";
 import { ALLOWED_PROJECT, VertexChatModel } from "../flows/vertex.js";
@@ -118,6 +119,8 @@ export default class AssistantEvalProvider {
       meter: new Meter(deps.store, deps.prices),
       model: deps.model,
       registry: new ToolRegistry(TOOLS, api, { evidenceHosts: EVIDENCE_HOSTS }),
+      // Every eval case is a fresh question with no thread.
+      threads: NO_THREADS,
       label: EVAL_LABEL,
     });
     this.seq += 1;

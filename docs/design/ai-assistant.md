@@ -104,7 +104,8 @@ flowchart LR
 | `apps/assistant/src/flows/chat.ts` | Stage 1b: `ChatFlow` (tool loop, meter per model call, answer cleaning, verifier with one retry, fallback). Structured fields (citations, product ids, not-enough-data) are built from tool results, never from model text |
 | `apps/assistant/src/flows/model.ts` | `ChatModel` interface and the prompt-size bound checked before each reservation |
 | `apps/assistant/src/flows/vertex.ts` | `VertexChatModel`: `@google/genai` in Vertex/ADC mode, automatic function calling off, env/project refusal |
-| `apps/assistant/src/guard/answer.ts` | Server-side answer cleaning: no links, images or HTML; only product tokens a tool returned |
+| `apps/assistant/src/flows/threads.ts` | Strict callable request schema (`{question, locale, threadId?}`) and the thread store: history is read from the caller's own stored thread, never from the request |
+| `apps/assistant/src/guard/answer.ts` | Server-side answer cleaning: no links, images, HTML, URLs or emails; only product tokens a tool returned |
 | `apps/assistant/src/reports/` | Stage 2–3 generators (`exceljs`, `pdfmake`, `pptxgenjs`) |
 | `apps/assistant/src/flows/prompt.ts` | Versioned system prompt (`PROMPT_VERSION`), a TypeScript module rather than Dotprompt files. The version is written into every answer and must equal `assistant_config/current.promptVersion` (AIG-07) |
 | `apps/assistant/evals/` | Separate npm package (own lockfile, promptfoo pinned): config, custom provider running `ChatFlow`, fixtures, gold/refusal/injection suites |
@@ -306,8 +307,8 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
   `[[product:<id>]]` tokens that survived cleaning (ids a tool returned). `chart` is added in
   stage 2 from tool data. Nothing structured is taken from model text.
 - **Answer cleaning (`src/guard/answer.ts`).** Before verification the server removes HTML,
-  comments, images, links (keeping link text), reference definitions and bare URLs, and turns
-  unknown product tokens into "a product".
+  comments, images, links (keeping link text), reference definitions, URLs (any scheme) and
+  email addresses, and turns unknown product tokens into "a product".
 - **Numeric verifier (server, after the model's final answer; `src/guard/verifier.ts`).**
   - *Normalise the answer.*
     - Arabic-Indic (٠–٩) and Extended Arabic-Indic (۰–۹) digits become ASCII digits.
@@ -441,8 +442,15 @@ reaches the model through tool output.
    survive.
 5. **Output rendering.** The UI renders `answer_md` with a strict Markdown subset: no raw HTML,
    no images from the model, and links only to allowlisted retailer or app hosts. Thumbnails come
-   from `productIds` on the server side.
-6. **Evals.** An injection corpus runs in CI (§8): planted names in a fixture dataset, Arabic and
+   from `productIds` on the server side. **Requirement for the FE chat UI: the renderer has no
+   autolink and no HTML** (e.g. markdown-it with `html: false, linkify: false`, or an
+   equivalent), so a URL or email in the text stays text. This is the first layer; the server's
+   `cleanAnswer` (links, images, tags, URLs of any scheme, emails) is the second.
+6. **Chat history is server-side.** The callable accepts only `{question, locale, threadId?}`
+   (strict; unknown keys such as `history` are rejected). Earlier turns are loaded from
+   `users/{uid}/assistant_threads/{threadId}/messages`, which only the function writes, so a
+   client cannot forge model turns, and a thread id from another user finds nothing.
+7. **Evals.** An injection corpus runs in CI (§8): planted names in a fixture dataset, Arabic and
    English, direct and indirect.
 
 ## 8. Evaluation plan (promptfoo in CI)
@@ -498,12 +506,17 @@ reaches the model through tool output.
   - Fork PRs never get an OIDC token: the job has `if: github.event.pull_request.head.repo.full_name == github.repository`,
     and GitHub withholds `id-token` from forks anyway.
   - `permissions: {id-token: write, contents: read}` is set on that job only.
-  - The service account holds only `roles/aiplatform.user` today. Real eval calls also need
-    Firestore access for the shared meter, and Firestore IAM cannot scope a role to
-    collections. **Ruling (Coordinator, 2026-10-01): no IAM widening now.** CI runs the evals in
-    validate/no-network mode only (`promptfoo validate` plus the unit tests). Before any real
-    eval spend, the owner chooses between a small metering endpoint run by the function's
-    service account and a scoped grant.
+  - The service account holds only `roles/aiplatform.user` today, and it is **not** granted
+    `roles/datastore.user` (Coordinator ruling, 2026-10-01). Real eval calls would need
+    Firestore access for the shared meter, but Firestore IAM cannot scope a role to
+    collections: `roles/datastore.user` on the (default) database would let the CI identity
+    rewrite `assistant_config/current` (the kill switch, caps and model) and the meter's own
+    counters and reservations, so a compromised workflow could switch the assistant back on or
+    erase spend.
+  - Until then CI runs the evals in validate/no-network mode only (`promptfoo validate` plus
+    the unit tests). **Exit before any real eval spend (owner decision):** a small metering
+    endpoint run by the function's service account, which the CI identity may call but which
+    alone writes the meter; or a scoped grant, if one becomes possible.
 - **How the $1.50/month CI cap is enforced.** The eval harness calls Gemini through the same
   meter as production (§9), with label `ci`. The meter reserves the per-case ceiling in
   Firestore before each Vertex call and refuses the call once the `ci` month total would pass

@@ -136,12 +136,16 @@ flowchart TB
 | C10 | Review queue | Accept/reject/lock/split/merge; gold set | Web app (+ Label Studio) |
 | C11 | Metric service | Versioned KPIs, point-in-time aware | Cube + dbt |
 | C12 | Web app | Image-first explorer, product page, compare board, studio, alerts, coverage, health, admin; EN + AR | Next.js on App Hosting |
-| C13 | AI assistant | Read-only metric tools, cited answers with images | Genkit + Gemini |
+| C13 | AI assistant | Read-only metric tools, cited answers with images | Gemini via `@google/genai` (Vertex/ADC); was Genkit, see note |
 | C14 | Alerts | Price/promo/stock/launch/content rules, dedupe, ack | Job + Firestore + email |
 | C15 | Identity & access | Login, MFA, roles, SSO-ready | Firebase Auth + Identity Platform |
 | C16 | Exports | CSV/Excel/Parquet with manifests | Cloud Storage |
 | C17 | Observability | Run health, escalations, block rates, drift, match quality, cost | OpenTelemetry, Cloud Logging, Sentry |
 | C18 | Secrets | Proxy and API credentials | Secret Manager |
+
+C13 note (2026-10-01): the assistant uses the official `@google/genai` SDK on Vertex AI
+instead of Genkit, which brought 49 npm advisories; see the ADR-0002 amendment and the decision
+log.
 
 ### 3.3 Environments
 
