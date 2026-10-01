@@ -410,16 +410,18 @@ def _selected(query: ContractModel, data: object) -> frozenset[str]:
 
 
 def _named(query: ContractModel) -> frozenset[str]:
-    """The retailer or context ids a query names; empty when it names none."""
-    pair = getattr(query, "retailers", None)
-    if isinstance(pair, str):
-        return frozenset(pair.split(","))
+    """The retailer or context ids a query names, from every field that names one (the union, so
+    a ``retailers`` pair never hides a ``retailer`` list); empty when it names none."""
     if isinstance(query, AssortmentQuery):
         return frozenset({query.missing_at, query.present_at})
+    pair = getattr(query, "retailers", None)
     named = getattr(query, "retailer", None)
-    if isinstance(named, str):
-        return frozenset({named})
-    return frozenset(named or ())
+    return frozenset(
+        (
+            *(pair.split(",") if isinstance(pair, str) else ()),
+            *((named,) if isinstance(named, str) else named or ()),
+        )
+    )
 
 
 def respond[T](

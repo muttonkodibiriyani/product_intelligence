@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from api_fixture import Client, bearer, make_client, write
+from pi_api.app import _named
+from pi_api.catalog import ProductQuery
 from pi_api.dq import IMPORTED, Imported, caveats, imported_view
-from pi_dataset import DatasetV3
+from pi_dataset import ContractModel, DatasetV3
 from pi_metrics import CaveatCode, Reason, promotions, summary
 from pi_metrics.model import ProductFilter
 from pi_metrics.summary import default_context
@@ -315,3 +317,17 @@ def test_pair_and_history_endpoints_owe_ulta_caveats_only_when_ulta_is_in_them(
         get(client, f"/assortment-gaps?missing_at={ULTA}&present_at=shop_a")
     )
     assert "was_price_unverified" in codes(get(client, "/products/p03/history"))
+
+
+def test_a_query_naming_retailers_in_two_fields_involves_all_of_them() -> None:
+    """AIE, #137: a ``retailers`` pair must not hide a ``retailer`` list (the union is named)."""
+
+    class Both(ContractModel):
+        retailers: str | None = None
+        retailer: tuple[str, ...] = ()
+
+    assert _named(Both(retailers="shop_a,shop_c", retailer=(ULTA,))) == {"shop_a", "shop_c", ULTA}
+    assert _named(Both(retailers="shop_a,shop_c")) == {"shop_a", "shop_c"}
+    assert _named(Both(retailer=(ULTA,))) == {ULTA}
+    assert _named(Both()) == frozenset()
+    assert _named(ProductQuery(retailer=("shop_a", ULTA))) == {"shop_a", ULTA}
