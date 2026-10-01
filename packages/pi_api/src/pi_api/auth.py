@@ -6,6 +6,7 @@ certificates are fetched over HTTPS and cached for their ``max-age``. Any doubt 
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -18,6 +19,8 @@ import jwt
 from cryptography.x509 import load_pem_x509_certificate
 
 from pi_core import PiModel
+
+log = logging.getLogger(__name__)
 
 CERTS_URL = (
     "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
@@ -38,7 +41,7 @@ class Principal(PiModel):
 
 
 class AuthError(Exception):
-    """``status`` is 401 (no valid token) or 403 (valid token, no known role)."""
+    """``status`` is 401 (no valid token), 403 (valid token, no known role) or 503 (no keys)."""
 
     def __init__(self, status: int, code: str, message: str) -> None:
         super().__init__(message)
@@ -47,14 +50,32 @@ class AuthError(Exception):
         self.message = message
 
 
+class CertificatesUnavailableError(Exception):
+    """No usable signing keys: the fetch failed and no last-good set is within its grace."""
+
+
 class CertSource(Protocol):
     def certificates(self) -> Mapping[str, str]:
-        """``kid`` → PEM certificate, current for Google's signing keys."""
+        """``kid`` → PEM certificate, current for Google's signing keys.
+
+        Raises ``CertificatesUnavailableError`` when there are none to verify against.
+        """
         ...
 
 
 class HttpCertSource:
-    """Fetches the certificates and keeps them for the response's ``max-age``."""
+    """Fetches the certificates and keeps them for the response's ``max-age``.
+
+    A failed refresh doesn't refetch on every request: further attempts wait an exponential
+    backoff (``BACKOFF_BASE`` doubling to ``BACKOFF_MAX``). Meanwhile the last good set is still
+    served for up to ``GRACE`` seconds past its expiry, because Google publishes each key well
+    before it signs with it and keeps it after. With no last good set inside the grace, it fails
+    closed.
+    """
+
+    BACKOFF_BASE = 1.0
+    BACKOFF_MAX = 60.0
+    GRACE = 3600.0
 
     def __init__(
         self,
@@ -68,22 +89,49 @@ class HttpCertSource:
         self._lock = threading.Lock()
         self._certs: Mapping[str, str] = {}
         self._expires = 0.0
+        self._retry_at = 0.0
+        self._failures = 0
 
     def certificates(self) -> Mapping[str, str]:
         with self._lock:
-            if self._clock() >= self._expires:
-                response = self._client.get(self._url)
-                response.raise_for_status()
-                certs = response.json()
-                if not isinstance(certs, dict) or not all(
-                    isinstance(k, str) and isinstance(v, str) for k, v in certs.items()
-                ):
-                    msg = "unexpected certificate document"
-                    raise ValueError(msg)
-                match = _MAX_AGE.search(response.headers.get("cache-control", ""))
-                self._certs = certs
-                self._expires = self._clock() + (int(match.group(1)) if match else 300)
-            return self._certs
+            now = self._clock()
+            if now < self._expires:
+                return self._certs
+            if now >= self._retry_at:
+                try:
+                    self._refresh()
+                except (httpx.HTTPError, ValueError) as error:
+                    self._failures += 1
+                    backoff = min(self.BACKOFF_MAX, self.BACKOFF_BASE * 2 ** (self._failures - 1))
+                    self._retry_at = now + backoff
+                    log.warning(
+                        "certificate refresh failed (%s); next attempt in %.0fs",
+                        type(error).__name__,
+                        backoff,
+                    )
+                else:
+                    return self._certs
+            if self._certs and now < self._expires + self.GRACE:
+                return self._certs
+            msg = "no signing keys within their grace period"
+            raise CertificatesUnavailableError(msg)
+
+    def _refresh(self) -> None:
+        response = self._client.get(self._url)
+        response.raise_for_status()
+        certs = response.json()
+        if (
+            not certs
+            or not isinstance(certs, dict)
+            or not all(isinstance(k, str) and isinstance(v, str) for k, v in certs.items())
+        ):
+            msg = "unexpected certificate document"
+            raise ValueError(msg)
+        match = _MAX_AGE.search(response.headers.get("cache-control", ""))
+        self._certs = certs
+        self._expires = self._clock() + (int(match.group(1)) if match else 300)
+        self._retry_at = 0.0
+        self._failures = 0
 
 
 class TokenVerifier:
@@ -104,11 +152,15 @@ class TokenVerifier:
             raise _unauthenticated("unexpected token algorithm")
         try:
             pem = self._certs.certificates().get(str(header.get("kid")))
-        except (httpx.HTTPError, ValueError):
-            raise _unauthenticated("signing keys unavailable") from None
+        except CertificatesUnavailableError:
+            raise _unavailable() from None
         if pem is None:
             raise _unauthenticated("unknown signing key")
-        key = load_pem_x509_certificate(pem.encode()).public_key()
+        try:
+            key = load_pem_x509_certificate(pem.encode()).public_key()
+        except ValueError:
+            log.exception("unreadable signing certificate for kid %s", header.get("kid"))
+            raise _unavailable() from None
         try:
             claims = jwt.decode(
                 token,
@@ -142,6 +194,11 @@ def _bearer(authorization: str | None) -> str:
     if scheme.lower() != "bearer" or not token.strip() or " " in token.strip():
         raise _unauthenticated("missing bearer token")
     return token.strip()
+
+
+def _unavailable() -> AuthError:
+    """Our side can't verify right now: retryable, and not a reason to sign the user out."""
+    return AuthError(503, "auth_unavailable", "token verification is unavailable; retry later")
 
 
 def _unauthenticated(message: str) -> AuthError:

@@ -51,6 +51,10 @@ class InvalidQueryError(ValueError):
     """A well-formed request that can't be answered as asked (422)."""
 
 
+class ProductNotFoundError(Exception):
+    """No product with that id in the selected dataset."""
+
+
 class StaleCursorError(Exception):
     """The cursor's generation is no longer loaded (409)."""
 
@@ -486,7 +490,7 @@ def find(ds: Dataset, product_id: str) -> Product:
     for p in ds.products:
         if p.id == product_id:
             return p
-    raise KeyError(product_id)
+    raise ProductNotFoundError(product_id)
 
 
 def product_detail(ds: Dataset, product: Product) -> Metric[ProductDetail]:

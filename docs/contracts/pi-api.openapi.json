@@ -1849,6 +1849,16 @@
             },
             "description": "rate_limited (Retry-After)"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -1857,7 +1867,7 @@
                 }
               }
             },
-            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
           }
         },
         "summary": "Get Admin Product"
@@ -1990,6 +2000,16 @@
             },
             "description": "rate_limited (Retry-After)"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -1998,7 +2018,7 @@
                 }
               }
             },
-            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
           }
         },
         "summary": "Get Coverage"
@@ -2115,6 +2135,16 @@
             },
             "description": "rate_limited (Retry-After)"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -2123,7 +2153,7 @@
                 }
               }
             },
-            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
           }
         },
         "summary": "Get Meta"
@@ -2394,6 +2424,16 @@
             },
             "description": "rate_limited (Retry-After)"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -2402,7 +2442,7 @@
                 }
               }
             },
-            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
           }
         },
         "summary": "Get Products"
@@ -2531,6 +2571,16 @@
             },
             "description": "rate_limited (Retry-After)"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -2539,7 +2589,7 @@
                 }
               }
             },
-            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
           }
         },
         "summary": "Get Product"
@@ -2702,6 +2752,16 @@
             },
             "description": "rate_limited (Retry-After)"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -2710,7 +2770,7 @@
                 }
               }
             },
-            "description": "data_unavailable: no dataset loaded yet (Retry-After)"
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
           }
         },
         "summary": "Get History"
