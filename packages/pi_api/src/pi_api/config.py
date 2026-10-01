@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from pi_core import PiModel
 
@@ -32,11 +33,39 @@ def evidence_hosts(raw: str, var: str = "PI_API_EVIDENCE_HOSTS") -> dict[str, fr
     return {retailer: frozenset(names) for retailer, names in hosts.items()}
 
 
+def dataset_entries(raw: str) -> tuple[tuple[str, ...], dict[str, str]]:
+    """``PI_API_DATASETS``: comma-separated ``path`` (served whole) or ``source=path`` entries.
+
+    ``source=path`` serves only that source's part of the file (ADR-0010); several sources may
+    share a path, and a source is assigned once.
+    """
+    whole: list[str] = []
+    sources: dict[str, str] = {}
+    for entry in (e.strip() for e in raw.split(",")):
+        if not entry:
+            continue
+        source, sep, path = (part.strip() for part in entry.rpartition("="))
+        if not _OBJECT.match(path) or ".." in path or (sep and not _RETAILER.match(source)):
+            msg = f"PI_API_DATASETS entry {entry!r} is not a .json object path or source=path"
+            raise ValueError(msg)
+        if not sep:
+            whole.append(path)
+        elif source in sources:
+            msg = f"PI_API_DATASETS assigns {source} twice"
+            raise ValueError(msg)
+        else:
+            sources[source] = path
+    return tuple(dict.fromkeys(whole)), sources
+
+
 class Settings(PiModel):
     #: Firebase project id: the token ``aud`` and the issuer suffix.
     project_id: str = Field(min_length=1)
-    #: Dataset objects to serve, e.g. ``datasets/uae/latest.json`` (gzip content is detected).
-    datasets: tuple[str, ...] = Field(min_length=1)
+    #: Dataset objects served whole, e.g. ``datasets/uae/latest.json`` (gzip is detected).
+    datasets: tuple[str, ...] = ()
+    #: Per source (retailer id), the object whose part for that source is served (ADR-0010).
+    #: Same-scope sources are composed into one view.
+    sources: Mapping[str, str] = Field(default_factory=dict)
     #: GCS bucket holding ``datasets``; ``None`` reads them from ``local_dir`` (dev and tests).
     bucket: str | None = None
     local_dir: str | None = None
@@ -53,13 +82,20 @@ class Settings(PiModel):
     #: Per retailer, the hosts whose product image URLs are served (same rules); empty nulls all.
     image_hosts: Mapping[str, frozenset[str]] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def _check_datasets(self) -> Self:
+        if not self.datasets and not self.sources:
+            msg = "PI_API_DATASETS names no dataset"
+            raise ValueError(msg)
+        both = sorted(set(self.datasets) & set(self.sources.values()))
+        if both:
+            msg = f"PI_API_DATASETS serves {both} both whole and per source"
+            raise ValueError(msg)
+        return self
+
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
-        datasets = tuple(d.strip() for d in env.get("PI_API_DATASETS", "").split(",") if d.strip())
-        for path in datasets:
-            if not _OBJECT.match(path) or ".." in path:
-                msg = f"PI_API_DATASETS entry {path!r} is not a plain .json object path"
-                raise ValueError(msg)
+        datasets, sources = dataset_entries(env.get("PI_API_DATASETS", ""))
         bucket = env.get("PI_API_BUCKET") or None
         local_dir = env.get("PI_API_LOCAL_DIR") or None
         if (bucket is None) == (local_dir is None):
@@ -68,6 +104,7 @@ class Settings(PiModel):
         return cls(
             project_id=env.get("PI_API_FIREBASE_PROJECT", ""),
             datasets=datasets,
+            sources=sources,
             bucket=bucket,
             local_dir=local_dir,
             refresh_seconds=int(env.get("PI_API_REFRESH_SECONDS", "60")),

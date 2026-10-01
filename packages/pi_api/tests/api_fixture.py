@@ -130,8 +130,9 @@ def make_client(
     evidence_hosts: Mapping[str, frozenset[str]] | None = None,
     image_hosts: Mapping[str, frozenset[str]] | None = None,
     clock: Callable[[], datetime] = lambda: CLOCK,
+    assigned: Mapping[str, str] | None = None,
 ) -> tuple[Client, SnapshotSource]:
-    source = SnapshotSource(LocalStore(root), paths, refresh_seconds=3600)
+    source = SnapshotSource(LocalStore(root), paths, refresh_seconds=3600, assigned=assigned or {})
     if load:
         source.load_all()
     verifier = TokenVerifier(PROJECT, certs or FakeCerts(), now=lambda: NOW)
