@@ -49,7 +49,6 @@ for (const locale of ['en', 'ar'] as const) {
       ? {
           nav: 'الجديد',
           title: 'المنتجات الجديدة',
-          caveat: '1 عناصر ظهرت لأول مرة بعد جمع غير مكتمل لا تُعرض كإطلاقات.',
           three: '3 منتجات',
           of40: '3 من 40 منتج',
           more: 'اعرض حتى 500',
@@ -61,7 +60,6 @@ for (const locale of ['en', 'ar'] as const) {
       : {
           nav: 'Launches',
           title: 'Launches',
-          caveat: '1 items first seen after an incomplete run are not shown as launches.',
           three: '3 products',
           of40: '3 of 40 products',
           more: 'Show up to 500',
@@ -78,7 +76,8 @@ for (const locale of ['en', 'ar'] as const) {
       await page.getByRole('navigation').getByRole('link', { name: T.nav }).click();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/launches/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.getByRole('note')).toContainText(T.caveat);
+      // The caveat's wording is the API's; take it from the same golden the mock serves.
+      await expect(page.getByRole('note')).toContainText(golden1.caveats[0][locale]);
       await expect(page.getByText(T.three)).toBeVisible();
       const rows = page.locator('#rows table tbody tr');
       await expect(rows).toHaveCount(3);
