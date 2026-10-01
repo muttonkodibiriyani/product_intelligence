@@ -150,11 +150,11 @@ describe("a cut list (API 1.1.0 limit)", () => {
       code: "truncated",
       en: {
         untrusted:
-          "Only the first 3 of 15 rows are listed, the row limit. Any summary covers all 15.",
+          "Only the first 3 of 15 rows are listed, the row limit. Any summary is computed over all rows, not only the listed ones; its n is what it counted.",
       },
       ar: {
         untrusted:
-          "تُعرض أول 3 من أصل 15 صفًا فقط بسبب حد الصفوف. أي ملخص يشمل جميع الصفوف وعددها 15.",
+          "تُعرض أول 3 من أصل 15 صفًا فقط بسبب حد الصفوف. أي ملخص محسوب على جميع الصفوف لا على المعروضة فقط، وقيمة n فيه هي ما احتُسب.",
       },
     });
     expect(verifyAnswerNumbers("Top 3 of 15 pairs.", [result]).ok).toBe(true);

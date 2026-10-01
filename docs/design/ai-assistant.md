@@ -255,12 +255,13 @@ drops `Money.minor` so the model only ever sees the decimal `amount` text.
 Common input limits:
 
 - `search_products` takes `limit` (≤ 25, default 10), so the assistant never pages.
-- `compare`, `promotions` and `launches` (tool version 3, API 1.1.0 #70) always send `limit`
+- `compare`, `promotions` and `launches` (API 1.1.0, #70) always send `limit`
   (≤ 25, default 25). The API keeps a documented order when it cuts the list (largest `|gap.pct|`,
   deepest discount, newest first). `data.total` counts every row, and summaries and shares cover
   every row. When `data.truncated` is true, the registry adds a server-computed `shown` count
-  and a `truncated` caveat ("Only the first N of total rows are listed"). The answer says "top N
-  of total": the caveat is always shown by the UI, and both numbers are tool numbers, so the
+  and a `truncated` caveat: "Only the first N of total rows are listed …". It adds that any
+  summary is computed over all rows, with its own n (for compare, the counted pairs). The answer
+  says "top N of total": the caveat is always shown by the UI, and both numbers are tool numbers, so the
   verifier accepts them. No prompt change was needed (prompt version unchanged).
 - A result that is still too large is refused with `output_too_large` (below), and the model is
   told to narrow the filters.
@@ -274,7 +275,7 @@ Results over 16,000 chars are refused with `output_too_large` rather than trunca
 
 **Contract source of truth:** `docs/contracts/pi-api.openapi.json` and the goldens under
 `docs/contracts/golden/pi-api/` (S2 #55, S3 metric endpoints #61, both on main). All tools are
-`GET` under `/api/v1` (tool version 2; 3 for the three list tools above). `test/contract.test.ts` fails the build if a tool's path,
+`GET` under `/api/v1`; each tool's `version` lives in `src/tools/definitions.ts` and is written into every citation. `test/contract.test.ts` fails the build if a tool's path,
 query parameters or required parameters drift from the OpenAPI document, if an
 `x-pi-source-text` field is not sanitised as untrusted text, or if any golden fails the
 registry's envelope checks.

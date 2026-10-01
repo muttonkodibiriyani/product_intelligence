@@ -109,8 +109,8 @@ function truncatedCaveat({ shown, total }: { shown: number; total: number }): Ca
   return {
     code: "truncated",
     ...prose({
-      en: `Only the first ${n} of ${of} rows are listed, the row limit. Any summary covers all ${of}.`,
-      ar: `تُعرض أول ${n} من أصل ${of} صفًا فقط بسبب حد الصفوف. أي ملخص يشمل جميع الصفوف وعددها ${of}.`,
+      en: `Only the first ${n} of ${of} rows are listed, the row limit. Any summary is computed over all rows, not only the listed ones; its n is what it counted.`,
+      ar: `تُعرض أول ${n} من أصل ${of} صفًا فقط بسبب حد الصفوف. أي ملخص محسوب على جميع الصفوف لا على المعروضة فقط، وقيمة n فيه هي ما احتُسب.`,
     }),
   };
 }
