@@ -35,8 +35,15 @@ def test_start_outside_the_window_is_refused(start: datetime) -> None:
         cadence.auto_cutoff(start)
 
 
-def test_prefix_is_dated_by_the_start() -> None:
-    assert cadence.auto_prefix(at("18:00")) == "auto-20261001T1800Z"
+def test_prefix_is_dated_by_the_start_to_the_second() -> None:
+    assert cadence.auto_prefix(at("18:00")) == "auto-20261001T180000Z"
+
+
+def test_prefix_carries_the_cloud_run_execution_and_attempt() -> None:
+    first = cadence.auto_prefix(at("18:00"), "pi-sephora-auto-x7k2p", "0")
+    retry = cadence.auto_prefix(at("18:00"), "pi-sephora-auto-x7k2p", "1")
+    assert first == "auto-20261001T180000Z-x7k2p-0"
+    assert retry == "auto-20261001T180000Z-x7k2p-1"
 
 
 # ---------------------------------------------------------------- plan
@@ -59,12 +66,30 @@ def test_unread_tier_keeps_the_seeded_shuffle() -> None:
     assert order == cadence.gap_first(reversed(pids), {})[0]
 
 
-def test_merge_keeps_the_newest_read() -> None:
+@pytest.mark.parametrize("newest_first", [True, False])
+def test_merge_keeps_the_newest_read_in_any_order(newest_first: bool) -> None:
     old = {"pdp_en": {"P1": {"at": "2026-09-29T22:00:00+00:00", "multi_price": True}}}
     new = {"pdp_en": {"P1": {"at": "2026-09-30T22:00:00+00:00", "multi_price": False}}}
-    assert cadence.merge_covered([new, old]) == {
+    runs = [new, old] if newest_first else [old, new]
+    assert cadence.merge_covered(runs) == {
         "P1": cadence.Seen("2026-09-30T22:00:00+00:00", multi_price=False)
     }
+
+
+def test_a_failed_page_moves_out_of_the_unread_tier() -> None:
+    runs: list[dict[str, Any]] = [
+        {"pdp_en": {"P1": {"at": "2026-09-28T22:00:00+00:00", "multi_price": True}}},
+        {"attempted_en": {"P1": {"at": "2026-09-30T22:00:00+00:00"}}},  # later read failed
+        {"attempted_en": {"P2": {"at": "2026-09-30T22:00:00+00:00"}}},  # never read
+    ]
+    seen = cadence.merge_covered(runs)
+    assert seen == {
+        "P1": cadence.Seen("2026-09-30T22:00:00+00:00", multi_price=True),
+        "P2": cadence.Seen("2026-09-30T22:00:00+00:00", multi_price=False),
+    }
+    order, tiers = cadence.gap_first(["P1", "P2", "P3"], seen)
+    assert order == ["P3", "P1", "P2"]
+    assert tiers == {"unread": 1, "multi_price": 1, "rest": 1}
 
 
 def test_multi_price_compares_the_price_shown() -> None:
@@ -82,6 +107,7 @@ def test_multi_price_compares_the_price_shown() -> None:
         ("complete", "complete"),
         ("cutoff", "cutoff"),
         ("outside_window", "outside_window"),
+        ("refused: AUTO=1 derives PREFIX", "refused"),
         ("challenge: marker 'captcha' (http 200) at u", "blocked"),
         ("blocked: http 403 at u", "blocked"),
         ("3 consecutive 429", "rate_limited"),
@@ -100,7 +126,7 @@ def test_outcome(stopped: str | None, expected: str) -> None:
 def auto_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("BUCKET", f"file:{tmp_path}")
     monkeypatch.setenv("AUTO", "1")
-    for key in ("PREFIX", "CUTOFF", "PLAN"):
+    for key in ("PREFIX", "CUTOFF", "PLAN", "CLOUD_RUN_EXECUTION", "CLOUD_RUN_TASK_ATTEMPT"):
         monkeypatch.delenv(key, raising=False)
     return tmp_path
 
@@ -135,29 +161,77 @@ def _stub(job: run.Job, monkeypatch: pytest.MonkeyPatch, pids: list[str]) -> lis
     return calls
 
 
-def test_stale_one_shot_env_is_refused(auto_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CUTOFF", "2026-10-01T03:20:00+00:00")
-    with pytest.raises(ValueError, match="AUTO=1"):
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("PREFIX", "price-20260930T1800Z"),
+        ("CUTOFF", "2026-10-01T03:20:00+00:00"),
+        ("PLAN", "plan_price_20260930.json.gz"),
+    ],
+)
+def test_stale_one_shot_env_is_refused_with_a_status(
+    auto_env: Path, monkeypatch: pytest.MonkeyPatch, key: str, value: str
+) -> None:
+    monkeypatch.setenv(key, value)
+    _clock(monkeypatch, at("18:00"))
+    job = run.Job()
+    assert job.prefix == "auto-20261001T180000Z"  # never the stale PREFIX
+    monkeypatch.setattr(job, "seed", lambda: pytest.fail("no request on a refused run"))
+    monkeypatch.setattr(run, "Job", lambda: job)
+    assert run.main() == 1
+    assert [p.name for p in auto_env.iterdir()] == ["auto-20261001T180000Z"]
+    status = json.loads((auto_env / "auto-20261001T180000Z" / "status.json").read_text())
+    assert (status["outcome"], status["loadable"]) == ("refused", False)
+    assert key in status["stopped"]
+
+
+def test_an_existing_prefix_is_refused_before_anything_is_written(
+    auto_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = auto_env / "auto-20261001T180000Z-x7k2p-0"
+    out.mkdir()
+    (out / "status.json").write_text("{}")
+    monkeypatch.setenv("CLOUD_RUN_EXECUTION", "pi-sephora-auto-x7k2p")
+    monkeypatch.setenv("CLOUD_RUN_TASK_ATTEMPT", "0")
+    _clock(monkeypatch, at("18:00"))
+    with pytest.raises(ValueError, match="already holds objects"):
         run.Job()
+    assert [p.name for p in out.iterdir()] == ["status.json"]
+    assert (out / "status.json").read_text() == "{}"
+
+
+def test_an_unreadable_covered_file_is_skipped_and_counted(
+    auto_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (auto_env / "auto-20260930T180000Z").mkdir()
+    (auto_env / "auto-20260930T180000Z" / "covered.json.gz").write_bytes(b"not gzip")
+    _clock(monkeypatch, at("18:00"))
+    job = run.Job()
+    calls = _stub(job, monkeypatch, ["P1"])
+    job.run()
+    assert calls == ["html:P1", "json:P1"]
+    assert job.counts["plan_covered_unreadable"] == 1
+    assert job.counts["plan_history_runs"] == 0
 
 
 def test_auto_run_plans_from_earlier_runs_and_pairs_page_with_stock(
     auto_env: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     earlier = {"pdp_en": {"P1": {"at": "2026-09-30T22:00:00+00:00", "multi_price": False}}}
-    (auto_env / "auto-20260930T1800Z").mkdir()
-    (auto_env / "auto-20260930T1800Z" / "covered.json.gz").write_bytes(
+    (auto_env / "auto-20260930T180000Z").mkdir()
+    (auto_env / "auto-20260930T180000Z" / "covered.json.gz").write_bytes(
         gzip.compress(json.dumps(earlier).encode())
     )
     _clock(monkeypatch, at("18:00"))
     job = run.Job()
-    assert (job.prefix, job.cutoff, job.mode) == ("auto-20261001T1800Z", at("01:55", 2), "auto")
+    assert (job.prefix, job.cutoff, job.mode) == ("auto-20261001T180000Z", at("01:55", 2), "auto")
     calls = _stub(job, monkeypatch, ["P1", "P2"])
     job.run()
     assert calls == ["html:P2", "json:P2", "html:P1", "json:P1"]  # unread P2 first
     assert job.counts["plan_history_runs"] == 1
     assert job.covered["pdp_en"].keys() == {"P1", "P2"}
     assert job.covered["trpc"].keys() == {"P1", "P2"}
+    assert job.covered["attempted_en"].keys() == {"P1", "P2"}
 
 
 def test_auto_outside_window_fetches_nothing_and_says_so(
@@ -168,7 +242,7 @@ def test_auto_outside_window_fetches_nothing_and_says_so(
     monkeypatch.setattr(job, "seed", lambda: pytest.fail("no request outside the window"))
     monkeypatch.setattr(run, "Job", lambda: job)
     assert run.main() == 0
-    status = json.loads((auto_env / "auto-20261001T1200Z" / "status.json").read_text())
+    status = json.loads((auto_env / "auto-20261001T120000Z" / "status.json").read_text())
     assert (status["outcome"], status["loadable"]) == ("outside_window", False)
 
 
@@ -180,7 +254,7 @@ def test_every_run_ends_with_status_and_covered(
     _stub(job, monkeypatch, ["P1"])
     monkeypatch.setattr(run, "Job", lambda: job)
     assert run.main() == 0
-    out = auto_env / "auto-20261001T1800Z"
+    out = auto_env / "auto-20261001T180000Z"
     status = json.loads((out / "status.json").read_text())
     assert status["state"] == "finished"
     assert (status["outcome"], status["stopped"], status["loadable"]) == (
@@ -204,7 +278,7 @@ def test_an_unexpected_error_still_writes_status_and_fails(
     monkeypatch.setattr(job, "seed", boom)
     monkeypatch.setattr(run, "Job", lambda: job)
     assert run.main() == 1
-    status = json.loads((auto_env / "auto-20261001T1800Z" / "status.json").read_text())
+    status = json.loads((auto_env / "auto-20261001T180000Z" / "status.json").read_text())
     assert status["outcome"] == "error"
 
 

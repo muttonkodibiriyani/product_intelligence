@@ -7,13 +7,20 @@ the unloaded-run check. Pure functions, no network; ``run.py`` and ``stale.py`` 
   ``outside_window``.
 - **Plan.** Gap-first over the products the sitemaps list tonight, using what earlier runs in the
   bucket covered (``covered.json.gz``):
-  1. products with no EN page read in any retained run (new products and gaps);
+  1. products with no EN page attempt in any retained run (new products and gaps);
   2. products whose variants were last seen at different prices;
-  3. the rest, the longest-unread first.
+  3. the rest, the longest-unattempted first. A page that failed counts as attempted, so it
+     rotates with the rest instead of heading every night's plan.
   Ties keep the main job's seeded-shuffle order, so a cutoff still leaves a fair sample. Nothing is
   guessed: a product absent from every ``covered`` file counts as unread.
+  **Interim:** tier 1 is a proxy from the bucket's last 14 days of runs. ADR-0009's exact gap
+  detector (listing variant ids against pi_db) needs the listing sweep, which is a separate build.
 - **Status.** Every run, in every mode, ends by writing ``status.json`` once. Its ``outcome`` is
-  ``complete``, ``cutoff``, ``blocked``, ``rate_limited``, ``outside_window`` or ``error``.
+  ``complete``, ``cutoff``, ``blocked``, ``rate_limited``, ``outside_window``, ``refused`` (an
+  AUTO run given a stale PREFIX/CUTOFF/PLAN) or ``error``.
+- **Prefix.** ``auto-<start to the second>``, plus ``-<execution id>-<attempt>`` on Cloud Run, and
+  the job refuses to start on a prefix that already holds objects, so a retry or re-execute never
+  writes over an earlier run.
 - **Unloaded runs.** Run outputs are deleted 14 days after they are written (#124). A run with
   something to load that is not loaded and finished in pi_db by day 10 is reported, so a held
   load never silently loses its run.
@@ -33,7 +40,7 @@ WINDOW_END = time(2, 0)
 CUTOFF_AT = time(1, 55)  # five minutes inside the window's end
 AUTO_PREFIX = "auto-"
 UNLOADED_ALERT_DAYS = 10
-OUTCOMES = ("complete", "cutoff", "blocked", "rate_limited", "outside_window", "error")
+OUTCOMES = ("complete", "cutoff", "blocked", "rate_limited", "outside_window", "refused", "error")
 
 
 class OutsideWindow(Exception):  # noqa: N818
@@ -45,8 +52,13 @@ def in_window(now: datetime) -> bool:
     return t >= WINDOW_START or t < WINDOW_END
 
 
-def auto_prefix(now: datetime) -> str:
-    return f"{AUTO_PREFIX}{now.astimezone(UTC):%Y%m%dT%H%MZ}"
+def auto_prefix(now: datetime, execution: str = "", attempt: str = "") -> str:
+    """``auto-<YYYYMMDDTHHMMSSZ>``, plus ``-<execution suffix>-<attempt>`` when Cloud Run sets
+    ``CLOUD_RUN_EXECUTION`` / ``CLOUD_RUN_TASK_ATTEMPT``."""
+    prefix = f"{AUTO_PREFIX}{now.astimezone(UTC):%Y%m%dT%H%M%SZ}"
+    if execution:
+        prefix += f"-{execution.rsplit('-', 1)[-1]}-{attempt or '0'}"
+    return prefix
 
 
 def auto_cutoff(now: datetime) -> datetime:
@@ -78,21 +90,30 @@ def multi_price(details: Mapping[str, Any]) -> bool:
 class Seen:
     """What the retained runs say about one product."""
 
-    last_read: str  # ISO time of the newest EN page read
-    multi_price: bool  # as of that read
+    last_read: str  # ISO time of the newest EN page attempt (successful or not)
+    multi_price: bool  # as of the newest successful read
+
+
+def _entries(run: Mapping[str, Any], key: str) -> Iterable[tuple[str, str, Mapping[str, Any]]]:
+    section = run.get(key)
+    for pid, entry in section.items() if isinstance(section, Mapping) else ():
+        if isinstance(entry, Mapping) and entry.get("at"):
+            yield str(pid), str(entry["at"]), entry
 
 
 def merge_covered(covered: Iterable[Mapping[str, Any]]) -> dict[str, Seen]:
-    """Fold runs' ``covered.json.gz`` payloads into the newest EN read per product."""
-    seen: dict[str, Seen] = {}
+    """Fold runs' ``covered.json.gz`` payloads, in any order, into the newest EN attempt per
+    product and the multi-price flag of its newest successful read."""
+    attempt: dict[str, str] = {}
+    read: dict[str, tuple[str, bool]] = {}
     for run in covered:
-        for pid, entry in (run.get("pdp_en") or {}).items():
-            at = str(entry.get("at") or "")
-            if not at:
-                continue
-            if pid not in seen or at > seen[pid].last_read:
-                seen[pid] = Seen(at, bool(entry.get("multi_price")))
-    return seen
+        for pid, at, entry in _entries(run, "pdp_en"):
+            if pid not in read or at > read[pid][0]:
+                read[pid] = (at, bool(entry.get("multi_price")))
+            attempt[pid] = max(attempt.get(pid, at), at)
+        for pid, at, _ in _entries(run, "attempted_en"):
+            attempt[pid] = max(attempt.get(pid, at), at)
+    return {pid: Seen(at, read[pid][1] if pid in read else False) for pid, at in attempt.items()}
 
 
 def gap_first(pids: Iterable[str], seen: Mapping[str, Seen]) -> tuple[list[str], dict[str, int]]:
@@ -115,6 +136,8 @@ def outcome(stopped: str | None) -> str:
     """Classify run.py's ``stopped`` reason for the status file and for alerting."""
     if stopped in ("complete", "cutoff", "outside_window"):
         return stopped
+    if stopped and stopped.startswith("refused"):
+        return "refused"
     if stopped and stopped.startswith(("challenge", "blocked")):
         return "blocked"
     if stopped == "3 consecutive 429":

@@ -21,14 +21,21 @@ Env for `run.py`:
 - `BUCKET` (`file:<dir>` for local tests);
 - `PREFIX`, `CUTOFF` (ISO-8601);
 - optional: `PACE` (>= 1.0 s, enforced), `LIMIT`, `TRPC`, `PLAN`;
-- or `AUTO=1` instead of `PREFIX`/`CUTOFF`/`PLAN` (setting any of them with `AUTO=1` is refused).
+- or `AUTO=1` instead of `PREFIX`/`CUTOFF`/`PLAN` (setting any of them with `AUTO=1` makes no
+  request: the run ends with outcome `refused` under its own new prefix and exits 1).
 
 Unattended runs (`AUTO=1`, ADR-0009 variant pass):
-- `PREFIX` is `auto-<start, YYYYMMDDTHHMMZ>`, and `CUTOFF` is the next 01:55Z. A start outside
+- `PREFIX` is `auto-<start, YYYYMMDDTHHMMSSZ>`, plus `-<execution suffix>-<attempt>` from
+  `CLOUD_RUN_EXECUTION`/`CLOUD_RUN_TASK_ATTEMPT` on Cloud Run. The job refuses to start, writing
+  nothing, if that prefix already holds objects. `CUTOFF` is the next 01:55Z. A start outside
   18:00Z-01:55Z fetches nothing and ends with outcome `outside_window`.
 - The job seeds from the sitemaps, then plans gap-first from every earlier run's `covered.json.gz`
-  still in the bucket: products never read, then products last seen with differently priced
-  variants, then the rest, longest-unread first. Each product gets its EN page, then its stock
+  still in the bucket: products with no EN page attempt, then products last seen with differently
+  priced variants, then the rest, longest-unattempted first (a failed page counts as attempted, so
+  it rotates rather than heading every plan). An unreadable `covered.json.gz` is skipped and
+  counted as `plan_covered_unreadable`. Interim: the first tier is a proxy from the bucket's last
+  14 days, not ADR-0009's gap detector (listing variant ids against pi_db), which needs the
+  listing sweep. Each product gets its EN page, then its stock
   read (`TRPC=0` skips stock). No AR pages: AR is the weekly discovery pass.
 - How often it runs is the Scheduler's setting. ADR-0009 makes the variant pass weekly, over two
   consecutive nights (the second night picks up where the first stopped, because the plan reads
@@ -36,12 +43,12 @@ Unattended runs (`AUTO=1`, ADR-0009 variant pass):
 - Every AUTO run is `partial` in pi_db (it covers a subset by design).
 
 Every run, in every mode, ends by writing two files under its prefix:
-- `covered.json.gz`: the products whose EN page (with a multi-price flag) and stock were read, and
-  when. The next AUTO plan reads it.
+- `covered.json.gz`: the products whose EN page was attempted, whose EN page (with a multi-price
+  flag) and stock were read, and when. The next AUTO plan reads it.
 - `status.json`: the terminal marker, written once at the end. `state` is `finished`, and
-  `outcome` is `complete`, `cutoff`, `blocked`, `rate_limited`, `outside_window` or `error`. It also
+  `outcome` is `complete`, `cutoff`, `blocked`, `rate_limited`, `outside_window`, `refused` or `error`. It also
   carries `stopped`, `started`, `finished`, `cutoff`, `mode`, `loadable` and `counts`. An unexpected
-  error still writes it, and then the job exits 1.
+  error still writes it, and then the job exits 1 (as does `refused`).
 
 Retention and the day-10 check: the run bucket deletes objects 14 days after they are written
 (#124). `python -m sephora_snapshot.stale <bucket>` (read-only on pi_db) reports every run that is

@@ -61,14 +61,18 @@ class Job:
         self.bucket_name = os.environ["BUCKET"]
         self.auto = os.environ.get("AUTO") == "1"
         self.outside: str | None = None
+        self.refused: str | None = None
         if self.auto:
-            # A stale one-shot env must not ride along with a scheduled run.
+            # A stale one-shot env must not ride along with a scheduled run: the run is refused
+            # (no request), but still leaves its status.json under its own new prefix.
             given = [k for k in ("PREFIX", "CUTOFF", "PLAN") if os.environ.get(k)]
             if given:
-                raise ValueError(
-                    f"AUTO=1 derives PREFIX and CUTOFF and builds its plan: unset {given}"
-                )
-            self.prefix = cadence.auto_prefix(self.started)
+                self.refused = f"AUTO=1 derives PREFIX/CUTOFF and its plan: unset {given}"
+            self.prefix = cadence.auto_prefix(
+                self.started,
+                os.environ.get("CLOUD_RUN_EXECUTION", ""),
+                os.environ.get("CLOUD_RUN_TASK_ATTEMPT", ""),
+            )
             try:
                 self.cutoff = cadence.auto_cutoff(self.started)
             except cadence.OutsideWindow as exc:
@@ -91,6 +95,9 @@ class Job:
             from google.cloud import storage  # noqa: PLC0415
 
             self.bucket = storage.Client().bucket(self.bucket_name)
+        if self.auto and self.prefix_in_use():
+            # Never write over another run's parts or status (a retry or re-execute).
+            raise ValueError(f"prefix {self.prefix!r} already holds objects")
         self.client = httpx.Client(follow_redirects=True, timeout=30.0)
         self.last = 0.0
         self.buf: dict[str, list[dict[str, Any]]] = {}
@@ -100,7 +107,11 @@ class Job:
         self.err_streak = 0
         self.stopped: str | None = None
         # What this run read, by product: the next AUTO run plans from it.
-        self.covered: dict[str, dict[str, dict[str, Any]]] = {"pdp_en": {}, "trpc": {}}
+        self.covered: dict[str, dict[str, dict[str, Any]]] = {
+            "pdp_en": {},
+            "trpc": {},
+            "attempted_en": {},
+        }
 
     # ---------------------------------------------------------------- output
     def put(self, name: str, data: bytes, gz: bool = True) -> None:
@@ -112,6 +123,12 @@ class Job:
                 fh.write(body)
             return
         self.bucket.blob(f"{self.prefix}/{name}").upload_from_string(body)
+
+    def prefix_in_use(self) -> bool:
+        if self.local is not None:
+            return os.path.exists(os.path.join(self.local, self.prefix))
+        blobs = self.bucket.client.list_blobs(self.bucket, prefix=f"{self.prefix}/", max_results=1)
+        return any(True for _ in blobs)
 
     def emit(self, stream: str, rec: dict[str, Any]) -> None:
         self.buf.setdefault(stream, []).append(rec)
@@ -219,6 +236,8 @@ class Job:
 
     def pdp(self, pid: str, lang: str, url: str) -> None:
         self.count(f"pdp_{lang}_attempted")
+        if lang == "en":  # a failed page is planned by its last attempt, not as unread forever
+            self.covered["attempted_en"][pid] = {"at": datetime.now(UTC).isoformat()}
         locale = f"{lang}-AE"
         got = self.get(url, locale, "html")
         if got is None:
@@ -297,7 +316,8 @@ class Job:
                 self.pdp(pid, "ar", ids[pid]["ar"])
 
     def read_covered(self) -> list[dict[str, Any]]:
-        """Every earlier run's covered.json.gz still in the bucket (retention is 14 days)."""
+        """Every earlier run's covered.json.gz still in the bucket (retention is 14 days).
+        An unreadable file is skipped and counted (``plan_covered_unreadable``), never fatal."""
         name = "covered.json.gz"
         blobs: list[bytes] = []
         if self.local is not None:
@@ -310,11 +330,25 @@ class Job:
             for blob in self.bucket.client.list_blobs(self.bucket, match_glob=f"*/{name}"):
                 if blob.name != f"{self.prefix}/{name}":
                     blobs.append(blob.download_as_bytes())
-        return [json.loads(gzip.decompress(raw)) for raw in blobs]
+        out: list[dict[str, Any]] = []
+        for raw in blobs:
+            try:
+                payload = json.loads(gzip.decompress(raw))
+            except (OSError, EOFError, ValueError):
+                self.count("plan_covered_unreadable")
+                continue
+            if isinstance(payload, dict):
+                out.append(payload)
+            else:
+                self.count("plan_covered_unreadable")
+        return out
 
     def run_auto(self) -> None:
         """Unattended run: seed, plan gap-first from earlier runs, then EN page + stock per
         product until the cutoff. No AR pages (ADR-0009: AR is the weekly discovery pass)."""
+        if self.refused is not None:
+            print(json.dumps({"refused": self.refused}), flush=True)
+            raise Stop(f"refused: {self.refused}")
         if self.outside is not None:
             print(json.dumps({"outside_window": self.outside}), flush=True)
             raise Stop("outside_window")
@@ -401,7 +435,7 @@ def main() -> int:
         job.progress()
         job.finish()
         print(json.dumps({"stopped": job.stopped, "counts": job.counts}), flush=True)
-    return code
+    return 1 if cadence.outcome(job.stopped) in ("refused", "error") else code
 
 
 if __name__ == "__main__":
