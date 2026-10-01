@@ -28,11 +28,12 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from pi_api import export
 from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
@@ -55,6 +56,7 @@ from pi_api.catalog import (
     InvalidQueryError,
     MetaView,
     ProductDetail,
+    ProductFilters,
     ProductNotFoundError,
     ProductPage,
     ProductQuery,
@@ -65,6 +67,7 @@ from pi_api.catalog import (
     find,
     history,
     meta_view,
+    product_cards,
     product_detail,
     product_page,
 )
@@ -117,7 +120,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         403: "no role, or admins only",
         404: "no such route, product, market or scope",
         409: "stale_cursor: the data changed; restart from the first page",
-        422: "invalid_request / invalid_query / ambiguous_dataset",
+        422: "invalid_request / invalid_query / ambiguous_dataset / export_too_large",
         429: "rate_limited (Retry-After)",
         500: "internal_error: an unexpected failure; nothing about it is echoed",
         503: "data_unavailable / auth_unavailable: retry later (Retry-After)",
@@ -313,7 +316,7 @@ def _api_meta(loaded: Loaded, endpoint: str, filters: Mapping[str, Any]) -> ApiM
 
 
 def _filters(query: ContractModel) -> dict[str, Any]:
-    return query.model_dump(mode="json", by_alias=True, exclude={"cursor"})
+    return query.model_dump(mode="json", by_alias=True, exclude={"cursor", "format"})
 
 
 def _error(status: int, code: str, message: str, **headers: str) -> JSONResponse:
@@ -344,6 +347,14 @@ def _install_handlers(api: FastAPI) -> None:
     handle(ProductNotFoundError, 404, "not_found", "no such product")
     handle(AmbiguousDatasetError, 422, "ambiguous_dataset")
     handle(InvalidQueryError, 422, "invalid_query")
+    handle(export.ExportTooLargeError, 422, "export_too_large")
+    handle(
+        export.ExportBusyError,
+        429,
+        "rate_limited",
+        "too many exports running; retry later",
+        retry_after=str(export.BUSY_RETRY),
+    )
     handle(UnknownInput, 422, "invalid_query")
     handle(StaleCursorError, 409, "stale_cursor", "the data changed; restart from the first page")
     handle(ForbiddenError, 403, "forbidden", "admins only")
@@ -454,6 +465,7 @@ def build_api(source: SnapshotSource) -> FastAPI:
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
     _metric_routes(api, source)
+    _export_routes(api, source)
     return api
 
 
@@ -527,6 +539,191 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         return respond(loaded, "matches", query, page)
 
 
+# ---------------------------------------------------------------- exports
+
+
+class ProductsExport(ProductFilters, export.FormatQuery):
+    pass
+
+
+class CompareExport(CompareQuery, export.FormatQuery):
+    pass
+
+
+class IndexExport(IndexQuery, export.FormatQuery):
+    pass
+
+
+class PromotionsExport(PromotionsQuery, export.FormatQuery):
+    pass
+
+
+class AssortmentExport(AssortmentQuery, export.FormatQuery):
+    pass
+
+
+class CoverageExport(CoverageQuery, export.FormatQuery):
+    pass
+
+
+EXPORT_RESPONSES: dict[int | str, dict[str, Any]] = {
+    200: {
+        "description": (
+            "Line 1 is the manifest (CSV: `# <JSON>` after a UTF-8 BOM; JSONL: "
+            '`{"manifest": ...}`), then the rows. At most 50 000 rows, else 422 export_too_large.'
+        ),
+        "content": {"text/csv": {}, "application/x-ndjson": {}},
+    }
+}
+
+
+def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword-only
+    loaded: Loaded,
+    *,
+    view: export.ExportView,
+    query: ContractModel,
+    metric: Metric[Any],
+    rows: tuple[ContractModel, ...],
+    who: Principal,
+    slots: export.ExportSlots,
+) -> StreamingResponse:
+    """Refuses over the cap or with no free slot, audits either way, then streams."""
+    fmt = export.ExportFormat(query.model_dump()["format"])
+    endpoint = f"export_{view}".replace("-", "_")
+    head = export.manifest(view, fmt, len(rows), respond(loaded, endpoint, query, metric))
+    refused = export.too_large(len(rows))
+    if refused is not None:
+        export.audit(who, head, export.Outcome.TOO_LARGE)
+        raise refused
+    if not slots.acquire():
+        export.audit(who, head, export.Outcome.BUSY)
+        raise export.ExportBusyError
+    stream = slots.hold(export.encode(head, rows))
+    try:
+        export.audit(who, head)
+        name = export.filename(view, fmt, loaded.dataset.meta.cutoff)
+        return StreamingResponse(
+            stream,
+            media_type=export.MEDIA_TYPES[fmt],
+            headers={"content-disposition": f'attachment; filename="{name}"'},
+        )
+    except BaseException:  # pragma: no cover - no response, so free the slot now
+        stream.close()
+        raise
+
+
+def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
+    """One route per exportable view, each taking that view's filters plus ``format``."""
+    route = {
+        "response_class": StreamingResponse,
+        "responses": EXPORT_RESPONSES,
+    }
+    view = export.ExportView
+    slots = export.ExportSlots(export.MAX_CONCURRENT_EXPORTS)
+
+    @api.get(f"{PREFIX}/export/products", **route)  # type: ignore[arg-type]
+    def export_products(
+        query: Annotated[ProductsExport, Query()], who: Viewer
+    ) -> StreamingResponse:
+        loaded = source.select(query.market, query.scope)
+        metric = product_cards(loaded.dataset, query)
+        return _download(
+            loaded,
+            view=view.PRODUCTS,
+            query=query,
+            metric=metric,
+            rows=metric.data,
+            who=who,
+            slots=slots,
+        )
+
+    @api.get(f"{PREFIX}/export/compare", **route)  # type: ignore[arg-type]
+    def export_compare(query: Annotated[CompareExport, Query()], who: Viewer) -> StreamingResponse:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = compare(
+            loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
+        )
+        return _download(
+            loaded,
+            view=view.COMPARE,
+            query=query,
+            metric=metric,
+            rows=metric.data.rows,
+            who=who,
+            slots=slots,
+        )
+
+    @api.get(f"{PREFIX}/export/index", **route)  # type: ignore[arg-type]
+    def export_index(query: Annotated[IndexExport, Query()], who: Viewer) -> StreamingResponse:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = price_index(
+            loaded.dataset, base, other, query.where(), start=query.start, end=query.end
+        )
+        return _download(
+            loaded,
+            view=view.INDEX,
+            query=query,
+            metric=metric,
+            rows=metric.data.points,
+            who=who,
+            slots=slots,
+        )
+
+    @api.get(f"{PREFIX}/export/promotions", **route)  # type: ignore[arg-type]
+    def export_promotions(
+        query: Annotated[PromotionsExport, Query()], who: Viewer
+    ) -> StreamingResponse:
+        loaded = source.select(query.market, query.scope)
+        metric = promotions(
+            loaded.dataset, query.retailer, query.where(), query.min_depth(), query.on
+        )
+        return _download(
+            loaded,
+            view=view.PROMOTIONS,
+            query=query,
+            metric=metric,
+            rows=metric.data.items,
+            who=who,
+            slots=slots,
+        )
+
+    @api.get(f"{PREFIX}/export/assortment-gaps", **route)  # type: ignore[arg-type]
+    def export_assortment_gaps(
+        query: Annotated[AssortmentExport, Query()], who: Viewer
+    ) -> StreamingResponse:
+        loaded = source.select(query.market, query.scope)
+        metric = assortment_gaps(
+            loaded.dataset, query.missing_at, query.present_at, query.where(), query.on
+        )
+        return _download(
+            loaded,
+            view=view.ASSORTMENT_GAPS,
+            query=query,
+            metric=metric,
+            rows=metric.data.items,
+            who=who,
+            slots=slots,
+        )
+
+    @api.get(f"{PREFIX}/export/coverage", **route)  # type: ignore[arg-type]
+    def export_coverage(
+        query: Annotated[CoverageExport, Query()], who: Viewer
+    ) -> StreamingResponse:
+        loaded = source.select(query.market, query.scope)
+        metric = coverage(loaded.dataset, query.retailer)
+        return _download(
+            loaded,
+            view=view.COVERAGE,
+            query=query,
+            metric=metric,
+            rows=metric.data.retailers,
+            who=who,
+            slots=slots,
+        )
+
+
 def create_app(source: SnapshotSource, verifier: TokenVerifier, buckets: TokenBuckets) -> ASGIApp:
     return NoStore(ServerErrors(Authenticate(RateLimit(build_api(source), buckets), verifier)))
 
@@ -540,6 +737,7 @@ def store_for(settings: Settings) -> ObjectStore:
 def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
     """``uvicorn --factory pi_api.app:app_from_env``: loads the datasets before serving."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    export.configure_audit()
     settings = Settings.from_env(os.environ if env is None else env)
     source = SnapshotSource(
         store_for(settings),

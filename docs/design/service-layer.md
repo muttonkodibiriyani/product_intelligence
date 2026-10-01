@@ -87,7 +87,7 @@ versioned snapshots.
   `max-age`. Paging stays consistent through cursors bound to the generation (`409 stale_cursor`).
 - **Size.** Today's pilot dataset is a few MB. The budget is ≤ 50 MB of JSON per instance; beyond
   that, history moves to the fact extracts and is read lazily per product. The instance has
-  512 MiB.
+  1 GiB (§6 exports, §9).
 - **Transition.** Until the producers emit v2 (PR-B defines it, and Infra then switches
   `demo_export`/`publish_dataset`), `SnapshotSource` reads `datasets/uae/latest.json` (v1)
   through the read adapter in `pi_dataset`. The adapter maps the fixed `u`/`s` slots to register
@@ -138,13 +138,13 @@ versioned snapshots.
   request, and ID tokens live one hour. Admin-only routes turn it on.
 - **Abuse limits.** Each instance has a per-uid token bucket (default 10 req/s, burst 30; config).
   The bucket is **per instance**, so a user's effective ceiling is the limit × `max-instances`
-  (2 → 20 req/s). That is accepted for the pilot; a global limit would need shared state
+  (3 → 30 req/s). That is accepted for the pilot; a global limit would need shared state
   (Firestore or Redis) and is not proposed. App Check can be added in front later if the owner
   enables it (as in the assistant design). Sizing: an assistant turn makes about 6 tool calls in
   a few seconds, well inside the burst of 30; a user running several turns back to back refills at
   10/s. A `429` carries `Retry-After`, and the assistant surfaces it rather than retrying in a loop.
 - **CORS.** Same-origin through a Firebase Hosting rewrite (`/api/**` → the Cloud Run service), so
-  the dashboard's CSP `connect-src 'self'` is unchanged. See §11 Q1 for the region caveat.
+  the dashboard's CSP `connect-src 'self'` is unchanged (me-central1 confirmed, §11 Q1).
 
 ## 5. Conventions every endpoint follows
 
@@ -370,15 +370,40 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   The v1 exporter merged both into `accepted`; the v1 adapter maps that to `approved` and adds a
   caveat that locked edges can't be told apart in v1.
 - **`/v1/export/{view}`:** `view ∈ {products, compare, index, promotions, assortment-gaps,
-  coverage}`, `format=csv|jsonl`, plus that view's filters.
-  - It streams exactly the rows the view's endpoint returns, from the same `pi_metrics` call.
-  - Row cap 50 k.
-  - A manifest header row (or `#` comment for CSV) gives the cutoff, generation, filters and
-    apiVersion.
-  - Each export is audited: one structured Cloud Logging entry (`pi_api.export`) with the uid,
-    role, view, filters, row count, generation and apiVersion, and never row content. It goes to
-    the project's default `_Default` bucket (30-day retention, within the free allotment). A
-    longer retention sink needs the owner's approval and is not proposed.
+  coverage}`, one route each, taking that view's filters plus `format=csv|jsonl` (default `csv`).
+  `/export/products` takes the `/products` filters and `sort` but not `limit` or `cursor` (`422`).
+  - The rows are exactly the ones the view's endpoint returns, from the same call: products are the
+    cards in `/products` order, unpaged; compare `data.rows`; index `data.points`; promotions and
+    assortment-gaps `data.items`; coverage `data.retailers`.
+  - **Row cap 50 000.** Over it the export is refused with `422 export_too_large`, never cut
+    short. 50 k product cards encode in ~4 s (CSV) on a dev machine, well inside the 30 s timeout.
+  - **Two exports at a time per instance.** Measured for 50 k product cards: ~164 MiB of row
+    models plus ~58 MiB peak while encoding CSV (JSONL adds ~0), so ~4.4 KiB per row. With the
+    app baseline (~66 MiB) and a budget-size dataset loaded (20 k products, 54 MiB JSON: 558 MiB),
+    two concurrent exports of every product measured a peak of 800 MiB, inside 1Gi (runbook §6; 512Mi did not fit, decision
+    log 2026-10-01). A slot is released exactly once, also when the client leaves before the
+    response starts. A third concurrent export on the same instance gets
+    `429 rate_limited` with `Retry-After: 5` instead of risking an out-of-memory restart.
+  - **Line 1 is the manifest** (`schemaId: pi-api.export/v1`): view, format, row count, and the
+    envelope minus `data` (status, reason, detail, cohort, caveats, and `meta` with cutoff,
+    generation, filters, apiVersion, metricVersion). JSONL: `{"manifest": {...}}`, then one row
+    object per line, serialised as the endpoint does. CSV: a UTF-8 BOM (so spreadsheets read
+    Arabic), the manifest as **one quoted cell** `"# <manifest JSON>"`, a header row, then the
+    rows. Quoting keeps every filter value inside that one cell, so a crafted filter such as
+    `q=x,=HYPERLINK(...)` never becomes a cell of its own. Readers skip line 1 (pandas:
+    `skiprows=1`; not `comment="#"`, which would also cut cells containing `#`), or read it with
+    a CSV reader and parse `row[0][2:]` as JSON.
+  - **CSV cells.** Objects flatten to dotted columns (`gap.amount.amount`, `prices.shop_a.minor`);
+    every list stays one cell of compact JSON (unambiguous, unlike a `|` join). Columns appear in
+    first-seen order; a null object leaves its nested cells empty. A cell starting with `= + - @`,
+    tab or CR is prefixed with `'` unless it is a plain signed number (CSV injection).
+  - Responses are `attachment; filename="pi-<view>-<cutoff>.<csv|jsonl>"`, Bearer-only and
+    `private, no-store` like every route.
+  - Each export, refused ones included, is audited: one structured entry (`pi_api.export`, severity NOTICE) as a bare JSON
+    line on stdout, which Cloud Run logs as a `jsonPayload`: outcome (`ok`, `too_large`, `busy`), uid, role, view, format, filters, row
+    count, generation and apiVersion, and never row content. It goes to the project's default
+    `_Default` bucket (30-day retention, within the free allotment). A longer retention sink needs
+    the owner's approval and is not proposed.
 
 ## 7. Metric rules (owned by `pi_metrics`)
 
@@ -458,8 +483,9 @@ and is recorded in `docs/decision-log.md`.
 **Hosting:**
 - **Runtime.** Cloud Run service `pi-api`, **me-central1**, running a container image (Python
   3.12, uvicorn, one worker) from Artifact Registry in the same region.
-- **Scaling.** `min-instances=0` (scales to zero), `max-instances=2`, concurrency 40,
-  1 vCPU / 512 MiB, request-based billing (CPU only during requests), timeout 30 s.
+- **Scaling.** `min-instances=0` (scales to zero), `max-instances=3` (the coordinator's cap),
+  default concurrency (80), 1 vCPU / 1 GiB, request-based billing (CPU only during requests),
+  timeout 30 s (the slowest route, a 50 k-row CSV export, takes ~4 s measured locally). No Cloud SQL and no VPC connector.
 - **Identity.** A dedicated runtime service account `pi-api@` that can **read objects** under
   `datasets/` and nothing else. It has **no** Secret Manager or DB roles, and no Firebase admin
   roles. Token verification needs only public certificates.
@@ -470,7 +496,8 @@ and is recorded in `docs/decision-log.md`.
     therefore never lists: it reads the configured `PI_API_DATASETS` paths, and the generation
     check is an object metadata GET. The grant is a custom role with `storage.objects.get` only
     (not `objectViewer`, whose list permission would be denied by the condition anyway).
-- **Deploy.** Infra deploys it, with a Cloud Build or GitHub Actions workflow that Infra owns.
+- **Deploy.** Infra deploys it, with a Cloud Build or GitHub Actions workflow that Infra owns. The
+  step-by-step handoff is [`docs/runbooks/pi-api-deploy.md`](../runbooks/pi-api-deploy.md).
 - **Approval first.** The Cloud Run service `pi-api` and its Artifact Registry repository are
   **new standing billable resources** (small, see below, but not zero). They fall within the
   owner's $25/month GCP delegation to the Program Coordinator. Neither is created until a
@@ -483,12 +510,12 @@ and is recorded in `docs/decision-log.md`.
 
 | Item | Assumption | Est. $/month |
 |---|---|---|
-| Cloud Run requests + CPU | ≤ 50 k requests × ~150 ms at 1 vCPU ≈ 7.5 k vCPU-s, 3.75 k GiB-s: within the free tier if it applies to the region, otherwise well under $1 | $0–1 |
+| Cloud Run requests + CPU | ≤ 50 k requests × ~150 ms at 1 vCPU ≈ 7.5 k vCPU-s, 7.5 k GiB-s at 1 GiB: within the free tier if it applies to the region, otherwise well under $2 | $0–1.5 |
 | Cold starts | Load a few MB of JSON plus validation, ~2–4 s. Accepted for the pilot; `min-instances=1` would cost ≈ $10–15 and **is not proposed** | $0 |
 | GCS reads | One generation check per instance per minute while warm, plus downloads on change | < $0.10 |
-| Artifact Registry | One image of ~150 MB (keep the last 3 tags) | < $0.10 |
+| Artifact Registry | ~150 MB per image, cleanup policy keeps the last 5 | < $0.10 |
 | Egress | JSON responses, a few hundred MB | < $0.10 |
-| **Total** | | **≈ $0–1.5** |
+| **Total** | | **≈ $0–2** |
 
 Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of this design.
 
@@ -538,10 +565,9 @@ Cloud SQL (a `PgSource` backend) would add about $10–15 and is **not** part of
 
 ## 11. Open questions
 
-1. **Hosting rewrite region.** Firebase Hosting → Cloud Run rewrites may not support every
-   region. If me-central1 isn't supported, the web app calls the `run.app` URL directly: CORS
-   allowlists the two Hosting origins, and Infra adds that URL to CSP `connect-src`.
-   **Infra to confirm.**
+1. **Hosting rewrite region.** *Resolved:* Infra confirmed that Firebase Hosting rewrites to Cloud
+   Run in me-central1 are supported, so the API stays same-origin through `/api/**` (no CORS, CSP
+   unchanged).
 2. **v2 timing.** Serve v1 through the adapter first (faster), or wait for v2 producers?
    *Proposal:* the adapter, so FE and the assistant can switch early. v2 follows with PR-B and the
    Infra producer change.
