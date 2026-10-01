@@ -344,6 +344,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Summary */
+        get: operations["get_summary_api_v1_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -405,7 +422,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.3.0
+             * @default 1.4.0
              */
             apiVersion: string;
             /** Currency */
@@ -509,6 +526,17 @@ export interface components {
             count: number;
         };
         /**
+         * BrandPrice
+         * @description One of the ``BRAND_ROWS`` brands with the most priced products (n desc, then brand).
+         */
+        BrandPrice: {
+            /** Brand */
+            brand: string;
+            median: components["schemas"]["MoneyValue"];
+            /** N */
+            n: number;
+        };
+        /**
          * Capabilities
          * @description What this snapshot can answer. All explicit: a consumer never guesses from absence.
          */
@@ -554,6 +582,13 @@ export interface components {
             count: number;
             /** Key */
             key: string;
+        };
+        /** CategoryShare */
+        CategoryShare: {
+            /** Category */
+            category: string[];
+            /** N */
+            n: number;
         };
         /**
          * CaveatCode
@@ -895,6 +930,20 @@ export interface components {
             reason?: components["schemas"]["Reason"] | null;
             status: components["schemas"]["Status"];
         };
+        /** Envelope[SummaryView] */
+        Envelope_SummaryView_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["SummaryView"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
         /** ErrorBody */
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
@@ -940,6 +989,11 @@ export interface components {
             attributes: {
                 [key: string]: components["schemas"]["FacetCount"][];
             };
+            /**
+             * Attributestruncated
+             * @default []
+             */
+            attributesTruncated: string[];
             /** Brand */
             brand: components["schemas"]["FacetCount"][];
             /** Category */
@@ -952,6 +1006,22 @@ export interface components {
          * @enum {string}
          */
         FieldStatus: "ok" | "partial" | "not_collected" | "not_published" | "parse_failure" | "blocked";
+        /** Freshness */
+        Freshness: {
+            /** Agedays */
+            ageDays: number;
+            /**
+             * Cutoff
+             * Format: date-time
+             */
+            cutoff: string;
+            status: components["schemas"]["FreshnessStatus"];
+        };
+        /**
+         * FreshnessStatus
+         * @enum {string}
+         */
+        FreshnessStatus: "fresh" | "aging" | "stale";
         /** Gap */
         Gap: {
             amount: components["schemas"]["MoneyValue"];
@@ -1026,6 +1096,18 @@ export interface components {
             /** N */
             n: number;
             reason: components["schemas"]["Reason"] | null;
+        };
+        /** LadderRow */
+        LadderRow: {
+            /** Category */
+            category: string;
+            max: components["schemas"]["MoneyValue"];
+            min: components["schemas"]["MoneyValue"];
+            /** N */
+            n: number;
+            p25: components["schemas"]["MoneyValue"];
+            p50: components["schemas"]["MoneyValue"];
+            p75: components["schemas"]["MoneyValue"];
         };
         /** Launch */
         Launch: {
@@ -1221,6 +1303,13 @@ export interface components {
             name: string;
             otherPrice: components["schemas"]["MoneyValue"] | null;
         };
+        /** PriceHistogram */
+        PriceHistogram: {
+            /** Counts */
+            counts: number[];
+            /** Edges */
+            edges: string[];
+        };
         /** PriceIndex */
         PriceIndex: {
             /** Base */
@@ -1299,6 +1388,18 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * PromoDepth
+         * @description ``cells[r][c]``: promoted offers of ``category[r]`` whose depth is in ``bands[c]``.
+         */
+        PromoDepth: {
+            /** Bands */
+            bands: string[];
+            /** Category */
+            category: string[];
+            /** Cells */
+            cells: number[][];
+        };
         /** PromoItem */
         PromoItem: {
             /** Depthpct */
@@ -1338,6 +1439,28 @@ export interface components {
             average: string;
             /** Count */
             count: number;
+            /** Scale */
+            scale: string;
+        };
+        /** RatingPoint */
+        RatingPoint: {
+            /** Count */
+            count: number;
+            /** Price */
+            price: string;
+            /** Rating */
+            rating: string;
+        };
+        /** RatingPrice */
+        RatingPrice: {
+            /** N */
+            n: number;
+            /** Points */
+            points: components["schemas"]["RatingPoint"][];
+            /** Ratedpct */
+            ratedPct: string;
+            /** Sampled */
+            sampled: boolean;
             /** Scale */
             scale: string;
         };
@@ -1459,6 +1582,12 @@ export interface components {
             scope: string;
         };
         /**
+         * Section
+         * @description The parts of a summary that can be withheld on their own.
+         * @enum {string}
+         */
+        Section: "prices" | "promotions" | "ratings";
+        /**
          * Side
          * @description One context's state in a comparison, so a client can say which side is short.
          *
@@ -1496,6 +1625,65 @@ export interface components {
          * @enum {string}
          */
         Status: "ok" | "not_enough_data";
+        /** SummaryView */
+        SummaryView: {
+            /**
+             * Asof
+             * Format: date
+             */
+            asOf: string;
+            /** Brandprice */
+            brandPrice: components["schemas"]["BrandPrice"][] | null;
+            /** Brands */
+            brands: number;
+            /** Categories */
+            categories: number;
+            /** Categorymix */
+            categoryMix: components["schemas"]["CategoryShare"][];
+            /** Currency */
+            currency: string;
+            freshness: components["schemas"]["Freshness"];
+            /** Ladder */
+            ladder: components["schemas"]["LadderRow"][] | null;
+            medianPrice: components["schemas"]["MoneyValue"] | null;
+            priceHist: components["schemas"]["PriceHistogram"] | null;
+            /** Priced */
+            priced: number;
+            /** Products */
+            products: number;
+            promoDepth: components["schemas"]["PromoDepth"] | null;
+            /** Promosharepct */
+            promoSharePct: string | null;
+            ratingPrice: components["schemas"]["RatingPrice"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Topdiscounts */
+            topDiscounts: components["schemas"]["TopDiscount"][] | null;
+            /** Withheld */
+            withheld: components["schemas"]["Withheld"][];
+        };
+        /** TopDiscount */
+        TopDiscount: {
+            /** Brand */
+            brand: string;
+            /** Category */
+            category: string[];
+            /** Depthpct */
+            depthPct: string;
+            /** Id */
+            id: string;
+            /** Image */
+            image?: string | null;
+            /** Name */
+            name: string;
+            price: components["schemas"]["MoneyValue"];
+            regular: components["schemas"]["MoneyValue"];
+        };
+        /** Withheld */
+        Withheld: {
+            reason: components["schemas"]["Reason"];
+            section: components["schemas"]["Section"];
+        };
     };
     responses: never;
     parameters: never;
@@ -3453,6 +3641,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_ReviewsSummary_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_summary_api_v1_summary_get: {
+        parameters: {
+            query?: {
+                market?: string | null;
+                scope?: string | null;
+                /** @description A context id (a retailer's sole context has the retailer's id). Default: the context with the most collected offers. */
+                retailer?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_SummaryView_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
