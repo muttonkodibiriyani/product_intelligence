@@ -1,0 +1,85 @@
+{
+  "drill": "Select a bar, cell or dot to open the products behind it.",
+  "products": "{n, plural, one {# product} other {# products}}",
+  "kpi": {
+    "products": "Products tracked",
+    "brands": "Brands",
+    "categories": "Categories",
+    "median": "Median price",
+    "promo": "On promotion",
+    "promoOf": "of products",
+    "freshness": "Data freshness",
+    "fresh": "Fresh",
+    "stale": "Stale",
+    "unknown": "Age unknown",
+    "asOf": "as of {date}",
+    "age": "{days, plural, =0 {collected today} one {# day old} other {# days old}}",
+    "none": "Not measured",
+    "aging": "Aging"
+  },
+  "ladder": {
+    "title": "Price ladder by category",
+    "question": "Where entry, mid and premium prices sit in each category.",
+    "entry": "Entry",
+    "mid": "Mid",
+    "premium": "Premium",
+    "median": "Median",
+    "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. Log scale.",
+    "label": "Price ranges by category, {n} categories."
+  },
+  "promo": {
+    "title": "Promotion depth",
+    "question": "How many discounted products each category has, by depth of discount.",
+    "off": "{band} off",
+    "label": "Discounted products by category and discount band."
+  },
+  "brands": {
+    "title": "Brand price positioning",
+    "question": "Median price of the {n} brands with the most products.",
+    "label": "Median price per brand, {n} brands, highest first."
+  },
+  "mix": {
+    "title": "Category mix",
+    "question": "Products per category; area is the count.",
+    "label": "Products per category, {n} top-level categories."
+  },
+  "hist": {
+    "title": "Price distribution",
+    "question": "How many products sit in each price band.",
+    "label": "Products per price band, {n} bands."
+  },
+  "rating": {
+    "title": "Rating vs price",
+    "question": "Whether pricier products rate higher. Dot size is the number of reviews.",
+    "note": "{rated} of {n} products carry a rating; {k} shown.",
+    "none": "The retailer shows no ratings in this snapshot.",
+    "price": "Price",
+    "rating": "Rating",
+    "reviews": "{n, plural, one {# review} other {# reviews}}",
+    "label": "Rating against price, {k} products."
+  },
+  "top": {
+    "title": "Top discounts",
+    "question": "The deepest markdowns in this snapshot.",
+    "product": "Product",
+    "category": "Category",
+    "price": "Price",
+    "was": "Was",
+    "off": "Off",
+    "all": "All promotions",
+    "noImage": "No image",
+    "credit": "Product images: <link>{retailer}</link>, served from {host}."
+  },
+  "share": {
+    "title": "Brand concentration",
+    "question": "How much of the catalogue the largest brands hold.",
+    "headline": "The top {k} brands hold <b>{share}</b> of all products.",
+    "share": "Share of products",
+    "cum": "Running total",
+    "label": "Share of products per brand, {n} largest brands."
+  },
+  "withheld": {
+    "prices": "Price charts aren't shown.",
+    "ratings": "The rating chart isn't shown."
+  }
+}

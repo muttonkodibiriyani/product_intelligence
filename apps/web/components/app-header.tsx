@@ -20,13 +20,26 @@ export function AppHeader() {
   ];
   return (
     <header className="border-b border-line bg-surface">
-      <div className="mx-auto flex min-h-12 max-w-screen-2xl flex-wrap items-center gap-x-4 px-4 py-1.5 sm:flex-nowrap">
-        <Link href={`/${locale}/`} className="font-semibold tracking-tight whitespace-nowrap text-ink">
-          {t('name')}
+      <div className="mx-auto flex min-h-15 max-w-screen-2xl flex-wrap items-center gap-x-5 px-4 py-2 sm:flex-nowrap sm:px-6">
+        <Link
+          href={`/${locale}/`}
+          className="flex items-center gap-2.5 rounded-ctl whitespace-nowrap text-ink focus-visible:outline-2"
+        >
+          <span aria-hidden="true" className="grid size-8 place-items-center rounded-[9px] bg-lav">
+            <svg width="18" height="18" viewBox="0 0 18 18">
+              <rect x="2" y="9" width="3" height="7" rx="1" fill="#5A47A3" />
+              <rect x="7.5" y="5" width="3" height="11" rx="1" fill="#5A47A3" />
+              <rect x="13" y="2" width="3" height="14" rx="1" fill="#D9668C" />
+            </svg>
+          </span>
+          <span className="leading-tight">
+            <b className="block text-[15px] font-bold">{t('name')}</b>
+            <span className="block text-xs text-ink-2">{t('tagline')}</span>
+          </span>
         </Link>
         {state.kind === 'signed_in' && state.session.role && (
           <nav aria-label={t('mainNav')} className="order-last -ms-2 w-full sm:order-none sm:ms-0 sm:w-auto">
-            <ul className="flex flex-wrap gap-x-1 gap-y-0.5">
+            <ul className="flex flex-wrap gap-1">
               {nav.map((n) => {
                 const current = n.match.test(pathname);
                 return (
@@ -34,8 +47,10 @@ export function AppHeader() {
                     <Link
                       href={n.href}
                       aria-current={current ? 'page' : undefined}
-                      className={`rounded px-2 py-1 text-sm hover:bg-surface-2 focus-visible:outline-2 ${
-                        current ? 'font-medium text-ink' : 'text-ink-2'
+                      className={`block rounded-ctl px-3 py-1.5 text-sm focus-visible:outline-2 ${
+                        current
+                          ? 'bg-lav font-semibold text-lav-ink'
+                          : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
                       }`}
                     >
                       {n.label}
@@ -55,7 +70,7 @@ export function AppHeader() {
               <button
                 type="button"
                 onClick={() => void auth?.signOut()}
-                className="rounded px-2 py-1 text-sm text-ink-2 hover:bg-surface-2 focus-visible:outline-2"
+                className="rounded-ctl px-2.5 py-1.5 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink focus-visible:outline-2"
               >
                 {t('signOut')}
               </button>

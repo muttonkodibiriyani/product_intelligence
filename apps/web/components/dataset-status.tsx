@@ -7,8 +7,12 @@ import { ErrorNotice } from './error-notice';
 import { useMeta } from './use-meta';
 import { Known } from './ui/known';
 
-/** What data the app is looking at. Every value is shown as the API sent it. */
-export function DatasetStatus() {
+/**
+ * What data the app is looking at. Every value is shown as the API sent it. `nested` when it sits
+ * in a card under the page's own heading.
+ */
+export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
+  const H = nested ? 'h2' : 'h1';
   const t = useTranslations('home');
   const tr = useTranslations('reasons');
   const locale = useLocale();
@@ -26,9 +30,9 @@ export function DatasetStatus() {
   const m = env.data;
   return (
     <section aria-labelledby="ds-title">
-      <h1 id="ds-title" className="text-xl font-semibold">
+      <H id="ds-title" className={nested ? 'text-base font-semibold' : 'text-2xl font-bold tracking-tight'}>
         {t('title')}
-      </h1>
+      </H>
       {env.status === 'not_enough_data' && env.reason && (
         <p className="mt-2 text-sm text-ink-2">
           {loc(env.detail, locale) || <Known t={tr} v={env.reason} />}
@@ -36,11 +40,7 @@ export function DatasetStatus() {
       )}
       {m && (
         <>
-          {m.test && (
-            <p className="mt-2 inline-block rounded bg-warn-bg px-2 py-0.5 text-sm text-warn">
-              {t('testData')}
-            </p>
-          )}
+          {m.test && <p className="mt-2 pill bg-butter text-butter-ink">{t('testData')}</p>}
           <dl className="mt-4 grid max-w-xl grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
             <Row k={t('vertical')}>
               <Known t={t} k="values" v={m.vertical} />

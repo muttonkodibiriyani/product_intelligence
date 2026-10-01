@@ -23,8 +23,8 @@ import { FilterChips } from '../ui/filter-chips';
 import { RetailerChecks } from '../ui/retailer-checks';
 import { useRetailerName } from '../use-meta';
 
-const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
-const TD = 'px-3 py-2 align-top';
+const TH = 'th whitespace-nowrap';
+const TD = 'px-3 py-2.5 align-top';
 
 /** Products a retailer started listing, newest first. */
 export function LaunchesView() {
@@ -59,13 +59,13 @@ export function LaunchesView() {
   return (
     <section aria-labelledby="launches-title" className="space-y-6">
       <div>
-        <h1 id="launches-title" className="text-xl font-semibold">
+        <h1 id="launches-title" className="text-2xl font-bold tracking-tight">
           {t('title')}
         </h1>
         <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>
       </div>
 
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-3 rounded border border-line bg-surface p-3">
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-3 panel px-5 py-4">
         <RetailerChecks value={state.retailer} onChange={(retailer) => update({ retailer })} />
         <div className="flex flex-col gap-1">
           <label htmlFor={sinceId} className="text-xs font-medium text-ink-2">
@@ -80,7 +80,7 @@ export function LaunchesView() {
                 const since = cleanDay(e.target.value);
                 if (since !== state.since) update({ since });
               }}
-              className="rounded border border-line bg-surface px-2 py-1 text-sm focus-visible:outline-2"
+              className="field focus-visible:outline-2"
             />
             {state.since && (
               <button
@@ -136,7 +136,7 @@ export function LaunchesView() {
                     <button
                       type="button"
                       onClick={() => update({ limit: MAX_LIMIT })}
-                      className="rounded border border-line bg-surface px-3 py-1.5 hover:bg-surface-2 focus-visible:outline-2"
+                      className="btn focus-visible:outline-2"
                     >
                       {t('showMore', { n: formatCount(MAX_LIMIT, locale) })}
                     </button>
@@ -164,10 +164,9 @@ function Items({
 }) {
   const t = useTranslations('launches');
   const locale = useLocale();
-  if (items.length === 0)
-    return <p className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink-2">{t('empty')}</p>;
+  if (items.length === 0) return <p className="panel px-4 py-3 text-sm text-ink-2">{t('empty')}</p>;
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto panel">
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>
