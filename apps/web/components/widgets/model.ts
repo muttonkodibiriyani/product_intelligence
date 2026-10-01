@@ -117,18 +117,39 @@ export function ratingPoints(r: Summary['ratingPrice']) {
     .filter(([x, y]) => x > 0 && Number.isFinite(y));
 }
 
-/** Product images come only from the retailer's image host, over https (image decision B). */
-export const IMAGE_HOST = 'img-product.sephora.me';
-/** Whose images those are, credited with a link to its public home page. */
-export const IMAGE_OWNER = { name: 'Sephora', home: 'https://www.sephora.me' } as const;
-export function imageSrc(url: string | null | undefined): string | null {
+/**
+ * Product images are hotlinked, never copied, and only from each retailer's own image host, over
+ * https (image decision B; media.alshaya.com only keeps the owner's ulta_ae view live). Each host is
+ * credited with a link to its owner's public home page.
+ */
+export const IMAGE_OWNERS = {
+  'img-product.sephora.me': { name: 'Sephora', home: 'https://www.sephora.me' },
+  'media.alshaya.com': { name: 'Ulta Beauty', home: 'https://www.ulta.ae' },
+} as const;
+export type ImageHost = keyof typeof IMAGE_OWNERS;
+/** The retailer each host serves; a URL is shown only for its own retailer. */
+const HOST_RETAILER: Record<ImageHost, string> = {
+  'img-product.sephora.me': 'sephora_me',
+  'media.alshaya.com': 'ulta_ae',
+};
+
+/** The image host of an allowed URL (https, a listed host, no credentials), else null. */
+export function imageHost(url: string | null | undefined, retailer?: string): ImageHost | null {
   if (!url) return null;
   try {
     const u = new URL(url);
-    return u.protocol === 'https:' && u.hostname === IMAGE_HOST ? u.toString() : null;
+    if (u.protocol !== 'https:' || u.username || u.password || !Object.hasOwn(IMAGE_OWNERS, u.hostname))
+      return null;
+    const host = u.hostname as ImageHost;
+    return retailer && HOST_RETAILER[host] !== retailer ? null : host;
   } catch {
     return null;
   }
+}
+
+/** The URL to render, or null for a placeholder. With a retailer, only that retailer's host. */
+export function imageSrc(url: string | null | undefined, retailer?: string): string | null {
+  return imageHost(url, retailer) ? new URL(url!).toString() : null;
 }
 
 /**
