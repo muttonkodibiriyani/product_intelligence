@@ -55,7 +55,12 @@ gcloud config set project productintelligence-beeb3
 
 The nightly restore-verify uses plain `pg_restore`, so the local `pi` must be at pi_db migration
 0002 or later ([#49](https://github.com/muttonkodibiriyani/product_intelligence/pull/49)); before
-that every run fails (visibly) with `type "field_state" does not exist`.
+that every run fails (visibly) with `type "field_state" does not exist`. Local `pi` has been at 0003
+since 2026-10-01 00:06 UTC.
+
+The crontab lines are installed **by the owner** (as `tm8`, `crontab -e`): an agent's attempt to
+install them was refused by Claude Code's safety classifier as persistence (2026-09-30), which is
+the intended guard. The checkout and state directory below already exist on the server.
 
 Cron runs from a dedicated checkout pinned to `origin/main`, not the shared clone (other work moves
 that one). As `tm8`:
@@ -99,7 +104,7 @@ is actually stored.
    ```bash
    OBJ=gs://productintelligence-beeb3-pg-backups/postgres/pi/2026/10/01/pi-20261001T023000Z.dump
    gcloud storage cp "$OBJ" pi.dump && gcloud storage cp "$OBJ.counts.json" pi.dump.counts.json
-   gcloud storage objects describe "$OBJ" --format='value(metadata.sha256)'; sha256sum pi.dump
+   gcloud storage objects describe "$OBJ" --format='value(custom_fields.sha256)'; sha256sum pi.dump
    ```
 
 2. Restore into a scratch database first. The command below creates `pi_restore_check` in the
@@ -126,7 +131,8 @@ is actually stored.
 with an empty `search_path`, so a plain restore stops at the first `ATTACH PARTITION` with
 `type "field_state" does not exist`. The dump itself is complete. pi_db migration 0002
 ([#49](https://github.com/muttonkodibiriyani/product_intelligence/pull/49)) qualifies the type;
-dumps taken after `alembic upgrade head` restore with plain `pg_restore`. For any dump taken
+dumps taken after `alembic upgrade head` restore with plain `pg_restore`. Local `pi` was upgraded
+at 2026-09-30 23:57 UTC, so every object in the backup bucket is a plain-restore dump. For any dump taken
 before it, restore through SQL with that one reference qualified:
 
 ```bash
@@ -142,6 +148,8 @@ docker exec -i product-intelligence-postgres-1 psql -U pi -d <target_db> -q -v O
 |---|---|---|---|---|
 | 2026-09-30 23:27 | `pi-20260930T232735Z.dump` (local, same code path as nightly), sha256 `58aefde8…95ca53` | 3,383,756 B, 48 table-data entries | plain `pg_restore`: **failed** (known issue above); SQL route with the one-token fix: **COMPLETE** | 49 tables, 26,632 rows, all equal to live (no writes between dump and count); 24 `offer_observation` partitions attached; scratch DB dropped |
 | 2026-09-30 23:37 | `backup` with the restore-verify step, local `pi` at 0001 | 3,383,756 B | nightly code path | **failed before upload**, as intended: `pg_restore failed: … type "field_state" does not exist`; `check` exit 1 and `ATTENTION` written |
+| 2026-09-30 23:58 | `gs://…-pg-backups/postgres/pi/2026/09/30/pi-20260930T235729Z.dump` (first object in GCS; manual run of the nightly path, `pi` at 0002), sha256 `0ccfafce…effdae6f` | 4,768,432 B, 48 table-data entries | downloaded from GCS; sha256 equal to object metadata; `restore-test` (plain `pg_restore`) | **COMPLETE**: 49 tables, 38,370 rows, every table equal to the counts file; scratch DB dropped; `check` → `backup ok` |
+| 2026-10-01 00:05 | `pi-20261001T000511Z.dump` (pre-0003 safety copy) and `pi-20261001T000552Z.dump` (after 0003) | 4,768,432 / 4,768,505 B | nightly code path (restore-verify before upload) | both restore-verified, 49 tables / 38,370 rows; live counts after `alembic upgrade` 0002 → 0003 identical to the pre-upgrade counts file |
 
 Row counts from that test (all tables not listed had 0 rows in both live and restored):
 
@@ -157,5 +165,4 @@ Row counts from that test (all tables not listed had 0 rows in both live and res
 | public.source_context | 2 | 2 |
 | public.source_listing | 5,967 | 5,967 |
 
-Next entry: the first nightly object downloaded from GCS and restored with `restore-test`, once
-the setup has run and migration 0002 (#49) is applied (plain `pg_restore`, no workaround).
+Next entry: the first object written by the 02:30 cron, once the owner has installed it.
