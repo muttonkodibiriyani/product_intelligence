@@ -437,6 +437,8 @@ gcloud auth print-access-token | sed 's/^/Authorization: Bearer /' | curl -sS -o
   the nearest region, with the data-residency note, for the owner to decide. Prompts and tool
   results (product data, never user PII beyond the uid) would then be processed outside
   `me-central1`. Never pick `global` or a `europe-west*` region silently.
+- Any other code (e.g. `403`: the API is not enabled yet or a permission is missing; `429`;
+  `5xx`): **stop and report** to Infra. It does not mean "not served".
 
 Also check *Model Garden → Gemini 2.5 Flash* for its retirement date before switch-on. If it is
 within 3 months, stop: `config.model` must change first (Coordinator decision).
