@@ -67,10 +67,10 @@ def _id(conn: Conn, sql: str, params: tuple[object, ...] = ()) -> object:
 
 
 class World:
-    def __init__(self, conn: Conn) -> None:
+    def __init__(self, conn: Conn, source: str = "sephora_me") -> None:
         self.conn = conn
         self.source = _id(
-            conn, "INSERT INTO source (name, kind) VALUES ('sephora_me', 'web') RETURNING id"
+            conn, "INSERT INTO source (name, kind) VALUES (%s, 'web') RETURNING id", (source,)
         )
         self.context = _id(
             conn,
@@ -131,6 +131,13 @@ class World:
                 availability,
                 field_state,
             ),
+        )
+
+    def content(self, key: str, labels: dict[str, object], hour: int = 1) -> None:
+        self.conn.execute(
+            "INSERT INTO listing_content (listing_id, observed_at, labels, content_hash)"
+            " VALUES (%s, %s, %s::jsonb, %s)",
+            (self.listings[key], T0.replace(hour=hour), json.dumps(labels), f"{key}-{hour}"),
         )
 
     def latest(self) -> dict[str, tuple[object, object]]:
@@ -360,3 +367,58 @@ def test_the_main_image_comes_from_the_latest_content(conn: Conn) -> None:
         )
     assert _row(world, "A")["image"] == "https://img-product.sephora.me/new.jpg"
     assert _row(world, "B")["image"] is None  # no content row at all
+
+
+def _parent(*children: object, flag: object = True) -> dict[str, object]:
+    return {"aggregate_parent": flag, "resolved_children": list(children)}
+
+
+def test_an_ulta_parent_is_dropped_iff_a_child_is_exported_as_a_non_parent(conn: Conn) -> None:
+    """The AIE's fixture: 2 children, childless, a shared child, absent and parent-only refs."""
+    world = World(conn, "ulta_ae")
+    run = world.run("succeeded", 1)
+    for key in ("P", "C1", "C2", "Q", "R", "S", "P2", "C3", "U", "T", "V", "W"):
+        world.observe(run, key, 1, "50")
+    world.content("P", _parent("C1", "C2"))  # both children exported: dropped
+    world.content("C1", {"listing_key": "C1"})
+    world.content("Q", _parent())  # childless: kept
+    world.content("R", {"aggregate_parent": True})  # no resolved_children key: kept
+    world.content("S", _parent("GONE1", "GONE2"))  # children absent from the source: kept
+    world.content("P2", _parent("C3", flag="true"))  # text 'true'; C3 shared with W
+    world.content("W", _parent("C3", "GONE3"))  # one present child is enough: dropped
+    world.content("U", _parent("Q"))  # its only ref is another parent: kept
+    world.content("T", _parent("V", flag=False))  # not a parent at all: kept
+    world.content("V", {"aggregate_parent": "false"})
+    keys = sorted(world.latest())
+    assert keys == ["C1", "C2", "C3", "Q", "R", "S", "T", "U", "V"]
+
+
+def test_a_child_outside_the_exported_runs_does_not_drop_its_parent(conn: Conn) -> None:
+    world = World(conn, "ulta_ae")
+    run = world.run("succeeded", 2)
+    failed = world.run("failed", 3)
+    world.observe(run, "P", 2, "50")
+    world.observe(failed, "C", 3, "40")  # only in a failed run: not in this snapshot
+    world.content("P", _parent("C"))
+    assert sorted(world.latest()) == ["P"]
+
+
+def test_only_the_latest_content_decides_who_is_a_parent(conn: Conn) -> None:
+    world = World(conn, "ulta_ae")
+    run = world.run("succeeded", 1)
+    for key in ("P", "C"):
+        world.observe(run, key, 1, "50")
+    world.content("P", _parent("C"), hour=1)
+    world.content("P", {"aggregate_parent": False}, hour=2)  # no longer a parent
+    world.content("C", {"aggregate_parent": True}, hour=1)
+    world.content("C", {"aggregate_parent": False}, hour=2)
+    assert sorted(world.latest()) == ["C", "P"]
+
+
+def test_sephora_listings_are_never_deduplicated(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    for key in ("P", "C"):
+        world.observe(run, key, 1, "50")
+    world.content("P", _parent("C"))
+    assert sorted(world.latest()) == ["C", "P"]

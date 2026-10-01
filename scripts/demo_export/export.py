@@ -349,7 +349,37 @@ LEFT JOIN LATERAL (
   ORDER BY content.observed_at DESC
   LIMIT 1
 ) lc ON true
-WHERE s.name LIKE 'sephora%' OR s.name LIKE 'ulta%'
+WHERE (s.name LIKE 'sephora%' OR s.name LIKE 'ulta%')
+  -- An Ulta aggregate parent repeats its variants: it is left out iff at least one of its
+  -- resolved children is exported here as a non-parent listing of the same source. A parent
+  -- whose children are all absent (or that lists none) stays. A parent is a listing whose
+  -- latest content has labels.aggregate_parent JSON true or the text 'true' (owner, option A).
+  AND NOT (
+    s.name LIKE 'ulta%'
+    AND COALESCE(lc.labels ->> 'aggregate_parent' = 'true', false)
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(
+        CASE
+          WHEN jsonb_typeof(lc.labels -> 'resolved_children') = 'array'
+          THEN lc.labels -> 'resolved_children'
+        END
+      ) AS child(key)
+      JOIN source_listing child_listing
+        ON child_listing.source_id = sl.source_id AND child_listing.source_listing_key = child.key
+      JOIN latest child_latest ON child_latest.source_listing_id = child_listing.id
+      WHERE NOT COALESCE(
+        (
+          SELECT child_content.labels ->> 'aggregate_parent' = 'true'
+          FROM listing_content child_content
+          WHERE child_content.listing_id = child_listing.id
+          ORDER BY child_content.observed_at DESC
+          LIMIT 1
+        ),
+        false
+      )
+    )
+  )
 ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 """
 
