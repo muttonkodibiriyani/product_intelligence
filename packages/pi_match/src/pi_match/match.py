@@ -26,6 +26,7 @@ from pi_match.normalise import (
     Shade,
     Size,
     concentration,
+    is_listed,
     item_kind,
     name_tokens,
     normalise_brand,
@@ -56,14 +57,20 @@ class Prepared:
 
 
 def prepare(record: ProductRecord) -> Prepared:
-    """Normalise one record. The size comes from ``size`` if given, else from the name."""
+    """Normalise one record. The size comes from ``size`` if given, else from the name.
+
+    A size given as a list never falls back to the name: an ambiguous list stays unknown.
+    """
     brand_key = normalise_brand(record.brand)
-    text = f"{record.name} {record.size or ''}"
+    size_text = record.size if isinstance(record.size, str) else " ".join(record.size or ())
+    text = f"{record.name} {size_text}"
     return Prepared(
         record=record,
         brand_key=brand_key,
         tokens=name_tokens(record.name, brand_key),
-        size=parse_size(record.size) or parse_size(record.name),
+        size=parse_size(record.size)
+        if is_listed(record.size)
+        else parse_size(record.size) or parse_size(record.name),
         shade=parse_shade(record.shade),
         concentration=concentration(text),
         kind=item_kind(record.name),
@@ -230,13 +237,21 @@ def _pair(
     )
 
 
+def without_aggregates(records: Iterable[ProductRecord]) -> tuple[ProductRecord, ...]:
+    """The records that can be matched: aggregate rows removed, order kept."""
+    return tuple(record for record in records if not record.aggregate)
+
+
 def match(left: Sequence[ProductRecord], right: Sequence[ProductRecord]) -> tuple[MatchPair, ...]:
-    """One-to-one pairs between two snapshots, best first, within shared brands only."""
+    """One-to-one pairs between two snapshots, best first, within shared brands only.
+
+    Aggregate rows (a product that groups its variants) are skipped on both sides.
+    """
     by_brand: dict[str, list[Prepared]] = defaultdict(list)
-    for item in map(prepare, right):
+    for item in map(prepare, without_aggregates(right)):
         by_brand[item.brand_key].append(item)
     scored: list[tuple[int, Decimal, str, str, Prepared, Prepared, tuple[str, ...]]] = []
-    for lp in map(prepare, left):
+    for lp in map(prepare, without_aggregates(left)):
         for rp in by_brand.get(lp.brand_key, ()):
             result = score_pair(lp, rp)
             if result is None:
@@ -268,9 +283,9 @@ def match(left: Sequence[ProductRecord], right: Sequence[ProductRecord]) -> tupl
 
 
 def brand_overlap(left: Iterable[ProductRecord], right: Iterable[ProductRecord]) -> BrandOverlap:
-    """Normalised brand keys in both snapshots and in only one of them."""
-    lb = {normalise_brand(r.brand) for r in left}
-    rb = {normalise_brand(r.brand) for r in right}
+    """Normalised brand keys in both snapshots and in only one of them (aggregates skipped)."""
+    lb = {normalise_brand(r.brand) for r in without_aggregates(left)}
+    rb = {normalise_brand(r.brand) for r in without_aggregates(right)}
     return BrandOverlap(
         both=tuple(sorted(lb & rb)),
         only_left=tuple(sorted(lb - rb)),

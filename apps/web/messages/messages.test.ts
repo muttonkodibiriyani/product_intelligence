@@ -4,6 +4,8 @@ import type { Schemas } from '@/lib/api/types';
 import { otherLocalePath } from '@/components/lang-switch';
 import ar from './ar.json';
 import en from './en.json';
+import wAr from './widgets.ar.json';
+import wEn from './widgets.en.json';
 
 type Tree = { [k: string]: string | Tree };
 const keys = (t: Tree, p = ''): string[] =>
@@ -26,6 +28,11 @@ const STATUSES: Schemas['RetailerStatus'][] = ['supported', 'partial', 'blocked'
 describe('messages', () => {
   it('English and Arabic have the same keys', () => {
     expect(keys(ar as Tree).sort()).toEqual(keys(en as Tree).sort());
+  });
+
+  it('the widgets have the same keys in both languages, and no page key is called widgets', () => {
+    expect(keys(wAr as Tree).sort()).toEqual(keys(wEn as Tree).sort());
+    expect('widgets' in en).toBe(false);
   });
 
   it('no message is empty', () => {

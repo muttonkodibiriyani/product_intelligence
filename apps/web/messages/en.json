@@ -1,6 +1,7 @@
 {
   "app": {
     "name": "Product Intelligence",
+    "tagline": "UAE retail pricing",
     "skip": "Skip to content",
     "switchLang": "العربية",
     "switchLangLabel": "Switch to Arabic",
@@ -96,6 +97,33 @@
       "reviewed": "Reviewed by people",
       "proposed": "Proposed, not reviewed",
       "unreviewed": "Not reviewed"
+    },
+    "landing": {
+      "overview": "Overview",
+      "compareTab": "Compare",
+      "tabs": "Dashboard views",
+      "subtitle": "{retailer} · one snapshot, {date}",
+      "sample": "Data: {retailer}, {market}.",
+      "compareNote": "Comparison needs a second retailer or a second collection day. These cards show the layout they will use.",
+      "indexTitle": "Price index over time",
+      "indexQuestion": "How the basket's price moves against the base retailer, day by day.",
+      "indexReason": "Needs more than one collection day; this dataset has one snapshot.",
+      "gapTitle": "Price gap distribution",
+      "gapQuestion": "How far matched products' prices sit apart between two retailers.",
+      "gapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "overlapTitle": "Assortment overlap",
+      "overlapQuestion": "Which products both retailers carry, and which only one does.",
+      "overlapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "openCompare": "Open compare",
+      "datasetTitle": "Dataset",
+      "withheld": {
+        "capability_off": "Promotions are not collected for this retailer yet.",
+        "field_not_collected": "Needs regular prices to measure discounts; this snapshot does not collect them.",
+        "cohort_too_small": "Too few products carry both a price and a regular price to measure discounts.",
+        "other": "Discounts can't be measured in this snapshot.",
+        "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
+        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions."
+      }
     }
   },
   "explore": {
@@ -347,5 +375,10 @@
   "retailerChecks": {
     "legend": "Retailers",
     "hint": "None ticked shows every retailer."
+  },
+  "card": {
+    "loading": "Loading…",
+    "preview": "Layout preview — not collected yet.",
+    "empty": "Nothing to show for this selection."
   }
 }

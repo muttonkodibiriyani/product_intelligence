@@ -14,6 +14,7 @@ import { formatCount, formatDate, loc } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import type { BackTo } from '../explore/product-table';
+import { Card } from '../ui/card';
 import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
 import { Known } from '../ui/known';
@@ -106,20 +107,25 @@ export function ProductView() {
   const env = q.data as Envelope<Schemas['ProductDetail']>;
   const d = env.data;
   return (
-    <article aria-labelledby="product-title" className="space-y-8">
+    <article aria-labelledby="product-title" className="space-y-6">
       <div className="space-y-3">
         {backLink}
         <EnvNotes env={env} />
         {d && (
           <header>
             {/* bdi isolates the text's own direction but keeps the block on the page's side. */}
-            <p className="text-sm text-ink-2">
-              <bdi>{d.card.brand}</bdi>
+            <p className="text-[13px] font-bold tracking-wide text-ink-2 uppercase">
+              <Link
+                href={`/${locale}/explore/${toSearch({ ...parseState(new URLSearchParams()), brand: [d.card.brand] })}`}
+                className="hover:text-accent hover:underline focus-visible:outline-2"
+              >
+                <bdi>{d.card.brand}</bdi>
+              </Link>
             </p>
-            <h1 id="product-title" className="text-2xl font-semibold">
+            <h1 id="product-title" className="mt-1 text-[28px] leading-tight font-bold tracking-tight">
               <bdi>{d.card.name}</bdi>
             </h1>
-            <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <dl className="mt-3 flex flex-wrap gap-2 text-sm">
               {d.card.size && (
                 <Fact k={t('size')}>
                   <Size size={d.card.size} />
@@ -161,7 +167,7 @@ export function ProductView() {
 
 function Fact({ k, children }: { k: string; children: ReactNode }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-1.5 rounded-full bg-surface-2 px-3 py-1">
       <dt className="text-ink-2">{k}</dt>
       <dd>{children}</dd>
     </div>
@@ -170,16 +176,14 @@ function Fact({ k, children }: { k: string; children: ReactNode }) {
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <section>
-      <h2 className="text-base font-semibold">{title}</h2>
-      {hint && <p className="mt-1 text-sm text-ink-2">{hint}</p>}
-      <div className="mt-3">{children}</div>
-    </section>
+    <Card title={title} question={hint} flush>
+      {children}
+    </Card>
   );
 }
 
-const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
-const TD = 'px-3 py-2 align-top';
+const TH = 'th whitespace-nowrap';
+const TD = 'px-3 py-2.5 align-top';
 
 /** One row per retailer. Columns the dataset doesn't collect (per /meta) are left out, not zeroed. */
 function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: string) => string }) {
@@ -188,9 +192,9 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
   const locale = useLocale();
   const caps = useMeta().data?.data?.capabilities;
   const show = { ratings: caps?.ratings ?? true, shades: caps?.shades ?? true, stock: caps?.stock ?? true };
-  if (offers.length === 0) return <p className="text-ink-2">{t('noOffers')}</p>;
+  if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto px-2">
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>
@@ -316,7 +320,7 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
 function Pairs({ pairs, name }: { pairs: Schemas['PairGap'][]; name: (id: string) => string }) {
   const t = useTranslations('product');
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto px-2">
       <table className="w-full max-w-3xl text-sm">
         <thead className="border-b border-line">
           <tr>
@@ -351,7 +355,7 @@ function Matches({ matches, name }: { matches: Schemas['CardMatch'][]; name: (id
   const t = useTranslations('product');
   const tm = useTranslations('match');
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto px-2">
       <table className="w-full max-w-3xl text-sm">
         <thead className="border-b border-line">
           <tr>

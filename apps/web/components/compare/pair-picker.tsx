@@ -5,8 +5,7 @@ import { useId } from 'react';
 import { pick, type CompareState, type GroupBy } from '@/lib/compare';
 import { useMeta } from '../use-meta';
 
-const SELECT =
-  'min-w-0 rounded border border-line bg-surface px-2 py-1.5 text-sm focus-visible:outline-2 disabled:opacity-60';
+const SELECT = 'min-w-0 field focus-visible:outline-2 disabled:opacity-60';
 
 /** Base, other and grouping. Retailers come from /meta, with their collection status. */
 export function PairPicker({
@@ -43,13 +42,13 @@ export function PairPicker({
     </div>
   );
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded border border-line bg-surface p-3">
+    <div className="flex flex-wrap items-end gap-3 panel px-5 py-4">
       {side('base')}
       <button
         type="button"
         onClick={() => update({ base: state.other, other: state.base })}
         disabled={!state.base && !state.other}
-        className="rounded border border-line px-2 py-1.5 text-sm hover:bg-surface-2 focus-visible:outline-2 disabled:opacity-60"
+        className="btn focus-visible:outline-2"
       >
         {t('swap')}
       </button>

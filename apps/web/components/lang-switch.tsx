@@ -31,7 +31,7 @@ export function LangSwitch() {
           router.push(href + window.location.search);
         }
       }}
-      className="rounded px-2 py-1 text-sm text-ink-2 hover:bg-surface-2 focus-visible:outline-2"
+      className="rounded-ctl px-2.5 py-1.5 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink focus-visible:outline-2"
     >
       {t('switchLang')}
     </Link>

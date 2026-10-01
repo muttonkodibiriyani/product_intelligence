@@ -19,6 +19,7 @@ import { MAX_LIMIT } from '@/lib/url-state';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
+import { Card } from '../ui/card';
 import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
 import { Known } from '../ui/known';
@@ -26,8 +27,8 @@ import { Money } from '../ui/money';
 import { RetailerChecks } from '../ui/retailer-checks';
 import { useRetailerName } from '../use-meta';
 
-const TH = 'px-3 py-2 font-medium text-ink-2';
-const TD = 'px-3 py-2 align-top';
+const TH = 'th';
+const TD = 'px-3 py-2.5 align-top';
 
 /** Products below their regular price on the latest day, deepest first, and each retailer's share. */
 export function PromotionsView() {
@@ -62,13 +63,13 @@ export function PromotionsView() {
   return (
     <section aria-labelledby="promotions-title" className="space-y-6">
       <div>
-        <h1 id="promotions-title" className="text-xl font-semibold">
+        <h1 id="promotions-title" className="text-2xl font-bold tracking-tight">
           {t('title')}
         </h1>
         <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>
       </div>
 
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-3 rounded border border-line bg-surface p-3">
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-3 panel px-5 py-4">
         <RetailerChecks value={state.retailer} onChange={(retailer) => update({ retailer })} />
         <div className="flex flex-col gap-1">
           <label htmlFor={minId} className="text-xs font-medium text-ink-2">
@@ -78,7 +79,7 @@ export function PromotionsView() {
             id={minId}
             value={state.minPct}
             onChange={(e) => update({ minPct: e.target.value as MinPct })}
-            className="rounded border border-line bg-surface px-2 py-1.5 text-sm focus-visible:outline-2"
+            className="field focus-visible:outline-2"
           >
             {MIN_PCTS.map((v) => (
               <option key={v} value={v}>
@@ -132,7 +133,7 @@ export function PromotionsView() {
                       <button
                         type="button"
                         onClick={() => update({ limit: MAX_LIMIT })}
-                        className="rounded border border-line bg-surface px-3 py-1.5 hover:bg-surface-2 focus-visible:outline-2"
+                        className="btn focus-visible:outline-2"
                       >
                         {t('showMore', { n: formatCount(MAX_LIMIT, locale) })}
                       </button>
@@ -162,11 +163,8 @@ function Shares({
   const tr = useTranslations('reasons');
   const locale = useLocale();
   return (
-    <section aria-labelledby="shares-title">
-      <h2 id="shares-title" className="text-base font-semibold">
-        {t('shares')}
-      </h2>
-      <div className="relative mt-3 overflow-x-auto rounded border border-line bg-surface">
+    <Card id="shares" title={t('shares')} flush>
+      <div className="relative overflow-x-auto px-2">
         <table className="w-full text-sm">
           <thead className="border-b border-line">
             <tr>
@@ -208,8 +206,8 @@ function Shares({
           </tbody>
         </table>
       </div>
-      <p className="mt-1 text-xs text-ink-2">{t('sharesHint')}</p>
-    </section>
+      <p className="px-5 pt-1 pb-2 text-xs text-ink-2">{t('sharesHint')}</p>
+    </Card>
   );
 }
 
@@ -224,10 +222,9 @@ function Items({
 }) {
   const t = useTranslations('promotions');
   const locale = useLocale();
-  if (items.length === 0)
-    return <p className="rounded border border-line bg-surface px-3 py-2 text-sm text-ink-2">{t('empty')}</p>;
+  if (items.length === 0) return <p className="panel px-4 py-3 text-sm text-ink-2">{t('empty')}</p>;
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto panel">
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>
