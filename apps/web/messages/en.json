@@ -8,7 +8,8 @@
     "signedInAs": "Signed in as {email}",
     "nav": {
       "status": "Dataset",
-      "explore": "Products"
+      "explore": "Products",
+      "compare": "Compare"
     },
     "mainNav": "Main"
   },
@@ -63,7 +64,8 @@
     "matches_unreviewed": "The product matches haven't been reviewed yet.",
     "no_match": "No matching product at the other retailer.",
     "not_in_scope": "Outside the current dataset.",
-    "currency_mismatch": "Prices are in different currencies."
+    "currency_mismatch": "Prices are in different currencies.",
+    "not_applicable": "This view doesn't apply to this kind of catalogue."
   },
   "home": {
     "title": "Current dataset",
@@ -239,6 +241,56 @@
     "historyTable": "Show as table",
     "date": "Date",
     "chartLabel": "Price per day at {retailers}",
-    "noPrice": "No price"
+    "noPrice": "No price",
+    "backCompare": "Back to comparison"
+  },
+  "compare": {
+    "title": "Compare prices",
+    "intro": "Two retailers' prices on the same products, on the latest collection day. Only exact, reviewed matches of the same size count towards the summary.",
+    "base": "Base",
+    "other": "Compared with",
+    "choose": "Choose a retailer",
+    "swap": "Swap",
+    "groupBy": "Group by",
+    "groupNone": "No grouping",
+    "groupBrand": "Brand",
+    "groupCategory": "Category",
+    "activeFilters": "Active filters",
+    "filterBrand": "Brand: {value}",
+    "filterCategory": "Category: {value}",
+    "removeFilter": "Remove filter",
+    "filterTo": "Show only {value}",
+    "pickPair": "Pick two retailers to compare.",
+    "pickPairHint": "The base is the price the gap is measured from.",
+    "loading": "Loading comparison…",
+    "summary": "{other} vs {base}",
+    "convention": "Gap is {other}'s price minus {base}'s, as a share of {base}'s. Above zero means {other} is dearer.",
+    "noSummary": "No summary: too few products are counted for this pair. The rows below show why each one is left out.",
+    "compared": "Products counted",
+    "median": "Median gap",
+    "mean": "Mean",
+    "cheaperAt": "Cheaper at",
+    "equalCount": "{count, plural, =0 {None at the same price} one {{n} at the same price} other {{n} at the same price}}",
+    "basket": "Total for the {n} counted",
+    "sides": "Coverage of each retailer",
+    "retailer": "Retailer",
+    "status": "Collection",
+    "observed": "Products seen",
+    "counted": "Counted",
+    "onlyHere": "Only sold here",
+    "sidesHint": "Counted products are the ones in the summary. Products only one retailer sells can't be compared.",
+    "groupsBrand": "By brand",
+    "groupsCategory": "By category",
+    "products": "Products",
+    "rows": "Products",
+    "count": "{total, plural, =0 {No products} one {{n} product} other {{n} products}}",
+    "shownOfTotal": "{shown} of {total} products",
+    "rowsHint": "Largest gaps first. Products not counted say why. Open a product for its offers and evidence.",
+    "truncated": "Only the largest gaps are listed. The summary covers every product.",
+    "showMore": "Show up to {n}",
+    "narrow": "Filter by a brand or category (group the table, then pick one) to see the rest.",
+    "product": "Product",
+    "gap": "Gap",
+    "noRows": "Neither retailer has products for these filters."
   }
 }

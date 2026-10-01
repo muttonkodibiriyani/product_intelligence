@@ -4,7 +4,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useId, useMemo, useState } from 'react';
-import type { CaveatView, Envelope, Schemas } from '@/lib/api/types';
+import type { Envelope, Schemas } from '@/lib/api/types';
 import {
   activeFilterCount,
   currentPages,
@@ -16,10 +16,10 @@ import {
   withValidSort,
   type ExploreState,
 } from '@/lib/explore';
-import { formatCount, loc } from '@/lib/format';
+import { formatCount } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
-import { Known } from '../ui/known';
+import { EnvNotes } from '../ui/env-notes';
 import { useRetailerName } from '../use-meta';
 import { ExportMenu } from './export-menu';
 import { Filters } from './filters';
@@ -31,7 +31,6 @@ type Page = Envelope<Schemas['ProductPage']>;
 /** The product list. Every filter, the sort and the retailer pair live in the URL. */
 export function Explorer() {
   const t = useTranslations('explore');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const sp = useSearchParams();
   const router = useRouter();
@@ -135,7 +134,7 @@ export function Explorer() {
             {t('restarted')}
           </p>
         )}
-        {first && <Notes env={first} locale={locale} tr={tr} />}
+        {first && <EnvNotes env={first} className="mt-3" />}
 
         <div className="mt-4">
           {q.isError && !q.data ? (
@@ -194,22 +193,4 @@ export function Explorer() {
 function columns(state: ExploreState, facet: Schemas['FacetCount'][]): string[] {
   if (state.retailer.length) return state.retailer;
   return facet.filter((f) => f.count > 0).map((f) => f.key);
-}
-
-/** Why the data is thin, and the caveats the API attached, in the user's language. */
-function Notes({ env, locale, tr }: { env: Page; locale: string; tr: ReturnType<typeof useTranslations> }) {
-  const caveats: CaveatView[] = env.caveats;
-  if (env.status !== 'not_enough_data' && caveats.length === 0) return null;
-  return (
-    <div role="note" className="mt-3 space-y-1 rounded border border-line bg-surface px-3 py-2 text-sm">
-      {env.status === 'not_enough_data' && env.reason && (
-        <p className="text-ink">{loc(env.detail, locale) || <Known t={tr} v={env.reason} />}</p>
-      )}
-      {caveats.map((c) => (
-        <p key={c.code} className="text-ink-2">
-          {locale === 'ar' ? c.ar || c.en : c.en}
-        </p>
-      ))}
-    </div>
-  );
 }

@@ -6,10 +6,12 @@ import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { Envelope, Schemas } from '@/lib/api/types';
+import { parseCompare, toCompareSearch } from '@/lib/compare';
 import { parseState, toSearch } from '@/lib/explore';
 import { formatCount, formatDate, loc } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
 import { Known } from '../ui/known';
 import { Money } from '../ui/money';
@@ -40,7 +42,11 @@ export function ProductView() {
   const id = sp.get('id') ?? '';
   const valid = PRODUCT_ID.test(id);
   // Only the list's own filters are carried back, rebuilt from parsed state: never a free URL.
-  const back = `/${locale}/explore/${toSearch(parseState(new URLSearchParams(sp.get('from') ?? '')))}`;
+  const from = new URLSearchParams(sp.get('from') ?? '');
+  const toCompare = sp.get('back') === 'compare';
+  const back = toCompare
+    ? `/${locale}/compare/${toCompareSearch(parseCompare(from))}`
+    : `/${locale}/explore/${toSearch(parseState(from))}`;
 
   const q = useQuery({
     queryKey: ['product', id],
@@ -52,7 +58,7 @@ export function ProductView() {
   const backLink = (
     <Link href={back} className="text-sm text-accent hover:underline focus-visible:outline-2">
       <span aria-hidden>{locale === 'ar' ? '→ ' : '← '}</span>
-      {t('back')}
+      {t(toCompare ? 'backCompare' : 'back')}
     </Link>
   );
 
@@ -152,25 +158,6 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
       {hint && <p className="mt-1 text-sm text-ink-2">{hint}</p>}
       <div className="mt-3">{children}</div>
     </section>
-  );
-}
-
-/** not_enough_data and caveats, in the user's language. */
-function EnvNotes({ env }: { env: Envelope<unknown> }) {
-  const tr = useTranslations('reasons');
-  const locale = useLocale();
-  if (env.status !== 'not_enough_data' && env.caveats.length === 0) return null;
-  return (
-    <div role="note" className="space-y-1 rounded border border-line bg-surface px-3 py-2 text-sm">
-      {env.status === 'not_enough_data' && env.reason && (
-        <p>{loc(env.detail, locale) || <Known t={tr} v={env.reason} />}</p>
-      )}
-      {env.caveats.map((c) => (
-        <p key={c.code} className="text-ink-2">
-          {locale === 'ar' ? c.ar || c.en : c.en}
-        </p>
-      ))}
-    </div>
   );
 }
 

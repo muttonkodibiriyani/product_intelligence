@@ -19,6 +19,7 @@ const REASONS: Schemas['Reason'][] = [
   'no_match',
   'not_in_scope',
   'currency_mismatch',
+  'not_applicable',
 ];
 const STATUSES: Schemas['RetailerStatus'][] = ['supported', 'partial', 'blocked', 'pending', 'retired'];
 
