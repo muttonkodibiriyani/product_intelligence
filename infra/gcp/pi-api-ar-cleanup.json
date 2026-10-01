@@ -1,0 +1,12 @@
+[
+  {
+    "name": "keep-last-5",
+    "action": {"type": "Keep"},
+    "mostRecentVersions": {"keepCount": 5}
+  },
+  {
+    "name": "delete-the-rest",
+    "action": {"type": "Delete"},
+    "condition": {"tagState": "any"}
+  }
+]

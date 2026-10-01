@@ -140,13 +140,11 @@ def test_goldens_match_and_validate(name: str, golden_responses: dict[str, Any])
 
 
 def test_hosting_routes_api_before_the_spa_catch_all() -> None:
-    """Hosting requirement 5: any /api rewrite precedes ``**`` and pins the region.
-
-    The rewrite itself lands with the deploy (S4); until then this guards its shape.
-    """
+    """Hosting requirement 5: the /api rewrite is first, ``**`` last, and the region is pinned."""
     hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
     rewrites = hosting["rewrites"]
     sources = [r["source"] for r in rewrites]
+    assert sources[0] == "/api/**", "the API rewrite must precede every other rewrite"
     assert sources[-1] == "**", "the SPA catch-all must be the last rewrite"
     for rule in rewrites:
         if rule["source"].startswith("/api"):

@@ -138,7 +138,7 @@ versioned snapshots.
   request, and ID tokens live one hour. Admin-only routes turn it on.
 - **Abuse limits.** Each instance has a per-uid token bucket (default 10 req/s, burst 30; config).
   The bucket is **per instance**, so a user's effective ceiling is the limit × `max-instances`
-  (2 → 20 req/s). That is accepted for the pilot; a global limit would need shared state
+  (3 → 30 req/s). That is accepted for the pilot; a global limit would need shared state
   (Firestore or Redis) and is not proposed. App Check can be added in front later if the owner
   enables it (as in the assistant design). Sizing: an assistant turn makes about 6 tool calls in
   a few seconds, well inside the burst of 30; a user running several turns back to back refills at
@@ -370,15 +370,31 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   The v1 exporter merged both into `accepted`; the v1 adapter maps that to `approved` and adds a
   caveat that locked edges can't be told apart in v1.
 - **`/v1/export/{view}`:** `view ∈ {products, compare, index, promotions, assortment-gaps,
-  coverage}`, `format=csv|jsonl`, plus that view's filters.
-  - It streams exactly the rows the view's endpoint returns, from the same `pi_metrics` call.
-  - Row cap 50 k.
-  - A manifest header row (or `#` comment for CSV) gives the cutoff, generation, filters and
-    apiVersion.
-  - Each export is audited: one structured Cloud Logging entry (`pi_api.export`) with the uid,
-    role, view, filters, row count, generation and apiVersion, and never row content. It goes to
-    the project's default `_Default` bucket (30-day retention, within the free allotment). A
-    longer retention sink needs the owner's approval and is not proposed.
+  coverage}`, one route each, taking that view's filters plus `format=csv|jsonl` (default `csv`).
+  `/export/products` takes the `/products` filters and `sort` but not `limit` or `cursor` (`422`).
+  - The rows are exactly the ones the view's endpoint returns, from the same call: products are the
+    cards in `/products` order, unpaged; compare `data.rows`; index `data.points`; promotions and
+    assortment-gaps `data.items`; coverage `data.retailers`.
+  - **Row cap 50 000.** Over it the export is refused with `422 export_too_large`, never cut short,
+    and nothing is audited. 50 k product cards encode in ~4 s (CSV) on a dev machine, well inside
+    the 30 s timeout.
+  - **Line 1 is the manifest** (`schemaId: pi-api.export/v1`): view, format, row count, and the
+    envelope minus `data` (status, reason, detail, cohort, caveats, and `meta` with cutoff,
+    generation, filters, apiVersion, metricVersion). JSONL: `{"manifest": {...}}`, then one row
+    object per line, serialised as the endpoint does. CSV: a UTF-8 BOM (so spreadsheets read
+    Arabic), `# <manifest JSON>`, a header row, then the rows. Readers skip line 1 (pandas:
+    `skiprows=1`; not `comment="#"`, which would also cut cells containing `#`).
+  - **CSV cells.** Objects flatten to dotted columns (`gap.amount.amount`, `prices.shop_a.minor`);
+    lists of scalars join with `|`; lists of objects stay compact JSON. Columns appear in
+    first-seen order; a null object leaves its nested cells empty. A cell starting with `= + - @`,
+    tab or CR is prefixed with `'` unless it is a plain signed number (CSV injection).
+  - Responses are `attachment; filename="pi-<view>-<cutoff>.<csv|jsonl>"`, Bearer-only and
+    `private, no-store` like every route.
+  - Each export is audited: one structured entry (`pi_api.export`, severity NOTICE) as a bare JSON
+    line on stdout, which Cloud Run logs as a `jsonPayload`: uid, role, view, format, filters, row
+    count, generation and apiVersion, and never row content. It goes to the project's default
+    `_Default` bucket (30-day retention, within the free allotment). A longer retention sink needs
+    the owner's approval and is not proposed.
 
 ## 7. Metric rules (owned by `pi_metrics`)
 
@@ -458,8 +474,9 @@ and is recorded in `docs/decision-log.md`.
 **Hosting:**
 - **Runtime.** Cloud Run service `pi-api`, **me-central1**, running a container image (Python
   3.12, uvicorn, one worker) from Artifact Registry in the same region.
-- **Scaling.** `min-instances=0` (scales to zero), `max-instances=2`, concurrency 40,
-  1 vCPU / 512 MiB, request-based billing (CPU only during requests), timeout 30 s.
+- **Scaling.** `min-instances=0` (scales to zero), `max-instances=3` (the coordinator's cap),
+  default concurrency, 1 vCPU / 512 MiB, request-based billing (CPU only during requests),
+  timeout 30 s. No Cloud SQL and no VPC connector.
 - **Identity.** A dedicated runtime service account `pi-api@` that can **read objects** under
   `datasets/` and nothing else. It has **no** Secret Manager or DB roles, and no Firebase admin
   roles. Token verification needs only public certificates.
@@ -470,7 +487,8 @@ and is recorded in `docs/decision-log.md`.
     therefore never lists: it reads the configured `PI_API_DATASETS` paths, and the generation
     check is an object metadata GET. The grant is a custom role with `storage.objects.get` only
     (not `objectViewer`, whose list permission would be denied by the condition anyway).
-- **Deploy.** Infra deploys it, with a Cloud Build or GitHub Actions workflow that Infra owns.
+- **Deploy.** Infra deploys it, with a Cloud Build or GitHub Actions workflow that Infra owns. The
+  step-by-step handoff is [`docs/runbooks/pi-api-deploy.md`](../runbooks/pi-api-deploy.md).
 - **Approval first.** The Cloud Run service `pi-api` and its Artifact Registry repository are
   **new standing billable resources** (small, see below, but not zero). They fall within the
   owner's $25/month GCP delegation to the Program Coordinator. Neither is created until a
@@ -486,7 +504,7 @@ and is recorded in `docs/decision-log.md`.
 | Cloud Run requests + CPU | ≤ 50 k requests × ~150 ms at 1 vCPU ≈ 7.5 k vCPU-s, 3.75 k GiB-s: within the free tier if it applies to the region, otherwise well under $1 | $0–1 |
 | Cold starts | Load a few MB of JSON plus validation, ~2–4 s. Accepted for the pilot; `min-instances=1` would cost ≈ $10–15 and **is not proposed** | $0 |
 | GCS reads | One generation check per instance per minute while warm, plus downloads on change | < $0.10 |
-| Artifact Registry | One image of ~150 MB (keep the last 3 tags) | < $0.10 |
+| Artifact Registry | ~150 MB per image, cleanup policy keeps the last 5 | < $0.10 |
 | Egress | JSON responses, a few hundred MB | < $0.10 |
 | **Total** | | **≈ $0–1.5** |
 

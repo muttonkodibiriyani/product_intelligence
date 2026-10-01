@@ -178,8 +178,9 @@ class ProductSort(StrEnum):
 GAP_SORTS = frozenset({ProductSort.GAP, ProductSort.GAP_ASC})
 
 
-class ProductQuery(ContractModel):
-    """``/v1/products`` filters. Unknown keys are rejected."""
+class ProductFilters(ContractModel):
+    """``/v1/products`` filters and order, shared with ``/v1/export/products``. Unknown keys are
+    rejected."""
 
     market: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
     scope: ShortText | None = None
@@ -199,6 +200,9 @@ class ProductQuery(ContractModel):
     price_min: DecimalText | None = None
     price_max: DecimalText | None = None
     sort: ProductSort = ProductSort.NAME
+
+
+class ProductQuery(ProductFilters):
     limit: int = Field(default=25, ge=1, le=MAX_LIMIT)
     cursor: Annotated[str, Field(max_length=512)] | None = None
 
@@ -333,7 +337,7 @@ def _matched(product: Product) -> bool:
     )
 
 
-def _predicates(ds: Dataset, query: ProductQuery) -> dict[str, Callable[[Product], bool]]:
+def _predicates(ds: Dataset, query: ProductFilters) -> dict[str, Callable[[Product], bool]]:
     """One predicate per filter, so each facet can drop its own (design §6, FE ask 6)."""
     brands = {fold(b) for b in query.brand}
     categories = {fold(c) for c in query.category}
@@ -423,7 +427,7 @@ def decode_cursor(cursor: str, generation: str, digest: str) -> int:
     return offset
 
 
-def _unknown_values(ds: Dataset, query: ProductQuery) -> None:
+def _unknown_values(ds: Dataset, query: ProductFilters) -> None:
     known = {r.id for r in ds.meta.retailers}
     unknown = sorted(set(query.retailer) - known)
     if unknown:
@@ -431,7 +435,7 @@ def _unknown_values(ds: Dataset, query: ProductQuery) -> None:
         raise InvalidQueryError(msg)
 
 
-def _search_pair(query: ProductQuery) -> tuple[str, str] | None:
+def _search_pair(query: ProductFilters) -> tuple[str, str] | None:
     if len(query.retailer) == 2 and query.retailer[0] != query.retailer[1]:
         return query.retailer[0], query.retailer[1]
     if query.sort in GAP_SORTS:
@@ -452,12 +456,13 @@ def _by_gap(
     return [p for p, _ in counted] + sorted((p for p, g in gaps if g is None), key=lambda p: p.id)
 
 
-def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[ProductPage]:
-    _unknown_values(ds, query)
-    pair = _search_pair(query)
-    checks = _predicates(ds, query)
-    digest = filters_digest(query)
-    offset = 0 if query.cursor is None else decode_cursor(query.cursor, generation, digest)
+def _ordered(
+    ds: Dataset,
+    query: ProductFilters,
+    pair: tuple[str, str] | None,
+    checks: dict[str, Callable[[Product], bool]],
+) -> list[Product]:
+    """Every product passing the filters, in the query's sort order."""
     hits = [p for p in ds.products if _passes(p, checks, "")]
     visible = tuple(query.retailer)
     if query.sort is ProductSort.NAME:
@@ -474,6 +479,16 @@ def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[Pr
         hits = [p for p, _ in with_price] + sorted(
             (p for p, v in priced if v is None), key=lambda p: p.id
         )
+    return hits
+
+
+def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[ProductPage]:
+    _unknown_values(ds, query)
+    pair = _search_pair(query)
+    checks = _predicates(ds, query)
+    digest = filters_digest(query)
+    offset = 0 if query.cursor is None else decode_cursor(query.cursor, generation, digest)
+    hits = _ordered(ds, query, pair, checks)
     page = hits[offset : offset + query.limit]
     end = offset + len(page)
     return Metric[ProductPage](
@@ -484,6 +499,18 @@ def product_page(ds: Dataset, generation: str, query: ProductQuery) -> Metric[Pr
             items=tuple(card(ds, p, pair) for p in page),
             facets=_facets(ds, checks),
         ),
+        as_of=ds.meta.dates[-1],
+    )
+
+
+def product_cards(ds: Dataset, query: ProductFilters) -> Metric[tuple[ProductCard, ...]]:
+    """Every card ``/v1/products`` would page through for these filters, in the same order."""
+    _unknown_values(ds, query)
+    pair = _search_pair(query)
+    hits = _ordered(ds, query, pair, _predicates(ds, query))
+    return Metric[tuple[ProductCard, ...]](
+        status=Status.OK,
+        data=tuple(card(ds, p, pair) for p in hits),
         as_of=ds.meta.dates[-1],
     )
 
@@ -662,5 +689,5 @@ def history(ds: Dataset, product: Product, query: HistoryQuery) -> Metric[Histor
     )
 
 
-def product_filter(query: ProductQuery) -> ProductFilter:
+def product_filter(query: ProductFilters) -> ProductFilter:
     return ProductFilter(brands=query.brand, categories=query.category)
