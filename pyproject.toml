@@ -118,6 +118,8 @@ files = [
   "tools/offline_import",
   "infra/scripts/invite_user.py",
   "infra/scripts/pg_backup.py",
+  "infra/scripts/prod_smoke_api.py",
+  "infra/scripts/prod_smoke_pages.py",
   "infra/scripts/publish_dataset.py",
   "infra/tests",
 ]
