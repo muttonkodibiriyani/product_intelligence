@@ -10,6 +10,8 @@ import { ErrorNotice } from '../error-notice';
 import { Card, CardGrid } from '../ui/card';
 import { EnvNotes } from '../ui/env-notes';
 import { Known } from '../ui/known';
+import { PageHeader } from '../ui/page-header';
+import { Loading, Skeleton } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
 import { KpiWidget } from '../widgets/kpis';
 import { TopDiscountsWidget } from '../widgets/top-discounts';
@@ -30,13 +32,15 @@ import {
 
 // The charts (and ECharts with them) load after the page: the KPIs and the table come first.
 const charts = () => import('../widgets/charts');
-const LadderWidget = dynamic(() => charts().then((m) => m.LadderWidget), { ssr: false });
-const PromoDepthWidget = dynamic(() => charts().then((m) => m.PromoDepthWidget), { ssr: false });
-const BrandPriceWidget = dynamic(() => charts().then((m) => m.BrandPriceWidget), { ssr: false });
-const CategoryMixWidget = dynamic(() => charts().then((m) => m.CategoryMixWidget), { ssr: false });
-const PriceHistWidget = dynamic(() => charts().then((m) => m.PriceHistWidget), { ssr: false });
-const BrandShareWidget = dynamic(() => charts().then((m) => m.BrandShareWidget), { ssr: false });
-const RatingPriceWidget = dynamic(() => charts().then((m) => m.RatingPriceWidget), { ssr: false });
+// Holds the chart's place while its code loads, so the cards do not jump.
+const lazy = { ssr: false, loading: () => <Skeleton kind="chart" /> } as const;
+const LadderWidget = dynamic(() => charts().then((m) => m.LadderWidget), lazy);
+const PromoDepthWidget = dynamic(() => charts().then((m) => m.PromoDepthWidget), lazy);
+const BrandPriceWidget = dynamic(() => charts().then((m) => m.BrandPriceWidget), lazy);
+const CategoryMixWidget = dynamic(() => charts().then((m) => m.CategoryMixWidget), lazy);
+const PriceHistWidget = dynamic(() => charts().then((m) => m.PriceHistWidget), lazy);
+const BrandShareWidget = dynamic(() => charts().then((m) => m.BrandShareWidget), lazy);
+const RatingPriceWidget = dynamic(() => charts().then((m) => m.RatingPriceWidget), lazy);
 
 type View = 'overview' | 'compare';
 
@@ -52,38 +56,38 @@ export function Landing() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{t('overview')}</h1>
-          <Subtitle />
-        </div>
-        <div role="tablist" aria-label={t('tabs')} className="flex gap-1 rounded-ctl bg-surface-2 p-1">
-          {(['overview', 'compare'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              id={`tab-${v}`}
-              aria-selected={view === v}
-              aria-controls={`panel-${v}`}
-              tabIndex={view === v ? 0 : -1}
-              onClick={() => go(v)}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                  const next = view === 'overview' ? 'compare' : 'overview';
-                  go(next);
-                  document.getElementById(`tab-${next}`)?.focus();
-                }
-              }}
-              className={`rounded-[8px] px-4 py-1.5 text-sm focus-visible:outline-2 ${
-                view === v ? 'bg-surface font-semibold text-ink shadow-card' : 'text-ink-2 hover:text-ink'
-              }`}
-            >
-              {t(v === 'overview' ? 'overview' : 'compareTab')}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title={t('overview')}
+        intro={<Subtitle />}
+        tools={
+          <div role="tablist" aria-label={t('tabs')} className="flex gap-1 rounded-ctl bg-surface-2 p-1">
+            {(['overview', 'compare'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                id={`tab-${v}`}
+                aria-selected={view === v}
+                aria-controls={`panel-${v}`}
+                tabIndex={view === v ? 0 : -1}
+                onClick={() => go(v)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    const next = view === 'overview' ? 'compare' : 'overview';
+                    go(next);
+                    document.getElementById(`tab-${next}`)?.focus();
+                  }
+                }}
+                className={`rounded-[8px] px-4 py-1.5 text-sm focus-visible:outline-2 ${
+                  view === v ? 'bg-surface font-semibold text-ink shadow-card' : 'text-ink-2 hover:text-ink'
+                }`}
+              >
+                {t(v === 'overview' ? 'overview' : 'compareTab')}
+              </button>
+            ))}
+          </div>
+        }
+      />
       <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`}>
         {view === 'overview' ? <Overview /> : <ComparePreview />}
       </div>
@@ -103,7 +107,7 @@ function Subtitle() {
       ? (importedOn(s.env.caveats, s.data.retailer) ?? s.data.freshness.cutoff)
       : null;
   return (
-    <p className="mt-1 text-sm text-ink-2">
+    <p>
       {t(imported ? 'subtitleImported' : 'subtitle', {
         retailer: name(s.data.retailer),
         date: formatDate(imported ?? s.data.asOf, locale),
@@ -120,12 +124,7 @@ function Overview() {
   const s = useSummaryData();
 
   if (s.kind === 'error') return <ErrorNotice error={s.error} onRetry={s.retry} />;
-  if (s.kind === 'loading')
-    return (
-      <p role="status" aria-busy className="text-ink-2">
-        {tc('loading')}
-      </p>
-    );
+  if (s.kind === 'loading') return <Loading kind="chart">{tc('loading')}</Loading>;
   if (s.kind === 'empty')
     return (
       <>

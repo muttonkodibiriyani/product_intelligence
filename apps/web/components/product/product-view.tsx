@@ -21,6 +21,7 @@ import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
 import { Money } from '../ui/money';
 import { GapView, MatchLabel } from '../ui/pair';
+import { Loading, Skeleton } from '../ui/skeleton';
 import { useMeta, useRetailerName } from '../use-meta';
 import { importedOn } from '../widgets/model';
 import { HistoryChart } from './history-chart';
@@ -100,9 +101,7 @@ export function ProductView() {
     return (
       <div className="space-y-3">
         {backLink}
-        <p role="status" aria-busy className="text-ink-2">
-          {t('loading')}
-        </p>
+        <Loading>{t('loading')}</Loading>
       </div>
     );
 
@@ -433,9 +432,12 @@ function History({ id, name }: { id: string; name: (id: string) => string }) {
   if (q.isError) return <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />;
   if (!q.data)
     return (
-      <p role="status" aria-busy className="text-ink-2">
-        {t('historyLoading')}
-      </p>
+      <div aria-busy>
+        <Skeleton kind="chart" />
+        <p role="status" className="mt-3 text-sm text-ink-2">
+          {t('historyLoading')}
+        </p>
+      </div>
     );
   const env = q.data;
   if (!env.data)

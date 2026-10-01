@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { Skeleton } from './skeleton';
 
 export type CardState = 'ready' | 'loading' | 'empty' | 'preview' | 'error';
 
@@ -24,6 +25,7 @@ export function Card({
   state = 'ready',
   reason,
   flush = false,
+  skeleton = 'lines',
   id,
   children,
 }: {
@@ -36,6 +38,8 @@ export function Card({
   reason?: ReactNode;
   /** Tables run to the card's edges; the header keeps its padding. */
   flush?: boolean;
+  /** The shape shown while loading, so the card keeps its size when the data arrives. */
+  skeleton?: 'lines' | 'chart' | 'table';
   id?: string;
   children?: ReactNode;
 }) {
@@ -61,9 +65,12 @@ export function Card({
         {state === 'ready' ? (
           children
         ) : state === 'loading' ? (
-          <p role="status" className={`text-sm text-ink-2 ${flush ? 'px-5 pb-3' : ''}`}>
-            {reason ?? t('loading')}
-          </p>
+          <div className={flush ? 'px-5 pb-3' : ''}>
+            <Skeleton kind={skeleton} />
+            <p role="status" className="mt-3 text-sm text-ink-2">
+              {reason ?? t('loading')}
+            </p>
+          </div>
         ) : (
           <div className={flush ? 'px-5 pb-3' : ''}>
             <div

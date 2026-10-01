@@ -20,6 +20,7 @@ import { formatCount } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { EnvNotes } from '../ui/env-notes';
+import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
 import { ExportMenu } from './export-menu';
 import { Filters } from './filters';
@@ -140,9 +141,9 @@ export function Explorer() {
           {q.isError && !q.data ? (
             <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
           ) : !q.data ? (
-            <p role="status" aria-busy className="text-ink-2">
+            <Loading kind="table" rows={8}>
               {t('loading')}
-            </p>
+            </Loading>
           ) : items.length === 0 ? (
             first?.status === 'ok' && (
               <div className="panel px-5 py-6">

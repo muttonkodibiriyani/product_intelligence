@@ -59,10 +59,12 @@ export function palette(): Palette {
   } as Palette;
 }
 
-/** Shared look: system font, muted axes, a white tooltip card. */
+/** Shared look: system font, muted axes, a white tooltip card, motion only when welcome. */
 export function base(p: Palette, rtl: boolean): EChartsCoreOption {
   return {
     textStyle: { fontFamily: p.font, color: p.ink2, fontSize: 12 },
+    // No motion for a reader who asked for none (WCAG 2.3.3).
+    animation: !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
     animationDuration: 300,
     aria: { enabled: true },
     tooltip: {
