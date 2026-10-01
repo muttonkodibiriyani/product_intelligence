@@ -44,7 +44,8 @@ uv run pi-dataset schema --v3 > docs/contracts/pi-dataset-v3.schema.json
   id is retired and requests using it get `422 ambiguous_context`.
 - **Identity** (rules (a)–(c)): offers of one retailer in one product share one
   `evidence.itemKey`; an unkeyed offer is its retailer's only offer in the product; a keyed item
-  or an unkeyed canonical url belongs to one product. A retailer with several contexts needs
+  or an unkeyed canonical url belongs to one product, and an unkeyed offer never sits on a url
+  that is a keyed offer's in another product (same retailer). A retailer with several contexts needs
   `itemKey` or `url` on every offer.
 - **`notObserved[].context`**: null means the whole retailer.
 

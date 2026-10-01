@@ -322,6 +322,7 @@ def _identity_errors(ds: DatasetV3) -> list[str]:
         contexts_per_retailer[context.retailer] += 1
     keyed: dict[tuple[str, str], set[str]] = defaultdict(set)
     unkeyed: dict[tuple[str, str], set[str]] = defaultdict(set)
+    keyed_urls: dict[tuple[str, str], set[str]] = defaultdict(set)
     errors: list[str] = []
     for product in ds.products:
         by_retailer: dict[str, list[tuple[str, OfferV3]]] = defaultdict(list)
@@ -339,6 +340,8 @@ def _identity_errors(ds: DatasetV3) -> list[str]:
                 key = offer.evidence.item_key
                 if key is not None:
                     keyed[(retailer, key)].add(product.id)
+                    if offer.url is not None:
+                        keyed_urls[(retailer, _canonical(offer.url))].add(product.id)
                 elif offer.url is not None:
                     unkeyed[(retailer, _canonical(offer.url))].add(product.id)
                 elif contexts_per_retailer[retailer] > 1:
@@ -355,6 +358,12 @@ def _identity_errors(ds: DatasetV3) -> list[str]:
         f"retailer {r} url {u} is in several products {sorted(ps)} (a)"
         for (r, u), ps in sorted(unkeyed.items())
         if len(ps) > 1
+    ]
+    errors += [
+        f"retailer {r} url {u} is unkeyed in {sorted(ps)} and keyed in "
+        f"{sorted(keyed_urls[(r, u)])} (a)"
+        for (r, u), ps in sorted(unkeyed.items())
+        if (r, u) in keyed_urls and len(ps | keyed_urls[(r, u)]) > 1
     ]
     return errors
 

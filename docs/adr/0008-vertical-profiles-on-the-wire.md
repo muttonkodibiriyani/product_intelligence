@@ -227,6 +227,9 @@ fail-safe reading, so a document that slipped past validation still can't miscou
     product carrying the same pair is a validation error.
   - For unkeyed offers, the producer must emit each source listing once. The validator rejects
     two unkeyed offers of one retailer with the same canonical `url` in different products.
+    It also rejects an unkeyed offer whose canonical `url` is a keyed offer's of the same retailer
+    in another product: keyed size variants may share a page, but an unkeyed offer there can't
+    say which item it is. The same `url` under different retailers is fine.
   - Without this rule, one item could be counted twice in promotions, availability and assortment
     gaps, and two A items could share one B identity.
   - **A retailer with more than one context needs `itemKey` or `url` on every offer** (#57

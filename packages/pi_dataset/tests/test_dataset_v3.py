@@ -179,7 +179,9 @@ def test_upgrade_keys_size_variants_that_share_a_page_by_sku() -> None:
     assert load_any(dump_dataset(v3), allow_test=True) == v3
 
 
-@pytest.mark.parametrize("skus", [("SKU-SAME", "SKU-SAME"), (None, None)])
+@pytest.mark.parametrize(
+    "skus", [("SKU-SAME", "SKU-SAME"), (None, None), ("SKU-A", None), (None, "SKU-A")]
+)
 def test_upgrade_still_refuses_one_item_in_two_products(
     skus: tuple[str | None, str | None],
 ) -> None:
@@ -387,6 +389,40 @@ def test_an_unkeyed_url_is_in_one_product() -> None:
     doc["products"][2]["offers"][N]["url"] = "https://north.example/p/1"
     assert "url https://north.example/p/1 is in several products" in _errors(doc)
     doc["products"][2]["offers"][N]["url"] = "https://north.example/p/2"
+    _load(doc)
+
+
+@pytest.mark.parametrize("keyed_at", [0, 1])
+def test_an_unkeyed_url_is_not_another_products_keyed_item(keyed_at: int) -> None:
+    """A keyed size variant's page can't also be an unkeyed offer in another product."""
+    doc = _v3_doc()
+    url = "https://north.example/p/serum"
+    offers = [doc["products"][i]["offers"][N] for i in (0, 1)]
+    for offer in offers:
+        offer["evidence"] |= {"itemKey": None, "itemKeyKind": None}
+    offers[keyed_at]["evidence"] |= {"itemKey": "SKU-A", "itemKeyKind": "sku"}
+    offers[keyed_at]["url"] = f"{url}#size-50"
+    offers[1 - keyed_at]["url"] = url
+    ids = ["p-0001", "p-0002"]
+    unkeyed, keyed = ids[1 - keyed_at], ids[keyed_at]
+    assert f"url {url} is unkeyed in ['{unkeyed}'] and keyed in ['{keyed}'] (a)" in _errors(doc)
+    offers[1 - keyed_at]["evidence"] |= {"itemKey": "SKU-B", "itemKeyKind": "sku"}
+    _load(doc)  # two variants on one page, each keyed
+
+
+def test_a_url_shared_across_retailers_is_fine() -> None:
+    """Rule (a) is per retailer: two shops may list the same url (an aggregator, say)."""
+    doc = _v3_doc()
+    url = "https://brand.example/p/serum"
+    for product in doc["products"][:2]:
+        for offer in product["offers"].values():
+            offer["evidence"] |= {"itemKey": None, "itemKeyKind": None}
+    doc["products"][0]["offers"][N]["url"] = url
+    doc["products"][0]["offers"][S]["url"] = url
+    doc["products"][1]["offers"][S] |= {"url": url}
+    doc["products"][1]["offers"][S]["evidence"] |= {"itemKey": "SKU-A", "itemKeyKind": "sku"}
+    assert "is unkeyed in ['p-0001'] and keyed in ['p-0002']" in _errors(doc)
+    doc["products"][1]["offers"][S]["url"] = "https://south.example/p/serum"
     _load(doc)
 
 
