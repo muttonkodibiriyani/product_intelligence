@@ -118,6 +118,29 @@ function load(): Promise<Loaded> {
  * One chart. `build` turns the palette into options; it reruns when `deps` change. `onPick`
  * receives the clicked datum's name, so a mark can drill into the list behind it.
  */
+type Formatter = (...a: unknown[]) => unknown;
+
+/**
+ * Tooltip formatters read the fields their widget's marks carry. A mark without them (a treemap
+ * root, a marker) shows no tooltip instead of throwing.
+ */
+export function guarded(o: EChartsCoreOption): EChartsCoreOption {
+  const wrap = (t: unknown) => {
+    const f = (t as { formatter?: unknown } | undefined)?.formatter;
+    if (typeof f !== 'function') return;
+    (t as { formatter: Formatter }).formatter = (...a) => {
+      try {
+        return (f as Formatter)(...a);
+      } catch {
+        return '';
+      }
+    };
+  };
+  for (const t of [o.tooltip].flat()) wrap(t);
+  for (const s of [o.series].flat()) wrap((s as { tooltip?: unknown } | undefined)?.tooltip);
+  return o;
+}
+
 export function Chart({
   build,
   deps,
@@ -145,8 +168,14 @@ export function Chart({
       if (gone || !el.current) return;
       const c = echarts.init(el.current, null, { renderer: 'svg' });
       chart.current = c;
-      c.setOption(build(palette()));
-      c.on('click', (e) => pick.current?.(String(e.name ?? ''), e.data));
+      c.setOption(guarded(build(palette())));
+      c.on('click', (e) => {
+        try {
+          pick.current?.(String(e.name ?? ''), e.data);
+        } catch {
+          // A mark the widget does not drill from (a treemap root, a marker): no drill.
+        }
+      });
       ro = new ResizeObserver(() => c.resize());
       ro.observe(el.current);
     });

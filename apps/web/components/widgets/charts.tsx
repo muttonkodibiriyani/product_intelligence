@@ -453,7 +453,7 @@ export function CategoryMixWidget({ data, locale, height }: Props<Measured<'cate
       deps={[data, locale]}
       onPick={(_, d) => {
         const node = d as TreeNode | undefined;
-        if (node?.trail.length) router.push(categoryNodeHref(locale, node));
+        if (node?.trail?.length) router.push(categoryNodeHref(locale, node));
       }}
       build={(p) => {
         const colors = [p.lav, p.mint, p.sky, p.blush, p.butter, p.rose];
@@ -461,8 +461,10 @@ export function CategoryMixWidget({ data, locale, height }: Props<Measured<'cate
           ...base(p, rtl),
           tooltip: {
             ...(base(p, rtl).tooltip as object),
-            formatter: (e: { data: TreeNode }) =>
-              tipHead(e.data.trail.join(' › ')) + tipLine(tw('products', { n: e.data.value })),
+            formatter: (e: { data?: Partial<TreeNode> }) =>
+              e.data?.trail
+                ? tipHead(e.data.trail.join(' › ')) + tipLine(tw('products', { n: e.data.value ?? 0 }))
+                : '',
           },
           series: [
             {
