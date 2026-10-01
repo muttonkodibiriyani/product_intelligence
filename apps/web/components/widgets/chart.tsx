@@ -10,7 +10,9 @@ export type Palette = Record<
   | 'ink2'
   | 'line'
   | 'line2'
+  | 'line3'
   | 'surface'
+  | 'surface2'
   | 'a'
   | 'b'
   | 'lav'
@@ -32,7 +34,9 @@ const VARS: Record<Exclude<keyof Palette, 'font'>, string> = {
   ink2: '--color-ink-2',
   line: '--color-line',
   line2: '--color-line-2',
+  line3: '--color-line-3',
   surface: '--color-surface',
+  surface2: '--color-surface-2',
   a: '--color-series-a',
   b: '--color-series-b',
   lav: '--color-lav',
@@ -59,10 +63,12 @@ export function palette(): Palette {
   } as Palette;
 }
 
-/** Shared look: system font, muted axes, a white tooltip card. */
+/** Shared look: system font, muted axes, a white tooltip card, motion only when welcome. */
 export function base(p: Palette, rtl: boolean): EChartsCoreOption {
   return {
     textStyle: { fontFamily: p.font, color: p.ink2, fontSize: 12 },
+    // No motion for a reader who asked for none (WCAG 2.3.3).
+    animation: !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
     animationDuration: 300,
     aria: { enabled: true },
     tooltip: {
@@ -98,12 +104,15 @@ function load(): Promise<Loaded> {
   ]).then(([core, charts, comps, renderers]) => {
     core.use([
       charts.BarChart,
+      charts.LineChart,
       charts.CustomChart,
       charts.BoxplotChart,
       charts.HeatmapChart,
       charts.ScatterChart,
       charts.TreemapChart,
       comps.GridComponent,
+      comps.LegendComponent,
+      comps.MarkLineComponent,
       comps.TooltipComponent,
       comps.VisualMapComponent,
       comps.AriaComponent,
