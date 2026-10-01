@@ -18,7 +18,7 @@ from scripts.demo_export.export import (
     build_dataset,
 )
 from scripts.demo_export.test_export import row
-from scripts.demo_export.v2 import build_dataset_v2, category_notes, product_id
+from scripts.demo_export.v2 import build_dataset_v2, category_notes, price_review, product_id
 
 NOW = datetime(2026, 9, 30, 22, 0, tzinfo=UTC)
 NOTE = {"en": ULTA_BLOCKED_NOTE, "ar": ULTA_BLOCKED_NOTE_AR}
@@ -324,6 +324,9 @@ def test_the_main_image_is_the_offer_and_product_thumbnail() -> None:
         "https://img-product.sephora.me:8443/p1.jpg",
         "https://img-product.sephora.me/p1.jpg#x",
         "https://img-product.sephora.me/p1.jpg#",
+        # the retailer's "no image" placeholder is not a product image
+        "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/images/noimagemedium.png",
+        "https://img-product.sephora.me/images/NoImageLarge.png?sw=1248",
     ],
 )
 def test_an_image_off_the_allowlist_is_null_never_guessed(url: str | None) -> None:
@@ -384,3 +387,63 @@ def test_the_run_log_counts_cut_and_cleaned_breadcrumbs() -> None:
     paths = ["A > B > C > D", "BRANDS > Brands > Chanel > MAKEUP > Lips", "PID Unicity", "A > B"]
     rows = [with_path(path, variant=100 + i) for i, path in enumerate(paths)]
     assert category_notes(rows) == {"internal": 1, "brand_nav": 1, "truncated": 1}
+
+
+def test_an_image_whose_name_merely_contains_swatch_is_a_product_image() -> None:
+    # Sephora's per-SKU packshot is ``.../hi-res/SKU/<sku>_swatch.jpg`` (the page's own
+    # schema.org image); the colour chip is a separate ``swatchImage``, never the main role.
+    url = "https://img-product.sephora.me/dw/image/v2/BKWK_PRD/images/hi-res/SKU/100_swatch.jpg"
+    assert only_offer(doc([with_image(url)]))["image"] == url
+
+
+def named(name: str, brand: str, **kw: Any) -> ListingRow:
+    return ListingRow(**(row(**kw).__dict__ | {"name": name, "brand": brand}))
+
+
+def test_names_and_brands_are_tidied_for_display_only() -> None:
+    rows = [
+        named("Shu Uemura  Ultime8\u00a0Cleansing Oil ", "Shu Uemura", family=1, variant=1),
+        named("Shu Uemura Ultime8 Cleansing Oil", "Shu Uemura", family=1, variant=2),
+        named("Art Of Brow", "SHU UEMURA", family=2, variant=3),
+    ]
+    d = doc(rows)
+    assert [(p["brand"], p["name"]) for p in d["products"]] == [
+        ("Shu Uemura", "Ultime8 Cleansing Oil"),
+        ("Shu Uemura", "Art Of Brow"),
+    ]
+    assert rows[0].name == "Shu Uemura  Ultime8\u00a0Cleansing Oil "  # the rows are untouched
+
+
+def test_v1_shows_the_same_tidied_names_as_v2() -> None:
+    rows = [named("Brand - Lip Oil", "BRAND", family=1, variant=1)]
+    v1 = build_dataset(
+        rows,
+        [],
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, 20, 55, tzinfo=UTC)),
+    )
+    assert [(p["brand"], p["name"]) for p in v1["products"]] == [("BRAND", "Lip Oil")]
+    assert [(p["brand"], p["name"]) for p in doc(rows)["products"]] == [("BRAND", "Lip Oil")]
+
+
+def test_prices_outside_the_review_band_are_listed_never_changed() -> None:
+    rows = [
+        row(family=1, variant=1, price="0.50", regular=None),
+        row(family=2, variant=2, price="1", regular=None),
+        row(family=3, variant=3, price="3000", regular=None),
+        row(family=4, variant=4, price="8943", regular=None),
+    ]
+    ds = build_dataset_v2(
+        rows,
+        [],
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, 20, 55, tzinfo=UTC)),
+        ulta_note=NOTE,
+    )
+    assert price_review(ds) == {"below": ["sku-1"], "above": ["sku-4"]}
+    prices = sorted(
+        price.amount
+        for p in ds.products
+        if (price := p.offers["sephora_me"].series.price[0]) is not None
+    )
+    assert prices == ["0.50", "1.00", "3000.00", "8943.00"]
