@@ -265,13 +265,15 @@ function retNote(k){const r=DS.rets&&DS.rets[k];return r&&r.note?L(r.note):t('re
 const SEC_RE=/cloudflare|challenge|captcha|\bbot\b|site security|\bwaf\b|تحدّي|تحدي|حماية/i;
 function retStatus(k){return ((DS.rets&&DS.rets[k])||{}).status||'pending'}
 function retSec(k){const r=(DS.rets&&DS.rets[k])||{};return r.reasonCode==='site_security'||SEC_RE.test(r.note?(r.note.en||'')+' '+(r.note.ar||''):'')}
-function retShort(k){const st=retStatus(k);if(!retOk(k))return st==='blocked'||st==='warn'?`${retSec(k)?t('stSec'):t('stUnavail')} · ${t('retest')}`:t('statusName')[st]||esc(st);
+/* An imported snapshot (status 'snapshot' + importedAt, from the export) is dated by its import, never by a capture; until the export carries it, a blocked retailer reads as blocked. */
+function retImported(k){const r=(DS.rets&&DS.rets[k])||{};if(retStatus(k)!=='snapshot'||!/^\d{4}-\d{2}-\d{2}/.test(r.importedAt||''))return null;const d=new Date(r.importedAt.slice(0,10)+'T00:00:00Z');return isNaN(d)?null:`${fmtD(d)} ${d.getUTCFullYear()}`}
+function retShort(k){const st=retStatus(k);if(!retOk(k)){const imp=retImported(k);return imp?t('stSnapshot')(imp):st==='blocked'||(st==='warn'&&retSec(k))?t('stBlocked'):st==='warn'||st==='snapshot'?t('stUnavail'):t('statusName')[st]||esc(st)}
   const n=fmtN(PRODUCTS.filter(p=>p.listed[k]).length);return st==='partial'?t('stPartialN')(n):t('stOkN')(n)}
 function plainNote(x){return (x||'').split(/(?<=[.;؛])\s+/).filter(z=>z&&!/[\w-]+\/[\w./-]+\.\w{2,4}|PR\s*#|\b[0-9a-f]{7,40}\b|^\s*(Source|المصدر)\s*:|recon|الاستطلاع|database|قاعدة البيانات|collector|المُجمِّع|cool-off/i.test(z)).join(' ')}
-function retDetail(k){if(!retOk(k))return retSec(k)?t('secDetail'):(plainNote(retNote(k))||t('retUnavailable'));const c=retCov(k);return retStatus(k)==='partial'?t('partialDetail')(fmtN(c.n))+(c.est?' '+covText(k)+'.':''):t('okDetail')}
+function retDetail(k){if(!retOk(k))return retImported(k)?t('snapDetail'):retSec(k)||retStatus(k)==='blocked'?t('secDetail'):(plainNote(retNote(k))||t('retUnavailable'));const c=retCov(k);return retStatus(k)==='partial'?t('partialDetail')(fmtN(c.n))+(c.est?' '+covText(k)+'.':''):t('okDetail')}
 function info(tip){return `<button type="button" class="info" data-tip="${esc(tip)}" aria-label="${esc(t('moreInfo')+': '+tip)}">${ICON.info}</button>`}
 function gate(n){if(!n||!DS.real)return null;
-  if(n.both&&!bothOk()){const k=!retOk('u')?'u':'s';return {t:`${RN(k)}: ${retSec(k)?t('stSec'):t('stUnavail')}`,ts:`${RN(k)}: ${retSec(k)?t('blockedShort'):t('stUnavail')}`,m:retDetail(k),k,kind:'bad'}}
+  if(n.both&&!bothOk()){const k=!retOk('u')?'u':'s';return {t:`${RN(k)}: ${retShort(k)}`,ts:`${RN(k)}: ${retSec(k)?t('blockedShort'):t('stUnavail')}`,m:retDetail(k),k,kind:'bad'}}
   if(n.any&&!RR.some(k=>retOk(k)&&S.ret.has(k)))return {t:t('noRetailer'),m:'',kind:'warn'};
   if(n.history&&DS.N<2)return {t:t('needsHistory'),m:t('needsHistoryP')(cutoffShort()),kind:'wait'};
   for(const c of n.caps||[])if(!DS.caps[c]){const st=DS.fieldStatus[CAP_FIELD[c]]||'not_collected';if(st==='ok')return {t:t('needsHistory'),m:t('needsHistoryP')(cutoffShort()),kind:'wait'};return {t:`${t('capName')[c]}: ${t('fs')[st]}`,m:t('fsP')[st],kind:'warn'}}

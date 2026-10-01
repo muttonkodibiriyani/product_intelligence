@@ -71,6 +71,26 @@ assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
  }
 }
 
+// a blocked retailer says so without promising a re-test; an imported snapshot is dated by its import, never by a capture
+{
+ const render = (j, lang) => { T.useDS(T.hydrate(j)); T.resetAll(); T.afterData(); T.S.lang = lang; T.S.route = 'coverage'; root.innerHTML = ''; T.render(); return String(root.innerHTML) };
+ const W = { en: ['automated collection blocked', 'snapshot imported 30 Sep 2026, capture date unknown · not in this view', /re-test/],
+  ar: ['الجمع الآلي محجوب', 'لقطة مستوردة في 30 سبتمبر 2026، وتاريخ جمعها غير معروف · ليست ضمن هذا العرض', /إعادة الاختبار/] };
+ for (const lang of ['en', 'ar']) {
+  const [blocked, snap, retest] = W[lang];
+  let h = render(T.fixtureContract('blocked'), lang);
+  assert(h.includes(blocked), `${lang}: a blocked retailer reads as blocked`);
+  assert(!retest.test(h), `${lang}: no re-test promise`);
+  const j = T.fixtureContract('blocked'), u = j.meta.retailers.find(r => r.id === 'u');
+  Object.assign(u, { status: 'snapshot', importedAt: '2026-09-30T21:15:00Z' });
+  h = render(j, lang);
+  assert(h.includes(snap), `${lang}: an imported snapshot reads as imported, with its import date`);
+  assert(!h.includes('21:15'), `${lang}: the import time is never shown as a capture time`);
+  u.importedAt = 'not a date';
+  assert(!render(j, lang).includes(lang === 'ar' ? 'وتاريخ جمعها غير معروف' : 'capture date unknown'), `${lang}: no import wording without a valid import date`);
+ }
+}
+
 // images: only https on the offer's own retailer host, escaped; anything else falls back to the rendering
 {
  const j = T.fixtureContract('partial');
