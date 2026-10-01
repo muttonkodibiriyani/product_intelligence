@@ -19,7 +19,7 @@ import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
 import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
-import { Money } from '../ui/money';
+import { Price } from '../ui/money';
 import { GapView, MatchLabel } from '../ui/pair';
 import { Loading, Skeleton } from '../ui/skeleton';
 import { useMeta, useRetailerName } from '../use-meta';
@@ -273,10 +273,10 @@ function Offers({
                   )}
                 </th>
                 <td className={`${TD} text-end`}>
-                  {o.price ? <Money m={o.price} locale={locale} /> : <Dash />}
+                  <Price of={o} locale={locale} fallback={<Dash />} />
                 </td>
                 <td className={`${TD} text-end`}>
-                  {o.regular ? <Money m={o.regular} locale={locale} /> : <Dash />}
+                  <Price of={{ price: o.regular }} locale={locale} fallback={<Dash />} />
                 </td>
                 <td className={`${TD} text-end`}>
                   {o.promoPct ? <bdi dir="ltr" className="tabular-nums">{`${o.promoPct}%`}</bdi> : <Dash />}

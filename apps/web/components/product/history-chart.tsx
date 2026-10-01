@@ -3,9 +3,9 @@
 import { useLocale, useTranslations } from 'next-intl';
 import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
 import { formatDate } from '@/lib/format';
-import { formatMoney, isValidMoney } from '@/lib/money';
+import { formatMoney, isValidMoney, isValidPrice } from '@/lib/money';
 import { Known } from '../ui/known';
-import { Money } from '../ui/money';
+import { Price } from '../ui/money';
 
 type Series = Schemas['History']['series'];
 
@@ -33,7 +33,9 @@ export function HistoryChart({ series, name }: { series: Series; name: (id: stri
   const retailers = Object.keys(series);
   const dates = [...new Set(retailers.flatMap((r) => (series[r] ?? []).map((p) => p.date)))].sort();
   const priced = retailers.flatMap((r) =>
-    (series[r] ?? []).flatMap((p) => (p.price && isValidMoney(p.price) ? [p.price] : [])),
+    (series[r] ?? []).flatMap((p) =>
+      p.price && isValidMoney(p.price) && isValidPrice(p.price) ? [p.price] : [],
+    ),
   );
   if (dates.length === 0 || priced.length === 0) return <p className="text-ink-2">{t('historyEmpty')}</p>;
   // No line from a single day (owner rule): until nightly collection gives a second day, the
@@ -58,7 +60,8 @@ export function HistoryChart({ series, name }: { series: Series; name: (id: stri
   const segments = (r: string) => {
     const out: string[][] = [[]];
     for (const p of series[r] ?? []) {
-      if (p.price && isValidMoney(p.price)) out[out.length - 1]!.push(`${x(p.date)},${y(p.price)}`);
+      if (p.price && isValidMoney(p.price) && isValidPrice(p.price))
+        out[out.length - 1]!.push(`${x(p.date)},${y(p.price)}`);
       else if (out[out.length - 1]!.length) out.push([]);
     }
     return out.filter((s) => s.length);
@@ -192,7 +195,11 @@ function HistoryTable({
                 const p = (series[r] ?? []).find((x) => x.date === d);
                 return (
                   <td key={r} className="px-3 py-1.5">
-                    {p?.price ? <Money m={p.price} locale={locale} /> : <span className="text-ink-2">–</span>}
+                    <Price
+                      of={{ price: p?.price }}
+                      locale={locale}
+                      fallback={<span className="text-ink-2">–</span>}
+                    />
                     {p?.availability && (
                       <span className="ms-2 text-xs text-ink-2">
                         <Known t={ta} v={p.availability} />

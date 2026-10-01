@@ -92,6 +92,7 @@ for (const locale of ['en', 'ar'] as const) {
         noSource: 'لا رابط للصفحة',
         filters: 'عوامل التصفية',
         noImage: 'لا صورة',
+        underReview: 'السعر قيد المراجعة',
         results: 'النتائج',
         grid: 'شبكة',
         list: 'قائمة',
@@ -116,6 +117,7 @@ for (const locale of ['en', 'ar'] as const) {
         noSource: 'No page link',
         filters: 'Filters',
         noImage: 'No image',
+        underReview: 'Price under review',
         results: 'Results',
         grid: 'Grid',
         list: 'List',
@@ -346,6 +348,27 @@ for (const locale of ['en', 'ar'] as const) {
         expect(mock.external).toEqual([]);
         expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
       });
+
+    test('product page: a price of 0.01 or less reads "Price under review" in offers and history, never the number', async ({
+      page,
+    }) => {
+      const p = clone(product);
+      const low = (amount: string) => ({ amount, currency: 'AED', minor: Math.round(Number(amount) * 100) });
+      p.data.offers[0].price = low('0.01');
+      p.data.offers[0].regular = low('0.00');
+      const h = clone(history);
+      h.data.series.shop_a[1].price = low('0.01');
+      await mockBackend(page, { onApi: api({ product: p, history: h }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/product/?id=${p.data.card.id}`);
+      await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
+      const row = page
+        .getByRole('row')
+        .filter({ has: page.getByRole('rowheader', { name: 'Shop A', exact: true }) });
+      await expect(row.first().getByText(T.underReview)).toHaveCount(2);
+      await expect(page.getByText(T.underReview)).toHaveCount(3);
+      await expect(page.locator('main')).not.toContainText(/(^|[^\d])0\.0[01]([^\d]|$)/);
+    });
 
     test('no results: says so plainly', async ({ page }) => {
       await mockBackend(page, { onApi: api({ products: () => emptyPage }) });

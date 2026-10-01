@@ -36,4 +36,20 @@ describe('HistoryChart', () => {
     expect(screen.getByRole('table')).toBeTruthy();
     expect(screen.getByText('AED 120.00')).toBeTruthy();
   });
+
+  it('a day priced 0.01 or less is neither plotted nor an axis label; the table says "Price under review"', () => {
+    const low = structuredClone(series);
+    low.shop_a![1]!.price = { amount: '0.01', currency: 'AED', minor: 1 };
+    show(low);
+    expect(screen.queryByText(/AED\s*0\.01/)).toBeNull();
+    expect(screen.getByText(en.price.underReview)).toBeTruthy();
+  });
+
+  it('a single day priced 0.01 or less: the table says "Price under review", never the number', () => {
+    const low = structuredClone(firstDay);
+    low.shop_a![0]!.price = { amount: '0.00', currency: 'AED', minor: 0 };
+    show(low);
+    expect(screen.queryByText(/AED\s*0\.00/)).toBeNull();
+    expect(screen.getByText(en.price.underReview)).toBeTruthy();
+  });
 });
