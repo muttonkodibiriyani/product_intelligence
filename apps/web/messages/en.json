@@ -388,7 +388,7 @@
     "hint": "Choose a SKU to view its images. The prices above belong to the offer SKU.",
     "loading": "Loading images and variants…",
     "returnSku": "Return to offer SKU {sku}",
-    "capture": "Source captured {captured} · metadata imported {imported}",
+    "capture": "Archive timestamp {captured} · metadata imported {imported}",
     "type": "Record type",
     "variant": "Variant SKU",
     "listing": "Product listing",

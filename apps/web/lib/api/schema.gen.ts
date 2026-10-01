@@ -456,7 +456,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.5.0
+             * @default 1.6.0
              */
             apiVersion: string;
             /** Currency */
@@ -739,7 +739,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included";
         /** CaveatView */
         CaveatView: {
             /** Ar */
@@ -1193,7 +1193,7 @@ export interface components {
          * FreshnessStatus
          * @enum {string}
          */
-        FreshnessStatus: "fresh" | "aging" | "stale";
+        FreshnessStatus: "fresh" | "aging" | "stale" | "snapshot";
         /** GalleryImage */
         GalleryImage: {
             /** Assetid */
@@ -1660,7 +1660,7 @@ export interface components {
          * @description The closed ``not_enough_data`` reasons (design §5).
          * @enum {string}
          */
-        Reason: "capability_off" | "field_not_collected" | "retailer_blocked" | "retailer_partial" | "cohort_too_small" | "matches_unreviewed" | "no_match" | "not_in_scope" | "currency_mismatch" | "not_applicable";
+        Reason: "capability_off" | "field_not_collected" | "retailer_blocked" | "retailer_partial" | "cohort_too_small" | "matches_unreviewed" | "no_match" | "not_in_scope" | "currency_mismatch" | "not_applicable" | "was_price_unverified";
         /** RelatedSku */
         RelatedSku: {
             /** Name */
