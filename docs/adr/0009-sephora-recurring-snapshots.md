@@ -88,9 +88,17 @@ have variants at different prices.
      guessed.
    - The nightly sweep also queues PDPs for its own gap set, typically tens of products, a few
      minutes a night.
-   - **First run = backfill.** Every product's EN PDPs on night 1 (~8.3k, ~4.6 h) and its AR PDPs
-     on night 2. Sizes for reference: the ~1.2k multi-price products take ~40 min; every
-     multi-variant product (~4–6.5k) takes ~2.2–3.6 h.
+   - **First run = backfill, PDPs only.** Every product's EN PDPs on night 1 (~8.3k, ~4.6 h) and
+     its AR PDPs on night 2 (~4.6 h). Each night fits the 18:00–02:00Z window.
+     - The backfill carries **no tRPC stock reads**. A PDP-plus-stock pass for every product
+       (~16.6k requests, ~9 h, see Context) would not fit one night.
+     - Product-level stock comes from the nightly sweep. Variant-level stock stays in the regular
+       weekly pass, split over its two nights as above.
+     - Sizes for reference: the ~1.2k multi-price products take ~40 min; every multi-variant
+       product (~4–6.5k) takes ~2.2–3.6 h.
+   - Raw PDP HTML is not kept. The job stores extracted records only, plus a page's raw HTML when
+     it fails to parse, under the run's own GCS prefix. The build PR states the retention
+     (lifecycle rule) for those prefixes.
    - Images: URLs only, hotlinked from `img-product.sephora.me` (Images B). No image bytes are
      fetched or rehosted.
 3. **Weekly AR pages and discovery, leaf-level** (amended).
@@ -101,6 +109,8 @@ have variants at different prices.
      (e.g. Makeup C302 > Face C342 > 11 leaves). The run stores the tree (ids, EN and AR labels)
      and each product's leaf membership. Leaves overlap: Face's leaves sum to 1,120 hits against
      982.
+   - Category and AR labels are stored as data only: they are displayed, never interpreted. The
+     sweep calls only the leaf ids that the `cgid` tree returns, never URLs built from labels.
    - The export keeps `CATEGORY_DEPTH` 3. Publishing the deeper tree waits for the Deep Coder's
      `category_tree` fix, and any depth change needs the owner's OK.
    - "Removed" is recorded only from an explicit page result, never from absence in a listing or
@@ -160,8 +170,11 @@ have variants at different prices.
 - **Steady state: about $4.5–5.5/month.** There is no proxy spend.
 - One-off first-run backfill (amended Decision 2): ≈ $0.40 for EN and ≈ $0.75 with AR, over 2
   nights. PDP HTML is ~1–4 GB inbound; inbound and same-region GCS writes are free.
-- **First month: about $5–6**, including the backfill. The coordinator accepted this and kept the
-  AR leaf sweep.
+- **First month: about $5–6**, including the backfill.
+- **Spend not yet approved.** The added spend is about +$0.5–1/month over the $4–5 above, plus the
+  one-off ≈ $0.75 backfill. On 1 Oct 2026 the coordinator relayed the estimate to the owner and
+  asked to keep the AR leaf sweep. The owner's approval of this spend is not yet recorded. It must
+  be recorded (relayed by the coordinator, with the date) before the build schedules it.
 - Cloud Scheduler: one job, inside the free tier (3 jobs per billing account), so $0.
 - Host side: no new runtime and no new cost beyond the job runs already budgeted. The publisher
   service account is free.
