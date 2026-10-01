@@ -198,10 +198,10 @@ function promoCal(c,W_){
   const sel=S.sel&&S.sel.src==='promocal'?S.sel.key:null;
   let s=`<svg viewBox="0 0 ${W_} ${H}" role="img" aria-label="${esc(t('wPromoCal'))}">`;const step=n>120?28:n>45?14:7;
   for(let d=c.a;d<=c.b;d+=step)s+=`<line x1="${x(d)}" x2="${x(d)}" y1="${top-6}" y2="${H-8}" stroke="${GRID}"/><text x="${x(d)+3}" y="14" font-size="10.5" fill="${AX}">${fmtD(dayDate(d))}</text>`;
-  let prev=null;camps.forEach((cp,i)=>{const y=top+i*rowH;if(prev&&prev!==cp.r)s+=`<line x1="0" x2="${W_}" y1="${y-2}" y2="${y-2}" stroke="#E4E0D8"/>`;prev=cp.r;
+  let prev=null;camps.forEach((cp,i)=>{const y=top+i*rowH;if(prev&&prev!==cp.r)s+=`<line x1="0" x2="${W_}" y1="${y-2}" y2="${y-2}" stroke="${CT.line}"/>`;prev=cp.r;
    const n0=PRODUCTS.filter(p=>p.promos.some(z=>z.c===cp.id)).length;const dim=sel&&sel!==cp.id;
    s+=`<g opacity="${dim?.35:1}"><circle cx="6" cy="${y+10}" r="4" fill="${RC(cp.r)}"/><text x="16" y="${y+14}" font-size="11.5" fill="${CT.ink}">${esc(clip(L(cp.name),Math.floor((l-20)/6.2)))}</text>`;
-   const x0=x(cp.a),x1=x(cp.b+1);s+=`<rect x="${x0}" y="${y+2}" width="${Math.max(3,x1-x0)}" height="${rowH-8}" rx="4" fill="${col[cp.mech]}" ${sel===cp.id?'stroke="${CT.ink}" stroke-width="1.5"':''}/>`;
+   const x0=x(cp.a),x1=x(cp.b+1);s+=`<rect x="${x0}" y="${y+2}" width="${Math.max(3,x1-x0)}" height="${rowH-8}" rx="4" fill="${col[cp.mech]}" ${sel===cp.id?`stroke="${CT.ink}" stroke-width="1.5"`:''}/>`;
    const lab=`${t('mech')[cp.mech]}${cp.depth?` · ${cp.depth[0]===cp.depth[1]?cp.depth[0]:cp.depth[0]+'–'+cp.depth[1]}%`:''}`;if(x1-x0>lab.length*6+10)s+=`<text x="${x0+6}" y="${y+15}" font-size="10.5" font-weight="600" fill="${ink[cp.mech]}" pointer-events="none">${esc(lab)}</text>`;
    s+=`<rect class="hit${n0?' act':''}" x="${x0}" y="${y+2}" width="${Math.max(3,x1-x0)}" height="${rowH-8}" fill="transparent" ${tipAttr([L(cp.name),`${RN(cp.r)} · ${cp.start} → ${cp.end}`,lab,n0?`${n0} ${t('products')} · ${t('clickFilter')}`:t('notLinked')])} ${n0?`data-act="pc:${cp.id}" tabindex="0" role="button"`:''}/></g>`});
   if(c.b===DAYS-1)s+=`<line x1="${x(c.b+1)-1}" x2="${x(c.b+1)-1}" y1="${top-8}" y2="${H-6}" stroke="${CT.ink}" stroke-width="1.4"/><text x="${x(c.b+1)-4}" y="${top-10}" font-size="10.5" text-anchor="end" font-weight="700" fill="${CT.ink}">${t('today')}</text>`;
@@ -266,11 +266,12 @@ const SEC_RE=/cloudflare|challenge|captcha|\bbot\b|site security|\bwaf\b|تحد�
 function retStatus(k){return ((DS.rets&&DS.rets[k])||{}).status||'pending'}
 function retSec(k){const r=(DS.rets&&DS.rets[k])||{};return r.reasonCode==='site_security'||SEC_RE.test(r.note?(r.note.en||'')+' '+(r.note.ar||''):'')}
 /* An imported snapshot (status 'snapshot' + importedAt, from the export) is dated by its import, never by a capture; until the export carries it, a blocked retailer reads as blocked. */
-function retImported(k){const r=(DS.rets&&DS.rets[k])||{};if(retStatus(k)!=='snapshot'||!/^\d{4}-\d{2}-\d{2}/.test(r.importedAt||''))return null;const d=new Date(r.importedAt.slice(0,10)+'T00:00:00Z');return isNaN(d)?null:`${fmtD(d)} ${d.getUTCFullYear()}`}
+// importedAt is a market-local (Asia/Dubai) calendar date, YYYY-MM-DD, shown as is: no timezone conversion. A timestamp or an impossible date is rejected.
+function retImported(k){const r=(DS.rets&&DS.rets[k])||{},v=typeof r.importedAt==='string'?r.importedAt:'';if(retStatus(k)!=='snapshot'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return null;const d=new Date(v+'T00:00:00Z');return isNaN(d)||d.toISOString().slice(0,10)!==v?null:`${fmtD(d)} ${d.getUTCFullYear()}`}
 function retShort(k){const st=retStatus(k);if(!retOk(k)){const imp=retImported(k);return imp?t('stSnapshot')(imp):st==='blocked'||(st==='warn'&&retSec(k))?t('stBlocked'):st==='warn'||st==='snapshot'?t('stUnavail'):t('statusName')[st]||esc(st)}
   const n=fmtN(PRODUCTS.filter(p=>p.listed[k]).length);return st==='partial'?t('stPartialN')(n):t('stOkN')(n)}
 function plainNote(x){return (x||'').split(/(?<=[.;؛])\s+/).filter(z=>z&&!/[\w-]+\/[\w./-]+\.\w{2,4}|PR\s*#|\b[0-9a-f]{7,40}\b|^\s*(Source|المصدر)\s*:|recon|الاستطلاع|database|قاعدة البيانات|collector|المُجمِّع|cool-off/i.test(z)).join(' ')}
-function retDetail(k){if(!retOk(k))return retImported(k)?t('snapDetail'):retSec(k)||retStatus(k)==='blocked'?t('secDetail'):(plainNote(retNote(k))||t('retUnavailable'));const c=retCov(k);return retStatus(k)==='partial'?t('partialDetail')(fmtN(c.n))+(c.est?' '+covText(k)+'.':''):t('okDetail')}
+function retDetail(k){if(!retOk(k))return retImported(k)?t('snapDetail'):retSec(k)?t('secDetail'):(plainNote(retNote(k))||t('retUnavailable'));const c=retCov(k);return retStatus(k)==='partial'?t('partialDetail')(fmtN(c.n))+(c.est?' '+covText(k)+'.':''):t('okDetail')}
 function info(tip){return `<button type="button" class="info" data-tip="${esc(tip)}" aria-label="${esc(t('moreInfo')+': '+tip)}">${ICON.info}</button>`}
 function gate(n){if(!n||!DS.real)return null;
   if(n.both&&!bothOk()){const k=!retOk('u')?'u':'s';return {t:`${RN(k)}: ${retShort(k)}`,ts:`${RN(k)}: ${retSec(k)?t('blockedShort'):t('stUnavail')}`,m:retDetail(k),k,kind:'bad'}}
