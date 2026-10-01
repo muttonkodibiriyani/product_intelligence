@@ -27,7 +27,7 @@ export function FilterChips({
           <button
             type="button"
             onClick={() => remove(f.k, f.v)}
-            className="rounded border border-line bg-surface px-2 py-1 text-sm hover:bg-surface-2 focus-visible:outline-2"
+            className="inline-flex items-center gap-1.5 rounded-full bg-lav px-3 py-1 text-[13px] font-medium text-lav-ink hover:bg-[#e4def8] focus-visible:outline-2"
           >
             {t(f.k, { value: f.v })}
             <span aria-hidden className="ms-2 text-ink-2">

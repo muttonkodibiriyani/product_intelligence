@@ -4,14 +4,15 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
+import { Card } from '../ui/card';
 import { Known } from '../ui/known';
 import { Money, Pct } from '../ui/money';
 
 type Comparison = Schemas['Comparison'];
 type Name = (id: string) => string;
 
-const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
-const TD = 'px-3 py-2 align-top tabular-nums';
+const TH = 'th whitespace-nowrap';
+const TD = 'px-3 py-2.5 align-top tabular-nums';
 
 /**
  * The pair's headline numbers. They cover every counted product, not only the rows on screen;
@@ -37,9 +38,9 @@ export function Summary({
       </h2>
       <p className="mt-1 text-sm text-ink-2">{t('convention', pair)}</p>
       {!s ? (
-        <p className="mt-3 rounded border border-line bg-surface px-3 py-2 text-sm">{t('noSummary')}</p>
+        <p className="mt-3 panel px-4 py-3 text-sm">{t('noSummary')}</p>
       ) : (
-        <dl className="mt-3 grid gap-px overflow-hidden rounded border border-line bg-line sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label={t('compared')} value={formatCount(s.n, locale)}>
             {cohort?.description && (
               <span lang="en" dir="ltr">
@@ -85,10 +86,10 @@ export function Summary({
 
 function Stat({ label, value, children }: { label: string; value: ReactNode; children?: ReactNode }) {
   return (
-    <div className="bg-surface px-4 py-3">
-      <dt className="text-xs font-medium text-ink-2">{label}</dt>
-      <dd className="mt-1 text-lg font-semibold tabular-nums">{value}</dd>
-      {children && <dd className="mt-1 text-xs text-ink-2">{children}</dd>}
+    <div className="panel px-4 py-4">
+      <dt className="text-[13px] font-semibold text-ink-2">{label}</dt>
+      <dd className="mt-2 text-2xl font-bold tracking-tight tabular-nums">{value}</dd>
+      {children && <dd className="mt-1.5 text-[13px] text-ink-2">{children}</dd>}
     </div>
   );
 }
@@ -101,11 +102,8 @@ export function Sides({ data, name }: { data: Comparison; name: Name }) {
   const locale = useLocale();
   const sides = [data.sides.base, data.sides.other];
   return (
-    <section aria-labelledby="sides-title">
-      <h2 id="sides-title" className="text-base font-semibold">
-        {t('sides')}
-      </h2>
-      <div className="relative mt-3 overflow-x-auto rounded border border-line bg-surface">
+    <Card id="sides" title={t('sides')} flush>
+      <div className="relative overflow-x-auto px-2">
         <table className="w-full text-sm">
           <thead className="border-b border-line">
             <tr>
@@ -149,8 +147,8 @@ export function Sides({ data, name }: { data: Comparison; name: Name }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-1 text-xs text-ink-2">{t('sidesHint')}</p>
-    </section>
+      <p className="px-5 pt-1 pb-2 text-xs text-ink-2">{t('sidesHint')}</p>
+    </Card>
   );
 }
 
@@ -169,11 +167,8 @@ export function Groups({
   const locale = useLocale();
   const by = data.groupBy === 'category' ? 'category' : 'brand';
   return (
-    <section aria-labelledby="groups-title">
-      <h2 id="groups-title" className="text-base font-semibold">
-        {t(by === 'brand' ? 'groupsBrand' : 'groupsCategory')}
-      </h2>
-      <div className="relative mt-3 overflow-x-auto rounded border border-line bg-surface">
+    <Card id="groups" title={t(by === 'brand' ? 'groupsBrand' : 'groupsCategory')} flush>
+      <div className="relative overflow-x-auto px-2">
         <table className="w-full text-sm">
           <thead className="border-b border-line">
             <tr>
@@ -232,6 +227,6 @@ export function Groups({
           </tbody>
         </table>
       </div>
-    </section>
+    </Card>
   );
 }

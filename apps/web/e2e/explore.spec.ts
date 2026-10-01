@@ -1,5 +1,14 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  noHorizontalScroll,
+  signIn,
+  test,
+  withSummary,
+  type Mock,
+} from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const clone = <T>(v: T): T => structuredClone(v);
@@ -258,7 +267,8 @@ for (const locale of ['en', 'ar'] as const) {
 test('S2: an unknown retailer status renders as sent, not as a key path', async ({ page }) => {
   const m = clone(meta);
   m.data.retailers[0].status = 'paused';
-  await mockBackend(page, { onApi: (r) => r.fulfill({ json: m }) });
+  // The landing's dataset table lists the retailers; /summary gets its own fixture.
+  await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: m })) });
   await signIn(page, 'ar');
   await expect(page.getByRole('cell', { name: 'paused', exact: true })).toBeVisible();
   await expect(page.getByText('status.paused')).toHaveCount(0);
