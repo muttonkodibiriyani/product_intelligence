@@ -596,3 +596,16 @@ def test_load_any_reports_a_non_string_enum_as_a_dataset_error(value: Any) -> No
     doc["products"][0]["offers"][N]["attributes"] = {"daypart": value}
     with pytest.raises(DatasetError, match="is not one of"):
         load_any(json.dumps(doc), allow_test=True)
+
+
+def test_offer_listing_count_is_optional_and_at_least_one() -> None:
+    doc = _v3_doc()
+    offer = next(iter(doc["products"][0]["offers"].values()))
+    assert offer["listingCount"] is None  # upgrade: v2 doesn't state it
+    offer["listingCount"] = 3
+    assert next(iter(_load(doc).products[0].offers.values())).listing_count == 3
+    del offer["listingCount"]  # additive: a v3 document without it still loads
+    assert next(iter(_load(doc).products[0].offers.values())).listing_count is None
+    for bad in (0, -1, "3"):
+        offer["listingCount"] = bad
+        assert "listingCount" in _errors(doc)
