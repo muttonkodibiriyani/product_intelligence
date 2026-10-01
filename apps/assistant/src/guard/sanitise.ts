@@ -75,10 +75,19 @@ export const SOURCE_TEXT_KEYS: ReadonlySet<string> = new Set([
   "sizeLabel",
   "sizeLabels",
   "sizeSystem",
+  "caption",
+  "catalogueId",
+  "externalId",
+  "structuredId",
+  "structuredProductId",
+  "productType",
+  "roles",
+  "selections",
+  "selectionLabels",
 ]);
 
 /** Always removed (see the module comment). */
-export const DROPPED_KEYS: ReadonlySet<string> = new Set(["minor", "image"]);
+export const DROPPED_KEYS: ReadonlySet<string> = new Set(["minor", "image", "optionValues"]);
 
 /** Admin-only evidence fields, removed for viewers as defence in depth. */
 export const ADMIN_ONLY_KEYS: ReadonlySet<string> = new Set(["runId", "source"]);

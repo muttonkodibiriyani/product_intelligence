@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState, type FormEvent } from 'react';
-import { signInErrorKey } from '@/lib/auth/firebase';
+import { authCode, resetOutcome, signInErrorKey } from '@/lib/auth/firebase';
 import { useAuth } from './auth-provider';
 
 const field = 'mt-1 block w-full field py-2 text-base focus-visible:outline-2';
@@ -44,10 +44,20 @@ export function SignInForm() {
   async function onReset() {
     setError(null);
     const addr = email.trim();
+    setNote(null);
     if (!addr) return setNote(t('resetNeedsEmail'));
-    // Same answer whether or not the account exists.
-    await auth?.sendReset(addr).catch(() => {});
-    setNote(t('resetSent', { email: addr }));
+    try {
+      if (!auth) throw new Error('auth not ready');
+      await auth.sendReset(addr);
+      setNote(t('resetSent', { email: addr }));
+    } catch (err) {
+      const outcome = resetOutcome(err);
+      // Same answer whether or not the account exists.
+      if (outcome === 'sent') return setNote(t('resetSent', { email: addr }));
+      if (outcome === 'invalidEmail') return setError(t('errors.invalidEmail'));
+      console.warn('password reset failed:', authCode(err));
+      setError(t('errors.resetLater'));
+    }
   }
 
   return (

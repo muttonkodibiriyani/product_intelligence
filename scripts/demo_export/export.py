@@ -40,6 +40,10 @@ ALLOWED_CATEGORIES = {
 KNOWN_UNITS = {"ml", "g", "pc"}
 IN_STOCK = {"in_stock", "low_stock"}
 UNKNOWN_STOCK = {"unknown", "blocked", "not_observed"}
+#: A price at or below this (AED) is not a real offer (owner ruling, 1 Oct 2026). pi_api withholds
+#: and flags it (``priceFlag = "invalid_low"``); the exporter never lets it stand for a variant
+#: group that has a valid price, and v1 shows it as null.
+PRICE_FLOOR = Decimal("0.01")
 SECRET_KEYS = {
     "api_key",
     "apikey",
@@ -158,6 +162,12 @@ ULTA_BLOCKED_NOTE_AR = (
 )
 
 
+#: The sources this process exports by default. Ulta stays out unless it is named explicitly with
+#: --sources (owner ruling 2026-10-01: our process never publishes Ulta rows that happen to be in
+#: pi_db); a match pair needs both of its sides in the exported sources.
+DEFAULT_SOURCES = ("sephora_me",)
+
+
 @dataclass(frozen=True)
 class UltaContext:
     blocked_since: datetime
@@ -178,7 +188,7 @@ WITH scoped_runs AS (
   JOIN source s ON s.id = sc.source_id
   WHERE sc.country = 'AE'
     AND sc.locale = 'en-AE'
-    AND (s.name LIKE 'sephora%' OR s.name LIKE 'ulta%')
+    AND s.name = ANY(%(sources)s)
 ),
 -- The baseline is the newest SUCCEEDED run per context: a running, failed or partial refresh
 -- must never hide it (that would publish false removals).
@@ -356,13 +366,13 @@ LEFT JOIN LATERAL (
   ORDER BY content.observed_at DESC
   LIMIT 1
 ) lc ON true
-WHERE (s.name LIKE 'sephora%' OR s.name LIKE 'ulta%')
+WHERE s.name = ANY(%(sources)s)
   -- An Ulta aggregate parent repeats its variants: it is left out iff at least one of its
   -- resolved children is exported here as a non-parent listing of the same source. A parent
   -- whose children are all absent (or that lists none) stays. A parent is a listing whose
   -- latest content has labels.aggregate_parent JSON true or the text 'true' (owner, option A).
   AND NOT (
-    s.name LIKE 'ulta%'
+    s.name LIKE 'ulta%%'
     AND COALESCE(lc.labels ->> 'aggregate_parent' = 'true', false)
     AND EXISTS (
       SELECT 1
@@ -491,8 +501,26 @@ def group_rows(rows: Iterable[ListingRow]) -> dict[GroupKey, list[ListingRow]]:
     return dict(groups)
 
 
+def valid_price(value: Decimal | None) -> bool:
+    return value is not None and value > PRICE_FLOOR
+
+
+def invalid_prices(rows: Iterable[ListingRow]) -> dict[str, int]:
+    """Listing rows per retailer slot whose price is at or below ``PRICE_FLOOR`` (run log)."""
+    counts = dict.fromkeys(("u", "s"), 0)
+    for row in rows:
+        if row.price is not None and not valid_price(row.price):
+            counts[row.retailer] += 1
+    return counts
+
+
 def choose_representative(rows: Sequence[ListingRow]) -> ListingRow:
-    priced = [row for row in rows if row.price is not None]
+    """The cheapest in-stock (else unknown-stock, else any) priced row. A price at or below
+    ``PRICE_FLOOR`` is used only when no row of the group has a valid one, so it never wins
+    "cheapest" over a real price."""
+    priced = [row for row in rows if valid_price(row.price)] or [
+        row for row in rows if row.price is not None
+    ]
     if not priced:
         return min(rows, key=lambda row: row.variant_id)
     in_stock = [row for row in priced if row.availability in IN_STOCK]
@@ -511,6 +539,8 @@ def offer_for(rows: Sequence[ListingRow], *, early: bool = False) -> dict[str, A
     representative = choose_representative(rows)
     _, representative_size = representative.effective_size
     captured, price_run_id = representative.price_capture
+    # v1 has no flag: a price at or below the floor is shown as not observed.
+    price = representative.price if valid_price(representative.price) else None
     shade_values = {row.shade for row in rows if row.shade}
     offer: dict[str, Any] = {
         "sku": representative.source_sku or representative.source_listing_key,
@@ -518,16 +548,16 @@ def offer_for(rows: Sequence[ListingRow], *, early: bool = False) -> dict[str, A
         "size": json_number(representative_size),
         "shadeCount": len(shade_values),
         "rating": None,
-        "series": {"price": [json_money(representative.price)]},
+        "series": {"price": [json_money(price)]},
         "evidence": {
             "capturedAt": utc_text(captured),
             "source": f"{representative.source_name} · local pi_db snapshot",
             "runId": str(price_run_id),
         },
     }
-    if representative.price is not None and representative.regular is not None:
+    if price is not None and representative.regular is not None:
         offer["series"]["regular"] = [json_money(representative.regular)]
-        offer["series"]["promo"] = [promo_pct(representative.price, representative.regular)]
+        offer["series"]["promo"] = [promo_pct(price, representative.regular)]
     if (
         representative.rating is not None
         and representative.rating_scale is not None
@@ -647,18 +677,26 @@ def review_state_for_ui(value: str) -> str:
         raise ValueError(f"unsupported non-rejected review state {value!r}") from error
 
 
-def load_rows(database_url: str) -> tuple[list[ListingRow], list[MatchRow]]:
+def load_rows(
+    database_url: str, sources: Sequence[str] = DEFAULT_SOURCES
+) -> tuple[list[ListingRow], list[MatchRow]]:
     with psycopg.connect(psycopg_database_url(database_url), row_factory=dict_row) as connection:
         connection.read_only = True
         with connection.cursor() as cursor:
-            cursor.execute(LATEST_LISTINGS_SQL)
+            cursor.execute(LATEST_LISTINGS_SQL, {"sources": list(sources)})
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
     return (
-        [ListingRow(**row) for row in listing_dicts],
+        in_sources([ListingRow(**row) for row in listing_dicts], sources),
         [MatchRow(**row) for row in match_dicts],
     )
+
+
+def in_sources(rows: Iterable[ListingRow], sources: Sequence[str]) -> list[ListingRow]:
+    """Only the rows of the exported sources (the SQL filters too; this guards other callers).
+    Matches need no filter: a pair is emitted only when both of its variants are in the rows."""
+    return [row for row in rows if row.source_name in sources]
 
 
 def parse_ulta_early_fixture(
@@ -802,7 +840,8 @@ def build_dataset(
             f"تمت ملاحظة {ulta.recon_observed_count} منتجات أثناء الاستطلاع فقط؛ لا توجد "
             f"منتجات استطلاع في قاعدة البيانات. المصدر: {ulta.recon_source}. "
         )
-    ulta_status = retailer_status(rows, "u")
+    # The ruling, not the presence of Ulta rows, decides that Ulta is blocked (as in v2).
+    ulta_status = "blocked" if ulta.blocked else retailer_status(rows, "u")
     sephora_status = retailer_status(rows, "s")
     ulta_status_note, ulta_status_note_ar = (
         (ulta.blocked_note, ulta.blocked_note_ar)
@@ -932,11 +971,17 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--ulta-recon-observed-count", type=int)
     result.add_argument("--ulta-recon-source")
     result.add_argument("--generated-at")
+    result.add_argument(
+        "--sources",
+        type=lambda value: tuple(name.strip() for name in value.split(",") if name.strip()),
+        default=DEFAULT_SOURCES,
+        help="comma-separated source names to export (default: sephora_me only)",
+    )
     result.add_argument("--ulta-blocked-since", default="2026-09-30T20:55:00Z")
     result.add_argument(
         "--ulta-unblocked",
         action="store_true",
-        help="v2: Ulta is collected again; its status then comes from its rows (default: blocked)",
+        help="Ulta is collected again; its status then comes from its rows (default: blocked)",
     )
     result.add_argument("--ulta-blocked-note", help="Ulta status line while blocked (EN)")
     result.add_argument("--ulta-blocked-note-ar", help="the same line in Arabic (required with EN)")
@@ -963,6 +1008,10 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit(
             "--ulta-early-fixture needs --ulta-recon-observed-count and --ulta-recon-source"
         )
+    if not args.sources:
+        raise SystemExit("--sources must name at least one source")
+    if "ulta_ae" in args.sources and not args.ulta_unblocked:
+        raise SystemExit("--sources ulta_ae needs --ulta-unblocked: Ulta is blocked by ruling")
     notes = (args.ulta_blocked_note, args.ulta_blocked_note_ar)
     if (notes[0] is None) != (notes[1] is None):
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must be supplied together")
@@ -973,7 +1022,7 @@ def check_args(args: argparse.Namespace) -> None:
 def main() -> None:
     args = parser().parse_args()
     check_args(args)
-    rows, matches = load_rows(args.database_url)
+    rows, matches = load_rows(args.database_url, args.sources)
     early: list[dict[str, Any]] = []
     if args.ulta_early_fixture is not None:
         early.append(
@@ -991,6 +1040,7 @@ def main() -> None:
         ulta_early=early,
         ulta=UltaContext(
             blocked_since=parse_utc(args.ulta_blocked_since),
+            blocked=not args.ulta_unblocked,
             recon_observed_count=args.ulta_recon_observed_count,
             recon_source=args.ulta_recon_source,
             blocked_note=args.ulta_blocked_note or ULTA_BLOCKED_NOTE,
@@ -1033,6 +1083,10 @@ def main() -> None:
             f"category_listings={category_notes(rows)}"
         )
         review = price_review(v2)
+        print(
+            f"listing rows priced <= {PRICE_FLOOR} AED (shown only when the group has no valid "
+            f"price; pi_api withholds them as priceFlag=invalid_low): {invalid_prices(rows)}"
+        )
         print(
             f"v2 listing rows={len(rows)}; prices to check by hand (never changed): "
             f"below={len(review['below'])} {review['below'][:20]} "

@@ -75,6 +75,8 @@ const group: Schemas['Group'] = {
     medianGapPct: '3.0',
     meanGapPct: '2.0',
     basket: cmp.summary!.basket,
+    // #146 made gapHist required: 6 pairs, summing to n, most in the +1–5% bin.
+    gapHist: { edges: cmp.summary!.gapHist.edges, counts: [0, 0, 0, 0, 0, 1, 4, 1, 0, 0, 0] },
   },
 };
 const cross = crossCells(cmp.rows, { min: 1 });

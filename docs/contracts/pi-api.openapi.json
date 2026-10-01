@@ -96,6 +96,16 @@
               }
             ]
           },
+          "priceFlag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceFlag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "promoPct": {
             "anyOf": [
               {
@@ -244,7 +254,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.5.2",
+            "default": "1.8.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -275,7 +285,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-01.3",
+            "default": "2026-10-01.4",
             "title": "Metricversion",
             "type": "string"
           },
@@ -633,6 +643,311 @@
         "title": "CardMatch",
         "type": "object"
       },
+      "CatalogueDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedSku"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "duplicateImagesRemoved": {
+            "title": "Duplicateimagesremoved",
+            "type": "integer"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/GalleryImage"
+            },
+            "title": "Images",
+            "type": "array"
+          },
+          "importedAt": {
+            "format": "date-time",
+            "title": "Importedat",
+            "type": "string"
+          },
+          "parents": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedSku"
+            },
+            "title": "Parents",
+            "type": "array"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/CatalogueRecord"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "retailer",
+          "generation",
+          "importedAt",
+          "provenance",
+          "record",
+          "parents",
+          "children",
+          "images",
+          "duplicateImagesRemoved"
+        ],
+        "title": "CatalogueDetail",
+        "type": "object"
+      },
+      "CatalogueRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedAt": {
+            "format": "date-time",
+            "title": "Capturedat",
+            "type": "string"
+          },
+          "children": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkuReference"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "excludedParentSummary": {
+            "title": "Excludedparentsummary",
+            "type": "boolean"
+          },
+          "groupingMasterSku": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Groupingmastersku",
+            "type": "string"
+          },
+          "imageIds": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+              "type": "string"
+            },
+            "title": "Imageids",
+            "type": "array"
+          },
+          "isVariant": {
+            "title": "Isvariant",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "optionValues": {
+            "additionalProperties": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Optionvalues",
+            "type": "object"
+          },
+          "parents": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkuReference"
+            },
+            "title": "Parents",
+            "type": "array"
+          },
+          "productType": {
+            "title": "Producttype",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "sku": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Sku",
+            "type": "string"
+          },
+          "sourceIds": {
+            "$ref": "#/components/schemas/SourceIds"
+          }
+        },
+        "required": [
+          "sku",
+          "name",
+          "productType",
+          "isVariant",
+          "sourceIds",
+          "groupingMasterSku",
+          "excludedParentSummary",
+          "capturedAt"
+        ],
+        "title": "CatalogueRecord",
+        "type": "object"
+      },
+      "CatalogueSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedFrom": {
+            "format": "date-time",
+            "title": "Capturedfrom",
+            "type": "string"
+          },
+          "capturedTo": {
+            "format": "date-time",
+            "title": "Capturedto",
+            "type": "string"
+          },
+          "excludedParentSummaries": {
+            "title": "Excludedparentsummaries",
+            "type": "integer"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "title": "Generatedat",
+            "type": "string"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "imageAssets": {
+            "title": "Imageassets",
+            "type": "integer"
+          },
+          "importedAt": {
+            "format": "date-time",
+            "title": "Importedat",
+            "type": "string"
+          },
+          "parentChildLinks": {
+            "title": "Parentchildlinks",
+            "type": "integer"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "skuRecords": {
+            "title": "Skurecords",
+            "type": "integer"
+          },
+          "skusWithImages": {
+            "title": "Skuswithimages",
+            "type": "integer"
+          },
+          "sourceSha256": {
+            "title": "Sourcesha256",
+            "type": "string"
+          },
+          "uniqueImageContents": {
+            "title": "Uniqueimagecontents",
+            "type": "integer"
+          },
+          "unresolvedSkus": {
+            "title": "Unresolvedskus",
+            "type": "integer"
+          },
+          "variantSkus": {
+            "title": "Variantskus",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "generation",
+          "generatedAt",
+          "importedAt",
+          "capturedFrom",
+          "capturedTo",
+          "sourceSha256",
+          "provenance",
+          "skuRecords",
+          "variantSkus",
+          "excludedParentSummaries",
+          "parentChildLinks",
+          "unresolvedSkus",
+          "imageAssets",
+          "uniqueImageContents",
+          "skusWithImages"
+        ],
+        "title": "CatalogueSummary",
+        "type": "object"
+      },
+      "CategoryComparison": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "convention": {
+            "default": "gap compares the two cells' medians: gapAmount = other median - base median; gapPct = (other median - base median) / base median x 100. A positive gap means the other retailer's median is higher (dearer) than the base's; see cheaper. A category-level gap reflects each retailer's range in the category, not like-for-like items.",
+            "title": "Convention",
+            "type": "string"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageSides"
+          },
+          "level": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "minCohort": {
+            "default": 5,
+            "title": "Mincohort",
+            "type": "integer"
+          },
+          "other": {
+            "title": "Other",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "taxonomy": {
+            "default": "taxonomy@1",
+            "title": "Taxonomy",
+            "type": "string"
+          },
+          "unmapped": {
+            "items": {
+              "$ref": "#/components/schemas/UnmappedPath"
+            },
+            "title": "Unmapped",
+            "type": "array"
+          },
+          "unmappedPaths": {
+            "title": "Unmappedpaths",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base",
+          "other",
+          "level",
+          "rows",
+          "coverage",
+          "unmapped",
+          "unmappedPaths"
+        ],
+        "title": "CategoryComparison",
+        "type": "object"
+      },
       "CategoryNode": {
         "additionalProperties": false,
         "properties": {
@@ -659,6 +974,59 @@
           "count"
         ],
         "title": "CategoryNode",
+        "type": "object"
+      },
+      "CategoryRow": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/Cell"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gapReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "$ref": "#/components/schemas/Label"
+          },
+          "other": {
+            "$ref": "#/components/schemas/Cell"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "base",
+          "other",
+          "shared",
+          "gap",
+          "gapReason"
+        ],
+        "title": "CategoryRow",
         "type": "object"
       },
       "CategoryShare": {
@@ -699,7 +1067,10 @@
           "size_labels_differ_total",
           "was_price_unverified",
           "snapshot_import_date",
-          "parent_listings_included"
+          "parent_listings_included",
+          "invalid_price_excluded",
+          "unmapped_category",
+          "breadcrumb_missing"
         ],
         "title": "CaveatCode",
         "type": "string"
@@ -733,6 +1104,108 @@
           "ar"
         ],
         "title": "CaveatView",
+        "type": "object"
+      },
+      "Cell": {
+        "additionalProperties": false,
+        "description": "One context's prices in one category. Below ``MIN_COHORT`` only ``n`` is served.",
+        "properties": {
+          "max": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "median": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "p25": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "p75": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "tooFew": {
+            "title": "Toofew",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "retailer",
+          "n",
+          "tooFew",
+          "reason",
+          "median",
+          "mean",
+          "p25",
+          "p75",
+          "min",
+          "max"
+        ],
+        "title": "Cell",
         "type": "object"
       },
       "Channel": {
@@ -793,6 +1266,9 @@
             "title": "Equalcount",
             "type": "integer"
           },
+          "gapHist": {
+            "$ref": "#/components/schemas/GapHistogram"
+          },
           "meanGapPct": {
             "title": "Meangappct",
             "type": "string"
@@ -812,7 +1288,8 @@
           "meanGapPct",
           "cheaperCounts",
           "equalCount",
-          "basket"
+          "basket",
+          "gapHist"
         ],
         "title": "CompareSummary",
         "type": "object"
@@ -1028,21 +1505,21 @@
         "title": "ContextDay",
         "type": "object"
       },
-      "Coverage": {
+      "CoverageSides": {
         "additionalProperties": false,
         "properties": {
-          "retailers": {
-            "items": {
-              "$ref": "#/components/schemas/RetailerCoverage"
-            },
-            "title": "Retailers",
-            "type": "array"
+          "base": {
+            "$ref": "#/components/schemas/pi_metrics__category_compare__Coverage"
+          },
+          "other": {
+            "$ref": "#/components/schemas/pi_metrics__category_compare__Coverage"
           }
         },
         "required": [
-          "retailers"
+          "base",
+          "other"
         ],
-        "title": "Coverage",
+        "title": "CoverageSides",
         "type": "object"
       },
       "DecidedBy": {
@@ -1276,6 +1753,204 @@
         "title": "Envelope[Availability]",
         "type": "object"
       },
+      "Envelope_CatalogueDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogueDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[CatalogueDetail]",
+        "type": "object"
+      },
+      "Envelope_CatalogueSummary_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogueSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[CatalogueSummary]",
+        "type": "object"
+      },
+      "Envelope_CategoryComparison_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoryComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[CategoryComparison]",
+        "type": "object"
+      },
       "Envelope_Comparison_": {
         "additionalProperties": false,
         "properties": {
@@ -1366,7 +2041,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Coverage"
+                "$ref": "#/components/schemas/pi_metrics__coverage__Coverage"
               },
               {
                 "type": "null"
@@ -2271,6 +2946,76 @@
         "title": "FreshnessStatus",
         "type": "string"
       },
+      "GalleryImage": {
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "title": "Assetid",
+            "type": "string"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assetId",
+          "url",
+          "sourceUrl",
+          "sha256",
+          "width",
+          "height",
+          "caption",
+          "roles"
+        ],
+        "title": "GalleryImage",
+        "type": "object"
+      },
       "Gap": {
         "additionalProperties": false,
         "properties": {
@@ -2291,6 +3036,32 @@
           "cheaper"
         ],
         "title": "Gap",
+        "type": "object"
+      },
+      "GapHistogram": {
+        "additionalProperties": false,
+        "description": "Counted pairs by ``gap.pct``. ``counts`` has ``len(edges) + 1`` bins: bin 0 is below\n``edges[0]``, bin k is ``[edges[k-1], edges[k])``, and the last is at or above ``edges[-1]``.",
+        "properties": {
+          "counts": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "edges": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Edges",
+            "type": "array"
+          }
+        },
+        "required": [
+          "edges",
+          "counts"
+        ],
+        "title": "GapHistogram",
         "type": "object"
       },
       "GapItem": {
@@ -2507,6 +3278,25 @@
         "title": "IndexPoint",
         "type": "object"
       },
+      "Label": {
+        "additionalProperties": false,
+        "properties": {
+          "ar": {
+            "title": "Ar",
+            "type": "string"
+          },
+          "en": {
+            "title": "En",
+            "type": "string"
+          }
+        },
+        "required": [
+          "en",
+          "ar"
+        ],
+        "title": "Label",
+        "type": "object"
+      },
       "LadderRow": {
         "additionalProperties": false,
         "properties": {
@@ -2603,6 +3393,14 @@
         ],
         "title": "Launches",
         "type": "object"
+      },
+      "Level": {
+        "enum": [
+          "bucket",
+          "common"
+        ],
+        "title": "Level",
+        "type": "string"
       },
       "Localized": {
         "additionalProperties": false,
@@ -2973,6 +3771,16 @@
               }
             ]
           },
+          "priceFlag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceFlag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "promoPct": {
             "anyOf": [
               {
@@ -3234,6 +4042,13 @@
         "title": "PairRow",
         "type": "object"
       },
+      "PriceFlag": {
+        "enum": [
+          "invalid_low"
+        ],
+        "title": "PriceFlag",
+        "type": "string"
+      },
       "PriceHistogram": {
         "additionalProperties": false,
         "properties": {
@@ -3349,6 +4164,13 @@
             "title": "Name",
             "type": "string",
             "x-pi-source-text": true
+          },
+          "priceFlags": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PriceFlag"
+            },
+            "title": "Priceflags",
+            "type": "object"
           },
           "prices": {
             "additionalProperties": {
@@ -3737,6 +4559,67 @@
         ],
         "title": "Reason",
         "type": "string"
+      },
+      "RelatedSku": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "selectionLabels": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Selectionlabels",
+            "type": "array"
+          },
+          "selections": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Selections",
+            "type": "array"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string"
+          },
+          "sourceIds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sku",
+          "resolved",
+          "name",
+          "sourceIds",
+          "selections",
+          "selectionLabels"
+        ],
+        "title": "RelatedSku",
+        "type": "object"
       },
       "RetailerAvailability": {
         "additionalProperties": false,
@@ -4218,6 +5101,102 @@
         "title": "Size",
         "type": "object"
       },
+      "SkuReference": {
+        "additionalProperties": false,
+        "properties": {
+          "selections": {
+            "default": [],
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Selections",
+            "type": "array"
+          },
+          "sku": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Sku",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku"
+        ],
+        "title": "SkuReference",
+        "type": "object"
+      },
+      "SourceIds": {
+        "additionalProperties": false,
+        "properties": {
+          "catalogueId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalogueid"
+          },
+          "externalId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalid"
+          },
+          "stockId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stockid"
+          },
+          "structuredId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structuredid"
+          },
+          "structuredProductId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structuredproductid"
+          }
+        },
+        "title": "SourceIds",
+        "type": "object"
+      },
       "Status": {
         "enum": [
           "ok",
@@ -4304,6 +5283,16 @@
               }
             ],
             "title": "Ladder"
+          },
+          "meanPrice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "medianPrice": {
             "anyOf": [
@@ -4413,6 +5402,7 @@
           "brands",
           "categories",
           "medianPrice",
+          "meanPrice",
           "promoSharePct",
           "ladder",
           "promoDepth",
@@ -4487,6 +5477,47 @@
         "title": "TopDiscount",
         "type": "object"
       },
+      "Unmapped": {
+        "enum": [
+          "no_breadcrumb",
+          "no_rule",
+          "ambiguous"
+        ],
+        "title": "Unmapped",
+        "type": "string"
+      },
+      "UnmappedPath": {
+        "additionalProperties": false,
+        "description": "A breadcrumb taxonomy@1 doesn't place at ``common``, so the next rule can be written.",
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Unmapped"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "retailer",
+          "path",
+          "reason",
+          "n"
+        ],
+        "title": "UnmappedPath",
+        "type": "object"
+      },
       "Withheld": {
         "additionalProperties": false,
         "properties": {
@@ -4503,6 +5534,74 @@
         ],
         "title": "Withheld",
         "type": "object"
+      },
+      "pi_metrics__category_compare__Coverage": {
+        "additionalProperties": false,
+        "properties": {
+          "mapped": {
+            "title": "Mapped",
+            "type": "integer"
+          },
+          "noBreadcrumb": {
+            "title": "Nobreadcrumb",
+            "type": "integer"
+          },
+          "otherBucket": {
+            "title": "Otherbucket",
+            "type": "integer"
+          },
+          "otherPct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otherpct"
+          },
+          "priced": {
+            "title": "Priced",
+            "type": "integer"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "unmapped": {
+            "title": "Unmapped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "priced",
+          "mapped",
+          "unmapped",
+          "noBreadcrumb",
+          "otherBucket",
+          "otherPct"
+        ],
+        "title": "Coverage",
+        "type": "object"
+      },
+      "pi_metrics__coverage__Coverage": {
+        "additionalProperties": false,
+        "properties": {
+          "retailers": {
+            "items": {
+              "$ref": "#/components/schemas/RetailerCoverage"
+            },
+            "title": "Retailers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "retailers"
+        ],
+        "title": "Coverage",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4516,7 +5615,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.5.2"
+    "version": "1.8.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5068,6 +6167,471 @@
           }
         },
         "summary": "Get Availability"
+      }
+    },
+    "/api/v1/catalogues/{retailer}": {
+      "get": {
+        "operationId": "get_catalogue_api_v1_catalogues__retailer__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "retailer",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Retailer",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CatalogueSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Catalogue"
+      }
+    },
+    "/api/v1/catalogues/{retailer}/skus/{sku}": {
+      "get": {
+        "operationId": "get_catalogue_sku_api_v1_catalogues__retailer__skus__sku__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "retailer",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Retailer",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sku",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Sku",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CatalogueDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Catalogue Sku"
+      }
+    },
+    "/api/v1/category-compare": {
+      "get": {
+        "description": "Category-to-category prices across both full catalogues on the latest date: per category, each retailer's n, median, mean, p25, p75, min and max, and the gap between the two medians. No product matching: like-for-like pairs are /compare. A cell with fewer than minCohort products is tooFew (its prices null, never 0) and its row has no gap. Gap sign convention: retailers=<base>,<other>; gapPct = (other median - base median) / base median x 100, so a positive gap means the other retailer's median is higher and `cheaper` names the cheaper side. coverage gives each side's priced, mapped and unmapped counts and its share in the 'other' bucket; unmapped lists the breadcrumbs taxonomy@1 can't place.",
+        "operationId": "get_category_compare_api_v1_category_compare_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "description": "Ordered pair <base>,<other>; the first is the base.",
+            "in": "query",
+            "name": "retailers",
+            "required": true,
+            "schema": {
+              "description": "Ordered pair <base>,<other>; the first is the base.",
+              "pattern": "^[a-z][a-z0-9_]{1,62},[a-z][a-z0-9_]{1,62}$",
+              "title": "Retailers",
+              "type": "string"
+            }
+          },
+          {
+            "description": "bucket: the exporter's nine top-level categories (every product has one). common: taxonomy@1's finer categories, read from the retailer breadcrumb; a file without breadcrumbs places nothing there (caveat breadcrumb_missing).",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Level",
+              "default": "bucket",
+              "description": "bucket: the exporter's nine top-level categories (every product has one). common: taxonomy@1's finer categories, read from the retailer breadcrumb; a file without breadcrumbs places nothing there (caveat breadcrumb_missing)."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CategoryComparison_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Category Compare"
       }
     },
     "/api/v1/compare": {

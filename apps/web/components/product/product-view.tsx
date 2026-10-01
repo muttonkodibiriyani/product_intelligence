@@ -25,6 +25,7 @@ import { Loading, Skeleton } from '../ui/skeleton';
 import { useMeta, useRetailerName } from '../use-meta';
 import { importedOn } from '../widgets/model';
 import { HistoryChart } from './history-chart';
+import { CatalogueGallery } from './catalogue-gallery';
 
 /** The contract's product id pattern; anything else is not sent to the API. */
 const PRODUCT_ID = /^[A-Za-z0-9._:-]{1,200}$/;
@@ -162,6 +163,11 @@ export function ProductView() {
           >
             <Offers offers={d.offers} name={name} caveats={env.caveats} />
           </Section>
+          {[...new Set(d.offers.filter((o) => o.retailer === 'ulta_ae' && o.sku).map((o) => o.sku!))].map(
+            (sku) => (
+              <CatalogueGallery key={sku} sku={sku} />
+            ),
+          )}
           {d.pairs.length > 0 && (
             <Section title={t('pairs')} hint={t('pairsHint')}>
               <Pairs pairs={d.pairs} name={name} />
