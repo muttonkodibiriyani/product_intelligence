@@ -1,0 +1,101 @@
+# PROPOSAL, NOT ACTIVE. Model-backed promptfoo evals for the AI assistant (design §8).
+# The owner copies this file to .github/workflows/assistant-evals.yml when all of these are true:
+#   1. Vertex AI is enabled under the enablement gate (#51 merged, kill-switch PR merged,
+#      $5 slice budget alert exists, coordinator OK).
+#   2. Infra/owner created the WIF pool and provider (attribute_condition pins repository_id,
+#      repository == 'muttonkodibiriyani/product_intelligence' and environment ==
+#      'assistant-evals') and the service account pi-assistant-ci@, bound only to
+#      principalSet .../attribute.environment/assistant-evals.
+#   3. The service account holds roles/aiplatform.user plus the Firestore access the shared
+#      meter needs (open decision, design §8: roles/datastore.user is project-wide on the
+#      (default) database).
+#   4. The protected environment `assistant-evals` exists: required reviewer = owner;
+#      deployment branches = main and same-repo PR branches. Its variables (not secrets; none
+#      are confidential): ASSISTANT_EVALS_WIF_PROVIDER, ASSISTANT_EVALS_SA,
+#      ASSISTANT_VERTEX_LOCATION.
+# Before enabling, pin each action below to a full commit SHA (this job holds an OIDC token).
+#
+# Spend: every model call goes through the meter with label "ci" against the Firestore
+# counters, so the $1.50/month ci cap and the assistant_config/current kill switch apply. A
+# smoke run is ~25 questions (~$0.15). With the cap spent, answers come back "unavailable" and
+# the gate fails with the reason; nothing bypasses the meter.
+name: Assistant evals
+
+on:
+  pull_request:
+    paths:
+      - "apps/assistant/**"
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: smoke (~25 cases) or full
+        type: choice
+        options: [smoke, full]
+        default: smoke
+
+# Nothing by default; the one job below asks for exactly what it needs.
+permissions: {}
+
+# One run at a time against the shared meter; a newer push does not cancel a run mid-spend.
+concurrency:
+  group: assistant-evals
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    name: promptfoo (${{ inputs.tier || 'smoke' }})
+    # Never pull_request_target. Fork PRs get no OIDC token and are skipped here as well.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: assistant-evals
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/assistant
+    env:
+      TIER: ${{ inputs.tier || 'smoke' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Install before authenticating, with lifecycle scripts off, so no dependency code runs
+      # while credentials exist; both lockfiles must audit clean.
+      - name: Install (no scripts) and audit
+        run: |
+          npm ci --ignore-scripts --no-fund
+          npm audit --audit-level=moderate
+          npm --prefix evals ci --ignore-scripts --no-fund
+          npm --prefix evals audit --audit-level=moderate
+      - name: Deterministic gate first ($0)
+        run: npm run check
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.ASSISTANT_EVALS_WIF_PROVIDER }}
+          service_account: ${{ vars.ASSISTANT_EVALS_SA }}
+          project_id: productintelligence-beeb3
+      - name: promptfoo eval (${{ env.TIER }})
+        env:
+          PI_EVAL_METER: firestore
+          PI_VERTEX_LOCATION: ${{ vars.ASSISTANT_VERTEX_LOCATION }}
+        # promptfoo exits 100 when a case fails; the per-suite gate below decides. Any other
+        # non-zero exit (crash, config error) fails the job here.
+        run: npm --prefix evals run "eval:${TIER}" || test $? -eq 100
+      - name: Per-suite gate (design §8 thresholds)
+        run: node src/evals/gate.ts evals/results.json
+      # Fixture questions and answers only; no user data exists in this job.
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assistant-evals-${{ env.TIER }}
+          path: apps/assistant/evals/results.json
+          if-no-files-found: ignore
+          retention-days: 14

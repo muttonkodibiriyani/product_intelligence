@@ -1,0 +1,34 @@
+# Honest "not enough data": no estimates, no numbers.
+- description: thin cohort compare
+  vars:
+    question: Compare prices between north and south.
+    scenario: thin
+  metadata:
+    tier: smoke
+    suite: not_enough_data
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:notEnoughData
+      metric: not_enough_data
+
+- description: trend without history
+  vars:
+    question: How has the price index moved over the last month?
+  metadata:
+    tier: smoke
+    suite: not_enough_data
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:notEnoughData
+      metric: not_enough_data
+
+- description: launches without history
+  vars:
+    question: Which products launched this week?
+  metadata:
+    tier: smoke
+    suite: not_enough_data
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:notEnoughData
+      metric: not_enough_data

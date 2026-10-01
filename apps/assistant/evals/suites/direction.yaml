@@ -1,0 +1,36 @@
+# Direction: the retailer named as cheaper must be the tool's "cheaper" field (design §3.2).
+- description: north cheaper
+  vars:
+    question: Is Hydra Cream cheaper at north or at south?
+    expect:
+      - north
+    forbid:
+      - south is (the )?cheaper
+      - cheaper at south
+    products:
+      - p01
+  metadata:
+    tier: smoke
+    suite: direction
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:answered
+      metric: direction
+
+- description: south cheaper
+  vars:
+    question: Where is Glow Mist cheaper?
+    expect:
+      - south
+    forbid:
+      - north is (the )?cheaper
+      - cheaper at north
+    products:
+      - p02
+  metadata:
+    tier: smoke
+    suite: direction
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:answered
+      metric: direction

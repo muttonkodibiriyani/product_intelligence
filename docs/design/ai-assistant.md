@@ -27,30 +27,40 @@ stages 2–3, produces reports on request. Six rules shape the design:
 6. **Spend is metered and capped.** It uses Gemini Flash by default, meters every question and
    has a hard monthly ceiling inside the $25 total (§13, OPS-04).
 
-## 2. Architecture decision: Genkit on Cloud Functions (not Firebase AI Logic)
+## 2. Architecture decision: server-side SDK (`@google/genai`) on Cloud Functions (not Firebase AI Logic)
 
-**Decision: Genkit (TypeScript) flows served by Cloud Functions for Firebase (2nd gen) with
-`onCallGenkit`. Gemini is called through the Vertex AI plugin using the function's service
-account.**
+**Decision: a TypeScript chat flow served by a Cloud Functions for Firebase (2nd gen) callable
+(`onCall`). Gemini is called on Vertex AI through the official `@google/genai` SDK in Vertex
+mode, authenticated with the function's service account (Application Default Credentials).**
 
-| Criterion | Genkit on Cloud Functions | Firebase AI Logic (client SDK) |
+*Revised 2026-10-01 (decision log):* the first draft used Genkit. Genkit's Firebase plugin pulls
+in an OpenTelemetry auto-instrumentation tree with 49 npm advisories (7 high), and our flow
+drives its own tool loop anyway (each model call metered, each tool call through the
+registry), so Genkit added dependencies without adding control. `@google/genai` is pinned
+exactly, has 0 advisories, and sits behind our own `ChatModel` interface, so tests and evals
+use a fake model and swapping SDKs touches one file (`src/flows/vertex.ts`).
+
+| Criterion | Server-side SDK on Cloud Functions | Firebase AI Logic (client SDK) |
 |---|---|---|
 | Where tools run | Server, under our code, calling the service-layer API with the user's token | In the browser: the client executes function calls and returns results to the model |
 | Enforcing permissions | Server checks the ID-token role claim before every tool | The client can lie about tool results. Permissions depend on data rules alone |
 | Prompt integrity | System prompt and tool list live on the server and are versioned (AIG-07) | System instructions ship to the client and can be changed there |
 | Metering, caps, kill switch | Central: every call passes one choke point | Per-client. A global cap needs extra server calls anyway |
 | Reports (PPTX/PDF/XLSX) | Same runtime generates files and writes to Storage | Needs a server anyway |
-| Evals | Genkit flows run directly under promptfoo and Genkit eval in CI | Evals would need a browser harness |
-| Streaming | `onCallGenkit` streams chunks to `httpsCallable(...).stream()` | Native |
+| Evals | The flow runs directly under promptfoo in CI (Node provider) | Evals would need a browser harness |
+| Streaming | `onCall` streams progress (tool status) to `httpsCallable(...).stream()`; answer text is sent only after it passes the verifier | Native |
 | Cost of the runtime | Cloud Run under the hood; min instances 0 keeps it inside the free tier at pilot volume | None |
-| Blueprint | Matches §3.2 C13 "Genkit + Gemini" and ADR-0002 | Deviation |
+| Blueprint | Keeps Gemini and server-side tools from §3.2 C13 and ADR-0002, which name "Genkit + Gemini"; the Genkit library is a recorded deviation (decision log 2026-10-01) | Deviation (client-side trust boundary) |
 
 AI Logic is a good fit when the model only needs the user's prompt. Our assistant's value is
 server-side tools over governed data with enforced permissions, so AI Logic would push the
-trust boundary into the browser. Genkit wins.
+trust boundary into the browser. The server-side flow wins.
 
 **Why Vertex AI rather than a Gemini Developer API key?** It needs no key to store or leak (this
-is a public repo). It authenticates with the function's own service account. Vertex terms
+is a public repo). `VertexChatModel.create` refuses to start if any API-key, access-token or
+endpoint-override variable is set (`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_GENAI_API_KEY`,
+`GOOGLE_GENAI_ACCESS_TOKEN`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_VERTEX_BASE_URL`) or the project
+is not `productintelligence-beeb3`. It authenticates with the function's own service account. Vertex terms
 exclude customer data from model training, which covers AIG-08. Billing lands on the same
 project, so the budget alerts see it.
 
@@ -63,7 +73,7 @@ flowchart LR
     MR[My reports]
   end
   subgraph Fn["Cloud Functions 2nd gen"]
-    G[assistantChat flow<br/>onCallGenkit, auth policy]
+    G[assistantChat callable<br/>onCall, auth check]
     RP[reportJob flow<br/>stage 2–3]
     T[Tool registry<br/>zod inputs, role checks,<br/>envelope validation, sanitiser, size cap]
     MET[Meter: reserve → call → settle<br/>caps + kill switch]
@@ -91,10 +101,13 @@ flowchart LR
 | `apps/assistant/src/api/` | `MetricApi` HTTP client for the service layer (https only, no redirects, 10 s timeout, 1 MB cap) and the zod envelope schema |
 | `apps/assistant/src/tools/` | Tool definitions (strict zod input, `request(input) → ApiRequest`, minimum role) and the registry |
 | `apps/assistant/src/guard/` | Decimal parsing, fail-closed sanitiser, untrusted-text wrapper, numeric verifier; later the meter and caps |
-| `apps/assistant/src/flows/chat.ts` | Stage 1b: `assistantChat` flow (system prompt, history, tools, streaming) |
+| `apps/assistant/src/flows/chat.ts` | Stage 1b: `ChatFlow` (tool loop, meter per model call, answer cleaning, verifier with one retry, fallback). Structured fields (citations, product ids, not-enough-data) are built from tool results, never from model text |
+| `apps/assistant/src/flows/model.ts` | `ChatModel` interface and the prompt-size bound checked before each reservation |
+| `apps/assistant/src/flows/vertex.ts` | `VertexChatModel`: `@google/genai` in Vertex/ADC mode, automatic function calling off, env/project refusal |
+| `apps/assistant/src/guard/answer.ts` | Server-side answer cleaning: no links, images or HTML; only product tokens a tool returned |
 | `apps/assistant/src/reports/` | Stage 2–3 generators (`exceljs`, `pdfmake`, `pptxgenjs`) |
-| `apps/assistant/prompts/*.prompt` | Dotprompt files. The version is written into every answer record (AIG-07) |
-| `apps/assistant/evals/` | promptfoo config, gold questions, injection corpus |
+| `apps/assistant/src/flows/prompt.ts` | Versioned system prompt (`PROMPT_VERSION`), a TypeScript module rather than Dotprompt files. The version is written into every answer and must equal `assistant_config/current.promptVersion` (AIG-07) |
+| `apps/assistant/evals/` | Separate npm package (own lockfile, promptfoo pinned): config, custom provider running `ChatFlow`, fixtures, gold/refusal/injection suites |
 | `infra/firebase.json` | Adds a `functions` block (codebase `assistant`) |
 
 Region: the function runs next to the service layer and Firestore. The Vertex model endpoint is
@@ -242,11 +255,17 @@ Common input limits:
 
 Results over 16,000 chars are refused with `output_too_large` rather than truncated mid-structure.
 
+**Contract source of truth:** `docs/contracts/pi-api.openapi.json` and the goldens under
+`docs/contracts/golden/pi-api/` (S2 #55, S3 metric endpoints #61, both on main). The table below
+is the planning view. The service layer serves under `/api/v1/*`, and the stage-1a tool
+definitions still use `/v1/*` and the pre-S3 shapes; a tool-alignment PR moves the definitions,
+envelope schema and eval fixtures onto the OpenAPI and goldens next (after this flow PR).
+
 | Tool | Endpoint | Input | Notes |
 |---|---|---|---|
 | `search_products` | `GET /v1/products` | `q?`, `brand[]?`, `category[]?`, `retailer[]?`, `matched?`, `priceMin?/priceMax?` (decimal text in `meta.currency`), `sort`, `limit` | Product cards with per-retailer `Money` and `match {class, reviewState, confidence}` |
 | `get_product` | `GET /v1/products/{id}` | `id` | Offers, `gap {gapAmount, gapPct, cheaper, convention}` or `gapExcludedReason`, evidence |
-| `compare` | `POST /v1/compare` | `ids[2..6]` **or** `brand?/category?`, `retailers? {base, other}`, `limit` | Rows always returned; summary (`medianGapPct`, `meanGapPct`, `cheaperCounts{<retailer>: n}`, `basket {base, other}`) only when n ≥ 5 |
+| `compare` | `GET /api/v1/compare` (#61) | `retailers=<base>,<other>`, `id` (repeated) **or** `brand?/category?`, `date?`, `groupBy? brand\|category` | Rows carry `gap {amount, pct, cheaper}`; summary (median/mean gap %, cheaper-at counts, basket totals) only when n ≥ 5; `sides {base, other}`, optional `groups` |
 | `index_trend` | `GET /v1/index` | `retailers? {base, other}` (sent as one form param `retailers=<base>,<other>`, exactly 2, ordered; multi-value filters repeat the key), `brand?`, `category?`, `from?/to?` | `points[{date, index, n}]`; trend needs history, otherwise `capability_off` |
 | `promotions` | `GET /v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?`, `limit` | `promoShare{<retailer>: pct}`, items with `depthPct` = (regular − price) / regular × 100 |
 | `assortment_gaps` | `GET /v1/assortment-gaps` | `missingAt?`, `presentAt?`, `brand?`, `category?`, `limit` | Absence rules as in §3.2.4 |
@@ -272,7 +291,7 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
 
 ## 5. Answer contract and prompt
 
-- The system prompt (Dotprompt, versioned) requires the model to:
+- The system prompt (`src/flows/prompt.ts`, versioned by `PROMPT_VERSION`) requires the model to:
   - answer only from tool results;
   - copy numbers verbatim, rounded as the tool rounded them;
   - end with a **Source** line: tool(s), filters, cohort n, cutoff;
@@ -280,10 +299,15 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
   - answer in the user's language (EN/AR; UI locale passed as input);
   - refuse out-of-scope asks (uplift, market share, sales, forecasts, pricing
     recommendations for execution per SEC-12) with the reason.
-- **Structured output.** The final turn is a zod-typed object:
-  `{ answer_md, language, citations[], productIds[], chart?: {type, series}, notEnoughData? }`.
-  The UI renders thumbnails and charts from `productIds` and `chart`, filled by the server from
-  tool data, never from model text.
+- **Structured output, assembled by the server.** The model writes Markdown only. `ChatFlow`
+  returns `{ status, answerMd, language, promptVersion, model, citations[], caveats[],
+  productIds[], notEnoughData[], toolCalls[], toolResults[], modelCalls, costUsd }`:
+  citations, caveats and not-enough-data come from tool results; `productIds` are the
+  `[[product:<id>]]` tokens that survived cleaning (ids a tool returned). `chart` is added in
+  stage 2 from tool data. Nothing structured is taken from model text.
+- **Answer cleaning (`src/guard/answer.ts`).** Before verification the server removes HTML,
+  comments, images, links (keeping link text), reference definitions and bare URLs, and turns
+  unknown product tokens into "a product".
 - **Numeric verifier (server, after the model's final answer; `src/guard/verifier.ts`).**
   - *Normalise the answer.*
     - Arabic-Indic (٠–٩) and Extended Arabic-Indic (۰–۹) digits become ASCII digits.
@@ -326,7 +350,7 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
 ## 6. Auth and roles
 
 - **Identity.** Firebase Auth (invite-only, email/password; PR #23). Custom claim
-  `role ∈ {viewer, admin}`. `onCallGenkit` uses an `authPolicy` that rejects missing tokens and
+  `role ∈ {viewer, admin}`. The `onCall` handler rejects missing tokens and
   unknown roles. The same check repeats inside every tool (defence in depth).
 - **Abuse protection.** App Check with reCAPTCHA Enterprise (free tier 10 k assessments/month)
   on the callable. It is enforced from stage 1 and only if the owner OKs enabling the API.
@@ -432,6 +456,17 @@ reaches the model through tool output.
     `MetricApi`. Gold numbers therefore come from the one metric implementation and cannot
     drift.
   - A second market keeps the ADR-0007 literal guard honest.
+  - **Stage 1b seed (now):** until the tools move to the goldens (the tool-alignment PR
+    that follows this one), the suites run on hand-built fixtures in the stage-1a envelope
+    (`src/evals/fixtures.ts`: neutral retailers `north`/`south`, test currency `XTS`, a planted
+    injection name, admin-only evidence fields). 25 smoke cases across all seven suites; the
+    counts below are the target for the full suite.
+- **Layout.** `apps/assistant/evals/` is its own npm package (promptfoo pinned exactly, own
+  lockfile, installed with `--ignore-scripts` and audited in the existing pytest gate, which
+  also runs `promptfoo validate`; no model call). The provider (`src/evals/provider.ts`),
+  assertions (`src/evals/assertions.ts`) and per-suite gate (`src/evals/gate.ts`) live in the
+  assistant package, so they are typed, linted and unit-tested with the rest. The CI workflow
+  is a proposal for the owner: `docs/proposals/assistant-evals.yml`.
 - **Suites:**
 
 | Suite | Examples | Assertion |
@@ -444,8 +479,10 @@ reaches the model through tool output.
 | Permissions (≥ 6) | viewer asks for runIds or cost; asks for another user's thread | Denied or redacted |
 | Language | AR question → AR answer with the same numbers | `language == "ar"` and number parity with the EN twin |
 
-- **Gates.** Gold numeric 100 %. Injection 100 %. Direction 100 %. Refusal and not-enough-data ≥ 95 %. The
-  numeric verifier's first-pass rate is recorded and must not regress by more than 5 pts.
+- **Gates** (`src/evals/gate.ts` over promptfoo's results file). Gold numeric, injection,
+  direction, permissions and language 100 %. Refusal and not-enough-data ≥ 95 %. The numeric
+  verifier's first-pass rate is reported on every run; the "no regression over 5 pts" check
+  starts once a baseline run exists.
 - **CI cost control.** Deterministic layers (tool unit tests, schema tests, escaping, verifier,
   rules emulator) run on every PR at $0. The **model-backed promptfoo suite** calls Vertex with
   a CI service account through Workload Identity Federation (no key file).
@@ -461,19 +498,28 @@ reaches the model through tool output.
   - Fork PRs never get an OIDC token: the job has `if: github.event.pull_request.head.repo.full_name == github.repository`,
     and GitHub withholds `id-token` from forks anyway.
   - `permissions: {id-token: write, contents: read}` is set on that job only.
-  - The service account holds only `roles/aiplatform.user`.
+  - The service account holds `roles/aiplatform.user`, plus Firestore access for the shared
+    meter (`assistant_config/current` read, `assistant_usage_counters` and
+    `assistant_reservations` read/write). **Open decision (owner/Infra):** Firestore IAM cannot
+    scope a role to collections, so `roles/datastore.user` would reach the whole (default)
+    database, chat threads included. Options: (a) accept it behind the protected environment
+    and owner review; (b) the CI job calls a tiny metering endpoint run by the function's
+    service account; (c) CI counters in a separate named database, with the kill switch
+    mirrored there. Recommendation: (a) for the pilot, since no user threads exist until
+    stage 1c, then (b) before real users arrive.
 - **How the $1.50/month CI cap is enforced.** The eval harness calls Gemini through the same
   meter as production (§9), with label `ci`. The meter reserves the per-case ceiling in
   Firestore before each Vertex call and refuses the call once the `ci` month total would pass
-  $1.50, which fails the job with "CI eval budget exhausted". There is no unmetered path: the
-  CI service account can only reach Vertex, and the eval code has no other client.
+  $1.50. The answer then comes back `unavailable` with the meter's code, and the gate fails
+  with that reason. There is no unmetered path: the eval provider refuses to start unless
+  `PI_EVAL_METER=firestore`, has no in-memory mode for real calls, and has no other client.
 - **Run policy.** The model-backed suite runs only when `apps/assistant/**` changes, plus a
   manual dispatch, with promptfoo caching on. A full run is about 100 cases × ~$0.006 ≈
   **$0.60**, and the smoke subset (25 cases, Flash-Lite or Flash) ≈ **$0.15**. PRs run the
   smoke subset; the full suite runs on merge-candidate PRs only. **The $1.50/month meter cap
   above is binding**: at most about 10 smoke runs or 2 full runs a month, whichever comes first.
   After that, the job fails until next month or an owner-approved raise. See §9.
-- **Also in CI:** Genkit's own eval (faithfulness) is optional later. Not in stage 1.
+- **Also in CI (later):** an LLM-graded faithfulness check. Not in stage 1.
 
 ## 9. Cost model
 
@@ -566,7 +612,7 @@ owner's OK via the Coordinator.
 | GitHub protected environment `assistant-evals` + eval workflow job (`.github` change, owner pushes) | **needs owner** | – | Model evals in CI |
 | Service-layer API deployed with `/v1/*` (#39) | Deep Coder's track | – | Stage 1c |
 | `recaptchaenterprise` + App Check | optional, **needs OK** | free ≤ 10 k/month | Stage 1 hardening |
-| Budget → Pub/Sub → kill-switch subscriber | **required before Vertex enablement** (Coordinator, 2026-10-01); own PR after the Genkit/promptfoo PR; deploy **needs OK** | free | Auto kill switch; catches spend around the meter |
+| Budget → Pub/Sub → kill-switch subscriber | **required before Vertex enablement** (Coordinator, 2026-10-01); own PR after the flow/promptfoo PR; deploy **needs OK** | free | Auto kill switch; catches spend around the meter |
 | Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `messages` (collection groups) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
@@ -601,7 +647,7 @@ time after approvals.
 |---|---|---|---|---|
 | 0 | This design doc | 1 | Reviewer approval (a1) | tonight |
 | 1a | `apps/assistant` skeleton, `MetricApi` client + envelope schema, all 9 tools as thin clients of #39 with unit tests on a fake API (golden responses once #39 lands), fail-closed sanitiser, numeric verifier. No model calls, $0 (#41) | 2 | CI green, coverage ≥ 85 % | 2 d |
-| 1b | Genkit flow + Vertex (emulator/local), streaming callable, Firestore history + rules, meter + caps + kill switch, promptfoo suites | 2 | Evals green (smoke) | 2 d |
+| 1b | Chat flow + Vertex adapter (`@google/genai`, local), streaming callable, Firestore history + rules, meter + caps + kill switch, promptfoo suites | 2 | Evals green (smoke) | 2 d |
 | 1c | *After API OK:* deploy function to dev, chat panel with Frontend Builder (EN/AR, streaming, suggested questions, inline charts, thumbnails when available), admin cost panel, weekly briefing draft | 2 + FE | a2, a5 | 2–3 d |
 | 2 | `create_report`, XLSX (`exceljs`: summary + raw data sheets + manifest sheet with cutoff and filters) and PDF (`pdfmake`, Arabic font embedded, RTL), Storage + signed URLs, My reports | 2 | a3 | 3 d |
 | 3 | PPTX (`pptxgenjs`) with native charts, Pro for long reports behind an admin flag | 1–2 | a4 | 2–3 d |

@@ -16,8 +16,10 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test"
   },
   "dependencies": {
+    "@google/genai": "2.25.0",
     "firebase-admin": "14.5.0",
-    "zod": "3.25.76"
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.25.2"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
