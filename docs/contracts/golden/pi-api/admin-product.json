@@ -132,7 +132,7 @@
     "filters": {},
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.1",
+    "metricVersion": "2026-10-01.2",
     "scope": "fixture"
   },
   "reason": null,

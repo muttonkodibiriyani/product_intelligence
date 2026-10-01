@@ -13,10 +13,11 @@ from datetime import date
 from decimal import Decimal
 
 from pi_core import AvailabilityState
-from pi_dataset import ContractModel, Dataset
+from pi_dataset import ContractModel
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
+    EVERY_PROFILE,
     MIN_COHORT,
     Caveat,
     CaveatCode,
@@ -28,9 +29,12 @@ from pi_metrics.model import (
 )
 
 DENOMINATOR = "offers in an observed stock state (in_stock, low_stock, out_of_stock)"
+#: The profiles availability applies to (ADR-0008 §3).
+PROFILES = EVERY_PROFILE
 
 
 class RetailerAvailability(ContractModel):
+    #: The context id; a retailer's sole context has the retailer's id.
     retailer: str
     counts: dict[AvailabilityState, int]
     denominator: int
@@ -45,19 +49,26 @@ class Availability(ContractModel):
 
 
 def availability(
-    ds: Dataset,
+    dataset: view.AnyDataset,
     retailers: tuple[str, ...],
     where: ProductFilter,
     on: date | None = None,
 ) -> Metric[Availability]:
-    selected = view.selected_retailers(ds, retailers)
+    """Per-context stock counts; ``retailers`` are context ids, empty means every context."""
+    ds = view.as_v3(dataset)
+    selected = view.selected_contexts(ds, retailers)
     i = view.date_index(ds, on)
     as_of = ds.meta.dates[i]
-    if not ds.meta.capabilities.stock:
+    off = None
+    if not view.applies(ds, PROFILES):
+        off = Reason.NOT_APPLICABLE
+    elif not ds.meta.capabilities.stock:
+        off = Reason.CAPABILITY_OFF
+    if off is not None:
         return Metric[Availability](
             status=Status.NOT_ENOUGH_DATA,
             data=Availability(retailers=()),
-            reason=Reason.CAPABILITY_OFF,
+            reason=off,
             as_of=as_of,
         )
     rows, caveats = [], []
@@ -87,7 +98,7 @@ def availability(
         reason = {
             RetailerStatus.BLOCKED: Reason.RETAILER_BLOCKED,
             RetailerStatus.PARTIAL: Reason.RETAILER_PARTIAL,
-        }.get(shop.status)
+        }.get(view.status(ds, shop.id))
         if reason is None and known < MIN_COHORT:
             reason = Reason.COHORT_TOO_SMALL
         rows.append(

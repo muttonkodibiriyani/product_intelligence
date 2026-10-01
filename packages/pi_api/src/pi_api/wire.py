@@ -71,6 +71,10 @@ REASON_TEXT: dict[Reason, Localized] = {
         en="The retailers price in different currencies; there is no conversion.",
         ar="المتاجر تسعّر بعملات مختلفة؛ ولا يوجد تحويل.",
     ),
+    Reason.NOT_APPLICABLE: Localized(
+        en="This view does not apply to this kind of catalogue.",
+        ar="هذا العرض لا ينطبق على هذا النوع من الكتالوجات.",
+    ),
 }
 
 CAVEAT_TEXT: dict[CaveatCode, Localized] = {
@@ -100,6 +104,14 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
     CaveatCode.RATING_SCALE_MIXED: Localized(
         en="{count} ratings at {retailer} use another scale and are left out.",
         ar="{count} تقييمات في {retailer} تستخدم مقياساً آخر واستُبعدت.",
+    ),
+    CaveatCode.SIZE_LABELS_DIFFER: Localized(
+        en="{count} items have equal sizes labelled differently: {base} vs {other}.",
+        ar="{count} عناصر بأحجام متساوية وتسميات مختلفة: {base} مقابل {other}.",
+    ),
+    CaveatCode.CHANNEL_DIFFERS: Localized(
+        en="The two sides are different channels: {base} vs {other}.",
+        ar="الجانبان قناتان مختلفتان: {base} مقابل {other}.",
     ),
 }
 

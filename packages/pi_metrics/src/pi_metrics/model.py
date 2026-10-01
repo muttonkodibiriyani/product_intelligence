@@ -17,14 +17,18 @@ from typing import Annotated
 from pydantic import PlainSerializer
 
 from pi_core import ReviewState
-from pi_dataset import ContractModel, Product
+from pi_dataset import ContractModel, Product, ProductV3
 
 #: Changes whenever a metric definition changes; recorded in docs/decision-log.md (design §7).
-METRIC_VERSION = "2026-10-01.1"
+METRIC_VERSION = "2026-10-01.2"
 #: Summary statistics need at least this many members (design §7.4).
 MIN_COHORT = 5
 #: Edge states a counted pair may have (design §7.2): approved (human or auto-accept) or locked.
 COUNTED_STATES = frozenset({ReviewState.APPROVED, ReviewState.LOCKED})
+#: The vertical profiles ADR-0008 names. Each metric states the ones it applies to; on any other
+#: profile it answers ``not_enough_data`` / ``not_applicable``, never a 4xx or zeros (§3).
+BEAUTY, FOOD_MENU, APPAREL = "beauty", "food_menu", "apparel"
+EVERY_PROFILE = frozenset({BEAUTY, FOOD_MENU, APPAREL})
 
 
 def fixed(places: int) -> Callable[[Decimal], str]:
@@ -61,6 +65,8 @@ class Reason(StrEnum):
     NO_MATCH = "no_match"
     NOT_IN_SCOPE = "not_in_scope"
     CURRENCY_MISMATCH = "currency_mismatch"
+    #: The metric doesn't apply to the snapshot's vertical profile (ADR-0008 §3).
+    NOT_APPLICABLE = "not_applicable"
 
 
 class Excluded(StrEnum):
@@ -95,6 +101,10 @@ class CaveatCode(StrEnum):
     NOT_OBSERVED_EXCLUDED = "not_observed_excluded"
     HISTORY_OFF = "history_off"
     RATING_SCALE_MIXED = "rating_scale_mixed"
+    #: Counted pairs with equal measures but different published size labels (ADR-0008 §1).
+    SIZE_LABELS_DIFFER = "size_labels_differ"
+    #: The two sides of a comparison sell through different channels (ADR-0008 §2).
+    CHANNEL_DIFFERS = "channel_differs"
 
 
 class Caveat(ContractModel):
@@ -125,7 +135,7 @@ class ProductFilter(ContractModel):
     brands: tuple[str, ...] = ()
     categories: tuple[str, ...] = ()
 
-    def matches(self, product: Product) -> bool:
+    def matches(self, product: Product | ProductV3) -> bool:
         if self.ids and product.id not in self.ids:
             return False
         if self.brands and product.brand.casefold() not in {b.casefold() for b in self.brands}:

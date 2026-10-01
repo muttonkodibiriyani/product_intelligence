@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Protocol
 
 from pi_dataset import Dataset, DatasetError, load_dataset
+from pi_metrics.view import as_v3
 
 log = logging.getLogger(__name__)
 _GZIP_MAGIC = b"\x1f\x8b"
@@ -145,11 +146,11 @@ class SnapshotSource:
                 if current is not None and self._store.generation(path) == current.generation:
                     continue
                 data, generation = self._store.read(path)
-                loaded = Loaded(
-                    path=path,
-                    dataset=parse(data, allow_test=self._allow_test),
-                    generation=generation,
-                )
+                dataset = parse(data, allow_test=self._allow_test)
+                # pi_metrics reads v3: upgrade once here, off the request path (ADR-0008 §4).
+                # A v2 that can't be upgraded is not loaded (UpgradeError is a ValueError).
+                as_v3(dataset)
+                loaded = Loaded(path=path, dataset=dataset, generation=generation)
             except (DatasetError, ValueError, OSError, zlib.error) as error:
                 log.warning("dataset %s not loaded: %s", path, type(error).__name__)
                 continue

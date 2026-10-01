@@ -39,7 +39,7 @@ from pi_dataset import (
 from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
 from pi_metrics.compare import Gap, pair_row
 from pi_metrics.promotions import depth
-from pi_metrics.view import price_on, regular_on
+from pi_metrics.view import as_v3, price_on, product_v3, regular_on
 
 MAX_LIMIT = 100
 MAX_VALUES = 25
@@ -226,7 +226,8 @@ class PairGap(ContractModel):
 
 
 def pair_gap(ds: Dataset, product: Product, base: str, other: str) -> PairGap:
-    row = pair_row(product, base, other, len(ds.meta.dates) - 1)
+    # pi_metrics pairs on v3; a v2 retailer is its own sole context, so the ids carry over.
+    row = pair_row(as_v3(ds), product_v3(ds, product.id), base, other, len(ds.meta.dates) - 1)
     return PairGap(base=base, other=other, gap=row.gap, excluded_reason=row.excluded_reason)
 
 

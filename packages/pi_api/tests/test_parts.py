@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import gc
 import gzip
+import os
 import time
+import weakref
 from pathlib import Path
 
 import httpx
@@ -22,6 +25,7 @@ from pi_api.source import (
     parse,
 )
 from pi_dataset import dump_dataset
+from pi_metrics.view import as_v3
 
 ENV = {
     "PI_API_FIREBASE_PROJECT": "p",
@@ -116,6 +120,29 @@ def test_a_missing_file_is_logged_not_raised(tmp_path: Path) -> None:
     source = SnapshotSource(LocalStore(tmp_path), ("datasets/none.json",))
     source.load_all()
     assert source.datasets() == ()
+
+
+def test_a_v2_dataset_metrics_cannot_read_is_not_loaded(tmp_path: Path) -> None:
+    ds = served_dataset()
+    write(tmp_path, ds.model_copy(update={"meta": ds.meta.model_copy(update={"vertical": "toys"})}))
+    source = SnapshotSource(LocalStore(tmp_path), (DATASET_PATH,))
+    source.load_all()  # no committed toys@1 profile to upgrade it by
+    assert source.datasets() == ()
+
+
+def test_a_replaced_generation_and_its_upgrade_are_freed(tmp_path: Path) -> None:
+    write(tmp_path, served_dataset())
+    source = SnapshotSource(LocalStore(tmp_path), (DATASET_PATH,))
+    source.load_all()
+    first = weakref.ref(source.datasets()[0].dataset)
+    upgraded = weakref.ref(as_v3(source.datasets()[0].dataset))
+    write(tmp_path, served_dataset())
+    os.utime(tmp_path / DATASET_PATH, ns=(1, 1))  # a new generation, whatever the clock
+    source.load_all()
+    gc.collect()
+    assert source.datasets()
+    assert first() is None
+    assert upgraded() is None
 
 
 def test_a_storage_error_keeps_what_is_loaded(tmp_path: Path) -> None:

@@ -228,7 +228,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-01.1",
+            "default": "2026-10-01.2",
             "title": "Metricversion",
             "type": "string"
           },
@@ -493,7 +493,9 @@
           "removed_unconfirmed",
           "not_observed_excluded",
           "history_off",
-          "rating_scale_mixed"
+          "rating_scale_mixed",
+          "size_labels_differ",
+          "channel_differs"
         ],
         "title": "CaveatCode",
         "type": "string"
@@ -2862,7 +2864,8 @@
           "matches_unreviewed",
           "no_match",
           "not_in_scope",
-          "currency_mismatch"
+          "currency_mismatch",
+          "not_applicable"
         ],
         "title": "Reason",
         "type": "string"
@@ -3247,7 +3250,7 @@
       },
       "Side": {
         "additionalProperties": false,
-        "description": "One retailer's state in a comparison, so a client can say which side is short.",
+        "description": "One context's state in a comparison, so a client can say which side is short.\n\n``retailer`` holds the context id: a retailer's sole context has the retailer's id.",
         "properties": {
           "counted": {
             "title": "Counted",
