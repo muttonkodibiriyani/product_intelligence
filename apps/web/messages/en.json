@@ -1,0 +1,90 @@
+{
+  "app": {
+    "name": "Product Intelligence",
+    "skip": "Skip to content",
+    "switchLang": "العربية",
+    "switchLangLabel": "Switch to Arabic",
+    "signOut": "Sign out",
+    "signedInAs": "Signed in as {email}"
+  },
+  "auth": {
+    "loading": "Checking your session…",
+    "configUnavailable": "Sign-in isn't available at this address. Open the app from its Firebase Hosting URL.",
+    "noRoleTitle": "No access yet",
+    "noRole": "Your account is signed in but has no role. Ask an admin to grant you viewer access, then sign in again.",
+    "verifying": "Couldn't confirm your access just now. You're still signed in."
+  },
+  "signIn": {
+    "title": "Sign in",
+    "intro": "Use the email your team admin invited.",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "forgot": "Email me a reset link",
+    "resetNeedsEmail": "Enter your email above first.",
+    "resetSent": "If {email} has an account, a reset link is on its way.",
+    "errors": {
+      "badCredentials": "Email or password is incorrect.",
+      "tooMany": "Too many attempts. Wait a few minutes, then try again.",
+      "network": "No connection. Check your network and try again.",
+      "generic": "Sign-in failed. Try again."
+    }
+  },
+  "errors": {
+    "unauthenticated": "Your session ended. Sign in again.",
+    "forbidden": "Your role can't open this.",
+    "not_found": "Not found in the current dataset.",
+    "stale_cursor": "The data changed while you were paging, so the list starts again from page 1.",
+    "invalid_request": "This view's settings aren't valid. Reset the filters and try again.",
+    "invalid_query": "This view's settings aren't valid. Reset the filters and try again.",
+    "ambiguous_dataset": "More than one dataset matches. Choose a market and scope.",
+    "rate_limited": "Too many requests. Try again in {seconds} s.",
+    "data_unavailable": "The dataset is being updated. Try again in {seconds} s.",
+    "auth_unavailable": "Couldn't confirm your access just now. You're still signed in; try again in a few seconds.",
+    "internal_error": "Something failed on our side. Try again.",
+    "network": "No connection to the server.",
+    "unexpected": "The server sent a response this app can't read.",
+    "retry": "Try again"
+  },
+  "reasons": {
+    "capability_off": "Not collected for this retailer.",
+    "field_not_collected": "This field isn't collected yet.",
+    "retailer_blocked": "This retailer blocks collection.",
+    "retailer_partial": "This retailer is only partly covered.",
+    "cohort_too_small": "Too few products to give a reliable number.",
+    "matches_unreviewed": "The product matches haven't been reviewed yet.",
+    "no_match": "No matching product at the other retailer.",
+    "not_in_scope": "Outside the current dataset.",
+    "currency_mismatch": "Prices are in different currencies."
+  },
+  "home": {
+    "title": "Current dataset",
+    "loading": "Loading dataset…",
+    "vertical": "Vertical",
+    "kind": "Kind",
+    "cutoff": "Data as of",
+    "days": "Collection days",
+    "matchStage": "Matching",
+    "retailers": "Retailers",
+    "testData": "Test data — not for decisions",
+    "since": "since {date}",
+    "notCollected": "not collected",
+    "status": {
+      "supported": "Collected",
+      "partial": "Partly collected",
+      "blocked": "Blocked",
+      "pending": "Not started",
+      "retired": "No longer collected"
+    },
+    "values": {
+      "beauty": "Beauty",
+      "food": "Food",
+      "fashion": "Fashion",
+      "snapshot": "Daily snapshot",
+      "reviewed": "Reviewed by people",
+      "proposed": "Proposed, not reviewed",
+      "unreviewed": "Not reviewed"
+    }
+  }
+}
