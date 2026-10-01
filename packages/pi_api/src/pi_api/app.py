@@ -441,7 +441,7 @@ def build_api(
             )
             for d in source.datasets()
         )
-        return respond(loaded, "meta", query, meta_view(loaded.dataset, refs))
+        return respond(loaded, "meta", query, meta_view(loaded.dataset, refs, loaded.sources))
 
     @api.get(f"{PREFIX}/products", response_model=Envelope[ProductPage])
     def get_products(
@@ -791,6 +791,7 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         settings.datasets,
         settings.refresh_seconds,
         allow_test=settings.allow_test,
+        assigned=settings.sources,
     )
     source.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())

@@ -244,7 +244,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.4.1",
+            "default": "1.5.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -2867,6 +2867,13 @@
             "title": "Retailers",
             "type": "array"
           },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceInfo"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
           "test": {
             "title": "Test",
             "type": "boolean"
@@ -2890,7 +2897,8 @@
           "test",
           "contexts",
           "profile",
-          "attributeSet"
+          "attributeSet",
+          "sources"
         ],
         "title": "MetaView",
         "type": "object"
@@ -4213,6 +4221,61 @@
         "title": "Size",
         "type": "object"
       },
+      "SourceInfo": {
+        "additionalProperties": false,
+        "description": "One source of a view, as its own file has it.",
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldStatus"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "title": "Generatedat",
+            "type": "string"
+          },
+          "lastDate": {
+            "format": "date",
+            "title": "Lastdate",
+            "type": "string"
+          },
+          "matchStage": {
+            "title": "Matchstage",
+            "type": "string"
+          },
+          "products": {
+            "title": "Products",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "cutoff",
+          "generatedAt",
+          "lastDate",
+          "matchStage",
+          "capabilities",
+          "fields",
+          "products"
+        ],
+        "title": "SourceInfo",
+        "type": "object"
+      },
       "Status": {
         "enum": [
           "ok",
@@ -4511,7 +4574,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.4.1"
+    "version": "1.5.0"
   },
   "openapi": "3.1.0",
   "paths": {

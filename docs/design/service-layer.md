@@ -78,6 +78,20 @@ versioned snapshots.
 
   A document that fails validation is **never served**. The previous good generation stays live,
   and if there is none the endpoint returns `503 data_unavailable`.
+- **Per-source files (API 1.5.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
+  `PI_API_DATASETS` entry may be `source=path` instead of a bare path. Each source (a retailer id)
+  is then served only from its own file. The assigned files of one scope are composed into **one
+  view** by `pi_dataset.compose`, so `select()` sees one dataset per scope, not several. Each
+  source keeps its own cutoff, dates, capabilities and field states in `meta.sources`.
+  - The view is built only once every assigned file has loaded. A file that fails to load,
+    lacks its source, or differs from the others in scope, vertical, profile, attribute set or
+    market currency or time zone keeps the previous view live. It never falls back to another
+    file.
+  - The date axis is the union of the files' dates. A source is null on dates its file lacks.
+  - A product id in two files is one product with both offers. Match edges come only from a file
+    that holds both retailers, so no edge is made across files.
+  - A bare path in the same scope as a composed view is two datasets and stays
+    `422 ambiguous_dataset`; don't mix the two forms in one scope.
 - **Freshness.** Each instance compares the object `generation` with the loaded one at most once
   every 60 s: one metadata GET. A new generation loads in the background and swaps in atomically,
   so readers see either the old dataset or the new one, never a mix. `meta.generation` and

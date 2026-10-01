@@ -44,6 +44,7 @@ from pi_dataset import (
     Size,
     SizeV3,
 )
+from pi_dataset.compose import SourceInfo, source_infos
 from pi_dataset.profiles import AttributeDef, ProfileInfo
 from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
@@ -135,6 +136,10 @@ class MetaView(ContractModel):
     profile: ProfileInfo
     #: The profile's attributes; a ``facet`` one is usable as ``attr=<key>:<value>``.
     attribute_set: tuple[AttributeDef, ...]
+    #: Per source (retailer id), its own file's cutoff, last date, capabilities and fields
+    #: (ADR-0010). ``cutoff``, ``dates``, ``capabilities`` and ``fields`` above are the view's:
+    #: the latest cutoff, every date, capabilities or-ed, and ``partial`` where sources differ.
+    sources: tuple[SourceInfo, ...]
 
 
 def retailer_views(ds: DatasetV3) -> tuple[RetailerView, ...]:
@@ -161,7 +166,9 @@ def category_tree(products: Iterable[ProductV3]) -> tuple[CategoryNode, ...]:
     return tuple(CategoryNode(key=key, count=count) for key, count in sorted(top.items()))
 
 
-def meta_view(ds: DatasetV3, datasets: tuple[ScopeRef, ...]) -> Metric[MetaView]:
+def meta_view(
+    ds: DatasetV3, datasets: tuple[ScopeRef, ...], sources: tuple[SourceInfo, ...] = ()
+) -> Metric[MetaView]:
     m = ds.meta
     view = MetaView(
         datasets=datasets,
@@ -178,6 +185,7 @@ def meta_view(ds: DatasetV3, datasets: tuple[ScopeRef, ...]) -> Metric[MetaView]
         contexts=m.contexts,
         profile=m.profile,
         attribute_set=m.attribute_set,
+        sources=sources or source_infos(ds),
     )
     return Metric[MetaView](status=Status.OK, data=view, as_of=m.dates[-1])
 
