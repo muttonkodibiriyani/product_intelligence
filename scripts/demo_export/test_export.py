@@ -399,6 +399,26 @@ def test_v1_ulta_status_comes_from_the_ruling_not_from_ulta_rows() -> None:
     assert dataset["meta"]["retailers"][0]["status"] == "blocked"
 
 
+def test_v1_keeps_ulta_as_a_blocked_placeholder_with_sephora_only_sources() -> None:
+    """The legacy dashboard reads Ulta's status from v1, so a Sephora-only export still lists it."""
+    rows, matches = ulta_and_sephora_pair()
+    dataset = build_dataset(
+        in_sources(rows, DEFAULT_SOURCES),
+        matches,
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=NOW),
+    )
+    retailers = dataset["meta"]["retailers"]
+    assert [(r["id"], r["key"], r["status"]) for r in retailers] == [
+        ("u", "ulta_ae", "blocked"),
+        ("s", "sephora_me", "ok"),
+    ]
+    assert retailers[0]["earlyExamples"] is False
+    assert retailers[0]["note"] == {"en": ULTA_BLOCKED_NOTE, "ar": ULTA_BLOCKED_NOTE_AR}
+    assert [p["offers"]["u"] for p in dataset["products"]] == [None]
+    assert [gap["retailer"] for gap in dataset["notObserved"]] == ["u"]
+
+
 def test_sources_default_to_sephora_only_and_ulta_needs_the_unblocked_flag() -> None:
     assert parser().parse_args(BASE_ARGS).sources == ("sephora_me",)
     args = parser().parse_args([*BASE_ARGS, "--sources", "sephora_me, ulta_ae"])
