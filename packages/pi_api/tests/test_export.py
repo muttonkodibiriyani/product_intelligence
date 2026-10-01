@@ -177,6 +177,8 @@ def test_products_export_keeps_the_gap_sort_order(client: Client) -> None:
         "export/products?cursor=abc",
         "export/products?sort=gap",
         "export/compare",
+        f"export/compare?{PAIR}&limit=5",
+        "export/promotions?limit=5",
         f"export/compare?retailers={A},{A}",
         f"export/index?{PAIR}&from=2027-01-01",
         "export/assortment-gaps",
@@ -224,7 +226,7 @@ def test_each_export_writes_one_audit_entry_without_row_content(
         "format": "jsonl",
         "filters": {"retailers": f"{A},{B}"},
         "rows": 15,
-        "apiVersion": "1.0.0",
+        "apiVersion": "1.1.0",
     }
     text = caplog.text
     assert "Product p01" not in text

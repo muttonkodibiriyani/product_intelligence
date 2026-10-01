@@ -130,7 +130,8 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   the budget, so the 2 × ~220 MiB worst case never adds to a full dataset. 512Mi does not fit a
   budget-size dataset at all. The app allows two exports at once per instance; a third gets
   `429 rate_limited` (`Retry-After: 5`). If Cloud Run logs a memory-limit restart, report it;
-  change nothing without a decision.
+  change nothing without a decision. The first lever is less concurrency (a lower
+  `--concurrency`, or `MAX_CONCURRENT_EXPORTS` in `pi_api/export.py`), not more memory.
 - **`--timeout=30s`, `--cpu-throttling` (request-based CPU).** The slowest route is a 50 k-row CSV
   export, ~4 s measured locally (~1.3 s JSONL); even several times slower on 1 vCPU it is well
   inside 30 s.

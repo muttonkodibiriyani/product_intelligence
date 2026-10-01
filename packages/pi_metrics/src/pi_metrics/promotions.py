@@ -49,6 +49,9 @@ class RetailerPromo(ContractModel):
 class Promotions(ContractModel):
     retailers: tuple[RetailerPromo, ...]
     items: tuple[PromoItem, ...]
+    #: Rows before any ``limit``; ``truncated`` says the list was cut to it (pi_api).
+    total: int
+    truncated: bool = False
 
 
 def depth(price: MoneyValue, regular: MoneyValue) -> Decimal:
@@ -86,7 +89,7 @@ def promotions(
     if off is not None:
         return Metric[Promotions](
             status=Status.NOT_ENOUGH_DATA,
-            data=Promotions(retailers=(), items=()),
+            data=Promotions(retailers=(), items=(), total=0),
             reason=off,
             as_of=as_of,
         )
@@ -125,7 +128,7 @@ def promotions(
     )
     return Metric[Promotions](
         status=Status.OK if reason is None else Status.NOT_ENOUGH_DATA,
-        data=Promotions(retailers=tuple(shares), items=tuple(items)),
+        data=Promotions(retailers=tuple(shares), items=tuple(items), total=len(items)),
         reason=reason,
         cohort=Cohort(
             description="offers with price and regular observed on the date",

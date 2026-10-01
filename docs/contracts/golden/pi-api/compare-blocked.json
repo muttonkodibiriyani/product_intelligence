@@ -282,14 +282,16 @@
         "status": "blocked"
       }
     },
-    "summary": null
+    "summary": null,
+    "total": 14,
+    "truncated": false
   },
   "detail": {
     "ar": "تعذّر جمع بيانات أحد المتاجر المحددة.",
     "en": "A selected retailer could not be collected."
   },
   "meta": {
-    "apiVersion": "1.0.0",
+    "apiVersion": "1.1.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",

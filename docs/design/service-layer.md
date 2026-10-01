@@ -161,7 +161,7 @@ versioned snapshots.
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
   "meta": {
-    "apiVersion": "1.0.0", "endpoint": "compare", "metricVersion": "2026-10-01.1",
+    "apiVersion": "1.1.0", "endpoint": "compare", "metricVersion": "2026-10-01.1",
     "generation": "1727…", "cutoff": "2026-09-30T00:00:00Z",
     "market": "AE", "currency": "AED", "scope": "pilot",
     "filters": { ... }                   // the validated, normalised input, echoed
@@ -322,13 +322,18 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   - `summary {n, medianGapPct, meanGapPct, cheaperCounts{<source_key>: n}, equalCount,
     basket {base, other}} | null`.
   - Rows are always returned. The summary follows the cohort rule (§7).
+  - `limit` (optional, 1..500; API 1.1.0) cuts `rows` to the largest `|gap.pct|` first, rows
+    without a gap last, then `id`. `total` counts every row and `truncated` says the list was
+    cut. The summary, groups and sides are always over every row. Without `limit` the rows keep
+    their usual order and `truncated` is `false`.
   - v1 compares one ordered pair. Only that pair's own edge counts: nothing is inferred
     through a third retailer (ADR-0007 §5). An N-retailer comparison is not in v1.
 - **`/v1/index`:** `retailers {base, other}`, `brand`, `category`, `from`, `to`. Returns
   `{points: [{date, index, n}], trendAvailable, definition}`.
 - **`/v1/promotions`:** `retailer[]`, `brand`, `category`, `minPct`. Returns
-  `{promoShare{<source_key>: pct}, items[{id, name, retailer, price, regular, depthPct}]}`.
-  Needs `capabilities.promotions`.
+  `{promoShare{<source_key>: pct}, items[{id, name, retailer, price, regular, depthPct}], total,
+  truncated}`. Needs `capabilities.promotions`. `limit` (optional, 1..500) keeps the deepest
+  discounts: `depthPct` desc, then `id`, then `retailer`; shares are over every item.
 - **`/v1/assortment-gaps`:** `missingAt`, `presentAt`, `brand`, `category`. Returns `{total,
   byBrand[{brand, count}], items: ProductCard[]}`, with the absence rules (§7).
 - **`/v1/availability`:** `retailer[]`, `brand`, `category`, `date` (default: the latest).
@@ -345,7 +350,8 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   - A retailer that is `partial` or `blocked` for the date gets its counts plus
     `not_enough_data` / `retailer_partial` or `retailer_blocked` for the shares.
 - **`/v1/launches`:** `retailer`, `since`, `category`. Returns `items[{id, name, retailer,
-  firstSeen}]`. Needs two or more runs (`capability_off:history`).
+  firstSeen}], total, truncated}`. Needs two or more runs (`capability_off:history`). `limit`
+  (optional, 1..500) keeps the newest: `firstSeen` desc, then `id`, then `retailer`.
   - A product is a launch on date *d* only if it was **not** seen at that retailer on the
     previous date *and* that previous run was **complete** for its category (`supported`, no
     `notObserved` window covering it). First-seen after a partial or blocked run is not a launch:
