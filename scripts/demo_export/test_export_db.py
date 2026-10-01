@@ -360,3 +360,28 @@ def test_the_main_image_comes_from_the_latest_content(conn: Conn) -> None:
         )
     assert _row(world, "A")["image"] == "https://img-product.sephora.me/new.jpg"
     assert _row(world, "B")["image"] is None  # no content row at all
+
+
+def test_the_main_image_is_the_lowest_numeric_position_then_the_url(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    world.observe(run, "A", 1, "80")
+    world.observe(run, "B", 1, "90")
+    images = {
+        "A": [  # as text "10" < "2"; numerically 2 comes first
+            {"role": "main", "position": 10, "url": "https://img-product.sephora.me/a10.jpg"},
+            {"role": "main", "position": 2, "url": "https://img-product.sephora.me/a2.jpg"},
+        ],
+        "B": [  # a tie on position: the url decides, so the pick is stable
+            {"role": "main", "position": 0, "url": "https://img-product.sephora.me/b2.jpg"},
+            {"role": "main", "position": 0, "url": "https://img-product.sephora.me/b1.jpg"},
+        ],
+    }
+    for key, imgs in images.items():
+        conn.execute(
+            "INSERT INTO listing_content (listing_id, observed_at, labels, content_hash)"
+            " VALUES (%s, %s, %s::jsonb, %s)",
+            (world.listings[key], T0.replace(hour=1), json.dumps({"images": imgs}), key),
+        )
+    assert _row(world, "A")["image"] == "https://img-product.sephora.me/a2.jpg"
+    assert _row(world, "B")["image"] == "https://img-product.sephora.me/b1.jpg"
