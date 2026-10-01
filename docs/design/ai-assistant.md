@@ -107,6 +107,7 @@ flowchart LR
 | `apps/assistant/src/flows/threads.ts` | Strict callable request schema (`{question, locale, threadId?}`) and the thread store: history is read from the caller's own stored thread, never from the request |
 | `apps/assistant/src/guard/answer.ts` | Server-side answer cleaning: no links, images, HTML, URLs or emails; only product tokens a tool returned |
 | `apps/assistant/src/reports/` | Stage 2–3 generators (`exceljs`, `pdfmake`, `pptxgenjs`) |
+| `apps/assistant/src/killswitch/` | Budget-alert kill switch (§9.4): pure decision on the Pub/Sub budget notification, rules-scoped Firestore write (no Firestore IAM), framework-free handler for the deploy PR to wrap |
 | `apps/assistant/src/flows/prompt.ts` | Versioned system prompt (`PROMPT_VERSION`), a TypeScript module rather than Dotprompt files. The version is written into every answer and must equal `assistant_config/current.promptVersion` (AIG-07) |
 | `apps/assistant/evals/` | Separate npm package (own lockfile, promptfoo pinned): config, custom provider running `ChatFlow`, fixtures, gold/refusal/injection suites |
 | `infra/firebase.json` | Adds a `functions` block (codebase `assistant`) |
@@ -395,11 +396,13 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
   - `assistant_reservations/{id}`: one per model call, `reserved` → `settled`, holding the
     ceiling, the actual cost, token usage and the price-table version. A call whose settle
     fails stays `reserved`, so its ceiling keeps counting against the caps.
-  - `assistant_config/current`: `enabled`, `model`, `promptVersion`, `priceTableVersion`,
-    `caps`, `limits`. A missing or invalid document means **disabled** (fail closed).
-    Writes only through the audited admin callable.
-  - All three are functions-only: the rules deny every client read and write
-    (`infra/tests/test_rules_emulator.py`). Admins see usage through a callable in stage 2.
+  - `assistant_config/current`: `enabled`, `disabledBy?`, `model`, `promptVersion`,
+    `priceTableVersion`, `caps`, `limits`. A missing or invalid document means **disabled**
+    (fail closed). Writes go only through the audited admin callable, with one exception: the
+    budget-alert kill switch may set `enabled: false` and `disabledBy`, and nothing else (§9.4).
+  - All three are functions-only: the rules deny every client read and write, apart from that
+    one kill-switch update (`infra/tests/test_rules_emulator.py`). Admins see usage through a
+    callable in stage 2.
     Counter and reservation documents carry `expireAt` (+90 days) for the TTL policy.
 - **Storage** (stage 2): `reports/{uid}/{reportId}.{xlsx,pdf,pptx}`. No client read rule. Access
   is only by **V4 signed URL (1 h)**, issued by a callable that checks ownership. Needs
@@ -617,13 +620,92 @@ Worst-case chat alone would use too much of the $25 shared with Cloud SQL and cr
 - **CI evals:** at most $1.50/month, tracked through a separate CI label. Full runs are
   manual-dispatch only once the smoke budget is used.
 - **Kill switch:** `assistant_config/current.enabled = false`. It is also flipped automatically
-  by the budget-alert Pub/Sub topic at the 90 % **project** threshold, if the owner OKs wiring
-  that topic (§10).
+  by the budget-alert Pub/Sub topic at the 90 % **project** threshold (§9.4). That automatic path
+  is a backstop, not the bound: the meter is.
 - **Reconciliation:** the metered total is compared weekly with the billing export or console
   (Vertex SKU) and the drift is reported. A metered cost is an estimate until reconciled.
 
 Raising the $5 allocation, enabling Pro for viewers, or any spend beyond these caps needs the
 owner's OK via the Coordinator.
+
+### 9.4 Budget-alert kill switch (backstop)
+
+**The meter is the bound; this is a backstop.** Cloud Billing budget data lags actual spend by
+hours (often several, sometimes a day), and a budget notification only reflects what billing has
+already processed. A switch driven by it cannot stop a fast overrun. The $5 slice is enforced
+**before** each call by the meter (§9.3). The switch exists for spend the meter cannot see: a
+metering bug, a code path that skips the meter, a mispriced model, or another workload pushing
+the **project** past 90 % of $25. If it fires, the assistant stays off until the owner turns it
+back on.
+
+**Flow.** The `pi-monthly-25usd` budget publishes to a Pub/Sub topic. A 2nd-gen function
+subscribed to it (`handleBudgetMessage`, `apps/assistant/src/killswitch/`) sets
+`assistant_config/current.enabled = false` and `disabledBy = "budget_alert:<pct>%:<YYYY-MM>"`.
+The meter re-reads the config before every model call, so a running question stops at its next
+call.
+
+**Decision** (`budget.ts`, pure, unit-tested). A message switches the assistant off only if all of
+these hold; anything else is ignored and logged:
+
+- the `budgetId` attribute equals the configured budget, and `schemaVersion` is `1.0`;
+- it was published less than 6 h ago (this ends Pub/Sub retries, and stops last month's late
+  alerts from firing after the reset), and not more than 5 min in the future;
+- the body parses, `currencyCode` is `USD`, and month-to-date `costAmount` ≥ 90 % of
+  `budgetAmount`. The comparison uses integer cents. Notifications arrive several times a day
+  whatever the spend, so `alertThresholdExceeded` is not relied on.
+
+The write is idempotent; repeated alerts rewrite the same two fields. A failed write throws, and
+Pub/Sub retries it (retry on, bounded by the 6 h age).
+
+**Least privilege: rules, not IAM.** Firestore IAM cannot be scoped to one document. Even a
+custom role with only `datastore.entities.update` covers every document in the database. So:
+
+- The function's runtime SA, `pi-killswitch@`, has **no Firestore role and no project role**.
+  Its only grant is `roles/secretmanager.secretAccessor` on **one** secret,
+  `assistant-killswitch-password`.
+- With that password it signs in (Firebase Auth REST) as a dedicated password account whose
+  `role` custom claim is `killswitch`. It then writes through the Firestore REST API with that ID
+  token, so **security rules apply**.
+- `infra/firestore.rules` lets that identity do exactly one thing: **update** the existing
+  `assistant_config/current`, changing only `enabled` (to `false`) and `disabledBy` (pattern
+  above). It cannot read, create or delete documents, touch any other document, or turn the
+  assistant on. A `custom` sign-in with the same claim is refused. The emulator tests in
+  `infra/tests/test_rules_emulator.py` cover each case.
+- **Blast radius if the password leaks:** someone can switch the assistant off. That is an
+  outage of the assistant only, with no spend and no data access. Rotation: reset the password,
+  then add a new secret version.
+- Rejected: a custom-token principal. Minting custom tokens needs
+  `iam.serviceAccountTokenCreator` on the runtime SA, which could mint a token for **any** uid
+  with any claims, admin included. Also rejected: a Google-provider sign-in with the SA's ID
+  token, because enabling the Google provider opens self-sign-up to any Google account.
+
+**Topic.** Only the billing budget service publishes, through the publisher grant created when
+the budget is connected to the topic. The owner checks that the topic policy has no other
+publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function only.
+
+**Owner steps (not run by this PR; each needs the owner's explicit OK via the Coordinator):**
+
+1. Create the topic `pi-budget-alerts` (me-central1 storage policy). Connect the
+   `pi-monthly-25usd` budget to it (*Billing → Budgets → Manage notifications → Connect a Pub/Sub
+   topic*, or `gcloud billing budgets update … --notifications-rule-pubsub-topic`).
+2. Create the SA `pi-killswitch` with no roles and no key.
+3. Create the Firebase Auth password account (an owner-controlled mailbox, e.g. a plus address)
+   and set the claim `{"role": "killswitch"}` with the Admin SDK. The owner sets the password
+   through the reset email, so nobody else sees it. Store it as the first version of the secret
+   `assistant-killswitch-password`, and grant `pi-killswitch@` `secretAccessor` on that secret
+   only.
+4. Deploy the rules (the change in this PR) and the function (the deploy PR wraps
+   `handleBudgetMessage` in `onMessagePublished` with `retry: true`, runtime SA
+   `pi-killswitch@`, secret bound, min instances 0). Deploy config holds the env:
+   `KILL_SWITCH_BUDGET_ID`, the project's Web API key and the account email. No literals in
+   `src/`.
+5. Verify once with a **synthetic message**: publish a hand-built notification with a fake
+   `costAmount` ≥ 90 % to the topic, as the owner. Check that `enabled` flips to false and the
+   function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove
+   `disabledBy` from the admin side. Also check that the function log shows nothing secret.
+
+Cost: Pub/Sub, one function invoked a few times a day, and one secret version. That is ≈ $0.06 a
+month (the secret version; Pub/Sub and Functions stay in the free tier).
 
 ## 10. Prerequisites (owner / Coordinator approvals)
 
@@ -638,13 +720,30 @@ owner's OK via the Coordinator.
 | GitHub protected environment `assistant-evals` + eval workflow job (`.github` change, owner pushes) | **needs owner** | – | Model evals in CI |
 | Service-layer API deployed with `/v1/*` (#39) | Deep Coder's track | – | Stage 1c |
 | `recaptchaenterprise` + App Check | optional, **needs OK** | free ≤ 10 k/month | Stage 1 hardening |
-| Budget → Pub/Sub → kill-switch subscriber | **required before Vertex enablement** (Coordinator, 2026-10-01); own PR after the flow/promptfoo PR; deploy **needs OK** | free | Auto kill switch; catches spend around the meter |
+| Budget → Pub/Sub → kill-switch subscriber (§9.4) | **required before Vertex enablement** (Coordinator, 2026-10-01). Code, rules and tests are in the kill-switch PR. Topic, SA, secret, Auth account and deploy are **owner steps, each needs OK** | ≈ $0.06/month (secret version) | Backstop for spend the meter cannot see |
 | Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `messages` (collection groups) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
 | Rules changes (threads read-own; no client report reads) | with the stage 1 PR, emulator-tested | – | Stage 1 |
 
 Nothing in this PR enables an API, creates a resource or deploys.
+
+### 10.1 Enablement checklist (before the first real question)
+
+All of these must hold before Vertex is enabled or the chat callable is deployed:
+
+1. #51 is merged, the kill-switch PR is merged, the owner has set the $5 slice alert, and the
+   Coordinator gives an explicit OK.
+2. The kill switch is deployed and verified with a synthetic message (§9.4, step 5).
+3. `assistant_config/current` is written by an admin, and it passes `AssistantConfigSchema`:
+   - `promptVersion` **must equal `PROMPT_VERSION`** in `src/flows/prompt.ts`, currently
+     `chat-2026-10-01.2`. If it does not, every question is refused with
+     `prompt_version_mismatch`. Each prompt change bumps the version, and the config must be
+     updated in the same release.
+   - `priceTableVersion` must equal the deployed price table.
+   - `enabled: true`, and no `disabledBy`.
+4. Firestore TTL policies are on (Infra/owner step, table above).
+5. The service-layer API is deployed under `/api/v1`, and the Hosting freeze is lifted by Infra.
 
 ## 11. Rulings on the open questions
 

@@ -65,6 +65,7 @@ USERS: dict[str, str | None] = {
     "signed-in, unknown role": token(role="guest"),
     "viewer": token(role="viewer"),
     "admin": token(role="admin"),
+    "kill switch": token(role="killswitch"),
 }
 INVITED = {"viewer", "admin"}
 
@@ -118,7 +119,8 @@ def test_firestore_demo_collections_are_readable_only_by_invited_roles(who: str)
     assert firestore_get("demo_meta/current", who) == (ALLOWED if who in INVITED else DENIED)
 
 
-# The assistant's meter and config are written only by its service account (Admin SDK).
+# The assistant's meter and config are written only by its service account (Admin SDK); the
+# kill-switch account may only turn the assistant off (tests at the end of this module).
 ASSISTANT_PATHS = [
     "assistant_config/current",
     # Real ids look like "total|2026-09"; rules match the collection, and a raw "|" in the
@@ -158,3 +160,86 @@ def test_storage_outside_datasets_is_denied_to_everyone(name: str, who: str) -> 
 @pytest.mark.parametrize("name", ["datasets/uae/latest.json", "uploads/x.json"])
 def test_storage_clients_never_write(name: str, who: str) -> None:
     assert storage_write(name, who) == DENIED
+
+
+# --- Budget-alert kill switch (docs/design/ai-assistant.md §9.4) --------------------------------
+
+CONFIG = "assistant_config/current"
+OFF = {"enabled": False, "disabledBy": "budget_alert:92%:2026-10"}
+
+
+def _fields(data: dict[str, Any]) -> dict[str, Any]:
+    def value(item: Any) -> dict[str, Any]:
+        if isinstance(item, bool):
+            return {"booleanValue": item}
+        return {"stringValue": str(item)}
+
+    return {key: value(item) for key, item in data.items()}
+
+
+def _doc_url(path: str) -> str:
+    return f"http://{FIRESTORE}/v1/projects/{PROJECT}/databases/(default)/documents/{path}"
+
+
+def seed_config() -> None:
+    """Write the config as the emulator's rule-bypassing owner."""
+    body = {"fields": _fields({"enabled": True, "model": "gemini-flash", "promptVersion": "p1"})}
+    response = httpx.patch(
+        _doc_url(CONFIG), headers={"Authorization": "Bearer owner"}, json=body, timeout=10
+    )
+    response.raise_for_status()
+
+
+def update_config(data: dict[str, Any], tok: str | None, path: str = CONFIG) -> int:
+    """A masked update, as the kill switch sends it (only the listed fields change)."""
+    params = [("updateMask.fieldPaths", key) for key in data] + [("currentDocument.exists", "true")]
+    headers = {"Authorization": f"Bearer {tok}"} if tok else {}
+    return httpx.patch(
+        _doc_url(path), params=params, headers=headers, json={"fields": _fields(data)}, timeout=10
+    ).status_code
+
+
+def test_kill_switch_can_turn_the_assistant_off() -> None:
+    seed_config()
+    assert update_config(OFF, USERS["kill switch"]) == 200
+
+
+@pytest.mark.parametrize("who", [w for w in USERS if w != "kill switch"])
+def test_only_the_kill_switch_account_may_turn_it_off(who: str) -> None:
+    seed_config()
+    assert update_config(OFF, USERS[who]) == DENIED
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"enabled": True, "disabledBy": "budget_alert:92%:2026-10"},
+        {"enabled": False, "disabledBy": "owner said so"},
+        {"enabled": False},
+        {**OFF, "model": "gemini-pro"},
+        {**OFF, "promptVersion": "p2"},
+    ],
+    ids=["turn-on", "free-text-reason", "no-reason", "change-model", "change-prompt"],
+)
+def test_kill_switch_can_change_nothing_else(data: dict[str, Any]) -> None:
+    seed_config()  # the seeded config has no disabledBy, so "no-reason" must be refused
+    assert update_config(data, USERS["kill switch"]) == DENIED
+
+
+def test_kill_switch_needs_a_password_sign_in() -> None:
+    seed_config()
+    custom = token(role="killswitch", firebase={"sign_in_provider": "custom", "identities": {}})
+    assert update_config(OFF, custom) == DENIED
+
+
+@pytest.mark.parametrize("path", ["assistant_config/next", *ASSISTANT_PATHS[1:]])
+def test_kill_switch_cannot_write_other_documents(path: str) -> None:
+    assert update_config(OFF, USERS["kill switch"], path) == DENIED
+
+
+def test_kill_switch_cannot_read_or_delete_the_config() -> None:
+    seed_config()
+    tok = USERS["kill switch"]
+    assert firestore_get(CONFIG, "kill switch") == DENIED
+    headers = {"Authorization": f"Bearer {tok}"}
+    assert httpx.delete(_doc_url(CONFIG), headers=headers, timeout=10).status_code == DENIED
