@@ -1,7 +1,9 @@
 # Demo dataset exporter
 
 This read-only script converts the latest AED observations in a local `pi_db` into the
-frontend's `pi.dataset/v1` snapshot. It performs no retailer or Algolia requests.
+frontend's `pi.dataset/v1` snapshot and, with `--output-v2`, the same snapshot as
+`pi.dataset/v2` (`v2.py`, contract in `docs/contracts/pi-dataset-v2.md`). It performs no retailer
+or Algolia requests.
 
 The export grain is product family × pack size. Shade variants collapse into one offer and
 the representative variant is the lowest-priced in-stock variant (or the lowest-priced
@@ -13,16 +15,32 @@ Run from the repository root:
 ```sh
 uv run python scripts/demo_export/export.py \
   --database-url "$PI_DATABASE_URL" \
-  --output "$OUTPUT_PATH"
+  --output "$OUTPUT_PATH" \
+  --output-v2 "$OUTPUT_V2_PATH" --producer-commit "$(git rev-parse HEAD)"
 ```
+
+The v2 file is built from the same rows, groups and pairs as v1 (same product ids), built as
+`pi_dataset` models and re-read with the strict `load_dataset` before anything is written; an
+invalid v2 document fails the whole export. `--scope` (default `beauty`) names the storage folder
+`datasets/ae/<scope>/`. v1 stays the dashboard's input until it moves to v2 (ADR-0007 §6).
+
+v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
+value captured on any other day is published as `null`, never carried forward (contract rule 6),
+and `meta.fields.price` / `regular` / `stock` say `partial`. Stock has its own capture time (the
+newest row that observed a stock state, carried as `stock_*` like `price_*`), separate from the
+price capture. An offer's evidence is its price
+capture when the price is published, else its stock observation. Ulta's `blocked` status and window
+come from the owner's statement (`--ulta-blocked-since` and the notes), not from whether Ulta rows
+exist; pass `--ulta-unblocked` once Ulta is collected again.
 
 For the pilot, ulta.ae is blocked (owner decision, 2026-09-30): the Ulta status line is
 `--ulta-blocked-note` / `--ulta-blocked-note-ar`, defaulting to "ulta.ae: blocked by site security
-(Cloudflare) via Gulf datacenter and UAE residential; 0 products". No recon products or recon
+(Cloudflare) via Gulf datacenter and UAE residential; 0 products". Pass both notes or neither;
+neither may be empty. No recon products or recon
 sentence are exported unless the recon arguments below are passed.
 
-Inputs are the read-only local `pi_db` URL plus optional reviewed Ulta recon metadata. The single
-output is the plain JSON file at `OUTPUT_PATH`; use a scratch path outside the repository. This is
+Inputs are the read-only local `pi_db` URL plus optional reviewed Ulta recon metadata. The output
+is the plain JSON file at `OUTPUT_PATH` (plus `OUTPUT_V2_PATH` when given); use a scratch path outside the repository. This is
 a one-shot command: it reads each UAE source context's newest crawl run, writes atomically, prints
 the cutoff and SHA-256, then exits. It never polls or waits for a crawl.
 
@@ -48,9 +66,12 @@ are excluded from product coverage, matching and price comparison totals. The re
 is never inferred: when supplied, it must include the report path and commit as its source.
 
 The exporter reads money as `Decimal` and accepts AED values with at most two fractional digits.
-The final JSON uses JSON numbers because JSON has no decimal scalar; values are never emitted as
+The v1 JSON uses JSON numbers because JSON has no decimal scalar; values are never emitted as
 strings or synthesized from missing data. Only observations from each UAE source context's newest
 crawl run are exported, so an older observation cannot appear under the current cutoff date.
+v2 has no floats at all: money is a decimal string plus integer minor units, ratings keep the
+retailer's own scale, and a zero or negative price is "not observed" (reported as
+`parse_failure`/`partial` in `meta.fields.price`), never a price.
 
 Validate the result with the frontend-owned validator before handoff:
 

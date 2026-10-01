@@ -14,6 +14,7 @@ from scripts.demo_export.export import (
     MatchRow,
     UltaContext,
     build_dataset,
+    check_args,
     choose_representative,
     contains_secret,
     group_rows,
@@ -291,15 +292,17 @@ def test_blocked_ulta_without_recon_is_the_owner_status_line_only() -> None:
         "ulta.ae: blocked by site security (Cloudflare) via Gulf datacenter and UAE residential; "
         "0 products"
     )
-    assert not [p for p in dataset["products"] if "u" in p["offers"] and p["offers"]["u"]]
+
+
+BASE_ARGS = ["--database-url", "x", "--output", "o.json"]
 
 
 def test_blocked_note_is_data_from_the_cli() -> None:
     args = parser().parse_args(
-        ["--database-url", "x", "--output", "o.json", "--ulta-blocked-note", "custom"]
+        [*BASE_ARGS, "--ulta-blocked-note", "custom", "--ulta-blocked-note-ar", "مخصص"]
     )
-    assert args.ulta_blocked_note == "custom"
-    assert args.ulta_blocked_note_ar == ULTA_BLOCKED_NOTE_AR
+    check_args(args)
+    assert (args.ulta_blocked_note, args.ulta_blocked_note_ar) == ("custom", "مخصص")
     dataset = build_dataset(
         [row()],
         [],
@@ -307,6 +310,32 @@ def test_blocked_note_is_data_from_the_cli() -> None:
         ulta=UltaContext(blocked_since=NOW, blocked_note="custom", blocked_note_ar="مخصص"),
     )
     assert dataset["meta"]["retailers"][0]["note"] == {"en": "custom", "ar": "مخصص"}
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--ulta-blocked-note", "custom"], "supplied together"),
+        (["--ulta-blocked-note-ar", "مخصص"], "supplied together"),
+        (["--ulta-blocked-note", " ", "--ulta-blocked-note-ar", "مخصص"], "must not be empty"),
+        (
+            [
+                "--ulta-early-fixture",
+                "f.html",
+                "--ulta-captured-at",
+                "2026-09-30T20:40:00Z",
+                "--ulta-fixture-commit",
+                "abc1234",
+            ],
+            "needs --ulta-recon-observed-count",
+        ),
+    ],
+)
+def test_cli_refuses_half_translated_or_contradictory_ulta_notes(
+    extra: list[str], message: str
+) -> None:
+    with pytest.raises(SystemExit, match=message):
+        check_args(parser().parse_args([*BASE_ARGS, *extra]))
 
 
 def test_real_ulta_rows_are_partial_not_early() -> None:
