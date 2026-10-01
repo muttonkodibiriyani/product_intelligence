@@ -8,12 +8,12 @@ import en from '@/messages/en.json';
 import widgetsAr from '@/messages/widgets.ar.json';
 import widgets from '@/messages/widgets.en.json';
 import type { Palette } from './chart';
-import { GapHistWidget } from './charts';
+import { GapHistWidget, visualRtl } from './charts';
 import { gapBinSign, gapHistBins } from './model';
 
 // The chart is ECharts; here it hands back the option the widget builds, on a palette of names.
 type Built = {
-  yAxis: { data: string[] };
+  yAxis: { data: string[]; axisLabel: { formatter: (v: string) => string } };
   series: { data: { value: number; itemStyle: { color: string } }[] }[];
 };
 const built: { label: string; option: Built }[] = [];
@@ -100,13 +100,23 @@ describe('GapHistWidget', () => {
     ]);
   });
 
-  it('in Arabic: opens with a word, each bound an LTR isolate, no bidi marks', () => {
+  it('in Arabic, the axis gets the label in visual order, never opening with a mark', () => {
     const { option } = draw(hist, 'ar');
-    const iso = (v: string) => `\u2066${v}\u2069`;
+    const axis = option.yAxis.data.map(option.yAxis.axisLabel.formatter);
+    expect(axis[0]).toBe('−50%\u200e أقل من');
+    expect(axis[1]).toBe('−25%\u200e إلى \u200e−50%\u200e من');
+    expect(axis[10]).toBe('+50%\u200e بدءًا من');
+    expect(axis.some((l) => /^[\u200e\u200f\u2066-\u2069]/.test(l))).toBe(false);
+    expect(draw(hist).option.yAxis.axisLabel.formatter('< −50%')).toBe('< −50%');
+    expect(visualRtl('من \u200e+1%\u200e إلى \u200e+5%\u200e')).toBe('+5%\u200e إلى \u200e+1%\u200e من');
+  });
+
+  it('in Arabic: opens with a word, each bound held between LRMs', () => {
+    const { option } = draw(hist, 'ar');
+    const iso = (v: string) => `\u200e${v}\u200e`;
     expect(option.yAxis.data[0]).toBe(`أقل من ${iso('−50%')}`);
     expect(option.yAxis.data[1]).toBe(`من ${iso('−50%')} إلى ${iso('−25%')}`);
     expect(option.yAxis.data[10]).toBe(`بدءًا من ${iso('+50%')}`);
     expect(option.yAxis.data.every((l) => /^[\u0600-\u06ff]/.test(l))).toBe(true);
-    expect(option.yAxis.data.join('')).not.toMatch(/[\u200e\u200f]/);
   });
 });

@@ -1032,16 +1032,31 @@ export function GroupGapWidget({
 }
 
 /**
- * A gap bound for an axis label: signed, with a true minus. Intl's own bidi marks are dropped (Firefox
- * drops SVG text that starts with one); in Arabic each bound is an LTR isolate instead, so its sign
- * stays put, and the Arabic labels open with a word, never with the isolate.
+ * A gap bound for an axis label: signed, with a true minus. In Arabic each bound sits between two
+ * LRMs so its sign stays with its number (Firefox's SVG text ignores isolates); the Arabic labels
+ * open with a word, so no label starts with a mark (Firefox drops SVG text that does).
  */
 const gapBound = (v: string, locale: string) => {
   const s = signedPct(v, locale)
     .replace(/[\u200e\u200f]/g, '')
     .replace(/^-/, '\u2212');
-  return locale === 'ar' ? `\u2066${s}\u2069` : s;
+  return locale === 'ar' ? `\u200e${s}\u200e` : s;
 };
+
+/**
+ * An Arabic gap label in visual order for ECharts' SVG text, which Firefox lays out left to right
+ * and mismeasures when it opens with a direction mark. The label's runs (its Arabic words, and each
+ * bound held between LRMs) are put in reverse, so it reads right to left; each run keeps its own
+ * direction. "من ‎−50%‎ إلى ‎−25%‎" becomes "−25%‎ إلى ‎−50%‎ من".
+ */
+export const visualRtl = (label: string) =>
+  label
+    .split(/(\u200e[^\u200e]*\u200e)/)
+    .map((run) => run.trim())
+    .filter(Boolean)
+    .reverse()
+    .join(' ')
+    .replace(/^\u200e/, '');
 
 /**
  * How the matched pairs spread by price gap, from the API's own histogram: one bar per bin, named
@@ -1085,7 +1100,7 @@ export function GapHistWidget({
           data: bins.map(label),
           axisTick: { show: false },
           axisLine: { show: false },
-          axisLabel: { color: p.ink },
+          axisLabel: { color: p.ink, formatter: (v: string) => (rtl ? visualRtl(v) : v) },
         },
         tooltip: {
           ...(base(p, rtl).tooltip as object),
