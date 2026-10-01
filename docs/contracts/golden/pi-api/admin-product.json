@@ -21,6 +21,7 @@
         }
       ],
       "name": "Product p01",
+      "priceFlags": {},
       "prices": {
         "shop_a": {
           "amount": "90.00",
@@ -58,6 +59,7 @@
           "currency": "AED",
           "minor": 9000
         },
+        "priceFlag": null,
         "promoPct": "10.0",
         "rating": {
           "average": "4.20",
@@ -96,6 +98,7 @@
           "currency": "AED",
           "minor": 10000
         },
+        "priceFlag": null,
         "promoPct": null,
         "rating": {
           "average": "4.20",
