@@ -753,8 +753,9 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
 4. **API key check.** The switch signs in server-side and sends no `Referer`. Use the project's
    Web API key only if it has **no application restriction** (no HTTP-referrer, IP, Android or
    iOS restriction) **and** either no API restriction or one that includes
-   `identitytoolkit.googleapis.com`. Inspect it with `gcloud services api-keys describe <key-id>`.
-   Otherwise stop: a dedicated key restricted to `identitytoolkit` is a new resource and needs
+   `identitytoolkit.googleapis.com`. Inspect it with `gcloud services api-keys describe <key-id>`,
+   or in the console (*APIs & Services → Credentials → the Browser key → Application
+   restrictions / API restrictions*). Otherwise stop: a dedicated key restricted to `identitytoolkit` is a new resource and needs
    OK.
    **Seed the config document.** `assistant_config/current` must exist before the first alert.
    The rules allow only an update, and the switch writes with `currentDocument.exists=true`, so
