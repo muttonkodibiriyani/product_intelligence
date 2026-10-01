@@ -733,8 +733,8 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
    the account, and again at step 5, at every rotation and in the enablement checklist (§10.1).
    As the owner, list users with the Admin SDK (`auth.list_users()` / `listUsers()`, paging to
    the end) and count those whose custom claims have `role == "killswitch"`. Expect exactly 1,
-   and expect it to be the account in `KILL_SWITCH_EMAIL`. The check prints only the count and a masked
-   email. If there are none, the switch cannot sign in. If there is more than one, every extra
+   and expect it to be the account in `KILL_SWITCH_EMAIL`. The check prints only the count and a
+   masked email. If there are none, the switch cannot sign in. If there is more than one, every extra
    account is an unexplained identity that can switch the assistant off: disable it, remove its
    claim and find out how it was set.
 4. Deploy the rules (`infra/firebase.json`, `--only firestore:rules`) and then the function
@@ -757,8 +757,8 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
    a project other than productintelligence-beeb3. The error names the variable, never its value.
 5. Verify once with a **synthetic message**: publish a hand-built notification with a fake
    `costAmount` ≥ 90 % to the topic, as the owner. The attributes must carry the real
-   `budgetId` and `schemaVersion: 1.0`, and the publish must be fresh (under 6 h). Check that `enabled` flips to false and the
-   function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove
+   `budgetId` and `schemaVersion: 1.0`, and the publish must be fresh (under 6 h). Check that
+   `enabled` flips to false and the function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove
    `disabledBy` from the admin side. Also check that the function log shows nothing secret, and
    re-run the single-account check (step 3).
 
