@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, loc } from './format';
+import { formatDate, loc, formatCount } from './format';
 
 describe('formatDate', () => {
   it('formats a date as UTC with Latin digits in both languages', () => {
@@ -18,5 +18,12 @@ describe('loc', () => {
     expect(loc({ en: 'Makeup only.' }, 'ar')).toBe('Makeup only.');
     expect(loc({ en: 'a', ar: 'ب' }, 'ar')).toBe('ب');
     expect(loc(null, 'en')).toBe('');
+  });
+});
+
+describe('formatCount', () => {
+  it('uses Latin digits in Arabic too', () => {
+    expect(formatCount(1234, 'ar')).toMatch(/^1[^\d]?234$/);
+    expect(formatCount(16, 'en')).toBe('16');
   });
 });

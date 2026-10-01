@@ -21,3 +21,8 @@ export function formatDate(iso: string, locale: string, withTime = false): strin
     numberingSystem: 'latn',
   }).format(d);
 }
+
+/** A count in Latin digits, matching prices and dates (ICU's `#` would follow the engine's default). */
+export function formatCount(n: number, locale: string): string {
+  return new Intl.NumberFormat(locale === 'ar' ? 'ar-AE' : 'en-GB', { numberingSystem: 'latn' }).format(n);
+}

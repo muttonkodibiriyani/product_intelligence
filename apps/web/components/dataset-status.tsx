@@ -1,11 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { formatDate, loc } from '@/lib/format';
-import { useAuth } from './auth-provider';
 import { ErrorNotice } from './error-notice';
+import { useMeta } from './use-meta';
 import { Known } from './ui/known';
 
 /** What data the app is looking at. Every value is shown as the API sent it. */
@@ -13,12 +12,7 @@ export function DatasetStatus() {
   const t = useTranslations('home');
   const tr = useTranslations('reasons');
   const locale = useLocale();
-  const { api } = useAuth();
-  const q = useQuery({
-    queryKey: ['meta'],
-    queryFn: ({ signal }) => api!.get('/api/v1/meta', { signal }),
-    enabled: !!api,
-  });
+  const q = useMeta();
 
   if (q.isError) return <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />;
   if (!q.data)
@@ -65,7 +59,7 @@ export function DatasetStatus() {
             </Row>
           </dl>
           <h2 className="mt-8 text-base font-semibold">{t('retailers')}</h2>
-          <div className="mt-2 overflow-x-auto">
+          <div className="relative mt-2 overflow-x-auto">
             <table className="w-full max-w-3xl text-sm">
               <tbody>
                 {m.retailers.map((r) => (
