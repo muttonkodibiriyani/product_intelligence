@@ -304,7 +304,9 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
     relative to base first; `gap_asc` puts other cheapest first. Uncounted cards come last in
     both, and ties and the tail are ordered by id.
 - **`/v1/products/{id}`:** the card, plus `offers[retailer]`:
-  - `price`, `regular`, `promoPct`, `rating{average, count}`, `size`, `shadeCount`, `sku`, `url`,
+  - `price`, `regular`, `promoPct`, `rating{average, count}`, `size`, `shadeCount`, `sku`, `url`
+    (as built: `evidence.url`, null unless it is https on one of that retailer's hosts in
+    `PI_API_EVIDENCE_HOSTS`; the FE checks only the scheme),
     `early`, `capturedAt`, `availability`;
   - `gap {gapAmount: Money, gapPct, cheaper, convention} | null`, with `gapExcludedReason` when
     null;

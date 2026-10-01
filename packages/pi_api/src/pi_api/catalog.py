@@ -12,12 +12,13 @@ import hashlib
 import json
 import unicodedata
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from itertools import combinations
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from pydantic import Field
 
@@ -518,9 +519,37 @@ def product_cards(ds: Dataset, query: ProductFilters) -> Metric[tuple[ProductCar
 # ---------------------------------------------------------------- detail and history
 
 
+#: Per retailer, the hosts its evidence URLs may point at (``Settings.evidence_hosts``).
+EvidenceHosts = Mapping[str, frozenset[str]]
+
+
 class Evidence(ContractModel):
     captured_at: datetime
+    #: Only an https URL on the retailer's allowlisted hosts; anything else is null.
     url: SourceText | None
+
+
+def evidence_url(url: object, retailer: str, hosts: EvidenceHosts) -> str | None:
+    """``url`` if it is https, on one of ``retailer``'s hosts, with no credentials or odd port.
+
+    The FE checks only the scheme, so this is where a dataset URL pointing anywhere else (a
+    phishing host, another retailer's host, ``user@host`` tricks) is stopped: it becomes null.
+    """
+    if url is None:
+        return None
+    text = str(url)
+    if not text.isascii() or not text.isprintable() or " " in text or "\\" in text:
+        return None  # browsers read a backslash as "/", so its host could differ from ours
+    try:
+        parts = urlsplit(text)
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or parts.username is not None or parts.password is not None:
+        return None
+    if port not in (None, 443) or parts.hostname is None:
+        return None
+    return text if parts.hostname in hosts.get(retailer, frozenset()) else None
 
 
 class AdminEvidence(Evidence):
@@ -596,12 +625,12 @@ def find(ds: Dataset, product_id: str) -> Product:
     raise ProductNotFoundError(product_id)
 
 
-def product_detail(ds: Dataset, product: Product) -> Metric[ProductDetail]:
+def product_detail(ds: Dataset, product: Product, hosts: EvidenceHosts) -> Metric[ProductDetail]:
     offers = tuple(
         OfferView(
             **_offer_fields(ds, r, o),
             evidence=Evidence(
-                captured_at=o.evidence.captured_at, url=None if o.url is None else str(o.url)
+                captured_at=o.evidence.captured_at, url=evidence_url(o.url, r, hosts)
             ),
         )
         for r, o in sorted(product.offers.items())
@@ -613,13 +642,15 @@ def product_detail(ds: Dataset, product: Product) -> Metric[ProductDetail]:
     )
 
 
-def admin_product_detail(ds: Dataset, product: Product) -> Metric[AdminProductDetail]:
+def admin_product_detail(
+    ds: Dataset, product: Product, hosts: EvidenceHosts
+) -> Metric[AdminProductDetail]:
     offers = tuple(
         AdminOfferView(
             **_offer_fields(ds, r, o),
             evidence=AdminEvidence(
                 captured_at=o.evidence.captured_at,
-                url=None if o.url is None else str(o.url),
+                url=evidence_url(o.url, r, hosts),
                 source=o.evidence.source,
                 run_id=o.evidence.run_id,
             ),

@@ -36,6 +36,12 @@ def test_settings_from_env() -> None:
     assert (settings.refresh_seconds, settings.rate_per_second, settings.rate_burst) == (60, 10, 30)
     assert settings.allow_test is False
     assert Settings.from_env({**ENV, "PI_API_ALLOW_TEST": "1"}).allow_test is True
+    assert settings.evidence_hosts == {}
+    hosts = " shop_a=shop-a.example, shop_b=b.example ,shop_a=www.shop-a.example,"
+    assert Settings.from_env({**ENV, "PI_API_EVIDENCE_HOSTS": hosts}).evidence_hosts == {
+        "shop_a": frozenset({"shop-a.example", "www.shop-a.example"}),
+        "shop_b": frozenset({"b.example"}),
+    }
 
 
 @pytest.mark.parametrize(
@@ -49,6 +55,13 @@ def test_settings_from_env() -> None:
         {k: v for k, v in ENV.items() if k != "PI_API_LOCAL_DIR"},
         {**ENV, "PI_API_FIREBASE_PROJECT": ""},
         {**ENV, "PI_API_RATE_BURST": "0"},
+        {**ENV, "PI_API_EVIDENCE_HOSTS": "shop-a.example"},
+        {**ENV, "PI_API_EVIDENCE_HOSTS": "shop_a=https://shop-a.example"},
+        {**ENV, "PI_API_EVIDENCE_HOSTS": "shop_a=*.shop-a.example"},
+        {**ENV, "PI_API_EVIDENCE_HOSTS": "shop_a=shop-a.example:443"},
+        {**ENV, "PI_API_EVIDENCE_HOSTS": "shop_a=Shop-A.example"},
+        {**ENV, "PI_API_EVIDENCE_HOSTS": "Shop A=shop-a.example"},
+        {**ENV, "PI_API_EVIDENCE_HOSTS": "shop_a=localhost"},
     ],
 )
 def test_bad_settings_are_refused(env: dict[str, str]) -> None:

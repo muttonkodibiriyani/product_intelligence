@@ -56,6 +56,7 @@ from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifie
 from pi_api.catalog import (
     AdminProductDetail,
     CoverageQuery,
+    EvidenceHosts,
     History,
     HistoryQuery,
     InvalidQueryError,
@@ -395,7 +396,7 @@ def respond[T](
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
-def build_api(source: SnapshotSource) -> FastAPI:
+def build_api(source: SnapshotSource, evidence_hosts: EvidenceHosts | None = None) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
         title="Product Intelligence API",
@@ -407,6 +408,7 @@ def build_api(source: SnapshotSource) -> FastAPI:
         responses=ERROR_RESPONSES,
     )
     _install_handlers(api)
+    hosts: EvidenceHosts = {} if evidence_hosts is None else evidence_hosts
 
     @api.get(f"{PREFIX}/meta", response_model=Envelope[MetaView], response_model_by_alias=True)
     def get_meta(
@@ -439,7 +441,7 @@ def build_api(source: SnapshotSource) -> FastAPI:
         _: Annotated[Principal, Depends(principal)],
     ) -> Envelope[ProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = product_detail(loaded.dataset, find(loaded.dataset, product_id))
+        detail = product_detail(loaded.dataset, find(loaded.dataset, product_id), hosts)
         return respond(loaded, "product", query, detail)
 
     @api.get(f"{PREFIX}/admin/products/{{product_id}}", response_model=Envelope[AdminProductDetail])
@@ -449,7 +451,7 @@ def build_api(source: SnapshotSource) -> FastAPI:
         _: Annotated[Principal, Depends(admin)],
     ) -> Envelope[AdminProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = admin_product_detail(loaded.dataset, find(loaded.dataset, product_id))
+        detail = admin_product_detail(loaded.dataset, find(loaded.dataset, product_id), hosts)
         return respond(loaded, "admin_product", query, detail)
 
     @api.get(f"{PREFIX}/products/{{product_id}}/history", response_model=Envelope[History])
@@ -729,8 +731,14 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
         )
 
 
-def create_app(source: SnapshotSource, verifier: TokenVerifier, buckets: TokenBuckets) -> ASGIApp:
-    return NoStore(ServerErrors(Authenticate(RateLimit(build_api(source), buckets), verifier)))
+def create_app(
+    source: SnapshotSource,
+    verifier: TokenVerifier,
+    buckets: TokenBuckets,
+    evidence_hosts: EvidenceHosts | None = None,
+) -> ASGIApp:
+    api = build_api(source, evidence_hosts)
+    return NoStore(ServerErrors(Authenticate(RateLimit(api, buckets), verifier)))
 
 
 def store_for(settings: Settings) -> ObjectStore:
@@ -753,4 +761,4 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
     source.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())
     buckets = TokenBuckets(settings.rate_per_second, settings.rate_burst)
-    return create_app(source, verifier, buckets)
+    return create_app(source, verifier, buckets, settings.evidence_hosts)

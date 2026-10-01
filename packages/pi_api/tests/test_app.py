@@ -9,6 +9,7 @@ from typing import Any
 
 import anyio
 import pytest
+from pydantic import HttpUrl
 from starlette.types import Message, Receive, Scope, Send
 
 from api_fixture import (
@@ -24,7 +25,9 @@ from api_fixture import (
 from metrics_fixture import A, B, C, rebuild, with_capabilities
 from pi_api.app import ServerErrors, TokenBuckets
 from pi_api.auth import CertificatesUnavailableError
+from pi_api.catalog import evidence_url
 from pi_api.source import SnapshotSource
+from pi_dataset import Dataset, Offer, Product
 
 API = "/api/v1"
 NO_STORE = "private, no-store"
@@ -381,6 +384,68 @@ def test_product_detail_hides_admin_evidence(client: Client) -> None:
     assert set(offer["evidence"]) == {"capturedAt", "url"}
     assert body(client, f"{API}/products/zz", 404)["error"]["code"] == "not_found"
     assert body(client, f"{API}/products/a%20b", 422)["error"]["code"] == "invalid_request"
+
+
+HOSTS = {A: frozenset({"shop-a.example", "www.shop-a.example"})}
+
+
+@pytest.mark.parametrize(
+    ("url", "retailer", "served"),
+    [
+        ("https://shop-a.example/p/1?v=2#x", A, True),
+        ("https://WWW.Shop-A.example/p/1", A, True),
+        ("https://shop-a.example:443/p/1", A, True),
+        (None, A, False),
+        ("https://shop-a.example/p/1", B, False),  # another retailer's host
+        ("https://shop-c.example/p/1", C, False),  # retailer with no allowlist
+        ("http://shop-a.example/p/1", A, False),
+        ("javascript:alert(1)", A, False),
+        ("https://evil.example/shop-a.example", A, False),
+        ("https://shop-a.example.evil.example/p", A, False),
+        ("https://evil.example#@shop-a.example", A, False),
+        ("https://shop-a.example@evil.example/p", A, False),
+        ("https://user:pw@shop-a.example/p", A, False),
+        ("https://shop-a.example:8443/p", A, False),
+        ("https://shop-a.example:99999/p", A, False),
+        ("https://shop-a.example\\@evil.example/", A, False),
+        ("https://shop-a.example/p\nx", A, False),
+        ("https://shop-a.example/p 1", A, False),
+        ("https://shöp-a.example/p", A, False),
+        ("https://[::1]/p", A, False),
+        ("https://[/p", A, False),
+        ("//shop-a.example/p", A, False),
+    ],
+)
+def test_evidence_url_keeps_only_allowlisted_https_hosts(
+    url: str | None, retailer: str, served: bool
+) -> None:
+    assert evidence_url(url, retailer, HOSTS) == (url if served else None)
+
+
+def _with_urls(ds: Dataset, urls: dict[str, str]) -> Dataset:
+    def offers(p: Product) -> dict[str, Offer]:
+        if p.id != "p01":
+            return dict(p.offers)
+        return {
+            r: o.model_copy(update={"url": HttpUrl(urls[r])}) if r in urls else o
+            for r, o in p.offers.items()
+        }
+
+    products = tuple(p.model_copy(update={"offers": offers(p)}) for p in ds.products)
+    return Dataset.model_validate(ds.model_copy(update={"products": products}).model_dump())
+
+
+@pytest.mark.parametrize("path", [f"{API}/products/p01", f"{API}/admin/products/p01"])
+def test_detail_nulls_evidence_urls_off_the_allowlist(tmp_path: Path, path: str) -> None:
+    # B's offer points at A's host: allowlisted for A, so it must still be null for B.
+    urls = {A: "https://www.shop-a.example/p/1", B: "https://shop-a.example/p/1"}
+    write(tmp_path, _with_urls(served_dataset(), urls))
+    allowed = make_client(tmp_path, evidence_hosts=HOSTS)[0]
+    offers = body(allowed, path, role="admin")["data"]["offers"]
+    assert {o["retailer"]: o["evidence"]["url"] for o in offers} == {A: urls[A], B: None}
+    default = make_client(tmp_path)[0]  # no allowlist configured: every URL is null
+    offers = body(default, path, role="admin")["data"]["offers"]
+    assert all(o["evidence"]["url"] is None for o in offers)
 
 
 def test_admin_detail_is_admin_only(client: Client) -> None:
