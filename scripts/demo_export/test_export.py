@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # ruff: noqa: S101, PLR0913
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -30,6 +31,7 @@ from scripts.demo_export.export import (
     parser,
     psycopg_database_url,
 )
+from scripts.demo_export.v2 import build_dataset_v2
 
 NOW = datetime(2026, 9, 30, 22, 0, tzinfo=UTC)
 
@@ -397,6 +399,35 @@ def test_v1_ulta_status_comes_from_the_ruling_not_from_ulta_rows() -> None:
     rows, _ = ulta_and_sephora_pair()
     dataset = build_dataset(rows, [], generated_at=NOW, ulta=UltaContext(blocked_since=NOW))
     assert dataset["meta"]["retailers"][0]["status"] == "blocked"
+
+
+def test_the_cutoff_comes_from_the_exported_sources_only() -> None:
+    """A later Ulta import in pi_db never becomes the Sephora file's 'data as of'."""
+    sephora_at, ulta_at = (
+        datetime(2026, 10, 1, 2, 0, tzinfo=UTC),
+        datetime(2026, 10, 1, 9, 0, tzinfo=UTC),
+    )
+    generated = datetime(2026, 10, 1, 10, 0, tzinfo=UTC)
+    rows = [
+        replace(row(), observed_at=sephora_at, evidence_retrieved_at=sephora_at),
+        replace(
+            row(source="ulta_ae", family=20, variant=200),
+            observed_at=ulta_at,
+            evidence_retrieved_at=ulta_at,
+        ),
+    ]
+    selected = in_sources(rows, DEFAULT_SOURCES)
+    v1 = build_dataset(selected, [], generated_at=generated, ulta=UltaContext(blocked_since=NOW))
+    assert v1["meta"]["cutoff"] == "2026-10-01T02:00:00Z"
+    v2 = build_dataset_v2(
+        selected,
+        [],
+        generated_at=generated,
+        ulta=UltaContext(blocked_since=NOW),
+        ulta_note=v1["meta"]["retailers"][0]["note"],
+        ulta_in_scope=False,
+    )
+    assert v2.meta.cutoff == sephora_at
 
 
 def test_v1_keeps_ulta_as_a_blocked_placeholder_with_sephora_only_sources() -> None:
