@@ -723,11 +723,19 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
 
 **Owner steps (not run by this PR; each needs the owner's explicit OK via the Coordinator):**
 
+0. Enable only the APIs the deploy needs and the project lacks (check with
+   `gcloud services list --enabled`): `pubsub`, `secretmanager`, `cloudfunctions`, `run`,
+   `cloudbuild`, `artifactregistry` and `eventarc`. Add `billingbudgets` only to read the budget
+   id with `gcloud billing budgets list` (as in `.env.example`); skip it if the id is read in the
+   console. This is the §10 "needs OK" row. It is an explicit step because the Firebase CLI deploy
+   would otherwise enable them silently.
 1. Create the topic `pi-budget-alerts` (me-central1 storage policy). Connect the
-   `pi-monthly-25usd` budget to it (*Billing → Budgets → Manage notifications → Connect a Pub/Sub
-   topic*, or `gcloud billing budgets update … --notifications-rule-pubsub-topic`). Record the
-   billing account's currency (the budget's amounts are in it) for `KILL_SWITCH_CURRENCY` and the
-   decision log.
+   `pi-monthly-25usd` budget to it **in the console** (*Billing → Budgets → Manage notifications
+   → Connect a Pub/Sub topic*). The console also adds the billing publisher grant. Do not use
+   `gcloud billing budgets update … --notifications-rule-pubsub-topic`: it rewrites the
+   notification rule, which can drop the existing 50/90/100 % email alerts. Afterwards, check
+   that the budget's thresholds are unchanged. Record the billing account's currency (the
+   budget's amounts are in it) for `KILL_SWITCH_CURRENCY` and the decision log.
 2. Create the SA `pi-killswitch` with no roles and no key.
 3. Create the Firebase Auth password account (an owner-controlled mailbox, e.g. a plus address)
    and set the claim `{"role": "killswitch"}` with the Admin SDK. The owner sets the password
@@ -742,7 +750,19 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
    masked email. If there are none, the switch cannot sign in. If there is more than one, every extra
    account is an unexplained identity that can switch the assistant off: disable it, remove its
    claim and find out how it was set.
-4. Deploy the rules (`infra/firebase.json`, `--only firestore:rules`) and then the function
+4. **API key check.** The switch signs in server-side and sends no `Referer`. Use the project's
+   Web API key only if it has **no application restriction** (no HTTP-referrer, IP, Android or
+   iOS restriction) **and** either no API restriction or one that includes
+   `identitytoolkit.googleapis.com`. Inspect it with `gcloud services api-keys describe <key-id>`,
+   or in the console (*APIs & Services → Credentials → the Browser key → Application
+   restrictions / API restrictions*). Otherwise stop: a dedicated key restricted to `identitytoolkit` is a new resource and needs
+   OK.
+   **Seed the config document.** `assistant_config/current` must exist before the first alert.
+   The rules allow only an update, and the switch writes with `currentDocument.exists=true`, so
+   without the document every alert fails and retries. An admin creates it with
+   `enabled: true` (console). That is harmless while the chat callable is undeployed and Vertex
+   is off, and it lets step 5 show a real flip.
+   Deploy the rules (`infra/firebase.json`, `--only firestore:rules`) and then the function
    `budgetKillSwitch` (`apps/assistant/src/index.ts`: `onMessagePublished` on
    `pi-budget-alerts`, `retry: true`, runtime SA `pi-killswitch@`, secret `KILL_SWITCH_PASSWORD`
    bound to this function only, min instances 0, max 1, me-central1). The env goes in
@@ -764,8 +784,9 @@ publisher. The Eventarc trigger SA gets `roles/run.invoker` on this function onl
 5. Verify once with a **synthetic message**: publish a hand-built notification with a fake
    `costAmount` ≥ 90 % to the topic, as the owner. The attributes must carry the real
    `budgetId` and `schemaVersion: 1.0`, and the publish must be fresh (under 6 h). Check that
-   `enabled` flips to false and the function log shows `kill_switch_disabled`. Then restore `enabled: true` and remove
-   `disabledBy` from the admin side. Also check that the function log shows nothing secret, and
+   `enabled` flips to false and the function log shows `kill_switch_disabled`. Then, from the admin side, leave it
+   **off**: keep `enabled: false` and remove `disabledBy`, until the full config write in §10.1
+   item 3. Also check that the function log shows nothing secret, and
    re-run the single-account check (step 3).
 
 Cost: Pub/Sub, one function invoked a few times a day, and one secret version. That is ≈ $0.06 a

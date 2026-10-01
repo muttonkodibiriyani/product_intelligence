@@ -190,7 +190,7 @@ describe("truncation", () => {
   });
 });
 
-describe("pi_metrics v3 (metricVersion 2026-10-01.2)", () => {
+describe("pi_metrics v3 (since metricVersion 2026-10-01.2)", () => {
   const labelCaveats = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
       code: "size_labels_differ",

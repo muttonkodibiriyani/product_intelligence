@@ -31,7 +31,7 @@ const META = {
   cutoff: "2026-09-15T20:00:00Z",
   generation: "gen-eval-1",
   market: "ZZ",
-  metricVersion: "2026-10-01.2",
+  metricVersion: "2026-10-01.3",
   scope: "eval",
 };
 
