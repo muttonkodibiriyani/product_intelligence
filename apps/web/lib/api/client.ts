@@ -104,7 +104,12 @@ export function createApiClient({
 }: ApiClientOptions) {
   let generation: string | null = null;
 
-  async function send(url: string, force: boolean, signal: AbortSignal | undefined): Promise<Response> {
+  async function send(
+    url: string,
+    force: boolean,
+    signal: AbortSignal | undefined,
+    accept: string,
+  ): Promise<Response> {
     let token: string | null;
     try {
       token = await getToken(force);
@@ -119,7 +124,7 @@ export function createApiClient({
     try {
       return await f(url, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        headers: { Authorization: `Bearer ${token}`, Accept: accept },
         credentials: 'omit',
         cache: 'no-store',
         signal: signal ?? null,
@@ -138,11 +143,22 @@ export function createApiClient({
     }
   }
 
-  async function getUrl<T>(url: string, signal?: AbortSignal): Promise<T> {
-    let res = await send(url, false, signal);
+  /**
+   * One GET with the token rules: a 401 is retried once with a fresh token, a 503
+   * auth_unavailable is waited out, and any other failure becomes an ApiError. Returns the OK
+   * response with its JSON body when it has one (`json` is null for a file download).
+   */
+  async function request(
+    url: string,
+    signal: AbortSignal | undefined,
+    accept = 'application/json',
+  ): Promise<{ res: Response; json: unknown }> {
+    // A file download keeps its body unread; errors are always JSON.
+    const body = async (r: Response) => (r.ok && accept !== 'application/json' ? null : await readJson(r));
+    let res = await send(url, false, signal, accept);
     // An ID token lives an hour; retry once with a fresh one before treating 401 as signed out.
-    if (res.status === 401) res = await send(url, true, signal);
-    let json = await readJson(res);
+    if (res.status === 401) res = await send(url, true, signal, accept);
+    let json = await body(res);
 
     // The API could not check the token (identity service down). That says nothing about the
     // user, so never sign out: wait as told and try again.
@@ -153,8 +169,8 @@ export function createApiClient({
       );
       await sleep(s * 1000);
       if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-      res = await send(url, false, signal);
-      json = await readJson(res);
+      res = await send(url, false, signal, accept);
+      json = await body(res);
     }
 
     if (!res.ok) {
@@ -168,6 +184,11 @@ export function createApiClient({
         retryAfterSeconds(res.headers.get('Retry-After')),
       );
     }
+    return { res, json };
+  }
+
+  async function getUrl<T>(url: string, signal?: AbortSignal): Promise<T> {
+    const { res, json } = await request(url, signal);
     const env = json as { status?: unknown; meta?: { generation?: unknown } } | null;
     if (
       !env ||
@@ -209,7 +230,39 @@ export function createApiClient({
     }
   }
 
-  return { get, page };
+  /**
+   * A whole export file (CSV or JSONL) as a Blob, fetched with the Bearer token like any read.
+   * The file name comes from the server's Content-Disposition when it is a plain name, else
+   * `fallback`; nothing else from the response reaches the page.
+   */
+  async function download<P extends ExportPath>(
+    path: P,
+    opts: { query: QueryOf<P> & { format: 'csv' | 'jsonl' }; signal?: AbortSignal; fallback: string },
+  ): Promise<{ blob: Blob; filename: string }> {
+    const accept = `${EXPORT_TYPES[opts.query.format]}, application/json;q=0.5`;
+    const { res } = await request(base + path + encodeQuery(opts.query as Query), opts.signal, accept);
+    let blob: Blob;
+    try {
+      blob = await res.blob();
+    } catch (e) {
+      if (opts.signal?.aborted) throw e;
+      throw new ApiError('network', 0);
+    }
+    return { blob, filename: attachmentName(res.headers.get('Content-Disposition')) ?? opts.fallback };
+  }
+
+  return { get, page, download };
+}
+
+export type ExportPath = Extract<GetPath, `/api/v1/export/${string}`>;
+
+const EXPORT_TYPES = { csv: 'text/csv', jsonl: 'application/x-ndjson' } as const;
+
+/** `attachment; filename="pi-products-20260930T0000Z.csv"` → the name, if it is a safe plain one. */
+export function attachmentName(header: string | null): string | null {
+  const m = /filename="?([^";]+)"?/i.exec(header ?? '');
+  const name = m?.[1]?.trim() ?? '';
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(name) ? name : null;
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;

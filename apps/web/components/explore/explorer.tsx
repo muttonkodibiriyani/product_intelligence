@@ -21,6 +21,7 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { Known } from '../ui/known';
 import { useRetailerName } from '../use-meta';
+import { ExportMenu } from './export-menu';
 import { Filters } from './filters';
 import { ProductTable } from './product-table';
 import { Toolbar } from './toolbar';
@@ -120,6 +121,12 @@ export function Explorer() {
             >
               {t('clear')}
             </button>
+          )}
+          {last && (
+            <div className="sm:ms-auto">
+              {/* Keyed by the filters: a new list starts with a fresh export state. */}
+              <ExportMenu key={search} state={state} total={total} n={formatCount(total, locale)} />
+            </div>
           )}
         </div>
 

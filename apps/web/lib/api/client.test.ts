@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, createApiClient, encodeQuery, fillPath, retryAfterSeconds } from './client';
+import {
+  ApiError,
+  attachmentName,
+  createApiClient,
+  encodeQuery,
+  fillPath,
+  retryAfterSeconds,
+} from './client';
 import { golden } from './golden';
 
 type Reply = { status: number; body?: unknown; headers?: Record<string, string> };
@@ -220,5 +227,108 @@ describe('409 stale_cursor', () => {
   it('passes through a first page untouched', async () => {
     const { api } = setup([{ status: 200, body: golden('products') }]);
     expect((await api.page('/api/v1/products', { query: { limit: 50 } })).restarted).toBe(false);
+  });
+});
+
+describe('download', () => {
+  const CSV = '﻿"# {""view"":""products""}"\nid,name\np01,Product p01\n';
+  const file = (headers: Record<string, string> = {}) =>
+    new Response(CSV, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="pi-products-20260930T0000Z.csv"',
+        ...headers,
+      },
+    });
+
+  function client(responses: (() => Response)[]) {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      const r = responses.shift();
+      if (!r) throw new Error('no more replies');
+      return r();
+    });
+    const sleep = vi.fn(async () => {});
+    const onUnauthenticated = vi.fn();
+    const api = createApiClient({
+      getToken: async (f) => (f ? 'fresh' : 'old'),
+      fetch,
+      sleep,
+      onUnauthenticated,
+    });
+    return { api, calls, sleep, onUnauthenticated };
+  }
+  const opts = {
+    query: { format: 'csv' as const, brand: ['A', 'B'], sort: 'name' as const },
+    fallback: 'x.csv',
+  };
+
+  it('fetches the file with the Bearer token and keeps it byte for byte', async () => {
+    const { api, calls } = client([() => file()]);
+    const { blob, filename } = await api.download('/api/v1/export/products', opts);
+    expect(calls[0]!.url).toBe('/api/v1/export/products?format=csv&brand=A&brand=B&sort=name');
+    const h = calls[0]!.init.headers as Record<string, string>;
+    expect(h.Authorization).toBe('Bearer old');
+    expect(h.Accept).toMatch(/^text\/csv/);
+    expect(calls[0]!.init.credentials).toBe('omit');
+    expect(filename).toBe('pi-products-20260930T0000Z.csv');
+    expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([...new TextEncoder().encode(CSV)]);
+  });
+
+  it('asks for JSONL by its media type', async () => {
+    const { api, calls } = client([() => file()]);
+    await api.download('/api/v1/export/products', { ...opts, query: { format: 'jsonl' } });
+    expect((calls[0]!.init.headers as Record<string, string>).Accept).toMatch(/^application\/x-ndjson/);
+  });
+
+  it('uses the fallback name when the header is missing or unsafe', async () => {
+    const { api } = client([
+      () => file({ 'Content-Disposition': '' }),
+      () => file({ 'Content-Disposition': 'attachment; filename="../../etc/passwd"' }),
+    ]);
+    expect((await api.download('/api/v1/export/products', opts)).filename).toBe('x.csv');
+    expect((await api.download('/api/v1/export/products', opts)).filename).toBe('x.csv');
+  });
+
+  it('turns refusals into codes: 422 export_too_large, 429 rate_limited with Retry-After', async () => {
+    const { api } = client([
+      () => json({ status: 422, body: err('export_too_large') }),
+      () => json({ status: 429, body: err('rate_limited'), headers: { 'Retry-After': '5' } }),
+    ]);
+    const big = await failure(api.download('/api/v1/export/products', opts));
+    expect([big.code, big.status]).toEqual(['export_too_large', 422]);
+    const busy = await failure(api.download('/api/v1/export/products', opts));
+    expect([busy.code, busy.retryAfter]).toEqual(['rate_limited', 5]);
+  });
+
+  it('waits out auth_unavailable and retries a 401 once with a fresh token, like reads', async () => {
+    const { api, calls, sleep, onUnauthenticated } = client([
+      () => json({ status: 401, body: err('unauthenticated') }),
+      () => json({ status: 503, body: err('auth_unavailable'), headers: { 'Retry-After': '2' } }),
+      () => file(),
+    ]);
+    await api.download('/api/v1/export/products', opts);
+    expect((calls[1]!.init.headers as Record<string, string>).Authorization).toBe('Bearer fresh');
+    expect(sleep).toHaveBeenCalledWith(2000);
+    expect(onUnauthenticated).not.toHaveBeenCalled();
+  });
+});
+
+describe('attachmentName', () => {
+  it('accepts plain names only', () => {
+    expect(attachmentName('attachment; filename="pi-index-20260930T0000Z.jsonl"')).toBe(
+      'pi-index-20260930T0000Z.jsonl',
+    );
+    expect(attachmentName('attachment; filename=plain.csv')).toBe('plain.csv');
+    for (const bad of [
+      null,
+      '',
+      'attachment',
+      'attachment; filename=".hidden"',
+      'attachment; filename="a b.csv"',
+    ])
+      expect(attachmentName(bad)).toBeNull();
   });
 });

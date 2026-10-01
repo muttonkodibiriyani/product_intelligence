@@ -51,7 +51,8 @@
     "internal_error": "Something failed on our side. Try again.",
     "network": "No connection to the server.",
     "unexpected": "The server sent a response this app can't read.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "export_too_large": "Too many rows to export (the limit is 50,000). Narrow the filters and try again."
   },
   "reasons": {
     "capability_off": "Not collected for this retailer.",
@@ -141,7 +142,19 @@
     "gapHeader": "{other} vs {base}",
     "more_facets": "Show all {n}",
     "fewer_facets": "Show fewer",
-    "results": "Results"
+    "results": "Results",
+    "export": {
+      "label": "Export",
+      "csv": "CSV",
+      "jsonl": "JSONL",
+      "csvTitle": "Download these {n} products as CSV",
+      "jsonlTitle": "Download these {n} products as JSONL",
+      "preparing": "Preparing the file…",
+      "saved": "Saved {filename}.",
+      "overCap": "Exports stop at 50,000 rows. Narrow the filters to export.",
+      "busy": "Two exports are already running. Try again in {seconds} s.",
+      "nothing": "Nothing to export."
+    }
   },
   "gap": {
     "otherDearer": "{other} dearer",
