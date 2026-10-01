@@ -211,6 +211,11 @@ export class ToolRegistry {
     this.tools = byName;
   }
 
+  /** Whether `name` is a declared tool (any role). */
+  has(name: string): boolean {
+    return this.tools.has(name);
+  }
+
   /** Tools this caller may see; the model is never offered a tool it cannot call. */
   available(caller: CallerContext): AnyToolDef[] {
     return [...this.tools.values()].filter((tool) => rank(caller.role) >= rank(tool.minRole));

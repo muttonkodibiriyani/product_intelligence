@@ -119,6 +119,9 @@ export type ChatProgress =
 
 export type ProgressSink = (progress: ChatProgress) => void;
 
+/** Streamed in place of a function name the model made up (never echoed). */
+export const UNKNOWN_TOOL = "unknown";
+
 export type FlowCode =
   | "invalid_question"
   | "history_unavailable"
@@ -316,9 +319,10 @@ export class ChatFlow {
           status: result.status,
           ...(result.status === "error" ? { code: result.code } : {}),
         });
+        // The model's function name is model text: only a declared tool's name is streamed.
         emit({
           type: "tool",
-          name: call.name,
+          name: this.deps.registry.has(call.name) ? call.name : UNKNOWN_TOOL,
           status: result.status,
           ...(result.status === "error" ? { code: result.code } : {}),
         });
