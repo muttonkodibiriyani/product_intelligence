@@ -13,6 +13,7 @@ Output shows masked emails only.
 
 Existing accounts are refused unless --existing is passed. Changing a role revokes the user's
 refresh tokens; --revoke removes the role and revokes tokens (the account is kept).
+--role killswitch is for the owner's kill-switch account only (kill-switch runbook step 3).
 """
 
 import argparse
@@ -22,7 +23,9 @@ from functools import partial
 from types import ModuleType
 from typing import Any, Protocol
 
-ROLES = ("admin", "viewer")
+# killswitch: the single budget kill-switch account (#69). It is not a data role: the rules let it
+# write only assistant_config/current enabled→false, and pi_api answers it with 403.
+ROLES = ("admin", "viewer", "killswitch")
 SEND_OOB = "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode"
 
 
