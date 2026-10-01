@@ -143,7 +143,7 @@ for (const locale of ['en', 'ar'] as const) {
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/compare/?retailers=shop_a%2Cshop_d`);
       await expect(page.getByRole('note')).toContainText(T.detail);
-      await expect(page.getByRole('row', { name: /Shop D/ })).toContainText(T.blocked);
+      await expect(page.getByRole('row', { name: /^Shop D/ })).toContainText(T.blocked);
       await expect(page.getByText(T.noSummary)).toBeVisible();
       await expect(page.locator('dl')).toHaveCount(0);
       await noHorizontalScroll(page);

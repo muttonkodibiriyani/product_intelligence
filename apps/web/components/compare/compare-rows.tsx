@@ -54,7 +54,7 @@ export function CompareRows({
         <tbody>
           {data.rows.map((r) => (
             <tr key={r.id} className="border-t border-line first:border-t-0">
-              <th scope="row" className={`${TD} min-w-48 text-start font-normal`}>
+              <th scope="row" className={`${TD} min-w-44 text-start font-normal`}>
                 <Link
                   href={compareProductHref(locale, r.id, from)}
                   className="text-accent hover:underline focus-visible:outline-2"
@@ -79,7 +79,7 @@ export function CompareRows({
                   <span className="text-ink-2">–</span>
                 )}
               </td>
-              <td className={TD}>
+              <td className={`${TD} min-w-40`}>
                 <GapView
                   pair={{ base: data.base, other: data.other, gap: r.gap, excludedReason: r.excludedReason }}
                   name={name}

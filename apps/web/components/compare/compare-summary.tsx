@@ -129,11 +129,11 @@ export function Sides({ data, name }: { data: Comparison; name: Name }) {
           <tbody>
             {sides.map((s, i) => (
               <tr key={i} className="border-t border-line first:border-t-0">
-                <th scope="row" className={`${TD} text-start font-normal`}>
+                <th scope="row" className={`${TD} min-w-32 text-start font-normal`}>
                   {name(s.retailer)}
                   <span className="ms-2 text-xs text-ink-2">{t(i === 0 ? 'base' : 'other')}</span>
                 </th>
-                <td className={TD}>
+                <td className={`${TD} min-w-40`}>
                   <Known t={th} k="status" v={s.status} />
                   {s.reason && (
                     <span className="block text-xs text-ink-2">
@@ -223,7 +223,7 @@ export function Groups({
                     </td>
                   </>
                 ) : (
-                  <td colSpan={3} className={`${TD} text-ink-2`}>
+                  <td colSpan={3} className={`${TD} min-w-48 text-ink-2`}>
                     {g.reason ? <Known t={tr} v={g.reason} /> : '–'}
                   </td>
                 )}
