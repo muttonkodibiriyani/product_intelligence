@@ -34,14 +34,14 @@ export function ProductTable({
 }) {
   const t = useTranslations('explore');
   const locale = useLocale();
-  const th = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
+  const th = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
   return (
     <div className="relative overflow-x-auto rounded border border-line bg-surface">
       <table className="w-full text-sm">
         <caption className="sr-only">{t('results')}</caption>
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={`${th} sticky start-0 bg-surface`}>
+            <th scope="col" className={`${th} sticky start-0 bg-surface text-start`}>
               {t('colProduct')}
             </th>
             {retailers.map((r) => (

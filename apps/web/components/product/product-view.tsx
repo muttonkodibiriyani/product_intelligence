@@ -176,7 +176,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-const TH = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
+const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
 const TD = 'px-3 py-2 align-top';
 
 /** One row per retailer. Columns the dataset doesn't collect (per /meta) are left out, not zeroed. */
@@ -192,7 +192,7 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('retailer')}
             </th>
             <th scope="col" className={`${TH} text-end`}>
@@ -205,16 +205,16 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
               {t('promo')}
             </th>
             {show.stock && (
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('availability')}
               </th>
             )}
             {show.ratings && (
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('rating')}
               </th>
             )}
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('size')}
             </th>
             {show.shades && (
@@ -222,10 +222,10 @@ function Offers({ offers, name }: { offers: Schemas['OfferView'][]; name: (id: s
                 {t('shades')}
               </th>
             )}
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('sku')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('evidence')}
             </th>
           </tr>
@@ -318,13 +318,13 @@ function Pairs({ pairs, name }: { pairs: Schemas['PairGap'][]; name: (id: string
       <table className="w-full max-w-3xl text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('pairBase')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('pairOther')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('pairGap')}
             </th>
           </tr>
@@ -353,10 +353,10 @@ function Matches({ matches, name }: { matches: Schemas['CardMatch'][]; name: (id
       <table className="w-full max-w-3xl text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('retailer')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('matchClass')}
             </th>
             <th scope="col" className={`${TH} text-end`}>

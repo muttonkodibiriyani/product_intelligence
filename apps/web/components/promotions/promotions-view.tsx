@@ -26,7 +26,7 @@ import { Money } from '../ui/money';
 import { RetailerChecks } from '../ui/retailer-checks';
 import { useRetailerName } from '../use-meta';
 
-const TH = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
+const TH = 'px-3 py-2 font-medium text-ink-2';
 const TD = 'px-3 py-2 align-top';
 
 /** Products below their regular price on the latest day, deepest first, and each retailer's share. */
@@ -170,7 +170,7 @@ function Shares({
         <table className="w-full text-sm">
           <thead className="border-b border-line">
             <tr>
-              <th scope="col" className={TH}>
+              <th scope="col" className={`${TH} text-start`}>
                 {t('retailer')}
               </th>
               <th scope="col" className={`${TH} text-end`}>
@@ -231,16 +231,16 @@ function Items({
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start whitespace-nowrap`}>
               {t('product')}
             </th>
-            <th scope="col" className={`${TH} text-end`}>
+            <th scope="col" className={`${TH} text-end whitespace-nowrap`}>
               {t('depth')}
             </th>
-            <th scope="col" className={`${TH} text-end`}>
+            <th scope="col" className={`${TH} text-end whitespace-nowrap`}>
               {t('price')}
             </th>
-            <th scope="col" className={`${TH} text-end`}>
+            <th scope="col" className={`${TH} text-end whitespace-nowrap`}>
               {t('regular')}
             </th>
           </tr>

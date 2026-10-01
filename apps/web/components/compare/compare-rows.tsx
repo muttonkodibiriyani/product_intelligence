@@ -7,7 +7,7 @@ import { productHref } from '../explore/product-table';
 import { GapView } from '../ui/pair';
 import { Money } from '../ui/money';
 
-const TH = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
+const TH = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
 const TD = 'px-3 py-2 align-top';
 
 /** Every product either side sells, largest gaps first; one not counted says why. */
@@ -31,10 +31,10 @@ export function CompareRows({
       <table className="w-full text-sm">
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('product')}
             </th>
-            <th scope="col" className={TH}>
+            <th scope="col" className={`${TH} text-start`}>
               {t('gap')}
             </th>
             <th scope="col" className={`${TH} text-end`}>
