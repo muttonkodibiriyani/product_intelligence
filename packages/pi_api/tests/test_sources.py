@@ -312,6 +312,22 @@ def test_a_latest_gap_is_never_claimed_from_a_stale_source(tmp_path: Path) -> No
     assert stale(body) == [STALE]
 
 
+def test_a_stale_collected_source_summary_is_as_of_its_own_cutoff(tmp_path: Path) -> None:
+    """Reviewer, #126: a stale source that isn't imported (so no snapshot freshness) reads its
+    own last date and cutoff, never the view's later ones."""
+    shop = "shop_x"  # a second collected retailer, its file ending before Sephora's
+    write(tmp_path, snapshot({"p1": (shop,), "p2": (shop,)}, dates=OLD), COMBINED)
+    write(tmp_path, snapshot({"p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    client, _ = make_client(tmp_path, paths=(), assigned={SEPHORA: SEPHORA_FILE, shop: COMBINED})
+    body = get(client, f"summary?retailer={shop}")
+    data = body["data"]
+    assert data["asOf"] == "2026-09-22"
+    assert data["freshness"]["cutoff"] == "2026-09-22T00:00:00Z"
+    assert data["freshness"]["status"] not in {"fresh", "snapshot"}
+    assert body["caveats"][0] == {**body["caveats"][0], "code": "stale_source"}
+    assert body["caveats"][0]["params"] == {"retailer": shop, "asOf": "2026-09-22"}
+
+
 def test_the_latest_date_view_keeps_the_imported_correction(tmp_path: Path) -> None:
     """A stale Ulta read at its own last date never brings back its cleared was-prices."""
     combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
