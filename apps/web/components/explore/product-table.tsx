@@ -8,9 +8,12 @@ import { GapView, MatchLabel } from '../ui/pair';
 
 type Card = Schemas['ProductCard'];
 
-/** The URL of a product page; `from` carries the list's query so "Back to products" restores it. */
-export function productHref(locale: string, id: string, from = ''): string {
-  const p = new URLSearchParams({ id });
+/** Where the product page's Back goes; the explorer when not set. */
+export type BackTo = 'compare' | 'promotions';
+
+/** The URL of a product page; `from` carries the list's query so Back restores it. */
+export function productHref(locale: string, id: string, from = '', back?: BackTo): string {
+  const p = new URLSearchParams({ id, ...(back ? { back } : {}) });
   if (from) p.set('from', from.replace(/^\?/, ''));
   return `/${locale}/product/?${p.toString()}`;
 }

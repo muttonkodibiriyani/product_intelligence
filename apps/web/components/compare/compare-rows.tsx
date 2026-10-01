@@ -3,18 +3,12 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { Schemas } from '@/lib/api/types';
+import { productHref } from '../explore/product-table';
 import { GapView } from '../ui/pair';
 import { Money } from '../ui/money';
 
 const TH = 'px-3 py-2 text-start font-medium text-ink-2 whitespace-nowrap';
 const TD = 'px-3 py-2 align-top';
-
-/** The product page for a row; Back returns to this comparison. */
-export function compareProductHref(locale: string, id: string, from: string): string {
-  const p = new URLSearchParams({ id, back: 'compare' });
-  if (from) p.set('from', from.replace(/^\?/, ''));
-  return `/${locale}/product/?${p.toString()}`;
-}
 
 /** Every product either side sells, largest gaps first; one not counted says why. */
 export function CompareRows({
@@ -56,7 +50,7 @@ export function CompareRows({
             <tr key={r.id} className="border-t border-line first:border-t-0">
               <th scope="row" className={`${TD} min-w-44 text-start font-normal`}>
                 <Link
-                  href={compareProductHref(locale, r.id, from)}
+                  href={productHref(locale, r.id, from, 'compare')}
                   className="text-accent hover:underline focus-visible:outline-2"
                 >
                   <span dir="auto">{r.name}</span>

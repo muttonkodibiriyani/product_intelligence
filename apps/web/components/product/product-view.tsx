@@ -8,9 +8,11 @@ import type { ReactNode } from 'react';
 import type { Envelope, Schemas } from '@/lib/api/types';
 import { parseCompare, toCompareSearch } from '@/lib/compare';
 import { parseState, toSearch } from '@/lib/explore';
+import { parsePromotions, toPromotionsSearch } from '@/lib/promotions';
 import { formatCount, formatDate, loc } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import type { BackTo } from '../explore/product-table';
 import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
 import { Known } from '../ui/known';
@@ -33,6 +35,20 @@ export function safeHttpUrl(url: string | null): string | null {
   }
 }
 
+/** Each list that links here, rebuilt from its own parsed state so Back is never a free URL. */
+const BACKS: Record<
+  BackTo | 'explore',
+  { path: string; search: (sp: URLSearchParams) => string; label: string }
+> = {
+  explore: { path: 'explore', search: (sp) => toSearch(parseState(sp)), label: 'back' },
+  compare: { path: 'compare', search: (sp) => toCompareSearch(parseCompare(sp)), label: 'backCompare' },
+  promotions: {
+    path: 'promotions',
+    search: (sp) => toPromotionsSearch(parsePromotions(sp)),
+    label: 'backPromotions',
+  },
+};
+
 export function ProductView() {
   const t = useTranslations('product');
   const locale = useLocale();
@@ -43,10 +59,9 @@ export function ProductView() {
   const valid = PRODUCT_ID.test(id);
   // Only the list's own filters are carried back, rebuilt from parsed state: never a free URL.
   const from = new URLSearchParams(sp.get('from') ?? '');
-  const toCompare = sp.get('back') === 'compare';
-  const back = toCompare
-    ? `/${locale}/compare/${toCompareSearch(parseCompare(from))}`
-    : `/${locale}/explore/${toSearch(parseState(from))}`;
+  const backTo = sp.get('back') ?? '';
+  const to = Object.hasOwn(BACKS, backTo) ? BACKS[backTo as BackTo] : BACKS.explore;
+  const back = `/${locale}/${to.path}/${to.search(from)}`;
 
   const q = useQuery({
     queryKey: ['product', id],
@@ -58,7 +73,7 @@ export function ProductView() {
   const backLink = (
     <Link href={back} className="text-sm text-accent hover:underline focus-visible:outline-2">
       <span aria-hidden>{locale === 'ar' ? '→ ' : '← '}</span>
-      {t(toCompare ? 'backCompare' : 'back')}
+      {t(to.label)}
     </Link>
   );
 
