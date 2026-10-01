@@ -96,6 +96,16 @@ export function toQuery(s: ExploreState, cursor: string | null): ProductsQuery {
   };
 }
 
+/** The products export for the same filters and sort as the list: every row, no paging. */
+export function toExportQuery(s: ExploreState, format: 'csv' | 'jsonl') {
+  const q: Partial<ProductsQuery> = toQuery(s, null);
+  delete q.limit;
+  return { ...q, sort: s.sort, format };
+}
+
+/** The API refuses exports over this many rows (422 export_too_large). */
+export const EXPORT_MAX_ROWS = 50_000;
+
 /** Adds a value at the end (keeping the order it was picked in) or removes it. */
 export function toggle(values: readonly string[], v: string): string[] {
   return values.includes(v) ? values.filter((x) => x !== v) : [...values, v];

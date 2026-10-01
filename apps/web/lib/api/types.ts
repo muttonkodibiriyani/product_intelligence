@@ -41,6 +41,7 @@ export const API_ERROR_CODES = [
   'invalid_request',
   'invalid_query',
   'ambiguous_dataset',
+  'export_too_large',
   'rate_limited',
   'data_unavailable',
   'auth_unavailable',

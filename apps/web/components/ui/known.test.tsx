@@ -33,4 +33,15 @@ describe('Known', () => {
     }
     expect(show('home', 'paused', 'status').textContent).toBe('paused');
   });
+
+  it('never looks up a value that is not enum-shaped', () => {
+    // 'status' alone names a group of messages; 'status.partial' would walk into a nested key.
+    for (const [v, k] of [
+      ['status', undefined],
+      ['status.partial', undefined],
+      ['partial.x', 'status'],
+      ['Partial', 'status'],
+    ] as const)
+      expect(show('home', v, k).textContent).toBe(v);
+  });
 });

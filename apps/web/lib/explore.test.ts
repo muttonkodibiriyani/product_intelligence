@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { currentPages, EMPTY, parseState, toggle, toQuery, toSearch, withValidSort } from './explore';
+import {
+  currentPages,
+  EMPTY,
+  parseState,
+  toExportQuery,
+  toggle,
+  toQuery,
+  toSearch,
+  withValidSort,
+} from './explore';
 
 const parse = (s: string) => parseState(new URLSearchParams(s));
 
@@ -62,5 +71,21 @@ describe('currentPages', () => {
     expect(currentPages([p(1), p(2)]).map((x) => x.n)).toEqual([1, 2]);
     expect(currentPages([p(1), p(2), p(3, true), p(4)]).map((x) => x.n)).toEqual([3, 4]);
     expect(currentPages([])).toEqual([]);
+  });
+});
+
+describe('toExportQuery', () => {
+  it('keeps the filters, pair order and sort, drops paging, adds the format', () => {
+    const s = parseState(
+      new URLSearchParams('q=serum&retailer=shop_b&retailer=shop_a&sort=gap&matched=true&priceMax=200'),
+    );
+    expect(toExportQuery(s, 'jsonl')).toEqual({
+      q: 'serum',
+      retailer: ['shop_b', 'shop_a'],
+      matched: true,
+      priceMax: '200',
+      sort: 'gap',
+      format: 'jsonl',
+    });
   });
 });
