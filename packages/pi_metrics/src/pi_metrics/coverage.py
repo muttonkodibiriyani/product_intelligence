@@ -21,6 +21,7 @@ from pi_metrics.model import COUNTED_STATES, EVERYTHING, Metric, Status
 class ContextDay(ContractModel):
     date: date
     #: An offer of the context was seen, and no whole-catalogue ``notObserved`` window covers it.
+    #: Crawled that day, not complete: only ``view.complete_run`` backs an absence claim.
     observed: bool
 
 
@@ -114,11 +115,11 @@ def _context_coverage(ds: DatasetV3, ctx: Context, shop_status: RetailerStatus) 
     offered: list[ProductV3] = [
         p for p in view.products(ds, EVERYTHING) if view.collected(p, ctx.id) is not None
     ]
+    days = range(len(ds.meta.dates))
+    seen_on = {i for p in offered for i in days if view.seen(p.offers[ctx.id], i)}
     observed = [
-        shop_status is not RetailerStatus.BLOCKED
-        and not _unobserved(ds, ctx, i)
-        and any(view.seen(p.offers[ctx.id], i) for p in offered)
-        for i in range(len(ds.meta.dates))
+        shop_status is not RetailerStatus.BLOCKED and i in seen_on and not _unobserved(ds, ctx, i)
+        for i in days
     ]
     seen = [i for i, ok in enumerate(observed) if ok]
     return ContextCoverage(
