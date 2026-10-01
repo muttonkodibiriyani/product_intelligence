@@ -23,7 +23,8 @@ export const EMPTY_LAUNCHES: LaunchesState = {
 
 /** A real calendar day as YYYY-MM-DD, the only form the API accepts; anything else is ''. */
 export function cleanDay(v: string | null): string {
-  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return '';
+  // The API's dates start at year 1, so 0000 is refused there too.
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v) || v.startsWith('0000')) return '';
   const d = new Date(`${v}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v ? v : '';
 }
