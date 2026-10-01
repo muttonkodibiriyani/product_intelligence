@@ -17,6 +17,7 @@ snapshots through `pi_metrics`. Clients never compute metrics themselves.
 | `PI_API_REFRESH_SECONDS` | Generation check interval (default 60) |
 | `PI_API_RATE_PER_SECOND`, `PI_API_RATE_BURST` | Per-uid token bucket per instance (10, 30) |
 | `PI_API_ALLOW_TEST` | `1` serves `meta.test` (synthetic) datasets; off by default |
+| `PI_API_EVIDENCE_HOSTS` | Comma-separated `retailer=host` pairs (repeat a retailer for more hosts). An evidence URL is served only if it is https on one of its retailer's hosts; anything else is null. Unset: every URL is null |
 
 Run locally: `PI_API_LOCAL_DIR=... uv run uvicorn --factory pi_api.app:app_from_env`.
 Image: `docker build -f packages/pi_api/Dockerfile -t pi-api .` (from the repo root).

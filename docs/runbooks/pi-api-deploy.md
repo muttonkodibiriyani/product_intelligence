@@ -111,6 +111,10 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
 
 - **No `--concurrency`** (default), no `--add-cloudsql-instances`, no `--vpc-connector`, no
   `--set-secrets`. Never set `PI_API_ALLOW_TEST` in production.
+- **Evidence links** need `PI_API_EVIDENCE_HOSTS` (for example
+  `<source_key>=<host>,<source_key>=<host>`, the exact hosts the connectors fetch). Without
+  it the service runs, but every offer's `evidence.url` is null. A host the API should not link
+  to is simply left out; there are no wildcards.
 - **`--allow-unauthenticated` is deliberate.** Hosting rewrites call the service without an IAM
   identity, so `allUsers` gets `run.invoker`. Every route, unknown paths included, verifies the
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy

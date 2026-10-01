@@ -125,10 +125,11 @@ def make_client(
     certs: FakeCerts | None = None,
     paths: tuple[str, ...] = (DATASET_PATH,),
     load: bool = True,
+    evidence_hosts: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[Client, SnapshotSource]:
     source = SnapshotSource(LocalStore(root), paths, refresh_seconds=3600)
     if load:
         source.load_all()
     verifier = TokenVerifier(PROJECT, certs or FakeCerts(), now=lambda: NOW)
-    app = create_app(source, verifier, TokenBuckets(rate, burst))
+    app = create_app(source, verifier, TokenBuckets(rate, burst), evidence_hosts)
     return Client(app), source

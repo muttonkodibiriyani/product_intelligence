@@ -10,6 +10,26 @@ from pydantic import Field
 from pi_core import PiModel
 
 _OBJECT = re.compile(r"^[a-z0-9][a-z0-9_./-]{0,200}\.json$")
+_RETAILER = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
+_HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def evidence_hosts(raw: str) -> dict[str, frozenset[str]]:
+    """``retailer=host`` pairs, comma-separated; repeat a retailer for more hosts.
+
+    Exact lower-case host names only: no scheme, port, path or wildcard, so a typo is refused at
+    startup instead of opening the allowlist.
+    """
+    hosts: dict[str, set[str]] = {}
+    for pair in (p.strip() for p in raw.split(",")):
+        if not pair:
+            continue
+        retailer, sep, host = (part.strip() for part in pair.partition("="))
+        if not sep or not _RETAILER.match(retailer) or not _HOST.match(host):
+            msg = f"PI_API_EVIDENCE_HOSTS entry {pair!r} is not retailer=host"
+            raise ValueError(msg)
+        hosts.setdefault(retailer, set()).add(host)
+    return {retailer: frozenset(names) for retailer, names in hosts.items()}
 
 
 class Settings(PiModel):
@@ -27,6 +47,9 @@ class Settings(PiModel):
     rate_burst: int = Field(default=30, ge=1)
     #: Serve ``meta.test`` (synthetic) datasets; off unless a demo deployment opts in.
     allow_test: bool = False
+    #: Per retailer, the hosts whose evidence URLs are served; any other URL is sent as null.
+    #: Empty (the default) nulls every URL.
+    evidence_hosts: Mapping[str, frozenset[str]] = Field(default_factory=dict)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
@@ -49,4 +72,5 @@ class Settings(PiModel):
             rate_per_second=int(env.get("PI_API_RATE_PER_SECOND", "10")),
             rate_burst=int(env.get("PI_API_RATE_BURST", "30")),
             allow_test=env.get("PI_API_ALLOW_TEST", "") == "1",
+            evidence_hosts=evidence_hosts(env.get("PI_API_EVIDENCE_HOSTS", "")),
         )
