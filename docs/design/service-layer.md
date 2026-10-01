@@ -291,7 +291,7 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
 `brand[]`, `category[]`, `from`, `to`. The encodings are pinned in §5.
 
 - **`/v1/products`:** `q`, `brand[]`, `category[]`, `retailer[]`, `matched`, `priceMin`,
-  `priceMax` (decimal strings, in `meta.currency`), `sort=name|price_asc|price_desc|gap`,
+  `priceMax` (decimal strings, in `meta.currency`), `sort=name|price_asc|price_desc|gap|gap_asc`,
   `limit`, `cursor`. Returns `{total, truncated, nextCursor, items: ProductCard[]}`.
   - A `ProductCard` has: `id`, `brand`, `name`, `category`, `size` (string plus unit), `image`
     (null until the contract carries it; never invented), per-retailer `price: Money | null`, and
@@ -299,9 +299,10 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   - With exactly two different `retailer` values (the first is the base) each card also carries
     `gap: PairGap` = `{base, other, gap {amount, pct, cheaper} | null, excludedReason | null}` for
     the latest date, from `pi_metrics.compare.pair_row`. Otherwise `gap` is null.
-  - `sort=gap` needs that pair (else `422 invalid_query`): counted pairs by `gap.pct`
-    descending (other dearest relative to base first), then the uncounted ones, each tie and the
-    tail ordered by id.
+  - `sort=gap` and `sort=gap_asc` need that pair (else `422 invalid_query`). Both sort on the
+    **signed** `gap.pct`, so the direction is kept (FE, 1 Oct). `gap` puts other dearest
+    relative to base first; `gap_asc` puts other cheapest first. Uncounted cards come last in
+    both, and ties and the tail are ordered by id.
 - **`/v1/products/{id}`:** the card, plus `offers[retailer]`:
   - `price`, `regular`, `promoPct`, `rating{average, count}`, `size`, `shadeCount`, `sku`, `url`,
     `early`, `capturedAt`, `availability`;

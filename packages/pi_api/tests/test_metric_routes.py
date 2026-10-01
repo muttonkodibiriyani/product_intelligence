@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -161,6 +162,18 @@ def test_sort_by_gap_puts_counted_pairs_first(client: Client) -> None:
     assert [c["id"] for c in tail] == sorted(c["id"] for c in tail)
     assert body(client, "/products?sort=gap", 422)["error"]["code"] == "invalid_query"
     assert body(client, f"/products?retailer={A}&retailer={A}&sort=gap", 422)
+
+
+def test_sort_by_gap_asc_flips_only_the_counted_order(client: Client) -> None:
+    path = f"/products?retailer={A}&retailer={B}&limit=50&sort="
+    down = body(client, f"{path}gap")["data"]["items"]
+    up = body(client, f"{path}gap_asc")["data"]["items"]
+    pcts = [Decimal(c["gap"]["gap"]["pct"]) for c in up if c["gap"]["gap"] is not None]
+    assert pcts == sorted(pcts)
+    counted = len(pcts)
+    assert {c["id"] for c in up[:counted]} == {c["id"] for c in down[:counted]}
+    assert [c["id"] for c in up[counted:]] == [c["id"] for c in down[counted:]]
+    assert body(client, "/products?sort=gap_asc", 422)["error"]["code"] == "invalid_query"
 
 
 def test_sort_by_gap_pages_without_repeats(client: Client) -> None:

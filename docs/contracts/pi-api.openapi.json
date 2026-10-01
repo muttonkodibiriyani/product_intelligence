@@ -2717,7 +2717,8 @@
           "name",
           "price_asc",
           "price_desc",
-          "gap"
+          "gap",
+          "gap_asc"
         ],
         "title": "ProductSort",
         "type": "string"
@@ -5110,11 +5111,13 @@
             }
           },
           {
+            "description": "Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc.",
             "in": "query",
             "name": "retailer",
             "required": false,
             "schema": {
               "default": [],
+              "description": "Repeatable. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc.",
               "items": {
                 "maxLength": 120,
                 "minLength": 1,
