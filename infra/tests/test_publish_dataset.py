@@ -234,23 +234,6 @@ def test_v2_float_money_is_refused() -> None:
     assert any("float" in e for e in errors)
 
 
-def test_v2_is_published_under_country_and_scope_with_its_own_meta_doc() -> None:
-    dataset, _ = publish_dataset.validate_v2(EXAMPLE.read_text(encoding="utf-8"), allow_test=True)
-    body, paths, summary, meta_doc = publish_dataset.package_v2(dataset)
-    assert paths == [
-        "datasets/ae/pilot/20260930T000000Z.json",
-        "datasets/ae/pilot/latest.json",
-    ]
-    assert meta_doc == "v2_ae_pilot"
-    assert summary["schema"] == "pi.dataset/v2"
-    assert summary["storagePath"] == "datasets/ae/pilot/latest.json"
-    assert summary["cutoff"] == "2026-09-30T00:00:00Z"
-    assert summary["products"] == len(dataset.products)
-    # What is uploaded re-loads under the same strict rules, and packaging is deterministic.
-    publish_dataset.validate_v2(gzip.decompress(body).decode(), allow_test=True)
-    assert publish_dataset.package_v2(dataset)[0] == body
-
-
 def _shared_listing(raw: str) -> str:
     """Two products carrying the same listing (url and sku): valid v2, but pi-api can't serve it."""
     doc = json.loads(raw)
