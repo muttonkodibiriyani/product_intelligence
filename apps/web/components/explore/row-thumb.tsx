@@ -28,8 +28,8 @@ export function RowThumb({
     return (
       <span role="img" aria-label={label} className={`${cls} grid place-items-center text-line-3`}>
         <svg
-          width="18"
-          height="18"
+          width={px > 64 ? 40 : 18}
+          height={px > 64 ? 40 : 18}
           viewBox="0 0 24 24"
           aria-hidden
           fill="none"

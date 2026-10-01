@@ -12,7 +12,8 @@
       "compare": "Compare",
       "promotions": "Promotions",
       "launches": "Launches",
-      "status": "Dataset"
+      "status": "Dataset",
+      "prices": "Prices"
     },
     "mainNav": "Main"
   },
@@ -108,16 +109,16 @@
       "subtitle": "{retailer} · one snapshot, {date}",
       "subtitleImported": "{retailer} · snapshot imported {date}, capture date unknown",
       "sample": "Data: {retailer}, {market}.",
-      "compareNote": "Comparison needs a second retailer or a second collection day. These cards show the layout they will use.",
+      "compareNote": "Which products both retailers carry, from the matched set; where a view can't be drawn yet, its layout and the reason.",
       "indexTitle": "Price index over time",
       "indexQuestion": "How the basket's price moves against the base retailer, day by day.",
-      "indexReason": "Needs more than one collection day; this dataset has one snapshot.",
+      "indexReason": "Needs a second collected retailer and more than one collection day.",
       "gapTitle": "Price gap distribution",
       "gapQuestion": "How far matched products' prices sit apart between two retailers.",
-      "gapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "gapReason": "Needs a second collected retailer with matched products.",
       "overlapTitle": "Assortment overlap",
       "overlapQuestion": "Which products both retailers carry, and which only one does.",
-      "overlapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "overlapReason": "Needs a second collected retailer with matched products.",
       "openCompare": "Open compare",
       "datasetTitle": "Dataset",
       "withheld": {
@@ -128,6 +129,17 @@
         "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
         "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions.",
         "was_price_unverified": "This retailer's was-prices are unverified, so its discounts and promotions are not shown."
+      },
+      "intro": "Each retailer's own catalogue, and the two head to head on matched products.",
+      "headToHead": "Head to head",
+      "openPrices": "All price analytics",
+      "loading": "Loading the overview…",
+      "noRetailers": "No collected retailer to report on.",
+      "noPairs": "No comparable pairs yet.",
+      "overlap": {
+        "observed": "Observed",
+        "counted": "Comparable",
+        "onlyHere": "Only here"
       }
     }
   },
@@ -192,6 +204,9 @@
       "busy": "Two exports are already running. Try again in {seconds} s.",
       "nothing": "Nothing to export."
     },
+    "view": "Show as",
+    "viewGrid": "Grid",
+    "viewList": "List",
     "noImage": "No image"
   },
   "gap": {
@@ -276,6 +291,7 @@
     "history": "Price history",
     "historyLoading": "Loading price history…",
     "historyEmpty": "No price history for this product yet.",
+    "historyBegins": "History begins once nightly collection runs.",
     "historyTable": "Show as table",
     "date": "Date",
     "chartLabel": "Price per day at {retailers}",
@@ -389,5 +405,47 @@
     "loading": "Loading…",
     "preview": "Layout preview — not collected yet.",
     "empty": "Nothing to show for this selection."
+  },
+  "catalogue": {
+    "title": "Images and variants",
+    "hint": "Choose a SKU to view its images. The prices above belong to the offer SKU.",
+    "loading": "Loading images and variants…",
+    "returnSku": "Return to offer SKU {sku}",
+    "capture": "Archive timestamp {captured} · metadata imported {imported}",
+    "type": "Record type",
+    "variant": "Variant SKU",
+    "listing": "Product listing",
+    "stockId": "Stock system ID",
+    "unknown": "Unknown",
+    "identifiers": "Source identifiers",
+    "catalogueId": "Catalogue product ID",
+    "externalId": "External product ID",
+    "parentSummary": "This parent listing groups its variants and is excluded from product counts.",
+    "parents": "Parent products",
+    "variants": "Variant SKUs",
+    "noImages": "No captured image available",
+    "images": "Product images",
+    "imageNumber": "Image {n} of {count}",
+    "openImage": "Open image",
+    "notCaptured": "Not captured"
+  },
+  "price": {
+    "underReview": "Price under review"
+  },
+  "prices": {
+    "title": "Price analytics",
+    "intro": "Each retailer's full catalogue on its own, then the two head to head on the matched products only.",
+    "perRetailer": "By retailer",
+    "perRetailerHint": "Full catalogue of the retailer you pick.",
+    "headToHead": "Head to head",
+    "headToHeadHint": "{other} vs {base} on matched products only.",
+    "loading": "Loading price analytics…",
+    "noRetailers": "No collected retailer to report on.",
+    "onePair": "Head-to-head views need two collected retailers.",
+    "noPairs": "No comparable pairs yet.",
+    "kpis": "At a glance",
+    "withheld": "Not shown for this retailer",
+    "openCompare": "Open compare",
+    "pairsNote": "{n, plural, one {# comparable pair} other {# comparable pairs}} between {base} and {other}; every head-to-head figure below is on them alone."
   }
 }
