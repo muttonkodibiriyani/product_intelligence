@@ -16,6 +16,11 @@ coordinator entry naming both resources, me-central1, the scaling limits below, 
 against the remaining $25/month budget. That entry, which also approves `--allow-unauthenticated`
 (§6), lands in PR #65; check it is on `main` before §3.
 
+**No Hosting deploy between the merge and §6.** `infra/firebase.json` on `main` already rewrites
+`/api/**` to `pi-api`. Until the service exists (§6), a `firebase deploy --only hosting` from
+`main` would fail or leave `/api` broken. No workflow deploys Hosting automatically; whoever
+deploys it by hand waits for §6, or for teardown, removes the rewrite first (§9).
+
 ## 1. What gets created
 
 | Resource | Setting | Why |
