@@ -274,13 +274,15 @@ def test_list_size_never_falls_back_to_the_name() -> None:
     assert prepare(rec("B", "Serum 30 ml")).size is not None
 
 
-def test_json_list_fields_are_read_as_list_text() -> None:
-    record = rec("A", "Lip Tint", size=["15", "ml"], shade=["Rose"])
-    assert record.size == '["15", "ml"]'
+def test_json_list_fields_stay_lists() -> None:
+    record = rec("A", "Lip Tint", size=["15 ml"], shade=['He said "hi"'])
+    assert record.size == ("15 ml",)
     item = prepare(record)
     assert item.size == Size(Decimal(15), "ml")
-    assert item.shade == Shade(None, "rose")
+    assert item.shade == Shade(None, "he said hi")
+    assert rec("N", "Lip Tint", size=[15]).size == ("15",)
     assert prepare(rec("B", "Lip Tint", shade=["Rose", "Nude"])).shade is None
+    assert prepare(rec("C", "Lip Tint 15 ml", size=["15 ml", "30 ml"])).size is None
 
 
 def test_cli_counts_skipped_aggregates(tmp_path: Path) -> None:

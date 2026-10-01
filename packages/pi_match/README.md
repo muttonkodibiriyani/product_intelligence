@@ -23,11 +23,16 @@ Each JSONL line is a `ProductRecord`:
 
 `aggregate: true` marks a product-level row that groups other rows (its variants). Such rows are
 skipped before matching and in the brand overlap, and `summary.json` counts them in
-`aggregates_skipped`. Skipping is in memory only: nothing is written back.
+`aggregates_skipped`. Skipping is in memory only: nothing is written back. No PI loader sets
+it; the draft export SQL reads `labels.aggregate_parent` when an import wrote it, and treats
+only JSON `true` or the text `'true'` as true.
 
-`size` and `shade` may be a list, as a JSON array or as list text (`"['100'] ['ML']"`). A list
-gives its single value; a list of several sizes or shades is ambiguous and gives none (never the
-first one), and an ambiguous size list does not fall back to a size in the name.
+`size` and `shade` may be a list: a JSON array (kept as a list), or list text such as
+`"['100'] ['ML']"` (one or more flat lists side by side, each parsed with `json`, else
+`ast.literal_eval`; at most 512 characters). A list gives a value only when it holds exactly
+one: one distinct item, or for sizes one distinct number beside one distinct unit. Several
+sizes, units or shades are ambiguous and give none (never the first), as does any parse failure
+or other shape. An ambiguous size list never falls back to a size in the name.
 
 A bad line fails the run and names the line number.
 

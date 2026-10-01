@@ -26,8 +26,8 @@ from pi_match.normalise import (
     Shade,
     Size,
     concentration,
+    is_listed,
     item_kind,
-    listed_items,
     name_tokens,
     normalise_brand,
     parse_shade,
@@ -62,13 +62,14 @@ def prepare(record: ProductRecord) -> Prepared:
     A size given as a list never falls back to the name: an ambiguous list stays unknown.
     """
     brand_key = normalise_brand(record.brand)
-    text = f"{record.name} {record.size or ''}"
+    size_text = record.size if isinstance(record.size, str) else " ".join(record.size or ())
+    text = f"{record.name} {size_text}"
     return Prepared(
         record=record,
         brand_key=brand_key,
         tokens=name_tokens(record.name, brand_key),
         size=parse_size(record.size)
-        if record.size is not None and listed_items(record.size) is not None
+        if is_listed(record.size)
         else parse_size(record.size) or parse_size(record.name),
         shade=parse_shade(record.shade),
         concentration=concentration(text),

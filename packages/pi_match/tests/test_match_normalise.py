@@ -8,6 +8,7 @@ from hypothesis import strategies as st
 
 from pi_match.normalise import (
     BRAND_ALIASES,
+    MAX_LIST_TEXT,
     Concentration,
     ItemKind,
     Shade,
@@ -15,7 +16,7 @@ from pi_match.normalise import (
     concentration,
     fold,
     item_kind,
-    listed_items,
+    list_groups,
     name_tokens,
     normalise_brand,
     parse_brand_aliases,
@@ -165,10 +166,78 @@ def test_single_item_list_parses_like_plain_text(amount: Decimal, unit: str) -> 
     assert parse_size(f'["{amount} {unit}"]') == parse_size(f"{amount} {unit}")
 
 
-def test_listed_items() -> None:
-    assert listed_items("50 ml") is None
-    assert listed_items("['50', '90'] ['ML']") == ("50", "90", "ML")
-    assert listed_items('["a", " ", ""]') == ("a",)
+def test_list_groups() -> None:
+    assert list_groups("['50', '90'] ['ML']") == (("50", "90"), ("ML",))
+    assert list_groups('["a", " ", ""]') == (("a",),)
+    assert list_groups("['L\\'Oreal Red']") == (("L'Oreal Red",),)
+    assert list_groups("['a]b', 'c']") == (("a]b", "c"),)
+    assert list_groups(("50 ml",)) == (("50 ml",),)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "50 ml",  # not a list
+        "['50'",  # unclosed
+        "['50'] trailing",
+        "[['50']]",  # nested
+        "[{'a': 1}]",
+        "[True]",
+        "[__import__('os')]",  # never evaluated
+        "['x'] " * 200,  # longer than MAX_LIST_TEXT
+    ],
+)
+def test_list_groups_rejects_other_shapes(text: str) -> None:
+    assert list_groups(text) is None
+
+
+def test_list_text_is_capped() -> None:
+    assert len("['x'] " * 200) > MAX_LIST_TEXT
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "['50'] ['ML', 'G']",  # one value, two units: ambiguous
+        "['50'] ['G', 'ML']",
+        "['50', '50 g'] ['ML']",
+        ("30 ml", "50 ml"),
+    ],
+)
+def test_ambiguous_size_lists_give_none(value: str | tuple[str, ...]) -> None:
+    assert parse_size(value) is None
+
+
+def test_shade_list_text_with_quotes_inside() -> None:
+    assert parse_shade("['L\\'Oreal Red']") == Shade(None, "loreal red")
+    assert parse_shade('["He said \\"hi\\""]') == Shade(None, "he said hi")
+    assert parse_shade(('He said "hi"',)) == Shade(None, "he said hi")
+
+
+_SIZE_TEXT = st.builds(
+    "{} {}".format,
+    st.integers(min_value=1, max_value=999),
+    st.sampled_from(["ml", "g", "fl oz", "oz", "l"]),
+)
+
+
+@given(st.lists(_SIZE_TEXT, min_size=2, max_size=5, unique=True))
+def test_two_or_more_distinct_sizes_give_none(items: list[str]) -> None:
+    assert parse_size(repr(items)) is None
+    assert parse_size(tuple(items)) is None
+
+
+@given(
+    st.lists(
+        st.text(min_size=1, max_size=12).map(str.strip).filter(bool),
+        min_size=2,
+        max_size=5,
+        unique=True,
+    )
+)
+def test_two_or_more_distinct_shades_give_none(items: list[str]) -> None:
+    assert parse_shade(repr(items)) is None
+    assert parse_shade(tuple(items)) is None
 
 
 def test_size_same_as_tolerance() -> None:

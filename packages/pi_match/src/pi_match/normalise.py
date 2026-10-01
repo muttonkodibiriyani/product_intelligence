@@ -4,10 +4,11 @@ Nothing is inferred beyond the text: a size, shade or concentration that is not 
 the record stays ``None``.
 """
 
+import ast
 import json
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -30,9 +31,10 @@ _SIZE_RE = re.compile(
     r"(?<![\w.])(\d+(?:[.,]\d+)?)\s*(fl\.?\s*oz|ml|cl|l|kg|mg|gr|g|oz)(?![a-z])", re.IGNORECASE
 )
 _SHADE_CODE_RE = re.compile(r"^(?:no\s*)?([a-z]{0,3}\d+(?:\.\d+)?(?:[a-z]{1,2}\d*)?)\b")
-#: One quoted item of a list serialised as text: "['50', '90'] ['ML']" or '["50 ml"]'.
-_LISTED_ITEM_RE = re.compile(r"""'([^']*)'|"([^"]*)\"""")
 _NUMBER_RE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?")
+_BARE_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
+#: List text longer than this is not parsed at all (it is never a size or shade label).
+MAX_LIST_TEXT = 512
 #: Decimal numbers stay one token ("2.5"), everything else splits on non-alphanumerics.
 _TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)+|[a-z0-9]+")
 
@@ -163,33 +165,106 @@ class Size:
         return big == 0 or abs(self.amount - other.amount) / big <= tolerance
 
 
-def listed_items(text: str) -> tuple[str, ...] | None:
-    """The non-empty items of a list serialised as text ("['50'] ['ML']"); None for plain text."""
-    if not text.lstrip().startswith("["):
+def is_listed(value: str | Sequence[str] | None) -> bool:
+    """True for a list: a JSON array, or text that starts like one ("['100'] ['ML']")."""
+    if value is None:
+        return False
+    return not isinstance(value, str) or value.lstrip().startswith("[")
+
+
+def list_groups(value: str | Sequence[str]) -> tuple[tuple[str, ...], ...] | None:
+    """The flat lists in ``value``: a JSON array is one list; text may hold several side by side.
+
+    ``"['50', '90'] ['ML']"`` is two lists. Each list in text is parsed with ``json``, else with
+    ``ast.literal_eval`` (literals only, never code). Only flat lists of strings or numbers count.
+    Text longer than ``MAX_LIST_TEXT``, any parse failure and any other shape give None.
+    """
+    if not isinstance(value, str):
+        items = _flat_items(list(value))
+        return None if items is None else (items,)
+    rest = value.strip()
+    if not rest.startswith("[") or len(rest) > MAX_LIST_TEXT:
         return None
-    items = (single or double for single, double in _LISTED_ITEM_RE.findall(text))
-    return tuple(item.strip() for item in items if item.strip())
+    groups: list[tuple[str, ...]] = []
+    while rest:
+        parsed = _first_list(rest)
+        if parsed is None:
+            return None
+        items, rest = parsed
+        groups.append(items)
+        rest = rest.lstrip()
+    return tuple(groups)
 
 
-def parse_size(text: str | None) -> Size | None:
+def _first_list(text: str) -> tuple[tuple[str, ...], str] | None:
+    """The list that ``text`` starts with, and the text after it; None when there is none."""
+    if not text.startswith("["):
+        return None
+    for end, char in enumerate(text):
+        if char != "]":
+            continue
+        found, value = _literal(text[: end + 1])
+        if found:  # the first "]" that closes a valid literal ends the list
+            items = _flat_items(value)
+            return None if items is None else (items, text[end + 1 :])
+    return None
+
+
+def _literal(text: str) -> tuple[bool, object]:
+    try:
+        return True, json.loads(text)
+    except ValueError:
+        pass
+    try:
+        return True, ast.literal_eval(text)
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return False, None
+
+
+def _flat_items(value: object) -> tuple[str, ...] | None:
+    """The non-empty items of a flat list of strings or numbers, as text; else None."""
+    if not isinstance(value, list):
+        return None
+    items: list[str] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, str | int | float | Decimal):
+            return None
+        text = str(item).strip()
+        if text:
+            items.append(text)
+    return tuple(items)
+
+
+def parse_size(text: str | Sequence[str] | None) -> Size | None:
     """The first size written in ``text`` ("50ml", "1.7 fl oz", "3,5 g"), else None.
 
-    A list serialised as text ("['100'] ['ML']") gives its one size; a list holding more than one
-    size ("['50', '90'] ['ML']") is ambiguous and gives None, never the first of them.
+    A list (see ``list_groups``) gives a size only when it holds exactly one: one distinct item
+    (``['100 ml']``), or one distinct number beside one distinct unit (``['100'] ['ML']``).
+    Several sizes or units (``['50', '90'] ['ML']``) are ambiguous and give None, never the first.
     """
     if not text:
         return None
-    items = listed_items(text)
-    if items is not None:
-        return _listed_size(" ".join(items))
-    match = _SIZE_RE.search(text)
-    return None if match is None else _size(match)
+    if isinstance(text, str) and not is_listed(text):
+        match = _SIZE_RE.search(text)
+        return None if match is None else _size(match)
+    groups = list_groups(text)
+    return None if groups is None else _size_from_groups(groups)
 
 
-def _listed_size(joined: str) -> Size | None:
-    """The size when every number in ``joined`` is part of the same size, else None."""
-    sizes = [_size(match) for match in _SIZE_RE.finditer(joined)]
-    if not sizes or len(_NUMBER_RE.findall(joined)) != len(sizes):
+def _size_from_groups(groups: tuple[tuple[str, ...], ...]) -> Size | None:
+    if len(groups) == 2 and groups[0] and all(_BARE_NUMBER_RE.fullmatch(v) for v in groups[0]):
+        values, units = set(groups[0]), {unit.lower() for unit in groups[1]}
+        if len(values) != 1 or len(units) != 1:
+            return None
+        return _one_size(f"{values.pop()} {units.pop()}")
+    distinct = {item for group in groups for item in group}
+    return _one_size(distinct.pop()) if len(distinct) == 1 else None
+
+
+def _one_size(text: str) -> Size | None:
+    """The size when every number in ``text`` belongs to the same size ("1.7 fl oz / 50 ml")."""
+    sizes = [_size(match) for match in _SIZE_RE.finditer(text)]
+    if not sizes or len(_NUMBER_RE.findall(text)) != len(sizes):
         return None
     first = sizes[0]
     return first if all(first.same_as(other) for other in sizes[1:]) else None
@@ -219,18 +294,19 @@ class Shade:
     name: str | None
 
 
-def parse_shade(text: str | None) -> Shade | None:
+def parse_shade(text: str | Sequence[str] | None) -> Shade | None:
     """Split a shade label ("220 Natural Beige", "N12 - Vanilla") into code and name.
 
-    A list serialised as text gives its one shade; a list of several shades gives None.
+    A list (see ``list_groups``) gives its shade only when it holds one distinct item.
     """
     if not text:
         return None
-    items = listed_items(text)
-    if items is not None:
-        if len(items) != 1:
+    if not isinstance(text, str) or is_listed(text):
+        groups = list_groups(text)
+        distinct = {item for group in groups or () for item in group}
+        if len(distinct) != 1:
             return None
-        text = items[0]
+        text = distinct.pop()
     folded = fold(text)
     if not folded:
         return None

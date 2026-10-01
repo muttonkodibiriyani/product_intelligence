@@ -6,8 +6,10 @@
 -- listing_content.labels (brand/size/shade/gtin keys) of the latest content row. Price is the
 -- latest observation with a price_current (any locale context: prices do not vary by
 -- language). Nothing is inferred: missing values are omitted (null).
--- aggregate is true when the loader marked the row as a product-level parent of other rows
--- (labels.aggregate_parent); pi-match skips such rows. Rows without any brand are skipped: they cannot be blocked by brand.
+-- aggregate is true only when labels.aggregate_parent is JSON true or the text 'true' (a
+-- product-level parent of other rows, set by an external import; no PI loader writes it);
+-- anything else, including absent, is false. pi-match skips aggregate rows.
+-- Rows without any brand are skipped: they cannot be blocked by brand.
 WITH latest_offer AS (
   SELECT DISTINCT ON (o.source_listing_id)
     o.source_listing_id, o.price_current, o.currency
@@ -33,7 +35,7 @@ SELECT json_strip_nulls(json_build_object(
   'category', l.category_path_source,
   'price', lo.price_current::text,
   'currency', lo.currency,
-  'aggregate', COALESCE(lc.labels -> 'aggregate_parent' = 'true'::jsonb, false)
+  'aggregate', COALESCE(lc.labels ->> 'aggregate_parent' = 'true', false)
 ))
 FROM source_listing l
 JOIN source s ON s.id = l.source_id

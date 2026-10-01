@@ -1,6 +1,5 @@
 """Input records and match output for the first-pass matcher."""
 
-import json
 from decimal import Decimal
 from enum import StrEnum
 
@@ -17,8 +16,9 @@ class ProductRecord(PiModel):
     brand: str = Field(min_length=1)
     name: str = Field(min_length=1)
     url: str | None = None
-    size: str | None = None  # size text as published, e.g. "50 ml"; else parsed from the name
-    shade: str | None = None
+    #: Size as published, e.g. "50 ml" (else parsed from the name); a JSON array stays a list.
+    size: str | tuple[str, ...] | None = None
+    shade: str | tuple[str, ...] | None = None
     gtin: str | None = None
     category: str | None = None
     price: Decimal | None = None
@@ -28,13 +28,14 @@ class ProductRecord(PiModel):
 
     @field_validator("size", "shade", mode="before")
     @classmethod
-    def _list_as_text(cls, value: object) -> object:
-        """A JSON list is kept as list text; the normalisers read one item or none from it."""
-        return (
-            json.dumps([str(item) for item in value], ensure_ascii=False)
-            if isinstance(value, list)
-            else value
-        )
+    def _numbers_as_text(cls, value: object) -> object:
+        """Numbers in a JSON array become text ([50, "ml"]); anything else is validated as is."""
+        if isinstance(value, list):
+            return [
+                str(item) if isinstance(item, int | float) and not isinstance(item, bool) else item
+                for item in value
+            ]
+        return value
 
 
 class Bucket(StrEnum):
