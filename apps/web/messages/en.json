@@ -389,5 +389,28 @@
     "loading": "Loading…",
     "preview": "Layout preview — not collected yet.",
     "empty": "Nothing to show for this selection."
+  },
+  "catalogue": {
+    "title": "Images and variants",
+    "hint": "Choose a SKU to view its images. The prices above belong to the offer SKU.",
+    "loading": "Loading images and variants…",
+    "returnSku": "Return to offer SKU {sku}",
+    "capture": "Archive timestamp {captured} · metadata imported {imported}",
+    "type": "Record type",
+    "variant": "Variant SKU",
+    "listing": "Product listing",
+    "stockId": "Stock system ID",
+    "unknown": "Unknown",
+    "identifiers": "Source identifiers",
+    "catalogueId": "Catalogue product ID",
+    "externalId": "External product ID",
+    "parentSummary": "This parent listing groups its variants; its own images and IDs may repeat theirs.",
+    "parents": "Parent products",
+    "variants": "Variant SKUs",
+    "noImages": "No captured image available",
+    "images": "Product images",
+    "imageNumber": "Image {n} of {count}",
+    "openImage": "Open image",
+    "notCaptured": "Not captured"
   }
 }
