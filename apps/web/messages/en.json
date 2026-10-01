@@ -422,7 +422,7 @@
     "identifiers": "Source identifiers",
     "catalogueId": "Catalogue product ID",
     "externalId": "External product ID",
-    "parentSummary": "This parent listing groups its variants and is excluded from product counts.",
+    "parentSummary": "This parent listing groups its variants; its own images and IDs may repeat theirs.",
     "parents": "Parent products",
     "variants": "Variant SKUs",
     "noImages": "No captured image available",
