@@ -16,6 +16,15 @@ export const MAX_LIMIT = 25;
 export const MAX_LIST = 25;
 
 const limit = z.number().int().min(1).max(MAX_LIMIT).default(10);
+/**
+ * Row cap for compare, promotions and launches (API 1.1.0 allows 1..500). Always sent, so a
+ * result stays small; summaries are computed over every row by the API.
+ */
+export const MAX_ROWS = 25;
+const rowLimit = z.number().int().min(1).max(MAX_ROWS).default(MAX_ROWS);
+const TRUNCATED_NOTE =
+  " At most `limit` rows (default 25) are returned; `total` counts them all. If `truncated` is " +
+  "true, say the list was cut, as 'top {shown} of {total}'.";
 const text = z.string().trim().min(1).max(120);
 const textList = z.array(text).min(1).max(10);
 const retailerId = z.string().regex(/^[a-z][a-z0-9_]{1,62}$/, "retailer id from coverage_status");
@@ -107,14 +116,17 @@ export const getProduct = defineTool({
 
 export const compare = defineTool({
   name: "compare",
-  version: "2",
+  version: "3",
   description:
     "Compare prices between two retailers (base and other, ids from coverage_status). Pass up " +
     "to 25 product ids, or brand/category filters. Only exact, approved or locked, same-size " +
     "pairs count. Each row has gap {amount, pct, cheaper}; cheaper is base, other or equal. For " +
     "5 or more counted pairs it adds the median and mean gap %, cheaper-at counts and basket " +
-    "totals; groupBy brand or category adds the same summary per group.",
+    "totals; groupBy brand or category adds the same summary per group. The summary always " +
+    "covers every row; a cut list keeps the largest |gap pct| first." +
+    TRUNCATED_NOTE,
   minRole: "viewer",
+  listKey: "rows",
   input: z
     .object({
       retailers: retailerPair,
@@ -122,6 +134,7 @@ export const compare = defineTool({
       ...filters,
       date: isoDate.optional(),
       groupBy: z.enum(["brand", "category"]).optional(),
+      limit: rowLimit,
     })
     .strict()
     .refine(noIdsWithFilters, NO_IDS_WITH_FILTERS),
@@ -154,19 +167,23 @@ export const indexTrend = defineTool({
 
 export const promotions = defineTool({
   name: "promotions",
-  version: "2",
+  version: "3",
   description:
     "Promotions on a date (default: the latest): the share of offers on promotion at each " +
     "retailer and the promoted products. depthPct = (regular - price) / regular x 100, " +
     "computed from shown prices, not the retailer's stated discount; minPct filters on it. " +
-    "Early recon offers are excluded.",
+    "Early recon offers are excluded. Shares cover every offer; a cut list keeps the deepest " +
+    "discounts first." +
+    TRUNCATED_NOTE,
   minRole: "viewer",
+  listKey: "items",
   input: z
     .object({
       ...filters,
       retailer: retailerList.optional(),
       minPct: z.number().int().min(1).max(100).optional(),
       date: isoDate.optional(),
+      limit: rowLimit,
     })
     .strict(),
   // The API takes minPct as decimal text.
@@ -199,16 +216,19 @@ export const assortmentGaps = defineTool({
 
 export const launches = defineTool({
   name: "launches",
-  version: "2",
+  version: "3",
   description:
     "Products first seen at a retailer since a date. Needs collection history; without it this " +
-    "returns not_enough_data (capability_off).",
+    "returns not_enough_data (capability_off). A cut list keeps the newest first." +
+    TRUNCATED_NOTE,
   minRole: "viewer",
+  listKey: "items",
   input: z
     .object({
       since: isoDate.optional(),
       retailer: retailerList.optional(),
       ...filters,
+      limit: rowLimit,
     })
     .strict(),
   request: (input) => get("/launches", input),

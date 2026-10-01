@@ -88,6 +88,38 @@ export interface ToolEnvelope {
 
 export type ToolResult = ToolEnvelope | ToolError;
 
+/**
+ * A limited list (`truncated: true`): the number of rows actually returned, so the answer can
+ * quote "top N of total" and the verifier finds N in the result. Null when nothing was cut.
+ */
+export function truncation(
+  data: unknown,
+  listKey: string | undefined,
+): { readonly shown: number; readonly total: number } | null {
+  if (listKey === undefined || typeof data !== "object" || data === null) return null;
+  const record = data as Record<string, unknown>;
+  const rows = record[listKey];
+  const total = record.total;
+  if (record.truncated !== true || !Array.isArray(rows) || typeof total !== "number") return null;
+  return { shown: rows.length, total };
+}
+
+function truncatedCaveat({ shown, total }: { shown: number; total: number }): Caveat {
+  const [n, of] = [String(shown), String(total)];
+  return {
+    code: "truncated",
+    ...prose({
+      en: `Only the first ${n} of ${of} rows are listed, the row limit. Any summary covers all ${of}.`,
+      ar: `تُعرض أول ${n} من أصل ${of} صفًا فقط بسبب حد الصفوف. أي ملخص يشمل جميع الصفوف وعددها ${of}.`,
+    }),
+  };
+}
+
+function withShown(data: Sanitised, cut: { readonly shown: number } | null): Sanitised {
+  if (cut === null || typeof data !== "object" || data === null || Array.isArray(data)) return data;
+  return { ...data, shown: cut.shown };
+}
+
 function rank(role: Role): number {
   return ROLES.indexOf(role);
 }
@@ -174,16 +206,20 @@ export class ToolRegistry {
       return error(name, "upstream_invalid", API_ERROR_MESSAGES.upstream_invalid);
     }
     const { meta, cohort, caveats, data } = envelope.data;
+    const cut = truncation(data, tool.listKey);
     const result: ToolEnvelope = {
       status: envelope.data.status,
       // not_enough_data may still carry rows (e.g. compare below the cohort minimum).
       ...(data === undefined || data === null
         ? {}
         : {
-            data: sanitiseData(data, {
-              evidenceHosts: this.config.evidenceHosts,
-              admin: caller.role === "admin",
-            }),
+            data: withShown(
+              sanitiseData(data, {
+                evidenceHosts: this.config.evidenceHosts,
+                admin: caller.role === "admin",
+              }),
+              cut,
+            ),
           }),
       ...(envelope.data.status === "ok"
         ? {}
@@ -208,7 +244,10 @@ export class ToolRegistry {
             ? null
             : { description: untrusted(cohort.description, PROSE_MAX_CHARS), n: cohort.n },
       },
-      caveats: caveats.map(({ code, ...text }) => ({ code, ...prose(text) })),
+      caveats: [
+        ...caveats.map(({ code, ...text }) => ({ code, ...prose(text) })),
+        ...(cut ? [truncatedCaveat(cut)] : []),
+      ],
     };
     if (JSON.stringify(result).length > MAX_RESULT_CHARS) {
       return error(name, "output_too_large", API_ERROR_MESSAGES.output_too_large);
