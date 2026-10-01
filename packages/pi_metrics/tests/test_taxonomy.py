@@ -69,6 +69,45 @@ def test_no_rule_and_no_breadcrumb_are_unmapped_with_the_code_as_bucket() -> Non
     assert classify(("makeup", "Mystery")).bucket == "other"  # not an exporter code
 
 
+@pytest.mark.parametrize(
+    "level",
+    [
+        "Cleansers & Exfoliators",
+        "Masks & Peels",
+        "Moisturisers & Serums",
+        "Face Mists & Essences",
+        "Cleansers, Toners",
+        "Moisturizers and Serums",
+    ],
+)
+def test_a_level_listing_two_categories_is_ambiguous(level: str) -> None:
+    placed = classify(("skincare", "Skincare", level))
+    assert (placed.common, placed.unmapped, placed.matched) == (None, Unmapped.AMBIGUOUS, level)
+    assert placed.bucket == "skincare"
+
+
+def test_a_deeper_level_decides_a_listing_and_one_category_per_list_is_placed() -> None:
+    assert classify(("skincare", "Cleansers & Exfoliators", "Cleansing Balm")).common == "cleanser"
+    assert classify(("lips", "Lip Care & Treatments")).common == "lip_care"
+    assert classify(("body", "Bath & Body")).common == "body_care"
+    assert classify(("lips", "Lip & Cheek Tint")).unmapped is Unmapped.NO_RULE
+
+
+@pytest.mark.parametrize(
+    ("level", "common"),
+    [
+        ("Lip Pencil", "lip_liner"),
+        ("Eye Pencil", "eyeliner"),
+        ("Make Up Remover", "cleanser"),
+        ("Makeup Remover", "cleanser"),
+        ("Hair Removal", "body_care"),
+        ("Hair Mask", "hair_care"),
+    ],
+)
+def test_review_probes_place_by_their_head_noun(level: str, common: str) -> None:
+    assert classify(("other", level)).common == common
+
+
 def test_a_tie_between_categories_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
     doubled = dict(taxonomy._COMPILED) | {"twin": (re.compile(r"\blipsticks?"),)}
     monkeypatch.setattr(taxonomy, "_COMPILED", doubled)

@@ -6,8 +6,10 @@ naming offer's own breadcrumb, at most three levels, verbatim. ``classify`` maps
 - a **common** category (``lipstick``, ``moisturizer`` ...) by rules on the breadcrumb levels.
   The deepest level that any rule matches decides. Within a level, the match ending last wins
   (English puts the head noun last: "Powder Brush" is ``tools``), then the longest, so
-  "Tinted Moisturiser" is ``foundation``, not ``moisturizer``. Two categories tying on both make
-  the product ``ambiguous``, and no rule anywhere makes it ``no_rule``.
+  "Tinted Moisturiser" is ``foundation``, not ``moisturizer``. A level that lists categories
+  ("Cleansers & Exfoliators", "Masks, Peels") is read item by item, split on "&", "," and
+  "and": items naming different categories make the product ``ambiguous``, as do two categories
+  tying within one item. No rule anywhere makes it ``no_rule``.
   Neither is forced into a category: both are reported as unmapped, as is a product with no
   breadcrumb at all (``no_breadcrumb``: today's served file carries the code only, so ``common``
   maps nothing until an export publishes breadcrumbs).
@@ -73,7 +75,7 @@ COMMON: dict[str, Common] = {
         r"lip tints?",
     ),
     "lip_gloss": _c("Lip gloss", "ملمع الشفاه", "lips", r"lip gloss(es)?", r"gloss(es)?", r"plump"),
-    "lip_liner": _c("Lip liner", "محدد الشفاه", "lips", r"lip ?liners?"),
+    "lip_liner": _c("Lip liner", "محدد الشفاه", "lips", r"lip ?liners?", r"lip pencils?"),
     "lip_care": _c(
         "Lip care",
         "العناية بالشفاه",
@@ -103,7 +105,9 @@ COMMON: dict[str, Common] = {
     "bronzer": _c("Bronzer & contour", "برونزر وكونتور", "cheek", r"bronz", r"contour"),
     "highlighter": _c("Highlighter", "هايلايتر", "cheek", r"highlight", r"illuminat"),
     "mascara": _c("Mascara", "ماسكارا", "eyes", r"mascaras?"),
-    "eyeliner": _c("Eyeliner", "محدد العيون", "eyes", r"eye ?liners?", r"kohl", r"kajal"),
+    "eyeliner": _c(
+        "Eyeliner", "محدد العيون", "eyes", r"eye ?liners?", r"eye pencils?", r"kohl", r"kajal"
+    ),
     "eyeshadow": _c("Eyeshadow", "ظلال العيون", "eyes", r"eye ?shadows?", r"eye ?shadow palettes?"),
     "brows": _c("Brows", "الحواجب", "eyes", r"brows?", r"eyebrows?"),
     "lashes": _c("Lashes", "الرموش", "eyes", r"(false )?lash(es)?", r"lash serums?"),
@@ -124,7 +128,7 @@ COMMON: dict[str, Common] = {
         r"cleansing (balms?|oils?)",
         r"face wash(es)?",
         r"micellar",
-        r"make-?up removers?",
+        r"make[- ]?up removers?",
     ),
     "toner": _c("Toner", "تونر", "skincare", r"toners?", r"(face|facial) mists?"),
     "exfoliator": _c(
@@ -161,6 +165,7 @@ COMMON: dict[str, Common] = {
         r"bath",
         r"hand (creams?|care)",
         r"deodorants?",
+        r"hair remov",
     ),
     "hair_care": _c(
         "Hair care",
@@ -209,7 +214,8 @@ class Unmapped(StrEnum):
     NO_BREADCRUMB = "no_breadcrumb"
     #: No rule matched any breadcrumb level.
     NO_RULE = "no_rule"
-    #: Two categories tied on the longest match at the deciding level.
+    #: The deciding level names two categories: a list of them ("Masks & Peels"), or two
+    #: tying on the best match.
     AMBIGUOUS = "ambiguous"
 
 
@@ -223,10 +229,13 @@ class Placement(ContractModel):
     matched: str | None
 
 
-def _level_match(level: str) -> tuple[tuple[int, int], set[str]]:
-    """The best (end, length) of any match on one level and every key that reaches it."""
+#: What separates the items of a list-style level ("Cleansers & Exfoliators").
+_LIST = re.compile(r"\s*(?:&|,|\band\b)\s*")
+
+
+def _item_match(text: str) -> tuple[tuple[int, int], set[str]]:
+    """The best (end, length) of any match on one item and every key that reaches it."""
     best, keys = (0, 0), set[str]()
-    text = level.casefold()
     for key, patterns in _COMPILED.items():
         score = max(
             ((m.end(), len(m.group(0))) for p in patterns for m in p.finditer(text)),
@@ -239,6 +248,16 @@ def _level_match(level: str) -> tuple[tuple[int, int], set[str]]:
     return best, keys
 
 
+def _level_keys(level: str) -> set[str]:
+    """Every key one breadcrumb level names: one per item of a list, the best within each."""
+    keys = set[str]()
+    for item in _LIST.split(level.casefold()):
+        best, found = _item_match(item)
+        if best[0]:
+            keys |= found
+    return keys
+
+
 def classify(category: tuple[str, ...]) -> Placement:
     """taxonomy@1 for one product ``category`` (code, then up to three breadcrumb levels)."""
     code = category[0].casefold() if category else "other"
@@ -246,8 +265,8 @@ def classify(category: tuple[str, ...]) -> Placement:
     if len(category) < 2:
         return Placement(bucket=code, common=None, unmapped=Unmapped.NO_BREADCRUMB, matched=None)
     for level in reversed(category[1:]):
-        best, keys = _level_match(level)
-        if not best[0]:
+        keys = _level_keys(level)
+        if not keys:
             continue
         if len(keys) > 1:
             return Placement(bucket=code, common=None, unmapped=Unmapped.AMBIGUOUS, matched=level)

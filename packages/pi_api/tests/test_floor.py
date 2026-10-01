@@ -291,6 +291,9 @@ def test_the_caveat_names_only_the_retailers_a_request_involves(tmp_path: Path) 
     client = serve(tmp_path, planted(LOW))
     assert floor_caveats(get(client, f"/summary?retailer={SHOP}")) == {SHOP: "1"}
     assert floor_caveats(get(client, f"/summary?retailer={ULTA}")) == {ULTA: "2"}
+    pair = f"/category-compare?retailers={SHOP},{ULTA}"
+    assert floor_caveats(get(client, pair)) == {SHOP: "1", ULTA: "2"}
+    assert floor_caveats(get(client, f"{pair}&level=common")) == {SHOP: "1", ULTA: "2"}
     assert floor_caveats(get(client, "/coverage")) == {}
     text = next(
         c

@@ -582,15 +582,22 @@ day, in the market currency and above the price floor, counts in exactly one cat
   a gap is `null`. A category gap reflects each retailer's range, not like-for-like items.
 - **Levels.** `bucket` (default) is the exporter's nine codes; every product has one. `common`
   is taxonomy@1 (`pi_metrics.taxonomy`): finer categories read from the retailer breadcrumb at
-  serve time, so a new rule is a code change, never a re-export. It also corrects the
-  exporter's keyword order (an eye cream is `eye_care`, bucket `skincare`).
+  serve time, so a new rule is a code change, never a re-export. The deepest matching level
+  decides, by its head noun ("Powder Brush" is `tools`). A level that lists categories
+  ("Cleansers & Exfoliators", split on `&`, `,` and `and`) naming two of them is `ambiguous`,
+  never its last item. It also corrects the exporter's keyword order (an eye cream is
+  `eye_care`, bucket `skincare`).
 - **Coverage, honestly.** `coverage.{base,other}` gives `priced`, `mapped`, `unmapped`,
   `noBreadcrumb`, and `otherBucket`/`otherPct` (the share in the catch-all `other` bucket).
+  A side's cells sum to `priced` at `level=bucket` and to `mapped` at `level=common`.
   `unmapped[]` lists the most frequent unplaced breadcrumbs (`no_breadcrumb`, `no_rule`,
-  `ambiguous`; at most 50, `unmappedPaths` counts them all). At `level=common` the caveats
-  `breadcrumb_missing` and `unmapped_category` carry `{retailer, count}`. Today's served file
-  holds the code only, so `common` places nothing and says so; finer categories need
-  breadcrumbs in the export (a future decision).
+  `ambiguous`; at most 50, `unmappedPaths` counts them all); each `path` is retailer text,
+  rendered as plain text only. At `level=common` the caveats `breadcrumb_missing` and
+  `unmapped_category` carry `{retailer, count}`. Today's served file holds the code only, so
+  `common` places nothing and says so: `not_enough_data` with `reason: field_not_collected`,
+  not `cohort_too_small`. Finer categories need breadcrumbs in the export (a future decision).
+- **Early offers** count in the `early_excluded` caveat only if seen on the latest date, as on
+  `/v1/summary`.
 - **Caveats** are scoped to the pair like `/compare`: early excluded, partial retailer, channel,
   the imported-retailer notes and `invalid_price_excluded`.
 

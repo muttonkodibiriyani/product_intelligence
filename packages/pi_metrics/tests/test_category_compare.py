@@ -15,7 +15,15 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from pi_dataset import DatasetV3, MoneyValue
-from pi_metrics import MIN_COHORT, CaveatCode, Reason, Status, UnknownInput, category_compare
+from pi_metrics import (
+    MIN_COHORT,
+    CaveatCode,
+    Reason,
+    Status,
+    UnknownInput,
+    category_compare,
+    summary,
+)
 from pi_metrics.category_compare import UNMAPPED_CAP, CategoryComparison
 from pi_metrics.model import Cheaper, Metric
 from pi_metrics.taxonomy import Level, Unmapped
@@ -138,6 +146,31 @@ def test_early_and_unpriced_offers_are_left_out() -> None:
     d = doc()
     offer(d, "p01", B)["series"]["price"][-1] = None
     assert run(load(d)).data.coverage.other.priced == 11
+    # An early offer not seen on the latest date isn't counted as excluded, as in /summary.
+    d = doc()
+    unseen = offer(d, "p13", B)["series"]
+    unseen["price"][-1] = None
+    if unseen.get("availability"):
+        unseen["availability"][-1] = None
+    assert run(load(d)).caveats == ()
+    assert CaveatCode.EARLY_EXCLUDED not in {c.code for c in summary(load(d), B).caveats}
+
+
+def test_an_offer_off_the_market_currency_is_not_priced() -> None:
+    ds = load(doc())
+    product = next(p for p in ds.products if p.id == "p01")
+    usd = (None,) * (len(ds.meta.dates) - 1) + (MoneyValue.of(Decimal("10.00"), "USD"),)
+    foreign = product.offers[B].model_copy(
+        update={
+            "currency": "USD",
+            "series": product.offers[B].series.model_copy(update={"price": usd}),
+        }
+    )
+    swapped = product.model_copy(update={"offers": product.offers | {B: foreign}})
+    ds = ds.model_copy(
+        update={"products": tuple(swapped if p.id == "p01" else p for p in ds.products)}
+    )
+    assert run(ds).data.coverage.other.priced == 11
 
 
 def test_rows_lead_with_the_best_compared_category() -> None:
@@ -202,7 +235,8 @@ def test_codes_alone_serve_buckets_and_say_common_has_no_breadcrumb() -> None:
     assert CaveatCode.BREADCRUMB_MISSING not in {c.code for c in bucket.caveats}
     common = run(ds, Level.COMMON)
     assert common.data.rows == ()
-    assert (common.status, common.reason) == (Status.NOT_ENOUGH_DATA, Reason.COHORT_TOO_SMALL)
+    # Nothing to read, not too few: a client keyed on ``reason`` must not say "too few".
+    assert (common.status, common.reason) == (Status.NOT_ENOUGH_DATA, Reason.FIELD_NOT_COLLECTED)
     assert [(c.code, c.params) for c in common.caveats[1:]] == [
         (CaveatCode.BREADCRUMB_MISSING, {"retailer": A, "count": "14"}),
         (CaveatCode.BREADCRUMB_MISSING, {"retailer": B, "count": "12"}),

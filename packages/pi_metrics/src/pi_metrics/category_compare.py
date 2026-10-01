@@ -94,7 +94,8 @@ class UnmappedPath(ContractModel):
 
 class Coverage(ContractModel):
     retailer: str
-    #: Products priced on the latest date: every cell of this side sums to it.
+    #: Products priced on the latest date. At ``level=bucket`` this side's cells sum to it; at
+    #: ``level=common`` they sum to ``mapped``.
     priced: int
     #: Of ``priced``, those taxonomy@1 places at ``common`` level.
     mapped: int
@@ -125,18 +126,21 @@ class CategoryComparison(ContractModel):
     coverage: CoverageSides
     #: The most frequent unmapped breadcrumbs (at most ``UNMAPPED_CAP``); ``unmappedPaths`` counts
     #: every distinct one. Products with no breadcrumb are one entry per side with ``path: []``.
+    #: Each path is the retailer's text verbatim: render it as plain text, never as HTML or
+    #: markdown.
     unmapped: tuple[UnmappedPath, ...]
     unmapped_paths: int
     convention: str = CATEGORY_GAP_CONVENTION
 
 
 def _priced(ds: DatasetV3, context: str, i: int) -> tuple[list[tuple[ProductV3, MoneyValue]], int]:
-    """The context's products priced on date ``i`` in its market currency, and its early count."""
+    """The context's products priced on date ``i`` in its market currency, and the early offers
+    it saw that day: as ``summary._scan``, an offer not seen on ``i`` is in neither."""
     currency = view.market_currency(ds, view.context(ds, context).retailer)
     priced, early = [], 0
     for product in ds.products:
         offer = product.offers.get(context)
-        if offer is None:
+        if offer is None or not view.seen(offer, i):
             continue
         if offer.early:
             early += 1
@@ -296,7 +300,7 @@ def category_compare(
     ]
     rows.sort(key=lambda r: (-min(r.base.n, r.other.n), -(r.base.n + r.other.n), r.key))
     compared = sum(r.gap is not None for r in rows)
-    reason = None if compared else blocked or Reason.COHORT_TOO_SMALL
+    reason = None if compared else blocked or _empty_reason(coverage, level)
     return Metric[CategoryComparison](
         status=Status.OK if reason is None else Status.NOT_ENOUGH_DATA,
         data=CategoryComparison(
@@ -313,6 +317,15 @@ def category_compare(
         caveats=_caveats(ds, sides, priced, coverage, level),
         as_of=ds.meta.dates[i],
     )
+
+
+def _empty_reason(coverage: CoverageSides, level: Level) -> Reason:
+    """Why no category compares: no breadcrumb to read at ``common`` (today's served file), else
+    too few products."""
+    sides = (coverage.base, coverage.other)
+    if level is Level.COMMON and all(s.priced and s.no_breadcrumb == s.priced for s in sides):
+        return Reason.FIELD_NOT_COLLECTED
+    return Reason.COHORT_TOO_SMALL
 
 
 def _caveats(
