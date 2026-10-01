@@ -74,6 +74,10 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
   headers, no fingerprint impersonation).
 - **Partition window.** `pi_ensure_offer_observation_partition()` refuses months before
   2000-01 or 24+ months ahead, so a garbled timestamp cannot mint a stray partition.
+- **Vertical attributes (ADR-0007 §4, ADR-0008 step 2).** A non-empty `variant.attributes`
+  always names the profile version that wrote it in `variant.attributes_schema` (`beauty@1`;
+  CHECKs on the ref shape and the pairing). Write it only through
+  `pi_profiles.get_profile(ref).validate_attributes(...)`.
 - **Ratings** are stored as published, with their `rating_scale` (5, 10, 100 …), and are
   bounded by it. Normalisation happens downstream.
 
@@ -91,6 +95,10 @@ DB tests are marked `db` and skip when `PI_DATABASE_URL` is unset.
 `0001` creates everything on an empty database, so it takes no locks on existing data and
 rewrites nothing. Downgrade drops all objects except the `pi_app` role and the `vector`
 extension, which are cluster- or database-wide.
+
+`0004` adds the nullable `variant.attributes_schema` column and its two CHECKs. Nothing
+wrote `variant.attributes` before it, so the pairing CHECK validates without rewriting data;
+the downgrade drops the column (and both CHECKs with it).
 
 Open follow-up for the evidence retention job: `offer_observation.evidence_id` and
 `promotion.evidence_id` reference `evidence`, so expired rows that are still referenced can't

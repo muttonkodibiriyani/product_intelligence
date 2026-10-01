@@ -433,6 +433,10 @@ def test_good_offer_attributes(key: str, value: Any) -> None:
         ),
         ("fees", {"delivery": {"amount": "7.00", "currency": "USD"}}, "fees.delivery: bad money"),
         ("fees", {"delivery": {"currency": "AED"}}, "fees.delivery: bad money"),
+        # ... and so is any object with a minor: a lost currency is an error, not data (#75 nit).
+        ("fees", {"delivery": {"amount": "7.00", "minor": 700}}, "fees.delivery: bad money"),
+        ("fees", {"tiers": [{"minor": 700}]}, "fees.tiers.0: bad money"),
+        ("price_band", {"amount": "10.00", "minor": 1000}, "price_band: bad money"),
         (
             "price_band",
             {"amount": "10.00", "minor": 1000, "currency": "AED", "note": "x"},

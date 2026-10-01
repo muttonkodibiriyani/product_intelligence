@@ -98,3 +98,28 @@ def test_0003_offline_import_up_down(empty_db: str) -> None:
 
     command.upgrade(config, "head")  # ADD VALUE IF NOT EXISTS: re-upgrade is a no-op
     assert _evidence_checks(empty_db) == after
+
+
+def _variant_columns(url: str) -> set[str]:
+    with psycopg.connect(_libpq(url)) as conn:
+        return {
+            str(name)
+            for (name,) in conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'variant'"
+            )
+        }
+
+
+def test_0004_attributes_schema_up_down(empty_db: str) -> None:
+    """0004 only adds variant.attributes_schema; its downgrade removes exactly that."""
+    config = alembic_config(empty_db)
+
+    command.upgrade(config, "0003")
+    before = _variant_columns(empty_db)
+    assert "attributes_schema" not in before
+
+    command.upgrade(config, "0004")
+    assert _variant_columns(empty_db) == before | {"attributes_schema"}
+
+    command.downgrade(config, "0003")
+    assert _variant_columns(empty_db) == before

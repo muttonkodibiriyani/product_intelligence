@@ -36,7 +36,9 @@ Identical inputs give byte-identical outputs. `--cutoff` is a label, never a clo
 ## How it matches
 
 1. **Brand key.** Brands are case- and diacritic-folded, `&`/`+` becomes `and`, apostrophes are
-   dropped, and aliases apply (`BRAND_ALIASES`, e.g. `YSL Beauty` → `yves saint laurent`). A
+   dropped, and aliases apply (`BRAND_ALIASES`, e.g. `YSL Beauty` → `yves saint laurent`). The aliases are
+   data, not code: `src/pi_match/brand_aliases.json`, `{canonical: [aliases]}` in the shape of
+   `brand.aliases`, folded and sorted (a test checks both). A
    trailing `cosmetics`/`makeup`/`skincare`/`paris`/`london`/`new york` is dropped. Pairs are
    only considered within the same brand key.
 2. **Hard rules** (§8.4):

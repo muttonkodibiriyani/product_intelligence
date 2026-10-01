@@ -430,8 +430,11 @@ def _type_problem(spec: AttributeDef, value: JsonValue) -> str | None:
 
 
 def _is_money(value: JsonValue) -> bool:
-    """Any object with a ``currency`` is money, so a malformed one is an error, not text."""
-    return isinstance(value, dict) and "currency" in value
+    """Any object with a ``currency`` or ``minor`` is money, so a malformed one is an error.
+
+    ``{amount, minor}`` without a currency is a broken money value, not plain object data.
+    """
+    return isinstance(value, dict) and not {"currency", "minor"}.isdisjoint(value)
 
 
 def _money_in(value: JsonValue, path: str) -> Iterator[tuple[str, MoneyValue | str]]:

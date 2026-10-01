@@ -489,6 +489,28 @@ def _variants(conn: Conn) -> tuple[object, object]:
     return a, b
 
 
+_SET_ATTRIBUTES = "UPDATE variant SET attributes = %s::jsonb, attributes_schema = %s WHERE id = %s"
+
+
+def test_variant_attributes_need_a_profile_ref(conn: Conn) -> None:
+    """ADR-0008 step 2: non-empty attributes always name the profile version that wrote them."""
+    variant, _ = _variants(conn)
+    conn.execute(_SET_ATTRIBUTES, ('{"finish": "matte"}', "beauty@1", variant))
+    conn.execute(_SET_ATTRIBUTES, ("{}", "beauty@1", variant))
+    conn.execute(_SET_ATTRIBUTES, ("{}", None, variant))
+    conn.execute("SAVEPOINT s")
+    with pytest.raises(errors.CheckViolation, match="variant_attributes_schema_check"):
+        conn.execute(_SET_ATTRIBUTES, ('{"finish": "matte"}', None, variant))
+    conn.execute("ROLLBACK TO SAVEPOINT s")
+
+
+@pytest.mark.parametrize("ref", ["beauty", "beauty@0", "Beauty@1", "beauty@1.0", "b@1", ""])
+def test_variant_attributes_schema_is_a_profile_ref(conn: Conn, ref: str) -> None:
+    variant, _ = _variants(conn)
+    with pytest.raises(errors.CheckViolation, match="variant_attributes_schema_ref_check"):
+        conn.execute(_SET_ATTRIBUTES, ("{}", ref, variant))
+
+
 def test_one_current_match_edge_per_pair(conn: Conn) -> None:
     """MAT-07: a rejected pair cannot get a competing current proposal."""
     a, b = _variants(conn)

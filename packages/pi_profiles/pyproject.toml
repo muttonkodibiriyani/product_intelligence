@@ -1,0 +1,17 @@
+[project]
+name = "pi-profiles"
+version = "0.1.0"
+description = "VerticalProfile plugins: per-vertical attribute models and size rules (ADR-0007 §4, ADR-0008 §3)"
+requires-python = ">=3.12"
+dependencies = [
+  "pi-core",
+  "pi-dataset",
+  "pydantic>=2.11",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pi_profiles"]

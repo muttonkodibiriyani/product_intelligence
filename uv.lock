@@ -17,6 +17,7 @@ members = [
     "pi-fetch",
     "pi-match",
     "pi-metrics",
+    "pi-profiles",
     "product-intelligence",
 ]
 
@@ -1287,6 +1288,23 @@ requires-dist = [
 ]
 
 [[package]]
+name = "pi-profiles"
+version = "0.1.0"
+source = { editable = "packages/pi_profiles" }
+dependencies = [
+    { name = "pi-core" },
+    { name = "pi-dataset" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pi-dataset", editable = "packages/pi_dataset" },
+    { name = "pydantic", specifier = ">=2.11" },
+]
+
+[[package]]
 name = "playwright"
 version = "1.63.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1327,6 +1345,7 @@ dependencies = [
     { name = "pi-fetch" },
     { name = "pi-match" },
     { name = "pi-metrics" },
+    { name = "pi-profiles" },
 ]
 
 [package.dev-dependencies]
@@ -1348,6 +1367,7 @@ requires-dist = [
     { name = "pi-fetch", editable = "packages/pi_fetch" },
     { name = "pi-match", editable = "packages/pi_match" },
     { name = "pi-metrics", editable = "packages/pi_metrics" },
+    { name = "pi-profiles", editable = "packages/pi_profiles" },
 ]
 
 [package.metadata.requires-dev]
