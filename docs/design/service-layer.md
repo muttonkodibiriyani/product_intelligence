@@ -523,6 +523,13 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
   listings are not removed here (the served document has no parent marker); the export drops
   them.
 
+- **Cutoff (API 1.5.1).** `meta.cutoff` is served as the latest `capturedAt` of the collected
+  (non-imported) offers, so `/meta`, every envelope's `meta.cutoff` and a collected context's
+  `/summary` freshness never show the import time; if every offer is imported, the file's cutoff
+  is kept and `snapshot_import_date` says so. A collected context's `/summary` `asOf` is capped
+  at that cutoff's day, and `/summary` without `retailer` picks a collected context.
+  `meta.dates` and the series are left as published.
+
 A dataset without an imported retailer is served as the same object, byte for byte.
 
 ## 7. Metric rules (owned by `pi_metrics`)
