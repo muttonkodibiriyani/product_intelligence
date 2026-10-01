@@ -6,13 +6,27 @@ import type { ReactNode } from 'react';
 import type { Summary } from '@/lib/api/summary';
 import { formatCount, formatDate } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
-import { exploreHref, freshness, pct, promotions, promotionsHref } from './model';
+import type { CaveatView } from '@/lib/api/types';
+import { exploreHref, freshness, hasParents, importedOn, pct, promotions, promotionsHref } from './model';
 
-/** The headline numbers; the promotion share only once regular prices are collected. Each tile opens the list it counts. */
-export function KpiWidget({ data, locale }: { data: Summary; locale: string }) {
+/**
+ * The headline numbers; the promotion share only once regular prices are collected. Each tile opens
+ * the list it counts. `caveats` are the envelope's: an imported retailer's count and date say so.
+ */
+export function KpiWidget({
+  data,
+  locale,
+  caveats = [],
+}: {
+  data: Summary;
+  locale: string;
+  caveats?: readonly CaveatView[];
+}) {
   const t = useTranslations('widgets.kpi');
   const lc = locale === 'ar' ? 'ar' : 'en';
   const f = freshness(data.freshness);
+  // An import date, never a capture date: no 'as of' and no age (owner rule, API 1.5.0).
+  const imported = f === 'snapshot' ? (importedOn(caveats, data.retailer) ?? data.freshness.cutoff) : null;
   const promo = promotions(data);
   const all = exploreHref(locale, {});
   // A null count is withheld by /summary, not zero.
@@ -21,7 +35,12 @@ export function KpiWidget({ data, locale }: { data: Summary; locale: string }) {
     <dl
       className={`grid grid-cols-2 gap-4 sm:grid-cols-3 ${promo.measured ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}
     >
-      <Tile k={t('products')} href={all} tone="bg-lav">
+      <Tile
+        k={t('products')}
+        href={all}
+        tone="bg-lav"
+        sub={hasParents(caveats, data.retailer) ? t('productsParents') : undefined}
+      >
         {count(data.products)}
       </Tile>
       <Tile k={t('brands')} href={all} tone="bg-sky">
@@ -45,11 +64,15 @@ export function KpiWidget({ data, locale }: { data: Summary; locale: string }) {
           f === 'fresh' ? 'bg-mint' : f === 'aging' ? 'bg-butter' : f === 'stale' ? 'bg-rose' : 'bg-surface-2'
         }
         sub={
-          <>
-            {t('asOf', { date: formatDate(data.freshness.cutoff, locale) })}
-            {' · '}
-            {t('age', { days: data.freshness.ageDays })}
-          </>
+          imported ? (
+            t('imported', { date: formatDate(imported, locale) })
+          ) : (
+            <>
+              {t('asOf', { date: formatDate(data.freshness.cutoff, locale) })}
+              {' · '}
+              {t('age', { days: data.freshness.ageDays })}
+            </>
+          )
         }
       >
         <span

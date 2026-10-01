@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from pi_api.dq import Imported, imported_view
 from pi_dataset import DatasetError, DatasetV3, load_any
 from pi_metrics.view import as_v3
 
@@ -79,6 +80,13 @@ class Loaded:
     #: Always v3: a v2 snapshot is upgraded once, at load (ADR-0008 §4).
     dataset: DatasetV3
     generation: str
+    #: Imported retailers the served ``dataset`` was corrected for at load (``pi_api.dq``).
+    imported: tuple[Imported, ...] = ()
+
+    @property
+    def unverified(self) -> frozenset[str]:
+        """Context ids whose was-prices are unverified: promotions there are withheld."""
+        return frozenset(c for shop in self.imported for c in shop.contexts)
 
     @property
     def markets(self) -> tuple[str, ...]:
@@ -152,8 +160,10 @@ class SnapshotSource:
                     continue
                 data, generation = self._store.read(path)
                 # Upgraded here, off the request path; a v2 that can't be is not loaded.
-                dataset = parse(data, allow_test=self._allow_test)
-                loaded = Loaded(path=path, dataset=dataset, generation=generation)
+                dataset, imported = imported_view(parse(data, allow_test=self._allow_test))
+                loaded = Loaded(
+                    path=path, dataset=dataset, generation=generation, imported=imported
+                )
             except (DatasetError, ValueError, OSError, zlib.error) as error:
                 log.warning("dataset %s not loaded: %s", path, type(error).__name__)
                 continue
