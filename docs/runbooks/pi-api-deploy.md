@@ -129,7 +129,7 @@ else, so every env var stays as it is.
   dashboard may hotlink images from. Today's value is
   `sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com`, the two external hosts in the
   Hosting CSP `img-src` (decision log, 2026-10-01). Without it every `ProductCard.image` is null.
-- **SKU galleries and identities** (API 1.6.0) optionally use `PI_API_CATALOGUES`, a comma-separated
+- **SKU galleries and identities** (API 1.7.0) optionally use `PI_API_CATALOGUES`, a comma-separated
   list of `pi.catalogue/v1` objects, for example
   `datasets/ae/beauty/catalogues/ulta_ae/latest.json`. These stay under the runtime identity's
   existing `datasets/` read permission. `/api/v1/catalogues/{retailer}` reports inventory and
