@@ -4,7 +4,8 @@
  * - a role check;
  * - strict input parsing;
  * - one API call carrying the user's ID token;
- * - envelope validation and fail-closed sanitising;
+ * - envelope validation and fail-closed sanitising (evidence links inside `data` are filtered
+ *   to allowlisted https hosts; admin-only evidence fields are dropped for viewers);
  * - a size cap;
  * - a citation built from the envelope meta;
  * - API prose (caveats, not-enough-data detail, cohort description) wrapped as `{untrusted}`,
@@ -15,14 +16,8 @@ import type { z } from "zod";
 
 import { ApiError, type ApiRequest, type MetricApi } from "../api/client.js";
 import { type Untrusted, untrusted } from "../guard/untrusted.js";
-import {
-  type Bilingual,
-  type Evidence,
-  EnvelopeSchema,
-  type NotEnoughDataReason,
-} from "../api/envelope.js";
+import { type Bilingual, EnvelopeSchema, type NotEnoughDataReason } from "../api/envelope.js";
 import { type Sanitised, sanitiseData } from "../guard/sanitise.js";
-import { evidenceUrl } from "../guard/untrusted.js";
 import { type AnyToolDef, type CallerContext, ROLES, type Role } from "./types.js";
 
 /** Tool results larger than this are refused rather than truncated mid-structure. */
@@ -56,8 +51,10 @@ export interface Citation {
   readonly cutoff: string;
   readonly market: string;
   readonly currency: string;
+  /** The tool's parsed input (what the model asked for). */
   readonly filters: Readonly<Record<string, unknown>>;
-  readonly cohort: { readonly description: Untrusted; readonly n: number };
+  /** Null for endpoints without a cohort (search, product, coverage, launches...). */
+  readonly cohort: { readonly description: Untrusted; readonly n: number } | null;
 }
 
 /** API prose in both languages, each side wrapped as untrusted data. */
@@ -73,6 +70,11 @@ function prose(text: Bilingual): UntrustedBilingual {
   return { en: untrusted(text.en, PROSE_MAX_CHARS), ar: untrusted(text.ar, PROSE_MAX_CHARS) };
 }
 
+/** A caveat: its machine code plus the API's text in both languages, wrapped. */
+export interface Caveat extends UntrustedBilingual {
+  readonly code: string;
+}
+
 export interface ToolEnvelope {
   readonly status: "ok" | "not_enough_data";
   readonly data?: Sanitised;
@@ -81,8 +83,7 @@ export interface ToolEnvelope {
     readonly detail: UntrustedBilingual;
   };
   readonly citation: Citation;
-  readonly caveats: readonly UntrustedBilingual[];
-  readonly evidence: readonly Evidence[];
+  readonly caveats: readonly Caveat[];
 }
 
 export type ToolResult = ToolEnvelope | ToolError;
@@ -172,14 +173,18 @@ export class ToolRegistry {
     if (!envelope.success) {
       return error(name, "upstream_invalid", API_ERROR_MESSAGES.upstream_invalid);
     }
-    const { meta, cohort, caveats } = envelope.data;
-    const { evidenceHosts } = this.config;
+    const { meta, cohort, caveats, data } = envelope.data;
     const result: ToolEnvelope = {
       status: envelope.data.status,
       // not_enough_data may still carry rows (e.g. compare below the cohort minimum).
-      ...(envelope.data.data === undefined
+      ...(data === undefined || data === null
         ? {}
-        : { data: sanitiseData(envelope.data.data, evidenceHosts) }),
+        : {
+            data: sanitiseData(data, {
+              evidenceHosts: this.config.evidenceHosts,
+              admin: caller.role === "admin",
+            }),
+          }),
       ...(envelope.data.status === "ok"
         ? {}
         : {
@@ -198,16 +203,12 @@ export class ToolRegistry {
         market: meta.market,
         currency: meta.currency,
         filters: input,
-        cohort: { description: untrusted(cohort.description, PROSE_MAX_CHARS), n: cohort.n },
+        cohort:
+          cohort === null || cohort === undefined
+            ? null
+            : { description: untrusted(cohort.description, PROSE_MAX_CHARS), n: cohort.n },
       },
-      caveats: caveats.map(prose),
-      // Defence in depth: the API strips admin-only fields for viewers; strip them again here.
-      evidence: envelope.data.evidence.map(({ runId, source, ...item }) => ({
-        ...item,
-        url: evidenceUrl(item.url, evidenceHosts),
-        ...(caller.role === "admin" && runId !== undefined ? { runId } : {}),
-        ...(caller.role === "admin" && source !== undefined ? { source } : {}),
-      })),
+      caveats: caveats.map(({ code, ...text }) => ({ code, ...prose(text) })),
     };
     if (JSON.stringify(result).length > MAX_RESULT_CHARS) {
       return error(name, "output_too_large", API_ERROR_MESSAGES.output_too_large);

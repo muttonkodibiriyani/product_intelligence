@@ -5,7 +5,16 @@ import { TOOLS } from "../src/tools/definitions.js";
 import { MAX_RESULT_CHARS, ToolRegistry, type ToolEnvelope } from "../src/tools/registry.js";
 import { type AnyToolDef, defineTool } from "../src/tools/types.js";
 import { z } from "zod";
-import { COMPARE_DATA, FakeApi, INJECTION, META, failing, okEnvelope } from "./fake-api.js";
+import {
+  COMPARE_DATA,
+  FakeApi,
+  INJECTION,
+  META,
+  PAIR,
+  PRODUCT_DATA,
+  failing,
+  okEnvelope,
+} from "./fake-api.js";
 
 const HOSTS = ["shop.north.example", "south.example"];
 const VIEWER = { uid: "u1", role: "viewer" } as const;
@@ -20,7 +29,7 @@ describe("ToolRegistry", () => {
     const api = new FakeApi(() => okEnvelope(COMPARE_DATA));
     const result = (await registry(api).run(
       "compare",
-      { ids: ["p01", "n04"] },
+      { ...PAIR, ids: ["p01", "n04"] },
       VIEWER,
       "tok-1",
     )) as ToolEnvelope;
@@ -28,18 +37,24 @@ describe("ToolRegistry", () => {
     expect(result.status).toBe("ok");
     expect(result.citation).toEqual({
       tool: "compare",
-      toolVersion: "1",
-      apiVersion: "v1.0.0",
+      toolVersion: "2",
+      apiVersion: "1.0.0",
       metricVersion: "m1",
       datasetGeneration: "gen-42",
       cutoff: META.cutoff,
       market: "AE",
       currency: "AED",
-      filters: { ids: ["p01", "n04"], limit: 10 },
+      filters: { ...PAIR, ids: ["p01", "n04"] },
       cohort: { description: { untrusted: "exact, reviewed, same-size matched pairs" }, n: 8 },
+    });
+    expect(api.calls[0]?.request).toEqual({
+      method: "GET",
+      path: "/api/v1/compare",
+      query: { retailers: ["north,south"], id: ["p01", "n04"] },
     });
     expect(result.caveats).toEqual([
       {
+        code: "retailer_partial",
         en: { untrusted: "East Store coverage is partial." },
         ar: { untrusted: "تغطية متجر الشرق جزئية." },
       },
@@ -53,18 +68,18 @@ describe("ToolRegistry", () => {
         status: "not_enough_data",
         reason: "cohort_too_small",
         detail: prose,
-        caveats: [prose],
+        caveats: [{ code: "retailer_partial", ...prose }],
         cohort: { description: INJECTION, n: 3 },
       }),
     );
-    const result = (await registry(api).run("compare", {}, VIEWER, "t")) as ToolEnvelope;
+    const result = (await registry(api).run("compare", PAIR, VIEWER, "t")) as ToolEnvelope;
     expect(result.status).toBe("not_enough_data");
     const wrapped = [
       result.notEnoughData?.detail.en,
       result.notEnoughData?.detail.ar,
       result.caveats[0]?.en,
       result.caveats[0]?.ar,
-      result.citation.cohort.description,
+      result.citation.cohort?.description,
     ];
     for (const item of wrapped) {
       expect(Object.keys(item ?? {})).toEqual(["untrusted"]);
@@ -76,36 +91,54 @@ describe("ToolRegistry", () => {
     expect(verifyAnswerNumbers("3 pairs", [result]).ok).toBe(true);
   });
 
-  it("escapes injected retailer text and filters evidence for viewers", async () => {
+  it("escapes injected retailer text and drops minor units", async () => {
     const api = new FakeApi(() => okEnvelope(COMPARE_DATA));
-    const result = (await registry(api).run("compare", {}, VIEWER, "t")) as ToolEnvelope;
+    const result = (await registry(api).run("compare", PAIR, VIEWER, "t")) as ToolEnvelope;
     const text = JSON.stringify(result.data);
     expect(text).not.toContain("​");
     expect(text).not.toContain("](https://evil");
     expect(text).toContain("\\\\!\\\\[x\\\\]");
-    expect(result.evidence).toEqual([
-      {
-        productId: "p01",
-        retailer: "north",
-        url: "https://shop.north.example/p/p01",
-        capturedAt: "2026-09-15T08:00:00Z",
-      },
-      { productId: "p01", retailer: "south", url: null, capturedAt: "2026-09-15T08:00:00Z" },
+    expect(text).not.toContain("minor");
+  });
+
+  it("filters evidence links in data and strips admin-only fields for viewers", async () => {
+    const api = new FakeApi(() => okEnvelope(PRODUCT_DATA, { cohort: null }));
+    const result = (await registry(api).run(
+      "get_product",
+      { id: "p01" },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(api.calls[0]?.request.path).toBe("/api/v1/products/p01");
+    expect(result.citation.cohort).toBeNull();
+    const offers = (result.data as { offers: { evidence: unknown }[] }).offers;
+    expect(offers.map((offer) => offer.evidence)).toEqual([
+      { capturedAt: "2026-09-15T08:00:00Z", url: "https://shop.north.example/p/p01" },
+      { capturedAt: "2026-09-15T08:00:00Z", url: null },
     ]);
   });
 
   it("keeps admin-only evidence fields for admins", async () => {
-    const api = new FakeApi(() => okEnvelope(COMPARE_DATA));
-    const result = (await registry(api).run("compare", {}, ADMIN, "t")) as ToolEnvelope;
-    expect(result.evidence[0]).toMatchObject({ runId: "run-north-7", source: "north-listing" });
+    const api = new FakeApi(() => okEnvelope(PRODUCT_DATA));
+    const result = (await registry(api).run(
+      "get_product",
+      { id: "p01" },
+      ADMIN,
+      "t",
+    )) as ToolEnvelope;
+    const offers = (result.data as { offers: { evidence: unknown }[] }).offers;
+    expect(offers[0]?.evidence).toMatchObject({
+      runId: "run-north-7",
+      source: { untrusted: "north-listing" },
+    });
   });
 
   it("end to end: the verifier accepts tool numbers and rejects injected ones", async () => {
     const api = new FakeApi(() => okEnvelope(COMPARE_DATA));
-    const result = await registry(api).run("compare", {}, VIEWER, "t");
+    const result = await registry(api).run("compare", PAIR, VIEWER, "t");
     expect(
       verifyAnswerNumbers(
-        "North is cheaper on 4 of 8 pairs; basket 1,020.74 vs 980.50 AED, North dearer by 4.1%. [[product:p01]] is 16.7% cheaper at North.",
+        "North is cheaper on 4 of 8 pairs; basket 1,020.74 vs 980.50 AED. [[product:p01]] is 20.0% dearer at South: 100.00 vs 120.00.",
         [result],
       ).ok,
     ).toBe(true);
@@ -117,14 +150,14 @@ describe("ToolRegistry", () => {
       status: "not_enough_data",
       reason: "retailer_partial",
       detail: { en: "East coverage is partial, so absence cannot be claimed.", ar: "…" },
-      cohort: { description: "none", n: 0 },
+      data: null,
+      cohort: null,
       caveats: [],
-      evidence: [],
       meta: META,
     }));
     const result = (await registry(api).run(
       "assortment_gaps",
-      { missingAt: "east" },
+      { missingAt: "east", presentAt: "north" },
       VIEWER,
       "t",
     )) as ToolEnvelope;
@@ -135,15 +168,15 @@ describe("ToolRegistry", () => {
 
   it("keeps rows on not_enough_data (cohort below the minimum)", async () => {
     const api = new FakeApi(() => ({
-      ...okEnvelope({ rows: [{ id: "p01", name: "Cream", gapPct: "-16.7" }], summary: null }),
+      ...okEnvelope({ rows: [{ id: "p01", name: "Cream", gap: { pct: "-16.7" } }], summary: null }),
       status: "not_enough_data",
       reason: "cohort_too_small",
       detail: { en: "Fewer than five counted pairs.", ar: "…" },
     }));
-    const result = (await registry(api).run("compare", {}, VIEWER, "t")) as ToolEnvelope;
+    const result = (await registry(api).run("compare", PAIR, VIEWER, "t")) as ToolEnvelope;
     expect(result.notEnoughData?.reason).toBe("cohort_too_small");
     expect(result.data).toEqual({
-      rows: [{ id: "p01", name: { untrusted: "Cream" }, gapPct: "-16.7" }],
+      rows: [{ id: "p01", name: { untrusted: "Cream" }, gap: { pct: "-16.7" } }],
       summary: null,
     });
   });

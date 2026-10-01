@@ -1,7 +1,11 @@
 /**
- * The service layer's response envelope (provisional, agreed with the Deep Coder). Per-endpoint
- * `data` schemas will be generated from the API's OpenAPI 3.1 document (docs/contracts/). Until
- * then `data` is validated structurally and passed through the fail-closed sanitiser.
+ * The service layer's response envelope, as published in `docs/contracts/pi-api.openapi.json`
+ * (`Envelope_*`, `ApiMeta`, `Cohort`, `CaveatView`). Per-endpoint `data` is validated
+ * structurally and passed through the fail-closed sanitiser; `test/contract.test.ts` runs every
+ * golden response through the tools.
+ *
+ * Unknown keys are stripped rather than rejected, so an additive API change does not take the
+ * assistant down; a changed or missing required field fails closed (`upstream_invalid`).
  */
 import { z } from "zod";
 
@@ -23,25 +27,22 @@ export type Bilingual = z.infer<typeof bilingual>;
 
 const identifier = z.string().regex(/^[A-Za-z0-9_.:-]{1,200}$/);
 
-export const EvidenceSchema = z.object({
-  productId: identifier,
-  retailer: z.string().regex(/^[a-z][a-z0-9_]{1,62}$/),
-  url: z.string().nullable(),
-  capturedAt: z.string().datetime({ offset: true }),
-  runId: identifier.optional(),
-  source: identifier.optional(),
-});
-export type Evidence = z.infer<typeof EvidenceSchema>;
+/** Machine-readable caveat codes; the API renders `en`/`ar` text per code. */
+const caveatCode = z.string().regex(/^[a-z][a-z0-9_]{0,40}$/);
 
 export const EnvelopeSchema = z
   .object({
     status: z.enum(["ok", "not_enough_data"]),
-    data: z.unknown().optional(),
-    reason: z.enum(NOT_ENOUGH_DATA_REASONS).optional(),
-    detail: bilingual.optional(),
-    cohort: z.object({ description: z.string().max(500), n: z.number().int().nonnegative() }),
-    caveats: z.array(bilingual).max(20),
-    evidence: z.array(EvidenceSchema).max(20),
+    data: z.unknown(),
+    reason: z.enum(NOT_ENOUGH_DATA_REASONS).nullish(),
+    detail: bilingual.nullish(),
+    cohort: z
+      .object({ description: z.string().max(500), n: z.number().int().nonnegative() })
+      .nullish(),
+    caveats: z
+      .array(bilingual.extend({ code: caveatCode }))
+      .max(20)
+      .default([]),
     meta: z.object({
       generation: identifier,
       cutoff: z.string().datetime({ offset: true }),
@@ -51,10 +52,11 @@ export const EnvelopeSchema = z
       metricVersion: identifier,
       endpoint: identifier,
       scope: identifier,
+      filters: z.record(z.unknown()),
     }),
   })
   .superRefine((value, ctx) => {
-    if (value.status === "ok" && value.data === undefined) {
+    if (value.status === "ok" && (value.data === undefined || value.data === null)) {
       ctx.addIssue({ code: "custom", path: ["data"], message: "ok without data" });
     }
     if (value.status === "not_enough_data" && (!value.reason || !value.detail)) {

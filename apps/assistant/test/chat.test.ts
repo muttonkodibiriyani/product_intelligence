@@ -9,7 +9,7 @@ import { Meter } from "../src/meter/meter.js";
 import type { TokenUsage } from "../src/meter/prices.js";
 import { TOOLS, compare } from "../src/tools/definitions.js";
 import { ToolRegistry, type ToolEnvelope } from "../src/tools/registry.js";
-import { COMPARE_DATA, FakeApi, okEnvelope } from "./fake-api.js";
+import { COMPARE_DATA, FakeApi, PAIR, okEnvelope } from "./fake-api.js";
 import { CONFIG, prices } from "./meter-fixtures.js";
 
 const VIEWER = { uid: "u1", role: "viewer" } as const;
@@ -38,7 +38,7 @@ class ScriptedModel implements ChatModel {
   }
 }
 
-const callCompare: Step = () => ({ toolCalls: [{ id: "c1", name: "compare", args: {} }] });
+const callCompare: Step = () => ({ toolCalls: [{ id: "c1", name: "compare", args: PAIR }] });
 const say =
   (text: string): Step =>
   () => ({ text });
@@ -76,7 +76,7 @@ describe("ChatFlow", () => {
     expect(answer.citations).toHaveLength(1);
     expect(answer.citations[0]?.tool).toBe("compare");
     expect(answer.caveats).toHaveLength(1);
-    expect(answer.toolCalls).toEqual([{ name: "compare", args: {}, status: "ok" }]);
+    expect(answer.toolCalls).toEqual([{ name: "compare", args: PAIR, status: "ok" }]);
     expect(answer.toolResults).toEqual([]);
     expect(answer.modelCalls).toBe(2);
     expect(answer.promptVersion).toBe(PROMPT_VERSION);
@@ -131,8 +131,8 @@ describe("ChatFlow", () => {
   it("enforces the tool-call budget and then withholds tools", async () => {
     const twice: Step = () => ({
       toolCalls: [
-        { name: "compare", args: {} },
-        { name: "compare", args: {} },
+        { name: "compare", args: PAIR },
+        { name: "compare", args: PAIR },
       ],
     });
     const { flow, model, api } = setup([twice, twice, say(GOOD)], { maxToolCalls: 3 });
@@ -249,6 +249,18 @@ describe("ChatFlow", () => {
     expect(store.reservations.size).toBe(0);
   });
 
+  it("returns history_unavailable without opening the question when the read fails", async () => {
+    const threads = new MemoryThreadStore();
+    threads.history = () => Promise.reject(new Error("firestore unavailable"));
+    const { flow, model, store } = setup([say(GOOD)], { threads });
+    const answer = await flow.answer({ ...ask(), threadId: "t1" }, VIEWER, "t");
+    expect(answer).toMatchObject({ status: "unavailable", code: "history_unavailable" });
+    expect(model.requests).toHaveLength(0);
+    // Nothing reserved and no question counted against the daily cap.
+    expect(store.reservations.size).toBe(0);
+    expect(store.counters.size).toBe(0);
+  });
+
   it("refuses a malformed thread id", async () => {
     const { flow, model } = setup([say(GOOD)]);
     const answer = await flow.answer({ ...ask(), threadId: "../other/t1" }, VIEWER, "t");
@@ -265,10 +277,9 @@ describe("toolSpec and knownProductIds", () => {
     expect(JSON.stringify(spec.parameters)).not.toContain("$ref");
   });
 
-  it("collects ids from data and evidence, never from untrusted text", () => {
+  it("collects ids from data, never from untrusted text", () => {
     const envelope = {
-      data: { rows: [{ id: "a" }, { name: { untrusted: "id b" } }] },
-      evidence: [{ productId: "c" }],
+      data: { rows: [{ id: "a" }, { name: { untrusted: "id b" } }], card: { productId: "c" } },
     } as unknown as ToolEnvelope;
     expect([...knownProductIds([envelope])].sort()).toEqual(["a", "c"]);
   });

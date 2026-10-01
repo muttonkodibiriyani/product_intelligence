@@ -118,7 +118,7 @@ region, as allowed by the residency ruling in §11.1.
 
 **Market literals (ADR-0007).** The package contains no market, currency, retailer or dataset
 path literals. Market, currency, retailer ids and names come from each response's `meta` and
-from `/v1/meta`; the evidence-host allowlist is deploy config. A unit test fails the build if
+from `/api/v1/meta`; the evidence-host allowlist is deploy config. A unit test fails the build if
 such literals appear in `src/`.
 
 ## 3. Data access path: the service layer (#39)
@@ -238,17 +238,25 @@ type ToolEnvelope = {
     datasetGeneration: string; cutoff: string;       // ISO-8601 UTC
     market: string; currency: string;                // from meta, never literals
     filters: Record<string, unknown>;                // echo of validated input
-    cohort: { description: string; n: number };
+    cohort: { description: string; n: number } | null;   // null where the endpoint has none
   };
-  caveats: { en: string; ar: string }[];             // ≤ 20
-  evidence: { productId: string; retailer: string; url: string | null;
-              capturedAt: string; runId?: string; source?: string }[]; // ≤ 20 (the API's cap); runId/source admin only
+  caveats: { code: string; en: string; ar: string }[];   // ≤ 20; code from the API's enum
 };
+```
+
+Evidence `{capturedAt, url}` is not a top-level list: it travels inside `data` where the API puts
+it (e.g. `get_product` `offers[].evidence`). The sanitiser drops `url` unless its host is on the
+allowlist, drops `runId`/`source` (admin-only evidence fields) unless the caller is an admin, and
+drops `Money.minor` so the model only ever sees the decimal `amount` text.
 ```
 
 Common input limits:
 
-- `limit` ≤ 25 (default 10), so the assistant never pages.
+- Only `search_products` takes `limit` (≤ 25, default 10), so the assistant never pages. The S3
+  endpoints have no `limit`; a large result is refused with `output_too_large` (below) and the
+  model is told to narrow the filters. A `limit` on compare/promotions/launches is an open ask
+  to the API owner.
+- List inputs (ids, retailers, brands, categories) ≤ 25, as in the OpenAPI `maxItems`.
 - Free text ≤ 120 chars.
 - Retailer ids match #39's `^[a-z][a-z0-9_]{1,62}$`; stage 1b generates the input schemas' patterns from the OpenAPI contract so they cannot drift.
 - Money inputs are decimal text.
@@ -257,27 +265,32 @@ Common input limits:
 Results over 16,000 chars are refused with `output_too_large` rather than truncated mid-structure.
 
 **Contract source of truth:** `docs/contracts/pi-api.openapi.json` and the goldens under
-`docs/contracts/golden/pi-api/` (S2 #55, S3 metric endpoints #61, both on main). The table below
-is the planning view. The service layer serves under `/api/v1/*`, and the stage-1a tool
-definitions still use `/v1/*` and the pre-S3 shapes; a tool-alignment PR moves the definitions,
-envelope schema and eval fixtures onto the OpenAPI and goldens next (after this flow PR).
+`docs/contracts/golden/pi-api/` (S2 #55, S3 metric endpoints #61, both on main). All tools are
+`GET` under `/api/v1` (tool version 2). `test/contract.test.ts` fails the build if a tool's path,
+query parameters or required parameters drift from the OpenAPI document, if an
+`x-pi-source-text` field is not sanitised as untrusted text, or if any golden fails the
+registry's envelope checks.
+
+`retailers` is sent as one parameter `retailers=<base>,<other>` (exactly 2, ordered). Money is
+`{amount, currency}` (decimal text; `minor` dropped). A gap is `{amount: Money, pct, cheaper:
+base|other|equal}` with `gapAmount = other − base`; the `convention` string travels with it.
 
 | Tool | Endpoint | Input | Notes |
 |---|---|---|---|
-| `search_products` | `GET /v1/products` | `q?`, `brand[]?`, `category[]?`, `retailer[]?`, `matched?`, `priceMin?/priceMax?` (decimal text in `meta.currency`), `sort`, `limit` | Product cards with per-retailer `Money` and `match {class, reviewState, confidence}` |
-| `get_product` | `GET /v1/products/{id}` | `id` | Offers, `gap {gapAmount, gapPct, cheaper, convention}` or `gapExcludedReason`, evidence |
-| `compare` | `GET /api/v1/compare` (#61) | `retailers=<base>,<other>`, `id` (repeated) **or** `brand?/category?`, `date?`, `groupBy? brand\|category` | Rows carry `gap {amount, pct, cheaper}`; summary (median/mean gap %, cheaper-at counts, basket totals) only when n ≥ 5; `sides {base, other}`, optional `groups` |
-| `index_trend` | `GET /v1/index` | `retailers? {base, other}` (sent as one form param `retailers=<base>,<other>`, exactly 2, ordered; multi-value filters repeat the key), `brand?`, `category?`, `from?/to?` | `points[{date, index, n}]`; trend needs history, otherwise `capability_off` |
-| `promotions` | `GET /v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?`, `limit` | `promoShare{<retailer>: pct}`, items with `depthPct` = (regular − price) / regular × 100 |
-| `assortment_gaps` | `GET /v1/assortment-gaps` | `missingAt?`, `presentAt?`, `brand?`, `category?`, `limit` | Absence rules as in §3.2.4 |
-| `launches` | `GET /v1/launches` | `retailer?`, `since?`, `category?`, `limit` | Needs two or more runs, otherwise `capability_off` |
-| `reviews_summary` | `GET /v1/reviews-summary` | `id[]?` (repeated, ≤ 25) **or** `brand?/category?`, `retailer[]?` | `n`, count-weighted `avgRating`, `ratingCount`. Distribution and themes → `field_not_collected` |
-| `coverage_status` | `GET /v1/coverage` | none | Retailer status, capabilities, fields, `notObserved`. Admin internals are stripped by the API for viewers, and again by the registry |
+| `search_products` | `GET /api/v1/products` | `q?`, `brand[]?`, `category[]?`, `retailer[]?`, `matched?`, `priceMin?/priceMax?` (decimal text in `meta.currency`), `sort? name\|price_asc\|price_desc\|gap\|gap_asc`, `limit` | `items[]` cards: per-retailer `prices{<retailer>: Money}`, `matches[]`, `gap {base, other, gap, excludedReason}` or null; `facets`, `total` |
+| `get_product` | `GET /api/v1/products/{id}` | `id` | `card` as above plus `offers[]` (price, regular, promoPct, rating, availability, `evidence {capturedAt, url}`) |
+| `compare` | `GET /api/v1/compare` | `retailers` (required), `id` (repeated, ≤ 25) **or** `brand?/category?`, `date?`, `groupBy? brand\|category` | `base`, `other`, `convention`; `rows[] {id, brand, name, category, basePrice, otherPrice, gap, counted, excludedReason}`; `summary {n, medianGapPct, meanGapPct, cheaperCounts {base, other}, equalCount, basket {base, other}}` only when n ≥ 5; optional `groups` |
+| `index_trend` | `GET /api/v1/index` | `retailers` (required), `brand?`, `category?`, `from?/to?` | `points[{date, index, n, reason}]`, `definition`; trend needs history, otherwise `capability_off` |
+| `promotions` | `GET /api/v1/promotions` | `retailer[]?`, `brand?`, `category?`, `minPct?` (sent as decimal text), `date?` | `retailers[] {retailer, share, n, onPromo, reason}`; `items[]` with `depthPct` = (regular − price) / regular × 100 |
+| `assortment_gaps` | `GET /api/v1/assortment-gaps` | `missingAt`, `presentAt` (both required), `brand?`, `category?`, `date?` | `items[]`, `byBrand[]`, `total`; absence rules as in §3.2.4 |
+| `launches` | `GET /api/v1/launches` | `retailer[]?`, `brand?`, `category?`, `since?` | `items[] {id, name, retailer, firstSeen}`; needs two or more runs, otherwise `capability_off` |
+| `reviews_summary` | `GET /api/v1/reviews-summary` | `id` (repeated, ≤ 25) **or** `brand?/category?`, `retailer[]?` | `retailers[] {retailer, n, avgRating, ratingCount, scale, reason}`. Distribution and themes → `field_not_collected` |
+| `coverage_status` | `GET /api/v1/coverage` | `retailer[]?` | `retailers[] {id, name, status supported\|partial\|blocked\|pending\|retired, productCount, matchedCount, freshness, since, note}` |
 
 Not assistant tools:
 
-- `/v1/matches` and `/v1/export/*` are FE and admin surfaces.
-- `/v1/availability` becomes a tenth tool once `capabilities.availability` exists.
+- `/api/v1/matches`, `/api/v1/meta`, `/api/v1/products/{id}/history` and exports are FE and admin surfaces.
+- `/api/v1/availability` becomes a tenth tool once `capabilities.availability` exists.
 
 Stage 2 adds `create_report`, the only non-read tool. It writes only to the caller's own
 `reports/{uid}/` prefix and only through the server generator. It never changes governed data
@@ -449,7 +462,9 @@ reaches the model through tool output.
 6. **Chat history is server-side.** The callable accepts only `{question, locale, threadId?}`
    (strict; unknown keys such as `history` are rejected). Earlier turns are loaded from
    `users/{uid}/assistant_threads/{threadId}/messages`, which only the function writes, so a
-   client cannot forge model turns, and a thread id from another user finds nothing.
+   client cannot forge model turns, and a thread id from another user finds nothing. History is
+   read before the meter opens the question: if the read fails, the answer is
+   `unavailable` (`history_unavailable`) and nothing is reserved or counted against the daily cap.
 7. **Evals.** An injection corpus runs in CI (§8): planted names in a fixture dataset, Arabic and
    English, direct and indirect.
 
@@ -464,10 +479,11 @@ reaches the model through tool output.
     `MetricApi`. Gold numbers therefore come from the one metric implementation and cannot
     drift.
   - A second market keeps the ADR-0007 literal guard honest.
-  - **Stage 1b seed (now):** until the tools move to the goldens (the tool-alignment PR
-    that follows this one), the suites run on hand-built fixtures in the stage-1a envelope
-    (`src/evals/fixtures.ts`: neutral retailers `north`/`south`, test currency `XTS`, a planted
-    injection name, admin-only evidence fields). 25 smoke cases across all seven suites; the
+  - **Stage 1b seed (now):** the suites run on hand-built fixtures in the S2/S3 shapes
+    (`src/evals/fixtures.ts`: `/api/v1` paths, neutral retailers `north`/`south`, test currency
+    `XTS`, a planted injection name, admin-only evidence fields inside product offers). The
+    published goldens (`AE`/`AED`) are exercised by `test/contract.test.ts`, which is outside the
+    `src/` literal guard. 25 smoke cases across all seven suites; the
     counts below are the target for the full suite.
 - **Layout.** `apps/assistant/evals/` is its own npm package (promptfoo pinned exactly, own
   lockfile, installed with `--ignore-scripts` and audited in the existing pytest gate, which

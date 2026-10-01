@@ -45,6 +45,7 @@ import {
 import {
   type ChatRequest,
   ChatRequestSchema,
+  type HistoryTurn,
   MAX_HISTORY_ANSWER_CHARS,
   MAX_HISTORY_TURNS,
   MAX_QUESTION_CHARS,
@@ -102,7 +103,11 @@ export interface ChatAnswer {
 }
 
 export type FlowCode =
-  "invalid_question" | "prompt_too_large" | "model_error" | "prompt_version_mismatch";
+  | "invalid_question"
+  | "history_unavailable"
+  | "prompt_too_large"
+  | "model_error"
+  | "prompt_version_mismatch";
 
 export const FALLBACK_NOTE: Record<Locale, string> = {
   en: "I could not produce a verified summary. The tool results are shown below.",
@@ -125,7 +130,7 @@ export function toolSpec(tool: AnyToolDef): ToolSpec {
   };
 }
 
-/** Product ids the tools returned: `id`/`productId` strings in data and evidence. */
+/** Product ids the tools returned: `id`/`productId` strings in (sanitised) data. */
 export function knownProductIds(results: readonly ToolEnvelope[]): Set<string> {
   const ids = new Set<string>();
   const visit = (value: unknown): void => {
@@ -138,10 +143,7 @@ export function knownProductIds(results: readonly ToolEnvelope[]): Set<string> {
       }
     }
   };
-  for (const result of results) {
-    visit(result.data);
-    visit(result.evidence);
-  }
+  for (const result of results) visit(result.data);
   return ids;
 }
 
@@ -171,7 +173,19 @@ export class ChatFlow {
     if (!parsed.success) {
       return this.unavailable(input.locale === "ar" ? "ar" : "en", "invalid_question", null, null);
     }
-    const { locale, question } = parsed.data;
+    const { locale, question, threadId } = parsed.data;
+
+    // History is read before the meter opens the question, so a failed read neither counts
+    // against the daily cap nor reserves anything (review follow-up on #63).
+    let history: readonly HistoryTurn[];
+    try {
+      history =
+        threadId === undefined
+          ? []
+          : await this.deps.threads.history(caller.uid, threadId, MAX_HISTORY_TURNS);
+    } catch {
+      return this.unavailable(locale, "history_unavailable", null, null);
+    }
 
     let open: Question;
     try {
@@ -184,10 +198,6 @@ export class ChatFlow {
       return this.unavailable(locale, "prompt_version_mismatch", open, null);
     }
 
-    const history =
-      input.threadId === undefined
-        ? []
-        : await this.deps.threads.history(caller.uid, input.threadId, MAX_HISTORY_TURNS);
     const state: FlowState = {
       turns: [
         ...history.slice(-MAX_HISTORY_TURNS).map((turn): Turn =>
