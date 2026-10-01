@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import type { Bucket } from '@/lib/api/category-compare';
 import type { Measured } from '@/lib/api/summary';
 import { num } from '@/lib/api/summary';
 import type { Schemas } from '@/lib/api/types';
@@ -1266,6 +1267,115 @@ export function CheaperShareWidget({
           emphasis: { focus: 'series' },
         })),
       })}
+    />
+  );
+}
+
+/**
+ * The category centrepiece's chart: the median gap per shared bucket, `other` against `base`,
+ * over both full catalogues. Only buckets with a gap are drawn (the thin ones are listed under
+ * the chart in words); bars run from zero both ways, coloured by the cheaper retailer and
+ * labelled with the gap and both counts. There is no drill: Explore has no bucket filter.
+ */
+export function BucketGapWidget({
+  data,
+  currency,
+  locale,
+  height,
+  pair,
+  label,
+}: Props<readonly Bucket[]> & { pair: Pair; label: (b: Bucket) => string }) {
+  const t = useTranslations('widgets.buckets');
+  const rtl = locale === 'ar';
+  const rows = data.filter((b) => b.status === 'ok' && b.gapPct !== null);
+  const h = height ?? Math.max(160, rows.length * 30 + 48);
+  const names = { base: pair.name(pair.base), other: pair.name(pair.other) };
+  return (
+    <Chart
+      label={t('chartLabel', { ...names, n: rows.length })}
+      height={h}
+      deps={[data, locale, currency]}
+      build={(p) => {
+        const gutter = labelWidth(rows.map(label), p) + 12;
+        // Each bar's gap is a column of its own on the far side, never a label on the bar, so it
+        // cannot run into the names or off a phone screen; each side's n is in the table above.
+        // Without the bidi marks: Firefox sizes an end-anchored SVG label that opens with one at
+        // millions of px and draws it off the chart (every Arabic negative went missing).
+        const gaps = rows.map((b) => signedPct(b.gapPct!, locale).replace(/[\u200e\u200f]/g, ''));
+        const valW = labelWidth(gaps, p, 11) + 12;
+        // A symmetric axis: both directions on one scale.
+        const span = Math.max(5, Math.ceil(Math.max(...rows.map((r) => Math.abs(num(r.gapPct!)))) / 5) * 5);
+        return {
+          ...base(p, rtl),
+          grid: {
+            left: rtl ? valW : gutter,
+            right: rtl ? gutter : valW,
+            top: 4,
+            bottom: 24,
+            outerBoundsMode: 'none',
+          },
+          xAxis: {
+            type: 'value',
+            inverse: rtl,
+            min: -span,
+            max: span,
+            axisLine: axisLine(p),
+            splitLine: splitLine(p),
+            axisLabel: { formatter: (v: number) => signedPct(String(v), locale), hideOverlap: true },
+          },
+          yAxis: [
+            {
+              type: 'category',
+              inverse: true,
+              position: rtl ? 'right' : 'left',
+              data: rows.map(label),
+              axisTick: { show: false },
+              axisLine: { show: false },
+              axisLabel: { color: p.ink },
+            },
+            {
+              type: 'category',
+              inverse: true,
+              position: rtl ? 'left' : 'right',
+              data: gaps,
+              axisTick: { show: false },
+              axisLine: { show: false },
+              axisLabel: { color: p.ink2, fontSize: 11 },
+            },
+          ],
+          tooltip: {
+            ...(base(p, rtl).tooltip as object),
+            trigger: 'item',
+            formatter: (e: { dataIndex: number }) => {
+              const b = rows[e.dataIndex]!;
+              const side = (id: string) => {
+                const s = b.sides[id]!;
+                return `${amount(s.median!.amount, currency, locale)} · n ${formatCount(s.n, locale)}`;
+              };
+              return (
+                tipHead(label(b)) +
+                tipRow(names.base, side(pair.base)) +
+                tipRow(names.other, side(pair.other)) +
+                tipRow(t('gap'), signedPct(b.gapPct!, locale))
+              );
+            },
+          },
+          series: [
+            {
+              type: 'bar',
+              name: t('gap'),
+              data: rows.map((b) => ({
+                name: label(b),
+                value: num(b.gapPct!),
+                itemStyle: { color: gapColor(p, num(b.gapPct!)) },
+              })),
+              barMaxWidth: 14,
+              itemStyle: { borderRadius: 3 },
+              emphasis: { itemStyle: { color: p.ink } },
+            },
+          ],
+        };
+      }}
     />
   );
 }

@@ -42,20 +42,33 @@ MAX_DISCOUNT = Decimal("0.90")
 #: A run with this fraction fewer listings than the last good run is ``partial`` (§7.2).
 MAX_COUNT_DROP = Decimal("0.20")
 
-#: Markup: known HTML tags (so a name like "<Me>" is not markup), comments and entities.
+#: Markup by tag syntax, not any bracketed word ("<Me>", "<A Team>", "<P> Louise" are text):
+#: a closing tag, a tag with name=value attributes, a self-closing tag, a known lower-case bare
+#: tag, a comment or doctype, or an entity.
 _HTML_TAGS = (
-    "a|b|i|u|p|br|hr|div|span|img|strong|em|ul|ol|li|h[1-6]|table|tr|td|th|font|script|style"
-    "|iframe|sup|sub|small|meta|link"
+    "a|abbr|article|aside|b|blockquote|body|br|button|center|code|dd|del|div|dl|dt|em|figure"
+    "|figcaption|font|footer|form|h[1-6]|head|header|hr|html|i|iframe|img|input|ins|label|li"
+    "|link|main|mark|meta|nav|noscript|ol|option|p|path|picture|pre|s|script|section|select"
+    "|small|source|span|strike|strong|style|sub|sup|svg|table|tbody|td|template|textarea|tfoot"
+    "|th|thead|title|tr|tt|u|ul|video"
 )
 _HTML_RE = re.compile(
-    rf"</?(?:{_HTML_TAGS})\b[^>]{{0,200}}>|<!--|&(?:amp|nbsp|quot|lt|gt|#\d+|#x[0-9a-f]+);",
-    re.IGNORECASE,
+    "|".join(
+        (
+            r"</[a-zA-Z][a-zA-Z0-9]*\s*>",
+            r"""<[a-zA-Z][a-zA-Z0-9-]*(?:\s+[a-zA-Z_:][\w:.-]*\s*=\s*(?:"[^"<>]*"|'[^'<>]*'|[^\s"'<>=]+))+\s*/?>""",
+            r"<[a-zA-Z][a-zA-Z0-9]*\s*/>",
+            rf"<(?:{_HTML_TAGS})>",
+            r"(?i:<!--|<!doctype\b)",
+            r"(?i:&(?:amp|nbsp|quot|lt|gt|#\d+|#x[0-9a-f]+);)",
+        )
+    )
 )
-#: UTF-8 read as Latin-1/CP-1252 ("Ã" before a continuation byte's Latin-1/CP-1252 form, so
-#: "SÃO" is text), the replacement character, and control characters.
-_CP1252_TAIL = "\xa0-\xbf\u0152\u0153\u0160\u0161\u0178\u017d\u017e\u0192\u02c6\u02dc\u2013\u2014\u2018-\u201e\u2020-\u2022\u2026\u2030\u2039\u203a\u20ac\u2122"  # noqa: E501
+#: UTF-8 read as Latin-1/CP-1252 ("Ã" before a continuation byte's Latin-1/CP-1252 form,
+#: including C1 controls, so "SÃO" is text), the replacement character, and C0/C1 controls.
+_CP1252_TAIL = "\x80-\xbf\u0152\u0153\u0160\u0161\u0178\u017d\u017e\u0192\u02c6\u02dc\u2013\u2014\u2018-\u201e\u2020-\u2022\u2026\u2030\u2039\u203a\u20ac\u2122"  # noqa: E501
 _JUNK_RE = re.compile(
-    f"Ã[{_CP1252_TAIL}]|â€|Â[\\s\\xa0®©™]|\ufffd|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"
+    f"Ã[{_CP1252_TAIL}]|â€|Â[\\s\\xa0®©™]|\ufffd|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]"
 )
 #: Values allowed in ``Issue.detail`` besides numbers: ISO currency codes.
 _ISO_CURRENCY_RE = re.compile(r"[A-Z]{3}")
@@ -238,7 +251,6 @@ def _discounts(obs: ObservationFacts) -> Iterable[Issue]:
             current=current,
             regular=regular,
         )
-        return
     offers = (
         ("price_current", current, regular),
         ("price_promo", _positive(obs.price_promo), regular or current),

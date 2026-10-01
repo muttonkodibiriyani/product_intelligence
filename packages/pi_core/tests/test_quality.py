@@ -174,6 +174,14 @@ def test_was_price_is_a_warning_where_it_is_never_displayed() -> None:
         ({"brand": "Brand\x07"}, Check.TEXT_JUNK, WARN),
         ({"name": "Serum <b>new</b>"}, Check.TEXT_HTML, QUAR),
         ({"brand": "A &amp; B"}, Check.TEXT_HTML, QUAR),
+        ({"name": "Serum <svg viewBox='0 0 1 1'></svg>"}, Check.TEXT_HTML, QUAR),
+        ({"name": "<title>Serum</title>"}, Check.TEXT_HTML, QUAR),
+        ({"name": "Serum <body>"}, Check.TEXT_HTML, QUAR),
+        ({"name": 'Serum <a href="/x">'}, Check.TEXT_HTML, QUAR),
+        ({"name": "Serum <br/>"}, Check.TEXT_HTML, QUAR),
+        ({"name": "Serum <!-- x -->"}, Check.TEXT_HTML, QUAR),
+        ({"name": "Serum Ã\x89clat"}, Check.TEXT_JUNK, WARN),  # Ã + C1 control
+        ({"name": "Serum\x85"}, Check.TEXT_JUNK, WARN),  # bare C1 control
         ({"gtin": None}, Check.GTIN_MISSING, QualityStatus.ACCEPTED),  # INFO only
         ({"gtin": "3614273069541"}, Check.GTIN_INVALID, WARN),  # wrong check digit
         ({"gtin": "12345"}, Check.GTIN_INVALID, WARN),
@@ -204,7 +212,18 @@ def test_image_hosts_ignore_case_and_extensions_are_optional(url: str) -> None:
     assert check_listing(listing(image_urls=(url,)), upper).issues == ()
 
 
-@pytest.mark.parametrize("name", ["<Me> Lipstick", "SÃO Paulo Mist", "Crème 2 < 3 > 1"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "<Me> Lipstick",
+        "<A Team> Palette",
+        "<P> Louise Base",
+        "SÃO Paulo Mist",
+        "Crème 2 < 3 > 1",
+        "Rose <3 Balm",
+        "Kit <br-style> edition",
+    ],
+)
 def test_plain_text_is_not_markup_or_mojibake(name: str) -> None:
     assert check_listing(listing(name=name), CTX).issues == ()
 
@@ -297,3 +316,12 @@ def test_naive_datetimes_are_taken_as_utc() -> None:
     assert check_run(fresh, as_of=naive, max_age=timedelta(days=1)).issues == ()
     old = RunFacts(listings=1, newest_observed_at=naive - timedelta(days=2))
     assert checks(check_run(old, as_of=T0, max_age=timedelta(days=1))) == {Check.STALE}
+
+
+def test_regular_below_current_still_reports_a_deep_promo() -> None:
+    row = obs(price_regular_stated=Decimal(90), price_promo=Decimal(5))
+    result = check_observation(row, CTX)
+    assert checks(result) == {Check.REGULAR_BELOW_CURRENT, Check.DISCOUNT_GT_90}
+    promo = next(issue for issue in result.issues if issue.check is Check.DISCOUNT_GT_90)
+    assert promo.field == "price_promo"
+    assert promo.detail == {"price": "5", "reference": "90"}

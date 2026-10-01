@@ -171,3 +171,8 @@ def test_optional_catalogue_paths_are_validated() -> None:
     assert Settings.from_env({**env, "PI_API_CATALOGUES": CATALOGUE}).catalogues == (CATALOGUE,)
     with pytest.raises(ValueError, match=r"plain \.json"):
         Settings.from_env({**env, "PI_API_CATALOGUES": "../secrets.json"})
+
+
+def test_the_published_catalogue_schema_matches_the_model() -> None:
+    path = Path(__file__).parents[3] / "docs" / "contracts" / "pi-catalogue-v1.schema.json"
+    assert json.loads(path.read_text()) == CatalogueDataset.model_json_schema(by_alias=True)
