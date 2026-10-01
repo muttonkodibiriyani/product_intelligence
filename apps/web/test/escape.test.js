@@ -91,4 +91,26 @@ assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
  const h = String(root.innerHTML);
  if (P(a.id)) assert(h.includes('class="pphoto"') && h.includes('referrerpolicy="no-referrer"') && h.includes('loading="lazy"') && !bad(h), 'product photo missing or unsafe');
 }
+
+// Ulta's offer image renders from its own host, and the photo note credits the host by exact name:
+// a Sephora image whose query mentions Ulta's host is still credited to Sephora.
+{
+ const j = T.fixtureContract('partial');
+ const u = j.products.find(q => q.offers?.u), s = j.products.find(q => q.offers?.s && q !== u);
+ assert(u && s, 'fixture: needs an Ulta product and another Sephora product');
+ for (const q of [u, s]) for (const o of Object.values(q.offers)) if (o) delete o.image;
+ delete u.image; delete s.image;
+ u.offers.u.image = 'https://media.alshaya.com/p/1.png';
+ s.offers.s.image = 'https://img-product.sephora.me/p/1.jpg?src=media.alshaya.com';
+ const DS = T.hydrate(j), by = Object.fromEntries(DS.products.map(p => [p.id, p]));
+ const P = id => by[String(id).replace(/[^\w.:-]/g, '_')];
+ assert.strictEqual(P(u.id).img, 'https://media.alshaya.com/p/1.png');
+ const note = id => { T.S.lang = 'en'; T.S.route = 'product'; T.S.param = P(id).id; T.S.gal = 0; root.innerHTML = ''; T.render();
+  const h = String(root.innerHTML); assert(h.includes('class="pphoto"') && !bad(h), `${id}: photo missing`);
+  return (/Image shown from ([^<]*?)'s site/.exec(h.replace(/&#39;|&#x27;/g, "'")) || [])[1] }
+ T.useDS(DS); T.resetAll(); T.afterData();
+ const nu = note(u.id), ns = note(s.id);
+ assert(nu && /ulta/i.test(nu), `Ulta photo credited to ${nu}`);
+ assert(ns && /sephora/i.test(ns), `Sephora photo credited to ${ns}`);
+}
 console.log('escape.test.js: ok');
