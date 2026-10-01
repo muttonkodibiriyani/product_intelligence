@@ -72,11 +72,22 @@ page source and compare the `app.*.js` and `styles.*.css` names with `deployed.s
 
 ## Deploy
 
-Infra copies the build into `infra/web-dist/` (never committed) and deploys Hosting from `infra/`:
+Hosting serves two apps from one `infra/web-dist/` (never committed): the legacy dashboard at `/`
+and the Next app at `/app/` (`basePath` in `next.config.ts`). Build both, then copy:
 
 ```sh
-apps/web/build.sh verify && rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist
+apps/web/build.sh verify && (cd apps/web && npm ci && npm run build)
+rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist && cp -r apps/web/out infra/web-dist/app
 ```
+
+The Next export has inline scripts, so `infra/firebase.json` pins their `sha256` hashes in the CSP
+`script-src`. The build id is a hash of the sources, so the same sources always give the same
+hashes; `npm run build` fails when they no longer match. After a change, run `npm run csp:write`
+and commit `infra/firebase.json` with it.
+
+The owner runs `firebase deploy --only hosting` from `infra/` (see
+`docs/runbooks/pi-api-deploy.md` §7). To roll back, redeploy with the legacy dashboard alone
+(the first `cp` above, without `/app`), or roll back the release in the Hosting console.
 
 ## Source layout
 
