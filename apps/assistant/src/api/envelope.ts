@@ -19,6 +19,7 @@ export const NOT_ENOUGH_DATA_REASONS = [
   "no_match",
   "not_in_scope",
   "currency_mismatch",
+  "not_applicable",
 ] as const;
 export type NotEnoughDataReason = (typeof NOT_ENOUGH_DATA_REASONS)[number];
 
@@ -26,6 +27,9 @@ const bilingual = z.object({ en: z.string().max(2000), ar: z.string().max(2000) 
 export type Bilingual = z.infer<typeof bilingual>;
 
 const identifier = z.string().regex(/^[A-Za-z0-9_.:-]{1,200}$/);
+
+/** Upstream caveats accepted; more is an invalid body (`upstream_invalid`). */
+export const MAX_UPSTREAM_CAVEATS = 200;
 
 /** Machine-readable caveat codes; the API renders `en`/`ar` text per code. */
 const caveatCode = z.string().regex(/^[a-z][a-z0-9_]{0,40}$/);
@@ -39,9 +43,11 @@ export const EnvelopeSchema = z
     cohort: z
       .object({ description: z.string().max(500), n: z.number().int().nonnegative() })
       .nullish(),
+    // pi_metrics v3 adds one size_labels_differ per distinct label pair, uncapped; the registry
+    // lists the first MAX_CAVEATS. This bound only rejects an absurd body.
     caveats: z
       .array(bilingual.extend({ code: caveatCode }))
-      .max(20)
+      .max(MAX_UPSTREAM_CAVEATS)
       .default([]),
     meta: z.object({
       generation: identifier,
