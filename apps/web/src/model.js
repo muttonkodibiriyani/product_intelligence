@@ -54,13 +54,13 @@ function hydrate(j){
       const sr=o.series||{};const price=(sr.price||new Array(N).fill(null)).map(cash);
       const size=sr.size?sr.size.map(v=>v==null?null:+v):new Array(N).fill(o.size==null?null:+o.size);
       const stock=sr.stock?sr.stock.map((v,i)=>price[i]==null&&v!==4?0:v):null;
-      const promo=sr.promo||null;const regular=sr.regular?sr.regular.map(cash):null;
-      p.d[k]={price,size,stock,promo,regular};p.size[k]=o.size!=null?+o.size:size[N-1];p.shadeCount[k]=+o.shadeCount||0;p.rating[k]=Array.isArray(o.rating)?o.rating.map(Number):null;
+      const regular=sr.regular?sr.regular.map(cash):null;/* a discount worked out from a guarded price or regular price is not a discount either */const bad=i=>price[i]==null||(regular&&regular[i]==null&&sr.regular[i]!=null);const promo=sr.promo?sr.promo.map((v,i)=>bad(i)?0:v):null;
+      const held=(sr.price||[]).map((v,i)=>v!=null&&price[i]==null);p.d[k]={price,size,stock,promo,regular,held};p.size[k]=o.size!=null?+o.size:size[N-1];p.shadeCount[k]=+o.shadeCount||0;p.rating[k]=Array.isArray(o.rating)?o.rating.map(Number):null;
       p.ev[k]=o.evidence||null;if(!p.img)p.img=imgUrl(o.image,k);p.sku[k]=o.sku||null;p.url[k]=o.url||null;
       let f=price.findIndex(v=>v!=null),l=-1;for(let i=N-1;i>=0;i--)if(price[i]!=null){l=i;break}
       p.first[k]=f<0?null:f;p.last[k]=l<0?null:l;
       p.reg[k]=regular&&l>=0?regular[l]:(l>=0?price[l]:null);
-      (o.promos||[]).forEach(x=>p.promos.push({c:x.campaign||null,r:k,a:Math.max(0,dOf(x.start)),b:Math.min(N-1,dOf(x.end)),pct:+x.pct||0}));
+      (o.promos||[]).forEach(x=>{const a=Math.max(0,dOf(x.start)),b=Math.min(N-1,dOf(x.end));let ok=false;for(let i=a;i<=b;i++)if(!bad(i))ok=true;if(ok)p.promos.push({c:x.campaign||null,r:k,a,b,pct:+x.pct||0})});
       if(!o.promos&&promo){let a=null;for(let i=0;i<=N;i++){const on=i<N&&promo[i]>0;if(on&&a==null)a=i;if(!on&&a!=null){p.promos.push({c:null,r:k,a,b:i-1,pct:Math.max(...promo.slice(a,i))});a=null}}}
       if(stock){let a=null;for(let i=0;i<=N;i++){const on=i<N&&stock[i]===3;if(on&&a==null)a=i;if(!on&&a!=null){p.outs.push({r:k,a,b:i-1});a=null}}}
       for(let i=1;i<N;i++)if(size[i]!=null&&size[i-1]!=null&&size[i]!==size[i-1])p.sizeChg.push({r:k,d:i,from:size[i-1],to:size[i]})});
@@ -87,6 +87,8 @@ const sizeAt=(p,k,d)=>p.d[k]?p.d[k].size[d]:null;
 const stockAt=(p,k,d)=>{const x=p.d[k];if(!x)return 0;if(!x.stock)return x.price[d]!=null?-1:0;return x.stock[d]};
 const promoAt=(p,k,d)=>{const x=p.d[k];return x&&x.promo?x.promo[d]:0};
 const listedAt=(p,k,d)=>!!(p.d[k]&&p.d[k].price[d]!=null);
+/* listed that day, but its price was a feed error (0.01 or less) and is withheld */
+const heldAt=(p,k,d)=>!!(p.d[k]&&p.d[k].held&&p.d[k].held[d]);
 const unitAt=(p,k,d)=>{const v=priceAt(p,k,d),s=sizeAt(p,k,d);return v==null||!s?null:v/s};
 
 const SAMPLE=hydrate(sampleContract());
