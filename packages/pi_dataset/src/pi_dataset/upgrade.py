@@ -3,8 +3,13 @@
 Pure and deterministic, but not total: it fails loudly (``UpgradeError``) rather than drop data.
 Per the ADR-0008 §4 table it sets ``schema``, ``meta.profile`` and ``meta.attributeSet`` from the
 profile, one online, location-less context per retailer with the retailer's id (so every v2 offer
-key is a valid context id), ``label``/``system`` ``null`` on sizes, empty offer attributes, ``null``
-item keys and ``null`` ``notObserved[].context``. Everything else is copied unchanged.
+key is a valid context id), ``label``/``system`` ``null`` on sizes, empty offer attributes, the
+offer's ``sku`` as ``evidence.itemKey`` (kind ``sku``; ``null`` without one) and ``null``
+``notObserved[].context``. Everything else is copied unchanged.
+
+The item key is what lets rule (a) tell size variants apart: a retailer may publish several
+variants on one page (one ``url``, a sku each), which as unkeyed offers would read as one source
+item in several products. A sku shared by two products still fails, loudly.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from pydantic import ValidationError
 from pi_core import Channel
 from pi_dataset.models import Dataset
 from pi_dataset.profiles import AttributeLevel, ProfileDeclaration
-from pi_dataset.v3 import SCHEMA_ID_V3, DatasetV3
+from pi_dataset.v3 import SCHEMA_ID_V3, DatasetV3, ItemKeyKind
 
 
 class UpgradeError(ValueError):
@@ -51,7 +56,11 @@ def upgrade(v2: Dataset, profile: ProfileDeclaration) -> DatasetV3:
         for offer in product["offers"].values():
             if offer["size"] is not None:
                 offer["size"] |= {"label": None, "system": None}
-            offer["evidence"] |= {"itemKey": None, "itemKeyKind": None}
+            sku = offer["sku"]  # the source's own stable item key, where the v2 offer has one
+            offer["evidence"] |= {
+                "itemKey": sku,
+                "itemKeyKind": None if sku is None else str(ItemKeyKind.SKU),
+            }
             offer["attributes"] = {}
     for window in doc["notObserved"]:
         window["context"] = None

@@ -15,6 +15,7 @@ from pi_dataset import (
     AttributeDef,
     DatasetError,
     DatasetV3,
+    ItemKeyKind,
     ProfileDeclaration,
     SizeV3,
     UpgradeError,
@@ -135,7 +136,8 @@ def test_upgrade_round_trips_every_v2_example(name: str) -> None:
         for o, n in zip(old.offers.values(), new.offers.values(), strict=True):
             assert o.series == n.series
             assert n.attributes == {}
-            assert n.evidence.item_key is None
+            kind = None if o.sku is None else ItemKeyKind.SKU
+            assert (n.evidence.item_key, n.evidence.item_key_kind) == (o.sku, kind)
             assert (o.size is None) == (n.size is None)
             if o.size is not None and n.size is not None:
                 assert (n.size.value, n.size.unit, n.size.label) == (
@@ -156,6 +158,33 @@ def test_upgrade_fails_loudly_rather_than_drop_data() -> None:
     wrong = v2.products[0].model_copy(update={"attributes": {"finish": ["matte"]}})
     with pytest.raises(UpgradeError, match="not of type text"):
         upgrade(v2.model_copy(update={"products": (wrong, *v2.products[1:])}), BEAUTY)
+
+
+def _share_url(skus: tuple[str | None, str | None]) -> Any:
+    """Products 0 and 1 list one page at ``N``, like size variants of one Sephora page."""
+    doc = json.loads(dump_dataset(ae_pilot()))
+    for product, sku in zip(doc["products"], skus, strict=False):
+        product["offers"][N] |= {"url": "https://north.example/p/serum", "sku": sku}
+    return load_dataset(json.dumps(doc), allow_test=True)
+
+
+def test_upgrade_keys_size_variants_that_share_a_page_by_sku() -> None:
+    """Regression: the live beauty file has 1002 such urls; an unkeyed upgrade refused them."""
+    v3 = upgrade(_share_url(("SKU-50ML", "SKU-100ML")), BEAUTY)
+    evidence = [p.offers[N].evidence for p in v3.products[:2]]
+    assert [(e.item_key, e.item_key_kind) for e in evidence] == [
+        ("SKU-50ML", ItemKeyKind.SKU),
+        ("SKU-100ML", ItemKeyKind.SKU),
+    ]
+    assert load_any(dump_dataset(v3), allow_test=True) == v3
+
+
+@pytest.mark.parametrize("skus", [("SKU-SAME", "SKU-SAME"), (None, None)])
+def test_upgrade_still_refuses_one_item_in_two_products(
+    skus: tuple[str | None, str | None],
+) -> None:
+    with pytest.raises(UpgradeError):
+        upgrade(_share_url(skus), BEAUTY)
 
 
 def test_readers_check_the_schema_id_first() -> None:
@@ -352,6 +381,8 @@ def test_a_keyed_item_is_in_one_product() -> None:
 
 def test_an_unkeyed_url_is_in_one_product() -> None:
     doc = _v3_doc()
+    for product in doc["products"]:  # the upgrade keys every example offer by its sku
+        product["offers"][N]["evidence"] |= {"itemKey": None, "itemKeyKind": None}
     doc["products"][0]["offers"][N]["url"] = "https://north.example/p/1#reviews"
     doc["products"][2]["offers"][N]["url"] = "https://north.example/p/1"
     assert "url https://north.example/p/1 is in several products" in _errors(doc)
@@ -371,7 +402,10 @@ def test_multi_context_retailer_offers_need_item_key_or_url() -> None:
 
 def test_item_key_and_kind_go_together() -> None:
     doc = _v3_doc()
-    doc["products"][0]["offers"][N]["evidence"]["itemKey"] = "sku-1"
+    evidence = doc["products"][0]["offers"][N]["evidence"]
+    evidence["itemKeyKind"] = None
+    assert "itemKey and itemKeyKind are set together" in _errors(doc)
+    evidence |= {"itemKey": None, "itemKeyKind": "sku"}
     assert "itemKey and itemKeyKind are set together" in _errors(doc)
 
 

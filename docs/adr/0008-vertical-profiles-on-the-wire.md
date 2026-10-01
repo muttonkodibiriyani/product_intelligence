@@ -382,7 +382,7 @@ series, ratings, match edges, the field statuses and capabilities are all identi
 | `Product.offers` keys | retailer id | **context** id | unchanged (retailer id = sole context id) |
 | `Product.attributes` | free `dict[str, JsonValue]` | declared keys only (§3) | unchanged; a key the `ProfileDeclaration` doesn't declare raises `UpgradeError` |
 | `Offer.attributes` | — | **new**, declared offer-level keys; `fees` in the offer currency | `{}` |
-| `Offer.evidence.itemKey`, `itemKeyKind` | — | **new**, nullable; required when a retailer has more than one context in a product; rules (a)–(c) of §2 | `null` (each v2 retailer has one offer per product, so rule (c) holds) |
+| `Offer.evidence.itemKey`, `itemKeyKind` | — | **new**, nullable; required when a retailer has more than one context in a product; rules (a)–(c) of §2 | the v2 offer's `sku` with kind `sku`, else `null` (each v2 retailer has one offer per product, so rule (c) holds; size variants sharing one page `url` stay distinct under rule (a)) |
 | `notObserved[].context` | — | **new**, nullable (null = whole retailer) | `null` |
 | `MatchEdge.a`, `.b` | retailer ids | retailer ids (unchanged) | unchanged |
 
