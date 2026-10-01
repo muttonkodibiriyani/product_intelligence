@@ -8,7 +8,8 @@ It opens a HEADED browser in a fresh, non-persistent context. The OWNER signs IN
 /app/en/ and then on the root dashboard's own sign-in (the root keeps a separate session). The
 script never signs up, never creates or deletes a user, never types or sees a password, and never
 reads PI_TOKEN. It records no trace, no HAR, no storage state, no cookies and no request headers.
-It writes screenshots and one JSON verdict under --out.
+It writes screenshots and one JSON verdict under --out. The screenshots show the owner's signed-in
+account: they stay on the owner's machine and are never published, attached or committed.
 
   P1 / (root) EN + AR: document 200, signed in, dir=rtl for AR, no console/CSP errors, and the
      #/explorer thumbnails come from the allowed image hosts only
@@ -25,7 +26,7 @@ and the two known AED 0.01 prices are still served. --phase after enforces all s
 
 One-time browser install (no project access):
   uvx --from playwright==1.63.0 playwright install firefox webkit
-  uv run --script infra/scripts/prod_smoke_pages.py --phase after --out "$W/shots" \\
+  uv run --locked --script infra/scripts/prod_smoke_pages.py --phase after --out "$W/shots" \\
       --browser firefox --viewport desktop --category-page /app/en/prices/
 Exit codes: 0 PASS, 1 FAIL, 2 usage.
 """

@@ -5,17 +5,22 @@
 # ///
 """Read-only API smoke for the main→prod deploy runbook; the OWNER runs it, nothing else does.
 
-    read -rs PI_TOKEN && export PI_TOKEN          # the owner's own ID token; see the runbook
-    uv run --script infra/scripts/prod_smoke_api.py save  --out "$W/smoke"
-    uv run --script infra/scripts/prod_smoke_api.py check --out "$W/smoke" --expect-api 1.x.y
+    read -rs PI_TOKEN      # the owner's own ID token, NOT exported (runbook N1)
+    PI_TOKEN="$PI_TOKEN" uv run --locked --script infra/scripts/prod_smoke_api.py save \
+        --out "$W/smoke"
+    PI_TOKEN="$PI_TOKEN" uv run --locked --script infra/scripts/prod_smoke_api.py check \
+        --out "$W/smoke" --expect-api 1.x.y
 
 Only GET requests. It never creates, signs in or deletes a user: the token comes from the
 ``PI_TOKEN`` environment variable, never from argv, and is never printed or written. A 401 on a
 call that sent the token exits 3 ("token expired: refresh it and re-run"); that is not a FAIL.
+Redirects are never followed (the token must not travel to another host or over http): any 3xx
+from the API is a FAIL, and ``--base`` must be https.
 
 ``save`` (before the deploy) records the version, cutoff, per-retailer counts, a cursor and every
-served card price of 0.01 or less (the #146 floor) to ``<out>/baseline.json``; it exits 1 when the
-low-price count differs from ``--known-low-price`` (an unexplained data change).
+served card price of 0.01 or less in the walked retailer's own contexts (the #146 floor) to
+``<out>/baseline.json``; it exits 1 when the low-price count differs from
+``--known-low-price`` (an unexplained data change).
 ``check`` (after it) runs S1-S8 of the runbook against that baseline, writes
 ``<out>/check.json`` and exits 1 on any FAIL. REVIEW lines need the owner's judgement,
 not a rollback.
@@ -56,6 +61,18 @@ class TokenExpiredError(Exception):
     """A call that sent the token got 401: the owner's ID token (1 h) needs a refresh."""
 
 
+class RedirectError(Exception):
+    """The API answered 3xx. Redirects are refused, so this is a FAIL, never followed."""
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_: Any, **__: Any) -> None:
+        return None  # urllib then raises HTTPError with the 3xx status
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 @dataclass(frozen=True)
 class Response:
     status: int
@@ -75,7 +92,7 @@ Transport = Callable[[str, Mapping[str, str]], Response]
 def urllib_transport(url: str, headers: Mapping[str, str]) -> Response:
     request = urllib.request.Request(url, headers=dict(headers))  # noqa: S310 -- https only
     try:
-        with urllib.request.urlopen(request, timeout=60) as r:  # noqa: S310
+        with _OPENER.open(request, timeout=60) as r:
             raw, status, ctype = r.read(), r.status, r.headers.get("Content-Type", "")
     except urllib.error.HTTPError as e:
         raw, status, ctype = e.read(), e.code, e.headers.get("Content-Type", "")
@@ -100,6 +117,8 @@ class Api:
         url = self.base + path + ("?" + urllib.parse.urlencode(params) if params else "")
         headers = {"Authorization": f"Bearer {self._token}"} if auth else {}
         r = self._transport(url, headers)
+        if 300 <= r.status < 400:
+            raise RedirectError(f"{path} -> {r.status}")
         if auth and r.status == 401:
             raise TokenExpiredError(path)
         return r
@@ -165,12 +184,18 @@ def cards(api: Api, retailer: str) -> Iterator[dict[str, Any]]:
             return
 
 
-def low_rows(card: Mapping[str, Any], ctx: Mapping[str, str]) -> list[dict[str, str]]:
-    """The card's served prices of 0.01 or less, one row per context."""
+def low_rows(
+    card: Mapping[str, Any], ctx: Mapping[str, str], retailer: str
+) -> list[dict[str, str]]:
+    """The card's served prices of 0.01 or less, one row per context OF ``retailer``.
+
+    A card carries every context's price, so a product sold by both retailers is walked twice;
+    counting only the walked retailer's contexts gives each (product, context) exactly once.
+    """
     return [
-        {"retailer": ctx.get(c, c), "product": card["id"], "context": c, "amount": str(amount(m))}
+        {"retailer": retailer, "product": card["id"], "context": c, "amount": str(amount(m))}
         for c, m in (card.get("prices") or {}).items()
-        if low(m)
+        if ctx.get(c, c) == retailer and low(m)
     ]
 
 
@@ -187,7 +212,7 @@ def save(api: Api, out: Path, known_low: int) -> int:
     r = api.get("/products", CURSOR_QUERY)
     meta = (r.body or {}).get("meta") or {}
     ctx = contexts(api)
-    rows = [row for rid in EXPECTED for card in cards(api, rid) for row in low_rows(card, ctx)]
+    rows = [row for rid in EXPECTED for card in cards(api, rid) for row in low_rows(card, ctx, rid)]
     baseline = {
         "apiVersion": meta.get("apiVersion"),
         "cutoff": meta.get("cutoff"),
@@ -277,7 +302,13 @@ def floor_caveats(body: Any) -> dict[str, int]:
 
 
 def s4_floor(api: Api, rep: Report, baseline: Mapping[str, Any]) -> None:
-    """#146: each recorded low price is withheld (null + invalid_low), never dropped."""
+    """#146: each recorded low price is withheld (null + invalid_low), never dropped.
+
+    (i) every baseline product is still served; (ii) its card price at the recorded context is
+    null WITH priceFlags invalid_low, and its detail offer there is price null + priceFlag
+    invalid_low; (iii) the invalid_price_excluded caveat vs the baseline; (iv) no card price
+    <= 0.01 in any retailer's own contexts, and no detail regular <= 0.01 on baseline products.
+    """
     ctx = contexts(api)
     before = baseline.get("lowPrice") or []
     seen: dict[str, dict[str, Any]] = {}
@@ -285,7 +316,7 @@ def s4_floor(api: Api, rep: Report, baseline: Mapping[str, Any]) -> None:
     for rid in EXPECTED:
         for card in cards(api, rid):
             seen[card["id"]] = card
-            still_low += low_rows(card, ctx)
+            still_low += low_rows(card, ctx, rid)
     rep.expect(
         not still_low, f"S4(iv) 0 served card prices <= 0.01 ({len(still_low)}: {still_low[:2]})"
     )
@@ -438,6 +469,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="check: S1-S2 only (re-runs after (6) and rollback)",
     )
     args = p.parse_args(argv)
+    if not args.base.startswith("https://"):
+        p.error("--base must be https (the token is sent to it)")
     if args.mode == "check" and not args.expect_api:
         p.error("check needs --expect-api")
     return args
@@ -447,7 +480,10 @@ def main(argv: list[str] | None = None, transport: Transport = urllib_transport)
     args = parse_args(argv)
     token = os.environ.get(TOKEN_ENV, "").strip()
     if not token:
-        print(f"set {TOKEN_ENV} first: read -rs {TOKEN_ENV} && export {TOKEN_ENV}")
+        print(
+            f"no {TOKEN_ENV} in this command's environment. Load it with `read -rs {TOKEN_ENV}` "
+            f'(not exported) and prefix only this command: {TOKEN_ENV}="${TOKEN_ENV}" uv run ...'
+        )
         return 2
     api = Api(transport, token, args.base)
     try:
@@ -456,6 +492,9 @@ def main(argv: list[str] | None = None, transport: Transport = urllib_transport)
             if args.mode == "save"
             else check(api, args.out, args)
         )
+    except RedirectError as e:
+        print(f"FAIL: {e}. Redirects are refused, so the token never follows one; check --base.")
+        return 1
     except TokenExpiredError as e:
         print(
             f"401 on {e}: the token expired. Refresh {TOKEN_ENV} and re-run this step (not a FAIL)."

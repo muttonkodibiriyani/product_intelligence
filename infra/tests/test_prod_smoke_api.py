@@ -8,11 +8,13 @@ caveat), so S4's withheld-not-dropped rule is tested before #146 is on main.
 from __future__ import annotations
 
 import copy
+import http.server
 import json
+import threading
 import urllib.parse
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, cast
 
 import prod_smoke_api as smoke
 import pytest
@@ -56,7 +58,7 @@ def test_save_and_counts_check_run_against_the_real_api(
 ) -> None:
     transport, counts = real
     out = tmp_path / "smoke"
-    base = ["--out", str(out), "--base", "http://api/api/v1"]
+    base = ["--out", str(out), "--base", "https://api/api/v1"]
     # The fixture has no prices <= 0.01 and no ulta_ae (EXPECTED is the fixture's own coverage).
     assert smoke.main(["save", *base, "--known-low-price", "0"], transport) == 0
     saved = json.loads((out / "baseline.json").read_text())
@@ -94,6 +96,8 @@ class FakeProd:
 
     def __init__(self, *, floor: bool = True) -> None:
         self.floor = floor
+        self.unflagged: set[str] = set()  # withheld (null) without priceFlags invalid_low
+        self.regular_low: set[str] = set()  # detail offer still serves regular 0.01
         self.version = "1.7.0"
         self.cards: dict[str, list[dict[str, Any]]] = {"sephora_me": [], "ulta_ae": []}
         for i in range(250):
@@ -118,7 +122,8 @@ class FakeProd:
             for ctx, m in card["prices"].items():
                 if smoke.low(m):
                     card["prices"][ctx] = None
-                    card["priceFlags"][ctx] = "invalid_low"
+                    if card["id"] not in self.unflagged:
+                        card["priceFlags"][ctx] = "invalid_low"
         return card
 
     def all_cards(self) -> dict[str, dict[str, Any]]:
@@ -182,7 +187,7 @@ class FakeProd:
                         "context": ctx,
                         "price": price,
                         "priceFlag": flag,
-                        "regular": None,
+                        "regular": money("0.01") if card["id"] in self.regular_low else None,
                         "sku": f"SKU-{card['id']}" if ctx == "ulta_ae" else None,
                         "evidence": {"url": f"https://{host}/p/{card['id']}"},
                     }
@@ -324,3 +329,99 @@ def test_a_category_param_replaces_the_default() -> None:
     assert smoke.parse_args(["save", "--out", "x"]).category_param is None
     args = smoke.parse_args(["save", "--out", "x", "--category-param", "retailers=a,b"])
     assert args.category_param == ["retailers=a,b"]
+
+
+# ------------------------------------------------------------------ Reviewer R1/R2/R4
+
+
+class _Redirector(http.server.BaseHTTPRequestHandler):
+    seen: ClassVar[list[tuple[str, bool]]] = []
+
+    def do_GET(self) -> None:
+        type(self).seen.append((self.path, "Authorization" in self.headers))
+        self.send_response(302 if self.path.startswith("/api/") else 200)
+        self.send_header(
+            "Location",
+            f"http://127.0.0.1:{cast(http.server.HTTPServer, self.server).server_port}/elsewhere",
+        )
+        self.end_headers()
+
+    def log_message(self, *_: Any) -> None:
+        pass
+
+
+def test_a_redirect_is_refused_and_the_token_never_follows_it() -> None:
+    _Redirector.seen.clear()
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Redirector)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{server.server_address[1]}/api/v1"
+        r = smoke.urllib_transport(base + "/meta", {"Authorization": f"Bearer {SECRET}"})
+        assert r.status == 302
+        with pytest.raises(smoke.RedirectError):
+            smoke.Api(smoke.urllib_transport, SECRET, base).get("/meta")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert _Redirector.seen == [("/api/v1/meta", True), ("/api/v1/meta", True)]  # never /elsewhere
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_3xx_from_the_api_fails_the_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def moved(url: str, headers: Mapping[str, str]) -> Response:
+        return Response(301, None, 0, "text/html")
+
+    assert (
+        smoke.main(["save", "--out", str(tmp_path), "--base", "https://pi.invalid/api/v1"], moved)
+        == 1
+    )
+    assert "FAIL" in capsys.readouterr().out
+
+
+def test_a_non_https_base_is_rejected() -> None:
+    with pytest.raises(SystemExit):
+        smoke.parse_args(["save", "--out", "x", "--base", "http://pi.invalid/api/v1"])
+
+
+def test_a_product_at_both_retailers_is_counted_once_per_context() -> None:
+    ctx = {"sephora_me": "sephora_me", "ulta_ae": "ulta_ae"}
+    card = {"id": "p", "prices": {"ulta_ae": money("0.01"), "sephora_me": money("0.01")}}
+    assert [r["context"] for r in smoke.low_rows(card, ctx, "ulta_ae")] == ["ulta_ae"]
+    assert [r["context"] for r in smoke.low_rows(card, ctx, "sephora_me")] == ["sephora_me"]
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_save_does_not_double_count_a_shared_product(tmp_path: Path) -> None:
+    fake = FakeProd(floor=False)
+    shared = fake.cards["ulta_ae"][0]
+    shared["prices"]["sephora_me"] = money("20.00")
+    fake.cards["sephora_me"][0] = shared  # u0 is walked under both retailers
+    assert run(fake, tmp_path, "save", "--known-low-price", "2") == 0
+    rows = json.loads((tmp_path / "baseline.json").read_text())["lowPrice"]
+    assert sorted((r["product"], r["context"]) for r in rows) == [
+        ("u0", "ulta_ae"),
+        ("u1", "ulta_ae"),
+    ]
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_null_card_price_without_invalid_low_fails(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    fake = FakeProd()
+    fake.unflagged.add("u0")
+    assert run(fake, tmp_path, "check", "--expect-api", "1.7.0") == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert any(p.startswith("S4(ii) card u0") for p in problems)
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_detail_regular_at_the_floor_fails(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    fake = FakeProd()
+    fake.regular_low.add("u1")
+    assert run(fake, tmp_path, "check", "--expect-api", "1.7.0") == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert problems == ["S4(iv) /products/u1: no regular <= 0.01"]
