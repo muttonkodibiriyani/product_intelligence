@@ -546,3 +546,5 @@ table.mx{min-width:max-content}
 @media (max-width:860px){.nav{flex-wrap:wrap;overflow-x:visible;gap:4px}.nav a{padding:6px 10px;gap:8px;font-size:13px;background:var(--sunk)}.nav a[aria-current=page]{background:var(--lav)}}
 .coming{margin:0 0 20px}
 .dgrid+.coming{margin:20px 0 0}
+.pphoto{width:100%;height:100%;display:block;object-fit:contain;background:#fff}
+.pphoto+span:not([hidden]){display:contents}

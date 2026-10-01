@@ -33,6 +33,9 @@ function validateDataset(j){const e=[];if(!j||j.schema!=='pi.dataset/v1')e.push(
   if(!e.length){const n=j.meta.dates.length;j.products.slice(0,400).forEach(p=>{if(!p.id||!p.brand||!p.name)e.push('product missing id/brand/name');
     Object.entries(p.offers||{}).forEach(([k,o])=>{if(o&&o.series&&o.series.price&&o.series.price.length!==n)e.push(`${p.id}.${k}: series length ≠ dates`)})})}
   return e.slice(0,5)}
+/* Product images are hotlinked from the retailer's own CDN, never copied: an https URL on that retailer's host only, else none. */
+const IMG_HOSTS={s:'img-product.sephora.me',u:'media.alshaya.com'};
+function imgUrl(v,k){if(typeof v!=='string')return null;try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password&&(k?u.hostname===IMG_HOSTS[k]:Object.values(IMG_HOSTS).includes(u.hostname))?u.href:null}catch(e){return null}}
 function hydrate(j){
   const dates=j.meta.dates,N=dates.length,end=Date.parse(dates[N-1]+'T00:00:00Z'),dOf=iso=>Math.round((Date.parse(String(iso).slice(0,10)+'T00:00:00Z')-end)/864e5)+N-1;
   const caps=Object.assign({history:N>1,promotions:false,campaigns:false,stock:false,sizes:false,shades:false,coverage:false},j.meta.capabilities||{});
@@ -50,7 +53,7 @@ function hydrate(j){
       const stock=sr.stock?sr.stock.map((v,i)=>price[i]==null&&v!==4?0:v):null;
       const promo=sr.promo||null;const regular=sr.regular||null;
       p.d[k]={price,size,stock,promo,regular};p.size[k]=o.size!=null?+o.size:size[N-1];p.shadeCount[k]=+o.shadeCount||0;p.rating[k]=Array.isArray(o.rating)?o.rating.map(Number):null;
-      p.ev[k]=o.evidence||null;p.sku[k]=o.sku||null;p.url[k]=o.url||null;
+      p.ev[k]=o.evidence||null;if(!p.img)p.img=imgUrl(o.image,k);p.sku[k]=o.sku||null;p.url[k]=o.url||null;
       let f=price.findIndex(v=>v!=null),l=-1;for(let i=N-1;i>=0;i--)if(price[i]!=null){l=i;break}
       p.first[k]=f<0?null:f;p.last[k]=l<0?null:l;
       p.reg[k]=regular&&l>=0?regular[l]:(l>=0?price[l]:null);
@@ -58,6 +61,7 @@ function hydrate(j){
       if(!o.promos&&promo){let a=null;for(let i=0;i<=N;i++){const on=i<N&&promo[i]>0;if(on&&a==null)a=i;if(!on&&a!=null){p.promos.push({c:null,r:k,a,b:i-1,pct:Math.max(...promo.slice(a,i))});a=null}}}
       if(stock){let a=null;for(let i=0;i<=N;i++){const on=i<N&&stock[i]===3;if(on&&a==null)a=i;if(!on&&a!=null){p.outs.push({r:k,a,b:i-1});a=null}}}
       for(let i=1;i<N;i++)if(size[i]!=null&&size[i-1]!=null&&size[i]!==size[i-1])p.sizeChg.push({r:k,d:i,from:size[i-1],to:size[i]})});
+    if(!p.img)p.img=imgUrl(q.image);
     p.sameSize=p.listed.u&&p.listed.s&&p.size.u!=null&&p.size.u===p.size.s&&!p.sizeChg.length&&(!p.match||p.match[3]==='exact');return p});
   early.forEach(e=>{const sr=e.o.series||{};e.price=sr.price?sr.price[N-1]:null;e.size=e.o.size==null?null:+e.o.size;e.at=e.o.evidence&&e.o.evidence.capturedAt});
   products.splice(0,products.length,...products.filter(p=>p.listed.u||p.listed.s));
