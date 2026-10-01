@@ -11,10 +11,11 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from pi_dataset import ContractModel, Dataset, MoneyValue
+from pi_dataset import ContractModel, DatasetV3, MoneyValue
 from pi_dataset.models import FieldStatus, RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
+    EVERY_PROFILE,
     MIN_COHORT,
     Caveat,
     CaveatCode,
@@ -27,6 +28,8 @@ from pi_metrics.model import (
 )
 
 UNCOLLECTED = {FieldStatus.NOT_COLLECTED, FieldStatus.NOT_PUBLISHED, FieldStatus.BLOCKED}
+#: The profiles promotions apply to (ADR-0008 §3).
+PROFILES = EVERY_PROFILE
 
 
 class PromoItem(ContractModel):
@@ -39,6 +42,7 @@ class PromoItem(ContractModel):
 
 
 class RetailerPromo(ContractModel):
+    #: The context id; a retailer's sole context has the retailer's id.
     retailer: str
     n: int
     on_promo: int
@@ -58,8 +62,8 @@ def depth(price: MoneyValue, regular: MoneyValue) -> Decimal:
     return (regular.decimal() - price.decimal()) / regular.decimal() * 100
 
 
-def _share(ds: Dataset, retailer: str, n: int, on_promo: int) -> RetailerPromo:
-    status = view.retailer(ds, retailer).status
+def _share(ds: DatasetV3, retailer: str, n: int, on_promo: int) -> RetailerPromo:
+    status = view.status(ds, retailer)
     reason = {
         RetailerStatus.BLOCKED: Reason.RETAILER_BLOCKED,
         RetailerStatus.PARTIAL: Reason.RETAILER_PARTIAL,
@@ -71,18 +75,24 @@ def _share(ds: Dataset, retailer: str, n: int, on_promo: int) -> RetailerPromo:
 
 
 def promotions(
-    ds: Dataset,
+    dataset: view.AnyDataset,
     retailers: tuple[str, ...],
     where: ProductFilter,
     min_pct: Decimal | None = None,
     on: date | None = None,
 ) -> Metric[Promotions]:
-    """Per-retailer promo share (n ≥ 5 each) and the promoted items, deepest first."""
-    selected = view.selected_retailers(ds, retailers)
+    """Per-context promo share (n ≥ 5 each) and the promoted items, deepest first.
+
+    ``retailers`` are context ids; empty means every context.
+    """
+    ds = view.as_v3(dataset)
+    selected = view.selected_contexts(ds, retailers)
     i = view.date_index(ds, on)
     as_of = ds.meta.dates[i]
     off = None
-    if not ds.meta.capabilities.promotions:
+    if not view.applies(ds, PROFILES):
+        off = Reason.NOT_APPLICABLE
+    elif not ds.meta.capabilities.promotions:
         off = Reason.CAPABILITY_OFF
     elif ds.meta.fields.get("regular", FieldStatus.NOT_COLLECTED) in UNCOLLECTED:
         off = Reason.FIELD_NOT_COLLECTED

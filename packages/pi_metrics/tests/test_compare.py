@@ -19,7 +19,7 @@ from metrics_fixture import (
     with_saudi_shop,
 )
 from pi_dataset import Dataset, DecidedBy, MoneyValue, RetailerStatus
-from pi_metrics import EVERYTHING, Cheaper, GroupBy, ProductFilter, compare, gap
+from pi_metrics import EVERYTHING, Cheaper, GroupBy, ProductFilter, compare, gap, view
 from pi_metrics.model import CaveatCode, Excluded, Reason, Status
 from pi_metrics.view import UnknownInput
 
@@ -202,6 +202,7 @@ def test_an_unknown_size_is_never_assumed_equal(ds: Dataset) -> None:
 
 def test_compare_scales_linearly(ds: Dataset) -> None:
     big = scaled(ds, 500)  # 8k products; the quadratic version took ~10 s here
+    view.as_v3(big)  # the one-off upgrade happens when the API loads a generation
     started = time.perf_counter()
     result = compare(big, A, B, EVERYTHING, group_by=GroupBy.BRAND)
     assert time.perf_counter() - started < 3

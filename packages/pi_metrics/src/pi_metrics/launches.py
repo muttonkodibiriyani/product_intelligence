@@ -10,14 +10,26 @@ from __future__ import annotations
 
 from datetime import date
 
-from pi_dataset import ContractModel, Dataset
+from pi_dataset import ContractModel
 from pi_metrics import view
-from pi_metrics.model import Caveat, CaveatCode, Metric, ProductFilter, Reason, Status
+from pi_metrics.model import (
+    EVERY_PROFILE,
+    Caveat,
+    CaveatCode,
+    Metric,
+    ProductFilter,
+    Reason,
+    Status,
+)
+
+#: The profiles launches apply to (ADR-0008 §3).
+PROFILES = EVERY_PROFILE
 
 
 class Launch(ContractModel):
     id: str
     name: str
+    #: The context id; a retailer's sole context has the retailer's id.
     retailer: str
     first_seen: date
 
@@ -30,18 +42,25 @@ class Launches(ContractModel):
 
 
 def launches(
-    ds: Dataset,
+    dataset: view.AnyDataset,
     retailers: tuple[str, ...],
     where: ProductFilter,
     since: date | None = None,
 ) -> Metric[Launches]:
-    selected = view.selected_retailers(ds, retailers)
+    """First-seen items per context; ``retailers`` are context ids, empty means every context."""
+    ds = view.as_v3(dataset)
+    selected = view.selected_contexts(ds, retailers)
     as_of = ds.meta.dates[-1]
-    if not ds.meta.capabilities.history or len(ds.meta.dates) < 2:
+    off = None
+    if not view.applies(ds, PROFILES):
+        off = Reason.NOT_APPLICABLE
+    elif not ds.meta.capabilities.history or len(ds.meta.dates) < 2:
+        off = Reason.CAPABILITY_OFF
+    if off is not None:
         return Metric[Launches](
             status=Status.NOT_ENOUGH_DATA,
             data=Launches(items=(), total=0),
-            reason=Reason.CAPABILITY_OFF,
+            reason=off,
             as_of=as_of,
         )
     items, withheld = [], 0

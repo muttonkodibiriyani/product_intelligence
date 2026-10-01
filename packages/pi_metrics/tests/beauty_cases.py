@@ -15,6 +15,7 @@ import hashlib
 import json
 from collections.abc import Callable, Iterator
 from decimal import Decimal
+from functools import partial
 from itertools import permutations
 from typing import Any
 
@@ -41,7 +42,7 @@ from pi_metrics import (
     reviews_summary,
 )
 
-Call = Callable[[Any], Any]
+Call = Callable[[Dataset], Any]
 FILTERS = {
     "all": EVERYTHING,
     "makeup": ProductFilter(categories=("makeup",)),
@@ -66,52 +67,51 @@ def variants() -> dict[str, Dataset]:
 
 def _calls(ds: Dataset) -> Iterator[tuple[str, Call]]:
     shops = tuple(r.id for r in ds.meta.retailers)
+    first, last = ds.meta.dates[0], ds.meta.dates[-1]
     for f, where in FILTERS.items():
         for base, other in permutations(shops, 2):
-            for day in ds.meta.dates if f == "all" else ds.meta.dates[-1:]:
+            for day in ds.meta.dates if f == "all" else (last,):
                 yield (
                     f"compare/{f}/{base}/{other}/{day}",
-                    lambda d, b=base, o=other, w=where, on=day: compare(d, b, o, w, on=on),
+                    partial(compare, base=base, other=other, where=where, on=day),
                 )
             for by in GroupBy if f == "all" else ():
                 yield (
                     f"compare/{f}/{base}/{other}/by-{by}",
-                    lambda d, b=base, o=other, w=where, g=by: compare(d, b, o, w, group_by=g),
+                    partial(compare, base=base, other=other, where=where, group_by=by),
                 )
             yield (
                 f"index/{f}/{base}/{other}",
-                lambda d, b=base, o=other, w=where: price_index(d, b, o, w),
+                partial(price_index, base=base, other=other, where=where),
             )
             yield (
                 f"index/{f}/{base}/{other}/last",
-                lambda d, b=base, o=other, w=where: price_index(d, b, o, w, start=d.meta.dates[-1]),
+                partial(price_index, base=base, other=other, where=where, start=last),
             )
             yield (
                 f"assortment/{f}/{base}/{other}",
-                lambda d, b=base, o=other, w=where: assortment_gaps(d, b, o, w),
+                partial(assortment_gaps, missing_at=base, present_at=other, where=where),
             )
         for ids in ((), *((s,) for s in shops)):
             name = "+".join(ids) or "all"
-            yield f"promotions/{f}/{name}", lambda d, i=ids, w=where: promotions(d, i, w)
+            yield f"promotions/{f}/{name}", partial(promotions, retailers=ids, where=where)
             yield (
                 f"promotions/{f}/{name}/min10/first",
-                lambda d, i=ids, w=where: promotions(
-                    d, i, w, min_pct=Decimal(10), on=d.meta.dates[0]
-                ),
+                partial(promotions, retailers=ids, where=where, min_pct=Decimal(10), on=first),
             )
-            yield f"availability/{f}/{name}", lambda d, i=ids, w=where: availability(d, i, w)
+            yield f"availability/{f}/{name}", partial(availability, retailers=ids, where=where)
             yield (
                 f"availability/{f}/{name}/first",
-                lambda d, i=ids, w=where: availability(d, i, w, on=d.meta.dates[0]),
+                partial(availability, retailers=ids, where=where, on=first),
             )
-            yield f"launches/{f}/{name}", lambda d, i=ids, w=where: launches(d, i, w)
+            yield f"launches/{f}/{name}", partial(launches, retailers=ids, where=where)
             yield (
                 f"launches/{f}/{name}/since",
-                lambda d, i=ids, w=where: launches(d, i, w, since=d.meta.dates[-1]),
+                partial(launches, retailers=ids, where=where, since=last),
             )
-            yield f"reviews/{f}/{name}", lambda d, i=ids, w=where: reviews_summary(d, i, w)
+            yield f"reviews/{f}/{name}", partial(reviews_summary, retailers=ids, where=where)
     for ids in ((), *((s,) for s in shops)):
-        yield f"coverage/{'+'.join(ids) or 'all'}", lambda d, i=ids: coverage(d, i)
+        yield f"coverage/{'+'.join(ids) or 'all'}", partial(coverage, retailers=ids)
 
 
 def cases() -> Iterator[tuple[str, Dataset, Call]]:

@@ -5,9 +5,17 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from pi_dataset import ContractModel, Dataset
+from pi_dataset import ContractModel, DatasetV3
 from pi_metrics import view
-from pi_metrics.compare import COHORT_DESCRIPTION, pair_block, pair_row
+from pi_metrics.compare import (
+    COHORT_DESCRIPTION,
+    PROFILES,
+    LabelPair,
+    pair_block,
+    pair_caveats,
+    pair_row,
+    pair_with_labels,
+)
 from pi_metrics.model import (
     MIN_COHORT,
     Cohort,
@@ -40,7 +48,7 @@ class PriceIndex(ContractModel):
     definition: str = INDEX_DEFINITION
 
 
-def _window(ds: Dataset, start: date | None, end: date | None) -> list[int]:
+def _window(ds: DatasetV3, start: date | None, end: date | None) -> list[int]:
     if start is not None and end is not None and start > end:
         msg = f"from {start} is after to {end}"
         raise view.UnknownInput(msg)
@@ -56,7 +64,7 @@ def _window(ds: Dataset, start: date | None, end: date | None) -> list[int]:
 
 
 def price_index(  # noqa: PLR0913 -- the endpoint filters; window bounds are keyword-only
-    ds: Dataset,
+    dataset: view.AnyDataset,
     base: str,
     other: str,
     where: ProductFilter,
@@ -64,19 +72,28 @@ def price_index(  # noqa: PLR0913 -- the endpoint filters; window bounds are key
     start: date | None = None,
     end: date | None = None,
 ) -> Metric[PriceIndex]:
-    """One point per date of the window. Needs ``capabilities.history`` for more than one date."""
+    """One point per date of the window. Needs ``capabilities.history`` for more than one date.
+
+    ``base`` and ``other`` are context ids, paired as in ``compare``.
+    """
+    ds = view.as_v3(dataset)
     if base == other:
         msg = "base and other must be different retailers"
         raise view.UnknownInput(msg)
-    view.retailer(ds, base)
-    view.retailer(ds, other)
+    view.context(ds, base)
+    view.context(ds, other)
     window = _window(ds, start, end)
     as_of = ds.meta.dates[window[-1]]
-    if len(window) > 1 and not ds.meta.capabilities.history:
+    off = None
+    if not view.applies(ds, PROFILES):
+        off = Reason.NOT_APPLICABLE
+    elif len(window) > 1 and not ds.meta.capabilities.history:
+        off = Reason.CAPABILITY_OFF
+    if off is not None:
         return Metric[PriceIndex](
             status=Status.NOT_ENOUGH_DATA,
             data=PriceIndex(base=base, other=other, points=(), trend_available=False),
-            reason=Reason.CAPABILITY_OFF,
+            reason=off,
             as_of=as_of,
         )
     blocked = pair_block(ds, base, other)
@@ -88,10 +105,15 @@ def price_index(  # noqa: PLR0913 -- the endpoint filters; window bounds are key
             as_of=as_of,
         )
     candidates = [p for p in view.products(ds, where) if base in p.offers and other in p.offers]
-    basket = [p for p in candidates if pair_row(p, base, other, window[0]).counted]
+    basket, labels = [], list[LabelPair]()
+    for product in candidates:
+        row, pair_labels = pair_with_labels(ds, product, base, other, window[0])
+        if row.counted:
+            basket.append(product)
+            labels += [pair_labels] if pair_labels else []
     points = []
     for i in window:
-        rows = [pair_row(p, base, other, i) for p in basket]
+        rows = [pair_row(ds, p, base, other, i) for p in basket]
         counted = [r for r in rows if r.counted and r.base_price and r.other_price]
         n = len(counted)
         index = None
@@ -115,5 +137,6 @@ def price_index(  # noqa: PLR0913 -- the endpoint filters; window bounds are key
         ),
         reason=None if first_n >= MIN_COHORT else Reason.COHORT_TOO_SMALL,
         cohort=Cohort(description=f"fixed basket: {COHORT_DESCRIPTION}", n=first_n),
+        caveats=tuple(pair_caveats(ds, base, other, labels)),
         as_of=as_of,
     )

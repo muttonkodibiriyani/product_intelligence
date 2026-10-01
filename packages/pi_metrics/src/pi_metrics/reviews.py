@@ -10,10 +10,11 @@ from __future__ import annotations
 from collections import Counter
 from decimal import Decimal
 
-from pi_dataset import ContractModel, Dataset, Rating
+from pi_dataset import ContractModel, Rating
 from pi_dataset.models import FieldStatus
 from pi_metrics import view
 from pi_metrics.model import (
+    EVERY_PROFILE,
     MIN_COHORT,
     Caveat,
     CaveatCode,
@@ -24,8 +25,12 @@ from pi_metrics.model import (
     Status,
 )
 
+#: The profiles the reviews summary applies to (ADR-0008 §3).
+PROFILES = EVERY_PROFILE
+
 
 class RetailerReviews(ContractModel):
+    #: The context id; a retailer's sole context has the retailer's id.
     retailer: str
     n: int
     avg_rating: RatingValue | None
@@ -61,12 +66,16 @@ def _summary(retailer: str, ratings: list[Rating]) -> tuple[RetailerReviews, int
 
 
 def reviews_summary(
-    ds: Dataset, retailers: tuple[str, ...], where: ProductFilter
+    dataset: view.AnyDataset, retailers: tuple[str, ...], where: ProductFilter
 ) -> Metric[ReviewsSummary]:
-    selected = view.selected_retailers(ds, retailers)
+    """Per-context ratings; ``retailers`` are context ids, empty means every context."""
+    ds = view.as_v3(dataset)
+    selected = view.selected_contexts(ds, retailers)
     as_of = ds.meta.dates[-1]
     off = None
-    if not ds.meta.capabilities.ratings:
+    if not view.applies(ds, PROFILES):
+        off = Reason.NOT_APPLICABLE
+    elif not ds.meta.capabilities.ratings:
         off = Reason.CAPABILITY_OFF
     elif ds.meta.fields.get("rating", FieldStatus.NOT_COLLECTED) is FieldStatus.NOT_COLLECTED:
         off = Reason.FIELD_NOT_COLLECTED

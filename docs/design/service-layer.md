@@ -161,7 +161,7 @@ versioned snapshots.
   "evidence": [{"productId": "...", "retailer": "<source_key>", "url": "https://...",
                 "capturedAt": "2026-09-30T20:42:00Z", "runId": "…admin only…"}],   // ≤ 20
   "meta": {
-    "apiVersion": "1.1.0", "endpoint": "compare", "metricVersion": "2026-10-01.1",
+    "apiVersion": "1.1.0", "endpoint": "compare", "metricVersion": "2026-10-01.2",
     "generation": "1727…", "cutoff": "2026-09-30T00:00:00Z",
     "market": "AE", "currency": "AED", "scope": "pilot",
     "filters": { ... }                   // the validated, normalised input, echoed

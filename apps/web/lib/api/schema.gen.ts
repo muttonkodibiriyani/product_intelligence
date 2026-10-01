@@ -418,7 +418,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-01.1
+             * @default 2026-10-01.2
              */
             metricVersion: string;
             /** Scope */
@@ -517,7 +517,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs";
         /** CaveatView */
         CaveatView: {
             /** Ar */
@@ -1187,7 +1187,7 @@ export interface components {
          * @description The closed ``not_enough_data`` reasons (design §5).
          * @enum {string}
          */
-        Reason: "capability_off" | "field_not_collected" | "retailer_blocked" | "retailer_partial" | "cohort_too_small" | "matches_unreviewed" | "no_match" | "not_in_scope" | "currency_mismatch";
+        Reason: "capability_off" | "field_not_collected" | "retailer_blocked" | "retailer_partial" | "cohort_too_small" | "matches_unreviewed" | "no_match" | "not_in_scope" | "currency_mismatch" | "not_applicable";
         /** RetailerAvailability */
         RetailerAvailability: {
             /** Counts */
@@ -1299,7 +1299,9 @@ export interface components {
         };
         /**
          * Side
-         * @description One retailer's state in a comparison, so a client can say which side is short.
+         * @description One context's state in a comparison, so a client can say which side is short.
+         *
+         *     ``retailer`` holds the context id: a retailer's sole context has the retailer's id.
          */
         Side: {
             /** Counted */

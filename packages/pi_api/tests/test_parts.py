@@ -118,6 +118,14 @@ def test_a_missing_file_is_logged_not_raised(tmp_path: Path) -> None:
     assert source.datasets() == ()
 
 
+def test_a_v2_dataset_metrics_cannot_read_is_not_loaded(tmp_path: Path) -> None:
+    ds = served_dataset()
+    write(tmp_path, ds.model_copy(update={"meta": ds.meta.model_copy(update={"vertical": "toys"})}))
+    source = SnapshotSource(LocalStore(tmp_path), (DATASET_PATH,))
+    source.load_all()  # no committed toys@1 profile to upgrade it by
+    assert source.datasets() == ()
+
+
 def test_a_storage_error_keeps_what_is_loaded(tmp_path: Path) -> None:
     class Flaky(LocalStore):
         fail = False

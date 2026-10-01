@@ -1,19 +1,26 @@
-"""Pair rows and the price-gap summary (design §6 ``POST /v1/compare``, §7.2, §7.4, §7.5)."""
+"""Pair rows and the price-gap summary (design §6 ``POST /v1/compare``, §7.2, §7.4, §7.5).
+
+A pair is two **contexts** (ADR-0008 §2). Contexts of different retailers need that retailer
+pair's exact, approved or locked edge; two contexts of one retailer need the same
+``evidence.itemKey`` on both offers and no edge. Sizes follow the symmetric rule in
+``view.same_size``.
+"""
 
 from __future__ import annotations
 
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
 from pi_core import MatchClass, ReviewState
-from pi_dataset import ContractModel, Dataset, MoneyValue, Product
+from pi_dataset import ContractModel, DatasetV3, MoneyValue, ProductV3
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
     COUNTED_STATES,
+    EVERY_PROFILE,
     MIN_COHORT,
     Caveat,
     CaveatCode,
@@ -33,6 +40,10 @@ GAP_CONVENTION = (
     "A positive gap means other is dearer than base; see cheaper."
 )
 COHORT_DESCRIPTION = "exact approved/locked pairs, same size, both priced, not early"
+#: The profiles compare and the index apply to (ADR-0008 §3).
+PROFILES = EVERY_PROFILE
+#: The published size labels of a counted pair whose equal measures carry different labels.
+LabelPair = tuple[str, str]
 
 
 class Gap(ContractModel):
@@ -73,7 +84,10 @@ class CompareSummary(ContractModel):
 
 
 class Side(ContractModel):
-    """One retailer's state in a comparison, so a client can say which side is short."""
+    """One context's state in a comparison, so a client can say which side is short.
+
+    ``retailer`` holds the context id: a retailer's sole context has the retailer's id.
+    """
 
     retailer: str
     status: RetailerStatus
@@ -128,18 +142,21 @@ def gap(base: MoneyValue, other: MoneyValue) -> Gap:
     )
 
 
-def _exclusion(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
-    product: Product, base: str, other: str, i: int
+def _identity(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
+    ds: DatasetV3, product: ProductV3, base: str, other: str
 ) -> Excluded | None:
-    """The first reason the pair is not counted on date ``i``, in a fixed order; else None."""
-    a, b = product.offers.get(base), product.offers.get(other)
-    if a is None or b is None:
-        return Excluded.NOT_OFFERED
-    if a.early or b.early:
-        return Excluded.EARLY
-    if a.currency != b.currency:
-        return Excluded.CURRENCY_MISMATCH
-    edge = view.edge_between(product, base, other)
+    """Why the two contexts' offers aren't known to be one item, or None (ADR-0008 §2)."""
+    a_shop, b_shop = view.context(ds, base).retailer, view.context(ds, other).retailer
+    if a_shop == b_shop:
+        # One retailer: only its own stable item key groups contexts, with no edge.
+        key = product.offers[base].evidence.item_key
+        same = key is not None and key == product.offers[other].evidence.item_key
+        return (
+            None if same and not view.identity_unclear(ds, product, a_shop) else Excluded.NO_MATCH
+        )
+    if view.identity_unclear(ds, product, a_shop) or view.identity_unclear(ds, product, b_shop):
+        return Excluded.NO_MATCH
+    edge = view.edge_between(product, a_shop, b_shop)
     if edge is None:
         return Excluded.NO_MATCH
     if edge.review_state is ReviewState.REJECTED:
@@ -148,26 +165,48 @@ def _exclusion(  # noqa: PLR0911 -- one ordered decision ladder, first match win
         return Excluded.MATCH_UNREVIEWED
     if edge.match_class is not MatchClass.EXACT:
         return Excluded.MATCH_NOT_EXACT
-    if a.size is None or b.size is None:
-        return Excluded.SIZE_UNKNOWN
-    if not view.same_size(a, b):
-        return Excluded.SIZE_MISMATCH
-    if a.series.price[i] is None or b.series.price[i] is None:
-        return Excluded.UNPRICED
     return None
 
 
-def pair_row(product: Product, base: str, other: str, i: int) -> PairRow:
-    """One product's row for an ordered retailer pair on date index ``i``.
+def _exclusion(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
+    ds: DatasetV3, product: ProductV3, base: str, other: str, i: int
+) -> tuple[Excluded | None, LabelPair | None]:
+    """The first reason the pair is not counted on date ``i``, in a fixed order; else None.
 
-    Only this pair's own edge makes it comparable; nothing is inferred through a third retailer.
+    The second value is set on a counted pair whose equal measures carry different labels.
     """
+    a, b = product.offers.get(base), product.offers.get(other)
+    if a is None or b is None:
+        return Excluded.NOT_OFFERED, None
+    if a.early or b.early:
+        return Excluded.EARLY, None
+    if a.currency != b.currency:
+        return Excluded.CURRENCY_MISMATCH, None
+    identity = _identity(ds, product, base, other)
+    if identity is not None:
+        return identity, None
+    size = view.same_size(a.size, b.size, labels_comparable=ds.meta.profile.size_labels_comparable)
+    if size is view.SizeMatch.UNKNOWN:
+        return Excluded.SIZE_UNKNOWN, None
+    if size is view.SizeMatch.MISMATCH:
+        return Excluded.SIZE_MISMATCH, None
+    if a.series.price[i] is None or b.series.price[i] is None:
+        return Excluded.UNPRICED, None
+    if size is view.SizeMatch.LABELS_DIFFER and a.size and b.size and a.size.label and b.size.label:
+        return None, (a.size.label, b.size.label)
+    return None, None
+
+
+def pair_with_labels(
+    ds: DatasetV3, product: ProductV3, base: str, other: str, i: int
+) -> tuple[PairRow, LabelPair | None]:
+    """``pair_row`` plus, for a counted row, the size labels that differ on equal measures."""
     a, b = product.offers.get(base), product.offers.get(other)
     base_price = None if a is None else view.price_on(a, i)
     other_price = None if b is None else view.price_on(b, i)
-    excluded = _exclusion(product, base, other, i)
+    excluded, labels = _exclusion(ds, product, base, other, i)
     counted = excluded is None and base_price is not None and other_price is not None
-    return PairRow(
+    row = PairRow(
         id=product.id,
         name=product.name,
         brand=product.brand,
@@ -178,6 +217,38 @@ def pair_row(product: Product, base: str, other: str, i: int) -> PairRow:
         counted=counted,
         excluded_reason=excluded,
     )
+    return row, labels if counted else None
+
+
+def pair_row(ds: DatasetV3, product: ProductV3, base: str, other: str, i: int) -> PairRow:
+    """One product's row for an ordered context pair on date index ``i``.
+
+    Only this pair's own edge (or, within one retailer, its own item key) makes it comparable;
+    nothing is inferred through a third retailer or context.
+    """
+    return pair_with_labels(ds, product, base, other, i)[0]
+
+
+def pair_caveats(ds: DatasetV3, base: str, other: str, labels: list[LabelPair]) -> list[Caveat]:
+    """``channel_differs`` and one ``size_labels_differ`` per distinct label pair (ADR-0008)."""
+    caveats = []
+    channels = view.context(ds, base).channel, view.context(ds, other).channel
+    if channels[0] != channels[1]:
+        caveats.append(
+            Caveat(
+                code=CaveatCode.CHANNEL_DIFFERS,
+                params={"base": str(channels[0]), "other": str(channels[1])},
+            )
+        )
+    counts = Counter(labels)
+    for (base_label, other_label), n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        caveats.append(
+            Caveat(
+                code=CaveatCode.SIZE_LABELS_DIFFER,
+                params={"base": base_label, "other": other_label, "count": str(n)},
+            )
+        )
+    return caveats
 
 
 def summarise(rows: tuple[PairRow, ...], base: str, other: str) -> CompareSummary | None:
@@ -206,18 +277,19 @@ def summarise(rows: tuple[PairRow, ...], base: str, other: str) -> CompareSummar
     )
 
 
-def pair_block(ds: Dataset, base: str, other: str) -> Reason | None:
-    """A reason no pair between the two retailers can be counted, whatever the rows."""
-    statuses = {view.retailer(ds, r).status for r in (base, other)}
+def pair_block(ds: DatasetV3, base: str, other: str) -> Reason | None:
+    """A reason no pair between the two contexts can be counted, whatever the rows."""
+    statuses = {view.status(ds, c) for c in (base, other)}
     if RetailerStatus.BLOCKED in statuses:
         return Reason.RETAILER_BLOCKED
-    if view.market_currency(ds, base) != view.market_currency(ds, other):
+    shops = view.context(ds, base).retailer, view.context(ds, other).retailer
+    if view.market_currency(ds, shops[0]) != view.market_currency(ds, shops[1]):
         return Reason.CURRENCY_MISMATCH
     return None
 
 
 def _headline(
-    ds: Dataset, rows: tuple[PairRow, ...], base: str, other: str, n: int
+    ds: DatasetV3, rows: tuple[PairRow, ...], base: str, other: str, n: int
 ) -> Reason | None:
     return pair_block(ds, base, other) or _cohort_reason(rows, n)
 
@@ -243,15 +315,15 @@ def _cohort_reason(rows: tuple[PairRow, ...], n: int) -> Reason | None:
 
 
 def _side(  # noqa: PLR0913 -- one side of the pair plus the shared rows and products
-    ds: Dataset,
+    ds: DatasetV3,
     retailer: str,
     other: str,
     *,
     rows: tuple[PairRow, ...],
-    offered: list[Product],
+    offered: list[ProductV3],
     i: int,
 ) -> Side:
-    status = view.retailer(ds, retailer).status
+    status = view.status(ds, retailer)
     observed = sum(
         1
         for p in offered
@@ -298,7 +370,7 @@ def _groups(
 
 
 def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are keyword-only
-    ds: Dataset,
+    dataset: view.AnyDataset,
     base: str,
     other: str,
     where: ProductFilter,
@@ -306,38 +378,39 @@ def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are k
     on: date | None = None,
     group_by: GroupBy | None = None,
 ) -> Metric[Comparison]:
-    """Rows for every product either retailer offers, plus the summary when n ≥ 5 (§7.4).
+    """Rows for every product either context offers, plus the summary when n ≥ 5 (§7.4).
 
-    ``group_by`` adds one summary per brand or top-level category, each under its own n ≥ 5
-    rule. The summary and groups always cover every row, never a page of them.
+    ``base`` and ``other`` are context ids. ``group_by`` adds one summary per brand or top-level
+    category, each under its own n ≥ 5 rule. The summary and groups always cover every row, never
+    a page of them.
     """
+    ds = view.as_v3(dataset)
     if base == other:
         msg = "base and other must be different retailers"
         raise view.UnknownInput(msg)
-    view.retailer(ds, base)
-    view.retailer(ds, other)
+    view.context(ds, base)
+    view.context(ds, other)
     i = view.date_index(ds, on)
-    rows = tuple(
-        pair_row(p, base, other, i)
-        for p in view.products(ds, where)
-        if base in p.offers or other in p.offers
-    )
+    offered = [p for p in view.products(ds, where) if base in p.offers or other in p.offers]
+    if not view.applies(ds, PROFILES):
+        return _not_applicable(ds, base, other, offered, i)
+    pairs = [pair_with_labels(ds, p, base, other, i) for p in offered]
+    rows = tuple(row for row, _ in pairs)
     n = sum(r.counted for r in rows)
     reason = _headline(ds, rows, base, other, n)
     summary = summarise(rows, base, other) if reason is None else None
     # A blocked side or a currency mismatch withholds every group; the cohort rule is per group.
     blocked = pair_block(ds, base, other)
-    ids = {r.id for r in rows}
-    offered = [p for p in ds.products if p.id in ids]
     groups = () if group_by is None else _groups(rows, base, other, group_by, blocked)
     caveats = [
-        Caveat(code=CaveatCode.RETAILER_PARTIAL, params={"retailer": r})
-        for r in (base, other)
-        if view.retailer(ds, r).status is RetailerStatus.PARTIAL
+        Caveat(code=CaveatCode.RETAILER_PARTIAL, params={"retailer": c})
+        for c in (base, other)
+        if view.status(ds, c) is RetailerStatus.PARTIAL
     ]
     early = sum(r.excluded_reason is Excluded.EARLY for r in rows)
     if early:
         caveats.append(Caveat(code=CaveatCode.EARLY_EXCLUDED, params={"count": str(early)}))
+    caveats += pair_caveats(ds, base, other, [labels for _, labels in pairs if labels])
     return Metric[Comparison](
         status=Status.OK if reason is None else Status.NOT_ENOUGH_DATA,
         data=Comparison(
@@ -356,5 +429,27 @@ def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are k
         reason=reason,
         cohort=Cohort(description=COHORT_DESCRIPTION, n=n),
         caveats=tuple(caveats),
+        as_of=ds.meta.dates[i],
+    )
+
+
+def _not_applicable(
+    ds: DatasetV3, base: str, other: str, offered: list[ProductV3], i: int
+) -> Metric[Comparison]:
+    """No rows and no summary; the sides still say what each context collected."""
+    return Metric[Comparison](
+        status=Status.NOT_ENOUGH_DATA,
+        data=Comparison(
+            base=base,
+            other=other,
+            sides=Sides(
+                base=_side(ds, base, other, rows=(), offered=offered, i=i),
+                other=_side(ds, other, base, rows=(), offered=offered, i=i),
+            ),
+            rows=(),
+            summary=None,
+            total=0,
+        ),
+        reason=Reason.NOT_APPLICABLE,
         as_of=ds.meta.dates[i],
     )

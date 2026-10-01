@@ -13,10 +13,11 @@ from collections import Counter
 from datetime import date
 from enum import StrEnum
 
-from pi_dataset import ContractModel, Dataset
+from pi_dataset import ContractModel
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
+    EVERY_PROFILE,
     Caveat,
     CaveatCode,
     Metric,
@@ -26,6 +27,8 @@ from pi_metrics.model import (
 )
 
 REVIEWED_STAGE = "reviewed"
+#: The profiles assortment gaps apply to (ADR-0008 §3).
+PROFILES = EVERY_PROFILE
 
 
 class GapLabel(StrEnum):
@@ -55,22 +58,28 @@ class AssortmentGaps(ContractModel):
 
 
 def assortment_gaps(
-    ds: Dataset,
+    dataset: view.AnyDataset,
     missing_at: str,
     present_at: str,
     where: ProductFilter,
     on: date | None = None,
 ) -> Metric[AssortmentGaps]:
+    """Products offered at context ``present_at`` and absent at context ``missing_at``."""
+    ds = view.as_v3(dataset)
     if missing_at == present_at:
         msg = "missingAt and presentAt must be different retailers"
         raise view.UnknownInput(msg)
-    status = view.retailer(ds, missing_at).status
-    view.retailer(ds, present_at)
+    status = view.status(ds, missing_at)
+    view.context(ds, present_at)
     i = view.date_index(ds, on)
     as_of = ds.meta.dates[i]
     empty = AssortmentGaps(
         missing_at=missing_at, present_at=present_at, total=0, by_brand=(), items=()
     )
+    if not view.applies(ds, PROFILES):
+        return Metric[AssortmentGaps](
+            status=Status.NOT_ENOUGH_DATA, data=empty, reason=Reason.NOT_APPLICABLE, as_of=as_of
+        )
     if status is not RetailerStatus.SUPPORTED:
         # pending and retired retailers have no complete crawl either: partial, not absent.
         return Metric[AssortmentGaps](
