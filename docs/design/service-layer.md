@@ -87,9 +87,11 @@ versioned snapshots.
     lacks its source, or differs from the others in scope, vertical, profile, attribute set or
     market currency or time zone keeps the previous view live. It never falls back to another
     file.
-  - The date axis is the union of the files' dates. A source is null on dates its file lacks.
-  - A product id in two files is one product with both offers. Match edges come only from a file
-    that holds both retailers, so no edge is made across files.
+  - The date axis is the union of the files' dates. A source is null on dates its file lacks,
+    and a retailer-wide `notObserved` window covers them, so they back no launch, gap or removal.
+  - A product id in two files is one product with both offers. This assumes canonical,
+    source-disjoint ids. Its fields come from the slice with the smallest retailer id. Match
+    edges come only from a file that holds both retailers, so no edge is made across files.
   - A bare path in the same scope as a composed view is two datasets and stays
     `422 ambiguous_dataset`; don't mix the two forms in one scope.
 - **Freshness.** Each instance compares the object `generation` with the loaded one at most once

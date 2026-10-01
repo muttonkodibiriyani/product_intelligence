@@ -39,10 +39,18 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
      and a market shared by two files must have one currency and time zone. Otherwise the view
      is not rebuilt.
    - **Same product id.** It is one product holding both offers (contexts are per retailer, so
-     offers never collide). Product fields come from the first assigned file that has it, and
-     the merge is logged.
+     offers never collide), and the merge is logged. **Merging by id assumes canonical,
+     source-disjoint ids**: the exporter derives one id per product token, whichever source
+     offers it, so equal ids mean the same product and different products never share one.
+     A file that breaks this would merge unrelated products; the per-source exporter keeps it.
+   - **Field precedence.** No source owns a product id, so a merged product's own fields
+     (brand, name, category, unit, shades, attributes, image) come from the slice that sorts
+     first by its smallest retailer id. That is deterministic and independent of config order.
    - **Dates.** The view's dates are the union of the files' dates. A source's series are null
-     on dates its file lacks: not observed, never carried forward.
+     on dates its file lacks: not observed, never carried forward. A retailer-wide
+     `notObserved` window (no categories, no context) covers each run of those dates. So a date
+     outside a source's file never backs an absence claim: no launch on its first date, no
+     assortment gap or removal on the other source's dates.
    - **Matches.** Edges are never made across files. A pair is counted only if one file holds
      both offers and the edge.
    - **Meta.** `capabilities` are or-ed, a field status that differs between files is
@@ -60,9 +68,11 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
 - The PI team can publish Sephora on its own cadence without reading or writing Ulta data. No
   migration, and no stored rows are touched.
 - **Union dates.** While the combined file is frozen, Ulta has no values on the newer Sephora
-  dates. Latest-date metrics (compare, price index, availability, summary) treat Ulta as not
-  observed there, rather than showing its older price as current. `meta.sources` makes the gap
-  explicit.
+  dates. In 1.5.0, latest-date metrics (compare, price index, availability, summary) treat Ulta
+  as not observed there, rather than showing its older price as current, and `meta.sources` shows
+  each source's own cutoff. A stacked follow-up makes latest-date metrics read each retailer at
+  its own latest observed date, with that `asOf` and a `stale_source` caveat. It is gated to land
+  before the first new Sephora publish. Until then both files have the same dates.
 - **Cross-source matches.** The combined file's Ulta–Sephora edges link to its own, older
   Sephora offers, so they are dropped. Counted Ulta–Sephora pairs come back only once a matched
   file with both offers is published. Whether, and by whom, that is done is the owner's call, since
