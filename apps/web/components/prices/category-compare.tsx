@@ -110,7 +110,11 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
       base: pair.name(pair.base),
       pct: pct(b.gapPct.replace(/^-/, ''), locale),
     };
-    return <span className={`pill ${tone}`}>{t(otherCheaper ? 'otherCheaper' : 'otherDearer', args)}</span>;
+    return (
+      <span className={`pill ${tone} max-w-full whitespace-normal`}>
+        {t(otherCheaper ? 'otherCheaper' : 'otherDearer', args)}
+      </span>
+    );
   };
 
   const price = (m: Money) => (isValidPrice(m) ? formatMoney(m, lc) : null);
@@ -193,7 +197,7 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
       <ul className="space-y-3 sm:hidden">
         {data.buckets.map((b) => (
           <li key={b.key} className="rounded-ctl border border-line-2 p-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
               <h3 className="font-semibold">{label(b)}</h3>
               {chip(b)}
             </div>
