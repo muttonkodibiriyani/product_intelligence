@@ -219,7 +219,13 @@ def export(database_url: str, destination: Path) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    add = subs.add_parser("enrich")
+    add = subs.add_parser(
+        "enrich",
+        description=(
+            "Dry run by default. --apply appends content to existing ulta_ae listings. "
+            "Use an isolated database; do not apply to protected production rows."
+        ),
+    )
     add.add_argument("--audit", type=Path, required=True)
     add.add_argument("--manifest", type=Path, required=True)
     add.add_argument("--source-sha256", required=True)

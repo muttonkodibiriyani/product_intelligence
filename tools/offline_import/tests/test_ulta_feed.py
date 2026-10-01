@@ -2,19 +2,25 @@
 
 import json
 import os
+import sys
 import uuid
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import psycopg
 import pytest
 from alembic import command
+from scripts.demo_export.export import ListingRow
+from scripts.demo_export.test_export import row
 from sqlalchemy.engine import make_url
 
+from offline_import import ulta_feed
 from offline_import.ulta_catalogue import enrich
 from offline_import.ulta_catalogue import export as export_catalogue
-from offline_import.ulta_feed import export, image_url, load, prepare
+from offline_import.ulta_feed import export, load, prepare
 from pi_dataset.catalogue import CatalogueDataset
 from pi_db import DATABASE_URL_ENV, alembic_config
 
@@ -116,11 +122,76 @@ def test_missing_capture_requires_evidence_and_duplicates_fail(tmp_path: Path) -
         prepare(duplicate, tmp_path / "duplicate", index)
 
 
-def test_image_paths_encode_spaces_and_skip_failed_downloads() -> None:
-    assert image_url({"image_url": "https://media.alshaya.com/Lip Gloss.jpg?w=800"}) == (
-        "https://media.alshaya.com/Lip%20Gloss.jpg?w=800"
+def stub_export(
+    monkeypatch: pytest.MonkeyPatch, listing: ListingRow, labels: dict[str, Any]
+) -> None:
+    monkeypatch.setattr(ulta_feed, "load_rows", lambda _: ([listing], []))
+    conn = MagicMock()
+    conn.__enter__.return_value = conn
+    conn.execute.return_value.fetchall.return_value = [
+        (listing.source_name, listing.source_listing_key, labels)
+    ]
+    monkeypatch.setattr(psycopg, "connect", lambda _: conn)
+
+
+@pytest.mark.parametrize(
+    ("source", "url", "expected"),
+    [
+        ("ulta_ae", "https://images.ulta.ae/a.jpg", None),
+        ("ulta_ae", "https://img-product.sephora.me/a.jpg", None),
+        ("sephora_me", "https://media.alshaya.com/a.jpg", None),
+        ("sephora_me", "https://untrusted.example/a.jpg", None),
+        (
+            "ulta_ae",
+            "https://media.alshaya.com/Lip Gloss.jpg?w=800",
+            "https://media.alshaya.com/Lip%20Gloss.jpg?w=800",
+        ),
+        (
+            "sephora_me",
+            "https://img-product.sephora.me/a.jpg",
+            "https://img-product.sephora.me/a.jpg",
+        ),
+    ],
+)
+def test_export_preserves_retailer_scoped_images(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, source: str, url: str, expected: str | None
+) -> None:
+    listing = replace(row(source=source), source_listing_key="sku-100", image=url)
+    stub_export(monkeypatch, listing, {"image_url": url})
+    target = tmp_path / "dataset.json"
+    report = export("unused", target)
+    product = json.loads(target.read_text())["products"][0]
+    assert product["image"] == expected
+    assert product["offers"][source]["image"] == expected
+    assert report["offers_with_images"] == int(expected is not None)
+
+
+def test_export_keeps_aggregate_parent_retained_by_shared_query(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    listing = replace(row(source="ulta_ae"), source_listing_key="sku-100")
+    stub_export(monkeypatch, listing, {"aggregate_parent": True, "resolved_children": []})
+    target = tmp_path / "dataset.json"
+    assert export("unused", target)["offers_by_retailer"]["ulta_ae"] == 1
+
+
+@pytest.mark.parametrize("unblocked", [False, True])
+def test_export_cli_takes_block_status_from_explicit_flags(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, unblocked: bool
+) -> None:
+    stub_export(monkeypatch, row(source="ulta_ae"), {})
+    target = tmp_path / "dataset.json"
+    args = ["ulta-feed", "export", str(target), "--ulta-blocked-since", "2026-09-29T00:00:00Z"]
+    if unblocked:
+        args.append("--ulta-unblocked")
+    monkeypatch.setattr(sys, "argv", args)
+    monkeypatch.setenv("PI_DATABASE_URL", "unused")
+    ulta_feed.main()
+    retailer = next(
+        r for r in json.loads(target.read_text())["meta"]["retailers"] if r["id"] == "ulta_ae"
     )
-    assert image_url({"images": [{"status": "failed", "url": "https://x.example/a.jpg"}]}) is None
+    assert (retailer["status"] == "blocked") is not unblocked
+    assert retailer["since"] == (None if unblocked else "2026-09-29")
 
 
 def test_database_replay_evidence_and_combined_export(
@@ -133,6 +204,17 @@ def test_database_replay_evidence_and_combined_export(
             source_record("parent", product_type="configurable", variants=[{"sku": "child"}]),
             source_record("child", parent_products=[{"sku": "parent"}]),
             source_record("fractional", price={"current": "0.001", "regular": "0.001"}),
+            source_record("childless", product_type="configurable", variants=[{"sku": "missing"}]),
+            source_record(
+                "allowed-image",
+                images=[
+                    {
+                        "status": "downloaded",
+                        "roles": ["image"],
+                        "download_url": "https://media.alshaya.com/a.jpg",
+                    }
+                ],
+            ),
             source_record(
                 "unknown",
                 price={"current": 0},
@@ -144,7 +226,7 @@ def test_database_replay_evidence_and_combined_export(
     folder = tmp_path / "prepared"
     prepare(source, folder)
     first = load(folder, db)
-    assert first["observations_inserted"] == 8
+    assert first["observations_inserted"] == 12
     second = load(folder, db)
     assert second["observations_inserted"] == 0
     assert second["replay"] is True
@@ -158,14 +240,17 @@ def test_database_replay_evidence_and_combined_export(
         assert all(row[0] for row in facts)
         assert facts[0][1:] == (51, "not_observed")
         assert facts[1][1:] == (None, "in_stock")
-        assert conn.execute("SELECT count(*) FROM listing_content").fetchone() == (4,)
+        assert conn.execute("SELECT count(*) FROM listing_content").fetchone() == (6,)
     target = tmp_path / "latest.json"
     report = export(db, target)
-    assert report["offers_by_retailer"]["ulta_ae"] == 3
+    assert report["offers_by_retailer"]["ulta_ae"] == 5
     assert report["unpublishable_fractional_aed_skus"] == ["fractional"]
     products = json.loads(target.read_text())["products"]
     offers = {p["offers"]["ulta_ae"]["sku"]: p["offers"]["ulta_ae"] for p in products}
-    assert offers["child"]["image"] == "https://images.ulta.ae/a.jpg"
+    assert "childless" in offers
+    assert "parent" not in offers
+    assert offers["child"]["image"] is None
+    assert offers["allowed-image"]["image"] == "https://media.alshaya.com/a.jpg"
     assert offers["unknown"]["image"] is None
     assert offers["unknown"]["url"] is None
     assert offers["fractional"]["series"]["price"] == [None]

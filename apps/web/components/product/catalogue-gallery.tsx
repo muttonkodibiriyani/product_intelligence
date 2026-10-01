@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
+import { ApiError } from '@/lib/api/client';
 import type { Schemas } from '@/lib/api/types';
 import { formatDate } from '@/lib/format';
 import { useAuth } from '../auth-provider';
@@ -24,6 +25,8 @@ export function CatalogueGallery({ sku }: { sku: string }) {
       }),
     enabled: !!api,
   });
+  // The catalogue is optional; deployments without it still have valid product pages.
+  if (q.isError && q.error instanceof ApiError && q.error.code === 'not_found') return null;
   return (
     <Card title={t('title')} question={t('hint')}>
       {q.isError ? (

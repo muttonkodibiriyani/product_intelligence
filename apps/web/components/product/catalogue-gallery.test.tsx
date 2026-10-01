@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NextIntlClientProvider } from 'next-intl';
+import { ApiError } from '@/lib/api/client';
 import type { Schemas } from '@/lib/api/types';
 import en from '@/messages/en.json';
-import { GalleryDetails } from './catalogue-gallery';
+import { CatalogueGallery, GalleryDetails } from './catalogue-gallery';
+
+const api = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('../auth-provider', () => ({ useAuth: () => ({ api }) }));
 
 afterEach(cleanup);
 
@@ -56,6 +61,28 @@ const detail: Schemas['CatalogueDetail'] = {
 };
 
 describe('SKU galleries', () => {
+  it.each([
+    [new ApiError('not_found', 404), false],
+    [new ApiError('data_unavailable', 503), true],
+  ])('handles optional-catalogue failure %s without hiding service errors', async (error, visible) => {
+    api.get.mockRejectedValue(error);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
+        <QueryClientProvider client={client}>
+          <CatalogueGallery sku="parent" />
+        </QueryClientProvider>
+      </NextIntlClientProvider>,
+    );
+    if (visible) {
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(screen.getByRole('button', { name: en.errors.retry })).toBeTruthy();
+    } else {
+      await waitFor(() => expect(container.textContent).toBe(''));
+      expect(screen.queryByRole('alert')).toBeNull();
+    }
+  });
+
   it('switches images and variants, preserves unknown children, and escapes retailer text', () => {
     const select = vi.fn();
     const { container } = render(

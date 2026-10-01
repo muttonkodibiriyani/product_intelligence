@@ -16,7 +16,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -28,6 +27,8 @@ from offline_import.mapping import ImportMapping
 from offline_import.validate import ImportRow, validate_file
 from pi_api.source import parse
 from pi_dataset import dump_dataset, load_dataset
+
+ULTA_BLOCKED_SINCE = "2026-09-30T20:55:00Z"
 
 
 def instant(value: str) -> datetime:
@@ -509,45 +510,22 @@ def load(folder: Path, database_url: str) -> dict[str, Any]:
     return result
 
 
-def image_url(label: dict[str, Any]) -> str | None:
-    """Select an actual image, rejecting known failed downloads."""
-    if label.get("image_url"):
-        return quote(str(label["image_url"]), safe=":/?&=%")
-    for img in label.get("images") or []:
-        if isinstance(img, dict):
-            if img.get("status") not in (None, "downloaded"):
-                continue
-            url = (
-                img.get("download_url") or img.get("url") or img.get("src") or img.get("source_url")
-            )
-        else:
-            url = img if isinstance(img, str) else None
-        if url:
-            return quote(str(url), safe=":/?&=%")
-    return None
-
-
-def export(database_url: str, destination: Path) -> dict[str, Any]:
-    """Export combined DB facts, attach actual stored images, and validate the API parser."""
+def export(
+    database_url: str, destination: Path, *, ulta: UltaContext | None = None
+) -> dict[str, Any]:
+    """Export combined facts using the shared parent/image policies and validate the API parser."""
     rows, matches = load_rows(database_url)
     with psycopg.connect(database_url) as conn:
         content = conn.execute(
             "SELECT s.name, sl.source_listing_key, jsonb_build_object("
-            "'image_url',lc.labels->'image_url','images',lc.labels->'images',"
-            "'aggregate_parent',lc.labels->'aggregate_parent',"
             "'product_url_missing',lc.labels->'product_url_missing') FROM source_listing "
             "sl JOIN source s ON s.id=sl.source_id LEFT JOIN LATERAL (SELECT "
             "labels FROM listing_content c WHERE c.listing_id=sl.id ORDER BY "
             "observed_at DESC LIMIT 1) lc ON true"
         ).fetchall()
     labels = {(s, key): data or {} for s, key, data in content}
-    # Configurable parent summaries remain in the DB; their sellable children are the
-    # catalogue offers, preventing parent and variant copies from inflating the dashboard.
-    rows = [
-        replace(r, brand=r.brand or "Unknown brand")
-        for r in rows
-        if not labels.get((r.source_name, r.source_listing_key), {}).get("aggregate_parent")
-    ]
+    # load_rows excludes a parent only when an exported child is present; childless parents stay.
+    rows = [replace(r, brand=r.brand or "Unknown brand") for r in rows]
     unpublishable_money = []
     clean_rows = []
     for row in rows:
@@ -562,7 +540,7 @@ def export(database_url: str, destination: Path) -> dict[str, Any]:
         rows,
         matches,
         generated_at=datetime.now(UTC),
-        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, tzinfo=UTC), blocked=False),
+        ulta=ulta or UltaContext(blocked_since=instant(ULTA_BLOCKED_SINCE)),
         ulta_note={
             "en": (
                 "User-provided Ulta UAE website snapshot, 30 September-1 October 2026; "
@@ -577,22 +555,13 @@ def export(database_url: str, destination: Path) -> dict[str, Any]:
     )
     document = json.loads(dump_dataset(dataset))
     with_images = 0
-    offer_count = 0
     for product in document["products"]:
         for source, offer in product["offers"].items():
-            offer_count += 1
             label = labels.get((source, offer["sku"]), {})
-            url = image_url(label)
-            if url and str(url).startswith("https://"):
-                offer["image"] = url
-                product["image"] = product.get("image") or url
-                with_images += 1
+            # build_dataset_v2 owns per-retailer image allowlisting and image coverage metadata.
+            with_images += offer["image"] is not None
             if label.get("product_url_missing"):
                 offer["url"] = None
-    document["meta"]["capabilities"]["images"] = bool(with_images)
-    document["meta"]["fields"]["image"] = (
-        "ok" if with_images == offer_count else "partial" if with_images else "not_collected"
-    )
     if unpublishable_money:
         document["meta"]["fields"]["price"] = "partial"
         document["meta"]["fields"]["regular"] = "partial"
@@ -624,15 +593,36 @@ def main() -> None:
     prep.add_argument("destination", type=Path)
     prep.add_argument("--capture-index", type=Path, help="Explicit per-SKU capture provenance JSON")
     for name in ("load", "export"):
-        cmd = sub.add_parser(name)
+        cmd = sub.add_parser(
+            name,
+            description=(
+                "Writes to source ulta_ae and updates existing listing metadata. "
+                "Use an isolated database; do not run against protected production rows."
+                if name == "load"
+                else "Writes a local dataset file; does not publish or deploy it."
+            ),
+        )
         cmd.add_argument("path", type=Path)
+        if name == "export":
+            cmd.add_argument("--ulta-blocked-since", default=ULTA_BLOCKED_SINCE)
+            cmd.add_argument(
+                "--ulta-unblocked",
+                action="store_true",
+                help="Ulta collection resumed; derive its status from rows (default: blocked)",
+            )
     args = parser.parse_args()
     if args.command == "prepare":
         result = prepare(args.source, args.destination, args.capture_index)
     elif args.command == "load":
         result = load(args.path, os.environ["PI_DATABASE_URL"])
     else:
-        result = export(os.environ["PI_DATABASE_URL"], args.path)
+        result = export(
+            os.environ["PI_DATABASE_URL"],
+            args.path,
+            ulta=UltaContext(
+                blocked_since=instant(args.ulta_blocked_since), blocked=not args.ulta_unblocked
+            ),
+        )
     print(encoded(result))
 
 
