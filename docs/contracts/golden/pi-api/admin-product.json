@@ -21,6 +21,7 @@
         }
       ],
       "name": "Product p01",
+      "priceFlags": {},
       "prices": {
         "shop_a": {
           "amount": "90.00",
@@ -58,6 +59,7 @@
           "currency": "AED",
           "minor": 9000
         },
+        "priceFlag": null,
         "promoPct": "10.0",
         "rating": {
           "average": "4.20",
@@ -96,6 +98,7 @@
           "currency": "AED",
           "minor": 10000
         },
+        "priceFlag": null,
         "promoPct": null,
         "rating": {
           "average": "4.20",
@@ -138,7 +141,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.9.0",
+    "apiVersion": "1.7.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "admin_product",

@@ -9,7 +9,7 @@ from typing import Any
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.9.0"
+API_VERSION = "1.7.0"
 
 
 class Localized(ContractModel):
@@ -138,6 +138,16 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         ar=(
             "قد تتضمن منتجات {retailer} قوائم رئيسية تكرّر متغيراتها،"
             " فقد تزيد أعداده عن المنتجات الفعلية."
+        ),
+    ),
+    CaveatCode.INVALID_PRICE_EXCLUDED: Localized(
+        en=(
+            "{count} {retailer} {count:item had|items had} a price of 0.01 or less, withheld"
+            " as invalid and left out of every figure."
+        ),
+        ar=(
+            "عروض لدى {retailer} بسعر 0.01 أو أقل، حُجب سعرها لعدم صحته واستُبعد من كل الأرقام:"
+            " {count}."
         ),
     ),
 }

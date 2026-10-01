@@ -10,14 +10,17 @@ import pytest
 
 from pi_dataset import DatasetError, RetailerStatus, dump_dataset, load_dataset
 from scripts.demo_export.export import (
+    DEFAULT_SOURCES,
     ULTA_BLOCKED_NOTE,
     ULTA_BLOCKED_NOTE_AR,
     ListingRow,
     MatchRow,
     UltaContext,
     build_dataset,
+    in_sources,
+    invalid_prices,
 )
-from scripts.demo_export.test_export import row
+from scripts.demo_export.test_export import match, row
 from scripts.demo_export.v2 import build_dataset_v2, category_notes, price_review, product_id
 
 NOW = datetime(2026, 9, 30, 22, 0, tzinfo=UTC)
@@ -380,6 +383,22 @@ def test_image_is_partial_when_only_some_products_have_one() -> None:
     assert d["meta"]["capabilities"]["images"] is True
 
 
+def test_v2_by_default_ulta_rows_in_the_db_export_no_ulta_products_and_no_pairs() -> None:
+    rows = [row(), row(source="ulta_ae", family=20, variant=200)]
+    ds = build_dataset_v2(
+        in_sources(rows, DEFAULT_SOURCES),
+        [match(200, 100, "0.99")],
+        generated_at=NOW,
+        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, 20, 55, tzinfo=UTC)),
+        ulta_note=NOTE,
+    )
+    d = json.loads(dump_dataset(ds))
+    assert len(d["products"]) == 1
+    assert all(p["offers"].get("u") is None for p in d["products"])
+    assert all(p.get("match") is None for p in d["products"])
+    assert d["meta"]["retailers"][0]["status"] == RetailerStatus.BLOCKED
+
+
 def with_path(path: str | None, **kw: Any) -> ListingRow:
     return ListingRow(**(row(**kw).__dict__ | {"category_path": path}))
 
@@ -484,3 +503,55 @@ def test_prices_outside_the_review_band_are_listed_never_changed() -> None:
         if (price := p.offers["sephora_me"].series.price[0]) is not None
     )
     assert prices == ["0.50", "1.00", "3000.00", "8943.00"]
+
+
+def v1_offer(rows: list[ListingRow]) -> dict[str, Any]:
+    v1 = build_dataset(rows, [], generated_at=NOW, ulta=UltaContext(blocked_since=NOW))
+    (product,) = v1["products"]
+    (offer,) = (o for o in product["offers"].values() if o is not None)
+    found: dict[str, Any] = offer
+    return found
+
+
+@pytest.mark.parametrize("source", ["sephora_me", "ulta_ae"])
+@pytest.mark.parametrize("invalid", ["0.01", "0.00"])
+def test_a_price_at_or_below_the_floor_never_wins_cheapest_over_a_valid_one(
+    source: str, invalid: str
+) -> None:
+    """Owner ruling (1 Oct 2026), option C: the exporter keeps a <= 0.01 AED variant from
+    standing for a group that has a real price, in v1 and v2, on both retailers."""
+    rows = [
+        row(source=source, variant=100, price=invalid, regular=None, shade="A"),
+        row(source=source, variant=101, price="25", regular=None, shade="B"),
+    ]
+    assert v1_offer(rows)["series"]["price"] == [25]
+    assert only_offer(doc(rows))["series"]["price"][0]["amount"] == "25.00"
+
+
+@pytest.mark.parametrize("source", ["sephora_me", "ulta_ae"])
+def test_a_lone_001_price_is_null_in_v1_and_left_to_pi_api_in_v2(source: str) -> None:
+    """v2 is frozen (ADR-0008 §0) and has no flag field, so a group whose only price is 0.01 keeps
+    it in the v2 file; pi_api withholds it at read time (price null, priceFlag "invalid_low").
+    v1 has no flag and shows it as not observed, with no regular or promo."""
+    rows = [row(source=source, price="0.01", regular="10")]
+    v1 = v1_offer(rows)
+    assert v1["series"] == {"price": [None]}
+    assert only_offer(doc(rows))["series"]["price"][0]["amount"] == "0.01"
+
+
+@pytest.mark.parametrize("source", ["sephora_me", "ulta_ae"])
+def test_a_lone_zero_price_is_null_in_v1_and_v2(source: str) -> None:
+    rows = [row(source=source, price="0.00", regular=None)]
+    assert v1_offer(rows)["series"]["price"] == [None]
+    assert only_offer(doc(rows))["series"]["price"] == [None]
+
+
+def test_the_run_log_counts_prices_at_or_below_the_floor_per_retailer() -> None:
+    rows = [
+        row(variant=1, price="0.01"),
+        row(variant=2, price="0.00"),
+        row(variant=3, price="0.02"),
+        row(source="ulta_ae", variant=4, price="0.01"),
+        row(source="ulta_ae", variant=5, price="99"),
+    ]
+    assert invalid_prices(rows) == {"u": 1, "s": 2}

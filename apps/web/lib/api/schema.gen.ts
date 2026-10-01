@@ -428,6 +428,7 @@ export interface components {
             /** Location */
             location: string | null;
             price: components["schemas"]["MoneyValue"] | null;
+            priceFlag?: components["schemas"]["PriceFlag"] | null;
             /** Promopct */
             promoPct: string | null;
             rating: components["schemas"]["Rating"] | null;
@@ -456,7 +457,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.9.0
+             * @default 1.7.0
              */
             apiVersion: string;
             /** Currency */
@@ -739,7 +740,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included" | "invalid_price_excluded";
         /** CaveatView */
         CaveatView: {
             /** Ar */
@@ -779,6 +780,7 @@ export interface components {
             };
             /** Equalcount */
             equalCount: number;
+            gapHist: components["schemas"]["GapHistogram"];
             /** Meangappct */
             meanGapPct: string;
             /** Mediangappct */
@@ -1220,6 +1222,17 @@ export interface components {
             /** Pct */
             pct: string;
         };
+        /**
+         * GapHistogram
+         * @description Counted pairs by ``gap.pct``. ``counts`` has ``len(edges) + 1`` bins: bin 0 is below
+         *     ``edges[0]``, bin k is ``[edges[k-1], edges[k])``, and the last is at or above ``edges[-1]``.
+         */
+        GapHistogram: {
+            /** Counts */
+            counts: number[];
+            /** Edges */
+            edges: string[];
+        };
         /** GapItem */
         GapItem: {
             /** Brand */
@@ -1444,6 +1457,7 @@ export interface components {
             /** Location */
             location: string | null;
             price: components["schemas"]["MoneyValue"] | null;
+            priceFlag?: components["schemas"]["PriceFlag"] | null;
             /** Promopct */
             promoPct: string | null;
             rating: components["schemas"]["Rating"] | null;
@@ -1494,6 +1508,11 @@ export interface components {
             name: string;
             otherPrice: components["schemas"]["MoneyValue"] | null;
         };
+        /**
+         * PriceFlag
+         * @enum {string}
+         */
+        PriceFlag: "invalid_low";
         /** PriceHistogram */
         PriceHistogram: {
             /** Counts */
@@ -1532,6 +1551,10 @@ export interface components {
             matches: components["schemas"]["CardMatch"][];
             /** Name */
             name: string;
+            /** Priceflags */
+            priceFlags?: {
+                [key: string]: components["schemas"]["PriceFlag"];
+            };
             /** Prices */
             prices: {
                 [key: string]: components["schemas"]["MoneyValue"] | null;
@@ -1873,6 +1896,7 @@ export interface components {
             freshness: components["schemas"]["Freshness"];
             /** Ladder */
             ladder: components["schemas"]["LadderRow"][] | null;
+            meanPrice: components["schemas"]["MoneyValue"] | null;
             medianPrice: components["schemas"]["MoneyValue"] | null;
             priceHist: components["schemas"]["PriceHistogram"] | null;
             /** Priced */

@@ -102,7 +102,7 @@
     "en": "A selected retailer is only partly collected."
   },
   "meta": {
-    "apiVersion": "1.9.0",
+    "apiVersion": "1.7.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "promotions",

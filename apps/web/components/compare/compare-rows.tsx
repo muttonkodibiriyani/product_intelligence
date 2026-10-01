@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { Schemas } from '@/lib/api/types';
 import { productHref } from '../explore/product-table';
 import { GapView } from '../ui/pair';
-import { Money } from '../ui/money';
+import { Price } from '../ui/money';
 
 const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-top';
@@ -63,18 +63,18 @@ export function CompareRows({
                 />
               </td>
               <td className={`${TD} text-end`}>
-                {r.basePrice ? (
-                  <Money m={r.basePrice} locale={locale} />
-                ) : (
-                  <span className="text-ink-2">–</span>
-                )}
+                <Price
+                  of={{ price: r.basePrice }}
+                  locale={locale}
+                  fallback={<span className="text-ink-2">–</span>}
+                />
               </td>
               <td className={`${TD} text-end`}>
-                {r.otherPrice ? (
-                  <Money m={r.otherPrice} locale={locale} />
-                ) : (
-                  <span className="text-ink-2">–</span>
-                )}
+                <Price
+                  of={{ price: r.otherPrice }}
+                  locale={locale}
+                  fallback={<span className="text-ink-2">–</span>}
+                />
               </td>
             </tr>
           ))}
