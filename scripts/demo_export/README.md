@@ -7,7 +7,11 @@ or Algolia requests.
 
 The export grain is product family × pack size. Shade variants collapse into one offer and
 the representative variant is the lowest-priced in-stock variant (or the lowest-priced
-variant when stock is unknown). Current match edges pair Ulta and Sephora groups greedily by
+variant when stock is unknown). Ulta aggregate-parent listings (latest content `labels.aggregate_parent`
+JSON true or text `'true'`) repeat their variants. One is left out iff at least one of its
+`labels.resolved_children` is exported in the same snapshot as a non-parent listing of the same
+source. A parent with no such child stays, and a reference to another parent doesn't count.
+Sephora listings are never dropped this way. Current match edges pair Ulta and Sephora groups greedily by
 highest confidence; excess many-to-one edges remain unmatched.
 
 Run from the repository root, as a module (`--output-v2` imports `scripts.demo_export.v2`, so the

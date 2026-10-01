@@ -61,3 +61,23 @@ has no offers, so its evidence links stay null, and adding it later is a config 
 re-check passed: 401s, viewer meta and export, export audit line, the evidence url for
 `s-P10000765-unknown-unknown` non-null on `https://www.sephora.me/`, and the EN+AR dashboard
 smoke. Rollback target: `pi-api-00001-jpx`.
+
+## Crawler run bucket
+
+| Date       | Resource | Settings | Cost |
+|------------|----------|----------|------|
+| 2026-09-30 | bucket `pi-sephora-e631eaba` (created outside the repo) | me-central1, soft delete 7 days, lifecycle `{Delete, age: 1}` on every object | < $0.01/month |
+| 2026-10-01 (applied 08:25Z, coordinator-approved) | lifecycle → `infra/gcp/pi-runs-lifecycle.json` | `dev-*`, `recon-*`, `ulta-test/` still delete at 1 day; everything else (run outputs: `snap-*`, `stock-*`, `price-*`, planner prefixes) at 14 days, matching pg-backups | < $0.01/month |
+
+Why 14 days: a run must outlive a HELD load until it is cleared, and the ADR-0009 planner reads
+previous runs. GCS has no "not prefix" condition, so the short-lived scratch prefixes are listed
+explicitly and the 14-day rule is the catch-all: a new prefix is kept 14 days, not deleted after 1.
+When objects match both rules, the 1-day rule deletes them first.
+
+```sh
+gcloud storage buckets describe gs://pi-sephora-e631eaba --format='json(lifecycle_config)'   # before
+gcloud storage buckets update gs://pi-sephora-e631eaba --lifecycle-file=infra/gcp/pi-runs-lifecycle.json
+gcloud storage buckets describe gs://pi-sephora-e631eaba --format='json(lifecycle_config)'   # after
+```
+
+Revert: `--lifecycle-file` with `{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 1}}]}`.
