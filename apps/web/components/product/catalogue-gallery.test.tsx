@@ -1,9 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NextIntlClientProvider } from 'next-intl';
+import { ApiError } from '@/lib/api/client';
 import type { Schemas } from '@/lib/api/types';
 import en from '@/messages/en.json';
-import { GalleryDetails } from './catalogue-gallery';
+import { CatalogueGallery, GalleryDetails } from './catalogue-gallery';
+
+const auth = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('../auth-provider', () => ({ useAuth: () => ({ api: { get: auth.get } }) }));
+
+function renderGallery() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <NextIntlClientProvider locale="en" messages={en}>
+        <CatalogueGallery sku="sku-1" />
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
+  );
+}
 
 afterEach(cleanup);
 
@@ -85,5 +101,17 @@ describe('SKU galleries', () => {
     );
     expect(screen.getByText('No captured image available')).toBeTruthy();
     expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('renders nothing when no catalogue serves the SKU, but keeps real errors visible', async () => {
+    auth.get.mockRejectedValueOnce(new ApiError('not_found', 404));
+    const { container } = renderGallery();
+    await vi.waitFor(() => expect(auth.get).toHaveBeenCalled());
+    await vi.waitFor(() => expect(container.innerHTML).toBe(''));
+
+    cleanup();
+    auth.get.mockRejectedValueOnce(new ApiError('data_unavailable', 503));
+    renderGallery();
+    expect(await screen.findByRole('button', { name: /try again/i })).toBeTruthy();
   });
 });
