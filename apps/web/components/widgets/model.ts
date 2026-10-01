@@ -5,6 +5,7 @@
 import { EMPTY, toSearch, type ExploreState } from '@/lib/explore';
 import { EMPTY_PROMOTIONS, MIN_PCTS, toPromotionsSearch, type MinPct } from '@/lib/promotions';
 import { num, type Measured, type Summary } from '@/lib/api/summary';
+import type { CaveatView } from '@/lib/api/types';
 
 /** An amount in the user's language with Latin digits, like `formatMoney`; whole units on axes. */
 export function amount(v: string, currency: string, locale: string, whole = false): string {
@@ -130,10 +131,28 @@ export function imageSrc(url: string | null | undefined): string | null {
   }
 }
 
-/** The freshness badge as /summary rates it, never guessed from the age alone. */
-export function freshness(f: Summary['freshness']): 'fresh' | 'aging' | 'stale' | 'unknown' {
-  return f.status === 'fresh' || f.status === 'aging' || f.status === 'stale' ? f.status : 'unknown';
+/**
+ * The freshness badge as /summary rates it, never guessed from the age alone. A `snapshot` is an
+ * imported retailer: its cutoff is the import date, not a capture date, so it is never aged.
+ */
+export function freshness(f: Summary['freshness']): 'fresh' | 'aging' | 'stale' | 'snapshot' | 'unknown' {
+  return f.status === 'fresh' || f.status === 'aging' || f.status === 'stale' || f.status === 'snapshot'
+    ? f.status
+    : 'unknown';
 }
+
+/**
+ * When a retailer's data was imported rather than collected, from the API's
+ * `snapshot_import_date` caveat; null for a collected retailer or a caveat without a date.
+ */
+export function importedOn(caveats: readonly CaveatView[], retailer: string): string | null {
+  const c = caveats.find((x) => x.code === 'snapshot_import_date' && x.params.retailer === retailer);
+  return c && /^\d{4}-\d{2}-\d{2}$/.test(c.params.date ?? '') ? c.params.date! : null;
+}
+
+/** Whether the API says a retailer's product count may include parent listings. */
+export const hasParents = (caveats: readonly CaveatView[], retailer: string) =>
+  caveats.some((x) => x.code === 'parent_listings_included' && x.params.retailer === retailer);
 
 /** The reasons the landing words itself; any other reads as a generic "not measured". */
 export const WITHHELD_REASONS = [
@@ -142,6 +161,7 @@ export const WITHHELD_REASONS = [
   'cohort_too_small',
   'retailer_blocked',
   'retailer_partial',
+  'was_price_unverified',
 ] as const;
 
 /** Why a section is withheld, if /summary says it is. */

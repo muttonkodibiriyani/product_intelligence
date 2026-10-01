@@ -6,6 +6,7 @@ import { formatDate, loc } from '@/lib/format';
 import { ErrorNotice } from './error-notice';
 import { useMeta } from './use-meta';
 import { Known } from './ui/known';
+import { importedOn } from './widgets/model';
 
 /**
  * What data the app is looking at. Every value is shown as the API sent it. `nested` when it sits
@@ -62,22 +63,30 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
           <div className="relative mt-2 overflow-x-auto">
             <table className="w-full max-w-3xl text-sm">
               <tbody>
-                {m.retailers.map((r) => (
-                  <tr key={r.id} className="border-t border-line">
-                    <th scope="row" className="py-2 pe-6 text-start font-medium whitespace-nowrap">
-                      {r.name}
-                    </th>
-                    <td className="py-2 pe-6">
-                      <Known t={t} k="status" v={r.status} />
-                    </td>
-                    <td className="py-2 pe-6 whitespace-nowrap text-ink-2">
-                      {r.since ? t('since', { date: formatDate(r.since, locale) }) : t('notCollected')}
-                    </td>
-                    <td className="py-2 text-ink-2" dir="auto">
-                      {loc(r.note, locale)}
-                    </td>
-                  </tr>
-                ))}
+                {m.retailers.map((r) => {
+                  // An imported retailer has an import date, not a collection start.
+                  const imported = importedOn(env.caveats, r.id);
+                  return (
+                    <tr key={r.id} className="border-t border-line">
+                      <th scope="row" className="py-2 pe-6 text-start font-medium whitespace-nowrap">
+                        {r.name}
+                      </th>
+                      <td className="py-2 pe-6">
+                        <Known t={t} k="status" v={r.status} />
+                      </td>
+                      <td className="py-2 pe-6 whitespace-nowrap text-ink-2">
+                        {imported
+                          ? t('imported', { date: formatDate(imported, locale) })
+                          : r.since
+                            ? t('since', { date: formatDate(r.since, locale) })
+                            : t('notCollected')}
+                      </td>
+                      <td className="py-2 text-ink-2" dir="auto">
+                        {loc(r.note, locale)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

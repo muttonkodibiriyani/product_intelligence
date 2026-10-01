@@ -68,7 +68,8 @@
     "no_match": "No matching product at the other retailer.",
     "not_in_scope": "Outside the current dataset.",
     "currency_mismatch": "Prices are in different currencies.",
-    "not_applicable": "This view doesn't apply to this kind of catalogue."
+    "not_applicable": "This view doesn't apply to this kind of catalogue.",
+    "was_price_unverified": "This retailer's was-prices are unverified, so its promotions are not measured."
   },
   "home": {
     "title": "Current dataset",
@@ -81,6 +82,7 @@
     "retailers": "Retailers",
     "testData": "Test data — not for decisions",
     "since": "since {date}",
+    "imported": "snapshot imported {date}, capture date unknown",
     "notCollected": "not collected",
     "status": {
       "supported": "Collected",
@@ -103,6 +105,7 @@
       "compareTab": "Compare",
       "tabs": "Dashboard views",
       "subtitle": "{retailer} · one snapshot, {date}",
+      "subtitleImported": "{retailer} · snapshot imported {date}, capture date unknown",
       "sample": "Data: {retailer}, {market}.",
       "compareNote": "Comparison needs a second retailer or a second collection day. These cards show the layout they will use.",
       "indexTitle": "Price index over time",
@@ -122,7 +125,8 @@
         "cohort_too_small": "Too few products carry both a price and a regular price to measure discounts.",
         "other": "Discounts can't be measured in this snapshot.",
         "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
-        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions."
+        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions.",
+        "was_price_unverified": "This retailer's was-prices are unverified, so its discounts and promotions are not shown."
       }
     }
   },

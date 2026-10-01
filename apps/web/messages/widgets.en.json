@@ -15,7 +15,10 @@
     "asOf": "as of {date}",
     "age": "{days, plural, =0 {collected today} one {# day old} other {# days old}}",
     "none": "Not measured",
-    "aging": "Aging"
+    "aging": "Aging",
+    "snapshot": "Snapshot",
+    "imported": "Imported {date}, capture date unknown",
+    "productsParents": "Snapshot; may include parent listings"
   },
   "ladder": {
     "title": "Price ladder by category",

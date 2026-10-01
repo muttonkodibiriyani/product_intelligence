@@ -7,15 +7,19 @@ import {
   categoryNodes,
   exploreHref,
   freshness,
+  hasParents,
   heatCells,
   histBins,
   imageSrc,
+  importedOn,
   ladderRows,
   pct,
   promotions,
   promotionsHref,
   ratingPoints,
+  WITHHELD_REASONS,
 } from './model';
+import type { CaveatView } from '@/lib/api/types';
 
 describe('widget model', () => {
   it('formats amounts and percentages with Latin digits in both languages', () => {
@@ -173,5 +177,42 @@ describe('brandShare', () => {
     // Withheld: no brands, or no priced count.
     expect(brandShare(null, 200)).toEqual([]);
     expect(brandShare([{ brand: 'A', n: 1, median: aed('1') }], null)).toEqual([]);
+  });
+});
+
+describe('imported retailers (API 1.5.0)', () => {
+  const cav = (code: string, params: Record<string, string>) =>
+    ({ code, params, en: '', ar: '' }) as unknown as CaveatView;
+  const caveats = [
+    cav('was_price_unverified', { retailer: 'ulta_ae' }),
+    cav('snapshot_import_date', { retailer: 'ulta_ae', date: '2026-09-30' }),
+    cav('parent_listings_included', { retailer: 'ulta_ae' }),
+  ];
+
+  it('rates a snapshot as a snapshot, never fresh however recent', () => {
+    expect(freshness({ cutoff: '2026-10-01', ageDays: 0, status: 'snapshot' })).toBe('snapshot');
+  });
+
+  it("reads the import date and parent listings from the retailer's own caveats only", () => {
+    expect(importedOn(caveats, 'ulta_ae')).toBe('2026-09-30');
+    expect(importedOn(caveats, 'sephora_me')).toBeNull();
+    expect(importedOn([], 'ulta_ae')).toBeNull();
+    // A malformed date is no date: the caller falls back to the API's cutoff, still as an import.
+    expect(
+      importedOn([cav('snapshot_import_date', { retailer: 'ulta_ae', date: 'soon' })], 'ulta_ae'),
+    ).toBeNull();
+    expect(hasParents(caveats, 'ulta_ae')).toBe(true);
+    expect(hasParents(caveats, 'sephora_me')).toBe(false);
+  });
+
+  it('words a was-price withholding instead of reading it as 0%', () => {
+    const p = promotions({
+      withheld: [{ section: 'promotions', reason: 'was_price_unverified' }],
+      promoSharePct: null,
+      promoDepth: null,
+      topDiscounts: null,
+    } as unknown as Parameters<typeof promotions>[0]);
+    expect(p).toEqual({ measured: false, reason: 'was_price_unverified' });
+    expect(WITHHELD_REASONS).toContain('was_price_unverified');
   });
 });
