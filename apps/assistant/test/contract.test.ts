@@ -83,7 +83,8 @@ describe("tools vs pi-api.openapi.json", () => {
       for (const key of Object.keys(object.shape ?? {})) {
         // `ids` travels as the repeated `id`; a path id travels in the path.
         const sent = key === "ids" ? "id" : key;
-        if (tool.name === "get_product" && key === "id") continue;
+        if ((tool.name === "get_product" || tool.name === "price_history") && key === "id")
+          continue;
         expect(declared.has(sent), `${tool.name}.${key}`).toBe(true);
       }
     }
@@ -121,6 +122,15 @@ const GOLDENS: readonly [string, string, unknown][] = [
   ["launches", "launches", {}],
   ["reviews-summary", "reviews_summary", {}],
   ["coverage", "coverage_status", {}],
+  ["history", "price_history", { id: "p01" }],
+  ["availability", "availability", {}],
+  ["summary", "price_ladder", {}],
+  ["summary", "price_distribution", {}],
+  ["summary", "brand_positioning", {}],
+  ["summary", "category_mix", {}],
+  ["summary", "assortment_breadth", {}],
+  ["summary-blocked", "price_ladder", {}],
+  ["summary-blocked", "assortment_breadth", {}],
 ];
 
 describe("golden responses through the registry", () => {

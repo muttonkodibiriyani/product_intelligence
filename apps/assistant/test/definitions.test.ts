@@ -15,8 +15,18 @@ import {
 } from "../src/tools/definitions.js";
 import { MINIMAL, PAIR } from "./fake-api.js";
 
+const NEW_IN_S6 = new Set([
+  "price_history",
+  "availability",
+  "price_ladder",
+  "price_distribution",
+  "brand_positioning",
+  "category_mix",
+  "assortment_breadth",
+]);
+
 describe("tool definitions", () => {
-  it("has nine uniquely named, viewer-level, read-only tools", () => {
+  it("has sixteen uniquely named, viewer-level, read-only tools", () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual([
       "search_products",
       "get_product",
@@ -27,11 +37,20 @@ describe("tool definitions", () => {
       "launches",
       "reviews_summary",
       "coverage_status",
+      "price_history",
+      "availability",
+      "price_ladder",
+      "price_distribution",
+      "brand_positioning",
+      "category_mix",
+      "assortment_breadth",
     ]);
     for (const tool of TOOLS) {
       expect(tool.minRole).toBe("viewer");
       // v3 adds the row limit to the three list tools (API 1.1.0).
-      expect(tool.version).toBe(tool.listKey === undefined ? "2" : "3");
+      expect(tool.version).toBe(
+        NEW_IN_S6.has(tool.name) ? "1" : tool.listKey === undefined ? "2" : "3",
+      );
       const request = tool.request(tool.input.parse(MINIMAL[tool.name] ?? {}) as never);
       expect(request.path.startsWith("/api/v1/")).toBe(true);
       expect(request.method).toBe("GET");

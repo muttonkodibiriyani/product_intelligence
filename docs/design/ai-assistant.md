@@ -300,11 +300,16 @@ base|other|equal}` with `gapAmount = other − base`; the `convention` string tr
 | `launches` | `GET /api/v1/launches` | `retailer[]?`, `brand?`, `category?`, `since?`, `limit` (≤ 25, default 25) | `items[] {id, name, retailer, firstSeen}`; needs two or more runs, otherwise `capability_off` |
 | `reviews_summary` | `GET /api/v1/reviews-summary` | `id` (repeated, ≤ 25) **or** `brand?/category?`, `retailer[]?` | `retailers[] {retailer, n, avgRating, ratingCount, scale, reason}`. Distribution and themes → `field_not_collected` |
 | `coverage_status` | `GET /api/v1/coverage` | `retailer[]?` | `retailers[] {id, name, status supported\|partial\|blocked\|pending\|retired, productCount, matchedCount, freshness, since, note}` |
+| `price_history` | `GET /api/v1/products/{id}/history` | `id`, `from?/to?` | `series {<retailer>: [{date, price, regular, availability}]}`; needs history, otherwise `capability_off` |
+| `availability` | `GET /api/v1/availability` | `retailer[]?`, `brand?`, `category?`, `date?` | `denominator`; `retailers[] {retailer, counts{<stock state>}, denominator, outOfStockShare, lowStockShare, reason}` |
+| `price_ladder`, `price_distribution`, `brand_positioning`, `category_mix`, `assortment_breadth` | `GET /api/v1/summary` | `retailer?` (default: the retailer with the most collected offers) | 1:1 views over `/summary` sections (`ladder`; `priceHist`, `medianPrice`, `priced`; `brandPrice`; `categoryMix`, `products`; `products`, `priced`, `brands`, `categories`), each with `retailer`, `asOf`, `currency`, `freshness`. A section the API withheld becomes `not_enough_data` with its reason, never zero |
 
 Not assistant tools:
 
-- `/api/v1/matches`, `/api/v1/meta`, `/api/v1/products/{id}/history` and exports are FE and admin surfaces.
-- `/api/v1/availability` becomes a tenth tool once `capabilities.availability` exists.
+- `/api/v1/matches`, `/api/v1/meta`, `/api/v1/admin/*` and `/api/v1/export/*` are FE and admin
+  surfaces. `docs/design/assistant-tools.md` maps every operation to its tool or the reason for
+  its exclusion, and `apps/assistant/test/endpoint-map.test.ts` keeps that map complete.
+- Freshness is not a separate tool: `coverage_status` returns it per retailer.
 
 Stage 2 adds `create_report`, the only non-read tool. It writes only to the caller's own
 `reports/{uid}/` prefix and only through the server generator. It never changes governed data
@@ -823,7 +828,7 @@ All of these must hold before Vertex is enabled or the chat callable is deployed
    one user holds `role: killswitch` (single-account check, §9.4 step 3).
 3. `assistant_config/current` is written by an admin, and it passes `AssistantConfigSchema`:
    - `promptVersion` **must equal `PROMPT_VERSION`** in `src/flows/prompt.ts`, currently
-     `chat-2026-10-01.2`. If it does not, every question is refused with
+     `chat-2026-10-01.3`. If it does not, every question is refused with
      `prompt_version_mismatch`. Each prompt change bumps the version, and the config must be
      updated in the same release.
    - `priceTableVersion` must equal the deployed price table.

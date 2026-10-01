@@ -25,6 +25,16 @@ export interface CallerContext {
   readonly role: Role;
 }
 
+/**
+ * A tool's slice of a response: `data` replaces the envelope data; `withheld` turns an ok
+ * envelope into not_enough_data with the service's own reason (e.g. a /summary section it
+ * withheld), so the answer says so instead of reading a null as zero.
+ */
+export interface ToolView {
+  readonly data: unknown;
+  readonly withheld?: string;
+}
+
 export interface ToolDef<I extends z.ZodTypeAny> {
   readonly name: string;
   readonly version: string;
@@ -38,6 +48,8 @@ export interface ToolDef<I extends z.ZodTypeAny> {
    */
   readonly listKey?: string;
   request(input: z.output<I>): ApiRequest;
+  /** Picks this tool's part of the response (a pure projection; nothing is computed). */
+  view?(data: unknown): ToolView;
 }
 
 /** Erased form for the registry; each tool keeps its own precise input type. */
@@ -50,6 +62,7 @@ export interface AnyToolDef {
   readonly listKey?: string;
   /** Only ever called with the output of `input.safeParse`. */
   request(input: never): ApiRequest;
+  view?(data: unknown): ToolView;
 }
 
 export function defineTool<I extends z.ZodTypeAny>(def: ToolDef<I>): ToolDef<I> {

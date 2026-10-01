@@ -1,5 +1,6 @@
 /**
- * The nine read-only tools, one per service-layer endpoint (design §4). Paths, parameters and
+ * The read-only tools (design §4): one per service-layer endpoint, plus five thin views over
+ * sections of /summary. Paths, parameters and
  * limits follow `docs/contracts/pi-api.openapi.json` (`/api/v1/*`); `test/contract.test.ts`
  * checks every tool's request against it and runs the golden responses through the registry.
  * Inputs are strict: unknown keys, free-form SQL, URLs and write-shaped arguments are rejected
@@ -8,7 +9,7 @@
 import { z } from "zod";
 
 import type { ApiRequest } from "../api/client.js";
-import { defineTool } from "./types.js";
+import { defineTool, type ToolView } from "./types.js";
 
 /** Page size for search_products (the API allows up to 100; tool results are capped by size). */
 export const MAX_LIMIT = 25;
@@ -260,12 +261,157 @@ export const coverageStatus = defineTool({
   description:
     "What the data covers: each retailer's id, status (supported, partial, blocked, pending or " +
     "retired; only supported backs an absence claim), product and matched counts, freshness " +
-    "and notes. Call it first to learn the retailer ids the other tools need, and before " +
+    "(the date of the retailer's latest collected data; use it for 'how fresh / how old is the " +
+    "data') and notes. Call it first to learn the retailer ids the other tools need, and before " +
     "answering questions about what is or is not available.",
   minRole: "viewer",
   input: z.object({ retailer: retailerList.optional() }).strict(),
   request: (input) => get("/coverage", input),
 });
+export const priceHistory = defineTool({
+  name: "price_history",
+  version: "1",
+  description:
+    "Price history of one product id: per retailer, one point per collection date with price, " +
+    "regular price and availability. Needs collection history; without it this returns " +
+    "not_enough_data (capability_off). Use dates as written; say 'no price' for a null price.",
+  minRole: "viewer",
+  input: z
+    .object({ id: productId, from: isoDate.optional(), to: isoDate.optional() })
+    .strict()
+    .refine((value) => !value.from || !value.to || value.from <= value.to, {
+      message: "from must not be after to",
+    }),
+  request: ({ id, ...rest }) => get(`/products/${encodeURIComponent(id)}/history`, rest),
+});
+
+export const availability = defineTool({
+  name: "availability",
+  version: "1",
+  description:
+    "Stock availability per retailer on a date (default: the latest): counts per stock state " +
+    "and the out-of-stock and low-stock shares (%) of offers in an observed stock state " +
+    "(`denominator`). Retailers that do not show stock return a reason instead of shares. " +
+    "Without stock data this returns not_enough_data.",
+  minRole: "viewer",
+  input: z
+    .object({ ...filters, retailer: retailerList.optional(), date: isoDate.optional() })
+    .strict(),
+  request: (input) => get("/availability", input),
+});
+
+/** Which withholdable part of /summary (API `Section`) each summary field belongs to. */
+type SummarySection = "prices" | "promotions" | "ratings";
+
+/** The context every /summary view keeps, so answers can cite the retailer and freshness. */
+const SUMMARY_CONTEXT = ["retailer", "asOf", "currency", "freshness"] as const;
+
+/**
+ * A view of /summary: the context plus `fields`, unchanged. When any field is null and the
+ * service listed its section as withheld, the view is not_enough_data with that reason.
+ */
+export function summaryView(
+  fields: readonly string[],
+  section: SummarySection | undefined,
+): (data: unknown) => ToolView {
+  return (data) => {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return { data };
+    const record = data as Record<string, unknown>;
+    const picked: Record<string, unknown> = {};
+    for (const key of [...SUMMARY_CONTEXT, ...fields]) {
+      if (key in record) picked[key] = record[key];
+    }
+    const withheldList = Array.isArray(record.withheld) ? record.withheld : [];
+    const mine = withheldList.find(
+      (w): w is { section: string; reason: string } =>
+        typeof w === "object" &&
+        w !== null &&
+        (w as { section?: unknown }).section === section &&
+        typeof (w as { reason?: unknown }).reason === "string",
+    );
+    const missing = fields.some((key) => record[key] === null || record[key] === undefined);
+    return mine && missing ? { data: picked, withheld: mine.reason } : { data: picked };
+  };
+}
+
+const summaryInput = z
+  .object({
+    retailer: retailerId
+      .optional()
+      .describe(
+        "retailer id from coverage_status; default: the retailer with the most collected offers",
+      ),
+  })
+  .strict();
+const SUMMARY_NOTE =
+  " From the retailer's current snapshot (/summary): `asOf` and `freshness` say how recent it " +
+  "is. Money is decimal text in `currency`. A null value is withheld (not measured), never zero.";
+
+export const priceLadder = defineTool({
+  name: "price_ladder",
+  version: "1",
+  description:
+    "Price ladder per category at one retailer: number of priced products (n) and the min, " +
+    "25th percentile, median, 75th percentile and max price." +
+    SUMMARY_NOTE,
+  minRole: "viewer",
+  input: summaryInput,
+  request: (input) => get("/summary", input),
+  view: summaryView(["ladder"], "prices"),
+});
+
+export const priceDistribution = defineTool({
+  name: "price_distribution",
+  version: "1",
+  description:
+    "How prices are spread at one retailer: a histogram (bucket `edges` and product `counts` " +
+    "per bucket), the median price and the number of priced products." +
+    SUMMARY_NOTE,
+  minRole: "viewer",
+  input: summaryInput,
+  request: (input) => get("/summary", input),
+  view: summaryView(["priceHist", "medianPrice", "priced"], "prices"),
+});
+
+export const brandPositioning = defineTool({
+  name: "brand_positioning",
+  version: "1",
+  description:
+    "Where brands sit on price at one retailer: per brand, the number of priced products (n) " +
+    "and the median price." +
+    SUMMARY_NOTE,
+  minRole: "viewer",
+  input: summaryInput,
+  request: (input) => get("/summary", input),
+  view: summaryView(["brandPrice"], "prices"),
+});
+
+export const categoryMix = defineTool({
+  name: "category_mix",
+  version: "1",
+  description:
+    "The category mix of one retailer's catalogue: per category path, the number of products " +
+    "(n). Do not compute shares; quote the counts and the total `products`." +
+    SUMMARY_NOTE,
+  minRole: "viewer",
+  input: summaryInput,
+  request: (input) => get("/summary", input),
+  view: summaryView(["categoryMix", "products"], undefined),
+});
+
+export const assortmentBreadth = defineTool({
+  name: "assortment_breadth",
+  version: "1",
+  description:
+    "How broad one retailer's assortment is: product, priced-product, brand and category " +
+    "counts." +
+    SUMMARY_NOTE,
+  minRole: "viewer",
+  input: summaryInput,
+  request: (input) => get("/summary", input),
+  view: summaryView(["products", "priced", "brands", "categories"], undefined),
+});
+
 export const TOOLS = [
   searchProducts,
   getProduct,
@@ -276,4 +422,11 @@ export const TOOLS = [
   launches,
   reviewsSummary,
   coverageStatus,
+  priceHistory,
+  availability,
+  priceLadder,
+  priceDistribution,
+  brandPositioning,
+  categoryMix,
+  assortmentBreadth,
 ] as const;

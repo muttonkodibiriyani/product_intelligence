@@ -16,7 +16,12 @@ import type { z } from "zod";
 
 import { ApiError, type ApiRequest, type MetricApi } from "../api/client.js";
 import { type Untrusted, untrusted } from "../guard/untrusted.js";
-import { type Bilingual, EnvelopeSchema, type NotEnoughDataReason } from "../api/envelope.js";
+import {
+  type Bilingual,
+  EnvelopeSchema,
+  NOT_ENOUGH_DATA_REASONS,
+  type NotEnoughDataReason,
+} from "../api/envelope.js";
 import { type Sanitised, sanitiseData } from "../guard/sanitise.js";
 import { type AnyToolDef, type CallerContext, ROLES, type Role } from "./types.js";
 
@@ -174,6 +179,18 @@ const API_ERROR_MESSAGES: Record<ToolErrorCode, string> = {
   output_too_large: "Result too large; narrow the filters or lower limit.",
 };
 
+/** Said when a tool's view finds its part of the response withheld by the service. */
+export const WITHHELD_DETAIL: Bilingual = {
+  en: "The data service withheld this part of the data, so it is not measured (not zero).",
+  ar: "حجبت خدمة البيانات هذا الجزء، لذا فهو غير مقيس (وليس صفرًا).",
+};
+
+/** A view's withheld reason, kept only when it is one of the service's closed reasons. */
+function withheldReason(reason: string | undefined): NotEnoughDataReason | undefined {
+  if (reason === undefined) return undefined;
+  return NOT_ENOUGH_DATA_REASONS.find((known) => known === reason) ?? "no_match";
+}
+
 export class ToolRegistry {
   private readonly tools: ReadonlyMap<string, AnyToolDef>;
 
@@ -228,10 +245,17 @@ export class ToolRegistry {
     if (!envelope.success) {
       return error(name, "upstream_invalid", API_ERROR_MESSAGES.upstream_invalid);
     }
-    const { meta, cohort, caveats, data } = envelope.data;
+    const { meta, cohort, caveats } = envelope.data;
+    const view =
+      tool.view && envelope.data.data !== undefined && envelope.data.data !== null
+        ? tool.view(envelope.data.data)
+        : undefined;
+    const data = view ? view.data : envelope.data.data;
+    const withheld = envelope.data.status === "ok" ? withheldReason(view?.withheld) : undefined;
+    const status = withheld === undefined ? envelope.data.status : "not_enough_data";
     const cut = truncation(data, tool.listKey);
     const result: ToolEnvelope = {
-      status: envelope.data.status,
+      status,
       // not_enough_data may still carry rows (e.g. compare below the cohort minimum).
       ...(data === undefined || data === null
         ? {}
@@ -244,14 +268,16 @@ export class ToolRegistry {
               cut,
             ),
           }),
-      ...(envelope.data.status === "ok"
+      ...(status === "ok"
         ? {}
-        : {
-            notEnoughData: {
-              reason: envelope.data.reason ?? "no_match",
-              detail: prose(envelope.data.detail ?? { en: "", ar: "" }),
-            },
-          }),
+        : withheld !== undefined
+          ? { notEnoughData: { reason: withheld, detail: prose(WITHHELD_DETAIL) } }
+          : {
+              notEnoughData: {
+                reason: envelope.data.reason ?? "no_match",
+                detail: prose(envelope.data.detail ?? { en: "", ar: "" }),
+              },
+            }),
       citation: {
         tool: tool.name,
         toolVersion: tool.version,
