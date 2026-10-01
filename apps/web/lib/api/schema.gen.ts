@@ -1635,11 +1635,11 @@ export interface components {
             /** Brandprice */
             brandPrice: components["schemas"]["BrandPrice"][] | null;
             /** Brands */
-            brands: number;
+            brands: number | null;
             /** Categories */
-            categories: number;
+            categories: number | null;
             /** Categorymix */
-            categoryMix: components["schemas"]["CategoryShare"][];
+            categoryMix: components["schemas"]["CategoryShare"][] | null;
             /** Currency */
             currency: string;
             freshness: components["schemas"]["Freshness"];
@@ -1648,9 +1648,9 @@ export interface components {
             medianPrice: components["schemas"]["MoneyValue"] | null;
             priceHist: components["schemas"]["PriceHistogram"] | null;
             /** Priced */
-            priced: number;
+            priced: number | null;
             /** Products */
-            products: number;
+            products: number | null;
             promoDepth: components["schemas"]["PromoDepth"] | null;
             /** Promosharepct */
             promoSharePct: string | null;
