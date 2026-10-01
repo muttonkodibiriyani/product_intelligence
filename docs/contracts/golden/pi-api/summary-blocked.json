@@ -1,0 +1,60 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "asOf": "2026-09-30",
+    "brandPrice": null,
+    "brands": null,
+    "categories": null,
+    "categoryMix": null,
+    "currency": "AED",
+    "freshness": {
+      "ageDays": 2,
+      "cutoff": "2026-09-30T00:00:00Z",
+      "status": "aging"
+    },
+    "ladder": null,
+    "medianPrice": null,
+    "priceHist": null,
+    "priced": null,
+    "products": null,
+    "promoDepth": null,
+    "promoSharePct": null,
+    "ratingPrice": null,
+    "retailer": "shop_d",
+    "topDiscounts": null,
+    "withheld": [
+      {
+        "reason": "retailer_blocked",
+        "section": "prices"
+      },
+      {
+        "reason": "retailer_blocked",
+        "section": "promotions"
+      },
+      {
+        "reason": "retailer_blocked",
+        "section": "ratings"
+      }
+    ]
+  },
+  "detail": {
+    "ar": "تعذّر جمع بيانات أحد المتاجر المحددة.",
+    "en": "A selected retailer could not be collected."
+  },
+  "meta": {
+    "apiVersion": "1.4.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "summary",
+    "filters": {
+      "retailer": "shop_d"
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.3",
+    "scope": "fixture"
+  },
+  "reason": "retailer_blocked",
+  "status": "not_enough_data"
+}

@@ -24,10 +24,10 @@ from pi_api.catalog import (
     filters_digest,
     fold,
 )
-from pi_api.wire import SourceText
 from pi_core import MatchClass, ReviewState
 from pi_dataset import ContractModel, DatasetV3
 from pi_dataset.models import DecidedBy
+from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
 from pi_metrics.compare import Comparison, PairRow
 from pi_metrics.launches import Launch, Launches

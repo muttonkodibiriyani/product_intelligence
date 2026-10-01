@@ -332,7 +332,7 @@ SELECT
       CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
     ) img
     WHERE img ->> 'role' = 'main'
-    ORDER BY img ->> 'position'
+    ORDER BY CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST
     LIMIT 1
   ) AS image
 FROM latest
@@ -961,7 +961,7 @@ def main() -> None:
     if args.output_v2 is not None:
         # Build v2 first: if the contract refuses the data, neither file is written.
         from pi_dataset import dump_dataset, load_dataset  # noqa: PLC0415
-        from scripts.demo_export.v2 import build_dataset_v2  # noqa: PLC0415
+        from scripts.demo_export.v2 import build_dataset_v2, category_notes  # noqa: PLC0415
 
         v2 = build_dataset_v2(
             rows,
@@ -986,7 +986,8 @@ def main() -> None:
         write_bytes(args.output_v2, body)
         print(
             f"wrote v2 {len(v2.products)} products to {args.output_v2} "
-            f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)}"
+            f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)} "
+            f"category_listings={category_notes(rows)}"
         )
 
 

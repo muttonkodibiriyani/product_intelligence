@@ -29,7 +29,6 @@ from urllib.parse import urlsplit
 
 from pydantic import Field
 
-from pi_api.wire import SourceText
 from pi_core import AvailabilityState, Channel, MatchClass, ReviewState
 from pi_dataset import (
     Capabilities,
@@ -46,6 +45,7 @@ from pi_dataset import (
     SizeV3,
 )
 from pi_dataset.profiles import AttributeDef, ProfileInfo
+from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
 from pi_metrics.compare import Gap, pair_with_labels
 from pi_metrics.promotions import depth
@@ -336,8 +336,13 @@ class Facets(ContractModel):
     #: API 1.3.0: per ``facet`` attribute of ``meta.attributeSet`` (in its order), the products
     #: per value. Values that fold equal count once, under their least raw form; send it back as
     #: ``attr=<key>:<value>``. Only values ``attr`` accepts are listed, at most
-    #: ``ATTR_FACET_LIMIT`` per key: the most products first, then shown in raw order.
+    #: ``ATTR_FACET_LIMIT`` per key: the most products first, then shown in raw order. A value
+    #: is trimmed (API 1.4.0) before it is folded, listed or matched, so " Matte " is "Matte";
+    #: one with a control character inside is still not listed.
     attributes: dict[str, tuple[FacetCount, ...]]
+    #: API 1.4.0: the keys of ``attributes`` that had more than ``ATTR_FACET_LIMIT`` listable
+    #: values, so the list is not exhaustive (in ``meta.attributeSet`` order).
+    attributes_truncated: tuple[str, ...] = ()
 
 
 class ProductPage(ContractModel):
@@ -480,7 +485,8 @@ def _attr_texts(value: object) -> dict[str, str]:
         text = "true" if value else "false"
         return {text: text}
     if isinstance(value, str | int | Decimal):
-        return {fold(str(value)): str(value)}
+        text = str(value).strip()  # " Matte " is "Matte": label, fold and filter agree
+        return {fold(text): text}  # blank text is refused at load
     if isinstance(value, list | tuple):
         texts: dict[str, str] = {}
         for item in value:
@@ -508,7 +514,7 @@ def _attr_filters(ds: DatasetV3, query: ProductFilters) -> dict[str, set[str]]:
         if key not in facets:
             msg = f"attr {key!r} is not a facet attribute of this dataset"
             raise InvalidQueryError(msg)
-        wanted.setdefault(key, set()).add(fold(value))
+        wanted.setdefault(key, set()).add(fold(value.strip()))
     return wanted
 
 
@@ -580,13 +586,13 @@ def _facets(ds: DatasetV3, checks: dict[str, Check], shown: Shown) -> Facets:
     def counts(counter: Counter[str]) -> tuple[FacetCount, ...]:
         return tuple(FacetCount(key=k, count=n) for k, n in sorted(counter.items()))
 
+    attrs = {a.key: _attr_facet(ds, checks, shown, a.key) for a in ds.meta.attribute_set if a.facet}
     return Facets(
         brand=counts(brand),
         category=counts(category),
         retailer=counts(retailer),
-        attributes={
-            a.key: _attr_facet(ds, checks, shown, a.key) for a in ds.meta.attribute_set if a.facet
-        },
+        attributes={k: values for k, (values, _) in attrs.items()},
+        attributes_truncated=tuple(k for k, (_, cut) in attrs.items() if cut),
     )
 
 
@@ -603,8 +609,9 @@ def _filterable(key: str, value: str) -> bool:
 
 def _attr_facet(
     ds: DatasetV3, checks: dict[str, Check], shown: Shown, key: str
-) -> tuple[FacetCount, ...]:
-    """Products per folded value of ``key``, under every filter but ``key``'s own."""
+) -> tuple[tuple[FacetCount, ...], bool]:
+    """Products per folded value of ``key``, under every filter but ``key``'s own, and
+    whether values beyond ``ATTR_FACET_LIMIT`` were left out."""
     counter: Counter[str] = Counter()
     raw: dict[str, str] = {}
     for p in ds.products:
@@ -615,7 +622,8 @@ def _attr_facet(
                 raw[folded] = min(text, raw.get(folded, text))
     listed = [(f, n) for f, n in counter.items() if _filterable(key, raw[f])]
     top = sorted(listed, key=lambda i: (-i[1], raw[i[0]]))[:ATTR_FACET_LIMIT]
-    return tuple(FacetCount(key=raw[f], count=n) for f, n in sorted(top, key=lambda i: raw[i[0]]))
+    counts = tuple(FacetCount(key=raw[f], count=n) for f, n in sorted(top, key=lambda i: raw[i[0]]))
+    return counts, len(listed) > ATTR_FACET_LIMIT
 
 
 #: Filters added in API 1.2.0: left out of the digest while unset, so a cursor issued before

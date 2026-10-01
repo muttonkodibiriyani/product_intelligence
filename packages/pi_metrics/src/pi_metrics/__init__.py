@@ -36,6 +36,7 @@ from pi_metrics.model import (
 )
 from pi_metrics.promotions import Promotions, promotions
 from pi_metrics.reviews import ReviewsSummary, reviews_summary
+from pi_metrics.summary import Summary, summary
 from pi_metrics.view import AmbiguousContext, UnknownInput
 
 __all__ = [
@@ -66,6 +67,7 @@ __all__ = [
     "Reason",
     "ReviewsSummary",
     "Status",
+    "Summary",
     "UnknownInput",
     "assortment_gaps",
     "availability",
@@ -77,4 +79,5 @@ __all__ = [
     "price_index",
     "promotions",
     "reviews_summary",
+    "summary",
 ]
