@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import type { Envelope, Schemas } from '@/lib/api/types';
 import { parseCompare, toCompareSearch } from '@/lib/compare';
 import { parseState, toSearch } from '@/lib/explore';
+import { parseLaunches, toLaunchesSearch } from '@/lib/launches';
 import { parsePromotions, toPromotionsSearch } from '@/lib/promotions';
 import { formatCount, formatDate, loc } from '@/lib/format';
 import { useAuth } from '../auth-provider';
@@ -47,6 +48,7 @@ const BACKS: Record<
     search: (sp) => toPromotionsSearch(parsePromotions(sp)),
     label: 'backPromotions',
   },
+  launches: { path: 'launches', search: (sp) => toLaunchesSearch(parseLaunches(sp)), label: 'backLaunches' },
 };
 
 export function ProductView() {

@@ -10,6 +10,7 @@
       "explore": "Products",
       "compare": "Compare",
       "promotions": "Promotions",
+      "launches": "Launches",
       "status": "Dataset"
     },
     "mainNav": "Main"
@@ -244,7 +245,8 @@
     "chartLabel": "Price per day at {retailers}",
     "noPrice": "No price",
     "backCompare": "Back to comparison",
-    "backPromotions": "Back to promotions"
+    "backPromotions": "Back to promotions",
+    "backLaunches": "Back to launches"
   },
   "compare": {
     "title": "Compare prices",
@@ -323,6 +325,24 @@
     "depth": "Discount",
     "price": "Price",
     "regular": "Regular price"
+  },
+  "launches": {
+    "title": "Launches",
+    "intro": "Products a retailer started listing, newest first. A launch is the first day a product was collected at that retailer, after a day it was not; items first seen after an incomplete collection run are left out.",
+    "since": "First seen on or after",
+    "anyDay": "Any day",
+    "loading": "Loading launches…",
+    "items": "New products",
+    "count": "{total, plural, =0 {No products} one {{n} product} other {{n} products}}",
+    "shownOfTotal": "{shown} of {total} products",
+    "itemsHint": "Newest first. Open a product for its offers and evidence.",
+    "truncated": "Only the newest launches are listed.",
+    "showMore": "Show up to {n}",
+    "narrow": "Pick a later day or fewer retailers to see the rest.",
+    "empty": "No product was launched for these filters.",
+    "product": "Product",
+    "retailer": "Retailer",
+    "firstSeen": "First seen"
   },
   "retailerChecks": {
     "legend": "Retailers",

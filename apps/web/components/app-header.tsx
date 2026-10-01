@@ -15,6 +15,7 @@ export function AppHeader() {
     { href: `/${locale}/explore/`, label: t('nav.explore'), match: /^\/(en|ar)\/(explore|product)\// },
     { href: `/${locale}/compare/`, label: t('nav.compare'), match: /^\/(en|ar)\/compare\// },
     { href: `/${locale}/promotions/`, label: t('nav.promotions'), match: /^\/(en|ar)\/promotions\// },
+    { href: `/${locale}/launches/`, label: t('nav.launches'), match: /^\/(en|ar)\/launches\// },
     { href: `/${locale}/`, label: t('nav.status'), match: /^\/(en|ar)\/?$/ },
   ];
   return (
@@ -25,7 +26,7 @@ export function AppHeader() {
         </Link>
         {state.kind === 'signed_in' && state.session.role && (
           <nav aria-label={t('mainNav')} className="order-last -ms-2 w-full sm:order-none sm:ms-0 sm:w-auto">
-            <ul className="flex gap-1">
+            <ul className="flex flex-wrap gap-x-1 gap-y-0.5">
               {nav.map((n) => {
                 const current = n.match.test(pathname);
                 return (
