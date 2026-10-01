@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { SOURCE_TEXT_KEYS, STRUCTURAL_KEYS } from "../src/guard/sanitise.js";
+import { DROPPED_KEYS, SOURCE_TEXT_KEYS, STRUCTURAL_KEYS } from "../src/guard/sanitise.js";
 import { verifyAnswerNumbers } from "../src/guard/verifier.js";
 import { MAX_UPSTREAM_CAVEATS } from "../src/api/envelope.js";
 import { TOOLS } from "../src/tools/definitions.js";
@@ -100,7 +100,7 @@ describe("tools vs pi-api.openapi.json", () => {
     expect(marked.size).toBeGreaterThan(5);
     for (const key of marked) {
       const isUrl = /(?:^url|Url)$/.test(key);
-      expect(isUrl || SOURCE_TEXT_KEYS.has(key), key).toBe(true);
+      expect(isUrl || SOURCE_TEXT_KEYS.has(key) || DROPPED_KEYS.has(key), key).toBe(true);
       expect(STRUCTURAL_KEYS.has(key), key).toBe(false);
     }
   });

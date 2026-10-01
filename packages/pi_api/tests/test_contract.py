@@ -155,3 +155,29 @@ def test_hosting_routes_api_before_the_spa_catch_all() -> None:
         if rule["source"].startswith("/api"):
             assert rule["run"] == {"serviceId": "pi-api", "region": "me-central1"}
             assert "pinTag" not in rule["run"]
+
+
+def test_the_csp_names_only_the_expected_external_hosts() -> None:
+    """Thumbnails (API 1.3.0) are hotlinked from exactly one image host; nothing else is added.
+
+    The owner's rule: images come only from img-product.sephora.me, never copied or rehosted.
+    ``connect-src`` keeps the Firebase Auth and Storage hosts it already had.
+    """
+    hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
+    (csp,) = [
+        h["value"]
+        for block in hosting["headers"]
+        for h in block["headers"]
+        if h["key"] == "Content-Security-Policy"
+    ]
+    external = {
+        name: {s for s in sources if "." in s}
+        for name, *sources in (d.split() for d in csp.split(";") if d.strip())
+    }
+    assert external.pop("img-src") == {"https://img-product.sephora.me"}
+    assert external.pop("connect-src") == {
+        "https://identitytoolkit.googleapis.com",
+        "https://securetoken.googleapis.com",
+        "https://firebasestorage.googleapis.com",
+    }
+    assert all(not hosts for hosts in external.values()), external

@@ -405,7 +405,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.2.2
+             * @default 1.3.0
              */
             apiVersion: string;
             /** Currency */
@@ -936,6 +936,10 @@ export interface components {
         };
         /** Facets */
         Facets: {
+            /** Attributes */
+            attributes: {
+                [key: string]: components["schemas"]["FacetCount"][];
+            };
             /** Brand */
             brand: components["schemas"]["FacetCount"][];
             /** Category */
@@ -1243,7 +1247,7 @@ export interface components {
             /** Id */
             id: string;
             /** Image */
-            image?: null;
+            image?: string | null;
             /** Matches */
             matches: components["schemas"]["CardMatch"][];
             /** Name */
