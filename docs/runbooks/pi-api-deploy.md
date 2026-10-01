@@ -116,6 +116,10 @@ gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
   (for example domain-restricted sharing) refuses the binding, stop (stop rule).
 - The startup probe is the default TCP probe. There are no health routes, by design.
+- **Memory at 512Mi.** Peak per export, measured locally for 50 k product cards (the row cap):
+  ~164 MiB of rows plus ~58 MiB while encoding CSV (JSONL ~0), so ~220 MiB. The app allows two
+  exports at a time per instance and answers a third with `429 rate_limited` (`Retry-After: 5`).
+  If Cloud Run logs a memory-limit restart, report it; do not raise the memory without a decision.
 
 ## 7. Hosting rewrite
 
@@ -143,7 +147,8 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
 - With a signed-in user's ID token, `GET /api/v1/meta` → 200, `private, no-store`.
 - `GET /api/v1/export/coverage` (signed in) downloads a CSV whose line 1 is `# {"schemaId":
   "pi-api.export/v1", ...}`. Logs Explorer shows one entry with
-  `jsonPayload.event="pi_api.export"` (uid, view, filters, row count; no row content).
+  `jsonPayload.event="pi_api.export"` and `outcome="ok"` (uid, view, filters, row count; no row
+  content).
 - Check the describe output: `autoscaling.knative.dev/maxScale: '3'`, no `minScale` (or 0), no
   Cloud SQL or VPC annotations, the `pi-api@` account, memory 512Mi.
 

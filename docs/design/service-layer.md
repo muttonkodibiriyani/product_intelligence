@@ -375,23 +375,29 @@ maps to one endpoint** (blueprint §11); the dashboard uses the same ones.
   - The rows are exactly the ones the view's endpoint returns, from the same call: products are the
     cards in `/products` order, unpaged; compare `data.rows`; index `data.points`; promotions and
     assortment-gaps `data.items`; coverage `data.retailers`.
-  - **Row cap 50 000.** Over it the export is refused with `422 export_too_large`, never cut short,
-    and nothing is audited. 50 k product cards encode in ~4 s (CSV) on a dev machine, well inside
-    the 30 s timeout.
+  - **Row cap 50 000.** Over it the export is refused with `422 export_too_large`, never cut
+    short. 50 k product cards encode in ~4 s (CSV) on a dev machine, well inside the 30 s timeout.
+  - **Two exports at a time per instance.** Measured for 50 k product cards: ~164 MiB of row
+    models plus ~58 MiB peak while encoding CSV (JSONL adds ~0), so ~220 MiB per export. Two fit
+    in 512Mi beside the loaded dataset; a third concurrent export on the same instance gets
+    `429 rate_limited` with `Retry-After: 5` instead of risking an out-of-memory restart.
   - **Line 1 is the manifest** (`schemaId: pi-api.export/v1`): view, format, row count, and the
     envelope minus `data` (status, reason, detail, cohort, caveats, and `meta` with cutoff,
     generation, filters, apiVersion, metricVersion). JSONL: `{"manifest": {...}}`, then one row
     object per line, serialised as the endpoint does. CSV: a UTF-8 BOM (so spreadsheets read
-    Arabic), `# <manifest JSON>`, a header row, then the rows. Readers skip line 1 (pandas:
-    `skiprows=1`; not `comment="#"`, which would also cut cells containing `#`).
+    Arabic), the manifest as **one quoted cell** `"# <manifest JSON>"`, a header row, then the
+    rows. Quoting keeps every filter value inside that one cell, so a crafted filter such as
+    `q=x,=HYPERLINK(...)` never becomes a cell of its own. Readers skip line 1 (pandas:
+    `skiprows=1`; not `comment="#"`, which would also cut cells containing `#`), or read it with
+    a CSV reader and parse `row[0][2:]` as JSON.
   - **CSV cells.** Objects flatten to dotted columns (`gap.amount.amount`, `prices.shop_a.minor`);
-    lists of scalars join with `|`; lists of objects stay compact JSON. Columns appear in
+    every list stays one cell of compact JSON (unambiguous, unlike a `|` join). Columns appear in
     first-seen order; a null object leaves its nested cells empty. A cell starting with `= + - @`,
     tab or CR is prefixed with `'` unless it is a plain signed number (CSV injection).
   - Responses are `attachment; filename="pi-<view>-<cutoff>.<csv|jsonl>"`, Bearer-only and
     `private, no-store` like every route.
-  - Each export is audited: one structured entry (`pi_api.export`, severity NOTICE) as a bare JSON
-    line on stdout, which Cloud Run logs as a `jsonPayload`: uid, role, view, format, filters, row
+  - Each export, refused ones included, is audited: one structured entry (`pi_api.export`, severity NOTICE) as a bare JSON
+    line on stdout, which Cloud Run logs as a `jsonPayload`: outcome (`ok`, `too_large`, `busy`), uid, role, view, format, filters, row
     count, generation and apiVersion, and never row content. It goes to the project's default
     `_Default` bucket (30-day retention, within the free allotment). A longer retention sink needs
     the owner's approval and is not proposed.

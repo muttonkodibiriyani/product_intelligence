@@ -348,6 +348,13 @@ def _install_handlers(api: FastAPI) -> None:
     handle(AmbiguousDatasetError, 422, "ambiguous_dataset")
     handle(InvalidQueryError, 422, "invalid_query")
     handle(export.ExportTooLargeError, 422, "export_too_large")
+    handle(
+        export.ExportBusyError,
+        429,
+        "rate_limited",
+        "too many exports running; retry later",
+        retry_after=str(export.BUSY_RETRY),
+    )
     handle(UnknownInput, 422, "invalid_query")
     handle(StaleCursorError, 409, "stale_cursor", "the data changed; restart from the first page")
     handle(ForbiddenError, 403, "forbidden", "admins only")
@@ -578,19 +585,30 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
     metric: Metric[Any],
     rows: tuple[ContractModel, ...],
     who: Principal,
+    slots: export.ExportSlots,
 ) -> StreamingResponse:
-    """Checks the cap, audits, then streams; the manifest comes from the same envelope."""
-    export.check_size(rows)
+    """Refuses over the cap or with no free slot, audits either way, then streams."""
     fmt = export.ExportFormat(query.model_dump()["format"])
     endpoint = f"export_{view}".replace("-", "_")
     head = export.manifest(view, fmt, len(rows), respond(loaded, endpoint, query, metric))
-    export.audit(who, head)
-    name = export.filename(view, fmt, loaded.dataset.meta.cutoff)
-    return StreamingResponse(
-        export.encode(head, rows),
-        media_type=export.MEDIA_TYPES[fmt],
-        headers={"content-disposition": f'attachment; filename="{name}"'},
-    )
+    refused = export.too_large(len(rows))
+    if refused is not None:
+        export.audit(who, head, export.Outcome.TOO_LARGE)
+        raise refused
+    if not slots.acquire():
+        export.audit(who, head, export.Outcome.BUSY)
+        raise export.ExportBusyError
+    try:
+        export.audit(who, head)
+        name = export.filename(view, fmt, loaded.dataset.meta.cutoff)
+        return StreamingResponse(
+            slots.stream(export.encode(head, rows)),
+            media_type=export.MEDIA_TYPES[fmt],
+            headers={"content-disposition": f'attachment; filename="{name}"'},
+        )
+    except BaseException:  # pragma: no cover - the stream never started, so free the slot here
+        slots.release()
+        raise
 
 
 def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
@@ -600,6 +618,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
         "responses": EXPORT_RESPONSES,
     }
     view = export.ExportView
+    slots = export.ExportSlots(export.MAX_CONCURRENT_EXPORTS)
 
     @api.get(f"{PREFIX}/export/products", **route)  # type: ignore[arg-type]
     def export_products(
@@ -608,7 +627,13 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
         loaded = source.select(query.market, query.scope)
         metric = product_cards(loaded.dataset, query)
         return _download(
-            loaded, view=view.PRODUCTS, query=query, metric=metric, rows=metric.data, who=who
+            loaded,
+            view=view.PRODUCTS,
+            query=query,
+            metric=metric,
+            rows=metric.data,
+            who=who,
+            slots=slots,
         )
 
     @api.get(f"{PREFIX}/export/compare", **route)  # type: ignore[arg-type]
@@ -619,7 +644,13 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
             loaded.dataset, base, other, query.where(), on=query.on, group_by=query.group_by
         )
         return _download(
-            loaded, view=view.COMPARE, query=query, metric=metric, rows=metric.data.rows, who=who
+            loaded,
+            view=view.COMPARE,
+            query=query,
+            metric=metric,
+            rows=metric.data.rows,
+            who=who,
+            slots=slots,
         )
 
     @api.get(f"{PREFIX}/export/index", **route)  # type: ignore[arg-type]
@@ -630,7 +661,13 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
             loaded.dataset, base, other, query.where(), start=query.start, end=query.end
         )
         return _download(
-            loaded, view=view.INDEX, query=query, metric=metric, rows=metric.data.points, who=who
+            loaded,
+            view=view.INDEX,
+            query=query,
+            metric=metric,
+            rows=metric.data.points,
+            who=who,
+            slots=slots,
         )
 
     @api.get(f"{PREFIX}/export/promotions", **route)  # type: ignore[arg-type]
@@ -648,6 +685,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
             metric=metric,
             rows=metric.data.items,
             who=who,
+            slots=slots,
         )
 
     @api.get(f"{PREFIX}/export/assortment-gaps", **route)  # type: ignore[arg-type]
@@ -665,6 +703,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
             metric=metric,
             rows=metric.data.items,
             who=who,
+            slots=slots,
         )
 
     @api.get(f"{PREFIX}/export/coverage", **route)  # type: ignore[arg-type]
@@ -680,6 +719,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource) -> None:
             metric=metric,
             rows=metric.data.retailers,
             who=who,
+            slots=slots,
         )
 
 

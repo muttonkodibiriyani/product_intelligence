@@ -1,9 +1,11 @@
 """``/v1/export/{view}`` (design §6, S4): one view's rows as CSV or JSONL, plus a manifest.
 
 The rows are exactly the ones the view's endpoint returns, from the same call: this module only
-encodes them. Line 1 is the manifest (a ``#`` comment for CSV, a ``{"manifest": ...}`` object
-for JSONL). An export over ``MAX_EXPORT_ROWS`` is refused (422 ``export_too_large``), never cut
-short. Every export writes one ``pi_api.export`` audit entry, which never carries row content.
+encodes them. Line 1 is the manifest (one quoted ``"# <JSON>"`` cell for CSV, a
+``{"manifest": ...}`` object for JSONL). An export over ``MAX_EXPORT_ROWS`` is refused (422
+``export_too_large``), never cut short; beyond ``MAX_CONCURRENT_EXPORTS`` running on an instance
+it is refused with 429. Every export, refused or not, writes one ``pi_api.export`` audit entry,
+which never carries row content.
 """
 
 from __future__ import annotations
@@ -14,7 +16,8 @@ import json
 import logging
 import re
 import sys
-from collections.abc import Iterator, Mapping, Sequence
+import threading
+from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, TextIO
@@ -25,6 +28,10 @@ from pi_dataset import ContractModel
 from pi_metrics import Cohort, Reason, Status
 
 MAX_EXPORT_ROWS = 50_000
+#: Per instance. A 50 k-row export holds ~165 MiB of rows (measured), so two fit in 512 MiB.
+MAX_CONCURRENT_EXPORTS = 2
+#: Seconds a client should wait when every export slot is busy.
+BUSY_RETRY = 5
 MANIFEST_SCHEMA = "pi-api.export/v1"
 AUDIT_EVENT = "pi_api.export"
 audit_log = logging.getLogger("pi_api.audit")
@@ -54,6 +61,37 @@ class FormatQuery(ContractModel):
 
 class ExportTooLargeError(Exception):
     """More rows than ``MAX_EXPORT_ROWS`` (422); the caller narrows the filters."""
+
+
+class ExportBusyError(Exception):
+    """Every export slot on this instance is in use (429 with Retry-After)."""
+
+
+class Outcome(StrEnum):
+    OK = "ok"
+    TOO_LARGE = "too_large"
+    BUSY = "busy"
+
+
+class ExportSlots:
+    """A non-blocking counter of running exports; a slot is held until the stream ends."""
+
+    def __init__(self, size: int) -> None:
+        self._slots = threading.BoundedSemaphore(size) if size > 0 else None
+
+    def acquire(self) -> bool:
+        return self._slots is not None and self._slots.acquire(blocking=False)
+
+    def release(self) -> None:
+        if self._slots is not None:
+            self._slots.release()
+
+    def stream(self, chunks: Iterator[bytes]) -> Generator[bytes]:
+        """Yields ``chunks`` and frees the slot when they end, fail or the client goes away."""
+        try:
+            yield from chunks
+        finally:
+            self.release()
 
 
 class ExportManifest(ContractModel):
@@ -87,10 +125,12 @@ def manifest(
     )
 
 
-def check_size(rows: Sequence[ContractModel]) -> None:
-    if len(rows) > MAX_EXPORT_ROWS:
-        msg = f"{len(rows)} rows is over the export cap of {MAX_EXPORT_ROWS}; narrow the filters"
-        raise ExportTooLargeError(msg)
+def too_large(rows: int) -> ExportTooLargeError | None:
+    if rows <= MAX_EXPORT_ROWS:
+        return None
+    return ExportTooLargeError(
+        f"{rows} rows is over the export cap of {MAX_EXPORT_ROWS}; narrow the filters"
+    )
 
 
 # ---------------------------------------------------------------- encoding
@@ -105,7 +145,7 @@ def _scalar(value: Any) -> str:
 
 
 def flatten(value: Any, prefix: str = "") -> dict[str, str]:
-    """A JSON value as dotted columns. Lists of scalars join with ``|``; other lists stay JSON."""
+    """A JSON value as dotted columns; a list stays one cell of compact JSON (unambiguous)."""
     if isinstance(value, Mapping):
         if not value and prefix:
             return {prefix: ""}
@@ -114,8 +154,6 @@ def flatten(value: Any, prefix: str = "") -> dict[str, str]:
             out.update(flatten(item, f"{prefix}.{key}" if prefix else str(key)))
         return out
     if isinstance(value, list | tuple):
-        if all(not isinstance(v, Mapping | list | tuple) for v in value):
-            return {prefix: "|".join(_scalar(v) for v in value)}
         return {prefix: json.dumps(value, ensure_ascii=False, separators=(",", ":"))}
     return {prefix: _scalar(value)}
 
@@ -127,7 +165,7 @@ def safe_cell(text: str) -> str:
     return text
 
 
-def columns(flat: Sequence[Mapping[str, str]]) -> list[str]:
+def columns_of(flat: Iterable[Mapping[str, str]]) -> list[str]:
     """Every key in first-seen order, minus a key that another key nests under.
 
     A null object (say an uncounted row's ``gap``) flattens to one empty ``gap`` cell, while a
@@ -151,16 +189,30 @@ def _line(writer_buffer: io.StringIO, writer: Any, cells: Sequence[str]) -> byte
     return text.encode()
 
 
+def _flat(row: ContractModel) -> dict[str, str]:
+    return flatten(row.model_dump(mode="json", by_alias=True))
+
+
 def encode_csv(head: ExportManifest, rows: Sequence[ContractModel]) -> Iterator[bytes]:
-    """UTF-8 with a BOM (so spreadsheets read Arabic), ``# <manifest JSON>``, header, rows."""
-    flat = [flatten(row.model_dump(mode="json", by_alias=True)) for row in rows]
-    names = columns(flat)
-    yield "\ufeff# ".encode() + _json(head.model_dump(mode="json", by_alias=True)) + b"\r\n"
+    """UTF-8 with a BOM (so spreadsheets read Arabic), the manifest, header, rows.
+
+    The manifest is **one quoted cell**, ``"# <manifest JSON>"``. A spreadsheet shows it as a
+    single cell starting with ``#``, so no filter value inside it (``=HYPERLINK(...)``, say) is
+    ever a cell of its own that could run as a formula. Rows are flattened twice (once for the
+    columns, once to write) so the flattened copy of every row is never held at once.
+    """
+    names = columns_of(_flat(row) for row in rows)
     buffer = io.StringIO()
+    cell = "# " + _json(head.model_dump(mode="json", by_alias=True)).decode()
+    csv.writer(buffer, lineterminator="\r\n", quoting=csv.QUOTE_ALL).writerow([cell])
+    yield ("\ufeff" + buffer.getvalue()).encode()
+    buffer.seek(0)
+    buffer.truncate()
     writer = csv.writer(buffer, lineterminator="\r\n")
     yield _line(buffer, writer, [safe_cell(n) for n in names])
-    for row in flat:
-        yield _line(buffer, writer, [safe_cell(row.get(n, "")) for n in names])
+    for row in rows:
+        flat = _flat(row)
+        yield _line(buffer, writer, [safe_cell(flat.get(n, "")) for n in names])
 
 
 def encode_jsonl(head: ExportManifest, rows: Sequence[ContractModel]) -> Iterator[bytes]:
@@ -191,9 +243,10 @@ def filename(view: ExportView, fmt: ExportFormat, cutoff: datetime) -> str:
 # ---------------------------------------------------------------- audit
 
 
-def audit(who: Principal, head: ExportManifest) -> None:
-    """One structured entry per export: who, what and how many, never a row."""
+def audit(who: Principal, head: ExportManifest, outcome: Outcome = Outcome.OK) -> None:
+    """One structured entry per export, refused ones included: who, what, how many, never a row."""
     entry = {
+        "outcome": str(outcome),
         "severity": "NOTICE",
         "message": AUDIT_EVENT,
         "event": AUDIT_EVENT,

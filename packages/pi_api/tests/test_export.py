@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from pi_api import export
 API = "/api/v1"
 NO_STORE = "private, no-store"
 PAIR = f"retailers={A},{B}"
+NUMBER = re.compile(r"^[+-]?\d+(\.\d+)?$")  # a signed number is data, not a formula
 
 #: Export path -> (the view's own endpoint, where its rows sit in ``data``).
 VIEWS: dict[str, tuple[str, str | None]] = {
@@ -39,8 +41,14 @@ def client(tmp_path: Path) -> Client:
     return make_client(tmp_path)[0]
 
 
-def get(client: Client, path: str, status: int = 200, **overrides: Any) -> Any:
-    response = client.get(f"{API}/{path}", headers=bearer(**overrides))
+def get(
+    client: Client,
+    path: str,
+    status: int = 200,
+    params: dict[str, Any] | None = None,
+    **overrides: Any,
+) -> Any:
+    response = client.get(f"{API}/{path}", params=params, headers=bearer(**overrides))
     assert response.status_code == status, response.text
     assert response.headers["cache-control"] == NO_STORE
     return response
@@ -56,9 +64,10 @@ def jsonl(text: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 
 
 def read_csv(text: str) -> tuple[dict[str, Any], list[dict[str, str]]]:
-    assert text.startswith("﻿# ")
-    head, _, table = text[1:].partition("\r\n")
-    return json.loads(head[2:]), list(csv.DictReader(io.StringIO(table)))
+    assert text.startswith('\ufeff"# ')
+    first, header, *table = csv.reader(io.StringIO(text[1:]))
+    assert len(first) == 1, "the manifest must be a single cell"
+    return json.loads(first[0][2:]), [dict(zip(header, row, strict=True)) for row in table]
 
 
 @pytest.mark.parametrize("path", list(VIEWS))
@@ -109,6 +118,28 @@ def test_manifest_filters_exclude_the_format_and_record_the_query(client: Client
     head, _ = jsonl(get(client, f"export/compare?{PAIR}&brand=Fixture+Beauty&format=jsonl").text)
     assert head["meta"]["endpoint"] == "export_compare"
     assert head["meta"]["filters"] == {"retailers": f"{A},{B}", "brand": ["Fixture Beauty"]}
+
+
+#: The Reviewer's crafted query on #64: the old unquoted manifest line split it into cells.
+CRAFTED = 'x,=HYPERLINK("https://example.invalid","x"),-2+3'
+
+
+@pytest.mark.parametrize("params", [{"q": CRAFTED}, {"q": CRAFTED, "brand": ["=1+1", "@x"]}])
+def test_a_formula_in_a_filter_never_becomes_a_csv_cell(
+    client: Client, params: dict[str, Any]
+) -> None:
+    """Reviewer MUST on #64: filter values stay inside the one manifest cell."""
+    text = get(client, "export/products", params=params).text
+    head, _ = read_csv(text)  # asserts line 1 is exactly one cell
+    assert head["meta"]["filters"]["q"] == CRAFTED
+    lines = list(csv.reader(io.StringIO(text[1:])))
+    assert lines[0][0].startswith("# ")
+    for line in lines:
+        assert not [
+            cell
+            for cell in line
+            if cell.startswith(("=", "+", "-", "@", "\t", "\r")) and not NUMBER.match(cell)
+        ]
 
 
 def test_csv_compare_flattens_money_and_keeps_signed_numbers(client: Client) -> None:
@@ -164,7 +195,8 @@ def test_over_the_cap_is_refused_and_not_cut_short(
     error = get(client, "export/products", 422).json()["error"]
     assert error["code"] == "export_too_large"
     assert "16 rows is over the export cap of 4" in error["message"]
-    assert not [r for r in caplog.records if r.name == "pi_api.audit"]
+    (entry,) = audits(caplog)
+    assert (entry["outcome"], entry["rows"], entry["view"]) == ("too_large", 16, "products")
     assert jsonl(get(client, "export/coverage?format=jsonl").text)[0]["rows"] == 4  # at the cap
 
 
@@ -173,11 +205,10 @@ def test_each_export_writes_one_audit_entry_without_row_content(
 ) -> None:
     caplog.set_level(logging.INFO, logger="pi_api.audit")
     get(client, f"export/compare?{PAIR}&format=jsonl", sub="analyst-7", role="viewer")
-    entries = [json.loads(r.getMessage()) for r in caplog.records if r.name == "pi_api.audit"]
-    assert len(entries) == 1
-    entry = entries[0]
+    (entry,) = audits(caplog)
     assert entry.pop("generation")
     assert entry == {
+        "outcome": "ok",
         "severity": "NOTICE",
         "message": "pi_api.export",
         "event": "pi_api.export",
@@ -192,6 +223,43 @@ def test_each_export_writes_one_audit_entry_without_row_content(
     text = caplog.text
     assert "Product p01" not in text
     assert "90.00" not in text
+
+
+def audits(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
+    return [json.loads(r.getMessage()) for r in caplog.records if r.name == "pi_api.audit"]
+
+
+def test_exports_beyond_the_free_slots_get_429_and_are_audited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(export, "MAX_CONCURRENT_EXPORTS", 0)
+    write(tmp_path, served_dataset())
+    busy = make_client(tmp_path)[0]
+    caplog.set_level(logging.INFO, logger="pi_api.audit")
+    response = get(busy, "export/coverage", 429)
+    assert response.json()["error"]["code"] == "rate_limited"
+    assert response.headers["retry-after"] == str(export.BUSY_RETRY)
+    assert [e["outcome"] for e in audits(caplog)] == ["busy"]
+
+
+def test_a_finished_export_frees_its_slot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(export, "MAX_CONCURRENT_EXPORTS", 1)
+    write(tmp_path, served_dataset())
+    one = make_client(tmp_path)[0]
+    for _ in range(3):
+        get(one, "export/coverage")
+
+
+def test_slots_are_non_blocking_and_freed_when_a_stream_stops() -> None:
+    slots = export.ExportSlots(1)
+    assert slots.acquire()
+    assert not slots.acquire()
+    stream = slots.stream(iter([b"a", b"b"]))
+    assert next(stream) == b"a"
+    stream.close()  # the client went away mid-download
+    assert slots.acquire()
+    slots.release()
+    assert not export.ExportSlots(0).acquire()
 
 
 def test_configure_audit_writes_bare_json_lines() -> None:
@@ -209,7 +277,7 @@ def test_configure_audit_writes_bare_json_lines() -> None:
 # ---------------------------------------------------------------- encoding units
 
 
-def test_flatten_dots_objects_and_joins_scalar_lists() -> None:
+def test_flatten_dots_objects_and_keeps_lists_as_json() -> None:
     value = {
         "id": "p1",
         "ok": True,
@@ -224,7 +292,7 @@ def test_flatten_dots_objects_and_joins_scalar_lists() -> None:
         "ok": "true",
         "none": "",
         "empty": "",
-        "tags": "a|b",
+        "tags": '["a","b"]',
         "nested.x.y": "1",
         "objs": '[{"a":1}]',
     }
@@ -232,8 +300,8 @@ def test_flatten_dots_objects_and_joins_scalar_lists() -> None:
 
 def test_columns_drop_a_null_object_column_when_its_fields_exist() -> None:
     rows = [{"id": "1", "gap": ""}, {"id": "2", "gap.amount.minor": "5", "gap.pct": "1"}]
-    assert export.columns(rows) == ["id", "gap.amount.minor", "gap.pct"]
-    assert export.columns([{"id": "1", "gap": ""}]) == ["id", "gap"]
+    assert export.columns_of(rows) == ["id", "gap.amount.minor", "gap.pct"]
+    assert export.columns_of([{"id": "1", "gap": ""}]) == ["id", "gap"]
 
 
 @pytest.mark.parametrize(
