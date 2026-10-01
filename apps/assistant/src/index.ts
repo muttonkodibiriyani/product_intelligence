@@ -12,7 +12,7 @@ import { CallableRefusal, handleChat } from "./functions/callable.js";
 import { ENV } from "./functions/env.js";
 import { checkStartupEnv, createChatFlow, killSwitchDeps } from "./functions/runtime.js";
 import type { ChatFlow } from "./flows/chat.js";
-import { handleBudgetMessage } from "./killswitch/handler.js";
+import { type KillSwitchDeps, handleBudgetMessage } from "./killswitch/handler.js";
 
 const REGION = "me-central1";
 
@@ -24,6 +24,9 @@ checkStartupEnv(process.env);
 const log = (entry: Readonly<Record<string, unknown>>): void => {
   logger.write({ ...entry, message: String(entry.event) } as Parameters<typeof logger.write>[0]);
 };
+
+/** Built once per instance, on the first alert (the startup check has already passed). */
+let killSwitch: KillSwitchDeps | undefined;
 
 /** Budget alert → switch the assistant off (§9.4). A throw means "retry"; age bounds retries. */
 export const budgetKillSwitch = onMessagePublished(
@@ -39,7 +42,10 @@ export const budgetKillSwitch = onMessagePublished(
     timeoutSeconds: 60,
   },
   async (event) => {
-    await handleBudgetMessage(event.data.message, killSwitchDeps(process.env, log));
+    await handleBudgetMessage(
+      event.data.message,
+      (killSwitch ??= killSwitchDeps(process.env, log)),
+    );
   },
 );
 
