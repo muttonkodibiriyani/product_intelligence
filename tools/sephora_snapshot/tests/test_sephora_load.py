@@ -218,3 +218,19 @@ def test_variant_without_a_stock_state_is_counted_not_observed(db: str, tmp_path
     write_part(root, "trpc", [trpc_rec("P700", in_stock=None)])
     with psycopg.connect(db) as conn:
         assert _load(conn, root) == {"pdp_en": 1, "trpc": 0, "trpc_instock_unknown": 1}
+
+
+def test_stock_read_with_null_data_records_nothing_and_blocks_succeeded(
+    db: str, tmp_path: Path
+) -> None:
+    name = f"null-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name)
+    null = trpc_rec("P101")
+    null["json"][0]["result"]["data"]["json"] = None  # what sephora.me sends for some products
+    write_part(root, "trpc", [trpc_rec("P100"), null])
+    with psycopg.connect(db) as conn:
+        stats = _load(conn, root)
+        assert (stats["trpc"], stats["trpc_no_data"]) == (1, 1)
+        assert _runs(conn, name) == {"en": "partial"}
+        ledger = root.parent / f".loaded-{name}.json"
+        assert "trpc/part-0000.jsonl.gz" not in ledger.read_text()
