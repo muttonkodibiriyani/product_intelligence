@@ -28,12 +28,12 @@ the original cutoff copy is never replaced.
   live source is missing from the new file or has fewer offers, or if any source other than the
   one being published has different products. The only override is ``--drop-source <id>``, which
   needs the owner's explicit approval for that publish.
-- v1 (datasets/uae, the legacy dashboard's input) is validated but no longer published: it is a
-  write outside the per-source prefixes.
-  A v2 file must also load through pi-api's own serving parse (``pi_api.source.parse``, which
+- A v2 file must also load through pi-api's own serving parse (``pi_api.source.parse``, which
   upgrades it to v3). pi-api skips a dataset it can't load, so uploading one would leave the API
   with no data: such a file is held, never uploaded (decision 2026-10-01, after the v3 upgrade
   refused shared-url size variants).
+- v1 (datasets/uae, the legacy dashboard's input) is validated but no longer published: it is a
+  write outside the per-source prefixes.
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
         --project productintelligence-beeb3 dataset.json [--dry-run] [--allow-test]
