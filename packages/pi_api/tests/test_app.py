@@ -418,6 +418,7 @@ HOSTS = {A: frozenset({"shop-a.example", "www.shop-a.example"})}
         ("https://user:pw@shop-a.example/p", A, False),
         ("https://shop-a.example:8443/p", A, False),
         ("https://shop-a.example:99999/p", A, False),
+        ("https://shop-a.example:0/p", A, False),  # port 0 is not "no port" (#72 nit)
         ("https://shop-a.example\\@evil.example/", A, False),
         ("https://shop-a.example/p\nx", A, False),
         ("https://shop-a.example/p 1", A, False),
