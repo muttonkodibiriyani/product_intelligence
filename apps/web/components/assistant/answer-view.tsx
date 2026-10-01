@@ -9,7 +9,7 @@ import type { ChatAnswer, Citation, UntrustedBilingual } from '@/lib/assistant/t
 import { plain } from '@/lib/assistant/types';
 import { ProductRef } from './product-ref';
 
-const TH = 'px-2 py-1 text-start font-medium text-ink-2 whitespace-nowrap';
+const TH = 'th text-start whitespace-nowrap';
 const TD = 'px-2 py-1 align-top';
 
 function Inlines({ c }: { c: readonly Inline[] }) {
@@ -102,7 +102,7 @@ function CitationChip({ c, n }: { c: Citation; n: number }) {
     <li>
       <details className="rounded-ctl border border-line-2 bg-surface px-2 py-1 text-xs">
         <summary className="cursor-pointer list-none">
-          <span className="me-1 rounded bg-surface-2 px-1 font-medium tabular-nums">{n}</span>
+          <span className="me-1 rounded-ctl bg-surface-2 px-1 font-medium tabular-nums">{n}</span>
           {tool(toolKey(c.tool))} · {t('cutoff')} <bdi className="tabular-nums">{c.cutoff}</bdi>
           {c.cohort && (
             <>
@@ -152,7 +152,7 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
 
   if (answer.status === 'unavailable') {
     return (
-      <p role="alert" className="text-sm">
+      <p role="alert" className="rounded-ctl bg-rose px-4 py-3 text-sm">
         {un(unavailableNote(answer.code))}
       </p>
     );
@@ -170,7 +170,7 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
         <button
           type="button"
           onClick={skip}
-          className="text-xs text-accent underline-offset-2 hover:underline focus-visible:outline-2"
+          className="text-xs text-sky-ink underline-offset-2 hover:underline focus-visible:outline-2"
         >
           {t('skip')}
         </button>
@@ -220,7 +220,7 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
           {answer.notEnoughData.length > 0 && (
             <ul className="space-y-1">
               {answer.notEnoughData.map((n, i) => (
-                <li key={i} className="rounded-ctl bg-sky px-2 py-1 text-xs text-sky-ink">
+                <li key={i} className="rounded-ctl bg-surface-2 px-2 py-1 text-xs">
                   <span className="font-medium">{t('notEnough')}</span> · <bdi>{bilingual(n.detail)}</bdi>
                 </li>
               ))}

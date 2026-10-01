@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { type KeyboardEvent, useId, useState } from 'react';
+import { PageHeader } from '@/components/ui/page-header';
 import { ASSISTANT_CONNECTED, SUGGESTED } from '@/lib/assistant';
 import { type Ask, assistantClient } from '@/lib/assistant/client';
 import { isPending, MAX_QUESTION_CHARS, type Turn, useAssistantChat } from '@/lib/assistant/use-chat';
@@ -24,7 +25,7 @@ function TurnView({ turn }: { turn: Turn }) {
         )}
         {turn.answer && <AnswerView answer={turn.answer} id={turn.id} />}
         {turn.error && (
-          <p role="alert" className="text-sm">
+          <p role="alert" className="rounded-ctl bg-rose px-4 py-3 text-sm">
             {t(`error.${turn.error}`)}
           </p>
         )}
@@ -64,12 +65,7 @@ export function AssistantView({
 
   return (
     <section aria-labelledby="assistant-title" className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 id="assistant-title" className="text-xl font-semibold">
-          {t('title')}
-        </h1>
-        <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>
-      </div>
+      <PageHeader id="assistant-title" title={t('title')} intro={t('intro')} />
 
       {!connected && (
         <div role="status" className="panel p-4">
@@ -105,7 +101,7 @@ export function AssistantView({
                 <button
                   type="button"
                   onClick={() => setQuestion(t(`q.${key}`))}
-                  className="btn rounded-full focus-visible:outline-2"
+                  className="btn focus-visible:outline-2"
                 >
                   {t(`q.${key}`)}
                 </button>

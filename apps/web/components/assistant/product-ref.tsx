@@ -22,7 +22,7 @@ export function ProductRef({ id }: { id: string }) {
   return (
     <Link
       href={productHref(locale, id)}
-      className="text-accent underline-offset-2 hover:underline focus-visible:outline-2"
+      className="text-sky-ink underline-offset-2 hover:underline focus-visible:outline-2"
     >
       {card ? (
         <bdi>
