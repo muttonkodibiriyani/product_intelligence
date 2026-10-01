@@ -74,6 +74,11 @@ describe("sanitiseData", () => {
     });
   });
 
+  it("drops card thumbnails, even on an allowed host", () => {
+    const card = { id: "p1", image: "https://shop.example/p1.jpg" };
+    expect(sanitiseData({ items: [card] }, hosts)).toEqual({ items: [{ id: "p1" }] });
+  });
+
   it("bounds depth and drops non-JSON values", () => {
     let deep: unknown = "leaf";
     for (let i = 0; i < 12; i += 1) deep = { d: deep };
