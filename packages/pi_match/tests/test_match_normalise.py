@@ -15,6 +15,7 @@ from pi_match.normalise import (
     concentration,
     fold,
     item_kind,
+    listed_items,
     name_tokens,
     normalise_brand,
     parse_brand_aliases,
@@ -127,6 +128,49 @@ def test_parse_size_absent(text: str | None) -> None:
     assert parse_size(text) is None
 
 
+@pytest.mark.parametrize(
+    ("text", "size"),
+    [
+        ("['100'] ['ML']", Size(Decimal(100), "ml")),
+        ("['3.4'] ['oz']", Size(Decimal("96.3883"), "g")),
+        ('["50 ml"]', Size(Decimal(50), "ml")),
+        ("['1.7 fl oz / 50 ml']", Size(Decimal("50.27495"), "ml")),  # one size in two units
+    ],
+)
+def test_parse_size_from_list_text(text: str, size: Size) -> None:
+    assert parse_size(text) == size
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "['50', '90'] ['ML']",  # several sizes: ambiguous, never the first
+        "['30 ml', '50 ml']",
+        "['NOSIZE']",
+        "['one size']",
+        "['100']",  # a number without a unit
+        "[]",
+    ],
+)
+def test_parse_size_from_list_text_absent(text: str) -> None:
+    assert parse_size(text) is None
+
+
+@given(
+    st.decimals(min_value=1, max_value=999, places=1),
+    st.sampled_from(["ml", "ML", "g", "fl oz", "oz", "l", "mg"]),
+)
+def test_single_item_list_parses_like_plain_text(amount: Decimal, unit: str) -> None:
+    assert parse_size(f"['{amount}'] ['{unit}']") == parse_size(f"{amount} {unit}")
+    assert parse_size(f'["{amount} {unit}"]') == parse_size(f"{amount} {unit}")
+
+
+def test_listed_items() -> None:
+    assert listed_items("50 ml") is None
+    assert listed_items("['50', '90'] ['ML']") == ("50", "90", "ML")
+    assert listed_items('["a", " ", ""]') == ("a",)
+
+
 def test_size_same_as_tolerance() -> None:
     fl_oz = parse_size("1 fl oz")
     assert fl_oz is not None
@@ -148,6 +192,12 @@ def test_size_same_as_tolerance() -> None:
 )
 def test_parse_shade(text: str, shade: Shade) -> None:
     assert parse_shade(text) == shade
+
+
+def test_parse_shade_from_list_text() -> None:
+    assert parse_shade("['220 Natural Beige']") == Shade("220", "natural beige")
+    assert parse_shade("['Rose', 'Nude']") is None  # several shades: a parent row
+    assert parse_shade("[]") is None
 
 
 @pytest.mark.parametrize("text", [None, "", "!!"])

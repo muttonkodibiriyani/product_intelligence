@@ -9,6 +9,7 @@ from hypothesis import strategies as st
 
 from pi_match import Bucket, ProductRecord, brand_overlap, match, name_score, prepare, score_pair
 from pi_match.cli import load_jsonl, main
+from pi_match.normalise import Shade, Size
 from pi_match.report import precision_sample
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -256,3 +257,52 @@ def test_brands_in_different_case_still_pair() -> None:
     (pair,) = match(left, right)
     assert (pair.brand_key, pair.bucket) == ("kylie", Bucket.EXACT)
     assert brand_overlap(left, right).both == ("kylie",)
+
+
+def test_aggregate_rows_are_never_matched() -> None:
+    parent = rec("P", "Glow Serum", size="['30', '50'] ['ml']", aggregate=True)
+    child = rec("C", "Glow Serum", size="['30'] ['ml']")
+    other = rec("R", "Glow Serum", size="30 ml")
+    assert [(p.left_key, p.right_key) for p in match([parent, child], [other])] == [("C", "R")]
+    assert match([parent], [other]) == ()
+    assert match([other], [parent]) == ()
+    assert brand_overlap([parent], [other]).both == ()
+
+
+def test_list_size_never_falls_back_to_the_name() -> None:
+    assert prepare(rec("A", "Serum 30 ml", size="['30', '50'] ['ml']")).size is None
+    assert prepare(rec("B", "Serum 30 ml")).size is not None
+
+
+def test_json_list_fields_are_read_as_list_text() -> None:
+    record = rec("A", "Lip Tint", size=["15", "ml"], shade=["Rose"])
+    assert record.size == '["15", "ml"]'
+    item = prepare(record)
+    assert item.size == Size(Decimal(15), "ml")
+    assert item.shade == Shade(None, "rose")
+    assert prepare(rec("B", "Lip Tint", shade=["Rose", "Nude"])).shade is None
+
+
+def test_cli_counts_skipped_aggregates(tmp_path: Path) -> None:
+    left = tmp_path / "left.jsonl"
+    rows = [*LEFT, rec("P", "Parent row", aggregate=True)]
+    left.write_text("".join(r.model_dump_json() + "\n" for r in rows), encoding="utf-8")
+    out = tmp_path / "out"
+    assert (
+        main(
+            [
+                "--left",
+                str(left),
+                "--right",
+                str(FIXTURES / "right.jsonl"),
+                "--out",
+                str(out),
+                "--cutoff",
+                "2026-10-01",
+            ]
+        )
+        == 0
+    )
+    stats = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert stats["aggregates_skipped"] == {"left": 1, "right": 0}
+    assert stats["left_products"] == len(LEFT)

@@ -30,6 +30,9 @@ _SIZE_RE = re.compile(
     r"(?<![\w.])(\d+(?:[.,]\d+)?)\s*(fl\.?\s*oz|ml|cl|l|kg|mg|gr|g|oz)(?![a-z])", re.IGNORECASE
 )
 _SHADE_CODE_RE = re.compile(r"^(?:no\s*)?([a-z]{0,3}\d+(?:\.\d+)?(?:[a-z]{1,2}\d*)?)\b")
+#: One quoted item of a list serialised as text: "['50', '90'] ['ML']" or '["50 ml"]'.
+_LISTED_ITEM_RE = re.compile(r"""'([^']*)'|"([^"]*)\"""")
+_NUMBER_RE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?")
 #: Decimal numbers stay one token ("2.5"), everything else splits on non-alphanumerics.
 _TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)+|[a-z0-9]+")
 
@@ -160,13 +163,39 @@ class Size:
         return big == 0 or abs(self.amount - other.amount) / big <= tolerance
 
 
+def listed_items(text: str) -> tuple[str, ...] | None:
+    """The non-empty items of a list serialised as text ("['50'] ['ML']"); None for plain text."""
+    if not text.lstrip().startswith("["):
+        return None
+    items = (single or double for single, double in _LISTED_ITEM_RE.findall(text))
+    return tuple(item.strip() for item in items if item.strip())
+
+
 def parse_size(text: str | None) -> Size | None:
-    """The first size written in ``text`` ("50ml", "1.7 fl oz", "3,5 g"), else None."""
+    """The first size written in ``text`` ("50ml", "1.7 fl oz", "3,5 g"), else None.
+
+    A list serialised as text ("['100'] ['ML']") gives its one size; a list holding more than one
+    size ("['50', '90'] ['ML']") is ambiguous and gives None, never the first of them.
+    """
     if not text:
         return None
+    items = listed_items(text)
+    if items is not None:
+        return _listed_size(" ".join(items))
     match = _SIZE_RE.search(text)
-    if match is None:
+    return None if match is None else _size(match)
+
+
+def _listed_size(joined: str) -> Size | None:
+    """The size when every number in ``joined`` is part of the same size, else None."""
+    sizes = [_size(match) for match in _SIZE_RE.finditer(joined)]
+    if not sizes or len(_NUMBER_RE.findall(joined)) != len(sizes):
         return None
+    first = sizes[0]
+    return first if all(first.same_as(other) for other in sizes[1:]) else None
+
+
+def _size(match: re.Match[str]) -> Size:
     amount = Decimal(match.group(1).replace(",", "."))
     unit = re.sub(r"[\s.]", "", match.group(2).lower())
     if unit in _ML_PER_UNIT:
@@ -191,9 +220,17 @@ class Shade:
 
 
 def parse_shade(text: str | None) -> Shade | None:
-    """Split a shade label ("220 Natural Beige", "N12 - Vanilla") into code and name."""
+    """Split a shade label ("220 Natural Beige", "N12 - Vanilla") into code and name.
+
+    A list serialised as text gives its one shade; a list of several shades gives None.
+    """
     if not text:
         return None
+    items = listed_items(text)
+    if items is not None:
+        if len(items) != 1:
+            return None
+        text = items[0]
     folded = fold(text)
     if not folded:
         return None

@@ -18,7 +18,16 @@ uv run pi-match --left ulta.jsonl --right sephora.jsonl --out out/match --cutoff
 
 Each JSONL line is a `ProductRecord`:
 - required: `source`, `source_key`, `brand` and `name`;
-- optional: `url`, `size`, `shade`, `gtin`, `category`, `price` (a decimal string) and `currency`.
+- optional: `url`, `size`, `shade`, `gtin`, `category`, `price` (a decimal string), `currency`
+  and `aggregate` (default `false`).
+
+`aggregate: true` marks a product-level row that groups other rows (its variants). Such rows are
+skipped before matching and in the brand overlap, and `summary.json` counts them in
+`aggregates_skipped`. Skipping is in memory only: nothing is written back.
+
+`size` and `shade` may be a list, as a JSON array or as list text (`"['100'] ['ML']"`). A list
+gives its single value; a list of several sizes or shades is ambiguous and gives none (never the
+first one), and an ambiguous size list does not fall back to a size in the name.
 
 A bad line fails the run and names the line number.
 
@@ -28,7 +37,7 @@ A bad line fails the run and names the line number.
 |---|---|
 | `matches.json` | One-to-one pairs with bucket, score, reasons, prices, unit prices and the price gap |
 | `brand_overlap.json` | Brand keys found in both snapshots, only-left and only-right |
-| `summary.json` | Counts per bucket, brand overlap sizes, and pairs with a comparable price |
+| `summary.json` | Counts per bucket, brand overlap sizes, pairs with a comparable price, and skipped aggregate rows |
 | `precision_sample.csv` | Up to 50 pairs, round-robin across buckets and hash-ordered, for **hand** labelling (`label` = correct / wrong / unsure). Nothing is pre-labelled |
 
 Identical inputs give byte-identical outputs. `--cutoff` is a label, never a clock.

@@ -1,9 +1,10 @@
 """Input records and match output for the first-pass matcher."""
 
+import json
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from pi_core.base import PiModel
 
@@ -22,6 +23,18 @@ class ProductRecord(PiModel):
     category: str | None = None
     price: Decimal | None = None
     currency: str | None = None
+    #: A product-level row that groups other rows (its variants); it is never matched itself.
+    aggregate: bool = False
+
+    @field_validator("size", "shade", mode="before")
+    @classmethod
+    def _list_as_text(cls, value: object) -> object:
+        """A JSON list is kept as list text; the normalisers read one item or none from it."""
+        return (
+            json.dumps([str(item) for item in value], ensure_ascii=False)
+            if isinstance(value, list)
+            else value
+        )
 
 
 class Bucket(StrEnum):
