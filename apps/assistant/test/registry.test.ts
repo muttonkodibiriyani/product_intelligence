@@ -78,8 +78,42 @@ describe("ToolRegistry", () => {
         code: "retailer_partial",
         en: { untrusted: "East Store coverage is partial." },
         ar: { untrusted: "تغطية متجر الشرق جزئية." },
+        params: { retailer: "east" },
       },
     ]);
+  });
+
+  it("keeps caveat params sanitised, so a count is quotable but caveat text never is", async () => {
+    const api = new FakeApi(() =>
+      okEnvelope(COMPARE_DATA, {
+        caveats: [
+          {
+            code: "invalid_price_excluded",
+            params: { retailer: "south", count: "2", note: INJECTION, "bad key": "1" },
+            en: "7 prices at or below 0.01 were excluded.",
+            ar: "استُبعد 7 أسعار.",
+          },
+        ],
+      }),
+    );
+    const result = (await registry(api).run("compare", PAIR, VIEWER, "t")) as ToolEnvelope;
+    const params = result.caveats[0]?.params as Record<string, unknown>;
+    expect(params.retailer).toBe("south");
+    expect(params.count).toBe("2");
+    expect(Object.keys(params.note as object)).toEqual(["untrusted"]);
+    expect(params).not.toHaveProperty("bad key");
+    expect(verifyAnswerNumbers("2 prices were excluded as invalid", [result]).ok).toBe(true);
+    // The count in the caveat's own text is not a source.
+    expect(verifyAnswerNumbers("7 prices were excluded", [result]).ok).toBe(false);
+  });
+
+  it("rejects a caveat with more than MAX_CAVEAT_PARAMS params as upstream_invalid", async () => {
+    const params = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, "1"]));
+    const api = new FakeApi(() =>
+      okEnvelope(COMPARE_DATA, { caveats: [{ code: "x", params, en: "", ar: "" }] }),
+    );
+    const result = await registry(api).run("compare", PAIR, VIEWER, "t");
+    expect(result).toMatchObject({ status: "error", code: "upstream_invalid" });
   });
 
   it("reviewer #41 condition 1: wraps caveats, detail and cohort text as untrusted", async () => {

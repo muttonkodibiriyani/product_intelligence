@@ -75,9 +75,13 @@ function prose(text: Bilingual): UntrustedBilingual {
   return { en: untrusted(text.en, PROSE_MAX_CHARS), ar: untrusted(text.ar, PROSE_MAX_CHARS) };
 }
 
-/** A caveat: its machine code plus the API's text in both languages, wrapped. */
+/**
+ * A caveat: its machine code, the API's text in both languages (wrapped) and its sanitised
+ * parameters. Only the parameters can supply numbers the answer quotes; the text never does.
+ */
 export interface Caveat extends UntrustedBilingual {
   readonly code: string;
+  readonly params?: Sanitised;
 }
 
 export interface ToolEnvelope {
@@ -254,19 +258,17 @@ export class ToolRegistry {
     const withheld = envelope.data.status === "ok" ? withheldReason(view?.withheld) : undefined;
     const status = withheld === undefined ? envelope.data.status : "not_enough_data";
     const cut = truncation(data, tool.listKey);
+    const sanitiseOptions = {
+      evidenceHosts: this.config.evidenceHosts,
+      admin: caller.role === "admin",
+    };
     const result: ToolEnvelope = {
       status,
       // not_enough_data may still carry rows (e.g. compare below the cohort minimum).
       ...(data === undefined || data === null
         ? {}
         : {
-            data: withShown(
-              sanitiseData(data, {
-                evidenceHosts: this.config.evidenceHosts,
-                admin: caller.role === "admin",
-              }),
-              cut,
-            ),
+            data: withShown(sanitiseData(data, sanitiseOptions), cut),
           }),
       ...(status === "ok"
         ? {}
@@ -294,7 +296,11 @@ export class ToolRegistry {
             : { description: untrusted(cohort.description, PROSE_MAX_CHARS), n: cohort.n },
       },
       caveats: listedCaveats(
-        caveats.map(({ code, ...text }) => ({ code, ...prose(text) })),
+        caveats.map(({ code, params, ...text }) => ({
+          code,
+          ...prose(text),
+          params: sanitiseData(params, sanitiseOptions),
+        })),
         cut ? [truncatedCaveat(cut)] : [],
       ),
     };
