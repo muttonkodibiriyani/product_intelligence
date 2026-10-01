@@ -9,7 +9,6 @@ import {
   cheaperShares,
   crossCells,
   compareHref,
-  displayName,
   pairState,
   gapRows,
   scopedCaveats,
@@ -454,21 +453,5 @@ describe('head-to-head query state', () => {
     const s = pairState(q({ data: env({ points: [] }) }), shaped);
     expect(s.kind).toBe('ready');
     if (s.kind === 'ready') expect(s.data).toEqual({ points: [] });
-  });
-});
-
-describe('retailer display name', () => {
-  const lookup = (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id;
-
-  it('names the retailer the API answered for when /meta knows it', () => {
-    expect(displayName(lookup, 'shop_b', 'shop_a')).toBe('Shop B');
-  });
-
-  it('falls back to the retailer asked for, never a raw id /meta can name', () => {
-    expect(displayName(lookup, 'sephora_ae', 'shop_a')).toBe('Shop A');
-  });
-
-  it('shows the id only when neither is known', () => {
-    expect(displayName(lookup, 'x', 'y')).toBe('y');
   });
 });

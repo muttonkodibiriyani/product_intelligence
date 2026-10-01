@@ -438,13 +438,3 @@ export function pairState<T>(
   if (!q.data.data || q.data.status !== 'ok' || !shaped(q.data.data)) return { kind: 'empty', env: q.data };
   return { kind: 'ready', data: q.data.data, env: q.data };
 }
-
-/**
- * The display name for a /summary row: the name of the retailer the API answered for when /meta
- * knows it, else the name of the retailer asked for; the raw id only when neither is known.
- */
-export function displayName(lookup: (id: string) => string, answered: string, asked: string): string {
-  const a = lookup(answered);
-  if (a !== answered) return a;
-  return lookup(asked);
-}
