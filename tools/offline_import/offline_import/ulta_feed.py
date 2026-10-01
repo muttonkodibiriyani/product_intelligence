@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -19,7 +20,7 @@ from typing import Any
 
 import psycopg
 from psycopg.types.json import Jsonb
-from scripts.demo_export.export import UltaContext, load_rows
+from scripts.demo_export.export import DEFAULT_SOURCES, UltaContext, load_rows
 from scripts.demo_export.v2 import build_dataset_v2
 
 from offline_import.load import Loader, _sha
@@ -511,17 +512,27 @@ def load(folder: Path, database_url: str) -> dict[str, Any]:
 
 
 def export(
-    database_url: str, destination: Path, *, ulta: UltaContext | None = None
+    database_url: str,
+    destination: Path,
+    *,
+    sources: Sequence[str] = DEFAULT_SOURCES,
+    ulta: UltaContext | None = None,
 ) -> dict[str, Any]:
-    """Export combined facts using the shared parent/image policies and validate the API parser."""
-    rows, matches = load_rows(database_url)
+    """Export explicitly selected sources with the shared source, parent and image policies."""
+    context = ulta or UltaContext(blocked_since=instant(ULTA_BLOCKED_SINCE))
+    if not sources:
+        raise ValueError("--sources must name at least one source")
+    if "ulta_ae" in sources and context.blocked:
+        raise ValueError("--sources ulta_ae needs --ulta-unblocked: Ulta is blocked by ruling")
+    rows, matches = load_rows(database_url, sources)
     with psycopg.connect(database_url) as conn:
         content = conn.execute(
             "SELECT s.name, sl.source_listing_key, jsonb_build_object("
             "'product_url_missing',lc.labels->'product_url_missing') FROM source_listing "
             "sl JOIN source s ON s.id=sl.source_id LEFT JOIN LATERAL (SELECT "
             "labels FROM listing_content c WHERE c.listing_id=sl.id ORDER BY "
-            "observed_at DESC LIMIT 1) lc ON true"
+            "observed_at DESC LIMIT 1) lc ON true WHERE s.name = ANY(%s)",
+            (list(sources),),
         ).fetchall()
     labels = {(s, key): data or {} for s, key, data in content}
     # load_rows excludes a parent only when an exported child is present; childless parents stay.
@@ -540,7 +551,7 @@ def export(
         rows,
         matches,
         generated_at=datetime.now(UTC),
-        ulta=ulta or UltaContext(blocked_since=instant(ULTA_BLOCKED_SINCE)),
+        ulta=context,
         ulta_note={
             "en": (
                 "User-provided Ulta UAE website snapshot, 30 September-1 October 2026; "
@@ -604,6 +615,12 @@ def main() -> None:
         )
         cmd.add_argument("path", type=Path)
         if name == "export":
+            cmd.add_argument(
+                "--sources",
+                type=lambda value: tuple(name.strip() for name in value.split(",") if name.strip()),
+                default=DEFAULT_SOURCES,
+                help="comma-separated source names to export (default: sephora_me only)",
+            )
             cmd.add_argument("--ulta-blocked-since", default=ULTA_BLOCKED_SINCE)
             cmd.add_argument(
                 "--ulta-unblocked",
@@ -616,13 +633,17 @@ def main() -> None:
     elif args.command == "load":
         result = load(args.path, os.environ["PI_DATABASE_URL"])
     else:
-        result = export(
-            os.environ["PI_DATABASE_URL"],
-            args.path,
-            ulta=UltaContext(
-                blocked_since=instant(args.ulta_blocked_since), blocked=not args.ulta_unblocked
-            ),
-        )
+        try:
+            result = export(
+                os.environ["PI_DATABASE_URL"],
+                args.path,
+                sources=args.sources,
+                ulta=UltaContext(
+                    blocked_since=instant(args.ulta_blocked_since), blocked=not args.ulta_unblocked
+                ),
+            )
+        except ValueError as error:
+            parser.error(str(error))
     print(encoded(result))
 
 

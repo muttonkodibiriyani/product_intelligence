@@ -14,6 +14,7 @@
       "status": "aging"
     },
     "ladder": null,
+    "meanPrice": null,
     "medianPrice": null,
     "priceHist": null,
     "priced": null,

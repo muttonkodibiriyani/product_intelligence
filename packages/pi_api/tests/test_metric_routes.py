@@ -319,3 +319,19 @@ def test_match_cursor_walks_once_and_is_bound_to_the_role(client: Client) -> Non
     # An admin's cursor is refused to a viewer: their pages hold different rows.
     foreign = body(client, f"/matches?limit=5&cursor={first_cursor}", 422)
     assert foreign["error"]["code"] == "invalid_query"
+
+
+def test_the_gap_histogram_counts_every_pair_not_the_page(client: Client) -> None:
+    """API 1.7.1: ``summary.gapHist`` is over all counted pairs, like the median it sits by."""
+    whole = body(client, f"/compare?{PAIR}")["data"]
+    page = body(client, f"/compare?{PAIR}&limit=3")["data"]
+    assert len(page["rows"]) == 3
+    assert page["truncated"]
+    assert page["summary"]["gapHist"] == whole["summary"]["gapHist"]
+    assert sum(page["summary"]["gapHist"]["counts"]) == page["summary"]["n"] > 3
+
+
+def test_the_summary_serves_a_mean_price_beside_the_median(client: Client) -> None:
+    data = body(client, f"/summary?retailer={A}")["data"]
+    assert data["meanPrice"]["currency"] == data["medianPrice"]["currency"] == "AED"
+    assert Decimal(data["meanPrice"]["amount"]) > 0

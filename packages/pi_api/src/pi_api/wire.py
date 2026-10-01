@@ -140,6 +140,16 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
             " فقد تزيد أعداده عن المنتجات الفعلية."
         ),
     ),
+    CaveatCode.INVALID_PRICE_EXCLUDED: Localized(
+        en=(
+            "{count} {retailer} {count:item had|items had} a price of 0.01 or less, withheld"
+            " as invalid and left out of every figure."
+        ),
+        ar=(
+            "عروض لدى {retailer} بسعر 0.01 أو أقل، حُجب سعرها لعدم صحته واستُبعد من كل الأرقام:"
+            " {count}."
+        ),
+    ),
 }
 
 

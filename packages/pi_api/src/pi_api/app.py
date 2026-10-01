@@ -25,7 +25,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, FastAPI, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -34,7 +34,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from pi_api import dq, export
+from pi_api import dq, export, floor
 from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
@@ -62,6 +62,8 @@ from pi_api.catalog import (
     HistoryQuery,
     InvalidQueryError,
     MetaView,
+    OfferView,
+    ProductCard,
     ProductDetail,
     ProductFilters,
     ProductNotFoundError,
@@ -426,12 +428,50 @@ def _named(query: ContractModel) -> frozenset[str]:
     return frozenset(named or ())
 
 
+def flagged[T](loaded: Loaded, data: T) -> T:
+    """``data`` with ``priceFlag`` set on each card or offer whose latest price was withheld
+    as invalid (``pi_api.floor``); unchanged when there is none."""
+    marks = loaded.floor.flagged
+    if not marks:
+        return data
+
+    def card(c: ProductCard) -> ProductCard:
+        flags = {
+            ctx: floor.PriceFlag.INVALID_LOW for ctx in sorted(c.prices) if (c.id, ctx) in marks
+        }
+        return c.model_copy(update={"price_flags": flags}) if flags else c
+
+    def offers[O: OfferView](product: str, views: tuple[O, ...]) -> tuple[O, ...]:
+        return tuple(
+            o.model_copy(update={"price_flag": floor.PriceFlag.INVALID_LOW})
+            if (product, o.context) in marks
+            else o
+            for o in views
+        )
+
+    out: object = data
+    if isinstance(data, ProductPage):
+        out = data.model_copy(update={"items": tuple(card(c) for c in data.items)})
+    elif isinstance(data, ProductDetail | AdminProductDetail):
+        out = data.model_copy(
+            update={"card": card(data.card), "offers": offers(data.card.id, data.offers)}
+        )
+    elif isinstance(data, tuple) and all(isinstance(c, ProductCard) for c in data):
+        out = tuple(card(c) for c in data)
+    return cast("T", out)
+
+
 def respond[T](
     loaded: Loaded, endpoint: str, query: ContractModel, metric: Metric[T]
 ) -> Envelope[T]:
-    owed = dq.caveats(loaded.imported, endpoint, _selected(query, metric.data))
+    selected = _selected(query, metric.data)
+    owed = (
+        *dq.caveats(loaded.imported, endpoint, selected),
+        *floor.caveats(loaded.floor, endpoint, selected),
+    )
     if owed:
         metric = metric.model_copy(update={"caveats": (*metric.caveats, *owed)})
+    metric = metric.model_copy(update={"data": flagged(loaded, metric.data)})
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
@@ -742,6 +782,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         metric = product_cards(loaded.dataset, query, images)
+        metric = metric.model_copy(update={"data": flagged(loaded, metric.data)})
         return _download(
             loaded,
             view=view.PRODUCTS,

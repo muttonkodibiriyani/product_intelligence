@@ -17,6 +17,8 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
+import { PageHeader } from '../ui/page-header';
+import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
 import { CompareRows } from './compare-rows';
 import { Groups, Sides, Summary } from './compare-summary';
@@ -55,12 +57,7 @@ export function CompareView() {
 
   return (
     <section aria-labelledby="compare-title" className="space-y-6">
-      <div>
-        <h1 id="compare-title" className="text-2xl font-bold tracking-tight">
-          {t('title')}
-        </h1>
-        <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>
-      </div>
+      <PageHeader id="compare-title" title={t('title')} intro={t('intro')} />
 
       <PairPicker state={state} update={update} />
 
@@ -78,9 +75,9 @@ export function CompareView() {
       ) : q.isError && !env ? (
         <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
       ) : !env ? (
-        <p role="status" aria-busy className="text-ink-2">
+        <Loading kind="table" rows={6}>
           {t('loading')}
-        </p>
+        </Loading>
       ) : (
         <>
           <EnvNotes env={env} />

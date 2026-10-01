@@ -94,9 +94,12 @@ raw values that cannot be represented as normalized prices. It does not contact 
 PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed prepare source.jsonl prepared/
 PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed load prepared/
 PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed export review-dataset.json
+# An explicitly authorized Ulta export from an isolated database:
+PYTHONPATH=tools/offline_import python -m offline_import.ulta_feed export review-ulta.json \
+  --sources ulta_ae --ulta-unblocked
 ```
 
-The last two commands require `PI_DATABASE_URL`. Run write commands only against an isolated
+The `load` and `export` commands require `PI_DATABASE_URL`. Run write commands only against an isolated
 database. `ulta_feed load` uses the existing `ulta_ae` source: the shared loader upserts listing
 metadata and touches shared brand rows, even though observations are append-only.
 `ulta_catalogue enrich --apply` appends content to those same listings. Neither command may
@@ -110,7 +113,14 @@ wall time. A missing capture time fails preparation; `--capture-index captures.j
 explicit per-SKU capture evidence (`retrieved_at`, basis, source file and hash). Never substitute
 an ingestion time or a product's last-modified date for a capture time.
 
-The combined export preserves other retailers, excludes configurable parent summaries when
+The export defaults to `sephora_me` only. Ulta rows require both an explicit `--sources`
+selection containing `ulta_ae` and `--ulta-unblocked`; either flag alone never selects Ulta.
+Programmatic callers must likewise pass `sources=("ulta_ae",)` and an explicitly unblocked
+`UltaContext`. The default remains blocked. For a combined local review file, explicitly
+select `--sources sephora_me,ulta_ae --ulta-unblocked`. Source selection also scopes the
+listing-metadata query; the presence of stored Ulta rows never opts them into an export.
+
+The export preserves the selected retailers, excludes configurable parent summaries when
 sellable children exist, and uses the existing product/pack-size grouping. Non-positive source
 prices become null; positive values finer than AED's minor unit remain exact in the database
 and are withheld from the dataset. Known failed images remain null. Coverage stays partial.

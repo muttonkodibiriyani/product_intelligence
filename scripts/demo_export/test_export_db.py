@@ -23,6 +23,7 @@ pytestmark = pytest.mark.db
 
 Conn = psycopg.Connection[dict[str, object]]
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
+SEPHORA = {"sources": ["sephora_me"]}
 
 
 def _libpq(url: str) -> str:
@@ -68,7 +69,7 @@ def _id(conn: Conn, sql: str, params: tuple[object, ...] = ()) -> object:
 
 class World:
     def __init__(self, conn: Conn, source: str = "sephora_me") -> None:
-        self.conn = conn
+        self.conn, self.name = conn, source
         self.source = _id(
             conn, "INSERT INTO source (name, kind) VALUES (%s, 'web') RETURNING id", (source,)
         )
@@ -141,7 +142,7 @@ class World:
         )
 
     def latest(self) -> dict[str, tuple[object, object]]:
-        rows = self.conn.execute(LATEST_LISTINGS_SQL).fetchall()
+        rows = self.conn.execute(LATEST_LISTINGS_SQL, {"sources": [self.name]}).fetchall()
         return {str(r["source_listing_key"]): (r["run_id"], r["price"]) for r in rows}
 
 
@@ -235,7 +236,7 @@ STOCK_ONLY = '{"price_current": "unknown", "availability_state": "observed"}'
 
 
 def _row(world: World, key: str) -> dict[str, object]:
-    rows = world.conn.execute(LATEST_LISTINGS_SQL).fetchall()
+    rows = world.conn.execute(LATEST_LISTINGS_SQL, {"sources": [world.name]}).fetchall()
     return next(dict(r) for r in rows if r["source_listing_key"] == key)
 
 
@@ -367,6 +368,20 @@ def test_the_main_image_comes_from_the_latest_content(conn: Conn) -> None:
         )
     assert _row(world, "A")["image"] == "https://img-product.sephora.me/new.jpg"
     assert _row(world, "B")["image"] is None  # no content row at all
+
+
+def test_ulta_rows_in_the_db_stay_out_unless_named_in_sources(conn: Conn) -> None:
+    world = World(conn)
+    world.observe(world.run("succeeded", 1), "s1", 1, "10")
+    ulta = World(conn, "ulta_ae")
+    ulta.observe(ulta.run("partial", 2), "u1", 2, "20")
+
+    def keys(sources: list[str]) -> set[str]:
+        rows = conn.execute(LATEST_LISTINGS_SQL, {"sources": sources}).fetchall()
+        return {str(r["source_listing_key"]) for r in rows}
+
+    assert keys(["sephora_me"]) == {"s1"}
+    assert keys(["sephora_me", "ulta_ae"]) == {"s1", "u1"}
 
 
 def _parent(*children: object, flag: object = True) -> dict[str, object]:

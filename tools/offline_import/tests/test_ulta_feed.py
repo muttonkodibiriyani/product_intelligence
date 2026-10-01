@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import psycopg
 import pytest
 from alembic import command
-from scripts.demo_export.export import ListingRow
+from scripts.demo_export.export import ListingRow, UltaContext
 from scripts.demo_export.test_export import row
 from sqlalchemy.engine import make_url
 
@@ -125,7 +125,11 @@ def test_missing_capture_requires_evidence_and_duplicates_fail(tmp_path: Path) -
 def stub_export(
     monkeypatch: pytest.MonkeyPatch, listing: ListingRow, labels: dict[str, Any]
 ) -> None:
-    monkeypatch.setattr(ulta_feed, "load_rows", lambda _: ([listing], []))
+    monkeypatch.setattr(
+        ulta_feed,
+        "load_rows",
+        lambda _, sources: ([listing] if listing.source_name in sources else [], []),
+    )
     conn = MagicMock()
     conn.__enter__.return_value = conn
     conn.execute.return_value.fetchall.return_value = [
@@ -159,7 +163,14 @@ def test_export_preserves_retailer_scoped_images(
     listing = replace(row(source=source), source_listing_key="sku-100", image=url)
     stub_export(monkeypatch, listing, {"image_url": url})
     target = tmp_path / "dataset.json"
-    report = export("unused", target)
+    report = export(
+        "unused",
+        target,
+        sources=(source,),
+        ulta=UltaContext(
+            blocked_since=ulta_feed.instant(ulta_feed.ULTA_BLOCKED_SINCE), blocked=False
+        ),
+    )
     product = json.loads(target.read_text())["products"][0]
     assert product["image"] == expected
     assert product["offers"][source]["image"] == expected
@@ -172,18 +183,71 @@ def test_export_keeps_aggregate_parent_retained_by_shared_query(
     listing = replace(row(source="ulta_ae"), source_listing_key="sku-100")
     stub_export(monkeypatch, listing, {"aggregate_parent": True, "resolved_children": []})
     target = tmp_path / "dataset.json"
-    assert export("unused", target)["offers_by_retailer"]["ulta_ae"] == 1
+    report = export(
+        "unused",
+        target,
+        sources=("ulta_ae",),
+        ulta=UltaContext(
+            blocked_since=ulta_feed.instant(ulta_feed.ULTA_BLOCKED_SINCE), blocked=False
+        ),
+    )
+    assert report["offers_by_retailer"]["ulta_ae"] == 1
+
+
+@pytest.mark.parametrize("unblocked", [False, True])
+def test_export_does_not_select_ulta_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, unblocked: bool
+) -> None:
+    stub_export(monkeypatch, row(source="ulta_ae"), {})
+    context = (
+        UltaContext(blocked_since=ulta_feed.instant(ulta_feed.ULTA_BLOCKED_SINCE), blocked=False)
+        if unblocked
+        else None
+    )
+    target = tmp_path / "dataset.json"
+    with pytest.raises(ValueError, match="refusing to create an empty demo dataset"):
+        export("unused", target, ulta=context)
+    assert not target.exists()
+
+
+def test_export_default_context_keeps_ulta_blocked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stub_export(monkeypatch, row(source="sephora_me"), {})
+    target = tmp_path / "dataset.json"
+    export("unused", target)
+    document = json.loads(target.read_text())
+    retailer = next(r for r in document["meta"]["retailers"] if r["id"] == "ulta_ae")
+    assert retailer["status"] == "blocked"
+    assert all("ulta_ae" not in product["offers"] for product in document["products"])
+
+
+@pytest.mark.parametrize("sources", [(), ("ulta_ae",), ("sephora_me", "ulta_ae")])
+def test_export_rejects_empty_or_blocked_source_selection_before_database_access(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sources: tuple[str, ...]
+) -> None:
+    query = MagicMock(side_effect=AssertionError("must validate sources before querying"))
+    monkeypatch.setattr(ulta_feed, "load_rows", query)
+    connect = MagicMock(side_effect=AssertionError("must validate sources before connecting"))
+    monkeypatch.setattr(psycopg, "connect", connect)
+    target = tmp_path / "dataset.json"
+    with pytest.raises(ValueError, match="--sources"):
+        export("unused", target, sources=sources)
+    query.assert_not_called()
+    connect.assert_not_called()
+    assert not target.exists()
 
 
 @pytest.mark.parametrize("unblocked", [False, True])
 def test_export_cli_takes_block_status_from_explicit_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, unblocked: bool
 ) -> None:
-    stub_export(monkeypatch, row(source="ulta_ae"), {})
+    source = "ulta_ae" if unblocked else "sephora_me"
+    stub_export(monkeypatch, row(source=source), {})
     target = tmp_path / "dataset.json"
     args = ["ulta-feed", "export", str(target), "--ulta-blocked-since", "2026-09-29T00:00:00Z"]
     if unblocked:
-        args.append("--ulta-unblocked")
+        args.extend(["--sources", "ulta_ae", "--ulta-unblocked"])
     monkeypatch.setattr(sys, "argv", args)
     monkeypatch.setenv("PI_DATABASE_URL", "unused")
     ulta_feed.main()
@@ -192,6 +256,19 @@ def test_export_cli_takes_block_status_from_explicit_flags(
     )
     assert (retailer["status"] == "blocked") is not unblocked
     assert retailer["since"] == (None if unblocked else "2026-09-29")
+
+
+def test_export_cli_refuses_ulta_source_without_unblock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    target = tmp_path / "dataset.json"
+    monkeypatch.setattr(sys, "argv", ["ulta-feed", "export", str(target), "--sources", "ulta_ae"])
+    monkeypatch.setenv("PI_DATABASE_URL", "unused")
+    with pytest.raises(SystemExit) as error:
+        ulta_feed.main()
+    assert error.value.code == 2
+    assert "--sources ulta_ae needs --ulta-unblocked" in capsys.readouterr().err
+    assert not target.exists()
 
 
 def test_database_replay_evidence_and_combined_export(
@@ -242,7 +319,17 @@ def test_database_replay_evidence_and_combined_export(
         assert facts[1][1:] == (None, "in_stock")
         assert conn.execute("SELECT count(*) FROM listing_content").fetchone() == (6,)
     target = tmp_path / "latest.json"
-    report = export(db, target)
+    with pytest.raises(ValueError, match="refusing to create an empty demo dataset"):
+        export(db, target)
+    assert not target.exists()
+    report = export(
+        db,
+        target,
+        sources=("ulta_ae",),
+        ulta=UltaContext(
+            blocked_since=ulta_feed.instant(ulta_feed.ULTA_BLOCKED_SINCE), blocked=False
+        ),
+    )
     assert report["offers_by_retailer"]["ulta_ae"] == 5
     assert report["unpublishable_fractional_aed_skus"] == ["fractional"]
     products = json.loads(target.read_text())["products"]

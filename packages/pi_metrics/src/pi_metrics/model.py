@@ -116,6 +116,8 @@ class CaveatCode(StrEnum):
     SNAPSHOT_IMPORT_DATE = "snapshot_import_date"
     #: A retailer's products may include parent listings that duplicate their variants.
     PARENT_LISTINGS_INCLUDED = "parent_listings_included"
+    #: ``count`` of a retailer's offers had a price at or below 0.01 withheld as invalid.
+    INVALID_PRICE_EXCLUDED = "invalid_price_excluded"
 
 
 class Caveat(ContractModel):

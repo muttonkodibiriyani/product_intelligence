@@ -78,6 +78,7 @@
           }
         ],
         "name": "Product p05",
+        "priceFlags": {},
         "prices": {
           "shop_a": {
             "amount": "80.00",
@@ -130,6 +131,7 @@
           }
         ],
         "name": "Product p01",
+        "priceFlags": {},
         "prices": {
           "shop_a": {
             "amount": "90.00",
@@ -182,6 +184,7 @@
           }
         ],
         "name": "Product p04",
+        "priceFlags": {},
         "prices": {
           "shop_a": {
             "amount": "95.50",
