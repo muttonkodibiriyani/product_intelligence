@@ -6,7 +6,7 @@ import { useState } from 'react';
 import type { Summary } from '@/lib/api/summary';
 import { productHref } from '../explore/product-table';
 import { Money } from '../ui/money';
-import { IMAGE_HOST, IMAGE_OWNER, imageSrc, pct } from './model';
+import { IMAGE_OWNERS, imageHost, imageSrc, pct, type ImageHost } from './model';
 
 const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-middle';
@@ -15,15 +15,18 @@ const TD = 'px-3 py-2.5 align-middle';
 export function TopDiscountsWidget({
   data,
   locale,
+  retailer,
 }: {
   data: NonNullable<Summary['topDiscounts']>;
   locale: string;
+  /** The snapshot's retailer: only its own image host is shown. */
+  retailer: string;
 }) {
   const t = useTranslations('widgets.top');
-  // Only the image host's own images are shown (whichever retailer the snapshot is), so once
-  // one has loaded, credit its owner with a link. Other retailers' images never render, so they
-  // get the placeholder and no credit.
-  const [credit, setCredit] = useState(false);
+  // Only the retailer's own image host is shown; once one of its images has loaded, credit the
+  // host's owner with a link. A row without an allowed image gets the placeholder and no credit.
+  const [loaded, setLoaded] = useState<ReadonlySet<ImageHost>>(new Set());
+  const credit = (h: ImageHost | null) => () => h && setLoaded((s) => (s.has(h) ? s : new Set(s).add(h)));
   return (
     <div className="relative overflow-x-auto px-2">
       <table className="w-full text-sm">
@@ -53,7 +56,11 @@ export function TopDiscountsWidget({
           {data.map((d) => (
             <tr key={d.id} className="border-t border-line-2 hover:bg-surface-2">
               <td className={`${TD} w-14`}>
-                <Thumb src={imageSrc(d.image)} alt={t('noImage')} onLoad={() => setCredit(true)} />
+                <Thumb
+                  src={imageSrc(d.image, retailer)}
+                  alt={t('noImage')}
+                  onLoad={credit(imageHost(d.image, retailer))}
+                />
               </td>
               <th scope="row" className={`${TD} text-start font-normal`}>
                 <span className="block text-xs text-ink-2" dir="auto">
@@ -85,14 +92,14 @@ export function TopDiscountsWidget({
           ))}
         </tbody>
       </table>
-      {credit && (
-        <p className="px-3 pt-2 pb-3 text-xs text-ink-2">
+      {[...loaded].map((h) => (
+        <p key={h} className="px-3 pt-2 pb-3 text-xs text-ink-2">
           {t.rich('credit', {
-            retailer: IMAGE_OWNER.name,
-            host: IMAGE_HOST,
+            retailer: IMAGE_OWNERS[h].name,
+            host: h,
             link: (chunks) => (
               <a
-                href={IMAGE_OWNER.home}
+                href={IMAGE_OWNERS[h].home}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-ink focus-visible:outline-2"
@@ -102,7 +109,7 @@ export function TopDiscountsWidget({
             ),
           })}
         </p>
-      )}
+      ))}
     </div>
   );
 }
