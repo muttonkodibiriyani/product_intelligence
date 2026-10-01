@@ -4,11 +4,13 @@ import {
   IMG,
   IMG_BROKEN,
   IMG_FOREIGN,
+  IMG_ULTA,
   summaryBlocked,
   summaryBody,
   summaryImages,
   summaryNoPromo,
   summaryPricesWithheld,
+  summaryUlta,
 } from './summary-fixture';
 
 // The smallest valid PNG: one transparent pixel.
@@ -58,7 +60,7 @@ for (const locale of ['en', 'ar'] as const) {
         median: 'السعر الوسيط',
         none: 'غير مُقاس',
         noImage: 'لا توجد صورة',
-        credit: 'صور المنتجات: Shop A، من img-product.sephora.me.',
+        credit: 'صور المنتجات: Sephora، من img-product.sephora.me.',
       }
     : {
         title: 'Overview',
@@ -83,7 +85,7 @@ for (const locale of ['en', 'ar'] as const) {
         median: 'Median price',
         none: 'Not measured',
         noImage: 'No image',
-        credit: 'Product images: Shop A, served from img-product.sephora.me.',
+        credit: 'Product images: Sephora, served from img-product.sephora.me.',
       };
   const h2 = (page: Page, name: string) => page.getByRole('heading', { level: 2, name, exact: true });
 
@@ -183,6 +185,9 @@ for (const locale of ['en', 'ar'] as const) {
           : r.fulfill({ status: 404, body: '' });
       });
       await signIn(page, locale);
+      // A retailer /meta doesn't name (ulta_ae) still renders, by its id.
+      await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
+      await expect(page.locator('main').getByText('ulta_ae').first()).toBeVisible();
       const top = page.locator('#w-top');
       await expect(h2(page, T.top)).toBeVisible();
       const rows = top.locator('tbody tr');
@@ -196,20 +201,47 @@ for (const locale of ['en', 'ar'] as const) {
       await top.scrollIntoViewIfNeeded();
       await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth)).toBe(1);
 
-      // A failing image and one from another host both show the placeholder.
-      for (const i of [1, 2]) {
+      // A failing image and ones from other hosts (Ulta's included) show the placeholder.
+      for (const i of [1, 2, 3]) {
         await expect(rows.nth(i).locator('img')).toHaveCount(0);
         await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
       }
-      // The two placeholder rows without an image at all, too.
-      for (const i of [3, 4]) await expect(rows.nth(i).getByRole('img', { name: T.noImage })).toBeVisible();
+      // A row without an image at all, too.
+      await expect(rows.nth(4).getByRole('img', { name: T.noImage })).toBeVisible();
+      // The credit links to the image owner's home page, in a new tab, without a referrer.
       await expect(top.getByText(T.credit, { exact: true })).toBeVisible();
+      const owner = top.getByRole('link', { name: 'Sephora', exact: true });
+      await expect(owner).toHaveAttribute('href', 'https://www.sephora.me');
+      await expect(owner).toHaveAttribute('target', '_blank');
+      await expect(owner).toHaveAttribute('rel', 'noopener noreferrer');
 
       // Only the retailer's host was asked, without a referrer; the foreign host never was.
       expect(images.map((r) => r.url).sort()).toEqual([IMG, IMG_BROKEN]);
       expect(images.every((r) => r.referer === undefined)).toBe(true);
       expect(mock.external).toEqual([]);
-      expect(mock.external).not.toContain(IMG_FOREIGN);
+      for (const url of [IMG_FOREIGN, IMG_ULTA]) expect(mock.external).not.toContain(url);
+      expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
+    });
+
+    test('Ulta UAE: placeholders, never a blank, and no image credit', async ({ page }) => {
+      const mock = await mockBackend(page, { onApi: api(summaryUlta) });
+      const images: string[] = [];
+      await page.route('https://img-product.sephora.me/**', (r) => {
+        images.push(r.request().url());
+        return r.fulfill({ status: 404, body: '' });
+      });
+      await signIn(page, locale);
+      const top = page.locator('#w-top');
+      await expect(h2(page, T.top)).toBeVisible();
+      await top.scrollIntoViewIfNeeded();
+      await expect(top.getByRole('img', { name: T.noImage })).toHaveCount(5);
+      await expect(top.locator('img')).toHaveCount(0);
+      await expect(top.getByRole('rowheader')).toHaveCount(5);
+      // Nothing of Sephora's was shown, so nothing is credited to it.
+      await expect(top.getByText(T.credit, { exact: true })).toHaveCount(0);
+      await expect(top.getByRole('link', { name: 'Sephora', exact: true })).toHaveCount(0);
+      expect(images).toEqual([IMG_BROKEN]);
+      expect(mock.external).toEqual([]);
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 

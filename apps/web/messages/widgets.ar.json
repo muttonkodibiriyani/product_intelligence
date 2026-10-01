@@ -68,7 +68,7 @@
     "off": "التخفيض",
     "all": "كل العروض",
     "noImage": "لا توجد صورة",
-    "credit": "صور المنتجات: {retailer}، من {host}."
+    "credit": "صور المنتجات: <link>{retailer}</link>، من {host}."
   },
   "share": {
     "title": "تركّز العلامات التجارية",

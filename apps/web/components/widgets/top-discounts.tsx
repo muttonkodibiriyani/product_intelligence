@@ -6,8 +6,7 @@ import { useState } from 'react';
 import type { Summary } from '@/lib/api/summary';
 import { productHref } from '../explore/product-table';
 import { Money } from '../ui/money';
-import { useRetailerName } from '../use-meta';
-import { IMAGE_HOST, imageSrc, pct } from './model';
+import { IMAGE_HOST, IMAGE_OWNER, imageSrc, pct } from './model';
 
 const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-middle';
@@ -16,16 +15,15 @@ const TD = 'px-3 py-2.5 align-middle';
 export function TopDiscountsWidget({
   data,
   locale,
-  retailer,
 }: {
   data: NonNullable<Summary['topDiscounts']>;
   locale: string;
-  retailer: string;
 }) {
   const t = useTranslations('widgets.top');
-  const name = useRetailerName();
-  // The images are the retailer's, shown from its own host: say so whenever one is shown.
-  const credit = data.some((d) => imageSrc(d.image) !== null);
+  // Only the image host's own images are shown (whichever retailer the snapshot is), so once
+  // one has loaded, credit its owner with a link. Other retailers' images never render, so they
+  // get the placeholder and no credit.
+  const [credit, setCredit] = useState(false);
   return (
     <div className="relative overflow-x-auto px-2">
       <table className="w-full text-sm">
@@ -55,7 +53,7 @@ export function TopDiscountsWidget({
           {data.map((d) => (
             <tr key={d.id} className="border-t border-line-2 hover:bg-surface-2">
               <td className={`${TD} w-14`}>
-                <Thumb src={imageSrc(d.image)} alt={t('noImage')} />
+                <Thumb src={imageSrc(d.image)} alt={t('noImage')} onLoad={() => setCredit(true)} />
               </td>
               <th scope="row" className={`${TD} text-start font-normal`}>
                 <span className="block text-xs text-ink-2" dir="auto">
@@ -89,7 +87,20 @@ export function TopDiscountsWidget({
       </table>
       {credit && (
         <p className="px-3 pt-2 pb-3 text-xs text-ink-2">
-          {t('credit', { retailer: name(retailer), host: IMAGE_HOST })}
+          {t.rich('credit', {
+            retailer: IMAGE_OWNER.name,
+            host: IMAGE_HOST,
+            link: (chunks) => (
+              <a
+                href={IMAGE_OWNER.home}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-ink focus-visible:outline-2"
+              >
+                {chunks}
+              </a>
+            ),
+          })}
         </p>
       )}
     </div>
@@ -97,7 +108,7 @@ export function TopDiscountsWidget({
 }
 
 /** A lazy thumbnail from the retailer's image host; a quiet placeholder when there is none or it fails. */
-function Thumb({ src, alt }: { src: string | null; alt: string }) {
+function Thumb({ src, alt, onLoad }: { src: string | null; alt: string; onLoad: () => void }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed)
     return (
@@ -131,6 +142,7 @@ function Thumb({ src, alt }: { src: string | null; alt: string }) {
       referrerPolicy="no-referrer"
       width={44}
       height={44}
+      onLoad={onLoad}
       onError={() => setFailed(true)}
       className="size-11 rounded-ctl bg-surface-2 object-contain"
     />

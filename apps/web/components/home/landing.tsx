@@ -214,7 +214,7 @@ function Overview() {
               </Link>
             }
           >
-            <TopDiscountsWidget data={promo.top} locale={locale} retailer={data.retailer} />
+            <TopDiscountsWidget data={promo.top} locale={locale} />
           </Card>
         )}
       </CardGrid>

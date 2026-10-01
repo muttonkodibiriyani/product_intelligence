@@ -1,7 +1,7 @@
 /**
  * A /summary (API 1.4.0) body for the landing tests, checked against `Summary` (SummaryView). Test data only: the app
  * never ships it. Images are null here so the run makes no request beyond localhost;
- * `summaryImages` has real ones for the test that answers the image host itself.
+ * `summaryImages` has real ones (and a retailer the golden /meta doesn't name) for the test that answers the image host itself.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -228,16 +228,31 @@ export const IMG = 'https://img-product.sephora.me/v1/p-1.jpg';
 export const IMG_BROKEN = 'https://img-product.sephora.me/v1/p-2.jpg';
 /** Not the retailer's image host: the app must never request it. */
 export const IMG_FOREIGN = 'https://cdn.example.net/p-3.jpg';
+/** Another retailer's own image host: not allowlisted either. */
+export const IMG_ULTA = 'https://media.ulta.com/i/ulta/2583789';
 
 /** Top discounts with images: one served, one failing, one from a host outside the allowlist. */
 export const summaryImages = {
   ...summaryBody,
   data: {
     ...summaryBody.data,
-    retailer: 'shop_a', // named in the golden /meta, for the image credit
+    // The live file also has Ulta UAE: its images are outside the allowlist, so placeholders.
+    retailer: 'ulta_ae',
     topDiscounts: summaryBody.data.topDiscounts.map((d, i) => ({
       ...d,
-      image: [IMG, IMG_BROKEN, IMG_FOREIGN][i] ?? null,
+      image: [IMG, IMG_BROKEN, IMG_FOREIGN, IMG_ULTA][i] ?? null,
+    })),
+  } satisfies Summary,
+};
+
+/** Ulta UAE alone: no image it sends may render, and one Sephora image that fails. */
+export const summaryUlta = {
+  ...summaryImages,
+  data: {
+    ...summaryImages.data,
+    topDiscounts: summaryBody.data.topDiscounts.map((d, i) => ({
+      ...d,
+      image: [IMG_ULTA, IMG_BROKEN, null, IMG_ULTA, IMG_FOREIGN][i] ?? null,
     })),
   } satisfies Summary,
 };

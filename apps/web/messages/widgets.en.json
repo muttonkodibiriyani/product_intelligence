@@ -68,7 +68,7 @@
     "off": "Off",
     "all": "All promotions",
     "noImage": "No image",
-    "credit": "Product images: {retailer}, served from {host}."
+    "credit": "Product images: <link>{retailer}</link>, served from {host}."
   },
   "share": {
     "title": "Brand concentration",

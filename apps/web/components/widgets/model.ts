@@ -118,6 +118,8 @@ export function ratingPoints(r: Summary['ratingPrice']) {
 
 /** Product images come only from the retailer's image host, over https (image decision B). */
 export const IMAGE_HOST = 'img-product.sephora.me';
+/** Whose images those are, credited with a link to its public home page. */
+export const IMAGE_OWNER = { name: 'Sephora', home: 'https://www.sephora.me' } as const;
 export function imageSrc(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
