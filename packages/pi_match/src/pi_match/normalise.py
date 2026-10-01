@@ -35,6 +35,8 @@ _NUMBER_RE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?")
 _BARE_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
 #: List text longer than this is not parsed at all (it is never a size or shade label).
 MAX_LIST_TEXT = 512
+#: A leading "[...]" with no quotes, commas or nested brackets: a label unless it is a literal.
+_LABEL_RE = re.compile(r"\[[^\[\]'\",]*\]")
 #: Decimal numbers stay one token ("2.5"), everything else splits on non-alphanumerics.
 _TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)+|[a-z0-9]+")
 
@@ -166,10 +168,17 @@ class Size:
 
 
 def is_listed(value: str | Sequence[str] | None) -> bool:
-    """True for a list: a JSON array, or text that starts like one ("['100'] ['ML']")."""
+    """True for a list: a JSON array, or text that starts like one ("['100'] ['ML']").
+
+    A bracketed label that is not a literal ("[Limited] 50ml") is plain text, not a list.
+    """
     if value is None:
         return False
-    return not isinstance(value, str) or value.lstrip().startswith("[")
+    if not isinstance(value, str):
+        return True
+    text = value.lstrip()
+    label = _LABEL_RE.match(text)
+    return text.startswith("[") and (label is None or _literal(label.group())[0])
 
 
 def list_groups(value: str | Sequence[str]) -> tuple[tuple[str, ...], ...] | None:
@@ -239,7 +248,8 @@ def parse_size(text: str | Sequence[str] | None) -> Size | None:
     """The first size written in ``text`` ("50ml", "1.7 fl oz", "3,5 g"), else None.
 
     A list (see ``list_groups``) gives a size only when it holds exactly one: one distinct item
-    (``['100 ml']``), or one distinct number beside one distinct unit (``['100'] ['ML']``).
+    (``['100 ml']``), one number then its unit (``[50, "ml"]``), or one distinct number beside one
+    distinct unit (``['100'] ['ML']``).
     Several sizes or units (``['50', '90'] ['ML']``) are ambiguous and give None, never the first.
     """
     if not text:
@@ -251,7 +261,16 @@ def parse_size(text: str | Sequence[str] | None) -> Size | None:
     return None if groups is None else _size_from_groups(groups)
 
 
+def find_sizes(text: str) -> tuple[Size, ...]:
+    """Every size written in plain ``text``, in order ("50ml / 1.7 fl oz" gives two)."""
+    return tuple(_size(match) for match in _SIZE_RE.finditer(text))
+
+
 def _size_from_groups(groups: tuple[tuple[str, ...], ...]) -> Size | None:
+    if len(groups) == 1 and len(groups[0]) == 2:  # [50, "ml"]: a number, then its unit
+        value, unit = groups[0]
+        if _BARE_NUMBER_RE.fullmatch(value) and not _BARE_NUMBER_RE.fullmatch(unit):
+            return _one_size(f"{value} {unit}")
     if len(groups) == 2 and groups[0] and all(_BARE_NUMBER_RE.fullmatch(v) for v in groups[0]):
         values, units = set(groups[0]), {unit.lower() for unit in groups[1]}
         if len(values) != 1 or len(units) != 1:

@@ -39,7 +39,7 @@ import hashlib
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -174,10 +174,13 @@ def package(doc: dict[str, Any], prefix: str) -> tuple[bytes, list[str], dict[st
 
 
 def generated_at(body: bytes) -> datetime:
-    """meta.generatedAt of a packaged (gzipped) or plain dataset body, timezone-aware."""
+    """meta.generatedAt of a packaged (gzipped) or plain dataset body, in UTC."""
     raw = gzip.decompress(body) if body[:2] == b"\x1f\x8b" else body
     stamp = str(json.loads(raw)["meta"]["generatedAt"])
-    return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError(f"meta.generatedAt {stamp!r} has no timezone")
+    return parsed.astimezone(UTC)
 
 
 def revision_path(snapshot: str, generated: datetime) -> str:
