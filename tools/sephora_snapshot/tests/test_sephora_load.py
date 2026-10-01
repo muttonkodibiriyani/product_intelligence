@@ -234,3 +234,24 @@ def test_stock_read_with_null_data_records_nothing_and_blocks_succeeded(
         assert _runs(conn, name) == {"en": "partial"}
         ledger = root.parent / f".loaded-{name}.json"
         assert "trpc/part-0000.jsonl.gz" not in ledger.read_text()
+
+
+def test_product_level_claims_are_kept_in_labels(db: str, tmp_path: Path) -> None:
+    d = details("P800")
+    d |= {
+        "c_responsibleBeauty": ["clean"],
+        "c_moreInformation": "These products are vegan.",
+        "c_notes": "musk and vanilla",
+    }
+    root = _folder(tmp_path / "claims", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec("P800", "en", d)])
+    with psycopg.connect(db) as conn:
+        _load(conn, root)
+        rows = conn.execute(
+            "SELECT c.labels FROM listing_content c JOIN source_listing l"
+            " ON l.id = c.listing_id WHERE l.source_listing_key = %s",
+            ("8001",),
+        ).fetchall()
+        assert [(r["responsible_beauty"], r["more_information"], r["notes"]) for (r,) in rows] == [
+            (["clean"], "These products are vegan.", "musk and vanilla")
+        ]

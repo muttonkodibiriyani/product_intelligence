@@ -310,7 +310,10 @@ class Loader:
                 "price_per_quantity_unit": v.get("c_pricePerQuantityUnit"),
                 "prior_price_flag": v.get("c_isPriorPriceProduct"),
                 "variation": v.get("c_variation"),
-                "responsible_beauty": v.get("c_responsibleBeauty"),
+                # product-level on sephora.me (the variants never carry it)
+                "responsible_beauty": d.get("c_responsibleBeauty") or v.get("c_responsibleBeauty"),
+                "more_information": d.get("c_moreInformation"),  # free-text claims; internal only
+                "notes": d.get("c_notes"),  # fragrance notes
                 "breadcrumbs": d.get("c_breadcrumbs"),
                 "images": _images(d, v),
                 "product_nature": d.get("c_productNature"),
