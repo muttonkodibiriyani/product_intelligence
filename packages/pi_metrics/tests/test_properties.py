@@ -105,7 +105,8 @@ def test_filters_are_case_insensitive_and_combine() -> None:
     assert len(ids(EVERYTHING)) == len(ds.products)
     assert ids(ProductFilter(brands=("sample labs",))) == ["p02", "p04", "p06"]
     assert ids(ProductFilter(categories=("MAKEUP",))) == ["p14", "p15"]
-    assert ids(ProductFilter(categories=("serum",), brands=("Sample Labs",), ids=("p02",))) == [
+    assert ids(ProductFilter(categories=("serum",))) == []  # the code only, never a sub-level
+    assert ids(ProductFilter(categories=("SKINCARE",), brands=("Sample Labs",), ids=("p02",))) == [
         "p02"
     ]
     assert ids(ProductFilter(ids=("p02",), brands=("Fixture Beauty",))) == []

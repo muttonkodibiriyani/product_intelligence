@@ -226,7 +226,7 @@ def test_each_export_writes_one_audit_entry_without_row_content(
         "format": "jsonl",
         "filters": {"retailers": f"{A},{B}"},
         "rows": 15,
-        "apiVersion": "1.4.0",
+        "apiVersion": "1.4.1",
     }
     text = caplog.text
     assert "Product p01" not in text

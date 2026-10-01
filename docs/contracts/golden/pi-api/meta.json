@@ -61,13 +61,7 @@
         "key": "makeup"
       },
       {
-        "children": [
-          {
-            "children": [],
-            "count": 14,
-            "key": "serum"
-          }
-        ],
+        "children": [],
         "count": 14,
         "key": "skincare"
       }
@@ -181,7 +175,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.4.0",
+    "apiVersion": "1.4.1",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "meta",
