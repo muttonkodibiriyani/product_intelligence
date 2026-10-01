@@ -15,7 +15,9 @@
 
 Validates the contract, refuses anything that looks like an Algolia credential, then uploads
 gzipped to ``<prefix>/latest.json`` plus an immutable copy named after the cutoff (for rollback),
-and mirrors meta to Firestore.
+and mirrors meta to Firestore. A re-export of an already published cutoff (different content,
+strictly later generatedAt) gets its own create-only revision copy ``<stamp>-g<generatedAt>.json``;
+the original cutoff copy is never replaced.
 
 - v2 (ADR-0007 §6): checked by pi_dataset's strict ``load_dataset``. One file per source: the
   file's offers must all come from one source PI publishes (``PUBLISH_SOURCES``), and it goes to
@@ -32,7 +34,7 @@ and mirrors meta to Firestore.
   carries no data. The new file may carry data from sephora_me only, and the publish is HELD if
   the live v1 carries any other source's data or the guard above finds a loss.
 - latest.json is replaced only if it is still the generation the guard read.
-  A v2 file must also load through pi-api's own serving parse (``pi_api.source.parse``, which
+- A v2 file must also load through pi-api's own serving parse (``pi_api.source.parse``, which
   upgrades it to v3). pi-api skips a dataset it can't load, so uploading one would leave the API
   with no data: such a file is held, never uploaded (decision 2026-10-01, after the v3 upgrade
   refused shared-url size variants).
@@ -48,6 +50,7 @@ import hashlib
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -313,46 +316,95 @@ def package(doc: dict[str, Any], prefix: str) -> tuple[bytes, list[str], dict[st
     return body, paths, summary
 
 
+def generated_at(body: bytes) -> datetime:
+    """meta.generatedAt of a packaged (gzipped) or plain dataset body, in UTC."""
+    raw = gzip.decompress(body) if body[:2] == b"\x1f\x8b" else body
+    stamp = str(json.loads(raw)["meta"]["generatedAt"])
+    parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError(f"meta.generatedAt {stamp!r} has no timezone")
+    return parsed.astimezone(UTC)
+
+
+def revision_path(snapshot: str, generated: datetime) -> str:
+    """Revision copy of a cutoff snapshot, keyed by the new export's generatedAt."""
+    return f"{snapshot.removesuffix('.json')}-g{generated.strftime('%Y%m%dT%H%M%SZ')}.json"
+
+
+def put(
+    bucket: Any, path: str, body: bytes, *, create_only: bool, generation: int | None = None
+) -> str:
+    """Upload body; create-only returns 'unchanged' or 'different' when the path exists.
+
+    ``generation`` (replace only): upload only if the object is still that generation (0: only
+    if there is none); a mismatch raises PreconditionFailed.
+    """
+    blob = bucket.blob(path)
+    blob.content_encoding = "gzip"
+    blob.cache_control = "private, no-cache"
+    if not create_only:
+        blob.upload_from_string(
+            body, content_type="application/json; charset=utf-8", if_generation_match=generation
+        )
+        return "uploaded"
+    try:
+        blob.upload_from_string(
+            body, content_type="application/json; charset=utf-8", if_generation_match=0
+        )
+    except Exception as exc:
+        if getattr(exc, "code", None) != PRECONDITION_FAILED:
+            raise
+        existing = bucket.get_blob(path)
+        if existing is None or existing.md5_hash != blob_md5(body):
+            return "different"
+        return "unchanged"
+    return "uploaded"
+
+
 def upload(bucket: Any, paths: list[str], body: bytes, latest_generation: int | None = None) -> int:
     """Upload to every path in order; a cutoff snapshot is create-only. Returns an exit code.
 
     ``latest_generation``: replace latest.json only if it is still this generation (0: only if
     there is none), i.e. what the source guard judged; None replaces it unconditionally.
+
+    A cutoff snapshot that already exists with different content is never replaced. The body
+    is still published if its generatedAt is strictly later than the snapshot's: as a
+    create-only revision copy (rollback keeps both), then latest.json. Otherwise latest.json
+    stays untouched.
     """
     for path in paths:
-        blob = bucket.blob(path)
-        blob.content_encoding = "gzip"
-        blob.cache_control = "private, no-cache"
+        target = path
         if path.endswith("/latest.json"):
             try:
-                blob.upload_from_string(
-                    body,
-                    content_type="application/json; charset=utf-8",
-                    if_generation_match=latest_generation,
-                )
+                state = put(bucket, path, body, create_only=False, generation=latest_generation)
             except Exception as exc:
                 if getattr(exc, "code", None) != PRECONDITION_FAILED:
                     raise
                 print(f"refusing: {path} changed since the source guard read it", file=sys.stderr)
                 return 1
         else:
-            # A cutoff snapshot is immutable: create-only, identical re-publish is a no-op.
-            try:
-                blob.upload_from_string(
-                    body, content_type="application/json; charset=utf-8", if_generation_match=0
-                )
-            except Exception as exc:
-                if getattr(exc, "code", None) != PRECONDITION_FAILED:
-                    raise
-                existing = bucket.get_blob(path)
-                if existing is None or existing.md5_hash != blob_md5(body):
+            state = put(bucket, path, body, create_only=True)
+            if state == "different":
+                old = generated_at(bucket.get_blob(path).download_as_bytes(raw_download=True))
+                new = generated_at(body)
+                if new <= old:
                     print(
-                        f"refusing: {path} already exists with different content", file=sys.stderr
+                        f"refusing: {path} already exists with different content "
+                        f"(generatedAt {old:%Y-%m-%dT%H:%M:%SZ}; this file "
+                        f"{new:%Y-%m-%dT%H:%M:%SZ} is not later)",
+                        file=sys.stderr,
                     )
                     return 1
-                print(f"unchanged gs://{bucket.name}/{path}")
-                continue
-        print(f"uploaded gs://{bucket.name}/{path}")
+                print(f"kept gs://{bucket.name}/{path} (earlier export of this cutoff)")
+                target = revision_path(path, new)
+                state = put(bucket, target, body, create_only=True)
+                if state == "different":
+                    print(
+                        f"refusing: {target} already exists with different content",
+                        file=sys.stderr,
+                    )
+                    return 1
+        print(f"{state} gs://{bucket.name}/{target}")
     return 0
 
 

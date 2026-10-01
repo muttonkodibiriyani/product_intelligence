@@ -105,6 +105,8 @@ class RetailerView(ContractModel):
 class CategoryNode(ContractModel):
     key: SourceText
     count: int
+    #: Empty: the tree lists category codes only. A product's ``category[1:]`` is the retailer's
+    #: breadcrumb, not a sub-code, so it is never listed here.
     children: tuple[CategoryNode, ...] = ()
 
 
@@ -150,24 +152,13 @@ def retailer_views(ds: DatasetV3) -> tuple[RetailerView, ...]:
 
 
 def category_tree(products: Iterable[ProductV3]) -> tuple[CategoryNode, ...]:
-    """Top-level slugs with their second-level children, counted in products."""
-    top: Counter[str] = Counter()
-    second: dict[str, Counter[str]] = {}
-    for p in products:
-        top[p.category[0]] += 1
-        if len(p.category) > 1:
-            second.setdefault(p.category[0], Counter())[p.category[1]] += 1
-    return tuple(
-        CategoryNode(
-            key=key,
-            count=count,
-            children=tuple(
-                CategoryNode(key=child, count=n)
-                for child, n in sorted(second.get(key, Counter()).items())
-            ),
-        )
-        for key, count in sorted(top.items())
-    )
+    """The category codes (``category[0]``), counted in products.
+
+    A product's ``category`` is ``(code,)`` or ``(code, L1, L2, L3)``, where ``L1..`` is the
+    retailer's own breadcrumb (#108). The breadcrumb is not a sub-code, so it adds no children.
+    """
+    top = Counter(p.category[0] for p in products)
+    return tuple(CategoryNode(key=key, count=count) for key, count in sorted(top.items()))
 
 
 def meta_view(ds: DatasetV3, datasets: tuple[ScopeRef, ...]) -> Metric[MetaView]:
@@ -541,7 +532,7 @@ def _predicates(ds: DatasetV3, query: ProductFilters) -> dict[str, Check]:
     if brands:
         checks["brand"] = lambda p: fold(p.brand) in brands
     if categories:
-        checks["category"] = lambda p: any(fold(c) in categories for c in p.category)
+        checks["category"] = lambda p: fold(p.category[0]) in categories
     if named is not None:
         checks["retailer"] = lambda p: any(c in named and not o.early for c, o in p.offers.items())
     if shown is not None:
@@ -828,6 +819,8 @@ class OfferView(ContractModel):
     promo_pct: Annotated[str, Field(pattern=r"^-?\d+(\.\d+)?$")] | None
     rating: Rating | None
     size: Size | None
+    #: The retailer's published number of shades. Valid on its own: ``capabilities.shades =
+    #: false`` means no shade *list* is served, not that the product has no shades.
     shade_count: int | None
     sku: SourceText | None
     early: bool

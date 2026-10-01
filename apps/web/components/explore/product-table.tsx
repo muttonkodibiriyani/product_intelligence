@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { Schemas } from '@/lib/api/types';
 import { Money } from '../ui/money';
 import { GapView, MatchLabel } from '../ui/pair';
+import { RowThumb } from './row-thumb';
 
 type Card = Schemas['ProductCard'];
 
@@ -34,9 +35,9 @@ export function ProductTable({
 }) {
   const t = useTranslations('explore');
   const locale = useLocale();
-  const th = 'px-3 py-2 font-medium text-ink-2 whitespace-nowrap';
+  const th = 'th whitespace-nowrap';
   return (
-    <div className="relative overflow-x-auto rounded border border-line bg-surface">
+    <div className="relative overflow-x-auto panel">
       <table className="w-full text-sm">
         <caption className="sr-only">{t('results')}</caption>
         <thead className="border-b border-line">
@@ -72,6 +73,7 @@ export function ProductTable({
                 scope="row"
                 className="sticky start-0 min-w-44 bg-surface px-3 py-2 text-start font-normal group-hover:bg-surface-2"
               >
+                <RowThumb url={c.image} label={t('noImage')} />
                 <span className="block text-xs text-ink-2" dir="auto">
                   {c.brand}
                 </span>

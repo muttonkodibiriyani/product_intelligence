@@ -1,22 +1,132 @@
 @import 'tailwindcss';
 
-/* Restrained palette: ink on paper, one accent, semantic colours only where they mean something. */
+/*
+ * The v3 system: ink on a near-white page, content on raised white panels, and six pastel pairs
+ * (a tint and its ink) that each mean one thing: mint good or in stock, rose dearer or failing,
+ * butter stale or partial, sky links and the second series, lavender the current place and
+ * filters, blush the base retailer. Pastels are backgrounds; text always uses the matching ink.
+ */
 @theme {
     --font-sans:
-        system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Arabic', 'Geeza Pro', Tahoma,
-        sans-serif;
-    --color-ink: #1b1f24;
-    --color-ink-2: #59616b;
-    --color-line: #dde1e6;
+        system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Roboto, 'Noto Sans', 'Noto Sans Arabic',
+        'Geeza Pro', Tahoma, sans-serif;
+    --color-ink: #1d2130;
+    --color-ink-2: #5f6677;
+    --color-line: #e6e8ee;
+    --color-line-2: #f0f1f5;
+    --color-line-3: #d8dbe4;
+    --color-page: #fbfbfd;
     --color-surface: #ffffff;
-    --color-surface-2: #f4f5f7;
-    --color-accent: #1f5f8b;
-    --color-danger: #a4262c;
-    --color-warn: #7a4b00;
-    --color-warn-bg: #fdf3dc;
+    --color-surface-2: #f4f5f9;
+    --color-accent: #27628f;
+    --color-focus: #6b5bd2;
+    --color-danger: #a33a3a;
+    --color-warn: #7a5b0c;
+    --color-warn-bg: #fdf4d8;
+
+    --color-blush: #fce9ef;
+    --color-blush-ink: #a13a60;
+    --color-mint: #e3f5ec;
+    --color-mint-ink: #1e7450;
+    --color-lav: #efebfb;
+    --color-lav-ink: #5a47a3;
+    --color-sky: #e5f1fc;
+    --color-sky-ink: #27628f;
+    --color-butter: #fdf4d8;
+    --color-butter-ink: #7a5b0c;
+    --color-rose: #fde7e7;
+    --color-rose-ink: #a33a3a;
+
+    --color-series-a: #e07c9d;
+    --color-series-b: #5e9ad4;
+
+    --radius-card: 14px;
+    --radius-ctl: 10px;
+    --shadow-card: 0 1px 2px rgb(29 33 48 / 0.04), 0 2px 8px rgb(29 33 48 / 0.04);
+    --shadow-pop: 0 12px 32px rgb(29 33 48 / 0.1), 0 2px 6px rgb(29 33 48 / 0.05);
 }
 
 html {
     color: var(--color-ink);
-    background: var(--color-surface-2);
+    background: var(--color-page);
+}
+
+[dir='rtl'] body {
+    line-height: 1.65;
+}
+
+:focus-visible {
+    outline-color: var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* A raised white panel: every table, form block and summary sits on one. */
+@utility panel {
+    background: var(--color-surface);
+    border: 1px solid rgb(29 33 48 / 0.06);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+}
+
+/* Secondary button; `btn-primary` for the one main action of a block. */
+@utility btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+    border: 1px solid var(--color-line-3);
+    border-radius: var(--radius-ctl);
+    background: var(--color-surface);
+    padding: 0.375rem 0.8rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--color-ink);
+    &:hover:not(:disabled) {
+        background: var(--color-surface-2);
+    }
+    &:disabled {
+        opacity: 0.55;
+    }
+}
+
+@utility btn-primary {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: #fff;
+    &:hover:not(:disabled) {
+        background: #343a4d;
+    }
+}
+
+/* Text inputs and selects. */
+@utility field {
+    border: 1px solid var(--color-line-3);
+    border-radius: var(--radius-ctl);
+    background: var(--color-surface);
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--color-ink);
+}
+
+/* A small rounded label; pair it with one pastel tint and its ink. */
+@utility pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+    border-radius: 999px;
+    padding: 0.0625rem 0.55rem;
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+    font-weight: 600;
+}
+
+/* Table header cells and rows inside a panel. */
+@utility th {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-ink-2);
 }

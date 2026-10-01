@@ -9,7 +9,7 @@ import pytest
 from pi_api.wire import _PLURAL, CAVEAT_TEXT, render
 from pi_metrics import Caveat, CaveatCode
 
-PARAMS = {"retailer": "shop_a", "base": "M", "other": "Medium", "pairs": "7"}
+PARAMS = {"retailer": "shop_a", "base": "M", "other": "Medium", "pairs": "7", "date": "2026-09-30"}
 
 
 def _text(code: CaveatCode, count: str) -> tuple[str, str]:

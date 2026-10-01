@@ -2,8 +2,10 @@
 
     uv run pi-match --left ulta.jsonl --right sephora.jsonl --out out/match --cutoff 2026-09-30
 
-Each input line is one ``ProductRecord`` as JSON. The run is deterministic: the same inputs and
-arguments give identical files. ``--cutoff`` is a label recorded in the output, never a clock.
+Each input line is one ``ProductRecord`` as JSON. Aggregate rows (``"aggregate": true``) are
+skipped and counted in ``summary.json``; nothing is written back anywhere. The run is
+deterministic: the same inputs and arguments give identical files. ``--cutoff`` is a label
+recorded in the output, never a clock.
 """
 
 import argparse
@@ -11,7 +13,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from pi_match.match import brand_overlap, match
+from pi_match.match import brand_overlap, match, without_aggregates
 from pi_match.model import ProductRecord
 from pi_match.report import summary, write_outputs
 
@@ -37,10 +39,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True, help="output directory")
     parser.add_argument("--cutoff", required=True, help="data cutoff label, e.g. 2026-09-30")
     args = parser.parse_args(argv)
-    left, right = load_jsonl(args.left), load_jsonl(args.right)
+    left_all, right_all = load_jsonl(args.left), load_jsonl(args.right)
+    left, right = without_aggregates(left_all), without_aggregates(right_all)
     pairs = match(left, right)
     overlap = brand_overlap(left, right)
     stats = summary(pairs, overlap, len(left), len(right))
+    stats["aggregates_skipped"] = {
+        "left": len(left_all) - len(left),
+        "right": len(right_all) - len(right),
+    }
     meta = {
         "cutoff": args.cutoff,
         "left": args.left.name,

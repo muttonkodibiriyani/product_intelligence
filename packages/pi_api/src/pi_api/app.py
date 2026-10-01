@@ -34,7 +34,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from pi_api import export
+from pi_api import dq, export
 from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
@@ -110,6 +110,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
+from pi_metrics.summary import Summary
 from pi_metrics.view import AmbiguousContext, UnknownInput
 
 log = logging.getLogger(__name__)
@@ -397,9 +398,36 @@ def _install_handlers(api: FastAPI) -> None:
 # ---------------------------------------------------------------- the app
 
 
+def _selected(query: ContractModel, data: object) -> frozenset[str]:
+    """The retailer or context ids a request is about; empty means every one."""
+    if isinstance(data, Summary):
+        return frozenset({data.retailer})
+    if isinstance(data, ProductDetail | AdminProductDetail):
+        return frozenset(o.retailer for o in data.offers) or frozenset({""})
+    if isinstance(data, History):
+        return frozenset(data.series) or frozenset({""})
+    return _named(query)
+
+
+def _named(query: ContractModel) -> frozenset[str]:
+    """The retailer or context ids a query names; empty when it names none."""
+    pair = getattr(query, "retailers", None)
+    if isinstance(pair, str):
+        return frozenset(pair.split(","))
+    if isinstance(query, AssortmentQuery):
+        return frozenset({query.missing_at, query.present_at})
+    named = getattr(query, "retailer", None)
+    if isinstance(named, str):
+        return frozenset({named})
+    return frozenset(named or ())
+
+
 def respond[T](
     loaded: Loaded, endpoint: str, query: ContractModel, metric: Metric[T]
 ) -> Envelope[T]:
+    owed = dq.caveats(loaded.imported, endpoint, _selected(query, metric.data))
+    if owed:
+        metric = metric.model_copy(update={"caveats": (*metric.caveats, *owed)})
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
@@ -523,7 +551,12 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
     ) -> Envelope[Promotions]:
         loaded = source.select(query.market, query.scope)
         metric = promotions(
-            loaded.dataset, query.retailer, query.where(), query.min_depth(), query.on
+            loaded.dataset,
+            query.retailer,
+            query.where(),
+            query.min_depth(),
+            query.on,
+            unverified=loaded.unverified,
         )
         return respond(loaded, "promotions", query, capped_promotions(metric, query.limit))
 
@@ -573,7 +606,7 @@ def _summary_route(
     def get_summary(query: Annotated[SummaryQuery, Query()], _: Viewer) -> Envelope[SummaryView]:
         loaded = source.select(query.market, query.scope)
         metric = cache.get(loaded, query.retailer)
-        view = summary_view(metric, loaded.dataset.meta.cutoff, clock())
+        view = summary_view(metric, loaded, clock())
         return respond(loaded, "summary", query, view)
 
 
@@ -715,7 +748,12 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         metric = promotions(
-            loaded.dataset, query.retailer, query.where(), query.min_depth(), query.on
+            loaded.dataset,
+            query.retailer,
+            query.where(),
+            query.min_depth(),
+            query.on,
+            unverified=loaded.unverified,
         )
         return _download(
             loaded,
