@@ -358,6 +358,36 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) lc ON true
 WHERE s.name = ANY(%(sources)s)
+  -- An Ulta aggregate parent repeats its variants: it is left out iff at least one of its
+  -- resolved children is exported here as a non-parent listing of the same source. A parent
+  -- whose children are all absent (or that lists none) stays. A parent is a listing whose
+  -- latest content has labels.aggregate_parent JSON true or the text 'true' (owner, option A).
+  AND NOT (
+    s.name LIKE 'ulta%%'
+    AND COALESCE(lc.labels ->> 'aggregate_parent' = 'true', false)
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(
+        CASE
+          WHEN jsonb_typeof(lc.labels -> 'resolved_children') = 'array'
+          THEN lc.labels -> 'resolved_children'
+        END
+      ) AS child(key)
+      JOIN source_listing child_listing
+        ON child_listing.source_id = sl.source_id AND child_listing.source_listing_key = child.key
+      JOIN latest child_latest ON child_latest.source_listing_id = child_listing.id
+      WHERE NOT COALESCE(
+        (
+          SELECT child_content.labels ->> 'aggregate_parent' = 'true'
+          FROM listing_content child_content
+          WHERE child_content.listing_id = child_listing.id
+          ORDER BY child_content.observed_at DESC
+          LIMIT 1
+        ),
+        false
+      )
+    )
+  )
 ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 """
 
@@ -746,7 +776,9 @@ def build_dataset(
 ) -> dict[str, Any]:
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
-    groups = group_rows(rows)
+    from scripts.demo_export.tidy import tidy_rows  # noqa: PLC0415 - tidy imports ListingRow
+
+    groups = group_rows(tidy_rows(rows))
     products = matched_products(groups, matches)
     existing_ids = {product["id"] for product in products}
     products.extend(product for product in ulta_early if product["id"] not in existing_ids)
@@ -989,7 +1021,11 @@ def main() -> None:
     if args.output_v2 is not None:
         # Build v2 first: if the contract refuses the data, neither file is written.
         from pi_dataset import dump_dataset, load_dataset  # noqa: PLC0415
-        from scripts.demo_export.v2 import build_dataset_v2, category_notes  # noqa: PLC0415
+        from scripts.demo_export.v2 import (  # noqa: PLC0415
+            build_dataset_v2,
+            category_notes,
+            price_review,
+        )
 
         v2 = build_dataset_v2(
             rows,
@@ -1016,6 +1052,12 @@ def main() -> None:
             f"wrote v2 {len(v2.products)} products to {args.output_v2} "
             f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)} "
             f"category_listings={category_notes(rows)}"
+        )
+        review = price_review(v2)
+        print(
+            f"v2 listing rows={len(rows)}; prices to check by hand (never changed): "
+            f"below={len(review['below'])} {review['below'][:20]} "
+            f"above={len(review['above'])} {review['above'][:20]}"
         )
 
 
