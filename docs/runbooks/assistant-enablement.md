@@ -168,8 +168,10 @@ are **numbers**.
 | `limits.maxModelCallsPerQuestion` | number | `4` |
 
 No `disabledBy` field. The caps are the design's (§9.3: $5 a month, $0.40 a day, CI $1.50, 40/150
-questions a day). The four `limits` are the meter's tested defaults; the Coordinator confirms
-them before the seed.
+questions a day), and the four `limits` are the meter's tested defaults. Both are accepted by
+the Coordinator **on the condition that they stay inside the owner's $5/month AI slice**. The
+meter enforces `caps.monthUsd = 5.00` before every call, across every label, CI included.
+Raising any of them needs the owner's OK.
 
 **Verify:** the document shows exactly these fields and types.
 
@@ -252,8 +254,12 @@ done
 ```
 
 Exactly these two roles. No Secret Manager access, no key, and no Storage role (reports are
-stage 2). `datastore.user` is database-wide. The code limits it to the assistant's
-collections, and a test pins their names.
+stage 2). `datastore.user` is **database-wide**: Firestore IAM has no collection-level scope.
+The code limits it to the assistant's collections, and a test pins their names. A narrower
+option is open for Infra review: move the assistant's collections to a named Firestore database
+and add an IAM condition on `resource.name` for that database only. That is a code and rules
+change, and the kill switch's `assistant_config/current` would move with it. Until it is
+decided, the database-wide grant plus the pinned-collections test is the accepted state.
 
 **Verify:** `gcloud projects get-iam-policy "$PROJECT" --flatten=bindings
 --filter="bindings.members:pi-assistant@" --format="value(bindings.role)"` prints exactly
@@ -308,8 +314,9 @@ done
 few minutes).
 **Off / rollback:** the same loop with `--disable-ttl`.
 
-**Vertex.** Run only with the Coordinator's OK, after sections 5–6 are verified (§10.1 items
-1–2: #51 and the kill switch merged, the owner's $5 alert set):
+**Vertex.** The owner approved enabling it in this one pass. Run it only after sections 5–6
+verify (§10.1 items 1–2: #51 and the kill switch are merged, the owner's $5 alert is set, and
+the kill switch is deployed and proven):
 
 ```sh
 gcloud services enable aiplatform.googleapis.com
