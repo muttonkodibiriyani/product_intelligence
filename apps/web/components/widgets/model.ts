@@ -126,6 +126,35 @@ export function histBins(h: Summary['priceHist']) {
   });
 }
 
+/**
+ * The /compare gap histogram, one entry per bin as sent: bin 0 is below edges[0] (`lo` null), bin k
+ * is [edges[k-1], edges[k]), the last is at or above the top edge (`hi` null). The bins have unequal
+ * widths, so each is drawn as its own bar and named by its range. A body whose counts don't fit
+ * its edges is not drawn at all.
+ */
+export interface GapBin {
+  lo: string | null;
+  hi: string | null;
+  count: number;
+}
+export function gapHistBins(h: Schemas['GapHistogram'] | null | undefined): GapBin[] {
+  if (!h || h.edges.length === 0 || h.counts.length !== h.edges.length + 1) return [];
+  const last = h.edges.length;
+  return h.counts.map((count, i) => ({
+    lo: i === 0 ? null : h.edges[i - 1]!,
+    hi: i === last ? null : h.edges[i]!,
+    count,
+  }));
+}
+
+/** Which side a bin leans to: above zero the other retailer is dearer, below it cheaper. */
+export function gapBinSign(b: GapBin): -1 | 0 | 1 {
+  if (b.lo === null) return -1;
+  if (b.hi === null) return 1;
+  const mid = num(b.lo) + num(b.hi);
+  return mid > 0 ? 1 : mid < 0 ? -1 : 0;
+}
+
 /** Scatter points [price, rating, reviews], dropping unplaceable ones. */
 export function ratingPoints(r: Summary['ratingPrice']) {
   if (!r) return [];

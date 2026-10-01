@@ -126,6 +126,14 @@
     "more": "more pairs",
     "fewer": "fewer pairs"
   },
+  "gapHist": {
+    "title": "Spread of price gaps",
+    "question": "How many matched pairs fall in each gap band; above zero means {other} is dearer.",
+    "below": "< {v}",
+    "atLeast": "≥ {v}",
+    "range": "{lo} to {hi}",
+    "label": "Matched pairs per price-gap band, {n} bands."
+  },
   "groupGap": {
     "title": "Price gap by brand",
     "titleCategory": "Price gap by category",

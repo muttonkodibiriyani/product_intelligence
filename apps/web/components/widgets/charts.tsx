@@ -31,6 +31,9 @@ import {
   cheaperShares,
   crossCells,
   type CrossCell,
+  gapBinSign,
+  gapHistBins,
+  type GapBin,
 } from './model';
 
 /*
@@ -1020,6 +1023,90 @@ export function GroupGapWidget({
               fontSize: 11,
               position: rtl ? 'left' : 'right',
               formatter: (e: { value: number }) => signedPct(String(e.value), locale),
+            },
+          },
+        ],
+      })}
+    />
+  );
+}
+
+/** A gap bound for an axis label: signed, a true minus, and no bidi marks (Firefox drops SVG text that starts with one). */
+const gapBound = (v: string, locale: string) =>
+  signedPct(v, locale)
+    .replace(/[\u200e\u200f]/g, '')
+    .replace(/^-/, '\u2212');
+
+/**
+ * How the matched pairs spread by price gap, from the API's own histogram: one bar per bin, named
+ * by its range ("< −50%", "−50% to −25%", … "≥ +50%"), tinted by the side the bin leans to.
+ */
+export function GapHistWidget({
+  data,
+  locale,
+  height,
+}: Omit<Props<Schemas['GapHistogram']>, 'onPick'> & { pair: Pair }) {
+  const t = useTranslations('widgets.gapHist');
+  const tw = useTranslations('widgets');
+  const rtl = locale === 'ar';
+  const bins = gapHistBins(data);
+  const label = (b: GapBin) =>
+    b.lo === null
+      ? t('below', { v: gapBound(b.hi!, locale) })
+      : b.hi === null
+        ? t('atLeast', { v: gapBound(b.lo, locale) })
+        : t('range', { lo: gapBound(b.lo, locale), hi: gapBound(b.hi, locale) });
+  return (
+    <Chart
+      label={t('label', { n: bins.length })}
+      height={height ?? bins.length * 26 + 48}
+      deps={[data, locale]}
+      build={(p) => ({
+        ...base(p, rtl),
+        grid: { left: 8, right: 40, top: 4, bottom: 24, containLabel: true },
+        xAxis: {
+          type: 'value',
+          inverse: rtl,
+          minInterval: 1,
+          axisLine: axisLine(p),
+          splitLine: splitLine(p),
+          axisLabel: { formatter: (v: number) => formatCount(v, locale), hideOverlap: true },
+        },
+        yAxis: {
+          type: 'category',
+          inverse: true,
+          position: rtl ? 'right' : 'left',
+          data: bins.map(label),
+          axisTick: { show: false },
+          axisLine: { show: false },
+          axisLabel: { color: p.ink },
+        },
+        tooltip: {
+          ...(base(p, rtl).tooltip as object),
+          trigger: 'item',
+          formatter: (e: { dataIndex: number }) => {
+            const b = bins[e.dataIndex]!;
+            return tipHead(label(b)) + tipLine(tw('pairs', { n: b.count }));
+          },
+        },
+        series: [
+          {
+            type: 'bar',
+            name: t('title'),
+            // The near-parity bin is a full bar here, so it takes a visible neutral, not the hairline grey.
+            data: bins.map((b) => ({
+              value: b.count,
+              itemStyle: { color: gapBinSign(b) === 0 ? p.line3 : gapColor(p, gapBinSign(b)) },
+            })),
+            barMaxWidth: 14,
+            itemStyle: { borderRadius: 3 },
+            emphasis: { itemStyle: { color: p.ink } },
+            label: {
+              show: true,
+              color: p.ink2,
+              fontSize: 11,
+              position: rtl ? 'left' : 'right',
+              formatter: (e: { value: number }) => formatCount(e.value, locale),
             },
           },
         ],
