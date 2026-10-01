@@ -265,10 +265,8 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
               {data.unmapped.map((u, i) => (
                 <li key={`${u.retailer}:${u.category}:${i}`}>
                   {pair.name(u.retailer)} ·{' '}
-                  <span lang="en" dir="ltr">
-                    {u.category}
-                  </span>{' '}
-                  · {t('n')} = {formatCount(u.n, locale)}
+                  {/* Retailer breadcrumb text, in either language: always a text node, never markup. */}
+                  <bdi dir="auto">{u.category}</bdi> · {t('n')} = {formatCount(u.n, locale)}
                 </li>
               ))}
             </ul>

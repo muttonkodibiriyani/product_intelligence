@@ -1290,9 +1290,6 @@ export function BucketGapWidget({
   const rows = data.filter((b) => b.status === 'ok' && b.gapPct !== null);
   const h = height ?? Math.max(160, rows.length * 30 + 48);
   const names = { base: pair.name(pair.base), other: pair.name(pair.other) };
-  const count = (b: Bucket) =>
-    `n ${formatCount(b.sides[pair.base]?.n ?? 0, locale)} / ${formatCount(b.sides[pair.other]?.n ?? 0, locale)}`;
-  const valueText = (b: Bucket) => `${signedPct(b.gapPct!, locale)} · ${count(b)}`;
   return (
     <Chart
       label={t('chartLabel', { ...names, n: rows.length })}
@@ -1300,14 +1297,19 @@ export function BucketGapWidget({
       deps={[data, locale, currency]}
       build={(p) => {
         const gutter = labelWidth(rows.map(label), p) + 12;
-        const valW = labelWidth(rows.map(valueText), p, 11) + 8;
-        const pos = rows.some((r) => num(r.gapPct!) > 0) ? valW : 16;
-        const neg = rows.some((r) => num(r.gapPct!) < 0) ? valW : 0;
+        // Each bar's gap is a column of its own on the far side, never a label on the bar, so it
+        // cannot run into the names or off a phone screen; each side's n is in the table above.
+        // Without the bidi marks: Firefox sizes an end-anchored SVG label that opens with one at
+        // millions of px and draws it off the chart (every Arabic negative went missing).
+        const gaps = rows.map((b) => signedPct(b.gapPct!, locale).replace(/[\u200e\u200f]/g, ''));
+        const valW = labelWidth(gaps, p, 11) + 12;
+        // A symmetric axis: both directions on one scale.
+        const span = Math.max(5, Math.ceil(Math.max(...rows.map((r) => Math.abs(num(r.gapPct!)))) / 5) * 5);
         return {
           ...base(p, rtl),
           grid: {
-            left: rtl ? pos : gutter + neg,
-            right: rtl ? gutter + neg : pos,
+            left: rtl ? valW : gutter,
+            right: rtl ? gutter : valW,
             top: 4,
             bottom: 24,
             outerBoundsMode: 'none',
@@ -1315,19 +1317,32 @@ export function BucketGapWidget({
           xAxis: {
             type: 'value',
             inverse: rtl,
+            min: -span,
+            max: span,
             axisLine: axisLine(p),
             splitLine: splitLine(p),
             axisLabel: { formatter: (v: number) => signedPct(String(v), locale), hideOverlap: true },
           },
-          yAxis: {
-            type: 'category',
-            inverse: true,
-            position: rtl ? 'right' : 'left',
-            data: rows.map(label),
-            axisTick: { show: false },
-            axisLine: { show: false },
-            axisLabel: { color: p.ink },
-          },
+          yAxis: [
+            {
+              type: 'category',
+              inverse: true,
+              position: rtl ? 'right' : 'left',
+              data: rows.map(label),
+              axisTick: { show: false },
+              axisLine: { show: false },
+              axisLabel: { color: p.ink },
+            },
+            {
+              type: 'category',
+              inverse: true,
+              position: rtl ? 'left' : 'right',
+              data: gaps,
+              axisTick: { show: false },
+              axisLine: { show: false },
+              axisLabel: { color: p.ink2, fontSize: 11 },
+            },
+          ],
           tooltip: {
             ...(base(p, rtl).tooltip as object),
             trigger: 'item',
@@ -1353,17 +1368,10 @@ export function BucketGapWidget({
                 name: label(b),
                 value: num(b.gapPct!),
                 itemStyle: { color: gapColor(p, num(b.gapPct!)) },
-                label: { position: num(b.gapPct!) < 0 ? (rtl ? 'right' : 'left') : rtl ? 'left' : 'right' },
               })),
               barMaxWidth: 14,
               itemStyle: { borderRadius: 3 },
               emphasis: { itemStyle: { color: p.ink } },
-              label: {
-                show: true,
-                color: p.ink2,
-                fontSize: 11,
-                formatter: (e: { dataIndex: number }) => valueText(rows[e.dataIndex]!),
-              },
             },
           ],
         };

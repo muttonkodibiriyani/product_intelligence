@@ -242,6 +242,29 @@ describe('CategoryCompareCard', () => {
     expect(screen.getByText(/^Withheld: Lips — Shop B\./)).toBeTruthy();
   });
 
+  it('shows unmapped breadcrumb paths as plain text, never as HTML or markdown', () => {
+    const body = categoryCompareBody('shop_a', 'shop_b', THIN);
+    body.data.unmapped = [
+      {
+        retailer: 'shop_a',
+        path: ['<img src=x onerror=alert(1)>', '**Gift** _sets_'],
+        reason: 'no_rule',
+        n: 4,
+      },
+      { retailer: 'shop_b', path: ['العناية', '[link](https://example.com)'], reason: 'ambiguous', n: 2 },
+    ];
+    const env = { ...body, data: parseCategoryCompare(body.data) } as unknown as Envelope<CategoryCompare>;
+    const { container } = show(pairState(ready(env), (d) => d.buckets.length > 0));
+    const list = container.querySelector('details ul')!;
+    expect(list.querySelector('img, a, strong, em')).toBeNull();
+    const paths = [...list.querySelectorAll('bdi')];
+    expect(paths.map((b) => b.textContent)).toEqual([
+      '<img src=x onerror=alert(1)> › **Gift** _sets_',
+      'العناية › [link](https://example.com)',
+    ]);
+    expect(paths.every((b) => b.getAttribute('dir') === 'auto')).toBe(true);
+  });
+
   it('shows a 404 as not available yet, not as an error', () => {
     const q: Q = {
       data: undefined,
