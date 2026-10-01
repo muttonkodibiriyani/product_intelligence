@@ -255,3 +255,40 @@ def test_product_level_claims_are_kept_in_labels(db: str, tmp_path: Path) -> Non
         assert [(r["responsible_beauty"], r["more_information"], r["notes"]) for (r,) in rows] == [
             (["clean"], "These products are vegan.", "musk and vanilla")
         ]
+
+
+def test_a_brand_row_another_source_owns_is_never_written(db: str, tmp_path: Path) -> None:
+    """Owner rule (2026-10-01): a Sephora load never updates a row another source (ulta_ae)
+    created, not even with identical values; xmin catches a no-op rewrite."""
+    root = _folder(tmp_path / "clash", {"stopped": "cutoff"})
+    shared = details("P900", brand="Clash Brand")
+    write_part(root, "pdp_en", [pdp_rec("P900", "en", shared)])
+    write_part(root, "pdp_ar", [pdp_rec("P900", "ar", shared)])
+    with psycopg.connect(db) as conn:
+        conn.execute(
+            "INSERT INTO brand (name, aliases) VALUES ('Clash Brand', ARRAY['ulta_ae:Clash Brand'])"
+        )
+        conn.commit()
+        query = "SELECT xmin::text, name, name_ar, aliases FROM brand WHERE name = 'Clash Brand'"
+        before = conn.execute(query).fetchall()
+        stats = _load(conn, root)
+        conn.commit()
+        assert conn.execute(query).fetchall() == before
+        assert stats["brand_name_clash"] == 1
+        assert conn.execute("SELECT count(*) FROM brand WHERE name = 'Clash Brand'").fetchone() == (
+            1,
+        )
+
+
+def test_a_sephora_brand_is_created_once_and_reused(db: str, tmp_path: Path) -> None:
+    root = _folder(tmp_path / "own", {"stopped": "cutoff"})
+    write_part(
+        root,
+        "pdp_en",
+        [pdp_rec(p, "en", details(p, brand="Own Brand")) for p in ("P910", "P911")],
+    )
+    with psycopg.connect(db) as conn:
+        stats = _load(conn, root)
+        rows = conn.execute("SELECT aliases FROM brand WHERE name = 'Own Brand'").fetchall()
+        assert rows == [(["sephora_me:b1"],)]
+        assert "brand_name_clash" not in stats
