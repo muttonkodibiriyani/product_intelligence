@@ -332,15 +332,20 @@ SELECT
   latest.stock_observed_at,
   latest.stock_evidence_retrieved_at,
   latest.stock_run_id,
+  -- The main image. Two element shapes are read: the Sephora loader's {role: 'main', url}, and
+  -- the owner's ulta_ae load {roles: [..., 'image', ...], download_url} (download_url is the CDN
+  -- URL the live combined file carries; local_path is never read). Lowest position wins; no
+  -- element, or none with a URL, is NULL. v2 then keeps only the source's own host.
   (
-    SELECT img ->> 'url'
+    SELECT COALESCE(img ->> 'url', img ->> 'download_url')
     FROM jsonb_array_elements(
       CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
     ) img
     WHERE img ->> 'role' = 'main'
+      OR (jsonb_typeof(img -> 'roles') = 'array' AND img -> 'roles' ? 'image')
     ORDER BY
       CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
-      img ->> 'url'
+      COALESCE(img ->> 'url', img ->> 'download_url')
     LIMIT 1
   ) AS image
 FROM latest

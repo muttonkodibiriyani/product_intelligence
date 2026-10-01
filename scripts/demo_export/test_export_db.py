@@ -17,7 +17,7 @@ from psycopg.rows import dict_row
 from sqlalchemy.engine import make_url
 
 from pi_db import DATABASE_URL_ENV, alembic_config
-from scripts.demo_export.export import LATEST_LISTINGS_SQL
+from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow
 
 pytestmark = pytest.mark.db
 
@@ -462,3 +462,63 @@ def test_the_main_image_is_the_lowest_numeric_position_then_the_url(conn: Conn) 
         )
     assert _row(world, "A")["image"] == "https://img-product.sephora.me/a2.jpg"
     assert _row(world, "B")["image"] == "https://img-product.sephora.me/b1.jpg"
+
+
+ALSHAYA = "https://media.alshaya.com/adobe/assets/urn:aaid:aem:0000/as/p{n}.png"
+
+
+def _ulta_image(n: int, position: object, roles: list[str]) -> dict[str, object]:
+    """One element in the shape of the owner's ulta_ae load (synthetic values)."""
+    return {
+        "roles": roles,
+        "download_url": ALSHAYA.format(n=n) + "?width=533&height=800&preferwebp=true",
+        "source_url": ALSHAYA.format(n=n),
+        "position": position,
+        "status": "downloaded",
+        "asset_id": f"a{n}",
+        "sha256": "0" * 64,
+        "local_path": f"/data/images/p{n}.png",
+    }
+
+
+def test_an_ulta_image_element_gives_its_lowest_positioned_download_url(conn: Conn) -> None:
+    world = World(conn, "ulta_ae")
+    run = world.run("partial", 1)
+    for key in ("A", "B", "C", "D"):
+        world.observe(run, key, 1, "50")
+    world.content(
+        "A",
+        {
+            "images": [
+                _ulta_image(3, 3, ["image"]),
+                _ulta_image(1, 1, ["swatch_image"]),  # not an 'image' role: skipped
+                _ulta_image(2, 2, ["image", "swatch_image"]),
+            ]
+        },
+    )
+    world.content("B", {"images": []})  # empty: null, never invented
+    world.content("C", {"images": [_ulta_image(4, 1, ["swatch_image"])]})  # no 'image' role
+    # D has no content row at all
+    expected = ALSHAYA.format(n=2) + "?width=533&height=800&preferwebp=true"
+    assert _row(world, "A")["image"] == expected
+    assert _row(world, "B")["image"] is None
+    assert _row(world, "C")["image"] is None
+    assert _row(world, "D")["image"] is None
+
+
+def test_an_ulta_alshaya_image_survives_the_v2_export(conn: Conn) -> None:
+    """The URL the SQL reads from the owner's shape reaches the v2 file (strict load included)."""
+    from scripts.demo_export.test_export import row  # noqa: PLC0415
+    from scripts.demo_export.test_v2 import doc, only_offer  # noqa: PLC0415
+
+    world = World(conn, "ulta_ae")
+    world.observe(world.run("partial", 1), "A", 1, "50")
+    world.content("A", {"images": [_ulta_image(1, 1, ["image", "swatch_image"])]})
+    image = _row(world, "A")["image"]
+    expected = ALSHAYA.format(n=1) + "?width=533&height=800&preferwebp=true"
+    assert image == expected
+    ulta = row(source="ulta_ae", family=20, variant=200)
+    d = doc([ListingRow(**(ulta.__dict__ | {"image": image}))])
+    assert only_offer(d)["image"] == expected
+    assert d["products"][0]["image"] == expected
+    assert d["meta"]["capabilities"]["images"] is True
