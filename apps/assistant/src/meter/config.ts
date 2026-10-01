@@ -17,6 +17,11 @@ export const MAX_INPUT_TOKENS = 200_000;
 export const AssistantConfigSchema = z
   .object({
     enabled: z.boolean(),
+    /** Set by the budget-alert kill switch when it turns the assistant off (design §9.4). */
+    disabledBy: z
+      .string()
+      .regex(/^budget_alert:\d{1,3}%:\d{4}-\d{2}$/)
+      .optional(),
     model: z.string().regex(/^[a-z0-9.-]{1,64}$/),
     promptVersion: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/),
     /** Must equal the loaded price table's version, so a price change is a deliberate act. */

@@ -10,6 +10,15 @@ import type { ApiRequest } from "../api/client.js";
 export const ROLES = ["viewer", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
+/**
+ * The only way a token's `role` claim becomes a caller role (the callable uses this). Anything
+ * but exactly viewer or admin, including the kill switch's `killswitch`, maps to null and is
+ * refused before the meter or any tool runs.
+ */
+export function callerRole(claim: unknown): Role | null {
+  return ROLES.find((role) => role === claim) ?? null;
+}
+
 /** Who is asking. The ID token travels separately so it never lands in a tool result or log. */
 export interface CallerContext {
   readonly uid: string;

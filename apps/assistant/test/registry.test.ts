@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { verifyAnswerNumbers } from "../src/guard/verifier.js";
 import { TOOLS } from "../src/tools/definitions.js";
 import { MAX_RESULT_CHARS, ToolRegistry, type ToolEnvelope } from "../src/tools/registry.js";
-import { type AnyToolDef, defineTool } from "../src/tools/types.js";
+import { type AnyToolDef, callerRole, defineTool } from "../src/tools/types.js";
 import { z } from "zod";
 import {
   COMPARE_DATA,
@@ -25,6 +25,27 @@ function registry(api: FakeApi, tools: readonly AnyToolDef[] = TOOLS) {
 }
 
 describe("ToolRegistry", () => {
+  it.each([
+    ["viewer", "viewer"],
+    ["admin", "admin"],
+    ["killswitch", null],
+    ["Admin", null],
+    ["", null],
+    [undefined, null],
+    [["admin"], null],
+  ])("maps only exact viewer|admin claims to a caller role (%j)", (claim, role) => {
+    expect(callerRole(claim)).toBe(role);
+  });
+
+  it("fails closed for a role outside viewer/admin (e.g. the kill-switch account)", async () => {
+    const api = new FakeApi(() => okEnvelope(COMPARE_DATA));
+    const killSwitch = { uid: "ks", role: "killswitch" } as unknown as typeof VIEWER;
+    expect(registry(api).available(killSwitch)).toEqual([]);
+    const result = await registry(api).run("compare", PAIR, killSwitch, "tok");
+    expect(result).toMatchObject({ status: "error", code: "forbidden" });
+    expect(api.calls).toEqual([]);
+  });
+
   it("forwards the caller's token and builds a citation from envelope meta", async () => {
     const api = new FakeApi(() => okEnvelope(COMPARE_DATA));
     const result = (await registry(api).run(
