@@ -1,6 +1,6 @@
-"""smoke_app's URL comparison after Back (no browser, no Firebase)."""
+"""smoke_urls: smoke_app's URL comparison after Back (no browser, no Firebase)."""
 
-from smoke_app import same_view
+from smoke_urls import same_view
 
 BASE = "https://example.web.app/app/en/explore/"
 

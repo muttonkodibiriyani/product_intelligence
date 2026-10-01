@@ -27,13 +27,15 @@ import json
 import re
 import secrets
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import urlencode
 
 import requests
 from playwright.sync_api import Page, Response, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
+from smoke_urls import same_view
 
 REPO = Path(__file__).resolve().parents[2]
 LEGACY_ASSET = re.compile(r"\b(?:app|styles)\.[0-9a-f]{10}\.(?:js|css)\b")
@@ -201,12 +203,6 @@ def explore_and_product(page: Page, base: str, problems: list[str]) -> None:
     page.get_by_role("table").wait_for(timeout=TIMEOUT)
 
 
-def same_view(a: str, b: str) -> bool:
-    """Same path and same decoded query: the app writes a space as + where quote() writes %20."""
-    ua, ub = urlsplit(a), urlsplit(b)
-    return (ua.path, parse_qs(ua.query)) == (ub.path, parse_qs(ub.query))
-
-
 def export_guard(page: Page, problems: list[str]) -> None:
     """A 200 that is not the asked-for type (index.html from a mis-routed /api) is not saved."""
     page.route(
@@ -243,7 +239,7 @@ def run(engine: str, base: str, email: str, password: str, out: Path) -> list[st
         )
         page = context.new_page()
         watch(page, problems, where)
-        steps = [
+        steps: list[tuple[str, Callable[[], None]]] = [
             ("sign-in", lambda: sign_in(page, base, email, password)),
             ("explore-product", lambda: explore_and_product(page, base, problems)),
             ("export-csv", lambda: export(page, "csv", problems)),
