@@ -479,7 +479,8 @@
       "label": "Your question",
       "placeholder": "Ask Ryzan AI Assistant…",
       "send": "Send",
-      "disabled": "Sending is off until the assistant is connected."
+      "disabled": "Sending is off until the assistant is connected.",
+      "stop": "Stop"
     },
     "promises": "Read-only tools only. Every number is cited. When the data is not enough, it says so instead of guessing.",
     "progress": {
@@ -525,6 +526,21 @@
       "invalid": "That question could not be read. Please rephrase it.",
       "tooLong": "That question is too long. Please shorten it.",
       "generic": "The assistant could not answer right now. No answer was generated."
+    },
+    "thread": {
+      "label": "Conversation",
+      "you": "You",
+      "working": "Working on your answer…",
+      "ready": "Answer ready.",
+      "stopped": "Stopped. No answer was shown."
+    },
+    "error": {
+      "signedOut": "Your session could not be verified. Reload the page and sign in again.",
+      "noAccess": "Your account does not have access to the assistant.",
+      "invalid": "That question could not be sent. Please rephrase it.",
+      "network": "The assistant could not be reached. Check your connection and try again.",
+      "timeout": "The answer took too long. Please try again.",
+      "generic": "Something went wrong. No answer was generated."
     }
   }
 }

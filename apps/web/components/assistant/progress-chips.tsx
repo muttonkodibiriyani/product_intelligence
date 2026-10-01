@@ -23,7 +23,7 @@ export function ProgressChips({ steps, done }: { steps: readonly ChatProgress[];
           <li
             key={progressKey(step, i)}
             aria-current={last ? 'step' : undefined}
-            className={`rounded-full border border-line px-2.5 py-0.5 text-xs ${
+            className={`pill border border-line-2 font-normal ${
               last ? 'bg-surface-2 text-ink motion-safe:animate-pulse' : 'text-ink-2'
             }`}
           >

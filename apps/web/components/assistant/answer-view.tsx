@@ -100,7 +100,7 @@ function CitationChip({ c, n }: { c: Citation; n: number }) {
   );
   return (
     <li>
-      <details className="rounded border border-line bg-surface px-2 py-1 text-xs">
+      <details className="rounded-ctl border border-line-2 bg-surface px-2 py-1 text-xs">
         <summary className="cursor-pointer list-none">
           <span className="me-1 rounded bg-surface-2 px-1 font-medium tabular-nums">{n}</span>
           {isToolName(c.tool) ? tool(c.tool) : tool('other')} · {t('cutoff')}{' '}
@@ -161,9 +161,7 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
 
   return (
     <div className="space-y-3 text-sm">
-      {answer.status === 'unverified' && (
-        <p className="inline-block rounded bg-surface-2 px-2 py-0.5 text-xs font-medium">{t('unverified')}</p>
-      )}
+      {answer.status === 'unverified' && <p className="pill bg-butter text-butter-ink">{t('unverified')}</p>}
       <div className="space-y-2" aria-busy={!revealed}>
         {blocks.slice(0, shown).map((b, i) => (
           <BlockView key={i} b={b} />
@@ -223,7 +221,7 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
           {answer.notEnoughData.length > 0 && (
             <ul className="space-y-1">
               {answer.notEnoughData.map((n, i) => (
-                <li key={i} className="rounded border border-line bg-surface-2 px-2 py-1 text-xs">
+                <li key={i} className="rounded-ctl bg-sky px-2 py-1 text-xs text-sky-ink">
                   <span className="font-medium">{t('notEnough')}</span> · <bdi>{bilingual(n.detail)}</bdi>
                 </li>
               ))}
