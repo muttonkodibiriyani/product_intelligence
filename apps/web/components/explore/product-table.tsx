@@ -9,7 +9,7 @@ import { GapView, MatchLabel } from '../ui/pair';
 type Card = Schemas['ProductCard'];
 
 /** Where the product page's Back goes; the explorer when not set. */
-export type BackTo = 'compare' | 'promotions';
+export type BackTo = 'compare' | 'promotions' | 'launches';
 
 /** The URL of a product page; `from` carries the list's query so Back restores it. */
 export function productHref(locale: string, id: string, from = '', back?: BackTo): string {
