@@ -45,6 +45,21 @@ describe('HistoryChart', () => {
     expect(screen.getByText(en.price.underReview)).toBeTruthy();
   });
 
+  it('a day priced 0.01 or less breaks the line: no segment joins the days either side of it', () => {
+    const low = structuredClone(series);
+    low.shop_a![1]!.price = { amount: '0.01', currency: 'AED', minor: 1 };
+    const { container } = show(low);
+    const lines = [...container.querySelectorAll('polyline')].map((l) =>
+      l.getAttribute('points')!.split(' '),
+    );
+    // shop_b: one line over its three days. shop_a: two lone days, each a flat tick, never a line through 0.01.
+    expect(lines).toHaveLength(3);
+    expect(lines.filter((pts) => pts.length === 3)).toHaveLength(1);
+    const ticks = lines.filter((pts) => pts.length === 2);
+    expect(ticks).toHaveLength(2);
+    for (const [a, b] of ticks) expect(a!.split(',')[1]).toBe(b!.split(',')[1]);
+  });
+
   it('a single day priced 0.01 or less: the table says "Price under review", never the number', () => {
     const low = structuredClone(firstDay);
     low.shop_a![0]!.price = { amount: '0.00', currency: 'AED', minor: 0 };

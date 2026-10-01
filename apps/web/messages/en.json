@@ -134,7 +134,7 @@
       },
       "intro": "Each retailer's own catalogue, and the two head to head on matched products.",
       "headToHead": "Head to head",
-      "openPrices": "All price analytics",
+      "openPrices": "Compare by category",
       "loading": "Loading the overview…",
       "noRetailers": "No collected retailer to report on.",
       "noPairs": "No comparable pairs yet.",
@@ -436,18 +436,19 @@
   },
   "prices": {
     "title": "Price analytics",
-    "intro": "Each retailer's full catalogue on its own, then the two head to head on the matched products only.",
+    "intro": "Each retailer's full catalogue on its own, the two compared by category across both full catalogues, then head to head on the exactly matched products only.",
     "perRetailer": "By retailer",
     "perRetailerHint": "Full catalogue of the retailer you pick.",
-    "headToHead": "Head to head",
+    "headToHead": "Exact matches only",
     "headToHeadHint": "{other} vs {base} on matched products only.",
     "loading": "Loading price analytics…",
     "noRetailers": "No collected retailer to report on.",
-    "onePair": "Head-to-head views need two collected retailers.",
+    "onePair": "Comparisons need two collected retailers.",
     "noPairs": "No comparable pairs yet.",
     "kpis": "At a glance",
     "withheld": "Not shown for this retailer",
     "openCompare": "Open compare",
-    "pairsNote": "{n, plural, one {# comparable pair} other {# comparable pairs}} between {base} and {other}; every head-to-head figure below is on them alone."
+    "byCategory": "By category",
+    "byCategoryHint": "{other} vs {base} across both full catalogues."
   }
 }
