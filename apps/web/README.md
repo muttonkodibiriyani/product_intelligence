@@ -13,9 +13,12 @@ apps/web/build.sh verify     # build dist/ and compare it byte-for-byte with dep
 apps/web/build.sh artifact   # artifact/: offline build with in-browser sample data (no network)
 ```
 
-Needs `node` (only for `node --check`) and coreutils. `dist/` and `artifact/` are git-ignored.
+Needs `node` and coreutils, with no npm packages. Every build runs `node --check` and
+`test/escape.test.js`. That test renders every page in both languages from a snapshot whose brand,
+name, unit, id and colour fields hold markup, and fails if any of it reaches the DOM unescaped.
+`dist/` and `artifact/` are git-ignored.
 
-`deployed.sha256` pins the build that should be live (`app.91ccc8ac66.js`, `styles.4e6093a7e9.css`). Run `verify` before every deploy; a source change must update that file in the
+`deployed.sha256` pins the build that should be live (`app.05ce45f162.js`, `styles.4e6093a7e9.css`). Run `verify` before every deploy; a source change must update that file in the
 same PR (run `build.sh`, then regenerate it as in the `verify` step) and the new hashes are
 what Infra deploys.
 

@@ -1,5 +1,7 @@
 /* Data layer. Everything the app renders comes from one pi.dataset/v1 JSON (see data-contract.md).
    The sample generator (data.js) exports that JSON; the real snapshot export produces the same shape. */
+/* dataset strings reach SVG attributes: only plain hex colours pass */
+const HEX=h=>typeof h==='string'&&/^#[0-9a-f]{6}$/i.test(h)?h:null;
 const DEFAULT_TYPE={foundation:'foundation',concealer:'wand',lips:'lipstick',cheek:'blush',eyes:'mascara',skincare:'dropper',fragrance:'perfume',body:'jar',other:'jar'};
 const FIELD_KEYS=['price','regular','promo','stock','size','shades','rating','gtin'];
 
@@ -39,15 +41,15 @@ function hydrate(j){
   const early=[];
   const products=j.products.map(q=>{const cat=CATS.includes(q.category)?q.category:'other';const R=q.render||{};
     const shades=(q.shades||[]).filter(h=>/^#[0-9a-f]{6}$/i.test(h));
-    const p={id:String(q.id),brand:q.brand,name:q.name,cat,type:R.type||DEFAULT_TYPE[cat],unit:q.unit||'',cap:R.cap||'#2A2A2C',liquid:R.liquid||shades[0]||'#E9E1D7',shades,fam:q.shadeFamilies||[],hero:false,
+    const p={id:String(q.id).replace(/[^\w.:-]/g,'_'),brand:String(q.brand??''),name:String(q.name??''),cat,type:R.type||DEFAULT_TYPE[cat],unit:String(q.unit||'').replace(/[^\p{L}\p{N} .\/%-]/gu,'').slice(0,12),cap:HEX(R.cap)||'#2A2A2C',liquid:HEX(R.liquid)||shades[0]||'#E9E1D7',shades,fam:q.shadeFamilies||[],hero:false,
       listed:{},size:{},reg:{},shadeCount:{},rating:{},first:{},last:{},d:{},ev:{},sku:{},url:{},promos:[],outs:[],sizeChg:[],
       match:q.match&&q.match.reviewState!=='rejected'?[q.match.method,q.match.confidence,q.match.stage||j.meta.matchStage,q.match.matchClass||'exact',q.match.reviewState||(j.meta.kind==='sample'?'accepted':'unreviewed')]:null};
     RR.forEach(k=>{let o=q.offers&&q.offers[k];if(o&&(o.early||!rOk(k))){if(o.early)early.push({p,k,o});o=null}p.listed[k]=!!o;if(!o){p.d[k]=null;p.first[k]=p.last[k]=null;p.shadeCount[k]=0;p.rating[k]=null;return}
       const sr=o.series||{};const price=(sr.price||new Array(N).fill(null)).map(v=>v==null?null:+v);
-      const size=sr.size||new Array(N).fill(o.size==null?null:+o.size);
+      const size=sr.size?sr.size.map(v=>v==null?null:+v):new Array(N).fill(o.size==null?null:+o.size);
       const stock=sr.stock?sr.stock.map((v,i)=>price[i]==null&&v!==4?0:v):null;
       const promo=sr.promo||null;const regular=sr.regular||null;
-      p.d[k]={price,size,stock,promo,regular};p.size[k]=o.size!=null?+o.size:size[N-1];p.shadeCount[k]=o.shadeCount||0;p.rating[k]=o.rating||null;
+      p.d[k]={price,size,stock,promo,regular};p.size[k]=o.size!=null?+o.size:size[N-1];p.shadeCount[k]=+o.shadeCount||0;p.rating[k]=Array.isArray(o.rating)?o.rating.map(Number):null;
       p.ev[k]=o.evidence||null;p.sku[k]=o.sku||null;p.url[k]=o.url||null;
       let f=price.findIndex(v=>v!=null),l=-1;for(let i=N-1;i>=0;i--)if(price[i]!=null){l=i;break}
       p.first[k]=f<0?null:f;p.last[k]=l<0?null:l;
@@ -57,7 +59,7 @@ function hydrate(j){
       if(stock){let a=null;for(let i=0;i<=N;i++){const on=i<N&&stock[i]===3;if(on&&a==null)a=i;if(!on&&a!=null){p.outs.push({r:k,a,b:i-1});a=null}}}
       for(let i=1;i<N;i++)if(size[i]!=null&&size[i-1]!=null&&size[i]!==size[i-1])p.sizeChg.push({r:k,d:i,from:size[i-1],to:size[i]})});
     p.sameSize=p.listed.u&&p.listed.s&&p.size.u!=null&&p.size.u===p.size.s&&!p.sizeChg.length&&(!p.match||p.match[3]==='exact');return p});
-  early.forEach(e=>{const sr=e.o.series||{};e.price=sr.price?sr.price[N-1]:null;e.size=e.o.size;e.at=e.o.evidence&&e.o.evidence.capturedAt});
+  early.forEach(e=>{const sr=e.o.series||{};e.price=sr.price?sr.price[N-1]:null;e.size=e.o.size==null?null:+e.o.size;e.at=e.o.evidence&&e.o.evidence.capturedAt});
   products.splice(0,products.length,...products.filter(p=>p.listed.u||p.listed.s));
   /* categories outside the beauty list stay visible as 'other' (filters, ladder, overlap) */
   if(products.some(p=>p.cat==='other')&&!CATS.includes('other'))CATS.push('other');
