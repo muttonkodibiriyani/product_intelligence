@@ -29,6 +29,12 @@ The v2 file is built from the same rows, groups and pairs as v1 (same product id
 invalid v2 document fails the whole export. `--scope` (default `beauty`) names the storage folder
 `datasets/ae/<scope>/`. v1 stays the dashboard's input until it moves to v2 (ADR-0007 §6).
 
+`--output-v3 PATH` (opt-in; `--output-v2` stays the default published file) also writes that v2
+snapshot upgraded to `pi.dataset/v3` under `beauty@1`, with each collected offer's
+`listingCount`: the listing rows grouped into it (one family, one pack size; an early recon offer
+states none). It is re-read with the strict `load_any` before anything is written. Publishing v3
+instead of v2 is the owner's call at re-export.
+
 v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
 value captured on any other day is published as `null`, never carried forward (contract rule 6),
 and `meta.fields.price` / `regular` / `stock` say `partial`. Stock has its own capture time (the

@@ -17,6 +17,8 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import ClassVar
 
+from pydantic import PrivateAttr
+
 from pi_dataset import (
     Context,
     Dataset,
@@ -272,9 +274,31 @@ def identity_unclear(ds: DatasetV3, product: ProductV3, retailer_id: str) -> boo
     return len(offers) > 1 and (None in keys or len(keys) > 1)
 
 
+class WithheldOffer(OfferV3):
+    """A served offer whose prices on some dates a read-time view withheld (the API's price
+    floor serves them as null). The listing was still observed on those dates, so ``seen`` keeps
+    counting them; the record is private and never serialised, so the wire is unchanged."""
+
+    _withheld: frozenset[int] = PrivateAttr(default=frozenset())
+
+    @classmethod
+    def of(cls, offer: OfferV3, withheld: frozenset[int]) -> WithheldOffer:
+        served = cls.model_construct(offer.model_fields_set, **dict(offer))
+        served._withheld = withheld
+        return served
+
+    @property
+    def withheld(self) -> frozenset[int]:
+        """Date indexes whose published price was withheld."""
+        return self._withheld
+
+
 def seen(offer: Offer, i: int) -> bool:
-    """The offer was observed on date ``i``: priced, or with an observed stock state."""
+    """The offer was observed on date ``i``: priced (a withheld price included), or with an
+    observed stock state."""
     if offer.series.price[i] is not None:
+        return True
+    if isinstance(offer, WithheldOffer) and i in offer.withheld:
         return True
     states = offer.series.availability
     return states is not None and states[i] is not None

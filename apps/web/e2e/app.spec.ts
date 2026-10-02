@@ -88,8 +88,9 @@ for (const locale of ['en', 'ar'] as const) {
     test('503 auth_unavailable: waits, retries, stays signed in', async ({ page }) => {
       let n = 0;
       const mock = await mockBackend(page, {
+        // Counts /meta only: the landing also asks /compare and /index once signed in.
         onApi: withSummary((r) =>
-          ++n <= 1
+          new URL(r.request().url()).pathname === '/api/v1/meta' && ++n <= 1
             ? r.fulfill({
                 status: 503,
                 headers: { 'Retry-After': '1' },

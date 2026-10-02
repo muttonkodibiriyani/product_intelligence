@@ -28,6 +28,8 @@ export const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
   "base",
   "other",
   "cheaper",
+  // OfferView.priceFlag ("invalid_low": a price at or below 0.01, withheld at read time).
+  "priceFlag",
   "currency",
   "market",
   "id",
@@ -37,6 +39,8 @@ export const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
   "reviewState",
   "excludedReason",
   "gapExcludedReason",
+  // CategoryRow.gapReason (API 1.8.0): the pi_metrics reason a category row has no gap.
+  "gapReason",
   "summaryUnavailable",
   "label",
   "unit",
@@ -75,10 +79,19 @@ export const SOURCE_TEXT_KEYS: ReadonlySet<string> = new Set([
   "sizeLabel",
   "sizeLabels",
   "sizeSystem",
+  "caption",
+  "catalogueId",
+  "externalId",
+  "structuredId",
+  "structuredProductId",
+  "productType",
+  "roles",
+  "selections",
+  "selectionLabels",
 ]);
 
 /** Always removed (see the module comment). */
-export const DROPPED_KEYS: ReadonlySet<string> = new Set(["minor", "image"]);
+export const DROPPED_KEYS: ReadonlySet<string> = new Set(["minor", "image", "optionValues"]);
 
 /** Admin-only evidence fields, removed for viewers as defence in depth. */
 export const ADMIN_ONLY_KEYS: ReadonlySet<string> = new Set(["runId", "source"]);

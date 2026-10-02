@@ -115,3 +115,21 @@ export function signInErrorKey(e: unknown): 'badCredentials' | 'tooMany' | 'netw
   if (code === 'auth/network-request-failed') return 'network';
   return 'generic';
 }
+
+/**
+ * A reset request's outcome. An unknown or disabled address reads as sent, so the form never tells
+ * anyone who has an account (a disabled account cannot use the link anyway); any other failure (too
+ * many requests, quota, network, a 403) is said, not hidden.
+ */
+export function resetOutcome(e: unknown): 'sent' | 'invalidEmail' | 'later' {
+  const code = authCode(e);
+  if (code === 'auth/user-not-found' || code === 'auth/user-disabled') return 'sent';
+  if (code === 'auth/invalid-email' || code === 'auth/missing-email') return 'invalidEmail';
+  return 'later';
+}
+
+/** The Firebase error code alone, safe to log: never the message, which can carry the address. */
+export function authCode(e: unknown): string {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? code : 'unknown';
+}

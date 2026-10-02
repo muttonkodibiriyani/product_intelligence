@@ -130,3 +130,26 @@ html {
     font-weight: 600;
     color: var(--color-ink-2);
 }
+
+/* Skeleton bars (components/ui/skeleton.tsx): a shimmer that follows the reading direction, still under reduced motion. */
+@utility skeleton {
+    background: linear-gradient(
+            90deg,
+            var(--color-line-2) 0 40%,
+            var(--color-surface-2) 50%,
+            var(--color-line-2) 60% 100%
+        )
+        100% 0 / 250% 100% var(--color-line-2);
+    @media (prefers-reduced-motion: no-preference) {
+        animation: skeleton 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+    }
+    [dir='rtl'] & {
+        animation-direction: reverse;
+    }
+}
+
+@keyframes skeleton {
+    to {
+        background-position: 0 0;
+    }
+}
