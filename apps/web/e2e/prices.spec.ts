@@ -70,8 +70,9 @@ for (const locale of ['en', 'ar'] as const) {
           top5: 'أكبر 5',
           gapHist: 'توزيع فروق الأسعار',
           nPairs: 'n = 6 أزواج قابلة للمقارنة',
+          // Arabic percentages carry LRM marks (50‎%‎); the retailer names stay as the API sent them.
           gapTakeaway:
-            /المتجر ب أغلى في 50% من 6 أزواج مطابقة وأرخص في 33\.3%؛ و16\.7% في النطاق المحيط بالصفر\./,
+            /Shop B أغلى في 50\u200e?%\u200e? من 6 أزواج مطابقة وأرخص في 33\.3\u200e?%\u200e?؛ و16\.7\u200e?%\u200e? في النطاق المحيط بالصفر\./,
         }
       : {
           title: 'Prices by category',
@@ -109,7 +110,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(hist.getByRole('heading', { name: T.hist })).toBeVisible();
       // summary-fixture: the 50–100 band holds 1,140 of the 4,812 products in the histogram.
       const histLine = hist.locator('[data-takeaway]');
-      await expect(histLine).toContainText('23.7%');
+      await expect(histLine).toContainText(/23\.7\u200e?%/);
       if (locale === 'en')
         await expect(histLine).toHaveText('The fullest band is AED 50 to AED 100: 23.7% of priced products.');
 

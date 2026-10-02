@@ -13,10 +13,6 @@ export function AppHeader() {
   const locale = useLocale();
   const { state, auth } = useAuth();
   const pathname = usePathname();
-  // Visibility rule (nav table, Launches row): the page is always reachable, but says "soon"
-  // until every shop has the collection days a launch needs. Nothing to say until /meta answers.
-  const meta = useMeta();
-  const launchesSoon = !!meta.data && !launchReadiness(meta.data).allReady;
   const nav = [
     { href: `/${locale}/explore/`, label: t('nav.explore'), match: /^\/(en|ar)\/(explore|product)\// },
     { href: `/${locale}/prices/`, label: t('nav.prices'), match: /^\/(en|ar)\/prices\// },
@@ -26,7 +22,7 @@ export function AppHeader() {
       href: `/${locale}/launches/`,
       label: t('nav.launches'),
       match: /^\/(en|ar)\/launches\//,
-      soon: launchesSoon,
+      badge: LaunchesSoon,
     },
     { href: `/${locale}/dataset/`, label: t('nav.status'), match: /^\/(en|ar)\/dataset\// },
     { href: `/${locale}/assistant/`, label: t('nav.assistant'), match: /^\/(en|ar)\/assistant\// },
@@ -67,11 +63,7 @@ export function AppHeader() {
                       }`}
                     >
                       {n.label}
-                      {n.soon && (
-                        <span className="pill ms-1.5 bg-butter align-[1px] text-[11px] text-butter-ink">
-                          {t('nav.soon')}
-                        </span>
-                      )}
+                      {n.badge && <n.badge />}
                     </Link>
                   </li>
                 );
@@ -98,5 +90,20 @@ export function AppHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * Visibility rule (nav table, Launches row): the page is always reachable, but says "soon" until
+ * every shop has the collection days a launch needs. Mounted inside the nav only, so /meta is
+ * asked for by a signed-in user: before the session is restored the API client has no token, and
+ * a request then would count as a refused one and sign the user out.
+ */
+function LaunchesSoon() {
+  const t = useTranslations('app');
+  const meta = useMeta();
+  if (!meta.data || launchReadiness(meta.data).allReady) return null;
+  return (
+    <span className="pill ms-1.5 bg-butter align-[1px] text-[11px] text-butter-ink">{t('nav.soon')}</span>
   );
 }

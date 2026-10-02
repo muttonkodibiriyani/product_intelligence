@@ -75,8 +75,9 @@ for (const locale of ['en', 'ar'] as const) {
           title: 'المنتجات الجديدة',
           notYet: 'تظهر المنتجات الجديدة بعد جمع بيانات كل متجر في يومين منفصلين على الأقل',
           readiness: 'أيام الجمع لكل متجر',
-          oneDay: /يوم جمع واحد، آخرها 30 سبتمبر 2026/,
-          imported: 'لقطة لمرة واحدة، حُمِّلت 1 أكتوبر 2026',
+          // Engines differ on the Arabic medium date (30 سبتمبر 2026 vs 30‏/09‏/2026).
+          oneDay: /يوم جمع واحد، آخرها .*2026/,
+          imported: /لقطة لمرة واحدة، حُمِّلت .*2026/,
           oneOfTwo: '1 من 2',
           promotions: 'اطّلع على العروض الحالية',
           browse: 'تصفّح كل المنتجات',
@@ -88,7 +89,8 @@ for (const locale of ['en', 'ar'] as const) {
           three: '3 منتجات',
           of40: '3 من 40 منتج',
           more: 'اعرض حتى 500',
-          pending: 'المتجر ج غير مشمول بعد: 1 من 2 أيام جمع.',
+          // The golden retailer names are English in both languages: the page never translates them.
+          pending: 'Shop C غير مشمول بعد: 1 من 2 أيام جمع.',
           notApplicable: 'هذا العرض لا ينطبق على هذا النوع من الكتالوجات.',
           back: 'العودة إلى المنتجات الجديدة',
         }
