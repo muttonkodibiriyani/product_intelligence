@@ -6,9 +6,18 @@ from datetime import date
 
 import pytest
 
+from pi_core.enums import AvailabilityState
 from pi_dataset import DatasetV3, FieldStatus
-from pi_dataset.compose import PRODUCER, CompositionError, compose, only, source_infos
+from pi_dataset.compose import (
+    PRODUCER,
+    CompositionError,
+    compose,
+    latest,
+    only,
+    source_infos,
+)
 from pi_metrics import EVERYTHING, assortment_gaps, launches
+from pi_metrics.view import not_observed
 from sources_fixture import SEPHORA, ULTA, days, snapshot, snapshot_doc
 
 OLD, NEW = days("2026-09-22", 3), days("2026-09-30", 2)
@@ -163,3 +172,69 @@ def test_a_retailer_in_two_slices_or_no_slice_is_refused() -> None:
 def test_source_infos_of_one_file() -> None:
     infos = source_infos(combined())
     assert [(i.source, i.products) for i in infos] == [(SEPHORA, 2), (ULTA, 2)]
+
+
+def stale_ulta(ulta_doc: dict[str, object] | None = None) -> tuple[DatasetV3, DatasetV3]:
+    """The composed view and its latest-date projection, Ulta stale since 22 Sep."""
+    old = combined() if ulta_doc is None else DatasetV3.model_validate(ulta_doc)
+    composed = compose([only(old, [ULTA]), only(sephora(), [SEPHORA])])
+    as_of = latest(composed)
+    assert [(s.source, str(s.last_date)) for s in as_of.stale] == [(ULTA, "2026-09-22")]
+    return composed.dataset, as_of.dataset
+
+
+def test_latest_is_the_view_itself_when_no_source_is_stale() -> None:
+    composed = compose([only(combined(), [ULTA]), only(combined(), [SEPHORA])])
+    as_of = latest(composed)
+    assert as_of.stale == ()
+    assert as_of.dataset is composed.dataset
+
+
+def test_latest_reads_a_stale_source_at_its_own_last_date() -> None:
+    ds, now = stale_ulta()
+    p1 = now.products[0]
+    ulta = [m.minor if m else None for m in p1.offers[ULTA].series.price]
+    seph = [m.minor if m else None for m in p1.offers[SEPHORA].series.price]
+    # Only the view's last date changes: Ulta's 22 Sep price, never an earlier date filled in.
+    assert ulta == [10_000, 10_000, 10_000, None, 10_000]
+    assert seph == [None, None, None, 12_000, 12_000]
+    # A product with no Ulta offer is left as it is.
+    assert now.products[1].id == "p4"
+    assert now.products[1] is ds.products[1]
+    assert now.meta == ds.meta
+
+
+def test_latest_lifts_the_stale_sources_window_off_the_last_date() -> None:
+    _, now = stale_ulta()
+    windows = [(w.retailer, str(w.start), str(w.end)) for w in now.not_observed]
+    assert windows == [(SEPHORA, "2026-09-20", "2026-09-22"), (ULTA, "2026-09-29", "2026-09-29")]
+    p2 = next(p for p in now.products if p.id == "p2")
+    assert not not_observed(now, ULTA, p2, len(now.meta.dates) - 1)
+
+
+def test_latest_keeps_a_window_over_the_sources_own_last_date() -> None:
+    d = snapshot_doc({"p1": BOTH, "p2": (ULTA,), "p3": (SEPHORA,)}, dates=OLD)
+    for product in d["products"]:
+        offer = product["offers"].get(ULTA)
+        if offer is not None:
+            offer["series"]["availability"] = ["in_stock", "in_stock", "out_of_stock"]
+    d["notObserved"] = [
+        {
+            "retailer": ULTA,
+            "start": "2026-09-22",
+            "end": "2026-09-22",
+            "categories": ["makeup"],
+            "why": {"en": "Makeup was not crawled."},
+            "context": None,
+        }
+    ]
+    _, now = stale_ulta(d)
+    p1 = now.products[0]
+    assert p1.offers[ULTA].series.availability == (
+        *(AvailabilityState.IN_STOCK,) * 2,
+        AvailabilityState.OUT_OF_STOCK,
+        None,
+        AvailabilityState.OUT_OF_STOCK,
+    )
+    makeup = [(str(w.start), str(w.end)) for w in now.not_observed if w.categories]
+    assert makeup == [("2026-09-22", "2026-09-22"), ("2026-09-30", "2026-09-30")]

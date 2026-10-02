@@ -197,6 +197,77 @@ def compose(slices: Sequence[DatasetV3]) -> Composed:
     )
 
 
+@dataclass(frozen=True)
+class Latest:
+    """A view for latest-date reads, with each stale source read at its own last date."""
+
+    dataset: DatasetV3
+    #: The sources whose own last date is before the view's, in view order.
+    stale: tuple[SourceInfo, ...]
+
+
+def latest(composed: Composed) -> Latest:
+    """``composed`` as of each source's own latest observation (ADR-0010).
+
+    A stale source's file ends before the view's last date, so its series are null there and a
+    retailer-wide window covers them. For latest-date reads (a comparison, promotions, the
+    summary, current prices) the stale source is read at its own last date instead: the value of
+    every series of its offers on that date is put on the view's last date, and the view's last
+    date is under exactly the ``notObserved`` windows that cover the source's last date. Callers
+    say so with a ``stale_source`` caveat. History, launches and assortment gaps read the view
+    itself: a stale value never backs a trend or an absence claim.
+    """
+    ds = composed.dataset
+    dates = ds.meta.dates
+    stale = tuple(s for s in composed.sources if s.last_date < dates[-1])
+    if not stale:
+        return Latest(ds, ())
+    at = {s.source: dates.index(s.last_date) for s in stale}
+    by_context = {c.id: at[c.retailer] for c in ds.meta.contexts if c.retailer in at}
+    products = tuple(_restamped(p, by_context) for p in ds.products)
+    windows = [w for old in ds.not_observed for w in _rewindowed(old, dates, at.get(old.retailer))]
+    dataset = ds.model_copy(update={"products": products, "not_observed": tuple(windows)})
+    return Latest(dataset, stale)
+
+
+def _restamped(product: ProductV3, at: dict[str, int]) -> ProductV3:
+    if not at.keys() & product.offers.keys():
+        return product
+    offers = {
+        cid: offer if cid not in at else _offer_at(offer, at[cid])
+        for cid, offer in product.offers.items()
+    }
+    return product.model_copy(update={"offers": offers})
+
+
+def _offer_at(offer: OfferV3, k: int) -> OfferV3:
+    def at_last[T](values: tuple[T, ...] | None) -> tuple[T, ...] | None:
+        return None if values is None else (*values[:-1], values[k])
+
+    s = offer.series
+    series = s.model_copy(
+        update={
+            "price": at_last(s.price),
+            "regular": at_last(s.regular),
+            "availability": at_last(s.availability),
+        }
+    )
+    return offer.model_copy(update={"series": series})
+
+
+def _rewindowed(w: NotObservedV3, dates: tuple[date, ...], k: int | None) -> list[NotObservedV3]:
+    """``w`` off the view's last date, and on it again if it covers the source's own last date."""
+    if k is None:
+        return [w]
+    last, before = dates[-1], dates[-2]
+    kept = [w]
+    if w.end >= last:
+        kept = [] if w.start > before else [w.model_copy(update={"end": before})]
+    if w.start <= dates[k] <= w.end:
+        kept.append(w.model_copy(update={"start": last, "end": last}))
+    return kept
+
+
 def _outside(meta: MetaV3, dates: tuple[date, ...]) -> list[NotObservedV3]:
     """Retailer-wide windows over each run of view dates that the slice's file lacks."""
     own = set(meta.dates)

@@ -60,7 +60,25 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
 5. **No silent fallback.** A composed view is first served only once every assigned file has
    loaded. If a file is bad, lacks its source or fails composition, the previous view stays live
    and the reason is logged. A source is never served from another file.
-6. **Backward compatible.** Bare paths behave as in 1.4.x. `apiVersion` 1.7.0 adds only
+6. **Per-source as-of (1.11.0).** A source whose own last date is before the view's is *stale*.
+   - **Latest-date levels read it at its own last date.** `pi_dataset.compose.latest` puts each
+     stale source's values on its own last date onto the view's last date, and moves only the
+     `notObserved` windows covering that date with them. It is computed once per generation.
+     The API uses it for reads with no explicit date that report levels: `/compare`,
+     `/promotions`, `/availability`, `/summary`, `/products` and `/products/{id}`, and their
+     exports. So a comparison sets Sephora's latest price beside Ulta's latest, not beside
+     nothing.
+   - **Always labelled.** Each such response, and `/index` with no `to` and `/assortment-gaps`
+     with no `date`, starts its caveats with one `stale_source` per stale source it reads
+     (`retailer`, `asOf`). They come before the metric's own caveats, so a client that shows
+     only the first few still shows them.
+   - **Never a trend or an absence claim.** An explicit date, history, the index points,
+     launches and gaps read the view itself. A stale value is never carried to an earlier date
+     or used as evidence that something was present or absent.
+   - A one-retailer `/summary` is as of its own source: `asOf` is the source's last date and
+     `freshness` uses the source's own cutoff, so a stale source's badge reads stale.
+   - A whole-path dataset has no stale source and is unchanged.
+7. **Backward compatible.** Bare paths behave as in 1.4.x. `apiVersion` 1.10.0 adds only
    `meta.sources`. A bare path in the same scope as a composed view stays two datasets
    (`422 ambiguous_dataset`), so a deploy uses one form per scope.
 
@@ -68,11 +86,9 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
 - The PI team can publish Sephora on its own cadence without reading or writing Ulta data. No
   migration, and no stored rows are touched.
 - **Union dates.** While the combined file is frozen, Ulta has no values on the newer Sephora
-  dates. In 1.7.0, latest-date metrics (compare, price index, availability, summary) treat Ulta
-  as not observed there, rather than showing its older price as current, and `meta.sources` shows
-  each source's own cutoff. A stacked follow-up makes latest-date metrics read each retailer at
-  its own latest observed date, with that `asOf` and a `stale_source` caveat. It is gated to land
-  before the first new Sephora publish. Until then both files have the same dates.
+  dates. In 1.10.0, latest-date metrics treat Ulta as not observed there, and `meta.sources` shows
+  each source's own cutoff. 1.11.0 adds the per-source as-of (see below). It is gated to land
+  before the first new Sephora publish.
 - **Cross-source matches.** The combined file's Ulta–Sephora edges link to its own, older
   Sephora offers, so they are dropped. Counted Ulta–Sephora pairs come back only once a matched
   file with both offers is published. Whether, and by whom, that is done is the owner's call, since

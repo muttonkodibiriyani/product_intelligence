@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import Counter
 from pathlib import Path
@@ -273,3 +274,224 @@ def test_settings_take_per_source_paths() -> None:
 def test_settings_refuse(datasets: str, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         Settings.from_env(env(datasets))
+
+
+STALE = {"code": "stale_source", "params": {"retailer": ULTA, "asOf": "2026-09-22"}}
+
+
+def get(client: Any, url: str) -> dict[str, Any]:
+    response = client.get(f"/api/v1/{url}", headers=bearer())
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def stale(body: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {"code": c["code"], "params": c["params"]}
+        for c in body["caveats"]
+        if c["code"] == "stale_source"
+    ]
+
+
+def test_the_latest_comparison_reads_a_stale_source_at_its_own_last_date(tmp_path: Path) -> None:
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    body = get(client, f"compare?retailers={ULTA},{SEPHORA}")
+    p1 = next(r for r in body["data"]["rows"] if r["id"] == "p1")
+    assert (p1["basePrice"]["minor"], p1["otherPrice"]["minor"]) == (10_000, 10_000)
+    assert body["caveats"][0]["code"] == "stale_source"
+    assert stale(body) == [STALE]
+    assert "2026-09-22" in body["caveats"][0]["en"]
+    assert "2026-09-22" in body["caveats"][0]["ar"]
+    # An explicit date reads that date: Ulta was not collected on 30 Sep.
+    body = get(client, f"compare?retailers={ULTA},{SEPHORA}&date=2026-09-30")
+    p1 = next(r for r in body["data"]["rows"] if r["id"] == "p1")
+    assert p1["basePrice"] is None
+    assert stale(body) == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"index?retailers={ULTA},{SEPHORA}",
+        f"promotions?retailer={ULTA}",
+        f"availability?retailer={ULTA}",
+        f"summary?retailer={ULTA}",
+        f"products?retailer={ULTA}",
+        "products",
+        "products/p2",
+        "admin/products/p1",
+    ],
+)
+def test_latest_date_reads_of_a_stale_source_say_so(tmp_path: Path, url: str) -> None:
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    headers = bearer(role="admin") if url.startswith("admin") else bearer()
+    response = client.get(f"/api/v1/{url}", headers=headers)
+    assert response.status_code == 200, response.text
+    assert stale(response.json()) == [STALE]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"summary?retailer={SEPHORA}",
+        f"availability?retailer={SEPHORA}",
+        f"availability?retailer={ULTA}&date=2026-09-22",
+        "products/p3",
+        f"launches?retailer={ULTA}",
+        f"coverage?retailer={ULTA}",
+    ],
+)
+def test_other_reads_carry_no_stale_caveat(tmp_path: Path, url: str) -> None:
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    assert stale(get(client, url)) == []
+
+
+def test_a_latest_gap_is_never_claimed_from_a_stale_source(tmp_path: Path) -> None:
+    """Gaps read the view itself: p3 isn't "missing at Ulta" on a date Ulta wasn't collected."""
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    body = get(client, f"assortment-gaps?missingAt={ULTA}&presentAt={SEPHORA}")
+    assert body["data"]["items"] == []
+    assert stale(body) == [STALE]
+
+
+def test_a_stale_collected_source_summary_is_as_of_its_own_cutoff(tmp_path: Path) -> None:
+    """Reviewer, #126: a stale source that isn't imported (so no snapshot freshness) reads its
+    own last date and cutoff, never the view's later ones."""
+    shop = "shop_x"  # a second collected retailer, its file ending before Sephora's
+    write(tmp_path, snapshot({"p1": (shop,), "p2": (shop,)}, dates=OLD), COMBINED)
+    write(tmp_path, snapshot({"p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    client, _ = make_client(tmp_path, paths=(), assigned={SEPHORA: SEPHORA_FILE, shop: COMBINED})
+    body = get(client, f"summary?retailer={shop}")
+    data = body["data"]
+    assert data["asOf"] == "2026-09-22"
+    assert data["freshness"]["cutoff"] == "2026-09-22T00:00:00Z"
+    assert data["freshness"]["status"] not in {"fresh", "snapshot"}
+    assert body["caveats"][0] == {**body["caveats"][0], "code": "stale_source"}
+    assert body["caveats"][0]["params"] == {"retailer": shop, "asOf": "2026-09-22"}
+
+
+def test_the_latest_date_view_keeps_the_imported_correction(tmp_path: Path) -> None:
+    """A stale Ulta read at its own last date never brings back its cleared was-prices."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        series = product["offers"][ULTA]["series"]
+        series["regular"] = [{"amount": "99.00", "minor": 9900, "currency": "AED"}] * len(
+            series["price"]
+        )
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
+    source.load_all()
+    (loaded,) = source.datasets()
+    assert loaded.latest is not None
+    assert loaded.unverified
+    for ds in (loaded.dataset, loaded.latest):
+        for product in ds.products:
+            for cid, offer in product.offers.items():
+                if cid in loaded.unverified:
+                    assert offer.series.regular is None
+
+
+def test_the_latest_date_view_is_floored_too(tmp_path: Path) -> None:
+    """A stale Ulta read at its own last date never brings back a price the floor withholds
+    (``pi_api.floor``, merge of #120 into #126)."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    low = {"amount": "0.01", "minor": 1, "currency": "AED"}
+    for product in combined["products"]:
+        if product["id"] == "p2":
+            series = product["offers"][ULTA]["series"]
+            series["price"] = [low for _ in series["price"]]
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
+    source.load_all()
+    (loaded,) = source.datasets()
+    assert loaded.latest is not None
+    assert [(f.retailer, f.offers) for f in loaded.floor.floored] == [(ULTA, 1)]
+    for ds in (loaded.dataset, loaded.latest):
+        (p2,) = (p for p in ds.products if p.id == "p2")
+        assert all(v is None for v in p2.offers[ULTA].series.price)
+
+
+#: A pair whose Ulta half is an old id (``pi_api.ids``, #158).
+PAIR = "m-u-lip-1-ml-s-lip-1-ml"
+
+
+@pytest.mark.parametrize("route", ["products", "admin/products"])
+def test_an_old_product_id_reads_a_stale_source_at_its_own_last_date(
+    tmp_path: Path, route: str
+) -> None:
+    """Merge of #120 into #126: the id resolves through ``pi_api.ids``, the product is read
+    from the latest-date view, the stale caveat comes first, and ``resolvedFrom`` says so."""
+    write(tmp_path, snapshot({PAIR: BOTH, "p2": (ULTA,)}, dates=OLD), COMBINED)
+    write(tmp_path, snapshot({PAIR: (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    headers = bearer(role="admin") if route.startswith("admin") else bearer()
+    response = client.get(f"/api/v1/{route}/u-lip-1-ml", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["resolvedFrom"] == {"requestedId": "u-lip-1-ml", "currentIds": [PAIR]}
+    assert body["data"]["card"]["id"] == PAIR
+    assert body["caveats"][0]["code"] == "stale_source"
+    assert stale(body) == [STALE]
+    (ulta,) = (o for o in body["data"]["offers"] if o["retailer"] == ULTA)
+    assert ulta["price"]["minor"] == 10_000  # the view's own last date has no Ulta price
+    assert ulta["evidence"]["capturedAt"] == "2026-09-22T00:00:00Z"
+
+
+def test_the_products_export_reads_a_stale_source_as_of_and_flags_withheld_prices(
+    tmp_path: Path,
+) -> None:
+    """Merge of #120 into #126: the products export carries the stale caveat first, and
+    ``priceFlags`` where the floor withheld a stale source's price at its own last date (the
+    view's last date has no Ulta price, so the view's own floor flags nothing there)."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        if product["id"] == "p2":
+            price = product["offers"][ULTA]["series"]["price"]
+            price[-1] = {"amount": "0.01", "minor": 1, "currency": "AED"}
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    response = client.get("/api/v1/export/products?format=jsonl", headers=bearer())
+    assert response.status_code == 200, response.text
+    first, *rest = (json.loads(line) for line in response.text.splitlines())
+    manifest = first["manifest"]
+    rows = {r["id"]: r for r in rest}
+    assert manifest["caveats"][0]["code"] == "stale_source"
+    assert rows["p2"]["priceFlags"] == {ULTA: "invalid_low"}
+    assert rows["p1"]["prices"][ULTA]["minor"] == 10_000  # as of Ulta's own last date
+    cards = {c["id"]: c for c in get(client, "products")["data"]["items"]}
+    assert cards["p2"]["priceFlags"] == {ULTA: "invalid_low"}
+
+
+def test_a_whole_file_has_no_stale_source(tmp_path: Path) -> None:
+    write(tmp_path, snapshot({"p1": BOTH, "p2": (ULTA,)}, dates=OLD), COMBINED)
+    client, source = make_client(tmp_path, paths=(COMBINED,))
+    (loaded,) = source.datasets()
+    assert (loaded.latest, loaded.stale) == (None, ())
+    assert stale(get(client, f"compare?retailers={ULTA},{SEPHORA}")) == []
+
+
+@pytest.mark.parametrize(
+    ("shop", "as_of", "cutoff", "status"),
+    [
+        # Ulta is imported: its freshness is the import snapshot (``pi_api.dq``, API 1.5.0).
+        (ULTA, "2026-09-22", "2026-09-22T00:00:00Z", "snapshot"),
+        (SEPHORA, "2026-09-30", "2026-09-30T00:00:00Z", "aging"),
+    ],
+)
+def test_a_summary_is_as_fresh_as_its_own_source(
+    tmp_path: Path, shop: str, as_of: str, cutoff: str, status: str
+) -> None:
+    """The Reviewer's #126 probe: a stale source's summary is labelled with its own date."""
+    two_files(tmp_path)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    data = get(client, f"summary?retailer={shop}")["data"]
+    assert data["asOf"] == as_of
+    assert (data["freshness"]["cutoff"], data["freshness"]["status"]) == (cutoff, status)

@@ -11,7 +11,7 @@ from pydantic import Field
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.10.0"
+API_VERSION = "1.11.0"
 
 
 class Localized(ContractModel):
@@ -140,6 +140,16 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         ar=(
             "قد تتضمن منتجات {retailer} قوائم رئيسية تكرّر متغيراتها،"
             " فقد تزيد أعداده عن المنتجات الفعلية."
+        ),
+    ),
+    CaveatCode.STALE_SOURCE: Localized(
+        en=(
+            "{retailer} was last collected on {asOf}: its latest figures are from that date,"
+            " older than the other retailers'."
+        ),
+        ar=(
+            "آخر جمع لبيانات {retailer} كان في {asOf}: أحدث أرقامه من ذلك التاريخ،"
+            " وهي أقدم من بيانات المتاجر الأخرى."
         ),
     ),
     CaveatCode.INVALID_PRICE_EXCLUDED: Localized(

@@ -29,7 +29,7 @@ from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
 from pi_api.ids import ProductIds, product_ids
 from pi_dataset import DatasetError, DatasetV3, load_any
-from pi_dataset.compose import SourceInfo, compose, only, source_infos
+from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
 from pi_metrics.view import as_v3
 
 log = logging.getLogger(__name__)
@@ -97,6 +97,12 @@ class Loaded:
     imported: tuple[Imported, ...] = ()
     #: Prices at or below 0.01 the served ``dataset`` withholds (``pi_api.floor``).
     floor: FloorView = field(default_factory=FloorView)
+    #: For latest-date reads: ``dataset`` with each stale source at its own last date.
+    latest: DatasetV3 | None = None
+    #: The sources whose own last date is before the view's (``pi_dataset.compose.latest``).
+    stale: tuple[SourceInfo, ...] = field(default=())
+    #: What the floor withheld in ``latest``: its flags mark latest-date reads (``current``).
+    latest_floor: FloorView | None = None
 
     @property
     def unverified(self) -> frozenset[str]:
@@ -107,6 +113,16 @@ class Loaded:
     def ids(self) -> ProductIds:
         """Current and old product ids (``pi_api.ids``), built once per generation at load."""
         return product_ids(self.dataset)
+
+    @property
+    def current(self) -> DatasetV3:
+        """The dataset for a latest-date read: ``latest`` if a source is stale."""
+        return self.dataset if self.latest is None else self.latest
+
+    @property
+    def current_floor(self) -> FloorView:
+        """The floor view of ``current``: a stale source's flags are as of its own last date."""
+        return self.floor if self.latest_floor is None else self.latest_floor
 
     @property
     def markets(self) -> tuple[str, ...]:
@@ -296,7 +312,19 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
     stamp = "|".join(f"{label}@{p.generation}" for label, p in parts)
     generation = "c" + hashlib.sha256(stamp.encode()).hexdigest()[:16]
     path = ",".join(label for label, _ in parts)
-    return _corrected(Loaded(path, composed.dataset, generation, composed.sources))
+    as_of = latest(composed)
+    if as_of.stale:
+        log.info("per-source view: %s read at their own last date", [s.source for s in as_of.stale])
+    return _corrected(
+        Loaded(
+            path,
+            composed.dataset,
+            generation,
+            composed.sources,
+            latest=as_of.dataset if as_of.stale else None,
+            stale=as_of.stale,
+        )
+    )
 
 
 def _with_ids(loaded: Loaded, name: str | None = None) -> Loaded:
@@ -319,18 +347,33 @@ def _corrected(loaded: Loaded) -> Loaded:
     """The view as served: read-time views ``pi_api.floor``, then ``pi_api.dq`` (the file is
     unchanged).
 
-    A collected source's ``cutoff`` is its own latest capture (``source_infos``); one without
-    offers would fall back to the file's, so it is capped at the served (collected) cutoff and
-    never reads as the import time.
+    The latest-date view (``latest``) gets the same correction, so a stale source's read never
+    brings back what the view withholds. A collected source's ``cutoff`` is its own latest
+    capture (``source_infos``); one without offers would fall back to the file's, so it is capped
+    at the served (collected) cutoff and never reads as the import time.
     """
     floored, floor = floor_view(loaded.dataset)
     dataset, imported = imported_view(floored)
+    current, latest_floor = None, None
+    if loaded.latest is not None:
+        latest, latest_floor = floor_view(loaded.latest)
+        current = imported_view(latest)[0]
     if not imported:
-        return replace(loaded, dataset=dataset, floor=floor)
+        return replace(
+            loaded, dataset=dataset, floor=floor, latest=current, latest_floor=latest_floor
+        )
     shops = {shop.retailer for shop in imported}
     cutoff = dataset.meta.cutoff
     sources = tuple(
         s if s.source in shops or s.cutoff <= cutoff else s.model_copy(update={"cutoff": cutoff})
         for s in loaded.sources
     )
-    return replace(loaded, dataset=dataset, imported=imported, floor=floor, sources=sources)
+    return replace(
+        loaded,
+        dataset=dataset,
+        imported=imported,
+        floor=floor,
+        sources=sources,
+        latest=current,
+        latest_floor=latest_floor,
+    )

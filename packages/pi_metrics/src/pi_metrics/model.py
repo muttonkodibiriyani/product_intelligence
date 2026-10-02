@@ -116,6 +116,9 @@ class CaveatCode(StrEnum):
     SNAPSHOT_IMPORT_DATE = "snapshot_import_date"
     #: A retailer's products may include parent listings that duplicate their variants.
     PARENT_LISTINGS_INCLUDED = "parent_listings_included"
+    #: A retailer's latest collection is older than the view's latest date (ADR-0010): its
+    #: latest-date figures are as of its own last date. The API emits it first, one per retailer.
+    STALE_SOURCE = "stale_source"
     #: ``count`` of a retailer's offers had a price at or below 0.01 withheld as invalid.
     INVALID_PRICE_EXCLUDED = "invalid_price_excluded"
     #: ``count`` of a retailer's priced products whose breadcrumb no taxonomy@1 rule places (or

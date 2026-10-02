@@ -109,7 +109,7 @@ class SummaryCache:
         self._entries: OrderedDict[tuple[str, str], Metric[Summary]] = OrderedDict()
 
     def get(self, loaded: Loaded, retailer: str | None) -> Metric[Summary]:
-        ds = loaded.dataset
+        ds = loaded.current
         ctx = (
             default_context(ds, loaded.unverified)
             if retailer is None
@@ -130,25 +130,44 @@ class SummaryCache:
         return metric
 
 
-def _freshness(loaded: Loaded, ctx: str, now: datetime) -> Freshness:
+def own_source(loaded: Loaded, metric: Metric[Summary]) -> tuple[Metric[Summary], datetime]:
+    """The summary and cutoff of its context's own source in a per-source view (ADR-0010).
+
+    One context's figures are as of its source's last date, and their freshness is its source's
+    cutoff, not the view's: a stale source's summary says it is stale. A whole file has no
+    sources, so the snapshot's own date and cutoff stand.
+    """
+    shop = view.context(loaded.dataset, metric.data.retailer).retailer
+    own = next((s for s in loaded.sources if s.source == shop), None)
+    if own is None:
+        return metric, loaded.dataset.meta.cutoff
+    data = metric.data.model_copy(update={"as_of": own.last_date})
+    return metric.model_copy(update={"data": data, "as_of": own.last_date}), own.cutoff
+
+
+def _freshness(loaded: Loaded, ctx: str, cutoff: datetime, now: datetime) -> Freshness:
     for shop in loaded.imported:
         if ctx in shop.contexts:
             age = max((now - shop.imported_at).days, 0)
             return Freshness(cutoff=shop.imported_at, age_days=age, status=FreshnessStatus.SNAPSHOT)
-    return freshness(loaded.dataset.meta.cutoff, now)
+    return freshness(cutoff, now)
 
 
-def summary_view(metric: Metric[Summary], loaded: Loaded, now: datetime) -> Metric[SummaryView]:
+def summary_view(
+    metric: Metric[Summary], loaded: Loaded, cutoff: datetime, now: datetime
+) -> Metric[SummaryView]:
+    """``cutoff`` is the context's own (``own_source``): a collected one's ``asOf`` is never
+    after its day, and an imported one's freshness is its import snapshot."""
     ds = loaded.dataset
     ctx = metric.data.retailer
     time_zone = ds.market_of(view.context(ds, ctx).retailer).time_zone
     as_of = (
         metric.as_of
         if ctx in loaded.unverified
-        else collected_day(loaded.imported, metric.as_of, ds.meta.cutoff, time_zone)
+        else collected_day(loaded.imported, metric.as_of, cutoff, time_zone)
     )
     fields = dict(metric.data) | {"as_of": as_of}
-    data = SummaryView(**fields, freshness=_freshness(loaded, ctx, now))
+    data = SummaryView(**fields, freshness=_freshness(loaded, ctx, cutoff, now))
     return Metric[SummaryView](
         status=metric.status,
         data=data,

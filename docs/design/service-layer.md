@@ -78,7 +78,7 @@ versioned snapshots.
 
   A document that fails validation is **never served**. The previous good generation stays live,
   and if there is none the endpoint returns `503 data_unavailable`.
-- **Per-source files (API 1.7.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
+- **Per-source files (API 1.10.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
   `PI_API_DATASETS` entry may be `source=path` instead of a bare path. Each source (a retailer id)
   is then served only from its own file. The assigned files of one scope are composed into **one
   view** by `pi_dataset.compose`, so `select()` sees one dataset per scope, not several. Each
@@ -94,6 +94,14 @@ versioned snapshots.
     edges come only from a file that holds both retailers, so no edge is made across files.
   - A bare path in the same scope as a composed view is two datasets and stays
     `422 ambiguous_dataset`; don't mix the two forms in one scope.
+  - **Per-source as-of (API 1.11.0).** A source whose file ends before the view's last date is
+    *stale*. Latest-date reads (`/compare`, `/promotions` and `/availability` with no `date`,
+    `/summary`, `/products`, `/products/{id}` and the matching exports) read it at its own last
+    date: `pi_dataset.compose.latest` builds that projection once per generation. Every response
+    that reads a stale source at the latest date, including `/index` with no `to` and
+    `/assortment-gaps` with no `date`, starts its caveats with `stale_source` (`retailer`,
+    `asOf`). An explicit date reads the view itself. History, launches, gaps and the index never
+    use the projection, so a stale value backs no trend and no absence claim.
 - **Freshness.** Each instance compares the object `generation` with the loaded one at most once
   every 60 s: one metadata GET. A new generation loads in the background and swaps in atomically,
   so readers see either the old dataset or the new one, never a mix. `meta.generation` and
@@ -548,7 +556,7 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
   is kept and `snapshot_import_date` says so. A collected context's `/summary` `asOf` is capped
   at that cutoff's day, and `/summary` without `retailer` picks a collected context.
   `meta.dates` and the series are left as published.
-- **Import day and per-source views (API 1.7.0).** The `snapshot_import_date` `<date>` is the
+- **Import day and per-source views (API 1.10.0).** The `snapshot_import_date` `<date>` is the
   import's local day in the market time zone, the day `meta.dates` count in (an import at
   21:15Z is 1 October in Dubai). The view applies to every served view: a whole file, and a
   composed per-source view after composition from the unchanged files. `/meta` `sources[].cutoff`
