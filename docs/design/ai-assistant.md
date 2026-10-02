@@ -596,7 +596,9 @@ reaches the model through tool output.
     the ruling above. Use `PI_EVAL_METER=firestore`, `PI_VERTEX_LOCATION` and
     `PI_EVAL_MODEL=<candidate>`. Report with `node src/evals/gate.ts --counts-only <results.json>`.
     It prints pass counts, total cost and cost per question, and never prints case or model
-    text.
+    text. **Evals run even while the assistant is off for users (`enabled` false), and their
+    spend counts against the live monthly cap; to stop them, empty `candidateModels` (reviewed
+    PR) or set `disabledBy`.** Every per-window run plan sent to the owner repeats this.
   - The live function never imports this module. An import-boundary test covers
     `src/index.ts`, `src/functions/**` and the built `lib/`.
 - **Run policy.** The model-backed suite runs only when `apps/assistant/**` changes, plus a
