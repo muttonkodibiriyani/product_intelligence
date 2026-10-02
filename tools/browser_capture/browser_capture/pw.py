@@ -25,7 +25,7 @@ from urllib.parse import urljoin
 from playwright.sync_api import Browser, Page, Request, Route, WebSocketRoute, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 
-from browser_capture.policy import DOCUMENT, FRAME, MAIN, POPUP, Gate
+from browser_capture.policy import DOCUMENT, FRAME, MAIN, POPUP, SHUT_PATHS, Gate
 from browser_capture.session import Answer, Engine, Hop, TransportError, Visit
 
 ABORT = "blockedbyclient"
@@ -120,22 +120,28 @@ class PlaywrightSession:
     def __init__(self, launch_args: tuple[str, ...] = ()) -> None:
         self._pw = sync_playwright().start()
         self._args = launch_args
-        with self._browser() as browser:
-            page = browser.new_page()
-            ua = str(page.evaluate("navigator.userAgent"))
-            size = page.viewport_size or {"width": 0, "height": 0}
-            self._engine = Engine(
-                name="chromium",
-                version=browser.version,
-                playwright=version("playwright"),
-                user_agent=ua,
-                viewport=(int(size["width"]), int(size["height"])),
-                launch_args=launch_args,
-            )
+        try:
+            with self._browser() as browser:
+                page = browser.new_page()
+                ua = str(page.evaluate("navigator.userAgent"))
+                size = page.viewport_size or {"width": 0, "height": 0}
+                self._engine = Engine(
+                    name="chromium",
+                    version=browser.version,
+                    playwright=version("playwright"),
+                    user_agent=ua,
+                    viewport=(int(size["width"]), int(size["height"])),
+                    launch_args=launch_args,
+                    policy_args=SHUT_PATHS,
+                )
+        except Exception:
+            self._pw.stop()  # a driver left running keeps an event loop in this thread
+            raise
 
     @contextmanager
     def _browser(self) -> Iterator[Browser]:
-        browser = self._pw.chromium.launch(args=list(self._args))  # headless, no other options
+        # headless, no other options: the policy flags shut SharedWorker and WebRTC UDP
+        browser = self._pw.chromium.launch(args=[*SHUT_PATHS, *self._args])
         try:
             yield browser
         finally:

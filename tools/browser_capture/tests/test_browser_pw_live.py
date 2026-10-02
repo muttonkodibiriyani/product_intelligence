@@ -1,8 +1,10 @@
 """The Playwright adapter against a local site: exactly the gate-allowed requests reach the server.
 
-Runs only inside the job image (``BROWSER_CAPTURE_LIVE=1`` and Playwright importable); CI has no
-browser and skips it. The site is ``tests/localsite.py``: ``localhost`` is the storefront,
-``127.0.0.1`` the third party, both on one port. No real retailer page is involved.
+Marked ``browser`` like the repo's other real-browser tests: CI installs Chromium and refuses
+any skip; on a machine where Chromium cannot launch the module skips itself. The site is
+``tests/localsite.py``: ``localhost`` is the storefront, ``127.0.0.1`` the third party, both on
+one port. No real retailer page is involved. ``CHROMIUM_ARGS`` (process-model flags) is honoured
+so the same file runs inside the job image.
 """
 
 from __future__ import annotations
@@ -14,15 +16,12 @@ from collections.abc import Iterator
 import pytest
 
 from browser_capture import policy
+from browser_capture.pw import PlaywrightSession
 from browser_capture.session import TransportError, Visit
 from tests import localsite
 from tests.localsite import OTHER, STORE, Handler, Site
 
-pytest.importorskip("playwright")
-if os.environ.get("BROWSER_CAPTURE_LIVE") != "1":
-    pytest.skip("real browser only inside the job image", allow_module_level=True)
-
-from browser_capture.pw import PlaywrightSession
+pytestmark = pytest.mark.browser
 
 ARGS = tuple(a for a in os.environ.get("CHROMIUM_ARGS", "").split() if a)
 HTTP = frozenset({"http"})
@@ -44,7 +43,12 @@ def gate() -> policy.Gate:
 
 @pytest.fixture(scope="module")
 def session() -> Iterator[PlaywrightSession]:
-    s = PlaywrightSession(ARGS)
+    from playwright.sync_api import Error  # noqa: PLC0415
+
+    try:
+        s = PlaywrightSession(ARGS)
+    except Error as exc:  # right on a laptop; CI asserts 0 skips so a broken install shows
+        pytest.skip(f"Playwright chromium cannot launch: {exc.message.splitlines()[0]}")
     yield s
     s.close()
 
@@ -77,6 +81,7 @@ def test_only_the_document_and_its_own_data_call_reach_the_server(
     g, got = visit(session, site, "/page")
     assert got.status == 200
     assert got.title == "Local page"
+    assert session.engine.policy_args == policy.SHUT_PATHS
     assert got.final_url == got.document_url == site.url(STORE, "/page")
     assert got.hops == ()
     assert not got.navigated_away
@@ -94,6 +99,12 @@ def test_only_the_document_and_its_own_data_call_reach_the_server(
     assert g.counts["refused_frame_document"] == 1
     assert g.hosts_seen.get(OTHER, 0) >= 2
     assert "sw.js" not in {h.path for h in site.hits}
+    # the shared worker never started (its script was never asked for, so its fetch never ran)
+    assert "shared.js" not in {h.path for h in site.hits}
+    assert "/from-shared" not in {h.path for h in site.hits}
+    assert "SharedWorker:undefined" in got.rendered
+    # WebRTC sent nothing to the page-chosen STUN server
+    assert site.udp_packets == []
 
 
 def test_a_redirect_off_the_storefront_stops_before_the_hop_is_requested(

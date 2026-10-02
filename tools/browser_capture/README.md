@@ -49,6 +49,11 @@ context so pop-up windows are covered too:
 - **Service workers** are blocked by the context (`service_workers="block"`), so no worker script
   is ever requested and nothing runs behind the page.
 - **WebSockets** are refused before the handshake (`refused_websocket`); none is ever connected.
+- **Shared workers and WebRTC** have no route handler to pass through, so they are shut at
+  launch by `policy.SHUT_PATHS` (`--disable-features=SharedWorker`,
+  `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`): no shared worker script is
+  requested and no STUN datagram leaves. These are recorded in the manifest as `policy_args`,
+  apart from the process-model `launch_args`.
 - **Pictures, media, fonts, beacons, pings, manifests, text tracks, event sources** and anything
   of unknown type never leave (`refused_type_<type>`).
 - **Scripts, stylesheets and data calls** (`xhr`, `fetch`) must be https. A data call that is not
@@ -118,15 +123,18 @@ The unit tests drive `run.Job` through a scripted fake session and a `file:` sto
 retailer page is ever used in a fixture. The Playwright adapter (`pw.py`) is proven by
 `tests/test_browser_pw_live.py` against a local site (`tests/localsite.py`: `localhost` is the
 storefront, `127.0.0.1` the third party) that serves a page with pictures, a cross-host frame,
-third-party GET and POST calls, two pop-ups, a service worker and two WebSockets. The test asserts
-that exactly the gate-allowed requests reach the server, that off-storefront and robots-refused
+third-party GET and POST calls, two pop-ups, a service worker, a shared worker, two WebSockets
+and a WebRTC connection aimed at a local STUN listener. The test asserts
+that exactly the gate-allowed requests reach the server and zero UDP datagrams arrive, that
+off-storefront and robots-refused
 redirects stop before the hop is requested, that an own-host redirect is paced and recorded, that
-a gzip document is kept decoded, and that a script navigation is flagged. It runs only inside the
-job image (`BROWSER_CAPTURE_LIVE=1`; CI has no browser and skips it):
+a gzip document is kept decoded, and that a script navigation is flagged. It is marked `browser`:
+CI installs Chromium and refuses any skip; where Chromium cannot launch it skips itself. To run it
+inside the job image:
 
 ```sh
 docker run --rm --network host --ipc=host --init -v "$PWD/tools:/work:ro" \
-  -e PYTHONPATH=/work/page_capture:/work/browser_capture -e BROWSER_CAPTURE_LIVE=1 \
+  -e PYTHONPATH=/work/page_capture:/work/browser_capture \
   -e CHROMIUM_ARGS='--no-sandbox --disable-dev-shm-usage --single-process --no-zygote' \
   pi-browser-capture:dev sh -c "pip install -q pytest && cd /work/browser_capture && \
   python -m pytest tests/test_browser_pw_live.py -q"

@@ -167,3 +167,11 @@ def test_schemes_are_https_only_unless_a_test_says_otherwise() -> None:
     assert gate.decide("http://localhost:8080/p", "document", True).allow
     assert gate.decide("http://localhost:8080/s.js", "script", False).allow
     assert not gate.decide("https://localhost/s.js", "script", False).allow
+
+
+def test_the_launch_policy_shuts_shared_workers_and_webrtc_udp() -> None:
+    flags = dict(f.lstrip("-").split("=", 1) for f in policy.SHUT_PATHS)
+    assert flags == {
+        "disable-features": "SharedWorker",
+        "force-webrtc-ip-handling-policy": "disable_non_proxied_udp",
+    }

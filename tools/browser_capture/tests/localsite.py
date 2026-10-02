@@ -7,6 +7,7 @@ answers two names: ``localhost`` plays the storefront and ``127.0.0.1`` plays a 
 
 from __future__ import annotations
 
+import socket
 import threading
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,8 +27,14 @@ class Hit:
 @dataclass
 class Site:
     server: ThreadingHTTPServer
+    udp: socket.socket  # plays a STUN server; every datagram it receives is counted
     hits: list[Hit] = field(default_factory=list)
+    udp_packets: list[int] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+    @property
+    def udp_port(self) -> int:
+        return int(self.udp.getsockname()[1])
 
     @property
     def port(self) -> int:
@@ -47,11 +54,23 @@ class Site:
     def close(self) -> None:
         self.server.shutdown()
         self.server.server_close()
+        self.udp.close()
+
+    def listen_udp(self) -> None:
+        while True:
+            try:
+                data, _ = self.udp.recvfrom(2048)
+            except OSError:
+                return
+            with self.lock:
+                self.udp_packets.append(len(data))
 
 
 def page_html(site: Site) -> str:
     """One page that tries every way out: a picture, a fetch GET and POST to the third party,
-    a popup, a service worker, two WebSockets, a cross-host iframe and a redirect hop."""
+    a popup, a service worker, a shared worker, two WebSockets, a WebRTC connection with a
+    page-chosen STUN server, a cross-host iframe and a redirect hop. It also writes whether
+    ``SharedWorker`` exists into the DOM, so the rendered page shows the flag took effect."""
     other = site.url(OTHER, "")
     store = site.url(STORE, "")
     return f"""<!doctype html><html><head><title>Local page</title></head><body>
@@ -68,6 +87,15 @@ try {{ window.open("{store}/popup-own"); }} catch (e) {{}}
 if (navigator.serviceWorker) {{ navigator.serviceWorker.register("/sw.js").catch(() => {{}}); }}
 try {{ new WebSocket("ws://{OTHER}:{site.port}/ws-other"); }} catch (e) {{}}
 try {{ new WebSocket("ws://{STORE}:{site.port}/ws-own"); }} catch (e) {{}}
+try {{ new SharedWorker("{store}/shared.js"); }} catch (e) {{}}
+try {{
+  const pc = new RTCPeerConnection({{iceServers: [{{urls: "stun:{OTHER}:{site.udp_port}"}}]}});
+  pc.createDataChannel("d");
+  pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {{}});
+}} catch (e) {{}}
+const f = document.createElement("p"); f.id = "features";
+f.textContent = "SharedWorker:" + typeof SharedWorker;
+document.body.appendChild(f);
 const a = document.createElement("a"); a.href = "{store}/redirect-away"; a.id = "away";
 document.body.appendChild(a);
 </script></body></html>"""
@@ -116,6 +144,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(302, b"", "text/plain", {"Location": self.site.url(STORE, "/private/x")})
         elif self.path == "/sw.js":
             self._send(200, b"self.addEventListener('fetch', e => {});", "text/javascript")
+        elif self.path == "/shared.js":
+            other = self.site.url(OTHER, "/from-shared")
+            self._send(200, f"fetch('{other}').catch(() => {{}});".encode(), "text/javascript")
         elif self.path.endswith(".png"):
             self._send(200, b"\x89PNG\r\n\x1a\n", "image/png")
         elif self.path == "/private/x":
@@ -129,7 +160,10 @@ class Handler(BaseHTTPRequestHandler):
 def serve() -> Site:
     """Start the site on a free port in a daemon thread."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    site = Site(server)
+    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp.bind(("127.0.0.1", 0))
+    site = Site(server, udp)
     Handler.site = site
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=site.listen_udp, daemon=True).start()
     return site

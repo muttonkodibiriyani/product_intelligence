@@ -44,6 +44,15 @@ NEVER_TYPES: Final = frozenset(
 #: Resource types a client-side shop needs to render; everything else not listed is refused.
 RENDER_TYPES: Final = frozenset({"script", "stylesheet", "xhr", "fetch"})
 
+# Browser flags that shut the two request paths no route handler ever sees. A SharedWorker's
+# fetches bypass context routing, so the feature is off; WebRTC ICE would send UDP (STUN) to a
+# host the page chooses, so non-proxied UDP is off. These are policy, not process-model flags,
+# and are recorded in the manifest as such.
+SHUT_PATHS: Final = (
+    "--disable-features=SharedWorker",
+    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+)
+
 
 def host_refusal(
     url: str, allowed: frozenset[str], *, schemes: frozenset[str] = HTTPS_ONLY

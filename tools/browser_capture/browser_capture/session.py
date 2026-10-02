@@ -73,6 +73,7 @@ class Engine:
     viewport: tuple[int, int]
     headless: bool = True
     launch_args: tuple[str, ...] = ()  # process-model flags only, recorded verbatim
+    policy_args: tuple[str, ...] = ()  # policy.SHUT_PATHS, the paths shut at launch
 
 
 class Session(Protocol):

@@ -271,6 +271,7 @@ def test_an_allowed_page_is_visited_once_with_its_evidence_stored(tmp_path: Path
         "stealth": False,
         "proxy": None,
         "launch_args": [],
+        "policy_args": [],
         "fresh_browser_per_page": True,
         "service_workers": "block",
         "websockets": "refused",

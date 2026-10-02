@@ -248,6 +248,7 @@ class Job:
                 "stealth": False,
                 "proxy": None,
                 "launch_args": list(engine.launch_args),
+                "policy_args": list(engine.policy_args),
                 "fresh_browser_per_page": True,
                 "service_workers": "block",
                 "websockets": "refused",
