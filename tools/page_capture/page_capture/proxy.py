@@ -163,8 +163,9 @@ class Meter:
     cap: int = DEFAULT_BYTE_CAP
     used: int = 0
     ledger: Ledger | None = None
-    #: Set when the ledger could not be re-read; the meter then reports exhausted (fail closed).
-    ledger_fault: str | None = None
+    #: The most recent ledger read fault, kept after recovery so the run's record shows that the
+    #: proxy was paused at some point; ``None`` means the ledger never failed to read.
+    last_ledger_fault: str | None = None
 
     def charge(self, response_bytes: int) -> None:
         n = response_bytes + REQUEST_ALLOWANCE
@@ -186,7 +187,7 @@ class Meter:
         try:
             self.ledger.reload()
         except LedgerError as exc:
-            self.ledger_fault = str(exc)
+            self.last_ledger_fault = str(exc)
             return True
         return self.ledger.remaining <= 0
 

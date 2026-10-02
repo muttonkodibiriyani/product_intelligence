@@ -373,7 +373,7 @@ def test_two_runs_started_together_cannot_overspend_the_ledger(tmp_path: object)
     b.finish()
     status = json.loads((tmp_path / "b" / "status.json").read_text())  # type: ignore[operator]
     assert status["proxy_ledger_remaining"] == 0
-    assert status["proxy_ledger_fault"] is None
+    assert status["proxy_last_ledger_fault"] is None
 
 
 def test_meter_fails_closed_when_the_ledger_cannot_be_reread(tmp_path: object) -> None:
@@ -385,7 +385,7 @@ def test_meter_fails_closed_when_the_ledger_cannot_be_reread(tmp_path: object) -
     pathlib.Path(path).write_text("{not json")
     states.append(meter.exhausted)
     assert states == [False, True]
-    assert meter.ledger_fault == "proxy ledger is not JSON"
+    assert meter.last_ledger_fault == "proxy ledger is not JSON"
 
 
 class _FaultyStore:
@@ -423,11 +423,13 @@ def test_meter_fails_closed_when_the_ledger_transport_fails(fault: Exception) ->
     states = [meter.exhausted]
     store.load_fault = fault
     states.append(meter.exhausted)
-    fault_seen = meter.ledger_fault
+    fault_seen = meter.last_ledger_fault
     # once the bucket answers again the run may continue; the fault is a state, not a verdict
     store.load_fault = None
     states.append(meter.exhausted)
     assert states == [False, True, False]
+    # the record of the pause stays with the run after recovery, under a name that says so
+    assert meter.last_ledger_fault == fault_seen
     assert fault_seen is not None
     assert fault_seen.startswith("proxy ledger could not be read: ")
     assert repr(fault) in fault_seen
