@@ -48,13 +48,17 @@ uv run pi-dataset schema --v3 > docs/contracts/pi-dataset-v3.schema.json
   that is a keyed offer's in another product (same retailer). A retailer with several contexts needs
   `itemKey` or `url` on every offer.
 - **`notObserved[].context`**: null means the whole retailer.
+- **`Offer.listingCount`** (optional, additive, 2026-10-01): how many of the retailer's listings
+  the producer grouped into the offer (for example the shades of one size), an integer ≥ 1;
+  `null` or absent when the producer doesn't say. It is a count of listings, not of sizes or
+  shades (`shadeCount` stays the distinct shade names).
 
 ## Upgrading v2
 
 `upgrade(v2, profile)` gives every retailer one online context whose id is the retailer id, so
 every v2 offer key stays valid. Each offer's v2 `sku` becomes `evidence.itemKey` (kind `sku`; both
 `null` without a sku), so size variants that share one page `url` stay distinct items under
-identity rule (a). It raises `UpgradeError` if the vertical isn't the profile's, a product carries
+identity rule (a). `listingCount` is `null` (v2 doesn't state it). It raises `UpgradeError` if the vertical isn't the profile's, a product carries
 an attribute key the profile doesn't declare, or the result breaks a v3 rule (for example one sku
 in two products of a retailer).
 

@@ -758,6 +758,19 @@
           "default": null,
           "title": "Image"
         },
+        "listingCount": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listingcount"
+        },
         "rating": {
           "anyOf": [
             {
