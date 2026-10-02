@@ -28,12 +28,16 @@ the original cutoff copy is never replaced.
   live source is missing from the new file or has fewer offers, or if any source other than the
   one being published has different products. The only override is ``--drop-source <id>``, which
   needs the owner's explicit approval for that publish.
+- v1 (the legacy root dashboard's input): Sephora only, to datasets/uae/ (latest.json plus the
+  create-only cutoff snapshot), meta in demo_meta/current. Offers are keyed by retailer id; the
+  ids map to sources through meta.retailers, and a null offer (a blocked retailer's placeholder)
+  carries no data. The new file may carry data from sephora_me only, and the publish is HELD if
+  the live v1 carries any other source's data or the guard above finds a loss.
+- latest.json is replaced only if it is still the generation the guard read.
 - A v2 file must also load through pi-api's own serving parse (``pi_api.source.parse``, which
   upgrades it to v3). pi-api skips a dataset it can't load, so uploading one would leave the API
   with no data: such a file is held, never uploaded (decision 2026-10-01, after the v3 upgrade
   refused shared-url size variants).
-- v1 (datasets/uae, the legacy dashboard's input) is validated but no longer published: it is a
-  write outside the per-source prefixes.
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
         --project productintelligence-beeb3 dataset.json [--dry-run] [--allow-test]
@@ -54,6 +58,9 @@ SCHEMA = "pi.dataset/v1"
 SCHEMA_V2 = "pi.dataset/v2"
 # The only sources PI publishes; any other source's data is protected (owner, 2026-10-01).
 PUBLISH_SOURCES = ("sephora_me",)
+V1_PREFIX = "datasets/uae"
+V1_SOURCE = "sephora_me"
+V1_META_DOC = "current"  # demo_meta/current: the legacy dashboard and smoke_demo read it
 PRECONDITION_FAILED = 412  # google.api_core PreconditionFailed.code (if_generation_match)
 # Never ship Algolia credentials: header/param names, or a 32-hex key next to an Algolia hint.
 FORBIDDEN = [
@@ -146,12 +153,60 @@ def publishing_source(
     return sources[0], []
 
 
-def outside_prefixes(paths: list[str], allowed: tuple[str, ...] = PUBLISH_SOURCES) -> list[str]:
-    """Paths outside datasets/<country>/<allowed source>/: never written."""
+def outside_prefixes(
+    paths: list[str], allowed: tuple[str, ...] = PUBLISH_SOURCES, *, v1: bool = False
+) -> list[str]:
+    """Paths outside datasets/<country>/<allowed source>/ (v1: datasets/uae/): never written."""
     pattern = re.compile(
-        rf"^datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/[^/]+\.json$"
+        rf"^{re.escape(V1_PREFIX)}/[^/]+\.json$"
+        if v1
+        else rf"^datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/[^/]+\.json$"
     )
     return [p for p in paths if not pattern.match(p)]
+
+
+def v1_by_source(doc: dict[str, Any]) -> dict[str, Any]:
+    """A v1 document's products with offers keyed by source (meta.retailers key), nulls dropped."""
+    keys = {
+        r.get("id"): r.get("key") or r.get("id")
+        for r in (doc.get("meta") or {}).get("retailers") or []
+    }
+    return {
+        "products": [
+            {
+                "id": p.get("id"),
+                "offers": {
+                    keys.get(rid, rid): o
+                    for rid, o in (p.get("offers") or {}).items()
+                    if o is not None
+                },
+            }
+            for p in doc.get("products") or []
+        ]
+    }
+
+
+def v1_source_errors(doc: dict[str, Any]) -> list[str]:
+    """Why a v1 file can't be published: it must carry sephora_me data and nothing else."""
+    sources = sorted(offer_counts(v1_by_source(doc)))
+    if sources != [V1_SOURCE]:
+        return [f"v1 publishes {V1_SOURCE} data only: offers come from {sources or 'no source'}"]
+    return []
+
+
+def guard(
+    live: dict[str, Any] | None, new: dict[str, Any], publishing: str, drop: tuple[str, ...] = ()
+) -> list[str]:
+    """source_guard for either schema; a live v1 with another source's data is never replaced."""
+    if live is None or live.get("schema") == SCHEMA_V2:
+        return source_guard(live, new, publishing, drop)
+    live = v1_by_source(live)
+    foreign = [
+        f"HOLD, live v1 carries {source} data ({n} offers): not PI's to replace"
+        for source, n in sorted(offer_counts(live).items())
+        if source != V1_SOURCE and source not in drop
+    ]
+    return foreign or source_guard(live, new, publishing, drop)
 
 
 def source_guard(
@@ -220,14 +275,14 @@ def package_v2(
     return body, paths, summary, f"v2_{country}_{source}"
 
 
-def read_live(bucket: Any, path: str) -> dict[str, Any] | None:
-    """The live object at ``path`` (stored gzip or plain), or None if there is none yet."""
+def read_live(bucket: Any, path: str) -> tuple[dict[str, Any] | None, int]:
+    """The live object at ``path`` (stored gzip or plain) and its generation; (None, 0) if none."""
     blob = bucket.get_blob(path)
     if blob is None:
-        return None
+        return None, 0
     raw = blob.download_as_bytes(raw_download=True)
     live: dict[str, Any] = json.loads(gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw)
-    return live
+    return live, int(blob.generation)
 
 
 def blob_md5(body: bytes) -> str:
@@ -276,13 +331,21 @@ def revision_path(snapshot: str, generated: datetime) -> str:
     return f"{snapshot.removesuffix('.json')}-g{generated.strftime('%Y%m%dT%H%M%SZ')}.json"
 
 
-def put(bucket: Any, path: str, body: bytes, *, create_only: bool) -> str:
-    """Upload body; create-only returns 'unchanged' or 'different' when the path exists."""
+def put(
+    bucket: Any, path: str, body: bytes, *, create_only: bool, generation: int | None = None
+) -> str:
+    """Upload body; create-only returns 'unchanged' or 'different' when the path exists.
+
+    ``generation`` (replace only): upload only if the object is still that generation (0: only
+    if there is none); a mismatch raises PreconditionFailed.
+    """
     blob = bucket.blob(path)
     blob.content_encoding = "gzip"
     blob.cache_control = "private, no-cache"
     if not create_only:
-        blob.upload_from_string(body, content_type="application/json; charset=utf-8")
+        blob.upload_from_string(
+            body, content_type="application/json; charset=utf-8", if_generation_match=generation
+        )
         return "uploaded"
     try:
         blob.upload_from_string(
@@ -298,8 +361,11 @@ def put(bucket: Any, path: str, body: bytes, *, create_only: bool) -> str:
     return "uploaded"
 
 
-def upload(bucket: Any, paths: list[str], body: bytes) -> int:
+def upload(bucket: Any, paths: list[str], body: bytes, latest_generation: int | None = None) -> int:
     """Upload to every path in order; a cutoff snapshot is create-only. Returns an exit code.
+
+    ``latest_generation``: replace latest.json only if it is still this generation (0: only if
+    there is none), i.e. what the source guard judged; None replaces it unconditionally.
 
     A cutoff snapshot that already exists with different content is never replaced. The body
     is still published if its generatedAt is strictly later than the snapshot's: as a
@@ -309,7 +375,13 @@ def upload(bucket: Any, paths: list[str], body: bytes) -> int:
     for path in paths:
         target = path
         if path.endswith("/latest.json"):
-            state = put(bucket, path, body, create_only=False)
+            try:
+                state = put(bucket, path, body, create_only=False, generation=latest_generation)
+            except Exception as exc:
+                if getattr(exc, "code", None) != PRECONDITION_FAILED:
+                    raise
+                print(f"refusing: {path} changed since the source guard read it", file=sys.stderr)
+                return 1
         else:
             state = put(bucket, path, body, create_only=True)
             if state == "different":
@@ -353,15 +425,18 @@ def main() -> int:
         action="append",
         default=[],
         metavar="ID",
-        help="let this live source be missing, smaller or changed. OWNER APPROVAL REQUIRED",
+        help="let this live source be missing, smaller or changed (repeatable, one ID each). "
+        "OWNER APPROVAL REQUIRED",
     )
     args = parser.parse_args()
 
     raw = args.path.read_text(encoding="utf-8")
     doc = json.loads(raw)
-    if not (isinstance(doc, dict) and doc.get("schema") == SCHEMA_V2):
-        errors = validate(doc, raw, allow_test=args.allow_test) if isinstance(doc, dict) else []
-        errors.append("v1 is no longer published (datasets/uae is outside the source prefixes)")
+    v1 = not (isinstance(doc, dict) and doc.get("schema") == SCHEMA_V2)
+    if not isinstance(doc, dict):
+        errors = ["not a JSON object"]
+    elif v1:
+        errors = validate(doc, raw, allow_test=args.allow_test) + v1_source_errors(doc)
     else:
         dataset, errors = validate_v2(raw, allow_test=args.allow_test)
         errors += publishing_source(doc)[1]
@@ -369,10 +444,15 @@ def main() -> int:
         for err in errors[:50]:
             print(f"INVALID: {err}", file=sys.stderr)
         return 1
-    body, paths, summary, meta_doc = package_v2(dataset)
-    source = str(summary["source"])
-    packaged = json.loads(gzip.decompress(body))  # the guard judges exactly what is uploaded
-    if outside := outside_prefixes(paths):  # belt and braces: package_v2 builds these paths
+    if v1:
+        body, paths, summary = package(doc, V1_PREFIX)
+        source, meta_doc = V1_SOURCE, V1_META_DOC
+        packaged = v1_by_source(json.loads(gzip.decompress(body)))
+    else:
+        body, paths, summary, meta_doc = package_v2(dataset)
+        source = str(summary["source"])
+        packaged = json.loads(gzip.decompress(body))  # the guard judges exactly what is uploaded
+    if outside := outside_prefixes(paths, v1=v1):  # belt and braces: the packagers build these
         print(f"refusing: writes outside the source prefixes: {outside}", file=sys.stderr)
         return 1
     print(json.dumps(summary, ensure_ascii=False), f"gzip={len(body)}B", sep="\n")
@@ -380,7 +460,7 @@ def main() -> int:
     if args.dry_run:
         if args.live_file:
             live = json.loads(args.live_file.read_text(encoding="utf-8"))
-            return report_guard(source_guard(live, packaged, source, drop), drop)
+            return report_guard(guard(live, packaged, source, drop), drop)
         print(f"source guard: runs against the live {paths[-1]} before upload")
         return 0
 
@@ -390,8 +470,9 @@ def main() -> int:
     bucket_name = args.bucket or f"{args.project}.firebasestorage.app"
     firebase_admin.initialize_app(options={"projectId": args.project, "storageBucket": bucket_name})
     bucket = storage.bucket()
-    held = report_guard(source_guard(read_live(bucket, paths[-1]), packaged, source, drop), drop)
-    if held or upload(bucket, paths, body):
+    live, generation = read_live(bucket, paths[-1])
+    held = report_guard(guard(live, packaged, source, drop), drop)
+    if held or upload(bucket, paths, body, latest_generation=generation):
         return 1  # a HOLD uploads nothing; upload() reports its own refusals
     firestore.client().collection("demo_meta").document(meta_doc).set(summary)
     print(f"wrote firestore demo_meta/{meta_doc}")

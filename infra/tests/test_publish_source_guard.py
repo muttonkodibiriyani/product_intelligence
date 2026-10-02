@@ -153,6 +153,7 @@ def test_drop_source_is_the_only_override() -> None:
 class _Blob:
     def __init__(self, data: bytes) -> None:
         self.data = data
+        self.generation = 42
 
     def download_as_bytes(self, *, raw_download: bool = False) -> bytes:
         assert raw_download
@@ -170,9 +171,9 @@ class _Bucket:
 def test_read_live_handles_stored_gzip_plain_and_missing() -> None:
     doc = catalog(ulta_ae=1)
     bucket = _Bucket({"g": gzip.compress(json.dumps(doc).encode()), "p": json.dumps(doc).encode()})
-    assert publish_dataset.read_live(bucket, "g") == doc
-    assert publish_dataset.read_live(bucket, "p") == doc
-    assert publish_dataset.read_live(bucket, "missing") is None
+    assert publish_dataset.read_live(bucket, "g") == (doc, 42)
+    assert publish_dataset.read_live(bucket, "p") == (doc, 42)
+    assert publish_dataset.read_live(bucket, "missing") == (None, 0)
 
 
 # ------------------------------------------------------------------ the command
@@ -199,26 +200,29 @@ def test_dry_run_against_the_live_combined_file_holds(
     assert "owner approval required" in capsys.readouterr().err
 
 
-def test_v1_is_no_longer_published(
+def test_v1_dry_run_publishes_sephora_to_datasets_uae_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = tmp_path / "v1.json"
-    v1 = {
-        "schema": "pi.dataset/v1",
-        "meta": {
-            "kind": "snapshot",
-            "cutoff": "2026-09-30T21:32:28Z",
-            "generatedAt": "2026-09-30T21:40:00Z",
-            "market": "AE",
-            "currency": "AED",
-            "dates": ["2026-09-30"],
-            "retailers": [{"id": "r1", "key": "sephora", "name": "Sephora", "status": "live"}],
-        },
-        "products": [{"id": "p1", "offers": {"r1": {"series": {"price": [99.0]}}}}],
-    }
-    path.write_text(json.dumps(v1), encoding="utf-8")
+    path.write_text(json.dumps(v1_doc(3)), encoding="utf-8")
+    live = tmp_path / "live.json"
+    live.write_text(json.dumps(v1_doc(3)), encoding="utf-8")
+    assert run(monkeypatch, str(path), "--dry-run", "--live-file", str(live)) == 0
+    out = capsys.readouterr().out
+    assert '"storagePath": "datasets/uae/latest.json"' in out
+    assert "source guard: ok" in out
+    live.write_text(json.dumps(v1_doc(4)), encoding="utf-8")
+    assert run(monkeypatch, str(path), "--dry-run", "--live-file", str(live)) == 1
+    assert "HOLD, sephora_me drops from 4 to 3 offers" in capsys.readouterr().err
+
+
+def test_v1_with_ulta_data_never_reaches_firebase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "v1.json"
+    path.write_text(json.dumps(v1_doc(2, ulta=True)), encoding="utf-8")
     assert run(monkeypatch, str(path)) == 1  # not --dry-run: it must stop before Firebase
-    assert "v1 is no longer published" in capsys.readouterr().err
+    assert "v1 publishes sephora_me data only" in capsys.readouterr().err
 
 
 def test_a_ulta_file_never_reaches_firebase(
@@ -228,3 +232,112 @@ def test_a_ulta_file_never_reaches_firebase(
     path.write_text(sephora_only().replace("sephora_me", "ulta_ae"), encoding="utf-8")
     assert run(monkeypatch, str(path), "--allow-test") == 1
     assert "ulta_ae is not a source PI publishes" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------ v1 (the legacy root dashboard)
+def v1_doc(n: int, *, ulta: bool = False) -> dict[str, Any]:
+    """The live datasets/uae shape: ids s/u map to sources; a blocked Ulta has null offers."""
+    offer = {"sku": "1", "series": {"price": [99]}}
+    return {
+        "schema": "pi.dataset/v1",
+        "meta": {
+            "kind": "snapshot",
+            "cutoff": "2026-10-01T03:20:00Z",
+            "generatedAt": "2026-10-01T04:05:13Z",
+            "market": "AE",
+            "currency": "AED",
+            "dates": ["2026-10-01"],
+            "retailers": [
+                {"id": "u", "key": "ulta_ae", "name": "Ulta UAE", "status": "blocked"},
+                {"id": "s", "key": "sephora_me", "name": "Sephora UAE", "status": "partial"},
+            ],
+        },
+        "products": [
+            {"id": f"p{i}", "offers": {"u": offer if ulta else None, "s": offer}} for i in range(n)
+        ],
+    }
+
+
+def test_v1_offers_are_counted_by_source_and_null_placeholders_carry_no_data() -> None:
+    assert publish_dataset.offer_counts(publish_dataset.v1_by_source(v1_doc(3))) == {
+        "sephora_me": 3
+    }
+    assert publish_dataset.v1_source_errors(v1_doc(3)) == []
+    assert publish_dataset.v1_source_errors(v1_doc(3, ulta=True)) == [
+        "v1 publishes sephora_me data only: offers come from ['sephora_me', 'ulta_ae']"
+    ]
+
+
+def test_v1_writes_only_under_datasets_uae() -> None:
+    _, paths, _ = publish_dataset.package(v1_doc(1), publish_dataset.V1_PREFIX)
+    assert paths == ["datasets/uae/20261001T032000Z.json", "datasets/uae/latest.json"]
+    assert publish_dataset.outside_prefixes(paths, v1=True) == []
+    refused = [
+        "datasets/ae/beauty/latest.json",
+        "datasets/ae/sephora_me/latest.json",
+        "datasets/uae/nested/latest.json",
+        "datasets/uae/../ae/beauty/latest.json",
+    ]
+    assert publish_dataset.outside_prefixes(refused, v1=True) == refused
+    assert publish_dataset.outside_prefixes(paths) == paths  # and v2 never writes there
+
+
+def test_a_live_v1_with_another_sources_data_is_never_replaced() -> None:
+    new = publish_dataset.v1_by_source(v1_doc(3))
+    assert publish_dataset.guard(v1_doc(3), new, "sephora_me") == []
+    assert publish_dataset.guard(v1_doc(3, ulta=True), new, "sephora_me") == [
+        "HOLD, live v1 carries ulta_ae data (3 offers): not PI's to replace"
+    ]
+    assert publish_dataset.guard(v1_doc(4), new, "sephora_me") == [
+        "HOLD, sephora_me drops from 4 to 3 offers"
+    ]
+
+
+# ------------------------------------------------------------------ latest.json precondition
+class _PreconditionFailedError(Exception):
+    code = publish_dataset.PRECONDITION_FAILED
+
+
+class _GenBlob:
+    def __init__(self, bucket: "_GenBucket", name: str) -> None:
+        self.bucket, self.name = bucket, name
+
+    def upload_from_string(
+        self, body: bytes, *, content_type: str, if_generation_match: int | None = None
+    ) -> None:
+        current = self.bucket.generations.get(self.name, 0)
+        if if_generation_match is not None and if_generation_match != current:
+            raise _PreconditionFailedError(self.name)
+        self.bucket.generations[self.name] = current + 1
+        self.bucket.uploads.append(self.name)
+
+
+class _GenBucket:
+    name = "b"
+
+    def __init__(self, generations: dict[str, int]) -> None:
+        self.generations = generations
+        self.uploads: list[str] = []
+
+    def blob(self, name: str) -> _GenBlob:
+        return _GenBlob(self, name)
+
+
+@pytest.mark.parametrize(("read", "uploaded"), [(7, True), (6, False), (0, False)])
+def test_latest_is_replaced_only_if_still_the_generation_the_guard_read(
+    read: int, uploaded: bool, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bucket = _GenBucket({"datasets/uae/latest.json": 7})
+    code = publish_dataset.upload(
+        bucket, ["datasets/uae/latest.json"], b"x", latest_generation=read
+    )
+    assert (code == 0) is uploaded
+    assert bucket.uploads == (["datasets/uae/latest.json"] if uploaded else [])
+    if not uploaded:
+        assert "changed since the source guard read it" in capsys.readouterr().err
+
+
+def test_a_first_publish_requires_that_latest_still_does_not_exist() -> None:
+    bucket = _GenBucket({})
+    assert publish_dataset.upload(bucket, ["x/latest.json"], b"x", latest_generation=0) == 0
+    assert publish_dataset.upload(bucket, ["x/latest.json"], b"x", latest_generation=0) == 1
