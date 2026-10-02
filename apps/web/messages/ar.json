@@ -256,7 +256,7 @@
     "was": "كان",
     "off": "−{pct}%",
     "noImage": "لا صورة",
-    "cheaper": "{shop} أرخص {pct}%",
+    "cheaper": "{shop} أرخص بنسبة {pct}%",
     "dearer": "{shop} أغلى بنسبة {pct}%",
     "same": "السعر نفسه",
     "sizesDiffer": "الحجمان مختلفان"
