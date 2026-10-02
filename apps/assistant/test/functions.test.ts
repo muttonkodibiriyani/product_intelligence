@@ -366,7 +366,6 @@ describe("src/index.ts", () => {
       platform: "gcfv2",
       region: ["me-central1"],
       serviceAccountEmail: "pi-killswitch@",
-      minInstances: 0,
       maxInstances: 1,
       secretEnvironmentVariables: [{ key: "KILL_SWITCH_PASSWORD" }],
       eventTrigger: {
@@ -378,9 +377,15 @@ describe("src/index.ts", () => {
     expect(index.assistantChat.__endpoint).toMatchObject({
       region: ["me-central1"],
       serviceAccountEmail: "pi-assistant@",
-      minInstances: 0,
       callableTrigger: {},
     });
+    // minInstances is left unset (scale to zero). An explicit 0 makes firebase-tools 14.27 refuse a
+    // --non-interactive deploy in me-central1: it cannot price that region and asks for --force.
+    // Unset reaches the deploy manifest as null, which the CLI's min-instance cost check accepts.
+    for (const fn of [index.budgetKillSwitch, index.assistantChat]) {
+      const wire = JSON.parse(JSON.stringify(fn.__endpoint)) as { minInstances?: unknown };
+      expect(wire.minInstances ?? null).toBeNull();
+    }
     // The chat function gets no secret.
     expect(index.assistantChat.__endpoint.secretEnvironmentVariables ?? []).toEqual([]);
     expect(Object.keys(index).sort()).toEqual(Object.values(FUNCTIONS).sort());
