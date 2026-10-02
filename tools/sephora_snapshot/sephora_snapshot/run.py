@@ -1,4 +1,5 @@
-"""Sephora UAE snapshot job (task 01a0f424-006c). Ordinary access only (ADR-0005/0006).
+"""Sephora Middle East snapshot job (UAE: task 01a0f424-006c; KSA: task 01a0fc6d, COUNTRY=SA).
+Ordinary access only (ADR-0005/0006).
 
 Plain httpx with normal browser headers from a single egress (Cloud Run me-central1), sequential,
 ~1 req/s with jitter, fresh cookie jar per request, no retries. Robots: tag_only (owner-approved
@@ -15,6 +16,12 @@ outside the 18:00Z-02:00Z window, seeds from the sitemaps and orders the night g
 earlier runs covered (see cadence.py); each product gets its EN page, then its stock read.
 Output: batched jsonl.gz parts + progress.json under gs://$BUCKET/$PREFIX/. Every run ends with
 covered.json.gz (what it read, for the next plan) and status.json (the terminal marker).
+Capture options (task 01a0fc6d, off by default so the UAE loader sees what it always saw):
+COUNTRY=SA selects the KSA storefront (/sa-en, /sa-ar, locales en-SA/ar-SA); FULL=1 keeps every
+productDetails field (long text included); RAW=1 stores each page as served at raw/<lang>-<pid>
+.html.gz and records its sha256; IMAGES=1 downloads every picture an EN page exposes to
+images/<sha256>.<ext> (image-host robots.txt obeyed fail-closed, own pace IMAGE_PACE >= 0.5 s,
+never through a proxy; a block on the image host ends the picture pass, pages continue).
 """
 
 from __future__ import annotations
@@ -31,7 +38,7 @@ from typing import Any
 
 import httpx
 
-from sephora_snapshot import cadence, extract
+from sephora_snapshot import cadence, extract, images
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -39,6 +46,8 @@ USER_AGENT = (
 )
 BATCH = 200
 MIN_PACE_S = 1.0
+MIN_IMAGE_PACE_S = 0.5
+IMAGE_AGENT_NAME = "pi-snapshot"  # our robots.txt group name on image hosts
 
 
 class Stop(Exception):  # noqa: N818
@@ -50,8 +59,10 @@ def headers(locale: str, kind: str) -> dict[str, str]:
         "html": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "xml": "application/xml,text/xml;q=0.9,*/*;q=0.8",
         "json": "application/json,text/plain,*/*",
+        "image": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
     }[kind]
-    lang = "ar-AE,ar;q=0.9,en;q=0.8" if locale.startswith("ar") else "en-AE,en;q=0.9,ar;q=0.8"
+    cc = locale.rsplit("-", 1)[-1] if "-" in locale else "AE"
+    lang = f"ar-{cc},ar;q=0.9,en;q=0.8" if locale.startswith("ar") else f"en-{cc},en;q=0.9,ar;q=0.8"
     return {"User-Agent": USER_AGENT, "Accept": accept, "Accept-Language": lang}
 
 
@@ -83,6 +94,7 @@ class Job:
         self.pace_s = float(os.environ.get("PACE", "1.0"))
         if self.pace_s < MIN_PACE_S:
             raise ValueError(f"PACE must be >= {MIN_PACE_S} s (politeness floor, ADR-0005)")
+        self.capture_options()
         # Recorded in progress.json: the loader only marks a run 'succeeded' for an unlimited
         # full run with the stock pass on (see load.Loader.finish).
         self.mode = "auto" if self.auto else "plan" if os.environ.get("PLAN") else "full"
@@ -112,6 +124,24 @@ class Job:
             "trpc": {},
             "attempted_en": {},
         }
+
+    def capture_options(self) -> None:
+        """Storefront (ADR-0005 UAE default; KSA = "SA") and the capture options of task 01a0fc6d:
+        FULL=1 keeps every productDetails field, RAW=1 stores each page's HTML, IMAGES=1
+        downloads the pictures each EN page exposes (own pace, image-host robots, no proxy)."""
+        self.country = extract.check_country(os.environ.get("COUNTRY", "AE"))
+        self.locales = extract.locales(self.country)
+        self.full = os.environ.get("FULL", "0") == "1"
+        self.raw = os.environ.get("RAW", "0") == "1"
+        self.images_on = os.environ.get("IMAGES", "0") == "1"
+        self.image_pace_s = float(os.environ.get("IMAGE_PACE", "1.0"))
+        if self.image_pace_s < MIN_IMAGE_PACE_S:
+            raise ValueError(f"IMAGE_PACE must be >= {MIN_IMAGE_PACE_S} s")
+        self.image_robots: dict[str, images.Robots] = {}
+        self.image_seen: set[str] = set()
+        self.image_last = 0.0
+        self.image_rl_streak = 0
+        self.image_err_streak = 0
 
     # ---------------------------------------------------------------- output
     def put(self, name: str, data: bytes, gz: bool = True) -> None:
@@ -154,6 +184,10 @@ class Job:
             "mode": self.mode,
             "limit": self.limit,
             "trpc": self.trpc_on,
+            "country": self.country,
+            "full": self.full,
+            "raw": self.raw,
+            "images": self.images_on,
             "counts": self.counts,
             "stopped": self.stopped,
         }
@@ -216,14 +250,14 @@ class Job:
     # ---------------------------------------------------------------- phases
     def seed(self) -> dict[str, dict[str, str]]:
         ids: dict[str, dict[str, str]] = {}
-        for locale in extract.LOCALES:
+        for locale in self.locales:
             for url in extract.sitemap_urls(locale):
                 got = self.get(url, locale, "xml")
                 if got is None or got[0] != 200:
                     self.count("sitemap_fail")
                     continue
                 self.count("sitemap_ok")
-                for lang, pid, pdp in extract.parse_sitemap(got[1]):
+                for lang, pid, pdp in extract.parse_sitemap(got[1], self.country):
                     if pid.startswith("P"):
                         ids.setdefault(pid, {})[lang] = pdp
         self.put("seed.json", json.dumps(ids, ensure_ascii=False).encode())
@@ -238,24 +272,31 @@ class Job:
         self.count(f"pdp_{lang}_attempted")
         if lang == "en":  # a failed page is planned by its last attempt, not as unread forever
             self.covered["attempted_en"][pid] = {"at": datetime.now(UTC).isoformat()}
-        locale = f"{lang}-AE"
+        locale = f"{lang}-{self.country}"
         got = self.get(url, locale, "html")
         if got is None:
             return
         status, body, meta = got
         rec: dict[str, Any] = {**meta, "pid": pid, "lang": lang}
+        if self.raw:  # the page as served, kept beside the extract (parse later, re-parse ever)
+            rec["raw"] = f"raw/{lang}-{pid}.html.gz"
+            rec["sha256"] = images.sha256_hex(body)
+            self.put(rec["raw"], body)
         if status != 200:
             self.count(f"pdp_{lang}_http_{status}")
             self.emit("errors", rec)
             return
         try:
-            rec["extract"] = extract.extract_pdp(body.decode("utf-8", "replace"))
+            rec["extract"] = extract.extract_pdp(body.decode("utf-8", "replace"), full=self.full)
         except ValueError as exc:
             self.count(f"pdp_{lang}_parse_error")
             self.emit("errors", {**rec, "error": str(exc)})
-            self.put(f"raw/{lang}-{pid}.html.gz", body)
+            if not self.raw:
+                self.put(f"raw/{lang}-{pid}.html.gz", body)
             return
         self.count(f"pdp_{lang}_ok")
+        if self.images_on and lang == "en":
+            self.pictures(pid, rec["extract"]["productDetails"])
         if lang == "en":
             self.covered["pdp_en"][pid] = {
                 "at": meta["at"],
@@ -266,10 +307,103 @@ class Job:
             print(json.dumps({"milestone": f"pdp_{lang}_ok", "n": n, "at": meta["at"]}), flush=True)
         self.emit(f"pdp_{lang}", rec)
 
+    # ---------------------------------------------------------------- pictures
+    def image_pace(self) -> None:
+        base = self.image_pace_s
+        wait = base + random.uniform(0.0, 0.5 * base) - (time.monotonic() - self.image_last)  # noqa: S311
+        if wait > 0:
+            time.sleep(wait)
+        self.image_last = time.monotonic()
+
+    def image_allowed(self, url: str) -> bool:
+        """Fail-closed robots check for an image host, read once per host (paced, same client)."""
+        host = images.hosts([url]).pop()
+        robots = self.image_robots.get(host)
+        if robots is None:
+            self.image_pace()
+            status: int | None
+            try:
+                r = self.client.get(f"https://{host}/robots.txt", headers=headers("en", "html"))
+                text, status = r.text, r.status_code
+                if status == 200 and "<html" in text[:2000].lower():
+                    status = None  # a viewer or challenge page is not a robots.txt
+            except httpx.HTTPError:
+                text, status = "", None
+            robots = images.Robots(text, status, IMAGE_AGENT_NAME)
+            self.image_robots[host] = robots
+            self.emit("images_robots", {"host": host, "status": status, "rules": len(robots.rules)})
+        return robots.allows(url)
+
+    def pictures(self, pid: str, details: dict[str, Any]) -> None:
+        """Download every picture an EN page exposes, once per URL per run, at the image pace.
+        A block on the image host ends the picture pass (pages continue); 429 backs off."""
+        for url in images.image_urls(details):
+            if not self.images_on:
+                return
+            if url in self.image_seen:
+                continue
+            self.image_seen.add(url)
+            if datetime.now(UTC) >= self.cutoff:
+                raise Stop("cutoff")
+            if not self.image_allowed(url):
+                self.count("image_robots_refused")
+                self.emit("images", {"pid": pid, "url": url, "state": "robots_refused"})
+                continue
+            self.picture(pid, url)
+
+    def picture(self, pid: str, url: str) -> None:
+        """One paced picture download; records one ``images`` row whatever happens."""
+        self.image_pace()
+        self.client.cookies.clear()
+        t0 = time.monotonic()
+        rec: dict[str, Any] = {"pid": pid, "url": url, "at": datetime.now(UTC).isoformat()}
+        try:
+            r = self.client.get(url, headers=headers(self.locales[0], "image"))
+        except httpx.HTTPError as exc:
+            self.image_err_streak += 1
+            self.count("image_transport_error")
+            self.emit("images", {**rec, "state": "transport_error", "error": repr(exc)})
+            if self.image_err_streak >= 10:
+                self.images_on = False
+                self.count("images_stopped_transport")
+            return
+        self.image_err_streak = 0
+        ct = r.headers.get("content-type", "")
+        is_image = ct.lower().startswith("image/")
+        rec |= {"status": r.status_code, "ms": int((time.monotonic() - t0) * 1000)}
+        rec |= {"bytes": len(r.content), "content_type": ct}
+        if r.status_code == 429:
+            self.image_rl_streak += 1
+            self.count("image_http_429")
+            self.emit("images", {**rec, "state": "rate_limited"})
+            if self.image_rl_streak >= 3:
+                self.images_on = False
+                self.count("images_stopped_rate_limited")
+                return
+            time.sleep(min(60 * 2 ** (self.image_rl_streak - 1), 900))
+            return
+        self.image_rl_streak = 0
+        if r.status_code in (401, 403) or (r.status_code == 200 and not is_image):
+            self.count("images_stopped_blocked")
+            self.images_on = False
+            head = "" if is_image else r.text[:2000]
+            self.emit("images", {**rec, "state": "blocked", "head": head})
+            return
+        if r.status_code != 200:
+            self.count(f"image_http_{r.status_code}")
+            self.emit("images", {**rec, "state": "http_error"})
+            return
+        digest = images.sha256_hex(r.content)
+        name = images.object_name(digest, ct)
+        self.put(name, r.content, gz=False)
+        self.count("image_ok")
+        self.emit("images", {**rec, "state": "ok", "sha256": digest, "object": name})
+
     def trpc(self, pid: str) -> None:
         self.count("trpc_attempted")
-        url = extract.trpc_availability_url("en-AE", pid)
-        got = self.get(url, "en-AE", "json")
+        locale = self.locales[0]
+        url = extract.trpc_availability_url(locale, pid)
+        got = self.get(url, locale, "json")
         if got is None:
             return
         status, body, meta = got
@@ -409,6 +543,8 @@ class Job:
         for pid in order:
             if "ar" in ids[pid]:
                 self.pdp(pid, "ar", ids[pid]["ar"])
+        self.flush("pdp_ar")
+        self.flush("images")
 
 
 def _sigterm(signum: int, frame: object) -> None:

@@ -21,6 +21,13 @@ Env for `run.py`:
 - `BUCKET` (`file:<dir>` for local tests);
 - `PREFIX`, `CUTOFF` (ISO-8601);
 - optional: `PACE` (>= 1.0 s, enforced), `LIMIT`, `TRPC`, `PLAN`;
+- capture options (task 01a0fc6d, KSA): `COUNTRY` (`AE` default or `SA`: picks the `en-SA`/`ar-SA`
+  locales and the `sa-*` sitemap entries), `FULL=1` (keep every `productDetails` field, nothing
+  dropped), `RAW=1` (store each page as `raw/<lang>-<pid>.html.gz` with its sha256 in the row),
+  `IMAGES=1` (download the EN product and variant pictures to `images/<sha256>.<ext>`, deduplicated
+  by URL, paced by `IMAGE_PACE` >= 0.5 s, each image host's robots.txt read first and refused when
+  unreadable; the first 401/403 or non-image 200 stops the picture pass for the run, never the
+  page pass). Pictures are always fetched directly, never through a proxy.
 - or `AUTO=1` instead of `PREFIX`/`CUTOFF`/`PLAN` (setting any of them with `AUTO=1` makes no
   request: the run ends with outcome `refused` under its own new prefix and exits 1).
 
@@ -55,7 +62,7 @@ Retention and the day-10 check: the run bucket deletes objects 14 days after the
 at least 10 days old, has something to load, and has no finished `crawl_run` in pi_db. A held load
 therefore raises an alert four days before its run is deleted.
 
-`progress.json` records `mode`, `limit` and `trpc`.
+`progress.json` records `mode`, `limit`, `trpc`, `country`, `full`, `raw` and `images`.
 
 Off-peak window: runs are scheduled in the UAE night, 18:00Z-02:00Z (22:00-06:00 Gulf time), and `CUTOFF` must fall inside it. Longer passes are split across nights, and each continuation excludes work already done (`plan.py --done`). The single exception was the owner-approved first snapshot (execution `9drcr`, 2026-09-30/10-01): it ran to its own 03:20Z cutoff.
 
