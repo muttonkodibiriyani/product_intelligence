@@ -173,6 +173,8 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
     ``connect-src`` keeps the Firebase Auth and Storage hosts it already had. The assistant
     (switch-on build, App Check with reCAPTCHA Enterprise) adds exactly the reCAPTCHA script and
     frame paths, the App Check token exchange and the me-central1 callable host.
+    Every unquoted source counts, not only dotted hosts, so a scheme-only ``https:`` or a ``*``
+    wildcard fails too; ``data:`` is allowed for inline images only.
     """
     hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
     (csp,) = [
@@ -182,10 +184,11 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
         if h["key"] == "Content-Security-Policy"
     ]
     external = {
-        name: {s for s in sources if "." in s}
+        name: {s for s in sources if not s.startswith("'")}
         for name, *sources in (d.split() for d in csp.split(";") if d.strip())
     }
     assert external.pop("img-src") == {
+        "data:",
         "https://img-product.sephora.me",
         "https://media.alshaya.com",
     }
