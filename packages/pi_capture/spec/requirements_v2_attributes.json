@@ -1,0 +1,2047 @@
+[
+  {
+    "k": "style_id",
+    "g": "identity",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "0979945",
+    "req": "required where published",
+    "src": "page or feed",
+    "note": "The retailer's own design number. The strongest free grouping key we get, and the reason a 60-row size grid becomes one product.",
+    "detail_only": true
+  },
+  {
+    "k": "style_id_source",
+    "g": "identity",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "enum captured|derived",
+    "ex": "captured",
+    "req": "required",
+    "src": "derived",
+    "note": "Whether the retailer published it or we worked it out. A derived grouping is rebuilt when the rule changes; a captured one never is.",
+    "detail_only": true
+  },
+  {
+    "k": "our_style_code",
+    "g": "identity",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "ULT-FND-0421",
+    "req": "ours only",
+    "src": "feed",
+    "note": "Alshaya's own code for the same design, so our catalogue and the shelf can be reconciled.",
+    "detail_only": true
+  },
+  {
+    "k": "colour_code",
+    "g": "identity",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "09",
+    "req": "required",
+    "src": "page or feed",
+    "note": "The retailer's code for the colourway. Stable when the colour NAME is translated or seasonally renamed, which it frequently is."
+  },
+  {
+    "k": "size_code",
+    "g": "identity",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "M",
+    "req": "required",
+    "src": "page or feed",
+    "note": "Completes the three-part key. Style plus colour plus size identifies a sellable thing without needing a barcode."
+  },
+  {
+    "k": "gtin",
+    "g": "identity",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text(14)",
+    "ex": "3614273661096",
+    "req": "where it exists",
+    "src": "page or feed",
+    "note": "EAN, UPC or JAN, stored padded to 14 digits. The only key that groups the same product ACROSS retailers, which makes it the cheapest matching we will ever get. Validate the check digit on arrival."
+  },
+  {
+    "k": "mpn",
+    "g": "identity",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "T3-240-30",
+    "req": "where it exists",
+    "src": "page or feed",
+    "note": "Manufacturer part number. Second-best cross-retailer key, and the fallback when a barcode is absent.",
+    "detail_only": true
+  },
+  {
+    "k": "retailer_sku",
+    "g": "identity",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "SEP-11029384",
+    "req": "required",
+    "src": "page",
+    "note": "The shop's own stock code. What their stock figure is actually keyed on."
+  },
+  {
+    "k": "listing_id",
+    "g": "identity",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "/p/foundation-240",
+    "req": "required",
+    "src": "page",
+    "note": "The product page as the retailer identifies it. Our stable handle on their side, and what we return to tomorrow.",
+    "detail_only": true
+  },
+  {
+    "k": "marketplace_id",
+    "g": "identity",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "B08XYZ1234",
+    "req": "marketplaces",
+    "src": "page",
+    "note": "ASIN or Noon code. Record the parent code too — it is the marketplace's own style grouping, handed to us free.",
+    "detail_only": true
+  },
+  {
+    "k": "parent_marketplace_id",
+    "g": "identity",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "B08PARENT1",
+    "req": "marketplaces",
+    "src": "page",
+    "note": "Groups a marketplace's size and colour children. On Amazon and Noon this does the job style_id does elsewhere.",
+    "detail_only": true
+  },
+  {
+    "k": "brand",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "NARS",
+    "req": "required",
+    "src": "page or feed",
+    "note": "Normalised against a brand list. 'L'Oreal Paris', 'LOreal Paris' and 'L'Oréal' are one brand, and every brand-level metric is wrong until they are."
+  },
+  {
+    "k": "sub_brand",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "Divine",
+    "req": "optional",
+    "src": "page or feed",
+    "note": "The line within a brand. Shoppers shop lines, not brands.",
+    "detail_only": true
+  },
+  {
+    "k": "manufacturer",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Shiseido Group",
+    "req": "optional",
+    "src": "feed",
+    "note": "Who actually owns the brand. Two 'rival' brands under one owner do not compete on price.",
+    "detail_only": true
+  },
+  {
+    "k": "department",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum women|men|kids|baby|unisex",
+    "ex": "women",
+    "req": "required",
+    "src": "page",
+    "note": "Comparing a women's shirt with a men's shirt is a different price point for the same words. Baskets are always department-scoped."
+  },
+  {
+    "k": "category_l1..l4",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text x4",
+    "ex": "Beauty > Face > Foundation > Liquid",
+    "req": "required",
+    "src": "page, mapped",
+    "note": "The retailer's own tree is kept AND mapped to ours. Keep both: theirs explains their navigation and our share-of-shelf reads; ours is the only way to compare across shops."
+  },
+  {
+    "k": "product_type",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "Liquid foundation",
+    "req": "required",
+    "src": "derived",
+    "note": "The leaf concept a comparable-item basket is written against."
+  },
+  {
+    "k": "season",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "SS26",
+    "req": "fashion",
+    "src": "feed or derived",
+    "note": "Fashion prices are a season-long markdown curve. Comparing week 2 against week 20 without it is meaningless.",
+    "detail_only": true
+  },
+  {
+    "k": "collection",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Conscious Choice",
+    "req": "optional",
+    "src": "page",
+    "note": "Capsules and collaborations price differently from the main range and must be separable.",
+    "detail_only": true
+  },
+  {
+    "k": "lifecycle_class",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "enum core|seasonal|limited|clearance",
+    "ex": "core",
+    "req": "required",
+    "src": "derived",
+    "note": "Only core lines are worth a long-run price index. A limited edition disappearing is not a stockout."
+  },
+  {
+    "k": "exclusivity",
+    "g": "classification",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "enum exclusive|selective|wide",
+    "ex": "exclusive",
+    "req": "optional",
+    "src": "derived",
+    "note": "An exclusive has no comparison by definition. Including one in an index quietly drags it toward 100."
+  },
+  {
+    "k": "colour_name",
+    "g": "fashion",
+    "lvl": "colour",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Light blue",
+    "req": "required",
+    "src": "page",
+    "note": "As the retailer writes it, kept verbatim.",
+    "detail_only": true
+  },
+  {
+    "k": "colour_family",
+    "g": "fashion",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "enum",
+    "ex": "blue",
+    "req": "required",
+    "src": "derived",
+    "note": "Normalised. 'Sky', 'Powder' and 'Cornflower' are one family, and colour breadth cannot be counted until they are.",
+    "detail_only": true
+  },
+  {
+    "k": "colour_hex",
+    "g": "fashion",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text(7)",
+    "ex": "#A8C4E0",
+    "req": "optional",
+    "src": "page or derived",
+    "note": "Drives the swatch picker the mockup already has.",
+    "detail_only": true
+  },
+  {
+    "k": "pattern",
+    "g": "fashion",
+    "lvl": "colour",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum plain|striped|checked|floral|print",
+    "ex": "plain",
+    "req": "fashion",
+    "src": "page",
+    "note": "A basket line says 'plain cotton t-shirt'. Without this the rule cannot be enforced and the basket drifts."
+  },
+  {
+    "k": "material_composition",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "jsonb [{fibre,pct}]",
+    "ex": "[{cotton,100}]",
+    "req": "fashion",
+    "src": "page",
+    "note": "Structured, not free text. 100% cotton against a polyester blend is the difference between a fair comparison and a flattering one."
+  },
+  {
+    "k": "fabric_class",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum woven|knit|denim|leather|jersey",
+    "ex": "woven",
+    "req": "fashion",
+    "src": "derived",
+    "note": "The comparability rule baskets are actually written in."
+  },
+  {
+    "k": "fit",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum slim|regular|relaxed|oversized",
+    "ex": "slim",
+    "req": "fashion",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "silhouette",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "A-line",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "neckline",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Crew",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "sleeve_length",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum sleeveless|short|three_quarter|long",
+    "ex": "long",
+    "req": "optional",
+    "src": "page"
+  },
+  {
+    "k": "rise",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum low|mid|high",
+    "ex": "high",
+    "req": "denim",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "leg_shape",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Straight",
+    "req": "denim",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "garment_length",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum mini|midi|maxi|cropped|regular",
+    "ex": "midi",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "closure",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Button",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "occasion",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Casual",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "modest_fashion",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "regional",
+    "src": "derived",
+    "note": "A real and commercially large segment in this region that no imported taxonomy carries. Worth its own flag rather than being buried in occasion.",
+    "detail_only": true
+  },
+  {
+    "k": "shade_name",
+    "g": "beauty",
+    "lvl": "colour",
+    "v": [
+      "beauty"
+    ],
+    "t": "text",
+    "ex": "240 Sand",
+    "req": "required",
+    "src": "page",
+    "note": "Shade is identity, not variation. A foundation in the wrong shade is a different product and must never be matched across.",
+    "detail_only": true
+  },
+  {
+    "k": "shade_depth",
+    "g": "beauty",
+    "lvl": "colour",
+    "v": [
+      "beauty"
+    ],
+    "t": "int 1-20",
+    "ex": "7",
+    "req": "beauty",
+    "src": "derived",
+    "note": "Normalised lightness. The only way to compare shade range across brands that all number their shades differently.",
+    "detail_only": true
+  },
+  {
+    "k": "undertone",
+    "g": "beauty",
+    "lvl": "colour",
+    "v": [
+      "beauty"
+    ],
+    "t": "enum cool|neutral|warm|olive",
+    "ex": "warm",
+    "req": "beauty",
+    "src": "page or derived",
+    "note": "Shade-range coverage is a depth-by-undertone grid, not a count. A brand with 40 shades and no olive tones has a gap a count would hide.",
+    "detail_only": true
+  },
+  {
+    "k": "finish",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "enum matte|satin|dewy|radiant",
+    "ex": "matte",
+    "req": "beauty",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "coverage",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "enum sheer|medium|full",
+    "ex": "medium",
+    "req": "beauty",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "formulation",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "enum liquid|cream|powder|stick|gel|balm",
+    "ex": "liquid",
+    "req": "beauty",
+    "src": "page",
+    "note": "A powder and a liquid at the same price are not the same offer.",
+    "detail_only": true
+  },
+  {
+    "k": "concentration",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "enum edt|edp|parfum|cologne",
+    "ex": "edp",
+    "req": "fragrance",
+    "src": "page",
+    "note": "The single biggest driver of fragrance price. Comparing an EDT with an EDP produces a gap that is simply the wrong comparison.",
+    "detail_only": true
+  },
+  {
+    "k": "fragrance_family",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "text",
+    "ex": "Oriental",
+    "req": "fragrance",
+    "src": "page",
+    "note": "Oud and oriental families are a far larger share of this region's market than of any imported taxonomy.",
+    "detail_only": true
+  },
+  {
+    "k": "skin_type",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "text[]",
+    "ex": "[oily, combination]",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "concern",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "text[]",
+    "ex": "[acne, dullness]",
+    "req": "optional",
+    "src": "page",
+    "note": "How beauty is actually shopped and searched, which makes it a search-visibility dimension too.",
+    "detail_only": true
+  },
+  {
+    "k": "spf",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "int",
+    "ex": "30",
+    "req": "where stated",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "key_ingredients",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "text[]",
+    "ex": "[niacinamide]",
+    "req": "optional",
+    "src": "page",
+    "note": "Ingredient-led buying is a pricing segment of its own now.",
+    "detail_only": true
+  },
+  {
+    "k": "inci_list",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "text",
+    "ex": "Aqua, Glycerin…",
+    "req": "optional",
+    "src": "page",
+    "note": "A strong secondary matching signal when a barcode is missing: two listings with the same full ingredient list in the same size are almost certainly the same product.",
+    "detail_only": true
+  },
+  {
+    "k": "pao_months",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "int",
+    "ex": "12",
+    "req": "optional",
+    "src": "page",
+    "note": "Period after opening. Relevant to clearance pricing on short-dated stock.",
+    "detail_only": true
+  },
+  {
+    "k": "applicator",
+    "g": "beauty",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "text",
+    "ex": "Pump",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "menu_section",
+    "g": "food",
+    "lvl": "style",
+    "v": [
+      "food"
+    ],
+    "t": "text",
+    "ex": "Burgers",
+    "req": "food",
+    "src": "page",
+    "note": "The section average basis compares like with like only if sections are mapped to a common course list.",
+    "detail_only": true
+  },
+  {
+    "k": "serves",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "numeric",
+    "ex": "1",
+    "req": "food",
+    "src": "page",
+    "note": "A family bucket against a single meal is not a price gap, it is a different product."
+  },
+  {
+    "k": "calories",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "int",
+    "ex": "740",
+    "req": "required in KSA and UAE",
+    "src": "page",
+    "note": "Menu calorie labelling is mandatory in both launch markets, so it is reliably published — which makes it a free comparability check and a free size proxy.",
+    "detail_only": true
+  },
+  {
+    "k": "allergens",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "text[]",
+    "ex": "[gluten, dairy]",
+    "req": "food",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "dietary_flags",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "text[]",
+    "ex": "[halal, vegetarian]",
+    "req": "regional",
+    "src": "page",
+    "note": "Halal is assumed across the region and therefore rarely a differentiator; vegan and gluten-free carry a price premium worth measuring.",
+    "detail_only": true
+  },
+  {
+    "k": "spice_level",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "int 0-5",
+    "ex": "2",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "modifiers",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "jsonb",
+    "ex": "[{extra_cheese, 300}]",
+    "req": "food",
+    "src": "page",
+    "note": "Paid extras. A headline price that looks cheap because the sauce costs extra is the commonest trick in menu pricing, and it is invisible without this.",
+    "detail_only": true
+  },
+  {
+    "k": "combo_components",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "uuid[]",
+    "ex": "[burger, fries, drink]",
+    "req": "combos",
+    "src": "feed",
+    "note": "Without it the meal-deal saving cannot be computed, and the meal deal is where restaurant competition is actually fought."
+  },
+  {
+    "k": "daypart",
+    "g": "food",
+    "lvl": "variant",
+    "v": [
+      "food"
+    ],
+    "t": "enum breakfast|lunch|all_day",
+    "ex": "all_day",
+    "req": "optional",
+    "src": "page",
+    "note": "Breakfast is a separate pricing game with separate rivals.",
+    "detail_only": true
+  },
+  {
+    "k": "size_label",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "M",
+    "req": "required",
+    "src": "page",
+    "note": "Exactly as shown to the shopper."
+  },
+  {
+    "k": "size_system",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "fashion"
+    ],
+    "t": "enum eu|uk|us|intl",
+    "ex": "eu",
+    "req": "fashion",
+    "src": "page or derived",
+    "note": "A UK 12 and a US 12 are different garments. Without the system, a size run comparison is nonsense dressed as a chart.",
+    "detail_only": true
+  },
+  {
+    "k": "size_normalised",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "M",
+    "req": "fashion",
+    "src": "derived",
+    "note": "Mapped to one internal ladder so a size run can be compared across retailers at all.",
+    "detail_only": true
+  },
+  {
+    "k": "size_rank",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "fashion"
+    ],
+    "t": "int",
+    "ex": "3",
+    "req": "fashion",
+    "src": "derived",
+    "note": "Position in the run. Lets 'the middle sizes are gone' be stated as a fact rather than eyeballed.",
+    "detail_only": true
+  },
+  {
+    "k": "size_value",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "food"
+    ],
+    "t": "numeric",
+    "ex": "30",
+    "req": "required",
+    "src": "page",
+    "note": "Number only. Never inferred — a guessed size silently corrupts every price-per-unit figure that touches it.",
+    "detail_only": true
+  },
+  {
+    "k": "size_unit",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "food"
+    ],
+    "t": "enum ml|g|l|kg|count",
+    "ex": "ml",
+    "req": "required",
+    "src": "page",
+    "note": "Comparisons across unit types are refused outright rather than converted.",
+    "detail_only": true
+  },
+  {
+    "k": "net_content",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "food"
+    ],
+    "t": "numeric",
+    "ex": "30",
+    "req": "required",
+    "src": "derived",
+    "note": "Normalised to a base unit so price per unit is computable.",
+    "detail_only": true
+  },
+  {
+    "k": "units_per_pack",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "food"
+    ],
+    "t": "int",
+    "ex": "1",
+    "req": "required",
+    "src": "page",
+    "note": "A twin pack at 1.6x the price is cheaper per unit, not dearer. Multipacks are where unit-price comparisons usually go wrong.",
+    "detail_only": true
+  },
+  {
+    "k": "is_gift_set",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "beauty"
+    ],
+    "t": "bool",
+    "ex": "false",
+    "req": "beauty",
+    "src": "derived",
+    "note": "Sets wreck a price index and must be excluded from it, not quietly averaged in. Enormous in this region at Eid and Ramadan.",
+    "detail_only": true
+  },
+  {
+    "k": "weight_grams",
+    "g": "size",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "numeric",
+    "ex": "120",
+    "req": "optional",
+    "src": "feed",
+    "note": "Shipping cost, which is part of what a shopper actually pays.",
+    "detail_only": true
+  },
+  {
+    "k": "price_minor",
+    "g": "commercial",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "bigint",
+    "ex": "12900",
+    "req": "required",
+    "src": "page",
+    "note": "Integer minor units. Three decimal places in Kuwait and Bahrain."
+  },
+  {
+    "k": "regular_price_minor",
+    "g": "commercial",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "bigint",
+    "ex": "16900",
+    "req": "where shown",
+    "src": "page",
+    "note": "As displayed, never reconstructed. Reconstructing it invents the discount."
+  },
+  {
+    "k": "rrp_minor",
+    "g": "commercial",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bigint",
+    "ex": "16900",
+    "req": "where known",
+    "src": "feed",
+    "note": "Supplied by the brand owner, not scraped.",
+    "detail_only": true
+  },
+  {
+    "k": "cost_minor",
+    "g": "commercial",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "bigint",
+    "ex": "7200",
+    "req": "ours, if ever supplied",
+    "src": "feed",
+    "note": "Does not exist today. Every margin figure stays blank until it does, and a blank is the honest answer.",
+    "detail_only": true
+  },
+  {
+    "k": "price_authority",
+    "g": "commercial",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "enum",
+    "ex": "rrp_guided",
+    "req": "ours",
+    "src": "feed",
+    "note": "Whether the price is ours to change. A recommendation against a contractually fixed price is noise, and noise teaches people to ignore the tool."
+  },
+  {
+    "k": "tax_class",
+    "g": "commercial",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "standard",
+    "req": "required",
+    "src": "feed",
+    "note": "Most things are standard-rated, but not all, and a zero-rated line compared tax-excluded against a standard one is simply wrong.",
+    "detail_only": true
+  },
+  {
+    "k": "title",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "Slim Fit Cotton Shirt",
+    "req": "required",
+    "src": "page"
+  },
+  {
+    "k": "description",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "…",
+    "req": "required",
+    "src": "page",
+    "note": "Length and presence feed the listing-quality measures for the brands we distribute."
+  },
+  {
+    "k": "bullets",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text[]",
+    "ex": "[…]",
+    "req": "optional",
+    "src": "page"
+  },
+  {
+    "k": "image_count",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "int",
+    "ex": "6",
+    "req": "required",
+    "src": "page",
+    "note": "The single strongest listing-quality signal, and the cheapest to collect."
+  },
+  {
+    "k": "image_urls",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text[]",
+    "ex": "[…]",
+    "req": "required",
+    "src": "page",
+    "note": "Stored as references. Also a last-resort matching signal: the identical image file at two shops is the same product."
+  },
+  {
+    "k": "has_video",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "false",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "has_swatch_image",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "beauty",
+    "src": "page",
+    "note": "A shade without a swatch barely sells. A real content gap, not a cosmetic one."
+  },
+  {
+    "k": "language",
+    "g": "content",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "enum ar|en",
+    "ex": "ar",
+    "req": "required",
+    "src": "page",
+    "note": "Collected per language. Arabic and English listings differ in content completeness far more than anyone expects, and that gap is itself a finding.",
+    "detail_only": true
+  },
+  {
+    "k": "rating_value",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "numeric",
+    "ex": "4.3",
+    "req": "where shown",
+    "src": "page",
+    "note": "Null where none shown. No reviews is not a zero rating.",
+    "detail_only": true
+  },
+  {
+    "k": "rating_count",
+    "g": "content",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "int",
+    "ex": "214",
+    "req": "where shown",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "first_seen",
+    "g": "lifecycle",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "timestamptz",
+    "ex": "2026-03-01",
+    "req": "required",
+    "src": "derived",
+    "note": "First reading, not a launch date. The difference matters and the screen should say which it is."
+  },
+  {
+    "k": "last_seen",
+    "g": "lifecycle",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "timestamptz",
+    "ex": "2026-09-30",
+    "req": "required",
+    "src": "derived",
+    "note": "Delisting is inferred from absence, so this is only as meaningful as our collection reliability. A blocked source looks exactly like a delisting."
+  },
+  {
+    "k": "launch_date",
+    "g": "lifecycle",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "date",
+    "ex": "2026-02-15",
+    "req": "ours",
+    "src": "feed",
+    "note": "Ours is known; a rival's is inferred, and the two must never share a column."
+  },
+  {
+    "k": "delist_confirmed",
+    "g": "lifecycle",
+    "lvl": "variant",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "bool",
+    "ex": "false",
+    "req": "derived",
+    "src": "derived",
+    "note": "Only true after a minimum run of successful readings that did not find it. Never after a failed one.",
+    "detail_only": true
+  },
+  {
+    "k": "country_of_origin",
+    "g": "sustain",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Turkey",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "sustainability_claims",
+    "g": "sustain",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text[]",
+    "ex": "[organic cotton]",
+    "req": "optional",
+    "src": "page",
+    "note": "Recorded as the retailer's claim, never as a verified fact. We report what the page says.",
+    "detail_only": true
+  },
+  {
+    "k": "vegan",
+    "g": "sustain",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "food"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "cruelty_free",
+    "g": "sustain",
+    "lvl": "style",
+    "v": [
+      "beauty"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "certifications",
+    "g": "sustain",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text[]",
+    "ex": "[GOTS]",
+    "req": "optional",
+    "src": "page",
+    "note": "Captured verbatim from the page and attributed to the page. Never asserted by us.",
+    "detail_only": true
+  },
+  {
+    "k": "installment_provider",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text[]",
+    "ex": "[tabby, tamara]",
+    "req": "regional",
+    "src": "page",
+    "note": "Buy-now-pay-later is enormous in this region and is a price-PERCEPTION lever, not a payment detail. 'Four payments of 75' competes directly with a lower sticker price, and no imported competitor tool captures it."
+  },
+  {
+    "k": "installment_amount_minor",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bigint",
+    "ex": "7500",
+    "req": "regional",
+    "src": "page",
+    "note": "The number actually displayed in large type on the page."
+  },
+  {
+    "k": "loyalty_points",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "int",
+    "ex": "120",
+    "req": "optional",
+    "src": "page",
+    "note": "Points are a discount in disguise. A rival at parity who gives 10 percent back is not at parity."
+  },
+  {
+    "k": "member_price_minor",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bigint null",
+    "ex": "11900",
+    "req": "where shown",
+    "src": "page",
+    "note": "A members-only price shown publicly. Record it separately — it is NOT the shelf price and must never be silently blended into the index."
+  },
+  {
+    "k": "bulk_price_tiers",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "food"
+    ],
+    "t": "jsonb",
+    "ex": "[{qty:3, price:34900}]",
+    "req": "where shown",
+    "src": "page",
+    "note": "Quantity breaks. Comparing a single-unit price against a rival's three-pack price is a false gap."
+  },
+  {
+    "k": "coupon_available",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "where shown",
+    "src": "page",
+    "note": "A clip-on or code-entry discount shown on the page but not in the price. Extremely common on marketplaces and invisible to anyone reading the price alone."
+  },
+  {
+    "k": "coupon_terms",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "SAVE15 at checkout",
+    "req": "where shown",
+    "src": "page",
+    "note": "Kept raw. A person can read it even when nothing can parse it."
+  },
+  {
+    "k": "in_cart_price_minor",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bigint null",
+    "ex": "10900",
+    "req": "where it differs",
+    "src": "page",
+    "note": "Some prices only appear after adding to basket, deliberately, to stay out of comparisons. Capturing it is the difference between reading the shelf and reading the till."
+  },
+  {
+    "k": "shipping_fee_minor",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bigint",
+    "ex": "1500",
+    "req": "required",
+    "src": "page",
+    "note": "The cheapest price is not the cheapest purchase."
+  },
+  {
+    "k": "free_shipping_threshold_minor",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bigint",
+    "ex": "20000",
+    "req": "required",
+    "src": "page"
+  },
+  {
+    "k": "cod_available",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "regional",
+    "src": "page",
+    "note": "Cash on delivery, often with its own fee. Still a large share of orders in this region."
+  },
+  {
+    "k": "vat_statement",
+    "g": "money",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "VAT included",
+    "req": "required",
+    "src": "page",
+    "note": "What the page SAYS about tax, kept verbatim. It is how tax_basis gets set to something other than unknown, and unknown bars a row from every cross-market comparison."
+  },
+  {
+    "k": "stock_quantity_shown",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "int null",
+    "ex": "3",
+    "req": "where shown",
+    "src": "page",
+    "note": "'Only 3 left'. Rare, and extremely valuable when present — it is the closest thing to a sales signal we will get without a sales feed."
+  },
+  {
+    "k": "low_stock_flag",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "where shown",
+    "src": "page"
+  },
+  {
+    "k": "backorder_eta",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "date null",
+    "ex": "2026-11-10",
+    "req": "where shown",
+    "src": "page"
+  },
+  {
+    "k": "delivery_promise",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "Tomorrow before 10pm",
+    "req": "where shown",
+    "src": "page",
+    "note": "Speed competes with price directly here. Same-day against three-day is worth real money and is part of the offer."
+  },
+  {
+    "k": "store_availability",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "jsonb",
+    "ex": "[{store, in_stock}]",
+    "req": "where shown",
+    "src": "page",
+    "note": "Click-and-collect stock by branch, where a retailer exposes it. The only online window onto physical shelf availability we get."
+  },
+  {
+    "k": "fulfilled_by",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Noon Express",
+    "req": "marketplaces",
+    "src": "page",
+    "note": "Marketplace fulfilment changes both the delivery promise and the buy-box odds."
+  },
+  {
+    "k": "is_buybox_winner",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "marketplaces",
+    "src": "page",
+    "note": "On a marketplace the winning offer is the only one most shoppers ever see. An index built on losing offers measures a shelf nobody looks at."
+  },
+  {
+    "k": "seller_rating",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "numeric",
+    "ex": "4.6",
+    "req": "marketplaces",
+    "src": "page",
+    "note": "A cheaper offer from a weak seller is not really a cheaper offer."
+  },
+  {
+    "k": "offer_count",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "int",
+    "ex": "7",
+    "req": "marketplaces",
+    "src": "page",
+    "note": "How many sellers compete on that listing. A direct read on how contested a product is."
+  },
+  {
+    "k": "return_window_days",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "int",
+    "ex": "14",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "warranty",
+    "g": "stockops",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "1 year",
+    "req": "optional",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "review_distribution",
+    "g": "social",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "jsonb",
+    "ex": "{5:120,4:40,…}",
+    "req": "where shown",
+    "src": "page",
+    "note": "The shape matters more than the average. A 4.2 from all fours and a 4.2 from fives and ones are different products.",
+    "detail_only": true
+  },
+  {
+    "k": "verified_share",
+    "g": "social",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "numeric",
+    "ex": "0.82",
+    "req": "where shown",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "recommend_pct",
+    "g": "social",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "numeric",
+    "ex": "0.91",
+    "req": "where shown",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "review_recency",
+    "g": "social",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "date",
+    "ex": "2026-09-28",
+    "req": "where shown",
+    "src": "page",
+    "note": "Lets review velocity be computed, which is the nearest free proxy for sales we have.",
+    "detail_only": true
+  },
+  {
+    "k": "review_language_mix",
+    "g": "social",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "jsonb",
+    "ex": "{ar:0.4,en:0.6}",
+    "req": "optional",
+    "src": "page",
+    "note": "Arabic review share is a real signal of local traction as opposed to imported catalogue.",
+    "detail_only": true
+  },
+  {
+    "k": "question_count",
+    "g": "social",
+    "lvl": "colour",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "int",
+    "ex": "12",
+    "req": "where shown",
+    "src": "page",
+    "detail_only": true
+  },
+  {
+    "k": "fit_feedback",
+    "g": "social",
+    "lvl": "colour",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Runs small",
+    "req": "where shown",
+    "src": "page",
+    "note": "Drives returns, and returns drive real margin. Worth capturing even though it prices nothing directly.",
+    "detail_only": true
+  },
+  {
+    "k": "badges",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text[]",
+    "ex": "[bestseller, new, exclusive]",
+    "req": "where shown",
+    "src": "page",
+    "note": "The shop telling us what it is pushing. The cheapest read on a competitor's priorities we will ever get."
+  },
+  {
+    "k": "is_sponsored",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "false",
+    "req": "search pages",
+    "src": "page",
+    "note": "Paid placement must be separated from organic, or share-of-search measures somebody's ad budget and calls it popularity."
+  },
+  {
+    "k": "list_position",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "int",
+    "ex": "7",
+    "req": "search pages",
+    "src": "page",
+    "note": "Rank on the page it appeared on. The raw material for every visibility measure."
+  },
+  {
+    "k": "list_context",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "search:foundation",
+    "req": "search pages",
+    "src": "page",
+    "note": "Which search or category produced that rank. A rank without its query means nothing."
+  },
+  {
+    "k": "breadcrumb",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text[]",
+    "ex": "[Beauty, Face, Foundation]",
+    "req": "required",
+    "src": "page",
+    "note": "Their own navigation path. How share-of-shelf is actually counted, and how their taxonomy gets mapped to ours."
+  },
+  {
+    "k": "related_products",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "text[]",
+    "ex": "[listing ids]",
+    "req": "optional",
+    "src": "page",
+    "note": "Their cross-sell. Also a free source of candidate products we are not yet tracking."
+  },
+  {
+    "k": "bundle_offers",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "jsonb",
+    "ex": "[{with, price}]",
+    "req": "where shown",
+    "src": "page"
+  },
+  {
+    "k": "gift_with_purchase",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty"
+    ],
+    "t": "text null",
+    "ex": "Free mini on 300+",
+    "req": "where shown",
+    "src": "page",
+    "note": "The dominant beauty mechanic in this region, and completely invisible to a price-only model."
+  },
+  {
+    "k": "personalisation_offered",
+    "g": "merch",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "true",
+    "req": "optional",
+    "src": "page",
+    "note": "Engraving and monogramming carry a premium and are heavily used for gifting here.",
+    "detail_only": true
+  },
+  {
+    "k": "page_url",
+    "g": "page",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "https://…",
+    "req": "required",
+    "src": "page"
+  },
+  {
+    "k": "canonical_url",
+    "g": "page",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "https://…",
+    "req": "required",
+    "src": "page",
+    "note": "Stops the same product being counted twice from two URLs, which otherwise inflates range breadth quietly."
+  },
+  {
+    "k": "structured_data",
+    "g": "page",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "jsonb",
+    "ex": "{schema.org Product}",
+    "req": "where present",
+    "src": "page",
+    "note": "Many retailers publish price, availability, brand, GTIN and rating in machine-readable form on the page already. ALWAYS take this in preference to reading the rendered text — it is what the shop itself asserts, and it breaks far less often."
+  },
+  {
+    "k": "page_language",
+    "g": "page",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "ar",
+    "req": "required",
+    "src": "page",
+    "note": "Arabic and English listings differ in completeness far more than anyone expects, and that gap is itself a finding."
+  },
+  {
+    "k": "page_template_hash",
+    "g": "page",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "text",
+    "ex": "sha256:…",
+    "req": "required",
+    "src": "derived",
+    "note": "When a retailer redesigns, every parser breaks at once. A template change detected automatically turns a silent week of wrong data into an alert on day one."
+  },
+  {
+    "k": "capture_completeness",
+    "g": "page",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion",
+      "food"
+    ],
+    "t": "numeric",
+    "ex": "0.86",
+    "req": "required",
+    "src": "derived",
+    "note": "Share of the expected fields this reading actually produced. A page that parsed but yielded half the fields is a defect that otherwise passes as a success."
+  },
+  {
+    "k": "heel_height",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "numeric null",
+    "ex": "85",
+    "req": "footwear",
+    "src": "page",
+    "detail_only": true,
+    "note": "In millimetres. Footwear comparison is meaningless without it — a court shoe and a flat in the same leather at the same price are not the same offer."
+  },
+  {
+    "k": "care_instructions",
+    "g": "fashion",
+    "lvl": "style",
+    "v": [
+      "fashion"
+    ],
+    "t": "text",
+    "ex": "Machine wash 30, do not tumble dry",
+    "req": "where shown",
+    "src": "page",
+    "detail_only": true,
+    "note": "Kept because it is part of what a basket line means. 'Plain cotton t-shirt' at one price that is hand-wash only is not comparable with one that is not."
+  }
+]
