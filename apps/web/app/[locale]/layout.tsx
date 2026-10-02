@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { AuthProvider } from '@/components/auth-provider';
+import { formats } from '@/i18n/formats';
 import { dirOf, isLocale, locales } from '@/i18n/routing';
 import { loadMessages } from '@/messages/load';
 import '../globals.css';
@@ -43,7 +44,7 @@ export default async function LocaleLayout({
         >
           {t('skip')}
         </a>
-        <NextIntlClientProvider locale={locale} messages={messages}>
+        <NextIntlClientProvider locale={locale} messages={messages} formats={formats}>
           <AuthProvider>
             <AppHeader />
             <main id="main" className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
