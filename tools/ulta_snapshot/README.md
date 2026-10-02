@@ -1,6 +1,6 @@
 # ulta_snapshot
 
-Loader for one ulta.ae (UAE) snapshot from the rung-5 runner (`run.py`, not approved; see below).
+Loader for one ulta.ae (UAE) snapshot from the rung-5 runner (`run.py`; see below).
 It uses the same loader contract as `sephora_snapshot`.
 
 **Never loaded into prod `ulta_ae`.** The owner's `ulta_ae` rows are protected: no PI action may
@@ -11,8 +11,20 @@ update, delete or degrade them. Before its first write the loader runs `guard()`
   listing, content row or offer without its provenance, or an `ulta_ae:` brand alias it did not
   add. Replaying its own snapshot is allowed.
 
-The fetch side (`run.py`, `docs/runbooks/ulta-proxy-test.md`) is not approved: there is no owner
-OK to use the paid proxy, and ulta.ae is blocked for PI.
+The fetch side (`run.py`, `docs/runbooks/ulta-proxy-test.md`): rung 5 approved for ulta.ae
+(ADR-0006 Am.2); ulta.ae blocked since the 22:53Z challenge (2026-09-30); no re-run without a new
+owner item.
+
+**Shared rows, off prod only.** `brand` is shared across sources. Off prod, the loader inserts
+missing brands and appends its `ulta_ae:` aliases to existing ones (another source's brand row
+can gain an alias); it never touches a prod database.
+
+**One writer at a time.** `guard()` takes `offline_import.ulta_catalogue`'s advisory lock
+(`hashtext('ulta-catalogue-import')`) at session level and holds it until the connection closes,
+across the per-part commits. If another writer holds it, the loader refuses at once (exit 2); it
+never waits.
+The lock does not cover `offline_import/ulta_feed.py` or `offline_import/load.py`'s per-file
+lock: never run them concurrently with this loader.
 
 - Input: `pdp/part-NNNN.jsonl.gz` page records `{at, url, lang, status, engine, egress, proxy_bytes, html, captures}`.
 - Parser: the rendered DOM plus JSON-LD (`pi_connector_ulta.dom.parse_pdp_html`) is the primary path.

@@ -64,6 +64,10 @@ HOSTS = frozenset({"ulta.ae", "www.ulta.ae"})
 CONTEXT_NOTE = "one snapshot, no recurring crawl"
 #: The live pi_db database name (docs/runbooks/db-backup-restore.md). Never loaded.
 PROD_DATABASES = frozenset({"pi"})
+#: offline_import.ulta_catalogue's writer lock (pg_advisory_xact_lock(hashtext(...))). guard()
+#: takes it at session level and holds it until the connection closes: the loader commits per
+#: part, so a transaction lock would be released between the check and later writes.
+WRITER_LOCK = "ulta-catalogue-import"
 
 #: Rows under ulta_ae (or ulta_ae: brand aliases) that this loader did not write. Read only.
 FOREIGN_SQL = """
@@ -111,10 +115,14 @@ class Refused(RuntimeError):  # noqa: N818
 
 
 def guard(conn: psycopg.Connection[Any]) -> None:
-    """Hard pre-write guard. Reads only; raises ``Refused`` before any write."""
+    """Hard pre-write guard. Takes the writer lock, then reads only; raises ``Refused`` before any
+    write. Fails closed: it never waits for the lock."""
     name = conn.info.dbname
     if name in PROD_DATABASES:
         raise Refused(f"refused: {name!r} is the prod database; never loaded into prod ulta_ae")
+    locked = conn.execute("SELECT pg_try_advisory_lock(hashtext(%s))", (WRITER_LOCK,)).fetchone()
+    if not (locked and locked[0]):
+        raise Refused(f"refused: another {SOURCE} writer holds the {WRITER_LOCK!r} lock")
     row = conn.execute(
         FOREIGN_SQL, {"source": SOURCE, "version": CONNECTOR_VERSION, "note": CONTEXT_NOTE}
     ).fetchone()

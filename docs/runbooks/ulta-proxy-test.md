@@ -5,8 +5,9 @@ IPRoyal UAE residential proxy. It fetches only: nothing
 is written to the database. It obeys robots.txt on every request, blocks heavy assets, and stops
 by itself at the first challenge, 401/403, proxy error, second 429 in a row, or the byte cap.
 
-**Not approved. There is no owner OK to use the paid proxy. Do not run anything in this
-runbook unless the owner approves it as a separate, dated item.** ulta.ae is blocked for PI.
+**Rung 5 approved for ulta.ae (ADR-0006 Am.2); ulta.ae blocked since the 22:53Z challenge
+(2026-09-30); no re-run without a new owner item.** Do not run anything in this runbook without
+that item.
 
 **Never loaded into prod `ulta_ae`.** The loader (`python -m ulta_snapshot.load`) refuses the
 prod database (`pi`) and any database whose `ulta_ae` holds a row it did not write: it exits 2
@@ -47,7 +48,7 @@ docker run --rm -i --name ulta-test --user "$(id -u):$(id -g)" \
   -v "$OUT":/out \
   -e GOOGLE_OAUTH_ACCESS_TOKEN \
   -e PRIOR_GB="$PRIOR_GB" -e MAX_PAGES=20 -e CAPTURE_JSON=0 \
-  -e OWNER_APPROVAL_REF="<the dated owner approval; none exists>" \
+  -e OWNER_APPROVAL_REF="ADR-0006 Am.2" \
   -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-test/$TS/"
@@ -231,7 +232,7 @@ docker run --rm -i --name ulta-full --user "$(id -u):$(id -g)" \
   -e URL_SOURCE=sitemap -e START_INDEX=auto -e MAX_PAGES="$MAX_PAGES" \
   -e EST_BYTES_PER_PAGE="$EST_BYTES_PER_PAGE" \
   -e PRIOR_GB="$PRIOR_GB" -e CAPTURE_JSON=0 \
-  -e OWNER_APPROVAL_REF="<the dated owner approval; none exists>" \
+  -e OWNER_APPROVAL_REF="ADR-0006 Am.2" \
   -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console-$TS.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-full/$TS/"

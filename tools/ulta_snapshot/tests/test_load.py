@@ -373,3 +373,38 @@ def test_prod_database_is_refused_before_any_query() -> None:
 
     with pytest.raises(Refused, match="prod"):
         guard(Conn())  # type: ignore[arg-type]
+
+
+def _lock_free(url: str) -> bool:
+    """True if another session can take the ulta_catalogue writer lock right now."""
+    with psycopg.connect(url) as other:
+        row = other.execute(
+            "SELECT pg_try_advisory_xact_lock(hashtext(%s))", (load.WRITER_LOCK,)
+        ).fetchone()
+        return bool(row and row[0])
+
+
+def test_concurrent_ulta_writer_refuses_and_writes_nothing(fresh_db: str, tmp_path: Path) -> None:
+    snap = _snapshot(tmp_path, [_rec("ulta_ae_pdp_en_morphe_trio.html", "en")])
+    with psycopg.connect(fresh_db) as importer, psycopg.connect(fresh_db) as conn:
+        # offline_import.ulta_catalogue's lock, held in an open transaction.
+        importer.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (load.WRITER_LOCK,))
+        before = _rows(conn)
+        with pytest.raises(Refused, match="lock"):
+            Loader(conn, snap, "gs://test/ulta")
+        conn.rollback()
+        assert _rows(conn) == before
+    assert not (tmp_path / f".loaded-{snap.name}.json").exists()
+
+
+def test_writer_lock_is_held_across_part_commits(fresh_db: str, tmp_path: Path) -> None:
+    snap = _snapshot(tmp_path, [_rec("ulta_ae_pdp_en_morphe_trio.html", "en")])
+    with psycopg.connect(fresh_db) as conn:
+        loader = Loader(conn, snap, "gs://test/ulta")
+        conn.commit()
+        assert not _lock_free(fresh_db)  # the gap between guard and the writes is closed
+        loader.load()  # commits per part
+        assert not _lock_free(fresh_db)
+        loader.finish()
+        assert not _lock_free(fresh_db)
+    assert _lock_free(fresh_db)  # released with the connection
