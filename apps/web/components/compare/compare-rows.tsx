@@ -283,8 +283,8 @@ function Fold({ rows, data, name, from }: { rows: PairRow[]; data: Comparison; n
                     >
                       <span dir="auto">{r.name}</span>
                     </Link>
-                    <span className="block text-xs text-ink-2" dir="auto">
-                      {r.brand}
+                    <span className="block text-xs text-ink-2">
+                      <bdi>{r.brand}</bdi>
                     </span>
                   </th>
                   <td className={`${TD} text-end tabular-nums`}>{cell(r.basePrice, r)}</td>

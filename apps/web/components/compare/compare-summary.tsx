@@ -87,7 +87,7 @@ export function Verdict({
   ];
 
   return (
-    <section aria-labelledby="verdict-title" className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+    <section aria-labelledby="verdict-title" className="grid items-start gap-4 lg:grid-cols-[3fr_2fr]">
       <div className="panel px-5 py-4">
         <h2 id="verdict-title" className="text-xl font-semibold tracking-tight text-balance sm:text-[22px]">
           {headline}

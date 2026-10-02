@@ -71,17 +71,19 @@ for (const locale of ['en', 'ar'] as const) {
           base: 'المتجر الأول',
           other: 'المتجر الثاني',
           groupBy: 'التجميع حسب',
-          verdict: 'Shop A أرخص في 3 من 6 منتجات متطابقة؛ وShop B أرخص في 2، ومنتجان بالسعر نفسه.',
+          verdict: 'Shop A أرخص في 3 من 6 منتجات متطابقة؛ وShop B أرخص في 2، ومنتج واحد بالسعر نفسه.',
           matchedTitle: 'المنتجات المتطابقة (6)',
           fold: 'تعذّرت مقارنة 9 منتجات أخرى',
           show: 'اعرضها',
           hide: 'أخفِها',
-          notSold: 'Only Shop A sells it.',
+          notSold: 'يبيعه Shop A فقط.',
           tooSmall: 'عدد المنتجات قليل جدًا',
           of15: 'يظهر 3 من 15 منتج',
           more: 'اعرض حتى 500',
           emptyBlocked: 'لا منتجات متطابقة بين Shop A وShop D بعد',
           emptyPair: 'لا منتجات متطابقة بين Shop A وShop B بعد',
+          p05: 'Shop A، بنسبة 25',
+          reasonLead: 'لا يمكن مقارنة شيء لهذين المتجرين:',
           blocks: 'هذا المتجر يمنع الجمع.',
           detail: 'تعذّر جمع بيانات أحد المتاجر المحددة.',
           blocked: 'محظور',
@@ -113,6 +115,8 @@ for (const locale of ['en', 'ar'] as const) {
           more: 'Show up to 500',
           emptyBlocked: 'No products are matched between Shop A and Shop D yet',
           emptyPair: 'No products are matched between Shop A and Shop B yet',
+          p05: '+AED 20.00',
+          reasonLead: 'Nothing can be compared for this pair:',
           blocks: 'This retailer blocks collection.',
           detail: 'A selected retailer could not be collected.',
           blocked: 'Blocked',
@@ -161,7 +165,7 @@ for (const locale of ['en', 'ar'] as const) {
       // p05: 80 vs 100 → +20.00, Shop A cheaper by 25%.
       await expect(
         page.locator('#matched tr, #matched li').filter({ hasText: 'Product p05' }).first(),
-      ).toContainText('+AED 20.00');
+      ).toContainText(T.p05);
       await expect(page.locator('#matched')).not.toContainText('Product p12');
       await expect(page.locator('#matched')).toContainText(T.fold);
       const fold = page.getByRole('button', { name: T.show });
@@ -213,7 +217,7 @@ for (const locale of ['en', 'ar'] as const) {
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/compare/?retailers=shop_a%2Cshop_d`);
       await expect(page.locator('#empty-title')).toHaveText(T.emptyBlocked);
-      await expect(page.getByText(T.blocks)).toContainText(T.detail);
+      await expect(page.locator('#empty-title + p')).toHaveText(`${T.reasonLead} ${T.blocks} ${T.detail}`);
       await expect(page.getByRole('listitem').filter({ hasText: 'Shop D' })).toContainText(T.blocked);
       await expect(page.locator('#verdict-title')).toHaveCount(0);
       await expect(page.locator('#matched')).toHaveCount(0);
