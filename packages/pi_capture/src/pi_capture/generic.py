@@ -605,6 +605,10 @@ class _Emitter:
     ) -> None:
         self._emit(Reading(key, get(key).level, "parse_failed", raw, None, path, note, currency))
 
+    def not_shown(self, key: str, note: str) -> None:
+        """Record that the page is known not to carry ``key`` (unless something already read it)."""
+        self._emit(Reading(key, get(key).level, "not_shown", None, None, None, note))
+
     def _emit(self, reading: Reading) -> None:
         if reading.key in self._keys:
             return
