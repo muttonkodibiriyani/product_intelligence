@@ -12,7 +12,8 @@ history, and the file is never changed):
 
 An exact id always wins. Nothing is ever guessed: an alias that two products claim is dropped,
 and an old pair id whose split is ambiguous finds nothing. A pair whose own id is hashed hides
-its members' tokens: links to their old ids stay not found, and ``opaque_pairs`` counts them.
+its members' tokens, and one whose id reads more than one way names no members for sure: links
+to their old ids stay not found, and ``opaque_pairs`` counts them.
 """
 
 from __future__ import annotations
@@ -63,8 +64,9 @@ class ProductIds:
     supported: frozenset[str]
     #: Aliases two current products claim: dropped, so they find nothing.
     dropped: int
-    #: Products at two or more retailers whose id reads as no pair (hashed): their members' old
-    #: ids can't be derived. The load log reports this; closing it needs the export.
+    #: Products at two or more retailers whose id reads as no pair (hashed) or as more than one
+    #: (a family holding ``-s-``): their members' old ids can't be derived, so they register no
+    #: aliases. The load log reports this; closing it needs the export.
     opaque_pairs: int
 
 
@@ -76,10 +78,11 @@ def product_ids(ds: DatasetV3) -> ProductIds:
     opaque = 0
     for p in ds.products:
         split = list(halves(p.id))
-        for left, right in split:
+        if len(split) == 1:  # more than one reading: which members it holds is a guess
+            ((left, right),) = split
             claims[product_id(left)].add(p.id)
             claims[product_id(right)].add(p.id)
-        if not split and len({retailer[c] for c in p.offers}) > 1:
+        elif len({retailer[c] for c in p.offers}) > 1:
             opaque += 1
     old = {alias: owners for alias, owners in claims.items() if alias not in by_id}
     return ProductIds(

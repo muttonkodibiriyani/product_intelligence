@@ -191,7 +191,8 @@ class SnapshotSource:
             ids = loaded.ids
             log.info(
                 "dataset %s loaded at generation %s: %d old product ids, %d dropped as "
-                "ambiguous, %d pairs with hashed ids (their members' old ids can't be found)",
+                "ambiguous, %d pairs with hashed or ambiguous ids (their members' old ids can't be "
+                "found)",
                 path,
                 generation,
                 len(ids.aliases),

@@ -203,8 +203,26 @@ def test_pairs_with_hashed_ids_are_counted_for_the_load_log(
     assert ids.aliases == {U1: PAIRED, S1: PAIRED, U3: REPAIRED, S4: REPAIRED}
     (line,) = [r.getMessage() for r in caplog.records if "old product ids" in r.getMessage()]
     assert (
-        f"4 old product ids, 0 dropped as ambiguous, {ids.opaque_pairs} pairs with hashed" in line
+        f"4 old product ids, 0 dropped as ambiguous, {ids.opaque_pairs} pairs with hashed or "
+        "ambiguous ids" in line
     )
+
+
+#: Reviewer N1 probe: reads as (u-kit-2-pc, s-set-1-unknown-s-P9-1-unknown) and as
+#: (u-kit-2-pc-s-set-1-unknown, s-P9-1-unknown), so which members it holds is a guess.
+AMBIGUOUS_PAIR = "m-u-kit-2-pc-s-set-1-unknown-s-P9-1-unknown"
+
+
+def test_a_current_pair_id_with_two_readings_registers_no_aliases() -> None:
+    assert len(list(halves(AMBIGUOUS_PAIR))) == 2
+    plain = product_ids(load(current()))
+    ids = product_ids(load(renamed(p01=PAIRED, p15=U2, p12=S2, p02=AMBIGUOUS_PAIR)))
+    assert ids.aliases == {U1: PAIRED, S1: PAIRED}
+    for member in ("u-kit-2-pc", "s-P9-1-unknown", "u-kit-2-pc-s-set-1-unknown"):
+        assert resolve(ids, member) == ()
+    # p02 is at two retailers and no longer reads as one pair: counted for the load log.
+    assert ids.opaque_pairs == plain.opaque_pairs + 1
+    assert [p.id for p in resolve(ids, AMBIGUOUS_PAIR)] == [AMBIGUOUS_PAIR]
 
 
 FAMILY = st.text(alphabet="ab-su:9", min_size=1, max_size=8).filter(lambda f: f[0] != "-")

@@ -558,9 +558,11 @@ shop sells any more. The fix is read-side only: the served file is never changed
   exact match). `data` is the first current id. Clients rewrite their link to `currentIds`.
   There is no HTTP redirect: a split has two targets, and `fetch()` hides redirects. The list
   filters (`id=` on `/compare`, `/reviews-summary`) stay exact.
-- **Known gap.** A pair whose own id is hashed hides its members' tokens. Links to that pair's
-  id, or to its members' old ids, stay not found. Each load logs the count ("N pairs with
-  hashed ids"), with the alias and dropped counts. After deploy the owner reads it. Only if it
+- **Known gap.** A pair whose own id is hashed hides its members' tokens. A current pair id that
+  reads more than one way (a family holding `-s-<size>-<unit>`) registers no aliases, since its
+  members would be a guess. Links to such a pair's id, or to its members' old ids, stay not
+  found. Each load logs the count ("N pairs with hashed or ambiguous ids"), with the alias and
+  dropped counts. After deploy the owner reads it. Only if it
   is above 0 does closing the gap become an export proposal (each product would list its
   members' ids). An id that changes for another reason (a family re-assigned) is outside any
   read-side fix.
