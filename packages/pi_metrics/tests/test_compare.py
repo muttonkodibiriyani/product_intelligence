@@ -20,6 +20,7 @@ from metrics_fixture import (
 )
 from pi_dataset import Dataset, DecidedBy, MoneyValue, RetailerStatus
 from pi_metrics import EVERYTHING, Cheaper, GroupBy, ProductFilter, compare, gap, view
+from pi_metrics.compare import gap_histogram
 from pi_metrics.model import CaveatCode, Excluded, Reason, Status
 from pi_metrics.view import UnknownInput
 
@@ -209,3 +210,44 @@ def test_compare_scales_linearly(ds: Dataset) -> None:
     assert result.cohort is not None
     assert result.cohort.n == 6 * 500
     assert result.data.sides.base.only_here == 500
+
+
+@pytest.mark.parametrize(
+    ("pct", "bin_"),
+    [
+        ("-50.1", 0),
+        ("-50", 1),  # bins are [low, high): an edge belongs to the bin above it
+        ("-25.5", 1),
+        ("-1", 5),
+        ("0", 5),
+        ("0.99", 5),
+        ("1", 6),
+        ("49.9", 9),
+        ("50", 10),
+        ("400", 10),
+    ],
+)
+def test_gap_histogram_bins_are_half_open_on_fixed_edges(pct: str, bin_: int) -> None:
+    hist = gap_histogram([Decimal(pct)])
+    assert hist.edges == ("-50", "-25", "-10", "-5", "-1", "1", "5", "10", "25", "50")
+    assert len(hist.counts) == len(hist.edges) + 1
+    assert hist.counts.index(1) == bin_
+
+
+def test_the_gap_histogram_counts_every_counted_pair(ds: Dataset) -> None:
+    result = compare(ds, A, B, EVERYTHING)
+    summary = result.data.summary
+    assert summary is not None
+    pcts = [r.gap.pct for r in result.data.rows if r.counted and r.gap is not None]
+    assert summary.gap_hist == gap_histogram(pcts)
+    assert sum(summary.gap_hist.counts) == summary.n == 6
+
+
+def test_each_group_has_its_own_gap_histogram(ds: Dataset) -> None:
+    data = compare(ds, A, B, EVERYTHING, group_by=GroupBy.CATEGORY).data
+    groups = {g.key: g for g in data.groups}
+    skincare = groups["skincare"].summary
+    assert skincare is not None
+    assert data.summary is not None
+    assert skincare.gap_hist == data.summary.gap_hist
+    assert groups["makeup"].summary is None

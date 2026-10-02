@@ -18,7 +18,7 @@ const sandbox = {
 sandbox.window = sandbox; sandbox.self = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(src + `
-;globalThis.__t = { hydrate, sampleContract, fixtureContract, useDS, resetAll, afterData, W, ctx, S, render, SETF_KEYS, PRESETS, viewById };`, sandbox, { filename: 'app-bundle.js' });
+;globalThis.__t = { hydrate, sampleContract, fixtureContract, useDS, resetAll, afterData, W, ctx, S, render, SETF_KEYS, PRESETS, viewById, launchesIn, heldAt };`, sandbox, { filename: 'app-bundle.js' });
 const T = sandbox.__t;
 
 const EVIL = '<b>x</b><zz>';
@@ -50,7 +50,8 @@ assert.deepStrictEqual([...T.SETF_KEYS].sort(), ['band', 'brand', 'cat', 'shade'
 const click = d => handlers.click.forEach(f => f({ target: { closest: () => ({ dataset: d, closest: () => null, matches: () => false, tagName: 'BUTTON' }) }, preventDefault() {}, stopPropagation() {} }));
 // a selected promo campaign is outlined with the theme ink, never a literal ${...}
 {
- T.useDS(T.hydrate(T.sampleContract())); T.resetAll(); T.afterData();
+ // the sample dates its campaigns by the calendar in use, so load a full-length sample before building the one under test
+ T.useDS(T.hydrate(fullSample())); T.useDS(T.hydrate(T.sampleContract())); T.resetAll(); T.afterData();
  const html = () => { root.innerHTML = ''; T.render(); return String(root.innerHTML) };
  T.S.route = 'promotions'; T.S.lang = 'en';
  const id = html().match(/data-act="pc:([^"]+)"/)?.[1];
@@ -151,5 +152,74 @@ assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
  const nu = note(u.id), ns = note(s.id);
  assert(nu && /ulta/i.test(nu), `Ulta photo credited to ${nu}`);
  assert(ns && /sephora/i.test(ns), `Sephora photo credited to ${ns}`);
+}
+
+/* The sample's series share arrays with the generator and its dates follow the last dataset used,
+   so the guard tests take a copy with one date per series day. */
+function fullSample() {
+ const j = JSON.parse(JSON.stringify(T.sampleContract()));
+ const N = j.products.find(q => q.offers?.u)?.offers.u.series.price.length, end = Date.UTC(2026, 8, 30);
+ j.meta.dates = Array.from({ length: N }, (_, i) => new Date(end - (N - 1 - i) * 864e5).toISOString().slice(0, 10));
+ return j;
+}
+// prices of 0.01 or less are feed errors: read as no price for both retailers, never shown or summed
+{
+ const j = fullSample(), N = j.meta.dates.length;
+ const both = j.products.filter(q => q.offers?.u?.series?.price && q.offers?.s?.series?.price);
+ assert(both.length >= 2, 'fixture: need two products listed at both retailers');
+ const cases = [[both[0], 0.01], [both[1], 0]];
+ for (const [q, v] of cases) for (const k of ['u', 's']) {
+  const sr = q.offers[k].series;
+  sr.price[N - 1] = v;
+  sr.regular = sr.regular || new Array(N).fill(null);
+  sr.regular[N - 1] = v;
+ }
+ const DS = T.hydrate(j), by = Object.fromEntries(DS.products.map(p => [p.id, p]));
+ for (const [q, v] of cases) for (const k of ['u', 's']) {
+  const p = by[String(q.id).replace(/[^\w.:-]/g, '_')];
+  assert(p, `${q.id}: product dropped`);
+  assert.strictEqual(p.d[k].price[N - 1], null, `${k} price ${v} kept`);
+  assert.strictEqual(p.d[k].regular[N - 1], null, `${k} regular ${v} kept`);
+  assert(p.reg[k] == null || p.reg[k] > 0.01, `${k} regular price ${p.reg[k]} at or under 0.01`);
+ }
+ const kept = T.hydrate(fullSample()).products.find(p => p.id === by[String(both[0].id).replace(/[^\w.:-]/g, '_')].id);
+ assert(kept.d.u.price.some(x => x > 0.01), 'a real price must survive the guard');
+}
+// a discount worked out from a guarded price is no discount; a guarded day is not a delisting
+{
+ const j = fullSample(), N = j.meta.dates.length;
+ const withP = j.products.filter(q => q.offers?.u?.series?.price?.slice(-3).every(v => v != null));
+ assert(withP.length >= 2, 'fixture: need products priced at Ulta on the last days');
+ const [a, b] = withP, A = a.offers.u.series, B = b.offers.u.series;
+ // a: last-day price 0.01 stored with the 100% discount the feed works out from it
+ A.price[N - 1] = 0.01; A.promo = A.promo || new Array(N).fill(0); A.promo[N - 1] = 100;
+ a.offers.u.promos = undefined;
+ // b: a real price on a day whose regular price is 0.01 (a nonsense discount)
+ B.regular = B.regular || new Array(N).fill(null); B.regular[N - 2] = 0.01;
+ B.promo = B.promo || new Array(N).fill(0); B.promo[N - 2] = 99;
+ b.offers.u.promos = undefined;
+ const DS = T.hydrate(j), id = q => String(q.id).replace(/[^\w.:-]/g, '_');
+ const P = Object.fromEntries(DS.products.map(p => [p.id, p])), pa = P[id(a)], pb = P[id(b)];
+ assert.strictEqual(pa.d.u.promo[N - 1], 0, 'discount kept on a guarded price');
+ assert.strictEqual(pb.d.u.promo[N - 2], 0, 'discount kept on a guarded regular price');
+ for (const p of [pa, pb]) assert(!p.promos.some(x => x.r === 'u' && x.pct >= 99), `${p.id}: fake discount in promotions`);
+ // listed, price withheld: not a 'gone' event, and the product page says why
+ assert(T.heldAt(pa, 'u', N - 1) && !T.heldAt(pa, 'u', N - 2));
+ T.useDS(DS); T.resetAll(); T.afterData();
+ assert(!T.launchesIn([pa], 0, N - 1).some(e => e.k === 'u' && e.type === 'gone'), 'guarded last day read as delisted');
+ T.S.lang = 'en'; T.S.route = 'product'; T.S.param = pa.id; root.innerHTML = ''; T.render();
+ assert(String(root.innerHTML).includes('Price under review'), 'product page: no under-review note');
+}
+// an early capture priced at 0.01 or less carries no price either
+{
+ const j = T.fixtureContract('blocked');
+ const q = j.products.find(q => q.offers?.u?.early && q.offers.u.series?.price);
+ assert(q, 'fixture: need an early Ulta capture');
+ const sr = q.offers.u.series; sr.price[sr.price.length - 1] = 0.01;
+ const DS = T.hydrate(j);
+ const e = DS.early.find(e => e.o === q.offers.u);
+ assert(e, 'early capture dropped');
+ assert.strictEqual(e.price, null, 'early price 0.01 kept');
+ assert(DS.early.some(x => x !== e && x.price > 0.01), 'real early prices must survive');
 }
 console.log('escape.test.js: ok');

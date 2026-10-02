@@ -18,7 +18,17 @@
     "aging": "Aging",
     "snapshot": "Snapshot",
     "imported": "Imported {date}, capture date unknown",
-    "productsParents": "Products (snapshot, may include parent listings)"
+    "productsParents": "Products (snapshot, may include parent listings)",
+    "retailers": "Retailers",
+    "pairs": "Comparable pairs",
+    "pairsOf": "matched across {base} and {other}",
+    "index": "Price index",
+    "indexOf": "{other} vs {base}, median gap on {n} pairs",
+    "cheaper": "Cheaper at",
+    "same": "{n} same",
+    "withheld": "not measured",
+    "only": "{retailer} only",
+    "promoOnly": "of {retailer} products"
   },
   "ladder": {
     "title": "Price ladder by category",
@@ -34,7 +44,9 @@
     "title": "Promotion depth",
     "question": "How many discounted products each category has, by depth of discount.",
     "off": "{band} off",
-    "label": "Discounted products by category and discount band."
+    "label": "Discounted products by category and discount band.",
+    "more": "more products",
+    "fewer": "fewer products"
   },
   "brands": {
     "title": "Brand price positioning",
@@ -84,5 +96,109 @@
   "withheld": {
     "prices": "Price charts aren't shown.",
     "ratings": "The rating chart isn't shown."
+  },
+  "pairs": "{n, plural, one {# comparable pair} other {# comparable pairs}}",
+  "matchedOnly": "Matched products only, not the full catalogues.",
+  "index": {
+    "title": "Price index over time",
+    "question": "{other}'s basket against {base}'s, day by day. 100 is parity; above it {other} is dearer.",
+    "noHistory": "History begins once nightly collection runs.",
+    "index": "Index",
+    "parity": "Parity",
+    "label": "Price index per collection day, {n} days."
+  },
+  "gaps": {
+    "title": "Biggest price gaps",
+    "question": "The matched products whose prices sit furthest apart. Select a bar to open the product.",
+    "gap": "Gap",
+    "label": "Price gap per matched product, {n} widest."
+  },
+  "cheaper": {
+    "title": "Who's cheaper by category",
+    "question": "How many matched pairs each retailer wins in every category.",
+    "baseCheaper": "{r} cheaper",
+    "same": "Same price",
+    "otherCheaper": "{r} cheaper",
+    "median": "Median gap",
+    "thin": "{n, plural, one {# category has} other {# categories have}} too few pairs to count: {list}.",
+    "label": "Pairs won per retailer per category, {n} categories.",
+    "more": "more pairs",
+    "fewer": "fewer pairs"
+  },
+  "groupGap": {
+    "title": "Price gap by brand",
+    "titleCategory": "Price gap by category",
+    "question": "Median gap of the matched pairs in each {by}; positive means {other} is dearer.",
+    "byBrand": "brand",
+    "byCategory": "category",
+    "median": "Median gap",
+    "mean": "Mean gap",
+    "label": "Median price gap per group, {n} groups."
+  },
+  "controls": {
+    "top": "Top {n}",
+    "topLabel": "How many brands",
+    "retailer": "Retailer",
+    "groupBy": "Group by"
+  },
+  "retailerLabel": "{title} · {retailer}",
+  "cross": {
+    "title": "Who's cheaper by category and brand",
+    "question": "On every matched pair in a category and brand, how often each retailer is cheaper. Select a cell to open those pairs.",
+    "label": "Who is cheaper per category and brand, {rows} categories by {cols} brands.",
+    "thin": "too few pairs",
+    "thinNote": "{n, plural, one {# cell has} other {# cells have}} fewer than {min} pairs and read as too few, never as a result.",
+    "cell": "{base} cheaper {b}, same {s}, {other} cheaper {o}",
+    "truncated": "The matched list is longer than one response carries, so the grid is not drawn; the shares below come from the server's groups.",
+    "baseSide": "{r} cheaper",
+    "otherSide": "{r} cheaper"
+  },
+  "cheaperShare": {
+    "title": "Cheaper share by {by}",
+    "question": "Of each {by}'s matched pairs, the share where each retailer is cheaper. Select a bar to open the comparison.",
+    "label": "Share of pairs won per retailer per {by}, {n} groups.",
+    "byCategory": "category",
+    "byBrand": "brand",
+    "same": "Same price",
+    "thin": "{n, plural, one {# group has} other {# groups have}} too few pairs to count: {list}."
+  },
+  "priced": "Priced products",
+  "nPairs": "n = {n, plural, one {# comparable pair} other {# comparable pairs}}",
+  "buckets": {
+    "title": "Prices by category",
+    "question": "How do prices compare by category?",
+    "basis": "Each category's median price across each full catalogue, not like-for-like products. For the same products at both retailers, see Exact matches only below.",
+    "meta": "Full catalogues · 9 shared categories · {date}",
+    "category": "Category",
+    "n": "n",
+    "median": "Median",
+    "mean": "mean",
+    "range": "Price range",
+    "gapCol": "Median gap",
+    "rangeHint": "Middle half of prices as a band, median as a tick, lowest to highest as a thin line; log scale.",
+    "tooFew": "too few (n = {n})",
+    "same": "About the same",
+    "otherDearer": "{other} {pct} dearer than {base}",
+    "otherCheaper": "{other} {pct} cheaper than {base}",
+    "notAvailable": "Category comparison is not available yet.",
+    "otherShare": "'Other' holds {share} of {name}'s products.",
+    "unmapped": "Not yet in a category: {n}",
+    "tooFewList": "Too few to compare: {list}.",
+    "tooFewItem": "{label} — {sides}",
+    "withheldList": "Withheld: {list}.",
+    "withheldItem": "{label} — {name}",
+    "chartLabel": "Median price gap per category, {other} against {base}: {n, plural, one {# category} other {# categories}}. Positive means {other} is dearer.",
+    "gap": "Gap",
+    "name": {
+      "fragrance": "Fragrance",
+      "skincare": "Skincare",
+      "eyes": "Eyes",
+      "lips": "Lips",
+      "body": "Body",
+      "cheek": "Cheek",
+      "foundation": "Foundation",
+      "concealer": "Concealer",
+      "other": "Other"
+    }
   }
 }

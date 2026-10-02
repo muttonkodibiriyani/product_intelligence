@@ -437,6 +437,33 @@
         "shop_b": 2
       },
       "equalCount": 1,
+      "gapHist": {
+        "counts": [
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        "edges": [
+          "-50",
+          "-25",
+          "-10",
+          "-5",
+          "-1",
+          "1",
+          "5",
+          "10",
+          "25",
+          "50"
+        ]
+      },
       "meanGapPct": "4.5",
       "medianGapPct": "2.4",
       "n": 6
@@ -446,7 +473,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.5.2",
+    "apiVersion": "1.8.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",
@@ -456,7 +483,7 @@
     },
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.3",
+    "metricVersion": "2026-10-01.4",
     "scope": "fixture"
   },
   "reason": null,
