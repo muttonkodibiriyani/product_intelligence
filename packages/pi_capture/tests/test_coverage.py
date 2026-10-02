@@ -53,6 +53,34 @@ def test_counts_and_shares(make_capture: Callable[..., ProductCapture]) -> None:
     assert t.observed_share == Decimal("0.3333")
 
 
+def test_attributes_nobody_looked_for_are_not_called_missing(
+    make_capture: Callable[..., ProductCapture],
+) -> None:
+    title = Reading("title", AttributeLevel.COLOUR, "observed", "T")
+    gtin_bad = Reading("gtin", AttributeLevel.VARIANT, "parse_failed", "ABC")
+    pages = [
+        make_capture("shop", (title,), looked_for=("title", "gtin")),
+        make_capture("shop", (title, gtin_bad), looked_for=("title", "gtin")),
+        make_capture("shop", (title,)),  # legacy capture without looked_for: old meaning holds
+        make_capture("shop", (), capture_state="blocked", looked_for=("title",)),
+    ]
+    shop = coverage(pages, vertical="beauty").retailers[0]
+    gtin = _row(shop.attributes, "gtin")
+    assert (gtin.observed, gtin.parse_failed, gtin.not_shown, gtin.blocked) == (0, 1, 2, 1)
+    assert gtin.not_looked_for == 0
+    rating = _row(shop.attributes, "rating_value")
+    assert (rating.not_looked_for, rating.not_shown, rating.blocked) == (2, 1, 1)
+    assert rating.observed_share == Decimal("0.0000")
+    assert _row(shop.attributes, "title").observed == 3
+    # a reading for a key outside looked_for still counts: what was read was read
+    extra = make_capture("shop", (gtin_bad,), looked_for=("title",))
+    only = coverage([extra], vertical="beauty").retailers[0]
+    assert _row(only.attributes, "gtin").parse_failed == 1
+    md = coverage(pages, vertical="beauty").to_markdown()
+    assert "| rating value | colour | content | 0 | 1 | 1 | 0 | 0 | 2 | 0.0% |" in md
+    assert "not_looked_for" in str(coverage(pages, vertical="beauty").to_json())
+
+
 def test_empty_and_fashion_vertical(make_capture: Callable[..., ProductCapture]) -> None:
     report = coverage([], vertical=Vertical.FASHION)
     assert report.retailers == ()
@@ -79,11 +107,13 @@ def test_renderings(make_capture: Callable[..., ProductCapture]) -> None:
         "blocked": 0,
         "parse_failed": 0,
         "not_applicable": 0,
+        "not_looked_for": 0,
         "observed_share": "1.0000",
     }
     md = report.to_markdown()
     assert "## shop" in md
     assert "Pages read: 1" in md
-    assert "| title | colour | content | 1 | 0 | 0 | 0 | 0 | 100.0% |" in md
-    assert "| image count | colour | content | 0 | 1 | 0 | 0 | 0 | 0.0% |" in md
+    assert "| Not looked for |" in md
+    assert "| title | colour | content | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |" in md
+    assert "| image count | colour | content | 0 | 1 | 0 | 0 | 0 | 0 | 0.0% |" in md
     assert "_" not in md.split("| image count")[1].split("|")[0]

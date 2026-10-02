@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 
 import pytest
 
 from pi_capture.generic import (
+    LOOKED_FOR,
     find_json_objects,
     generic_facts,
     jsonld_blocks,
@@ -20,6 +22,7 @@ from pi_capture.generic import (
     rsc_text,
 )
 from pi_capture.model import Reading
+from pi_capture.registry import ATTRIBUTES
 
 
 def _by_key(readings: list[Reading]) -> dict[str, Reading]:
@@ -47,7 +50,9 @@ def test_readings_from_a_full_product_page(product_html: str) -> None:
     assert r["mpn"].value == "T3-240-30"
     assert r["price_minor"].value == 18900
     assert r["price_minor"].raw_text == "189.00 AED"
-    assert r["price_minor"].note == "currency=AED"
+    assert r["price_minor"].note is None
+    assert r["price_minor"].currency == "AED"
+    assert r["regular_price_minor"].currency == "AED"
     assert r["regular_price_minor"].value == 22900
     assert r["rating_value"].value == Decimal("4.3")
     assert r["rating_count"].value == 214
@@ -120,13 +125,18 @@ def test_minor_units_respect_the_currency_exponent() -> None:
         _by_key(readings_from_generic(page("12.5", "AED"), locale="en-AE"))["price_minor"].value
         == 1250
     )
-    assert (
-        _by_key(readings_from_generic(page("1,299", "SAR"), locale="ar-SA"))["price_minor"].value
-        == 129900
-    )
-    too_fine = _by_key(readings_from_generic(page("12.505", "AED"), locale="en-AE"))["price_minor"]
+    ambiguous = _by_key(readings_from_generic(page("1,299", "SAR"), locale="ar-SA"))["price_minor"]
+    assert ambiguous.state == "parse_failed"
+    assert ambiguous.currency == "SAR"
+    assert "ambiguous" in (ambiguous.note or "")
+    unclear = _by_key(readings_from_generic(page("12.505", "AED"), locale="en-AE"))["price_minor"]
+    assert unclear.state == "parse_failed"
+    assert unclear.raw_text == "12.505 AED"
+    assert "ambiguous" in (unclear.note or "")
+    too_fine = _by_key(readings_from_generic(page("1.299,505", "AED"), locale="en-AE"))[
+        "price_minor"
+    ]
     assert too_fine.state == "parse_failed"
-    assert too_fine.raw_text == "12.505 AED"
     assert too_fine.note == "more decimals than AED allows"
     no_cur = _by_key(readings_from_generic(page("12.50", None), locale="en-AE"))["price_minor"]
     assert no_cur.state == "parse_failed"
@@ -136,6 +146,129 @@ def test_minor_units_respect_the_currency_exponent() -> None:
     assert "unknown currency" in (unknown.note or "")
     nan = _by_key(readings_from_generic(page("free", "AED"), locale="en-AE"))["price_minor"]
     assert nan.state == "parse_failed"
+
+
+def _price(amount: str, currency: str) -> Reading:
+    html = (
+        '<script type="application/ld+json">{"@type": "Product", "name": "P", "offers": '
+        f'{{"@type": "Offer", "price": "{amount}", "priceCurrency": "{currency}"}}}}</script>'
+    )
+    return _by_key(readings_from_generic(html, locale="en-AE"))["price_minor"]
+
+
+@pytest.mark.parametrize(
+    ("amount", "currency", "minor"),
+    [
+        ("12,50", "AED", 1250),  # decimal comma: was recorded as 125000
+        ("12,5", "AED", 1250),
+        ("1.299,00", "SAR", 129900),  # European grouping
+        ("1,299.00", "SAR", 129900),  # English grouping
+        ("1 299,50", "SAR", 129950),  # space grouping with decimal comma
+        ("1\u00a0299.50", "SAR", 129950),  # no-break space grouping
+        ("1,299,000", "SAR", 129900000),  # repeated comma can only be grouping
+        ("12.500", "KWD", 12500),  # three minor places: '.' + 3 digits is the decimal mark
+        ("12.500", "BHD", 12500),
+        ("1.250", "OMR", 1250),
+        ("1299", "SAR", 129900),
+        ("12.", "AED", 1200),
+        (".5", "AED", 50),
+        ("+12.50", "AED", 1250),
+    ],
+)
+def test_decimal_comma_and_grouping_are_read_explicitly(
+    amount: str, currency: str, minor: int
+) -> None:
+    r = _price(amount, currency)
+    assert (r.state, r.value, r.currency) == ("observed", minor, currency), r.note
+
+
+@pytest.mark.parametrize(
+    ("amount", "currency", "reason"),
+    [
+        ("1,299", "SAR", "ambiguous"),  # 1299 or 1.299? refused
+        ("1.299", "SAR", "ambiguous"),  # same with a dot in a two-place currency
+        ("12,500", "KWD", "ambiguous"),  # comma + 3 digits is never read as KWD fils
+        ("1,29,900", "SAR", "separators do not read"),  # lakh grouping is not three-digit
+        ("1.299.5", "SAR", "separators do not read"),
+        ("1,2.50", "SAR", "mixed separators"),
+        ("1.299,5.0", "SAR", "mixed separators"),
+        ("12.5000", "AED", "more decimals than any currency"),
+        ("-5", "AED", "negative amount"),  # was recorded as -500
+        ("\u22125.00", "AED", "negative amount"),  # unicode minus
+        ("-12,50", "AED", "negative amount"),
+        ("NaN", "AED", "not a number"),
+        ("Infinity", "AED", "not a number"),
+        ("-Infinity", "AED", "not a number"),
+        ("1e3", "AED", "not a number"),  # no exponents on a price tag
+        ("0x10", "AED", "not a number"),
+        ("12.50 AED", "AED", "not a number"),
+    ],
+)
+def test_ambiguous_negative_and_non_finite_amounts_are_refused(
+    amount: str, currency: str, reason: str
+) -> None:
+    r = _price(amount, currency)
+    assert r.state == "parse_failed"
+    assert r.value is None
+    assert r.currency == currency
+    assert reason in (r.note or ""), r.note
+
+
+def test_non_finite_json_literals_are_refused_everywhere() -> None:
+    bad = (
+        '<script type="application/ld+json">{"@type": "Product", "name": "P", "offers": '
+        '{"@type": "Offer", "price": NaN, "priceCurrency": "AED"}, '
+        '"aggregateRating": {"ratingValue": Infinity, "ratingCount": 3}}</script>'
+        '<script type="application/ld+json">{"@type": "Product", "name": "Q"}</script>'
+    )
+    blocks, failed = parse_jsonld(bad)
+    assert [b["name"] for b in blocks] == ["Q"]
+    assert len(failed) == 1
+    r = _by_key(readings_from_generic(bad, locale="en-AE"))
+    assert "price_minor" not in r
+    assert r["title"].value == "Q"
+    assert find_json_objects('{"sku": 1, "p": NaN} {"sku": 2}', "sku") == [{"sku": 2}]
+    with pytest.raises(ValueError, match="-Infinity is not accepted"):
+        next_data('<script id="__NEXT_DATA__">{"a": -Infinity}</script>')
+
+
+def test_rating_must_be_a_finite_number_between_0_and_10() -> None:
+    def page(value: str) -> Reading:
+        html = (
+            '<script type="application/ld+json">{"@type": "Product", "name": "P", '
+            f'"aggregateRating": {{"ratingValue": "{value}", "ratingCount": "3"}}}}</script>'
+        )
+        return _by_key(readings_from_generic(html, locale="en-AE"))["rating_value"]
+
+    assert page("4,5").value == Decimal("4.5")
+    assert page("0").value == Decimal("0")
+    for bad in ("NaN", "Infinity", "-Infinity", "-1", "11", "sNaN", "four"):
+        r = page(bad)
+        assert r.state == "parse_failed", bad
+        assert r.raw_text == bad
+
+
+def test_aggregate_offer_range_is_not_recorded_as_the_price() -> None:
+    def page(low: str, high: str | None) -> str:
+        hi = f', "highPrice": "{high}"' if high is not None else ""
+        return (
+            '<script type="application/ld+json">{"@type": "Product", "name": "P", "offers": '
+            f'{{"@type": "AggregateOffer", "lowPrice": "{low}"{hi}, "priceCurrency": "AED"}}}}'
+            "</script>"
+        )
+
+    ranged = page("10", "25")
+    assert "price_minor" not in _by_key(readings_from_generic(ranged, locale="en-AE"))
+    facts = generic_facts(ranged)
+    assert facts.price is None
+    assert facts.price_range == "10-25"
+    single = _by_key(readings_from_generic(page("10", "10"), locale="en-AE"))["price_minor"]
+    assert (single.value, single.currency) == (1000, "AED")
+    assert str(single.source_path).endswith("offers[0].lowPrice")
+    assert "single price" in (single.note or "")
+    assert generic_facts(page("10", "10")).price_range is None
+    only_low = _by_key(readings_from_generic(page("10", None), locale="en-AE"))["price_minor"]
+    assert only_low.value == 1000
 
 
 def test_parse_failures_keep_raw_text() -> None:
@@ -287,6 +420,46 @@ def test_find_json_objects_takes_the_innermost_object_and_skips_junk() -> None:
     ]
     assert find_json_objects("no braces here", "sku") == []
     assert find_json_objects('"sku": 1', "sku") == []
+
+
+def test_find_json_objects_skips_braces_inside_strings_and_unbalanced_text() -> None:
+    text = (
+        'var a = "{ not json"; {"sku": "A", "t": "} {\\" {"} if (x) { {"sku": "B", "n": {"k": 1}}'
+    )
+    assert find_json_objects(text, "sku") == [
+        {"sku": "A", "t": '} {" {'},
+        {"sku": "B", "n": {"k": 1}},
+    ]
+    # a needle inside a string literal is not an object member
+    assert find_json_objects('{"name": "\\"sku\\": 1"}', "sku") == []
+    # two needles in one object yield that object once; the second stops at the seen brace
+    assert find_json_objects('{"sku": "D", "x": {"y": 1}, "sku": "E"}', "sku") == [
+        {"sku": "E", "x": {"y": 1}}
+    ]
+    # the enclosing object is taken even when the key sits after a nested object
+    assert find_json_objects('{"n": {"a": 1}, "sku": "C"}', "sku") == [{"n": {"a": 1}, "sku": "C"}]
+
+
+def test_find_json_objects_is_linear_in_the_payload() -> None:
+    items = [f'{{"sku": "S{i}", "p": {{"x": [1, 2, {{"y": "{{"}}]}}}}' for i in range(4000)]
+    text = "garbage {" + " ".join(items) + " trailing { {"
+    found = find_json_objects(text, "sku")
+    assert len(found) == 4000
+    assert found[0]["sku"] == "S0"
+    assert found[-1]["sku"] == "S3999"
+    # A quadratic walk over the preceding braces would decode millions of spans here; the
+    # single-pass scanner decodes one span per needle, so a generous bound still catches it.
+    t0 = time.perf_counter()
+    find_json_objects(text, "sku")
+    assert time.perf_counter() - t0 < 5.0
+
+
+def test_looked_for_names_only_registry_keys_and_covers_what_the_page_yields(
+    product_html: str,
+) -> None:
+    assert {a.key for a in ATTRIBUTES} >= LOOKED_FOR
+    assert {r.key for r in readings_from_generic(product_html, locale="en-AE")} <= LOOKED_FOR
+    assert {"price_minor", "regular_price_minor", "gtin", "title", "breadcrumb"} <= LOOKED_FOR
 
 
 def test_microdata_scope_without_type_is_ignored() -> None:

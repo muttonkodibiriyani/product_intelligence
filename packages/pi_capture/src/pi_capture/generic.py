@@ -24,6 +24,7 @@ from pi_capture.registry import AttributeLevel, get
 from pi_core.money import CURRENCY_EXPONENTS
 
 __all__ = [
+    "LOOKED_FOR",
     "GenericFacts",
     "find_json_objects",
     "generic_facts",
@@ -217,7 +218,7 @@ def parse_jsonld(html: str) -> tuple[list[JsonObject], list[str]]:
         if not _is_jsonld(attrs):
             continue
         try:
-            data = json.loads(text, parse_float=Decimal)
+            data = json.loads(text, parse_float=Decimal, parse_constant=_refuse_constant)
         except ValueError:
             failed.append(text)
             continue
@@ -284,7 +285,7 @@ def next_data(html: str) -> JsonObject | None:
     """The ``__NEXT_DATA__`` script decoded. ``None`` when absent; invalid JSON raises."""
     for attrs, text in _collect(html).scripts:
         if attrs.get("id") == "__NEXT_DATA__":
-            data = json.loads(text, parse_float=Decimal)
+            data = json.loads(text, parse_float=Decimal, parse_constant=_refuse_constant)
             if not isinstance(data, dict):
                 raise ValueError("__NEXT_DATA__ is not a JSON object")
             return data
@@ -336,39 +337,78 @@ def rsc_text(html: str) -> str:
     return "".join(rsc_chunks(html))
 
 
-_DECODER = json.JSONDecoder(parse_float=Decimal)
+def _refuse_constant(token: str) -> Any:
+    """``NaN``/``Infinity`` are not JSON; a block using them is invalid, never a number."""
+    raise ValueError(f"{token} is not accepted")
+
+
+_DECODER = json.JSONDecoder(parse_float=Decimal, parse_constant=_refuse_constant)
+
+
+def _enclosing_braces(text: str, positions: Sequence[int]) -> dict[int, list[int]]:
+    """For each position, the indexes of the ``{`` enclosing it, innermost first, in one pass.
+
+    Quoted strings are skipped so braces inside them do not count. A JSON string cannot hold a raw
+    newline, so a newline ends one; that keeps a stray quote in surrounding script text from
+    swallowing the rest of the document. Unclosed braces still count as enclosing: the decoder
+    decides whether the span is an object.
+    """
+    wanted = sorted(set(positions))
+    out: dict[int, list[int]] = {}
+    stack: list[int] = []
+    in_string = escaped = False
+    next_wanted = 0
+    for i, ch in enumerate(text):
+        if next_wanted < len(wanted) and i == wanted[next_wanted]:
+            out[i] = stack[::-1]
+            next_wanted += 1
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch in {'"', "\n"}:
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            stack.append(i)
+        elif ch == "}" and stack:
+            stack.pop()
+    return out
 
 
 def find_json_objects(text: str, key: str) -> list[JsonObject]:
     """Every JSON object in ``text`` that has ``key`` as a direct member (innermost such object).
 
-    Works on RSC payloads and other JSON-bearing text: for each ``"key":`` occurrence it walks
-    back to the opening brace that decodes to an object containing it. Undecodable spans are
-    skipped; nothing is guessed.
+    Works on RSC payloads and other JSON-bearing text. Braces are matched in a single pass over
+    the text; for each ``"key":`` occurrence the innermost enclosing brace that decodes to an
+    object holding the key is taken, walking outwards only past spans that do not decode. The
+    work is one scan plus one decode attempt per candidate brace. Nothing is guessed.
     """
     needle = re.compile(r'"' + re.escape(key) + r'"\s*:')
+    matches = [m.start() for m in needle.finditer(text)]
+    if not matches:
+        return []
+    enclosing = _enclosing_braces(text, matches)
     found: list[JsonObject] = []
     seen_starts: set[int] = set()
-    for m in needle.finditer(text):
-        j = text.rfind("{", 0, m.start())
-        while j >= 0:
-            if j in seen_starts:
-                j = text.rfind("{", 0, j)
-                continue
+    for at in matches:
+        for start in enclosing[at]:
+            if start in seen_starts:
+                break
             try:
-                obj, end = _DECODER.raw_decode(text, j)
+                obj, end = _DECODER.raw_decode(text, start)
             except ValueError:
-                j = text.rfind("{", 0, j)
                 continue
-            if isinstance(obj, dict) and end > m.start() and key in obj:
-                seen_starts.add(j)
+            if isinstance(obj, dict) and end > at and key in obj:
+                seen_starts.add(start)
                 found.append(obj)
                 break
-            j = text.rfind("{", 0, j)
     return found
 
 
-# ------------------------------------------------------------------ mapping onto the registry
 @dataclass(frozen=True, slots=True)
 class GenericFacts:
     """Facts a page publishes that have no registry key yet, kept so nothing is thrown away."""
@@ -378,6 +418,8 @@ class GenericFacts:
     seller: str | None = None
     price: str | None = None
     currency: str | None = None
+    #: ``"low-high"`` when an AggregateOffer gave a range instead of one price.
+    price_range: str | None = None
     og_type: str | None = None
     og_locale: str | None = None
 
@@ -427,23 +469,84 @@ def _compact(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
-def _minor_units(amount: str, currency: str | None) -> tuple[int | None, str | None]:
-    """``("189.00", "AED") -> (18900, None)``; on failure ``(None, reason)``."""
+_AMOUNT_RE = re.compile(r"^(?P<sign>[-+\u2212]?)(?P<body>\d[\d.,]*|[.,]\d{1,2})$")
+_THIN_SPACES = str.maketrans({"\u00a0": " ", "\u202f": " ", "\u2009": " "})
+
+
+class _AmountError(ValueError):
+    """A printed amount that must not be turned into a number; ``str(e)`` says why."""
+
+
+def _unmix(body: str) -> tuple[str, str]:
+    """Both ``.`` and ``,`` present: the last one is the decimal mark, the other groups by three."""
+    decimal_mark = "." if body.rfind(".") > body.rfind(",") else ","
+    grouping = "," if decimal_mark == "." else "."
+    head, _, tail = body.rpartition(decimal_mark)
+    groups = head.split(grouping)
+    if grouping in tail or any(len(x) != 3 for x in groups[1:]) or not groups[0]:
+        raise _AmountError("mixed separators do not read as a number")
+    return "".join(groups) + "." + tail, f"decimal mark {decimal_mark!r}, grouping {grouping!r}"
+
+
+def _one_mark(body: str, mark: str, exponent: int) -> tuple[str, str | None]:
+    """Only ``mark`` present: repeated -> thousands; 1-2 digits after -> decimal; 3 -> ambiguous."""
+    parts = body.split(mark)
+    if len(parts) > 2:
+        if any(len(x) != 3 for x in parts[1:]) or not parts[0]:
+            raise _AmountError("separators do not read as a number")
+        return "".join(parts), f"{mark!r} read as thousands grouping"
+    if len(parts[1]) == 3 and parts[0]:
+        if mark == "." and exponent == 3:
+            return parts[0] + "." + parts[1], "'.' read as the decimal mark (three minor places)"
+        raise _AmountError("ambiguous separator: could be thousands or decimals")
+    if len(parts[1]) > 3:
+        raise _AmountError("more decimals than any currency allows")
+    note = "',' read as the decimal mark" if mark == "," and parts[1] else None
+    return (parts[0] or "0") + "." + parts[1] if parts[1] else parts[0], note
+
+
+def _parse_amount(text: str, exponent: int) -> tuple[Decimal | None, str | None, str | None]:
+    """``(value, reason, note)`` for a printed amount; ambiguous separators are refused.
+
+    Rules, in order: both ``.`` and ``,`` present -> the last one is the decimal mark and the other
+    must group thousands in threes; one mark used several times -> thousands grouping; one mark
+    once with 1-2 digits after it -> decimal mark; one mark once with exactly 3 digits after it ->
+    ambiguous ("1,250" is 1250 or 1.250), accepted only for a ``.`` when the currency has three
+    minor places (KWD, BHD, OMR print 12.500) and refused otherwise. Negative amounts, exponents,
+    words and non-finite values are refused.
+    """
+    m = _AMOUNT_RE.match(text.translate(_THIN_SPACES).replace(" ", ""))
+    if m is None:
+        return None, f"not a number: {text!r}", None
+    if m.group("sign") in {"-", "\u2212"}:
+        return None, f"negative amount: {text!r}", None
+    body = m.group("body")
+    note: str | None = None
+    try:
+        if "." in body and "," in body:
+            body, note = _unmix(body)
+        elif "." in body or "," in body:
+            body, note = _one_mark(body, "." if "." in body else ",", exponent)
+    except _AmountError as e:
+        return None, f"{e}: {text!r}", None
+    return Decimal(body), None, note
+
+
+def _minor_units(amount: str, currency: str | None) -> tuple[int | None, str | None, str | None]:
+    """``("189.00", "AED") -> (18900, None, None)``; ``("12,50", "AED") -> (1250, None, note)``;
+    on failure ``(None, reason, None)``. Negative, non-finite and ambiguous amounts are refused."""
     if currency is None:
-        return None, "no currency given beside the price"
+        return None, "no currency given beside the price", None
     exponent = CURRENCY_EXPONENTS.get(currency.upper())
     if exponent is None:
-        return None, f"unknown currency {currency!r}"
-    try:
-        dec = Decimal(amount.replace(",", "").strip())
-    except InvalidOperation:
-        return None, f"not a number: {amount!r}"
-    if not dec.is_finite():
-        return None, f"not a number: {amount!r}"
+        return None, f"unknown currency {currency!r}", None
+    dec, reason, note = _parse_amount(amount, exponent)
+    if dec is None:
+        return None, reason, None
     scaled = dec.scaleb(exponent)
     if scaled != scaled.to_integral_value():
-        return None, f"more decimals than {currency.upper()} allows"
-    return int(scaled), None
+        return None, f"more decimals than {currency.upper()} allows", None
+    return int(scaled), None, note
 
 
 class _Emitter:
@@ -456,11 +559,22 @@ class _Emitter:
     def has(self, key: str) -> bool:
         return key in self._keys
 
-    def observed(self, key: str, raw: str, value: Any, path: str, note: str | None = None) -> None:
-        self._emit(Reading(key, get(key).level, "observed", raw, value, path, note))
+    def observed(  # noqa: PLR0913 - a reading has exactly these parts
+        self,
+        key: str,
+        raw: str,
+        value: Any,
+        path: str,
+        note: str | None = None,
+        *,
+        currency: str | None = None,
+    ) -> None:
+        self._emit(Reading(key, get(key).level, "observed", raw, value, path, note, currency))
 
-    def failed(self, key: str, raw: str, path: str, note: str) -> None:
-        self._emit(Reading(key, get(key).level, "parse_failed", raw, None, path, note))
+    def failed(
+        self, key: str, raw: str, path: str, note: str, *, currency: str | None = None
+    ) -> None:
+        self._emit(Reading(key, get(key).level, "parse_failed", raw, None, path, note, currency))
 
     def _emit(self, reading: Reading) -> None:
         if reading.key in self._keys:
@@ -469,13 +583,26 @@ class _Emitter:
         self.readings.append(reading)
 
 
-def _emit_price(em: _Emitter, key: str, amount: str, currency: str | None, path: str) -> None:
-    minor, reason = _minor_units(amount, currency)
+def _emit_price(  # noqa: PLR0913, PLR0917 - one call site shape, kept explicit
+    em: _Emitter,
+    key: str,
+    amount: str,
+    currency: str | None,
+    path: str,
+    note: str | None = None,
+) -> None:
+    """A money reading: minor units as the value, the currency as its own field, raw text kept."""
+    minor, reason, parse_note = _minor_units(amount, currency)
+    code = currency.upper() if currency and _CURRENCY_CODE.match(currency.strip()) else None
     raw = f"{amount} {currency}" if currency else amount
     if minor is None:
-        em.failed(key, raw, path, reason or "could not read price")
+        em.failed(key, raw, path, reason or "could not read price", currency=code)
     else:
-        em.observed(key, raw, minor, path, f"currency={currency.upper() if currency else ''}")
+        notes = [n for n in (note, parse_note) if n]
+        em.observed(key, raw, minor, path, "; ".join(notes) or None, currency=code)
+
+
+_CURRENCY_CODE = re.compile(r"^[A-Za-z]{3}$")
 
 
 def _emit_gtin(em: _Emitter, raw: str, path: str) -> None:
@@ -551,9 +678,13 @@ def _map_product(em: _Emitter, facts: dict[str, str | None], path: str, p: JsonO
 def _map_rating(em: _Emitter, path: str, rating: Mapping[str, Any]) -> None:
     if (rv := _as_str(rating.get("ratingValue"))) is not None:
         try:
-            em.observed("rating_value", rv, Decimal(rv.replace(",", ".")), f"{path}.ratingValue")
+            value = Decimal(rv.replace(",", "."))
         except InvalidOperation:
-            em.failed("rating_value", rv, f"{path}.ratingValue", "not a number")
+            value = Decimal("NaN")
+        if value.is_finite() and 0 <= value <= 10:
+            em.observed("rating_value", rv, value, f"{path}.ratingValue")
+        else:
+            em.failed("rating_value", rv, f"{path}.ratingValue", "not a rating between 0 and 10")
     for ckey in ("ratingCount", "reviewCount"):
         if (rc := _as_str(rating.get(ckey))) is not None:
             if rc.isdigit():
@@ -569,8 +700,15 @@ def _map_offer(
     currency = _as_str(offer.get("priceCurrency"))
     price = _as_str(offer.get("price"))
     price_path = f"{path}.price"
-    if price is None and (low := _as_str(offer.get("lowPrice"))) is not None:
-        price, price_path = low, f"{path}.lowPrice"
+    price_note: str | None = None
+    low, high = _as_str(offer.get("lowPrice")), _as_str(offer.get("highPrice"))
+    if price is None and low is not None:
+        if high is None or high == low:
+            # one price published as a range of one: take it, say where it came from
+            price, price_path = low, f"{path}.lowPrice"
+            price_note = "AggregateOffer with a single price (lowPrice == highPrice)"
+        else:
+            facts.setdefault("price_range", f"{low}-{high}")
     for i, ps in enumerate(_as_list(offer.get("priceSpecification"))):
         if not isinstance(ps, dict):
             continue
@@ -590,7 +728,7 @@ def _map_offer(
             price, price_path = ps_price, f"{path}.priceSpecification[{i}].price"
             currency = currency or ps_currency
     if price is not None:
-        _emit_price(em, "price_minor", price, currency, price_path)
+        _emit_price(em, "price_minor", price, currency, price_path, price_note)
         facts.setdefault("price", price)
         facts.setdefault("currency", currency)
     _map_offer_facts(em, facts, path, offer)
@@ -704,6 +842,35 @@ def _map_page(em: _Emitter, all_: Mapping[str, list[str]], url: str | None) -> N
     elif og_locale := all_.get("og:locale"):
         em.observed("page_language", og_locale[0], og_locale[0], "meta[og:locale]")
         _emit_language(em, og_locale[0], "meta[og:locale]")
+
+
+#: Every registry key the generic extractors know how to read. A capture made with them records
+#: this as ``looked_for`` so coverage can separate "not on the page" from "nobody looked".
+LOOKED_FOR: frozenset[str] = frozenset(
+    {
+        "title",
+        "brand",
+        "description",
+        "image_urls",
+        "image_count",
+        "has_video",
+        "retailer_sku",
+        "gtin",
+        "mpn",
+        "rating_value",
+        "rating_count",
+        "price_minor",
+        "regular_price_minor",
+        "offer_count",
+        "breadcrumb",
+        "canonical_url",
+        "listing_id",
+        "page_url",
+        "page_language",
+        "language",
+        "structured_data",
+    }
+)
 
 
 def readings_from_generic(html: str, *, locale: str, url: str | None = None) -> list[Reading]:

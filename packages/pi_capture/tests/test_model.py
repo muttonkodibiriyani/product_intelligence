@@ -31,11 +31,11 @@ from pi_capture.model import (
 from pi_capture.registry import ATTRIBUTES, Attribute, AttributeLevel, UnknownAttributeError, get
 
 decimals = st.decimals(allow_nan=False, allow_infinity=False, places=3)
+# keys deliberately include ones that start with "$" so scraped content can collide with the tag
+_keys = st.text(max_size=5) | st.sampled_from(["$decimal", "$", "$$decimal", "$$", "$x"])
 json_values: st.SearchStrategy[JsonValue] = st.recursive(
     st.none() | st.booleans() | st.integers() | st.text() | decimals,
-    lambda inner: (
-        st.lists(inner, max_size=4) | st.dictionaries(st.text(max_size=5), inner, max_size=4)
-    ),
+    lambda inner: st.lists(inner, max_size=4) | st.dictionaries(_keys, inner, max_size=4),
     max_leaves=12,
 )
 attributes = st.sampled_from(ATTRIBUTES)
@@ -84,6 +84,97 @@ def test_non_observed_readings_never_carry_a_value(attr: Attribute, state: str) 
     raw = "x" if state == "parse_failed" else None
     with pytest.raises(ReadingError):
         Reading(attr.key, attr.level, cast(ReadingState, state), raw, "value")
+
+
+def test_scraped_tag_lookalikes_round_trip_unchanged(
+    make_capture: Callable[..., ProductCapture],
+) -> None:
+    scraped: JsonValue = {
+        "$decimal": "x",
+        "$decimal2": "1",
+        "$": None,
+        "$$decimal": "2",
+        "n": {"$decimal": "1"},
+        "list": [{"$decimal": "3"}, Decimal("3")],
+    }
+    encoded = encode_value(scraped)
+    assert encoded == {
+        "$$decimal": "x",
+        "$$decimal2": "1",
+        "$$": None,
+        "$$$decimal": "2",
+        "n": {"$$decimal": "1"},
+        "list": [{"$$decimal": "3"}, {"$decimal": "3"}],
+    }
+    assert decode_value(encoded) == scraped
+    reading = Reading("structured_data", get("structured_data").level, "observed", "raw", scraped)
+    capture = make_capture(readings=(reading,))
+    again = loads(dumps(capture))
+    assert again.readings[0].value == scraped
+    assert isinstance(again.readings[0].value["list"][1], Decimal)  # type: ignore[index, call-overload]
+
+
+def test_decoding_refuses_unescaped_tag_keys_and_bad_decimals() -> None:
+    with pytest.raises(ReadingError, match="unescaped tag key"):
+        decode_value({"$other": 1})
+    with pytest.raises(ReadingError, match="unescaped tag key"):
+        decode_value({"$decimal": "1", "x": 2})
+    with pytest.raises(ReadingError, match="bad decimal"):
+        decode_value({"$decimal": "NaN"})
+    with pytest.raises(ReadingError, match="bad decimal"):
+        decode_value({"$decimal": "Infinity"})
+    with pytest.raises(ReadingError, match="bad decimal"):
+        decode_value({"$decimal": "twelve"})
+    assert decode_value({"$decimal": "-1.50"}) == Decimal("-1.50")
+
+
+def test_non_finite_decimals_are_refused() -> None:
+    level = get("price_minor").level
+    for bad in (Decimal("NaN"), Decimal("sNaN"), Decimal("Infinity"), Decimal("-Infinity")):
+        with pytest.raises(ReadingError, match="NaN or infinite"):
+            Reading("price_minor", level, "observed", "x", bad)
+        with pytest.raises(ReadingError, match="NaN or infinite"):
+            Reading("structured_data", get("structured_data").level, "observed", "x", [bad])
+    with pytest.raises(ReadingError, match="not accepted"):
+        loads('{"source": "s", "x": NaN}')
+    with pytest.raises(ReadingError, match="not accepted"):
+        loads('{"source": "s", "x": -Infinity}')
+
+
+def test_currency_is_a_field_beside_the_amount(make_capture: Callable[..., ProductCapture]) -> None:
+    level = get("price_minor").level
+    ok = Reading("price_minor", level, "observed", "12.50 AED", 1250, "p", None, "AED")
+    assert ok.currency == "AED"
+    failed = Reading(
+        "price_minor", level, "parse_failed", "1,299 SAR", None, "q", "ambiguous", "SAR"
+    )
+    assert failed.currency == "SAR"
+    with pytest.raises(ReadingError, match="3-letter code"):
+        Reading("price_minor", level, "observed", "x", 1, None, None, "aed")
+    with pytest.raises(ReadingError, match="3-letter code"):
+        Reading("price_minor", level, "observed", "x", 1, None, None, "AED ")
+    with pytest.raises(ReadingError, match="cannot carry a currency"):
+        Reading("price_minor", level, "not_shown", None, None, None, None, "AED")
+    data = reading_to_json(ok)
+    assert data["currency"] == "AED"
+    assert reading_from_json(data) == ok
+    assert reading_from_json({k: v for k, v in data.items() if k != "currency"}).currency is None
+    capture = make_capture(readings=(ok, failed))
+    assert loads(dumps(capture)) == capture
+
+
+def test_looked_for_is_sorted_deduplicated_and_serialised(
+    make_capture: Callable[..., ProductCapture],
+) -> None:
+    capture = make_capture(looked_for=("title", "gtin", "title"))
+    assert capture.looked_for == ("gtin", "title")
+    data = capture_to_json(capture)
+    assert data["looked_for"] == ["gtin", "title"]
+    assert capture_from_json(data) == capture
+    assert loads(dumps(capture)) == capture
+    assert capture_from_json({k: v for k, v in data.items() if k != "looked_for"}).looked_for == ()
+    with pytest.raises(UnknownAttributeError):
+        make_capture(looked_for=("no_such_key",))
 
 
 def test_invariants_one_by_one() -> None:
@@ -154,7 +245,9 @@ def test_json_decoding_refuses_floats_and_bad_decimals() -> None:
     with pytest.raises(ReadingError, match="JSON object"):
         loads("[1]")
     assert decode_value({"$decimal": "1.50"}) == Decimal("1.50")
-    assert decode_value({"$decimal": "1", "x": 2}) == {"$decimal": "1", "x": 2}
+    with pytest.raises(ReadingError, match="unescaped tag key"):
+        decode_value({"$decimal": "1", "x": 2})
+    assert decode_value({"$$decimal": "1", "x": 2}) == {"$decimal": "1", "x": 2}
 
 
 def test_dumps_never_emits_floats_and_load_lines_skips_blanks(

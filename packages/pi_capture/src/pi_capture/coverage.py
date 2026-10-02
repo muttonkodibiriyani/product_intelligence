@@ -1,9 +1,11 @@
 """Per-retailer, per-attribute coverage: how often each page-sourced attribute was actually read.
 
 For each retailer and each attribute that a page can show for the vertical, count the pages on
-which the attribute was observed, not shown, blocked, unreadable (``parse_failed``) or not
-applicable. An attribute no reading ever mentions is "not shown" on every page: the report says
-so rather than leaving a gap. Shares are exact ``Decimal`` to four places.
+which the attribute was observed, not shown, blocked, unreadable (``parse_failed``), not
+applicable, or not looked for. The last bucket is for attributes outside the extractor's
+``looked_for`` set on a page: nobody tried, so the page cannot be said to lack them. An attribute
+the extractor did look for and no reading mentions is "not shown". Shares are exact ``Decimal``
+to four places.
 """
 
 from __future__ import annotations
@@ -22,7 +24,9 @@ __all__ = ["AttributeCoverage", "CoverageReport", "RetailerCoverage", "coverage"
 _WORST_FIRST: tuple[ReadingState, ...] = ("parse_failed", "blocked", "not_applicable", "not_shown")
 _FOUR_PLACES = Decimal("0.0001")
 
-PageState = Literal["observed", "not_shown", "blocked", "parse_failed", "not_applicable"]
+PageState = Literal[
+    "observed", "not_shown", "blocked", "parse_failed", "not_applicable", "not_looked_for"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +40,7 @@ class AttributeCoverage:
     blocked: int
     parse_failed: int
     not_applicable: int
+    not_looked_for: int
     observed_share: Decimal
 
     def to_json(self) -> dict[str, Any]:
@@ -49,6 +54,7 @@ class AttributeCoverage:
             "blocked": self.blocked,
             "parse_failed": self.parse_failed,
             "not_applicable": self.not_applicable,
+            "not_looked_for": self.not_looked_for,
             "observed_share": str(self.observed_share),
         }
 
@@ -88,13 +94,13 @@ class CoverageReport:
                 f"Pages read: {r.pages}",
                 "",
                 "| Detail | Where it lives | Area | Read | Not on page | Page blocked "
-                "| Could not read | Does not apply | Share read |",
-                "|---|---|---|---:|---:|---:|---:|---:|---:|",
+                "| Could not read | Does not apply | Not looked for | Share read |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
             ]
             lines += [
                 f"| {a.key.replace('_', ' ')} | {a.level} | {a.group} | {a.observed} "
                 f"| {a.not_shown} | {a.blocked} | {a.parse_failed} | {a.not_applicable} "
-                f"| {_percent(a.observed_share)} |"
+                f"| {a.not_looked_for} | {_percent(a.observed_share)} |"
                 for a in r.attributes
             ]
             lines.append("")
@@ -116,6 +122,8 @@ def _page_state(capture: ProductCapture, key: str) -> PageState:
     for state in _WORST_FIRST:
         if state in states:
             return state
+    if capture.looked_for and key not in capture.looked_for:
+        return "not_looked_for"
     return "not_shown"
 
 
@@ -126,6 +134,7 @@ def _attribute_coverage(attribute: Attribute, pages: list[ProductCapture]) -> At
         "blocked": 0,
         "parse_failed": 0,
         "not_applicable": 0,
+        "not_looked_for": 0,
     }
     for page in pages:
         counts[_page_state(page, attribute.key)] += 1
