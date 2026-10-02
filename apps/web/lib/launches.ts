@@ -46,13 +46,25 @@ export function toLaunchesSearch(s: LaunchesState): string {
   return out ? `?${out}` : '';
 }
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
- * The first day of a window ending on the dataset's cutoff day, as YYYY-MM-DD: the last 30 days
- * are the cutoff day and the 29 before it. '' when the cutoff is not a date the API would accept.
+ * The day the window ends on: the dataset's last collection day, a market date. The cutoff is an
+ * instant in UTC, and after 20:00Z its UTC date is the day before the market's (UTC+4), which
+ * would stretch "the last 30 days" to 31; it is only the fallback when /meta lists no days.
  */
-export function windowSince(cutoff: string, days: Window): string {
-  const day = cutoff.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return '';
+export function windowEnd(meta: { cutoff: string; dates: readonly string[] }): string {
+  const last = meta.dates.at(-1) ?? '';
+  return DAY.test(last) ? last : meta.cutoff.slice(0, 10);
+}
+
+/**
+ * The first day of a window ending on `end` (YYYY-MM-DD): the last 30 days are that day and the
+ * 29 before it. '' when `end` is not a date the API would accept.
+ */
+export function windowSince(end: string, days: Window): string {
+  const day = end.slice(0, 10);
+  if (!DAY.test(day)) return '';
   const d = new Date(`${day}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return '';
   d.setUTCDate(d.getUTCDate() - (days - 1));
@@ -60,8 +72,8 @@ export function windowSince(cutoff: string, days: Window): string {
 }
 
 /** Always with a limit: only then does the API send the newest first and say when it cut. */
-export function toLaunchesQuery(s: LaunchesState, cutoff: string): LaunchesQuery {
-  const since = windowSince(cutoff, s.days);
+export function toLaunchesQuery(s: LaunchesState, end: string): LaunchesQuery {
+  const since = windowSince(end, s.days);
   return {
     ...(since ? { since } : {}),
     ...(s.brand.length ? { brand: s.brand } : {}),

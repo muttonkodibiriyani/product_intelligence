@@ -5,11 +5,13 @@ import {
   parseWindow,
   toLaunchesQuery,
   toLaunchesSearch,
+  windowEnd,
   windowSince,
 } from './launches';
 
 const parse = (q: string) => parseLaunches(new URLSearchParams(q));
 const CUTOFF = '2026-09-30T00:00:00Z';
+const DATES = ['2026-09-28', '2026-09-29', '2026-09-30'];
 
 describe('launches URL state', () => {
   it('round-trips a full view and leaves defaults out', () => {
@@ -31,7 +33,20 @@ describe('launches URL state', () => {
     expect(parse(`brand=${'x'.repeat(121)}&brand=ok`).brand).toEqual(['ok']);
   });
 
-  it('starts the window so that it ends on the cutoff day, inclusive', () => {
+  it('ends the window on the last collection day, not the UTC date of the cutoff', () => {
+    expect(windowEnd({ cutoff: CUTOFF, dates: DATES })).toBe('2026-09-30');
+    // A run that finished after 20:00Z: the cutoff's UTC date is 30 Sept, the market day 1 Oct.
+    const late = { cutoff: '2026-09-30T22:30:00Z', dates: [...DATES, '2026-10-01'] };
+    expect(windowEnd(late)).toBe('2026-10-01');
+    expect(windowSince(windowEnd(late), 30)).toBe('2026-09-02');
+    expect(windowSince(windowEnd(late), 7)).toBe('2026-09-25');
+    expect(toLaunchesQuery(EMPTY_LAUNCHES, windowEnd(late))).toEqual({ since: '2026-09-02', limit: 100 });
+    // Without a listed day the cutoff's date is all there is.
+    expect(windowEnd({ cutoff: '2026-09-30T22:30:00Z', dates: [] })).toBe('2026-09-30');
+    expect(windowEnd({ cutoff: CUTOFF, dates: ['soon'] })).toBe('2026-09-30');
+  });
+
+  it('starts the window so that it ends on the given day, inclusive', () => {
     expect(windowSince(CUTOFF, 30)).toBe('2026-09-01');
     expect(windowSince(CUTOFF, 7)).toBe('2026-09-24');
     expect(windowSince('2026-03-03', 7)).toBe('2026-02-25');
