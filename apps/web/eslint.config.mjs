@@ -10,6 +10,7 @@ const config = [
             'dist/**',
             'artifact/**',
             'out/**',
+            'out-assistant/**',
             '.next/**',
             'next-env.d.ts',
             'lib/api/schema.gen.ts',
