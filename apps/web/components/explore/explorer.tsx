@@ -21,6 +21,7 @@ import { ErrorNotice } from '../error-notice';
 import { AboutDataLink, PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
+import { EmptyResults } from './empty-results';
 import { ExportMenu } from './export-menu';
 import { Filters } from './filters';
 import { ProductGrid, useView, ViewToggle } from './product-grid';
@@ -138,12 +139,7 @@ export function Explorer() {
                 {t('loading')}
               </Loading>
             ) : items.length === 0 ? (
-              first?.status === 'ok' && (
-                <div className="panel px-5 py-6">
-                  <p className="font-medium">{t('empty')}</p>
-                  <p className="mt-1 text-sm text-ink-2">{t('emptyHint')}</p>
-                </div>
-              )
+              first && <EmptyResults env={first} />
             ) : (
               <>
                 {(() => {
