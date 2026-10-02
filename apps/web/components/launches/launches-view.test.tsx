@@ -19,7 +19,15 @@ const notApplicable: Envelope<Schemas['Launches']> = {
   data: { items: [], total: 0, truncated: false },
 };
 
-const ctx = vi.hoisted(() => ({ body: {} as unknown, asked: [] as unknown[] }));
+const ctx = vi.hoisted(() => ({ body: {} as unknown, asked: [] as unknown[], meta: {} as unknown }));
+// Shop C restarted on the last day: still short of two days while A and B are in.
+const oneBehind: Envelope<Schemas['MetaView']> = {
+  ...meta,
+  data: {
+    ...meta.data!,
+    retailers: meta.data!.retailers.map((r) => (r.id === 'shop_c' ? { ...r, since: '2026-09-30' } : r)),
+  },
+};
 vi.mock('../auth-provider', () => ({
   useAuth: () => ({
     api: {
@@ -31,7 +39,7 @@ vi.mock('../auth-provider', () => ({
   }),
 }));
 vi.mock('../use-meta', () => ({
-  useMeta: () => ({ data: meta }),
+  useMeta: () => ({ data: ctx.meta }),
   useRetailerName: () => (id: string) => meta.data!.retailers.find((r) => r.id === id)?.name ?? id,
 }));
 vi.mock('next/navigation', () => ({
@@ -45,8 +53,9 @@ afterEach(() => {
   ctx.asked = [];
 });
 
-function show(body: unknown, locale: 'en' | 'ar' = 'en') {
+function show(body: unknown, locale: 'en' | 'ar' = 'en', m: unknown = meta) {
   ctx.body = body;
+  ctx.meta = m;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -70,6 +79,20 @@ describe('LaunchesView', () => {
     show(notApplicable, 'ar');
     const line = (await screen.findByText(new RegExp(ar.launches.unavailable))).closest('[role=status]')!;
     expect(line.textContent).toBe(`${ar.launches.unavailable} ${ar.reasons.not_applicable}`);
+  });
+
+  it('names a shop still short of two days under the list, the count as a plural in both languages', async () => {
+    show(launches, 'en', oneBehind);
+    await screen.findByText('Product p14');
+    expect(document.querySelector('#launch-pending')!.textContent).toBe(
+      'Shop C is not included yet: 1 of 2 collection days.',
+    );
+    cleanup();
+    show(launches, 'ar', oneBehind);
+    await screen.findByText('Product p14');
+    expect(document.querySelector('#launch-pending')!.textContent).toBe(
+      'Shop C غير مشمول بعد: 1 من يومي جمع.',
+    );
   });
 
   it('asks for the window ending on the last collection day, inclusive', async () => {

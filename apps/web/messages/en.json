@@ -439,7 +439,7 @@
     "days": "{n} days",
     "newIn": "New in the last {n} days",
     "newInHint": "First seen at the shop in this window.",
-    "pending": "{shop} is not included yet: {n} of {min} collection days."
+    "pending": "{shop} is not included yet: {n} of {min, plural, one {# collection day} other {# collection days}}."
   },
   "retailerChecks": {
     "legend": "Retailers",

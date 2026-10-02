@@ -90,7 +90,7 @@ for (const locale of ['en', 'ar'] as const) {
           of40: '3 من 40 منتج',
           more: 'اعرض حتى 500',
           // The golden retailer names are English in both languages: the page never translates them.
-          pending: 'Shop C غير مشمول بعد: 1 من 2 أيام جمع.',
+          pending: 'Shop C غير مشمول بعد: 1 من يومي جمع.',
           notApplicable: 'المنتجات الجديدة غير متاحة لهذه البيانات بعد.',
           notApplicableWhy: 'هذا العرض لا ينطبق على هذا النوع من الكتالوجات.',
           asOf: /البيانات حتى .*2026/,

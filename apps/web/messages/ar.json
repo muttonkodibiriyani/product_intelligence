@@ -439,7 +439,7 @@
     "days": "{n, plural, few {{n, number, latn} أيام} other {{n, number, latn} يومًا}}",
     "newIn": "الجديد في آخر {n, plural, few {{n, number, latn} أيام} other {{n, number, latn} يومًا}}",
     "newInHint": "ظهر لأول مرة في المتجر خلال هذه الفترة.",
-    "pending": "{shop} غير مشمول بعد: {n, number, latn} من {min, number, latn} أيام جمع."
+    "pending": "{shop} غير مشمول بعد: {n, number, latn} من {min, plural, two {يومي جمع} few {{min, number, latn} أيام جمع} other {{min, number, latn} يوم جمع}}."
   },
   "retailerChecks": {
     "legend": "المتاجر",
