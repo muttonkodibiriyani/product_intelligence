@@ -66,6 +66,11 @@ bucket). The rules the code enforces:
 
 ## Plan format
 
+An item's `kind` is `html`, `json` or `xml` for a page, or `images` for a pictures-only pass:
+the page is not fetched again, only the item's `images` are (used after a page run, with the
+picture links read from the stored pages).
+
+
 ```json
 {"source": "faces", "retailer": "faces", "version": 1,
  "default_headers": {"X-Requested-With": "XMLHttpRequest"},

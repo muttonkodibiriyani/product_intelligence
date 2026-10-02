@@ -615,7 +615,8 @@ class Job:
             if not self.cut and self.clock() >= self.cfg.cutoff:
                 self.cut = True
                 print(json.dumps({"cutoff": self.cfg.cutoff.isoformat()}), flush=True)
-            self.one(item)
+            if item.kind != "images":  # an images item is a second, pictures-only pass
+                self.one(item)
             if self.cfg.images:
                 for url in item.images:
                     self.image(item, url)

@@ -250,3 +250,33 @@ def test_sharded_tasks_write_distinct_names(tmp_path: object) -> None:
     assert {"progress.t1.json", "status.t1.json", "robots.t1.json"} <= only_second
     assert "pages/part-t0-0000.jsonl.gz" in written[0]
     assert "progress.json" not in written[1]
+
+
+def test_images_kind_fetches_pictures_only(tmp_path: object) -> None:
+    """A pictures-only pass never asks for the page again."""
+    plan = {
+        "source": "faces_ae",
+        "retailer": "faces",
+        "version": 1,
+        "items": [
+            {
+                "id": "f-1",
+                "url": "https://www.faces.ae/en/p/x.html",
+                "locale": "en-AE",
+                "kind": "images",
+                "ref": {},
+                "images": ["https://www.faces.ae/img/1.jpg"],
+            }
+        ],
+    }
+    plan_path = tmp_path / "plan.json"  # type: ignore[operator]
+    plan_path.write_text(json.dumps(plan))
+    cfg = run.config_from_env({**_env(), "BUCKET": f"file:{tmp_path}", "PLAN": str(plan_path)})
+    client = _Client()
+    job = run.Job(
+        cfg, client=client, store=Store(cfg.bucket, "r"), clock=lambda: T0, sleep=lambda _s: None
+    )
+    job.run()
+    assert client.calls == ["https://www.faces.ae/robots.txt", "https://www.faces.ae/img/1.jpg"]
+    assert job.counts.get("pages_ok", 0) == 0
+    assert job.counts["images_ok"] == 1

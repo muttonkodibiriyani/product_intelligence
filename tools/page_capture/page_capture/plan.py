@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
-KINDS = ("html", "json", "xml")
+KINDS = ("html", "json", "xml", "images")  # images: no page fetch, pictures only
 GZIP_MAGIC = b"\x1f\x8b"
 
 
@@ -18,7 +18,7 @@ class Item:
     id: str
     url: str
     locale: str  # xx-RR, e.g. en-AE
-    kind: str  # html | json | xml
+    kind: str  # html | json | xml | images (pictures only, the page is not fetched again)
     ref: Mapping[str, Any] = field(default_factory=dict)
     images: tuple[str, ...] = ()
     headers: Mapping[str, str] = field(default_factory=dict)
