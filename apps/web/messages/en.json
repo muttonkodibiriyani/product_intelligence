@@ -16,7 +16,8 @@
       "prices": "Prices",
       "assistant": "Ryzan AI"
     },
-    "mainNav": "Main"
+    "mainNav": "Main",
+    "aboutData": "About the data"
   },
   "auth": {
     "loading": "Checking your session…",
@@ -75,8 +76,16 @@
     "not_applicable": "This view doesn't apply to this kind of catalogue.",
     "was_price_unverified": "This retailer's was-prices are unverified, so its promotions are not measured."
   },
+  "state": {
+    "promoUnavailable": "{retailer} discounts: not available yet",
+    "notAvailable": "Not available yet",
+    "snapshotOneOff": "{retailer}: one-off snapshot imported {date}",
+    "noMatches": "No matched products to compare yet.",
+    "asOf": "Data as of {date}"
+  },
   "home": {
     "title": "Current dataset",
+    "intro": "What the app is looking at, and how to read it.",
     "loading": "Loading dataset…",
     "vertical": "Vertical",
     "kind": "Kind",
@@ -105,12 +114,17 @@
       "proposed": "Proposed, not reviewed",
       "unreviewed": "Not reviewed"
     },
+    "about": {
+      "title": "About the data",
+      "p1": "Prices are collected from each shop's own website on the dates shown. Every number on the site comes straight from that data; nothing is estimated or filled in.",
+      "p2": "A shop that is only partly collected, or whose catalogue was imported as a one-off snapshot, is listed above with its status. Where a shop's regular prices can't be verified, its discounts are left out rather than shown wrong.",
+      "p3": "A figure that would rest on too few products is left out, and the page says so in its place.",
+      "notes": "Notes from the latest collection"
+    },
     "landing": {
       "overview": "Overview",
       "compareTab": "Compare",
       "tabs": "Dashboard views",
-      "subtitle": "{retailer} · one snapshot, {date}",
-      "subtitleImported": "{retailer} · snapshot imported {date}, capture date unknown",
       "sample": "Data: {retailer}, {market}.",
       "compareNote": "Which products both retailers carry, from the matched set; where a view can't be drawn yet, its layout and the reason.",
       "indexTitle": "Price index over time",
@@ -124,16 +138,7 @@
       "overlapReason": "Needs a second collected retailer with matched products.",
       "openCompare": "Open compare",
       "datasetTitle": "Dataset",
-      "withheld": {
-        "capability_off": "Promotions are not collected for this retailer yet.",
-        "field_not_collected": "Needs regular prices to measure discounts; this snapshot does not collect them.",
-        "cohort_too_small": "Too few products carry both a price and a regular price to measure discounts.",
-        "other": "Discounts can't be measured in this snapshot.",
-        "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
-        "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions.",
-        "was_price_unverified": "This retailer's was-prices are unverified, so its discounts and promotions are not shown."
-      },
-      "intro": "Each retailer's own catalogue, and the two head to head on matched products.",
+      "intro": "Each shop's own catalogue, and the two head to head on matched products.",
       "headToHead": "Head to head",
       "openPrices": "Compare by category",
       "loading": "Loading the overview…",
@@ -148,6 +153,7 @@
   },
   "explore": {
     "title": "Products",
+    "intro": "Every product collected, with its latest price at each shop.",
     "searchLabel": "Search products",
     "searchPlaceholder": "Brand, name or SKU",
     "search": "Search",
@@ -310,7 +316,7 @@
   },
   "compare": {
     "title": "Compare prices",
-    "intro": "Two retailers' prices on the same products, on the latest collection day. Only exact, reviewed matches of the same size count towards the summary.",
+    "intro": "Two shops' prices on the same products, side by side.",
     "base": "Base",
     "other": "Compared with",
     "choose": "Choose a retailer",
@@ -325,7 +331,6 @@
     "loading": "Loading comparison…",
     "summary": "{other} vs {base}",
     "convention": "Gap is {other}'s price minus {base}'s, as a share of {base}'s. Above zero means {other} is dearer.",
-    "noSummary": "No summary: too few products are counted for this pair. The rows below show why each one is left out.",
     "compared": "Products counted",
     "median": "Median gap",
     "mean": "Mean",
@@ -361,7 +366,7 @@
   },
   "promotions": {
     "title": "Promotions",
-    "intro": "Products sold below their regular price on the latest collection day, deepest discount first. A discount is the gap between the price and the regular price the retailer shows.",
+    "intro": "Products on sale right now, deepest discount first.",
     "minPct": "Minimum discount",
     "anyDiscount": "Any discount",
     "atLeast": "{pct}% or more",
@@ -372,7 +377,6 @@
     "priced": "Priced products",
     "onPromo": "On promotion",
     "share": "Share",
-    "noShare": "No data for this retailer.",
     "items": "Discounted products",
     "count": "{total, plural, =0 {No products} one {{n} product} other {{n} products}}",
     "shownOfTotal": "{shown} of {total} products",
@@ -388,7 +392,8 @@
   },
   "launches": {
     "title": "Launches",
-    "intro": "Products a retailer started listing, newest first. A launch is the first day a product was collected at that retailer, after a day it was not; items first seen after an incomplete collection run are left out.",
+    "intro": "Products a shop started listing, newest first.",
+    "unavailable": "Launches aren't available for this dataset yet.",
     "since": "First seen on or after",
     "anyDay": "Any day",
     "loading": "Loading launches…",
