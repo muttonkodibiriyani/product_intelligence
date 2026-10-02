@@ -32,6 +32,9 @@ import {
   cheaperShares,
   crossCells,
   type CrossCell,
+  gapBinSign,
+  gapHistBins,
+  type GapBin,
 } from './model';
 
 /*
@@ -1021,6 +1024,111 @@ export function GroupGapWidget({
               fontSize: 11,
               position: rtl ? 'left' : 'right',
               formatter: (e: { value: number }) => signedPct(String(e.value), locale),
+            },
+          },
+        ],
+      })}
+    />
+  );
+}
+
+/**
+ * A gap bound for an axis label: signed, with a true minus. In Arabic each bound sits between two
+ * LRMs so its sign stays with its number (Firefox's SVG text ignores isolates); the Arabic labels
+ * open with a word, so no label starts with a mark (Firefox drops SVG text that does).
+ */
+const gapBound = (v: string, locale: string) => {
+  const s = signedPct(v, locale)
+    .replace(/[\u200e\u200f]/g, '')
+    .replace(/^-/, '\u2212');
+  return locale === 'ar' ? `\u200e${s}\u200e` : s;
+};
+
+/**
+ * An Arabic gap label in visual order for ECharts' SVG text, which Firefox lays out left to right
+ * and mismeasures when it opens with a direction mark. The label's runs (its Arabic words, and each
+ * bound held between LRMs) are put in reverse, so it reads right to left; each run keeps its own
+ * direction. "من ‎−50%‎ إلى ‎−25%‎" becomes "−25%‎ إلى ‎−50%‎ من".
+ */
+export const visualRtl = (label: string) =>
+  label
+    .split(/(\u200e[^\u200e]*\u200e)/)
+    .map((run) => run.trim())
+    .filter(Boolean)
+    .reverse()
+    .join(' ')
+    .replace(/^\u200e/, '');
+
+/**
+ * How the matched pairs spread by price gap, from the API's own histogram: one bar per bin, named
+ * by its range ("< −50%", "−50% to −25%", … "≥ +50%"), tinted by the side the bin leans to.
+ */
+export function GapHistWidget({
+  data,
+  locale,
+  height,
+}: Omit<Props<Schemas['GapHistogram']>, 'onPick'> & { pair: Pair }) {
+  const t = useTranslations('widgets.gapHist');
+  const tw = useTranslations('widgets');
+  const rtl = locale === 'ar';
+  const bins = gapHistBins(data);
+  const label = (b: GapBin) =>
+    b.lo === null
+      ? t('below', { v: gapBound(b.hi!, locale) })
+      : b.hi === null
+        ? t('atLeast', { v: gapBound(b.lo, locale) })
+        : t('range', { lo: gapBound(b.lo, locale), hi: gapBound(b.hi, locale) });
+  return (
+    <Chart
+      label={t('label', { n: bins.length })}
+      height={height ?? bins.length * 26 + 48}
+      deps={[data, locale]}
+      build={(p) => ({
+        ...base(p, rtl),
+        grid: { left: 8, right: 40, top: 4, bottom: 24, containLabel: true },
+        xAxis: {
+          type: 'value',
+          inverse: rtl,
+          minInterval: 1,
+          axisLine: axisLine(p),
+          splitLine: splitLine(p),
+          axisLabel: { formatter: (v: number) => formatCount(v, locale), hideOverlap: true },
+        },
+        yAxis: {
+          type: 'category',
+          inverse: true,
+          position: rtl ? 'right' : 'left',
+          data: bins.map(label),
+          axisTick: { show: false },
+          axisLine: { show: false },
+          axisLabel: { color: p.ink, formatter: (v: string) => (rtl ? visualRtl(v) : v) },
+        },
+        tooltip: {
+          ...(base(p, rtl).tooltip as object),
+          trigger: 'item',
+          formatter: (e: { dataIndex: number }) => {
+            const b = bins[e.dataIndex]!;
+            return tipHead(label(b)) + tipLine(tw('pairs', { n: b.count }));
+          },
+        },
+        series: [
+          {
+            type: 'bar',
+            name: t('title'),
+            // The near-parity bin is a full bar here, so it takes a visible neutral, not the hairline grey.
+            data: bins.map((b) => ({
+              value: b.count,
+              itemStyle: { color: gapBinSign(b) === 0 ? p.line3 : gapColor(p, gapBinSign(b)) },
+            })),
+            barMaxWidth: 14,
+            itemStyle: { borderRadius: 3 },
+            emphasis: { itemStyle: { color: p.ink } },
+            label: {
+              show: true,
+              color: p.ink2,
+              fontSize: 11,
+              position: rtl ? 'left' : 'right',
+              formatter: (e: { value: number }) => formatCount(e.value, locale),
             },
           },
         ],

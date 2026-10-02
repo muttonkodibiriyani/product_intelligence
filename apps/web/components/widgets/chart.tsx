@@ -150,6 +150,15 @@ export function guarded(o: EChartsCoreOption): EChartsCoreOption {
   return o;
 }
 
+/**
+ * The chart's own label as the accessible description. Left alone, ECharts' aria module replaces
+ * the container's aria-label with a generated English data dump, in Arabic too.
+ */
+export function described(o: EChartsCoreOption, label: string): EChartsCoreOption {
+  const aria = (o.aria ?? {}) as { label?: Record<string, unknown> };
+  return { ...o, aria: { ...aria, label: { ...aria.label, description: label } } };
+}
+
 export function Chart({
   build,
   deps,
@@ -177,7 +186,7 @@ export function Chart({
       if (gone || !el.current) return;
       const c = echarts.init(el.current, null, { renderer: 'svg' });
       chart.current = c;
-      c.setOption(guarded(build(palette())));
+      c.setOption(guarded(described(build(palette()), label)));
       c.on('click', (e) => {
         try {
           pick.current?.(String(e.name ?? ''), e.data);

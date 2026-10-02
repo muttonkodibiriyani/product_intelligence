@@ -126,7 +126,7 @@ function Price({ card, retailer, locale }: { card: Card; retailer: string; local
     return <span className="whitespace-nowrap text-ink-2">{t('notOffered')}</span>;
   return (
     <PriceOf
-      of={{ price: card.prices[retailer] }}
+      of={{ price: card.prices[retailer], priceFlag: card.priceFlags?.[retailer] }}
       locale={locale}
       fallback={<span className="text-ink-2">{tp('noPrice')}</span>}
     />

@@ -33,6 +33,12 @@ const api = (summary: unknown) => async (r: Route) => {
 async function chartsDrawn(page: Page, n: number) {
   const charts = page.locator('main [data-chart] svg');
   await expect(charts).toHaveCount(n, { timeout: 15_000 });
+  // Each keeps its own label for screen readers: ECharts' generated English data dump never
+  // replaces it (in Arabic too).
+  for (const label of await page
+    .locator('main [data-chart]')
+    .evaluateAll((els) => els.map((e) => e.ariaLabel)))
+    expect(label).not.toMatch(/^This is a chart|^$/);
 }
 
 for (const locale of ['en', 'ar'] as const) {
