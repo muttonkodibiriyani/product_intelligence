@@ -129,11 +129,11 @@ describe("eval config source", () => {
       "price_table_mismatch",
     ],
     [
-      "a limit above current (numeric: must not exceed)",
-      LIVE,
-      { ...FILE, limits: { ...FILE.limits, maxOutputTokens: CONFIG.limits.maxOutputTokens + 1 } },
+      "the file and prices.json agreeing but current differing",
+      { ...LIVE, priceTableVersion: "old" },
+      FILE,
       CANDIDATE,
-      "eval_above_live",
+      "price_table_mismatch",
     ],
     [
       "a ci month cap above current",
@@ -159,6 +159,23 @@ describe("eval config source", () => {
   ])("refuses on %s", async (_name, live, file, model, code) => {
     const { meter } = setup(live, file, model);
     expect(await refusal(meter.startQuestion(CALLER, EVAL_LABEL))).toBe(code);
+  });
+
+  const LIMIT_KEYS = Object.keys(CONFIG.limits) as (keyof typeof CONFIG.limits)[];
+
+  it.each(LIMIT_KEYS)("refuses %s above current (numeric: must not exceed)", async (key) => {
+    const limits = { ...FILE.limits, [key]: CONFIG.limits[key] + 1 };
+    const { meter } = setup(LIVE, { ...FILE, limits }, CANDIDATE);
+    expect(await refusal(meter.startQuestion(CALLER, EVAL_LABEL))).toBe("eval_above_live");
+  });
+
+  it.each(LIMIT_KEYS)("accepts %s equal to current", async (key) => {
+    const limits = { ...FILE.limits, [key]: CONFIG.limits[key] };
+    const config = await evalConfigSource({ ...FILE, limits }, CANDIDATE)(
+      new MemoryUsageStore(LIVE),
+      PRICED,
+    );
+    expect(config.limits).toEqual(limits);
   });
 
   it.each<[string, string, string, RefusalCode]>([

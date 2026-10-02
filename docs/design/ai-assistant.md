@@ -584,7 +584,9 @@ reaches the model through tool output.
     - `priceTableVersion` differs from current or `prices.json` (non-numeric fields must
       equal current);
     - any numeric cap or limit is above current's, or current has no `ci` month cap.
-    - `current.enabled` is ignored, so evals can run before switch-on.
+    - `current.enabled` is ignored, so evals can run before switch-on. **Setting `enabled` to
+      false does not stop evals.** Only `disabledBy`, the caps, or an empty or changed
+      `candidateModels` stops them.
   - **Cost bound.** Honouring `disabledBy` is required, but it is not the bound. No budget kill
     switch is deployed (R4), so nothing sets it. The bound is the meter's counters:
     `label/ci/<month>` against the `ci` cap, and the shared `total/<month>` against the live
