@@ -12,7 +12,8 @@ Rules, all enforced here or in :mod:`page_capture.run`:
 - Bytes on the wire are metered per response against **one shared ledger** in the bucket
   (``PROXY_LEDGER``), which holds the owner's cap and what every run so far, including the
   ulta.ae runs, has used. The ledger is updated with a compare-and-swap after every proxied
-  response, so two runs can never each spend the whole balance. A run may lower its own share
+  response and re-read before every proxied request, so a run stops when the shared balance is
+  gone even if another run spent it. A run may lower its own share
   with ``PROXY_BYTE_CAP``; it can never raise the ledger's cap. No ledger, an exhausted ledger or
   a sharded job (more than one Cloud Run task) means no proxy at all.
 - The meter counts what the proxy would bill: compressed response bytes plus an allowance for
@@ -162,6 +163,8 @@ class Meter:
     cap: int = DEFAULT_BYTE_CAP
     used: int = 0
     ledger: Ledger | None = None
+    #: Set when the ledger could not be re-read; the meter then reports exhausted (fail closed).
+    ledger_fault: str | None = None
 
     def charge(self, response_bytes: int) -> None:
         n = response_bytes + REQUEST_ALLOWANCE
@@ -171,7 +174,26 @@ class Meter:
 
     @property
     def exhausted(self) -> bool:
-        return self.used >= self.cap
+        """True once this run's share is spent *or* the shared balance is, whoever spent it.
+
+        The ledger is re-read on every check so a concurrent run's spend counts here too; a
+        run's cap was fixed at start and cannot see the other run otherwise.
+        """
+        if self.used >= self.cap:
+            return True
+        if self.ledger is None:
+            return False
+        try:
+            self.ledger.reload()
+        except LedgerError as exc:
+            self.ledger_fault = str(exc)
+            return True
+        return self.ledger.remaining <= 0
+
+
+def _is_count(value: object) -> bool:
+    """A non-negative int; bool is an int in Python and is refused on purpose."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 class Ledger:
@@ -202,10 +224,11 @@ class Ledger:
             doc = json.loads(data)
         except json.JSONDecodeError as exc:
             raise LedgerError("proxy ledger is not JSON") from exc
-        if not isinstance(doc, dict) or any(
-            not isinstance(doc.get(k), int) or doc[k] < 0 for k in LEDGER_FIELDS
-        ):
+        if not isinstance(doc, dict) or any(not _is_count(doc.get(k)) for k in LEDGER_FIELDS):
             raise LedgerError("proxy ledger needs integer cap_bytes and used_bytes")
+        runs = doc.get("runs", {})
+        if not isinstance(runs, dict) or any(not _is_count(v) for v in runs.values()):
+            raise LedgerError("proxy ledger runs must map run ids to byte counts")
         if doc["cap_bytes"] > DEFAULT_BYTE_CAP:
             raise LedgerError(f"proxy ledger cap_bytes exceeds the owner cap {DEFAULT_BYTE_CAP}")
         self.doc, self.token = doc, token

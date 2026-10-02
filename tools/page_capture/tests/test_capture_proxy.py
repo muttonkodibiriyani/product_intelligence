@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import pathlib
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
@@ -11,10 +12,17 @@ import httpx
 import pytest
 
 from page_capture import proxy, run
+from page_capture import store as store_mod
 from page_capture.plan import Item, Plan
 from page_capture.store import Store
 
 T0 = datetime(2026, 10, 2, 8, 0, tzinfo=UTC)
+
+
+def _clock() -> str:
+    return T0.isoformat()
+
+
 ROBOTS = "User-agent: *\nAllow: /\n"
 PAGE = "<html><body>" + "x" * 70_000 + "</body></html>"
 VERSION = "projects/p/secrets/s/versions/1"  # a resource name, not a credential
@@ -343,6 +351,56 @@ def test_ledger_is_shared_across_runs_and_caps_the_next_one(tmp_path: object) ->
     # and a third run cannot start at all
     with pytest.raises(proxy.LedgerError, match="exhausted"):
         _job(str(tmp_path), cap=proxy.DEFAULT_BYTE_CAP, ledger=ledger, prefix="run3")
+
+
+def test_two_runs_started_together_cannot_overspend_the_ledger(tmp_path: object) -> None:
+    """The Reviewer's probe: ledger nearly spent, two runs start before either fetches."""
+    unit = 5_000 + proxy.REQUEST_ALLOWANCE
+    ledger = _ledger(tmp_path, cap=10 * unit, used=8 * unit)  # 2 units left for everyone
+    a, _, via_a = _job(str(tmp_path), cap=proxy.DEFAULT_BYTE_CAP, ledger=ledger, prefix="a")
+    b, _, via_b = _job(str(tmp_path), cap=proxy.DEFAULT_BYTE_CAP, ledger=ledger, prefix="b")
+    assert a.meter.cap == b.meter.cap == 2 * unit  # each run alone could spend what is left
+    a.one(Item("n-1", f"https://{HOST}/x/p/1", "en-AE", "html", {}))
+    assert len(via_a.calls) == 2  # robots + page: run a spends the whole remainder
+    assert _ledger_doc(ledger)["used_bytes"] == 10 * unit
+    # run b has spent nothing itself, but the shared balance is gone: nothing goes out
+    assert b.meter.used == 0
+    b.one(Item("n-1", f"https://{HOST}/x/p/1", "en-AE", "html", {}))
+    assert via_b.calls == []  # not even robots.txt goes through the proxy
+    assert str(b.hosts[HOST].stopped).startswith("proxy byte cap")
+    assert b.counts["hosts_stopped"] == 1
+    assert _ledger_doc(ledger)["used_bytes"] == 10 * unit  # not a byte over the cap
+    b.finish()
+    status = json.loads((tmp_path / "b" / "status.json").read_text())  # type: ignore[operator]
+    assert status["proxy_ledger_remaining"] == 0
+    assert status["proxy_ledger_fault"] is None
+
+
+def test_meter_fails_closed_when_the_ledger_cannot_be_reread(tmp_path: object) -> None:
+    path = _ledger(tmp_path, cap=1_000_000, used=0)
+    meter = proxy.Meter(
+        cap=1_000_000, ledger=proxy.Ledger(store_mod.FileLedgerStore(path), "r", _clock)
+    )
+    states = [meter.exhausted]
+    pathlib.Path(path).write_text("{not json")
+    states.append(meter.exhausted)
+    assert states == [False, True]
+    assert meter.ledger_fault == "proxy ledger is not JSON"
+
+
+def test_ledger_rejects_bool_counts_and_malformed_runs(tmp_path: object) -> None:
+    bad = f"{tmp_path}/bad.json"
+    for doc in (
+        {"cap_bytes": True, "used_bytes": 0},
+        {"cap_bytes": 10, "used_bytes": False},
+        {"cap_bytes": 10, "used_bytes": 0, "runs": []},
+        {"cap_bytes": 10, "used_bytes": 0, "runs": {"r": "5"}},
+        {"cap_bytes": 10, "used_bytes": 0, "runs": {"r": -1}},
+        {"cap_bytes": 10, "used_bytes": 0, "runs": {"r": True}},
+    ):
+        pathlib.Path(bad).write_text(json.dumps(doc))
+        with pytest.raises(proxy.LedgerError, match=r"integer cap_bytes|runs must map"):
+            proxy.Ledger(store_mod.FileLedgerStore(bad), "r", _clock)
 
 
 def test_ledger_must_exist_and_be_well_formed(tmp_path: object) -> None:

@@ -607,6 +607,11 @@ def test_same_host_redirect_is_followed_and_robots_checked_on_the_new_path(tmp_p
     assert private not in [u for u, _ in client.calls]
 
 
+def test_redirect_limit_is_pinned() -> None:
+    """Five hops is the RFC 9309 floor for robots.txt and the ceiling for pages; keep it there."""
+    assert run.MAX_REDIRECTS == 5
+
+
 def test_redirect_loop_and_missing_location_are_http_errors(tmp_path: Path) -> None:
     loop_a, loop_b = "https://a.example/l/a", "https://a.example/l/b"
     bare = "https://a.example/bare"

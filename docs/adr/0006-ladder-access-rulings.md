@@ -177,16 +177,19 @@ owner's decision recorded here.
 
 ## Amendment 4 (2026-10-02 UTC): task 01a0fc6d, proxy scope beyond ulta.ae and the shared ledger
 
-**Owner GO.** On 2026-10-02 the owner (Tarkesh) scoped tm8 task `01a0fc6d-b254-750e-9e96-909ee8123f45`
-("Scraping All the data in the asked part of requirement available in the html") and confirmed
-the capture scope with the Deep Coder: shops Faces UAE, Nysaa UAE, Sephora KSA, Noon UAE (beauty
-only), Amazon UAE (beauty) and the 17-retailer KSA fashion matrix; Ulta UAE and Sephora UAE
-excluded; English and Arabic; every site tried directly first; the IPRoyal UAE residential proxy
-"only where a shop blocks us", under the "1.8 GB proxy cap", "only when extremely necessary";
-pictures downloaded directly for every shop, never through the proxy. Source: the task's confirmed
-scope and the owner's messages on that task (tm8 anchor 01a0fc6d…; the GO was reaffirmed on
-2026-10-02 after the coordinator's freeze was reported). There is no separate owner message or
-form approving a new proxy purchase; the only balance is the 2 GB bought under Amendment 2.
+**Owner GO.** On 2026-10-02 at 12:23 UTC the owner answered the Deep Coder's scope form for tm8
+task `01a0fc6d-b254-750e-9e96-909ee8123f45` ("Scraping All the data in the asked part of
+requirement available in the html"); the response is tm8 form response
+`01a0fc8f-64f0-771d-bb52-8f95cd40d96d` on form `01a0fc8c-aa31-7751-9043-65ca686635fe`. Verbatim:
+shops "Faces UAE, Nysaa UAE, Sephora KSA, Noon UAE, Amazon UAE, KSA fashion matrix"; languages
+"English and Arabic"; proxy "if it blocks any website and than lets use UAE proxy to scarape but
+must try scraoing it"; cap "1.8gb cap only use when it is extrememly necessary"; pictures "No -
+keep Scrapify's Ulta pictures and record picture links for the other shops", which the owner
+then reversed in a direct message to the Deep Coder the same day: "image downloads are neeed fro
+all other shops brands man dont skip this" (pictures are fetched directly from the image hosts,
+never through the proxy). Ulta UAE and Sephora UAE are outside the task. The GO was reaffirmed by the owner on the task on 2026-10-02 after the
+coordinator's freeze was reported. There is no owner message or form approving a new proxy
+purchase; the only balance is the 2 GB bought under Amendment 2.
 
 **What this changes.** Amendment 2 limited the proxy to ulta.ae. For task 01a0fc6d the proxy may
 also be used, through `tools/page_capture` only, for the page hosts of the shops above and no other
@@ -198,10 +201,15 @@ ulta.ae is not in that list: its proxy use stays with `pi_fetch` under Amendment
 1. **One ledger for the whole balance.** The 1.8 GB cap is over *all* runs and *all* sources,
    including the ulta.ae snapshots. A proxied run needs `PROXY_LEDGER`, a JSON object in the
    capture bucket holding `cap_bytes`, `used_bytes` and per-run figures. It is created once by
-   hand from the IPRoyal dashboard balance, with the bytes already consumed entered. Every proxied
-   response is added with a compare-and-swap on the object's generation, so concurrent runs
-   cannot each spend the whole balance; a run's cap is what the ledger has left or its own
-   `PROXY_BYTE_CAP`, whichever is smaller; an exhausted or missing ledger refuses the run.
+   hand from the IPRoyal dashboard balance, with the bytes already consumed entered. `pi_fetch`'s
+   ulta.ae proxy spend never touches this ledger: before any `page_capture` proxied run the
+   ulta.ae consumption must be read from the IPRoyal dashboard and entered by hand, and the
+   figure re-checked against the dashboard whenever `pi_fetch` has run since. Every proxied
+   response is added with a compare-and-swap on the object's generation, and the balance is
+   re-read before every proxied request, so a run stops when the shared balance is gone even
+   when another run spent it (at most one in-flight response per run can overshoot); a run's cap
+   is what the ledger has left or its own `PROXY_BYTE_CAP`, whichever is smaller; an exhausted,
+   missing or unreadable ledger refuses the run or stops the proxied hosts.
    Until the ledger exists with the dashboard figure entered, no proxied run starts.
 2. **No sharded proxied runs.** A job with more than one Cloud Run task is refused the proxy.
 3. **Redirects do not bypass robots or the route.** Every redirect hop is checked against the
