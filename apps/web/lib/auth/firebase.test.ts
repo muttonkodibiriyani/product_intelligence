@@ -37,8 +37,9 @@ describe('sign-in errors', () => {
 });
 
 describe('password reset outcomes', () => {
-  it('an unknown address reads as sent; every other failure is said', () => {
+  it('an unknown or disabled address reads as sent; every other failure is said', () => {
     expect(resetOutcome({ code: 'auth/user-not-found' })).toBe('sent');
+    expect(resetOutcome({ code: 'auth/user-disabled' })).toBe('sent');
     expect(resetOutcome({ code: 'auth/invalid-email' })).toBe('invalidEmail');
     expect(resetOutcome({ code: 'auth/missing-email' })).toBe('invalidEmail');
     for (const code of ['auth/too-many-requests', 'auth/quota-exceeded', 'auth/network-request-failed'])

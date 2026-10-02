@@ -107,5 +107,6 @@
     "scope": "fixture"
   },
   "reason": null,
+  "resolvedFrom": null,
   "status": "ok"
 }

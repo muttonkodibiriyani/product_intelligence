@@ -411,7 +411,9 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
   - `users/{uid}/assistant_threads/{threadId}` and `…/messages/{msgId}`:
     - Contents: role, text, citations, tool calls (names + validated inputs + result hash, not
       full results), model id, prompt version, dataset generation, tokens and cost.
-    - Client rule: read if `request.auth.uid == uid` and the role claim is valid.
+    - Client access: **none.** The web app reads and deletes its own threads through the chat
+      callable (Coordinator, 2026-10-01), so the rules keep denying every client read and no
+      read-own rule is added.
     - **Retention: 90 days.** Every document carries `expireAt`, with a Firestore TTL policy on
       it. The user can delete a thread at any time.
   - `assistant_usage_counters/{key}`: integer micro-USD `spent` and `reserved`, and question
@@ -809,12 +811,12 @@ month (the secret version; Pub/Sub and Functions stay in the free tier).
 | CI Workload Identity Federation pool → `pi-assistant-ci@` (`aiplatform.user` only, attribute condition pinned to repo id and `assistant-evals`, §8) | **needs OK** | free | Model evals in CI |
 | GitHub protected environment `assistant-evals` + eval workflow job (`.github` change, owner pushes) | **needs owner** | – | Model evals in CI |
 | Service-layer API deployed with `/v1/*` (#39) | Deep Coder's track | – | Stage 1c |
-| `recaptchaenterprise` + App Check | optional, **needs OK** | free ≤ 10 k/month | Stage 1 hardening |
+| `recaptchaenterprise` + App Check (reCAPTCHA Enterprise provider and site key for the web app) | **required before the chat callable can answer**, **needs OK**: `assistantChat` is deployed with `enforceAppCheck: true`, so every call without a valid App Check token is rejected. Owner-run with the kill-switch steps | free ≤ 10 k/month | Stage 1 deploy |
 | Budget → Pub/Sub → kill-switch subscriber (§9.4) | **required before Vertex enablement** (Coordinator, 2026-10-01). Code, rules and tests are in the kill-switch PR. Topic, SA, secret, Auth account and deploy are **owner steps, each needs OK** | ≈ $0.06/month (secret version) | Backstop for spend the meter cannot see |
 | Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `messages` (collection groups) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
-| Rules changes (threads read-own; no client report reads) | with the stage 1 PR, emulator-tested | – | Stage 1 |
+| Rules changes (no client report reads; threads are served by the callable, so no read-own rule) | none needed for stage 1 | – | Stage 1 |
 
 Nothing in this PR enables an API, creates a resource or deploys.
 
@@ -835,6 +837,8 @@ All of these must hold before Vertex is enabled or the chat callable is deployed
    - `enabled: true`, and no `disabledBy`.
 4. Firestore TTL policies are on (Infra/owner step, table above).
 5. The service-layer API is deployed under `/api/v1`, and the Hosting freeze is lifted by Infra.
+6. App Check is registered for the web app with the reCAPTCHA Enterprise provider (table above),
+   and the web client initialises it; without it `assistantChat` rejects every call.
 
 ## 11. Rulings on the open questions
 

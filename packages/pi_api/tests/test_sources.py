@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -205,6 +206,27 @@ def test_the_floor_applies_before_dq_in_composed_and_whole_views(tmp_path: Path)
     for loaded in views.values():
         assert [(f.retailer, f.offers) for f in loaded.floor.floored] == [(ULTA, 1)]
         assert [(shop.retailer, shop.was_prices) for shop in loaded.imported] == [(ULTA, 1)]
+
+
+def test_composed_and_whole_views_build_their_product_ids_at_load(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Each served view's ids (``pi_api.ids``, #158) are built and logged at load, never on a
+    request (merge of #120)."""
+    caplog.set_level(logging.INFO, logger="pi_api.source")
+    write(tmp_path, snapshot({"p1": BOTH, "p2": (ULTA,)}, dates=OLD), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    views = source.datasets()
+    assert len(views) == 2
+    assert all("ids" in vars(loaded) for loaded in views)
+    logged = sorted(
+        r.getMessage().split(" loaded at ")[0].removeprefix("dataset ")
+        for r in caplog.records
+        if "old product ids" in r.getMessage()
+    )
+    assert logged == [COMBINED, "scope:beauty"]
 
 
 def test_dataset_entries_reads_whole_and_per_source_paths() -> None:

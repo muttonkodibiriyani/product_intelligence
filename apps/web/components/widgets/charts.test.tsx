@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { golden } from '@/lib/api/golden';
 import type { Summary } from '@/lib/api/summary';
 import en from '@/messages/en.json';
+import widgetsAr from '@/messages/widgets.ar.json';
+import widgets from '@/messages/widgets.en.json';
+import ar from '@/messages/ar.json';
 import type { Schemas } from '@/lib/api/types';
 import { productHref } from '../explore/product-table';
 import {
@@ -186,5 +189,30 @@ describe('chart widget drills', () => {
   it.each(CASES)('%s: without onPick a mark navigates this tab', (_, el, name, data, href) => {
     pick(el(), name, data);
     expect(push).toHaveBeenCalledExactlyOnceWith(href);
+  });
+});
+
+describe('LadderWidget legend', () => {
+  const legendOf = (lc: 'en' | 'ar') => {
+    const { container } = render(
+      <NextIntlClientProvider
+        locale={lc}
+        messages={lc === 'ar' ? { ...ar, widgets: widgetsAr } : { ...en, widgets }}
+        onError={() => {}}
+      >
+        <LadderWidget data={s.ladder!} {...common} locale={lc} />
+      </NextIntlClientProvider>,
+    );
+    return [...container.querySelectorAll('p')].at(-1)!.textContent!;
+  };
+
+  it('says what the log scale means instead of a bare "Log scale."', () => {
+    const legend = legendOf('en');
+    expect(legend).toContain('The price axis grows by multiples, not fixed amounts (a log scale)');
+    expect(legend).not.toMatch(/\. Log scale\.$/);
+  });
+
+  it('in Arabic', () => {
+    expect(legendOf('ar')).toContain('يزداد محور السعر بالمضاعفات لا بمبالغ ثابتة (مقياس لوغاريتمي)');
   });
 });

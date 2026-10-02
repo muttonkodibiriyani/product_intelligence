@@ -1555,72 +1555,6 @@
         "title": "EnumValue",
         "type": "object"
       },
-      "Envelope_AdminProductDetail_": {
-        "additionalProperties": false,
-        "properties": {
-          "caveats": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/CaveatView"
-            },
-            "title": "Caveats",
-            "type": "array"
-          },
-          "cohort": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Cohort"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AdminProductDetail"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "detail": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Localized"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "meta": {
-            "$ref": "#/components/schemas/ApiMeta"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/Status"
-          }
-        },
-        "required": [
-          "status",
-          "data",
-          "meta"
-        ],
-        "title": "Envelope[AdminProductDetail]",
-        "type": "object"
-      },
       "Envelope_AssortmentGaps_": {
         "additionalProperties": false,
         "properties": {
@@ -2083,72 +2017,6 @@
         "title": "Envelope[Coverage]",
         "type": "object"
       },
-      "Envelope_History_": {
-        "additionalProperties": false,
-        "properties": {
-          "caveats": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/CaveatView"
-            },
-            "title": "Caveats",
-            "type": "array"
-          },
-          "cohort": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Cohort"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/History"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "detail": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Localized"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "meta": {
-            "$ref": "#/components/schemas/ApiMeta"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/Status"
-          }
-        },
-        "required": [
-          "status",
-          "data",
-          "meta"
-        ],
-        "title": "Envelope[History]",
-        "type": "object"
-      },
       "Envelope_Launches_": {
         "additionalProperties": false,
         "properties": {
@@ -2411,72 +2279,6 @@
           "meta"
         ],
         "title": "Envelope[PriceIndex]",
-        "type": "object"
-      },
-      "Envelope_ProductDetail_": {
-        "additionalProperties": false,
-        "properties": {
-          "caveats": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/CaveatView"
-            },
-            "title": "Caveats",
-            "type": "array"
-          },
-          "cohort": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Cohort"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProductDetail"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "detail": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Localized"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "meta": {
-            "$ref": "#/components/schemas/ApiMeta"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Reason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/Status"
-          }
-        },
-        "required": [
-          "status",
-          "data",
-          "meta"
-        ],
-        "title": "Envelope[ProductDetail]",
         "type": "object"
       },
       "Envelope_ProductPage_": {
@@ -4270,6 +4072,234 @@
         "title": "ProductDetail",
         "type": "object"
       },
+      "ProductEnvelope_AdminProductDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdminProductDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedFrom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedFrom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "ProductEnvelope[AdminProductDetail]",
+        "type": "object"
+      },
+      "ProductEnvelope_History_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/History"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedFrom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedFrom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "ProductEnvelope[History]",
+        "type": "object"
+      },
+      "ProductEnvelope_ProductDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedFrom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedFrom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "ProductEnvelope[ProductDetail]",
+        "type": "object"
+      },
       "ProductPage": {
         "additionalProperties": false,
         "properties": {
@@ -4627,6 +4657,31 @@
           "selectionLabels"
         ],
         "title": "RelatedSku",
+        "type": "object"
+      },
+      "ResolvedFrom": {
+        "additionalProperties": false,
+        "description": "An old product id answered with the products it names now (``pi_api.ids``).",
+        "properties": {
+          "currentIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Currentids",
+            "type": "array"
+          },
+          "requestedId": {
+            "title": "Requestedid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestedId",
+          "currentIds"
+        ],
+        "title": "ResolvedFrom",
         "type": "object"
       },
       "RetailerAvailability": {
@@ -5739,7 +5794,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_AdminProductDetail_"
+                  "$ref": "#/components/schemas/ProductEnvelope_AdminProductDetail_"
                 }
               }
             },
@@ -9655,7 +9710,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_ProductDetail_"
+                  "$ref": "#/components/schemas/ProductEnvelope_ProductDetail_"
                 }
               }
             },
@@ -9836,7 +9891,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_History_"
+                  "$ref": "#/components/schemas/ProductEnvelope_History_"
                 }
               }
             },

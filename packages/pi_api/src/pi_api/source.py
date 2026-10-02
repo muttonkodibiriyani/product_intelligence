@@ -20,12 +20,14 @@ import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
+from pi_api.ids import ProductIds, product_ids
 from pi_dataset import DatasetError, DatasetV3, load_any
 from pi_dataset.compose import SourceInfo, compose, only, source_infos
 from pi_metrics.view import as_v3
@@ -100,6 +102,11 @@ class Loaded:
     def unverified(self) -> frozenset[str]:
         """Context ids whose was-prices are unverified: promotions there are withheld."""
         return frozenset(c for shop in self.imported for c in shop.contexts)
+
+    @cached_property
+    def ids(self) -> ProductIds:
+        """Current and old product ids (``pi_api.ids``), built once per generation at load."""
+        return product_ids(self.dataset)
 
     @property
     def markets(self) -> tuple[str, ...]:
@@ -180,7 +187,7 @@ class SnapshotSource:
             if loaded is not None:
                 self._files[path] = loaded
                 if path in self._paths:
-                    self._served[path] = _corrected(loaded)
+                    self._served[path] = _with_ids(_corrected(loaded))
                 changed = True
         if not changed:
             return
@@ -224,7 +231,10 @@ class SnapshotSource:
                 part = Loaded(path, only(file.dataset, sources), file.generation)
                 label = ",".join(f"{s}={path}" for s in sources)
                 by_scope.setdefault(part.scope, []).append((label, part))
-            views = {f"scope:{scope}": _view(parts) for scope, parts in by_scope.items()}
+            views = {
+                f"scope:{scope}": _with_ids(_view(parts), f"scope:{scope}")
+                for scope, parts in by_scope.items()
+            }
         except ValueError as error:  # CompositionError, or the composed view fails validation
             log.error("per-source view not rebuilt: %s", error)
             return None
@@ -287,6 +297,22 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
     generation = "c" + hashlib.sha256(stamp.encode()).hexdigest()[:16]
     path = ",".join(label for label, _ in parts)
     return _corrected(Loaded(path, composed.dataset, generation, composed.sources))
+
+
+def _with_ids(loaded: Loaded, name: str | None = None) -> Loaded:
+    """``loaded`` with its product ids (``pi_api.ids``) built now, at load, off the request path."""
+    ids = loaded.ids
+    log.info(
+        "dataset %s loaded at generation %s: %d old product ids, %d dropped as "
+        "ambiguous, %d pairs with hashed or ambiguous ids (their members' old ids can't be "
+        "found)",
+        name or loaded.path,
+        loaded.generation,
+        len(ids.aliases),
+        ids.dropped,
+        ids.opaque_pairs,
+    )
+    return loaded
 
 
 def _corrected(loaded: Loaded) -> Loaded:
