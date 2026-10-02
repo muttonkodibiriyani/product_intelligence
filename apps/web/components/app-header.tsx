@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useAuth } from './auth-provider';
 import { LangSwitch } from './lang-switch';
+import { launchReadiness } from './launches/readiness';
+import { useMeta } from './use-meta';
 
 export function AppHeader() {
   const t = useTranslations('app');
@@ -16,7 +18,12 @@ export function AppHeader() {
     { href: `/${locale}/prices/`, label: t('nav.prices'), match: /^\/(en|ar)\/prices\// },
     { href: `/${locale}/compare/`, label: t('nav.compare'), match: /^\/(en|ar)\/compare\// },
     { href: `/${locale}/promotions/`, label: t('nav.promotions'), match: /^\/(en|ar)\/promotions\// },
-    { href: `/${locale}/launches/`, label: t('nav.launches'), match: /^\/(en|ar)\/launches\// },
+    {
+      href: `/${locale}/launches/`,
+      label: t('nav.launches'),
+      match: /^\/(en|ar)\/launches\//,
+      badge: LaunchesSoon,
+    },
     { href: `/${locale}/dataset/`, label: t('nav.status'), match: /^\/(en|ar)\/dataset\// },
     { href: `/${locale}/assistant/`, label: t('nav.assistant'), match: /^\/(en|ar)\/assistant\// },
   ];
@@ -56,6 +63,7 @@ export function AppHeader() {
                       }`}
                     >
                       {n.label}
+                      {n.badge && <n.badge />}
                     </Link>
                   </li>
                 );
@@ -82,5 +90,20 @@ export function AppHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * Visibility rule (nav table, Launches row): the page is always reachable, but says "soon" until
+ * every shop has the collection days a launch needs. Mounted inside the nav only, so /meta is
+ * asked for by a signed-in user: before the session is restored the API client has no token, and
+ * a request then would count as a refused one and sign the user out.
+ */
+function LaunchesSoon() {
+  const t = useTranslations('app');
+  const meta = useMeta();
+  if (!meta.data || launchReadiness(meta.data).allReady) return null;
+  return (
+    <span className="pill ms-1.5 bg-butter align-[1px] text-[11px] text-butter-ink">{t('nav.soon')}</span>
   );
 }
