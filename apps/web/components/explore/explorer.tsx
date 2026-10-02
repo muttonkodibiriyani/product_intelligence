@@ -20,9 +20,11 @@ import { formatCount } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { EnvNotes } from '../ui/env-notes';
+import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
 import { ExportMenu } from './export-menu';
 import { Filters } from './filters';
+import { ProductGrid, useView, ViewToggle } from './product-grid';
 import { ProductTable } from './product-table';
 import { Toolbar } from './toolbar';
 
@@ -38,6 +40,7 @@ export function Explorer() {
   const { api } = useAuth();
   const name = useRetailerName();
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [view, setView] = useView();
   const filtersId = useId();
 
   const search = sp.toString();
@@ -121,12 +124,11 @@ export function Explorer() {
               {t('clear')}
             </button>
           )}
-          {last && (
-            <div className="sm:ms-auto">
-              {/* Keyed by the filters: a new list starts with a fresh export state. */}
-              <ExportMenu key={search} state={state} total={total} n={formatCount(total, locale)} />
-            </div>
-          )}
+          <div className="flex items-center gap-2 sm:ms-auto">
+            <ViewToggle view={view} onChange={setView} />
+            {/* Keyed by the filters: a new list starts with a fresh export state. */}
+            {last && <ExportMenu key={search} state={state} total={total} n={formatCount(total, locale)} />}
+          </div>
         </div>
 
         {restarted && (
@@ -140,9 +142,9 @@ export function Explorer() {
           {q.isError && !q.data ? (
             <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
           ) : !q.data ? (
-            <p role="status" aria-busy className="text-ink-2">
+            <Loading kind="table" rows={8}>
               {t('loading')}
-            </p>
+            </Loading>
           ) : items.length === 0 ? (
             first?.status === 'ok' && (
               <div className="panel px-5 py-6">
@@ -152,13 +154,18 @@ export function Explorer() {
             )
           ) : (
             <>
-              <ProductTable
-                items={items}
-                retailers={columns(state, first?.data?.facets.retailer ?? [])}
-                pair={hasPair(state) ? (state.retailer as [string, string]) : null}
-                name={name}
-                from={key}
-              />
+              {(() => {
+                const Body = view === 'grid' ? ProductGrid : ProductTable;
+                return (
+                  <Body
+                    items={items}
+                    retailers={columns(state, first?.data?.facets.retailer ?? [])}
+                    pair={hasPair(state) ? (state.retailer as [string, string]) : null}
+                    name={name}
+                    from={key}
+                  />
+                );
+              })()}
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <p className="text-sm text-ink-2 tabular-nums">
                   {t('showing', { shown: items.length, total })}

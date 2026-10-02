@@ -8,6 +8,7 @@ This lets the existing Python CI job enforce the TS checks without a workflow ch
 never skips, when Node.js/npm is missing, so the gate cannot pass silently.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -73,3 +74,39 @@ def test_evals_package() -> None:
     assert audit.returncode == 0, audit.stdout[-8000:] + audit.stderr[-4000:]
     validate = _run(npm, "run", "validate", cwd=EVALS, env=EVALS_ENV)
     assert validate.returncode == 0, validate.stdout[-8000:] + validate.stderr[-4000:]
+
+
+def test_evals_lockfile_has_no_node_forge() -> None:
+    """jks-js is stubbed in-repo: node-forge <= 1.4.0 (GHSA-86w9-cpqp-85rv) has no fix yet.
+
+    Remove the stub and this test when node-forge ships a release > 1.4.0 (decision log).
+    """
+    lock = json.loads((EVALS / "package-lock.json").read_text(encoding="utf-8"))
+    paths = lock["packages"]
+    assert not [p for p in paths if p.rsplit("node_modules/", 1)[-1] == "node-forge"]
+    stub = paths["node_modules/jks-js"]
+    assert stub == {"resolved": "stubs/jks-js", "link": True}, stub
+    assert (
+        json.loads((EVALS / "package.json").read_text(encoding="utf-8"))["overrides"]["jks-js"]
+        == "$jks-js"
+    )
+
+
+def test_jks_js_stub_refuses_every_use() -> None:
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required for apps/assistant checks"
+    probe = subprocess.run(  # noqa: S603 - fixed argv, no shell, no user input
+        [
+            node,
+            "-e",
+            "for (const f of Object.values(require('./stubs/jks-js'))) "
+            "{ try { f(); process.exit(1); } catch (e) "
+            "{ if (e.message !== 'JKS keystores not supported') process.exit(2); } }",
+        ],
+        cwd=EVALS,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert probe.returncode == 0, probe.stdout + probe.stderr

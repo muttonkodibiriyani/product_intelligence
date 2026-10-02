@@ -14,6 +14,7 @@
       "status": "aging"
     },
     "ladder": null,
+    "meanPrice": null,
     "medianPrice": null,
     "priceHist": null,
     "priced": null,
@@ -43,7 +44,7 @@
     "en": "A selected retailer could not be collected."
   },
   "meta": {
-    "apiVersion": "1.5.2",
+    "apiVersion": "1.8.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "summary",
@@ -52,7 +53,7 @@
     },
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.3",
+    "metricVersion": "2026-10-01.4",
     "scope": "fixture"
   },
   "reason": "retailer_blocked",

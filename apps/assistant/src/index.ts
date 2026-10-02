@@ -62,11 +62,17 @@ export const assistantChat = onCall(
     memory: "512MiB",
     timeoutSeconds: 120,
   },
-  async (request) => {
+  async (request, response) => {
     try {
-      return await handleChat(request, {
-        answer: async (...args) => (await (flow ??= createChatFlow(process.env))).answer(...args),
-      });
+      return await handleChat(
+        request,
+        {
+          answer: async (...args) => (await (flow ??= createChatFlow(process.env))).answer(...args),
+        },
+        // Streaming callers (`httpsCallable().stream()`) get progress chunks; sendChunk is a
+        // no-op for the others. A failed send (client gone) is dropped, never thrown.
+        (progress) => void response?.sendChunk(progress).catch(() => false),
+      );
     } catch (cause) {
       if (cause instanceof CallableRefusal) throw new HttpsError(cause.code, cause.message);
       throw cause;

@@ -5,7 +5,7 @@
  * becomes a caller role only through `callerRole`, so `killswitch` or any other claim is refused
  * and never counted, metered or treated as a viewer.
  */
-import type { ChatAnswer, ChatFlow, ChatInput } from "../flows/chat.js";
+import type { ChatAnswer, ChatFlow, ChatInput, ProgressSink } from "../flows/chat.js";
 import { type CallerContext, callerRole } from "../tools/types.js";
 
 /** The parts of a verified callable request this handler reads (`CallableRequest` fits). */
@@ -52,6 +52,7 @@ export function callerFrom(request: CallableRequestLike): {
 export async function handleChat(
   request: CallableRequestLike,
   flow: Pick<ChatFlow, "answer">,
+  onProgress?: ProgressSink,
 ): Promise<ChatAnswer> {
   const { caller, idToken } = callerFrom(request);
   const data = request.data;
@@ -59,5 +60,5 @@ export async function handleChat(
     throw new CallableRefusal("invalid-argument");
   }
   // The flow parses strictly (unknown keys such as `history` are refused there).
-  return flow.answer(data as ChatInput, caller, idToken);
+  return flow.answer(data as ChatInput, caller, idToken, onProgress);
 }

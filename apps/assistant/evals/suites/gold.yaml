@@ -121,3 +121,63 @@
     - type: javascript
       value: file://../src/evals/assertions.ts:answered
       metric: gold
+
+- description: out-of-stock share
+  vars:
+    question: What share of offers is out of stock at north?
+    expect:
+      - 25\.0
+    tools:
+      - availability
+  metadata:
+    tier: smoke
+    suite: gold
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:answered
+      metric: gold
+
+- description: price history
+  vars:
+    question: How has the price of Hydra Cream 50 ml changed at north over time?
+    expect:
+      - 110\.00
+    tools:
+      - price_history
+  metadata:
+    tier: smoke
+    suite: gold
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:answered
+      metric: gold
+
+- description: price ladder median
+  vars:
+    question: What is the median price in the skincare price ladder at north?
+    expect:
+      - 64\.00
+    tools:
+      - price_ladder
+  metadata:
+    tier: smoke
+    suite: gold
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:answered
+      metric: gold
+
+- description: brand median price
+  vars:
+    question: What is the median price of Lumen products at north?
+    expect:
+      - 58\.75
+    tools:
+      - brand_positioning
+  metadata:
+    tier: smoke
+    suite: gold
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:answered
+      metric: gold
