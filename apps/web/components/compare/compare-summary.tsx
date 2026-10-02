@@ -28,6 +28,7 @@ export function Summary({
   name: Name;
 }) {
   const t = useTranslations('compare');
+  const ts = useTranslations('state');
   const locale = useLocale();
   const s = data.summary;
   const pair = { base: name(data.base), other: name(data.other) };
@@ -38,7 +39,9 @@ export function Summary({
       </h2>
       <p className="mt-1 text-sm text-ink-2">{t('convention', pair)}</p>
       {!s ? (
-        <p className="mt-3 panel px-4 py-3 text-sm">{t('noSummary')}</p>
+        // No summary is served below the cohort minimum (or while matches wait on review): the rows
+        // still follow, so this says the summary is missing, not the products.
+        <p className="mt-3 text-sm text-ink-2">{ts('summaryTooFew')}</p>
       ) : (
         <dl className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label={t('compared')} value={formatCount(s.n, locale)}>

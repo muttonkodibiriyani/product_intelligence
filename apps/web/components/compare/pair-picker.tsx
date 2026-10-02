@@ -3,11 +3,12 @@
 import { useTranslations } from 'next-intl';
 import { useId } from 'react';
 import { pick, type CompareState, type GroupBy } from '@/lib/compare';
+import { retailerName } from '@/lib/retailers';
 import { useMeta } from '../use-meta';
 
 const SELECT = 'min-w-0 field focus-visible:outline-2 disabled:opacity-60';
 
-/** Base, other and grouping. Retailers come from /meta, with their collection status. */
+/** Base, other and grouping. Retailers come from /meta, each by its shop name only. */
 export function PairPicker({
   state,
   update,
@@ -16,12 +17,11 @@ export function PairPicker({
   update: (next: Partial<CompareState>) => void;
 }) {
   const t = useTranslations('compare');
-  const th = useTranslations('home');
   const retailers = useMeta().data?.data?.retailers ?? [];
   const id = useId();
   const option = (r: (typeof retailers)[number]) => (
     <option key={r.id} value={r.id}>
-      {r.status === 'supported' ? r.name : `${r.name} (${statusText(th, r.status)})`}
+      {retailerName(r.id, r.name)}
     </option>
   );
   const side = (s: 'base' | 'other') => (
@@ -70,9 +70,4 @@ export function PairPicker({
       </div>
     </div>
   );
-}
-
-/** Option text can't hold markup, so an unknown status is shown as sent. */
-function statusText(th: ReturnType<typeof useTranslations>, v: string): string {
-  return th.has(`status.${v}`) && /^[a-z_]+$/.test(v) ? th(`status.${v}`) : v;
 }

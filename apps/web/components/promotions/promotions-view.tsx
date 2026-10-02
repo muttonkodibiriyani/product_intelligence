@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useId, useMemo, useState } from 'react';
 import type { Schemas } from '@/lib/api/types';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatDate } from '@/lib/format';
 import {
   MIN_PCTS,
   parsePromotions,
@@ -20,9 +20,7 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
 import { Card } from '../ui/card';
-import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
-import { Known } from '../ui/known';
 import { Price } from '../ui/money';
 import { RetailerChecks } from '../ui/retailer-checks';
 import { PageHeader } from '../ui/page-header';
@@ -35,6 +33,7 @@ const TD = 'px-3 py-2.5 align-top';
 /** Products below their regular price on the latest day, deepest first, and each retailer's share. */
 export function PromotionsView() {
   const t = useTranslations('promotions');
+  const ts = useTranslations('state');
   const locale = useLocale();
   const sp = useSearchParams();
   const router = useRouter();
@@ -64,7 +63,12 @@ export function PromotionsView() {
 
   return (
     <section aria-labelledby="promotions-title" className="space-y-6">
-      <PageHeader id="promotions-title" title={t('title')} intro={t('intro')} />
+      <PageHeader
+        id="promotions-title"
+        title={t('title')}
+        intro={t('intro')}
+        asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
+      />
 
       <div className="flex flex-wrap items-start gap-x-8 gap-y-3 panel px-5 py-4">
         <RetailerChecks value={state.retailer} onChange={(retailer) => update({ retailer })} />
@@ -101,7 +105,6 @@ export function PromotionsView() {
         </Loading>
       ) : (
         <>
-          <EnvNotes env={env} />
           {data && (
             <>
               <Shares retailers={data.retailers} name={name} />
@@ -148,7 +151,7 @@ export function PromotionsView() {
   );
 }
 
-/** Each retailer's share of priced products on promotion; one without data says why. */
+/** Each retailer's share of priced products on promotion; one without data says so, in one line. */
 function Shares({
   retailers,
   name,
@@ -157,7 +160,7 @@ function Shares({
   name: (id: string) => string;
 }) {
   const t = useTranslations('promotions');
-  const tr = useTranslations('reasons');
+  const ts = useTranslations('state');
   const locale = useLocale();
   return (
     <Card id="shares" title={t('shares')} flush>
@@ -187,7 +190,7 @@ function Shares({
                 </th>
                 {r.share === null ? (
                   <td colSpan={3} className={`${TD} min-w-48 text-ink-2`}>
-                    {r.reason ? <Known t={tr} v={r.reason} /> : t('noShare')}
+                    {ts('promoUnavailable', { retailer: name(r.retailer) })}
                   </td>
                 ) : (
                   <>

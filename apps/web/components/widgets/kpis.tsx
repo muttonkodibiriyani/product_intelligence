@@ -27,6 +27,7 @@ export interface RetailerSummary {
  */
 export function KpiWidget({ rows, locale }: { rows: readonly RetailerSummary[]; locale: string }) {
   const t = useTranslations('widgets.kpi');
+  const ts = useTranslations('state');
   const lc = locale === 'ar' ? 'ar' : 'en';
   const all = exploreHref(locale, {});
   const many = rows.length > 1;
@@ -72,8 +73,8 @@ export function KpiWidget({ rows, locale }: { rows: readonly RetailerSummary[]; 
         >
           {per((r) => {
             const p = promotions(r.data);
-            // Withheld promotions show as not measured, never as 0%.
-            return p.measured ? pct(p.share, locale) : <None>{t('withheld')}</None>;
+            // Withheld promotions read as not available yet, never as 0%.
+            return p.measured ? pct(p.share, locale) : <None>{ts('notAvailable')}</None>;
           })}
         </Tile>
       )}
