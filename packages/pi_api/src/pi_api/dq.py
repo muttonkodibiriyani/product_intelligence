@@ -62,6 +62,13 @@ class Imported:
     imported_at: datetime
     #: Offers whose ``regular`` series was cleared (any non-null value in it).
     was_prices: int
+    #: The retailer's market time zone: the import date is that local day (API 1.7.0).
+    time_zone: str = "UTC"
+
+    @property
+    def imported_on(self) -> date:
+        """The local day of ``imported_at`` in the market, as ``meta.dates`` count days."""
+        return self.imported_at.astimezone(ZoneInfo(self.time_zone)).date()
 
 
 def _without_regular(offer: OfferV3) -> OfferV3:
@@ -108,6 +115,7 @@ def imported_view(ds: DatasetV3) -> tuple[DatasetV3, tuple[Imported, ...]]:
             contexts=tuple(sorted(c for c, r in contexts.items() if r == shop)),
             imported_at=latest[shop],
             was_prices=cleared[shop],
+            time_zone=ds.market_of(shop).time_zone,
         )
         for shop in sorted(latest)
     )
@@ -132,7 +140,7 @@ def caveats(
         out.append(
             Caveat(
                 code=CaveatCode.SNAPSHOT_IMPORT_DATE,
-                params={"retailer": shop.retailer, "date": shop.imported_at.date().isoformat()},
+                params={"retailer": shop.retailer, "date": shop.imported_on.isoformat()},
             )
         )
         out.append(

@@ -428,16 +428,18 @@ def _selected(query: ContractModel, data: object) -> frozenset[str]:
 
 
 def _named(query: ContractModel) -> frozenset[str]:
-    """The retailer or context ids a query names; empty when it names none."""
-    pair = getattr(query, "retailers", None)
-    if isinstance(pair, str):
-        return frozenset(pair.split(","))
+    """The retailer or context ids a query names, from every field that names one (the union, so
+    a ``retailers`` pair never hides a ``retailer`` list); empty when it names none."""
     if isinstance(query, AssortmentQuery):
         return frozenset({query.missing_at, query.present_at})
+    pair = getattr(query, "retailers", None)
     named = getattr(query, "retailer", None)
-    if isinstance(named, str):
-        return frozenset({named})
-    return frozenset(named or ())
+    return frozenset(
+        (
+            *(pair.split(",") if isinstance(pair, str) else ()),
+            *((named,) if isinstance(named, str) else named or ()),
+        )
+    )
 
 
 def flagged[T](loaded: Loaded, data: T) -> T:
@@ -541,7 +543,7 @@ def build_api(
             )
             for d in source.datasets()
         )
-        return respond(loaded, "meta", query, meta_view(loaded.dataset, refs))
+        return respond(loaded, "meta", query, meta_view(loaded.dataset, refs, loaded.sources))
 
     @api.get(f"{PREFIX}/products", response_model=Envelope[ProductPage])
     def get_products(
@@ -969,6 +971,7 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         settings.datasets,
         settings.refresh_seconds,
         allow_test=settings.allow_test,
+        assigned=settings.sources,
     )
     source.load_all()
     catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)

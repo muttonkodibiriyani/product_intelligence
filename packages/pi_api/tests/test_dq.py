@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from api_fixture import Client, bearer, make_client, write
-from pi_api.dq import IMPORTED, caveats, imported_view
-from pi_dataset import DatasetV3
+from pi_api.app import _named
+from pi_api.catalog import ProductQuery
+from pi_api.dq import IMPORTED, Imported, caveats, imported_view
+from pi_dataset import ContractModel, DatasetV3
 from pi_metrics import CaveatCode, Reason, promotions, summary
 from pi_metrics.model import ProductFilter
 from pi_metrics.summary import default_context
@@ -24,7 +26,8 @@ from v3_fixture import doc, load, offer
 API = "/api/v1"
 ULTA = "ulta_ae"
 IMPORTED_AT = "2026-09-30T21:15:00Z"
-SNAPSHOT_EN = "ulta_ae: snapshot imported 2026-09-30, capture date unknown."
+#: The import's local day in the market (Asia/Dubai, +04:00): 21:15Z is already 1 October.
+SNAPSHOT_EN = "ulta_ae: snapshot imported 2026-10-01, capture date unknown."
 
 
 def ulta_doc() -> dict[str, Any]:
@@ -84,6 +87,21 @@ def test_the_view_clears_only_the_imported_was_prices_and_finds_the_import_date(
     assert view.meta == ds.meta  # own captures end at the cutoff
 
 
+def test_the_import_date_is_the_local_day_in_the_market_time_zone() -> None:
+    """The caveat's date is counted like ``meta.dates``: in the market, not in UTC."""
+    _, (found,) = imported_view(load(ulta_doc()))
+    assert found.time_zone == "Asia/Dubai"
+
+    def date_of(at: datetime) -> str:
+        shop = Imported(ULTA, (ULTA,), at, 0, found.time_zone)
+        (snapshot,) = (c for c in caveats((shop,), "meta", frozenset()) if c.params.get("date"))
+        return str(snapshot.params["date"])
+
+    assert date_of(datetime(2026, 9, 30, 19, 59, tzinfo=UTC)) == "2026-09-30"
+    assert date_of(datetime(2026, 9, 30, 20, 0, tzinfo=UTC)) == "2026-10-01"
+    assert date_of(datetime(2026, 9, 30, 23, 59, tzinfo=UTC)) == "2026-10-01"
+
+
 def test_without_the_view_ulta_was_prices_would_be_measured() -> None:
     """The failure the view prevents: unverified was-prices read as a promotion share."""
     d = ulta_doc()
@@ -123,7 +141,7 @@ def test_summary_of_ulta_is_a_withheld_promotion_and_a_dated_snapshot(tmp_path: 
         "parent_listings_included",
     ]
     snapshot = next(c for c in body["caveats"] if c["code"] == "snapshot_import_date")
-    assert snapshot["params"] == {"retailer": ULTA, "date": "2026-09-30"}
+    assert snapshot["params"] == {"retailer": ULTA, "date": "2026-10-01"}
     assert snapshot["en"] == SNAPSHOT_EN
     assert "fresh" not in json.dumps(data["freshness"])
 
@@ -227,6 +245,20 @@ def test_a_later_import_never_sets_the_cutoff_or_as_of_of_collected_data(tmp_pat
     }
 
 
+def test_meta_sources_never_give_a_collected_source_the_import_time(tmp_path: Path) -> None:
+    """Reviewer, #120: each source's cutoff is its own latest capture, in a whole mixed file too;
+    a source without offers is capped at the collected cutoff."""
+    write(tmp_path, load(late_import_doc()))
+    sources = get(make_client(tmp_path)[0], "/meta")["data"]["sources"]
+    cutoffs = {s["source"]: s["cutoff"] for s in sources}
+    assert cutoffs == {
+        "shop_a": COLLECTED_AT,
+        "shop_c": COLLECTED_AT,
+        "shop_d": COLLECTED_AT,  # no offers: the file's cutoff, capped
+        ULTA: IMPORTED_AT,  # the import keeps its own
+    }
+
+
 def test_the_as_of_cap_is_the_cutoff_day_in_the_market_time_zone(tmp_path: Path) -> None:
     """Reviewer, #135: 21:30Z on 29 Sep is 30 Sep 01:30 in Dubai, the day meta.dates count in."""
     d = late_import_doc()
@@ -285,3 +317,17 @@ def test_pair_and_history_endpoints_owe_ulta_caveats_only_when_ulta_is_in_them(
         get(client, f"/assortment-gaps?missing_at={ULTA}&present_at=shop_a")
     )
     assert "was_price_unverified" in codes(get(client, "/products/p03/history"))
+
+
+def test_a_query_naming_retailers_in_two_fields_involves_all_of_them() -> None:
+    """AIE, #137: a ``retailers`` pair must not hide a ``retailer`` list (the union is named)."""
+
+    class Both(ContractModel):
+        retailers: str | None = None
+        retailer: tuple[str, ...] = ()
+
+    assert _named(Both(retailers="shop_a,shop_c", retailer=(ULTA,))) == {"shop_a", "shop_c", ULTA}
+    assert _named(Both(retailers="shop_a,shop_c")) == {"shop_a", "shop_c"}
+    assert _named(Both(retailer=(ULTA,))) == {ULTA}
+    assert _named(Both()) == frozenset()
+    assert _named(ProductQuery(retailer=("shop_a", ULTA))) == {"shop_a", ULTA}

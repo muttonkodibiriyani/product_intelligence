@@ -13,6 +13,13 @@ runner for each product page load::
      "html": rendered DOM,                                   # primary source
      "captures": [{"url": str, "status": int, "body": str}]} # optional page-loaded JSON
 
+**Never loaded into prod ``ulta_ae``.** The owner's ``ulta_ae`` rows are protected: no PI action
+may update, delete or degrade them. ``guard`` runs before the first write and refuses (exit 2,
+nothing written) a prod database (``PROD_DATABASES``) and any database where ``ulta_ae`` holds a
+row this loader did not write: a crawl run, context, listing, content row, offer or ``ulta_ae:``
+brand alias without this loader's provenance (``CONNECTOR_VERSION``, ``CONTEXT_NOTE``,
+``labels.loader``).
+
 Primary source is the rendered DOM + JSON-LD (``pi_connector_ulta.dom``). Page-loaded catalog
 JSON is read only when the flag is on, only from captures whose URL robots.txt allows (the same
 ``RobotsTagger`` rules as the fetch; ``Disallow: /*?`` refuses ``GET /graphql?query=...``, and
@@ -50,10 +57,78 @@ SOURCE = "ulta_ae"
 CONNECTOR_VERSION = "ulta_snapshot/0.1"
 TZ = "Asia/Dubai"
 RETENTION = timedelta(days=90)
-FETCH_METHOD = "residential_proxy"  # ADR-0006 Amendment 2: rung 5, ulta.ae only
+FETCH_METHOD = "residential_proxy"  # rung 5, ulta.ae only
 RUNG = 5
 LANGS = ("en", "ar")
 HOSTS = frozenset({"ulta.ae", "www.ulta.ae"})
+CONTEXT_NOTE = "one snapshot, no recurring crawl"
+#: The live pi_db database name (docs/runbooks/db-backup-restore.md). Never loaded.
+PROD_DATABASES = frozenset({"pi"})
+#: offline_import.ulta_catalogue's writer lock (pg_advisory_xact_lock(hashtext(...))). guard()
+#: takes it at session level and holds it until the connection closes: the loader commits per
+#: part, so a transaction lock would be released between the check and later writes.
+WRITER_LOCK = "ulta-catalogue-import"
+
+#: Rows under ulta_ae (or ulta_ae: brand aliases) that this loader did not write. Read only.
+FOREIGN_SQL = """
+WITH s AS (SELECT id FROM source WHERE name = %(source)s),
+ours AS (
+    SELECT r.id FROM crawl_run r JOIN source_context c ON c.id = r.source_context_id
+    WHERE c.source_id IN (SELECT id FROM s) AND r.connector_version = %(version)s
+)
+SELECT
+  (SELECT count(*) FROM source_context c WHERE c.source_id IN (SELECT id FROM s)
+     AND c.refresh_policy->>'note' IS DISTINCT FROM %(note)s),
+  (SELECT count(*) FROM crawl_run r JOIN source_context c ON c.id = r.source_context_id
+     WHERE c.source_id IN (SELECT id FROM s) AND r.id NOT IN (SELECT id FROM ours)),
+  (SELECT count(*) FROM source_listing sl WHERE sl.source_id IN (SELECT id FROM s)
+     AND NOT EXISTS (SELECT 1 FROM offer_observation o WHERE o.source_listing_id = sl.id
+                     AND o.crawl_run_id IN (SELECT id FROM ours))),
+  (SELECT count(*) FROM offer_observation o JOIN source_listing sl ON sl.id = o.source_listing_id
+     WHERE sl.source_id IN (SELECT id FROM s)
+     AND NOT EXISTS (SELECT 1 FROM ours WHERE ours.id = o.crawl_run_id)),
+  (SELECT count(*) FROM listing_content lc JOIN source_listing sl ON sl.id = lc.listing_id
+     WHERE sl.source_id IN (SELECT id FROM s)
+     AND lc.labels->>'loader' IS DISTINCT FROM %(version)s),
+  (SELECT count(*) FROM brand b, unnest(b.aliases) a WHERE a LIKE %(source)s || ':%%'
+     AND NOT EXISTS (
+       SELECT 1 FROM listing_content lc JOIN source_listing sl ON sl.id = lc.listing_id
+       WHERE sl.source_id IN (SELECT id FROM s) AND lc.labels->>'loader' = %(version)s
+       AND %(source)s || ':' || (lc.labels->>'brand_key') = a))
+"""
+FOREIGN_KINDS = (
+    "source_context",
+    "crawl_run",
+    "source_listing",
+    "offer_observation",
+    "listing_content",
+    "brand_alias",
+)
+
+
+class Refused(RuntimeError):  # noqa: N818
+    """The loader would touch prod or ulta_ae rows it did not write; nothing was written."""
+
+    def __init__(self, message: str, foreign: dict[str, int] | None = None) -> None:
+        super().__init__(message)
+        self.foreign = foreign or {}
+
+
+def guard(conn: psycopg.Connection[Any]) -> None:
+    """Hard pre-write guard. Takes the writer lock, then reads only; raises ``Refused`` before any
+    write. Fails closed: it never waits for the lock."""
+    name = conn.info.dbname
+    if name in PROD_DATABASES:
+        raise Refused(f"refused: {name!r} is the prod database; never loaded into prod ulta_ae")
+    locked = conn.execute("SELECT pg_try_advisory_lock(hashtext(%s))", (WRITER_LOCK,)).fetchone()
+    if not (locked and locked[0]):
+        raise Refused(f"refused: another {SOURCE} writer holds the {WRITER_LOCK!r} lock")
+    row = conn.execute(
+        FOREIGN_SQL, {"source": SOURCE, "version": CONNECTOR_VERSION, "note": CONTEXT_NOTE}
+    ).fetchone()
+    foreign = {k: int(n) for k, n in zip(FOREIGN_KINDS, row or (), strict=True) if n}
+    if foreign:
+        raise Refused(f"refused: {SOURCE} holds rows this loader did not write: {foreign}", foreign)
 
 
 def _sha(*parts: str) -> str:
@@ -138,12 +213,16 @@ class Loader:
         self.c = conn
         self.root = root
         self.uri = uri.rstrip("/")
-        self.ledger = root.parent / f".loaded-{root.name}.json"  # snapshot dir may be read-only
+        progress = root / "progress.json"
+        self.progress = json.loads(progress.read_text()) if progress.exists() else {}
+        #: Keyed by the snapshot id when there is one, so later cumulative uploads of the same
+        #: snapshot (copied beside this one) skip the parts already loaded.
+        key = self.progress.get("snapshot_id") or root.name
+        guard(conn)  # before any write, including the ledger's source/context/run rows
+        self.ledger = root.parent / f".loaded-{key}.json"  # snapshot dir may be read-only
         self.done: set[str] = (
             set(json.loads(self.ledger.read_text())) if self.ledger.exists() else set()
         )
-        progress = root / "progress.json"
-        self.progress = json.loads(progress.read_text()) if progress.exists() else {}
         self.source_id = self._source()
         self.ctx = {lang: self._context(lang) for lang in LANGS}
         self.run_id = {lang: self._run(lang) for lang in LANGS}
@@ -184,11 +263,11 @@ class Loader:
                 locale,
                 TZ,
                 RUNG,
-                RUNG,  # ADR-0006 Amendment 2: rung 5, ulta.ae only
+                RUNG,  # rung 5, ulta.ae only
                 Jsonb(
                     {
                         "mode": "on_demand",
-                        "note": "ADR-0006 Amd 2: one snapshot, no recurring crawl",
+                        "note": CONTEXT_NOTE,
                     }
                 ),
             ),
@@ -319,6 +398,7 @@ class Loader:
             "member_price": str(v.member_price.amount) if v.member_price.amount else None,
             "free_gift": v.free_gift,
             "evidence_uri": uri,
+            "loader": CONNECTOR_VERSION,  # provenance read by guard()
         }
         content = json.dumps(labels, sort_keys=True, ensure_ascii=False) + (p.description or "")
         en = p.locale == "en"
@@ -425,7 +505,11 @@ def main() -> int:
     root, uri = Path(sys.argv[1]), sys.argv[2]
     url = os.environ["PI_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(url) as conn:
-        loader = Loader(conn, root, uri)
+        try:
+            loader = Loader(conn, root, uri)
+        except Refused as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         conn.commit()
         print(json.dumps(loader.load()))
         if "--finish" in sys.argv:
