@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -9,16 +10,25 @@ import { Loading, Skeleton } from './skeleton';
 
 afterEach(cleanup);
 
-const intl = (ui: ReactNode, locale: 'en' | 'ar' = 'en') =>
+/** PageHeader carries the as-of line, which asks /meta: it needs the query and message providers. */
+const wrap = (ui: ReactNode, locale: 'en' | 'ar' = 'en') =>
   render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en}>
-      {ui}
-    </NextIntlClientProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NextIntlClientProvider
+        locale={locale}
+        messages={locale === 'ar' ? ar : en}
+        onError={(e) => {
+          throw e;
+        }}
+      >
+        {ui}
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
   );
 
 describe('PageHeader', () => {
   it('names the page with one h1 carrying the id, then its intro, as-of line and tools', () => {
-    intl(
+    wrap(
       <PageHeader
         id="p-title"
         title="Promotions"
@@ -34,25 +44,27 @@ describe('PageHeader', () => {
     expect(screen.getByRole('button', { name: 'Reset' })).toBeTruthy();
   });
 
-  it('draws no intro box without an intro', () => {
-    const { container } = intl(<PageHeader title="Compare" />);
-    expect(container.querySelector('.max-w-prose')).toBeNull();
-  });
-
-  it('links to About the data on the Dataset page, in the page’s language', () => {
-    intl(<PageHeader title="Compare" />);
-    const link = screen.getByRole('link', { name: 'About the data' });
+  it('links to About the data on the Dataset page from every page, in the page’s language; no date before /meta answers', () => {
+    wrap(<PageHeader title="Compare" />);
     // next/link drops the trailing slash outside the app's router config; the static build keeps it.
-    expect(link.getAttribute('href')).toMatch(/^\/en\/dataset\/?#about-data$/);
+    expect(screen.getByRole('link', { name: 'About the data' }).getAttribute('href')).toMatch(
+      /^\/en\/dataset\/?#about-data$/,
+    );
+    expect(screen.queryByText(/Data as of/)).toBeNull();
     cleanup();
-    intl(<PageHeader title="المقارنة" />, 'ar');
+    wrap(<PageHeader title="المقارنة" />, 'ar');
     expect(screen.getByRole('link', { name: 'عن البيانات' }).getAttribute('href')).toMatch(
       /^\/ar\/dataset\/?#about-data$/,
     );
   });
 
+  it('draws no intro box without an intro', () => {
+    const { container } = wrap(<PageHeader title="Compare" />);
+    expect(container.querySelector('.max-w-prose')).toBeNull();
+  });
+
   it('never draws a note box of its own', () => {
-    intl(<PageHeader title="Compare" intro="x" asOf="y" />);
+    wrap(<PageHeader title="Compare" intro="x" asOf="y" />);
     expect(screen.queryByRole('note')).toBeNull();
   });
 });

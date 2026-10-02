@@ -8,7 +8,11 @@ import { Explorer } from './explorer';
 
 const api = vi.hoisted(() => ({ page: vi.fn(), get: vi.fn() }));
 vi.mock('../auth-provider', () => ({ useAuth: () => ({ api }) }));
-vi.mock('../use-meta', () => ({ useRetailerName: () => (id: string) => id }));
+// The page top bar's as-of line asks /meta too; nothing has answered here.
+vi.mock('../use-meta', () => ({
+  useRetailerName: () => (id: string) => id,
+  useMeta: () => ({ data: undefined }),
+}));
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(''),
   useRouter: () => ({ push: vi.fn() }),
@@ -28,7 +32,14 @@ const empty: Schemas['ProductPage'] = {
 function serve(body: Envelope<Schemas['ProductPage']>) {
   api.page.mockResolvedValue({ body, restarted: false });
   return render(
-    <NextIntlClientProvider locale="en" messages={en} timeZone="UTC" onError={() => {}}>
+    <NextIntlClientProvider
+      locale="en"
+      messages={en}
+      timeZone="UTC"
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <Explorer />
       </QueryClientProvider>

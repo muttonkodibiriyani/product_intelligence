@@ -18,6 +18,8 @@ export function useSummaries(ids: readonly string[]): {
   rows: RetailerSummary[];
   /** Envelopes without data (withheld or thin), one per distinct reason, after loading. */
   empty: Envelope<Summary>[];
+  /** The same envelopes keyed by retailer: the one the API answered for, else the one asked for. */
+  missing: { retailer: string; env: Envelope<Summary> }[];
   loading: boolean;
   error: { error: unknown; retry: () => void } | null;
 } {
@@ -33,6 +35,7 @@ export function useSummaries(ids: readonly string[]): {
   {
     const rows: RetailerSummary[] = [];
     const empty: Envelope<Summary>[] = [];
+    const missing: { retailer: string; env: Envelope<Summary> }[] = [];
     let error: { error: unknown; retry: () => void } | null = null;
     qs.forEach((q, i) => {
       const env = q.data;
@@ -42,6 +45,7 @@ export function useSummaries(ids: readonly string[]): {
       }
       if (!env.data || env.status !== 'ok') {
         if (!empty.some((e) => e.reason === env.reason)) empty.push(env);
+        missing.push({ retailer: env.data?.retailer || ids[i]!, env });
         return;
       }
       const retailer = env.data.retailer;
@@ -54,6 +58,6 @@ export function useSummaries(ids: readonly string[]): {
       });
     });
     const loading = ids.length > 0 && qs.some((q) => !q.data && !q.isError);
-    return { rows, empty, loading, error };
+    return { rows, empty, missing, loading, error };
   }
 }

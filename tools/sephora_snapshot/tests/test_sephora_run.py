@@ -76,8 +76,14 @@ def test_price_plan_rereads_en_pages_then_only_the_listed_stock(
 class _Resp:
     def __init__(self, status: int, text: str) -> None:
         self.status_code = status
-        self.text = text
-        self.content = text.encode()
+        self.headers = {"content-type": "text/html"}
+        self._body = text.encode()
+
+    def iter_bytes(self) -> Any:
+        yield self._body
+
+    def close(self) -> None:
+        pass
 
 
 def test_challenge_stops_the_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -86,7 +92,9 @@ def test_challenge_stops_the_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("CUTOFF", "2099-01-01T00:00:00+00:00")
     j = run.Job()
     monkeypatch.setattr(j, "pace", lambda: None)
-    monkeypatch.setattr(j.client, "get", lambda *a, **k: _Resp(403, "/cdn-cgi/challenge-platform/"))
+    monkeypatch.setattr(
+        j.client, "send", lambda *a, **k: _Resp(403, "/cdn-cgi/challenge-platform/")
+    )
     with pytest.raises(run.Stop, match="challenge"):
         j.get("https://www.sephora.me/ae-en/p/x/P1", "en-AE", "html")
     assert j.counts == {"block_challenge": 1}
@@ -97,7 +105,7 @@ def test_cutoff_stops_before_any_request(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setenv("PREFIX", "out")
     monkeypatch.setenv("CUTOFF", "2020-01-01T00:00:00+00:00")
     j = run.Job()
-    monkeypatch.setattr(j.client, "get", lambda *a, **k: pytest.fail("no request after cutoff"))
+    monkeypatch.setattr(j.client, "send", lambda *a, **k: pytest.fail("no request after cutoff"))
     with pytest.raises(run.Stop, match="cutoff"):
         j.get("https://www.sephora.me/", "en-AE", "html")
 

@@ -16,7 +16,13 @@ const lines: PriceLine[] = [
 
 function card(over: Partial<Parameters<typeof ProductCard>[0]> = {}, locale: 'en' | 'ar' = 'en') {
   return render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <ProductCard
         href="/en/product/?id=p1"
         image={null}
@@ -120,7 +126,13 @@ describe('useVerdictChip', () => {
 
   it('words every verdict with the shop name, in tone', () => {
     render(
-      <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+      <NextIntlClientProvider
+        locale="en"
+        messages={en}
+        onError={(e) => {
+          throw e;
+        }}
+      >
         <Chips />
       </NextIntlClientProvider>,
     );

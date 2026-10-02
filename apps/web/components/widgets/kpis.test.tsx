@@ -18,7 +18,13 @@ const pair = {
 
 function show(data: Schemas['Comparison']) {
   render(
-    <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale="en"
+      messages={en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <PairKpis data={data} pair={pair} locale="en" href="/compare" />
     </NextIntlClientProvider>,
   );
@@ -39,7 +45,13 @@ const retailer = (id: string, name: string, over: Partial<Summary> = {}): Retail
 
 function showKpis(rows: RetailerSummary[]) {
   const { container } = render(
-    <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale="en"
+      messages={en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <KpiWidget rows={rows} locale="en" />
     </NextIntlClientProvider>,
   );

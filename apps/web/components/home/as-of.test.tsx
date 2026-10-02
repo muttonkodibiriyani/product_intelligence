@@ -18,7 +18,13 @@ const row = (retailer: string, name: string, asOf: string, over: Partial<Summary
 
 function text(rows: RetailerSummary[], locale: 'en' | 'ar' = 'en') {
   const { container } = render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <AsOf rows={rows} />
     </NextIntlClientProvider>,
   );
