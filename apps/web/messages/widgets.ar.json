@@ -1,12 +1,8 @@
 {
-  "drill": "اختر عمودًا أو خانة أو نقطة لفتح المنتجات التي خلفها.",
   "products": "{n, plural, zero {لا منتجات} one {منتج واحد} two {منتجان} few {{n, number, latn} منتجات} many {{n, number, latn} منتجًا} other {{n, number, latn} منتج}}",
   "kpi": {
     "products": "المنتجات المتتبَّعة",
-    "brands": "العلامات التجارية",
-    "categories": "الفئات",
     "median": "السعر الوسيط",
-    "mean": "المتوسط {price}",
     "promo": "ضمن العروض",
     "promoOf": "من المنتجات",
     "freshness": "حداثة البيانات",
@@ -20,16 +16,28 @@
     "snapshot": "لقطة مستوردة",
     "imported": "استُوردت في {date}، وتاريخ جمعها غير معروف",
     "productsParents": "منتجات (لقطة، قد تشمل قوائم رئيسية)",
-    "retailers": "المتاجر",
     "pairs": "أزواج قابلة للمقارنة",
-    "pairsOf": "مطابَقة بين {base} و{other}",
     "index": "مؤشر الأسعار",
-    "indexOf": "{other} مقابل {base}، الفجوة الوسيطة على {n} زوج",
     "cheaper": "الأرخص لدى",
     "same": "{n} بالسعر نفسه",
-    "withheld": "غير مُقاس",
-    "only": "{retailer} فقط",
-    "promoOnly": "من منتجات {retailer}"
+    "bothShops": "الكتالوجان معًا",
+    "moreProducts": "{shop} يعرض {n} منتجًا أكثر",
+    "sameProducts": "المتجران يعرضان العدد نفسه من المنتجات",
+    "byCategory": "السعر الوسيط حسب الفئة",
+    "nCategories": "{n, plural, zero {لا فئات} one {فئة واحدة} two {فئتان} few {{n, number, latn} فئات} many {{n, number, latn} فئة} other {{n, number, latn} فئة}}",
+    "catCheaperAt": "من {n, number, latn} فئة أرخص لدى {shop}",
+    "catEach": "من {n, number, latn} فئة أرخص لدى كل متجر",
+    "catSame": "من {n, number, latn} فئة بالسعر نفسه",
+    "catSameRow": "متساوية",
+    "lowestAt": "الأدنى، لدى {shop}",
+    "lowerMedian": "{shop} أدنى بمقدار {amount}",
+    "sameMedian": "الوسيطان متساويان",
+    "promoOfShop": "من منتجات {shop}",
+    "deepestCut": "أعمق تخفيض {pct}، لدى {shop}",
+    "notAvailable": "تخفيضات {shop}: غير متاحة بعد.",
+    "collected": "جُمعت بيانات {shop} في {date}",
+    "pairsOf": "مطابَقة بين {base} و{other}",
+    "indexOf": "{other} مقابل {base}، الفجوة الوسيطة على {n} زوج"
   },
   "ladder": {
     "title": "سلّم الأسعار حسب الفئة",
@@ -84,7 +92,8 @@
     "off": "التخفيض",
     "all": "كل العروض",
     "noImage": "لا توجد صورة",
-    "credit": "صور المنتجات: <link>{retailer}</link>، من {host}."
+    "credit": "صور المنتجات: <link>{retailer}</link>، من {host}.",
+    "titleAt": "أعمق التخفيضات لدى {shop}"
   },
   "share": {
     "title": "تركّز العلامات التجارية",
@@ -150,7 +159,6 @@
     "retailer": "المتجر",
     "groupBy": "التجميع حسب"
   },
-  "retailerLabel": "{title} · {retailer}",
   "cross": {
     "title": "من الأرخص حسب الفئة والعلامة التجارية",
     "question": "على كل زوج مطابَق في فئة وعلامة تجارية، كم مرة يكون كل متجر أرخص. اختر خلية لفتح تلك الأزواج.",
@@ -209,5 +217,41 @@
       "concealer": "الكونسيلر",
       "other": "أخرى"
     }
+  },
+  "categories": {
+    "title": "أين يكون كل متجر أرخص",
+    "question": "السعر الوسيط لكل فئة، {other} مقابل {base}. الكتالوج الكامل، لا المنتجات المطابَقة فقط.",
+    "open": "افتح الأسعار",
+    "category": "الفئة",
+    "products": "المنتجات",
+    "medianOf": "وسيط {shop}",
+    "gap": "الفجوة",
+    "same": "متساويان",
+    "tooFew": "عدد قليل جدًا (n = {n, number, latn})",
+    "notAvailable": "مقارنة الفئات غير متاحة بعد.",
+    "inCurrency": "الأسعار بـ{currency}.",
+    "note": "الأشرطة هي أعداد المنتجات في الفئة. الفجوة = وسيط {other} − وسيط {base}، كنسبة من وسيط {base}؛ القيمة السالبة تعني أن {other} أرخص.",
+    "minN": "يحتاج كل طرف إلى {n, number, latn} منتجًا مسعّرًا على الأقل ليكون له وسيط.",
+    "unmapped": "لم تُصنَّف بعد: {n} منتج.",
+    "name": {
+      "fragrance": "العطور",
+      "skincare": "العناية بالبشرة",
+      "eyes": "العيون",
+      "lips": "الشفاه",
+      "body": "الجسم",
+      "cheek": "الخدود",
+      "foundation": "كريم الأساس",
+      "concealer": "الكونسيلر",
+      "other": "أخرى"
+    }
+  },
+  "basket": {
+    "title": "المنتجات المطابَقة وجهًا لوجه",
+    "open": "افتح المقارنة",
+    "basketOf": "سلة {shop}",
+    "cheaperAt": "<b>{n, number, latn}</b> أرخص لدى {shop}",
+    "same": "<b>{n, number, latn}</b> بالسعر نفسه",
+    "scope": "عُدّ {n, number, latn} من {total, number, latn} زوجًا مرشحًا",
+    "tally": "{base} أرخص في {a, number, latn}، السعر نفسه في {e, number, latn}، {other} أرخص في {b, number, latn}"
   }
 }
