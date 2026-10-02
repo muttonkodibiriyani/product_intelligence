@@ -410,8 +410,8 @@ gcloud recaptcha keys create --display-name="pi-web-appcheck" --web \
 
 Add any custom domain the app is served from to `--domains`. Record the printed key id as
 `<RECAPTCHA_SITE_KEY>`. A site key is public by design (it ships in the web page), but it still
-stays out of the repo. It goes into the web build env `NEXT_PUBLIC_RECAPTCHA_SITE` at
-switch-on.
+stays out of the repo. At switch-on it goes into the runtime file
+`infra/web-dist/app/assistant-app-check.json` (10c), never into the build.
 
 Firebase console: *App Check → Apps → the web app → reCAPTCHA Enterprise → paste
 `<RECAPTCHA_SITE_KEY>` → Save*. **Do not press "Enforce"** for Firestore, Storage or
@@ -582,42 +582,52 @@ main-deploy record). Then:
 git log --oneline <LIVE_WEB_SHA>..<CHAT_SHA> -- apps/web infra/firebase.json
 ```
 
-Empty output: only the panel flags differ from live; go on. Otherwise those commits ship too,
+Empty output: only the switch-on export (`out-assistant`) differs from live; go on. Otherwise those commits ship too,
 without the main deploy's smokes: **stop** and send the list to the Coordinator. Go on only
 after the Coordinator relays that the owner accepts that list (or after a main deploy from
 `<CHAT_SHA>`).
 
-3. **Build with the two public flags**, exactly as in `apps/web/README.md` (the reCAPTCHA *site*
-key is public, not a secret). `npm run build` runs the bundle check and `csp.mjs --check`:
+3. **Build**, exactly as in `apps/web/README.md`, with **no** `NEXT_PUBLIC_*` variables set.
+`npm run build` makes two exports, `out/` (assistant off) and `out-assistant/` (assistant on,
+the build CI checks), and runs the bundle check on each and `csp.mjs --check` on both:
 
 ```sh
 node --version   # v22.x
+env | grep NEXT_PUBLIC_   # must print nothing
 apps/web/build.sh verify
-(cd apps/web && npm ci && NEXT_PUBLIC_ASSISTANT_ENABLED=true \
-  NEXT_PUBLIC_RECAPTCHA_SITE=<RECAPTCHA_SITE_KEY> npm run build)
+(cd apps/web && npm ci && npm run build)
 ```
 
 4. **Gates. Each must pass, or stop and report:**
 
 ```sh
-(cd apps/web && node scripts/check-bundle.mjs out && node scripts/csp.mjs out --check)
-# must end "... inline script hashes (... inline scripts) match"
+(cd apps/web && node scripts/check-bundle.mjs out-assistant && node scripts/csp.mjs --check out out-assistant)
+# must end "... inline script hashes (... inline scripts in out, out-assistant) match"
 grep -o 'img-src[^;]*' infra/firebase.json
 # must list every host in <EVIDENCE_HOSTS> (10a)
 grep -o 'connect-src[^;]*' infra/firebase.json | tr ' ' '\n' | grep -E 'firebaseappcheck|cloudfunctions'
 # must print content-firebaseappcheck.googleapis.com and the me-central1 cloudfunctions.net host
+grep -oE '(script|frame)-src[^;]*' infra/firebase.json | grep -c 'https://www.google.com/recaptcha/'
+# must print 2 (script-src and frame-src)
 ```
 
 Do not run `csp:write` on the deploy checkout; the hashes are committed in the PR.
 
 5. **Deploy and confirm the new release:**
 
+Copy **`out-assistant`** (not `out`) and write the site key file. The key is public (it ships to
+every browser); the file holds nothing else:
+
 ```sh
-rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist && cp -r apps/web/out infra/web-dist/app
+rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist && cp -r apps/web/out-assistant infra/web-dist/app
+printf '{"recaptchaSiteKey": "%s"}\n' '<RECAPTCHA_SITE_KEY>' > infra/web-dist/app/assistant-app-check.json
+grep -cE '^\{"recaptchaSiteKey": "[A-Za-z0-9_-]{20,100}"\}$' infra/web-dist/app/assistant-app-check.json   # must print 1
 (cd infra && npx -y firebase-tools@14.27.0 deploy --only hosting --project productintelligence-beeb3)
 ```
 
-Re-run step 1: it must print a version other than `<LIVE_VERSION>`.
+Re-run step 1: it must print a version other than `<LIVE_VERSION>`. Then
+`curl -s https://productintelligence-beeb3.web.app/app/assistant-app-check.json` returns that
+one line. A missing or malformed file only makes every question fail with the generic error.
 
 Then re-run the §10.1 checklist. Everything below is the version pre-check, the flip and the
 smoke.
@@ -669,7 +679,8 @@ If any check fails, turn it off (10f, step 1) and report.
 1. Instant off: set `assistant_config/current.enabled` to `false` in the console. The meter
    re-reads it before every model call, so spend stops at once.
 2. Remove the panel: in the *Hosting* console, roll back to `<LIVE_VERSION>` (10c step 1). Or
-   rebuild the web exactly as in 10c without the two `NEXT_PUBLIC_*` flags and redeploy Hosting.
+   redeploy Hosting as in 10c step 5 with `apps/web/out` instead of `out-assistant` and without
+   the site key file.
 3. Remove the callable:
 
 ```sh
