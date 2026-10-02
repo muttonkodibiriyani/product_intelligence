@@ -106,4 +106,16 @@ describe('LaunchesView', () => {
     await screen.findByText('Product p14');
     expect(ctx.asked).toEqual([{ since: '2026-09-01', limit: 100 }]);
   });
+
+  it('anchors the window on the last collection day even when the cutoff falls late in the UTC day', async () => {
+    // Golden cutoff is 00:00Z, so its UTC date equals the last collection day; a 22:30Z cutoff
+    // would not, and the view must still ask from the day after 30 days before the last entry.
+    const late: Envelope<Schemas['MetaView']> = {
+      ...meta,
+      data: { ...meta.data!, cutoff: '2026-09-30T22:30:00Z', dates: [...meta.data!.dates, '2026-10-01'] },
+    };
+    show(launches, 'en', late);
+    await screen.findByText('Product p14');
+    expect(ctx.asked).toEqual([{ since: '2026-09-02', limit: 100 }]);
+  });
 });
