@@ -101,6 +101,12 @@ def test_writes_outside_the_sephora_prefix_are_refused(path: str) -> None:
     assert publish_dataset.outside_prefixes([path]) == [path]
 
 
+def test_a_trailing_newline_does_not_pass_the_prefix_check() -> None:
+    paths = ["datasets/ae/sephora_me/latest.json\n", "datasets/uae/latest.json\n"]
+    assert publish_dataset.outside_prefixes(paths[:1]) == paths[:1]
+    assert publish_dataset.outside_prefixes(paths[1:], v1=True) == paths[1:]
+
+
 # ------------------------------------------------------------------ the live-source guard
 def test_sephora_only_file_against_the_live_combined_file_is_held() -> None:
     live = catalog(sephora_me=9529, ulta_ae=7275)
@@ -141,13 +147,23 @@ def test_another_sources_products_must_be_byte_identical() -> None:
 
 
 def test_drop_source_is_the_only_override() -> None:
-    live = catalog(sephora_me=9529, ulta_ae=7275)
+    live = catalog(sephora_me=9529, other_ae=7275)
     assert (
-        publish_dataset.source_guard(live, catalog(sephora_me=9529), "sephora_me", ("ulta_ae",))
+        publish_dataset.source_guard(live, catalog(sephora_me=9529), "sephora_me", ("other_ae",))
         == []
     )
-    held = publish_dataset.source_guard(live, catalog(sephora_me=9000), "sephora_me", ("ulta_ae",))
+    held = publish_dataset.source_guard(live, catalog(sephora_me=9000), "sephora_me", ("other_ae",))
     assert held == ["HOLD, sephora_me drops from 9529 to 9000 offers"]
+
+
+def test_ulta_is_never_dropped_even_when_asked() -> None:
+    live = catalog(sephora_me=9529, ulta_ae=7275)
+    held = publish_dataset.source_guard(live, catalog(sephora_me=9529), "sephora_me", ("ulta_ae",))
+    assert held == ["HOLD, live source ulta_ae (7275 offers) is missing"]
+    new = publish_dataset.v1_by_source(v1_doc(3))
+    assert publish_dataset.guard(v1_doc(3, ulta=True), new, "sephora_me", ("ulta_ae",)) == [
+        "HOLD, live v1 carries ulta_ae data (3 offers): not PI's to replace"
+    ]
 
 
 class _Blob:
@@ -196,8 +212,23 @@ def test_dry_run_against_the_live_combined_file_holds(
     out = capsys.readouterr()
     assert "HOLD, live source ulta_ae (1 offers) is missing" in out.err
     assert "source guard: HOLD" in out.out
-    assert run(monkeypatch, *args, "--drop-source", "ulta_ae") == 0
-    assert "owner approval required" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as refused:
+        run(monkeypatch, *args, "--drop-source", "ulta_ae")
+    assert refused.value.code == 2
+    assert "refusing: --drop-source ulta_ae: never dropped (owner hard rule)" in (
+        capsys.readouterr().err
+    )
+
+
+def test_drop_source_ulta_is_refused_before_anything_is_read(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # not --dry-run and no such file: the refusal comes first, before the file or Firebase
+    argv = ("missing.json", "--drop-source", "other_ae", "--drop-source", "ulta_ae")
+    with pytest.raises(SystemExit) as refused:
+        run(monkeypatch, *argv)
+    assert refused.value.code == 2
+    assert "refusing: --drop-source ulta_ae" in capsys.readouterr().err
 
 
 def test_v1_dry_run_publishes_sephora_to_datasets_uae_only(

@@ -27,7 +27,8 @@ the original cutoff copy is never replaced.
 - Before uploading, the live latest.json at the target is read and the publish is HELD if any
   live source is missing from the new file or has fewer offers, or if any source other than the
   one being published has different products. The only override is ``--drop-source <id>``, which
-  needs the owner's explicit approval for that publish.
+  needs the owner's explicit approval for that publish. It is refused outright for ulta_ae: the
+  owner's Ulta rows are never dropped (owner hard rule).
 - v1 (the legacy root dashboard's input): Sephora only, to datasets/uae/ (latest.json plus the
   create-only cutoff snapshot), meta in demo_meta/current. Offers are keyed by retailer id; the
   ids map to sources through meta.retailers, and a null offer (a blocked retailer's placeholder)
@@ -58,6 +59,7 @@ SCHEMA = "pi.dataset/v1"
 SCHEMA_V2 = "pi.dataset/v2"
 # The only sources PI publishes; any other source's data is protected (owner, 2026-10-01).
 PUBLISH_SOURCES = ("sephora_me",)
+PROTECTED_SOURCES = ("ulta_ae",)  # owner hard rule: never dropped, not even with --drop-source
 V1_PREFIX = "datasets/uae"
 V1_SOURCE = "sephora_me"
 V1_META_DOC = "current"  # demo_meta/current: the legacy dashboard and smoke_demo read it
@@ -158,11 +160,11 @@ def outside_prefixes(
 ) -> list[str]:
     """Paths outside datasets/<country>/<allowed source>/ (v1: datasets/uae/): never written."""
     pattern = re.compile(
-        rf"^{re.escape(V1_PREFIX)}/[^/]+\.json$"
+        rf"{re.escape(V1_PREFIX)}/[^/]+\.json"
         if v1
-        else rf"^datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/[^/]+\.json$"
+        else rf"datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/[^/]+\.json"
     )
-    return [p for p in paths if not pattern.match(p)]
+    return [p for p in paths if not pattern.fullmatch(p)]  # fullmatch: no trailing newline
 
 
 def v1_by_source(doc: dict[str, Any]) -> dict[str, Any]:
@@ -198,6 +200,7 @@ def guard(
     live: dict[str, Any] | None, new: dict[str, Any], publishing: str, drop: tuple[str, ...] = ()
 ) -> list[str]:
     """source_guard for either schema; a live v1 with another source's data is never replaced."""
+    drop = unprotected(drop)
     if live is None or live.get("schema") == SCHEMA_V2:
         return source_guard(live, new, publishing, drop)
     live = v1_by_source(live)
@@ -209,6 +212,11 @@ def guard(
     return foreign or source_guard(live, new, publishing, drop)
 
 
+def unprotected(drop: tuple[str, ...]) -> tuple[str, ...]:
+    """``drop`` without the protected sources: the guard never waives them (main() refuses)."""
+    return tuple(source for source in drop if source not in PROTECTED_SOURCES)
+
+
 def source_guard(
     live: dict[str, Any] | None,
     new: dict[str, Any],
@@ -216,6 +224,7 @@ def source_guard(
     drop: tuple[str, ...] = (),
 ) -> list[str]:
     """HOLD reasons for replacing ``live`` with ``new``; empty when nothing live is lost."""
+    drop = unprotected(drop)
     if live is None:
         return []
     live_counts, new_counts = offer_counts(live), offer_counts(new)
@@ -426,9 +435,13 @@ def main() -> int:
         default=[],
         metavar="ID",
         help="let this live source be missing, smaller or changed (repeatable, one ID each). "
-        "OWNER APPROVAL REQUIRED",
+        "OWNER APPROVAL REQUIRED; refused for ulta_ae",
     )
     args = parser.parse_args()
+    if protected := sorted(set(args.drop_source) & set(PROTECTED_SOURCES)):
+        parser.error(
+            f"refusing: --drop-source {', '.join(protected)}: never dropped (owner hard rule)"
+        )
 
     raw = args.path.read_text(encoding="utf-8")
     doc = json.loads(raw)
