@@ -13,10 +13,12 @@ export function AppHeader() {
   const pathname = usePathname();
   const nav = [
     { href: `/${locale}/explore/`, label: t('nav.explore'), match: /^\/(en|ar)\/(explore|product)\// },
+    { href: `/${locale}/prices/`, label: t('nav.prices'), match: /^\/(en|ar)\/prices\// },
     { href: `/${locale}/compare/`, label: t('nav.compare'), match: /^\/(en|ar)\/compare\// },
     { href: `/${locale}/promotions/`, label: t('nav.promotions'), match: /^\/(en|ar)\/promotions\// },
     { href: `/${locale}/launches/`, label: t('nav.launches'), match: /^\/(en|ar)\/launches\// },
     { href: `/${locale}/`, label: t('nav.status'), match: /^\/(en|ar)\/?$/ },
+    { href: `/${locale}/assistant/`, label: t('nav.assistant'), match: /^\/(en|ar)\/assistant\// },
   ];
   return (
     <header className="border-b border-line bg-surface">

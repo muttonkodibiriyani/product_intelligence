@@ -66,6 +66,8 @@ class Settings(PiModel):
     #: Per source (retailer id), the object whose part for that source is served (ADR-0010).
     #: Same-scope sources are composed into one view.
     sources: Mapping[str, str] = Field(default_factory=dict)
+    #: Optional SKU identities and galleries; these never change the price dataset's cutoff.
+    catalogues: tuple[str, ...] = ()
     #: GCS bucket holding ``datasets``; ``None`` reads them from ``local_dir`` (dev and tests).
     bucket: str | None = None
     local_dir: str | None = None
@@ -96,6 +98,13 @@ class Settings(PiModel):
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
         datasets, sources = dataset_entries(env.get("PI_API_DATASETS", ""))
+        catalogues = tuple(
+            d.strip() for d in env.get("PI_API_CATALOGUES", "").split(",") if d.strip()
+        )
+        for path in catalogues:
+            if not _OBJECT.match(path) or ".." in path:
+                msg = f"dataset/catalogue entry {path!r} is not a plain .json object path"
+                raise ValueError(msg)
         bucket = env.get("PI_API_BUCKET") or None
         local_dir = env.get("PI_API_LOCAL_DIR") or None
         if (bucket is None) == (local_dir is None):
@@ -105,6 +114,7 @@ class Settings(PiModel):
             project_id=env.get("PI_API_FIREBASE_PROJECT", ""),
             datasets=datasets,
             sources=sources,
+            catalogues=catalogues,
             bucket=bucket,
             local_dir=local_dir,
             refresh_seconds=int(env.get("PI_API_REFRESH_SECONDS", "60")),

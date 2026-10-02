@@ -20,11 +20,14 @@ import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
 from pi_api.dq import Imported, imported_view
+from pi_api.floor import FloorView, floor_view
+from pi_api.ids import ProductIds, product_ids
 from pi_dataset import DatasetError, DatasetV3, load_any
 from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
 from pi_metrics.view import as_v3
@@ -92,20 +95,34 @@ class Loaded:
     sources: tuple[SourceInfo, ...] = field(default=())
     #: Imported retailers the served ``dataset`` was corrected for at load (``pi_api.dq``).
     imported: tuple[Imported, ...] = ()
+    #: Prices at or below 0.01 the served ``dataset`` withholds (``pi_api.floor``).
+    floor: FloorView = field(default_factory=FloorView)
     #: For latest-date reads: ``dataset`` with each stale source at its own last date.
     latest: DatasetV3 | None = None
     #: The sources whose own last date is before the view's (``pi_dataset.compose.latest``).
     stale: tuple[SourceInfo, ...] = field(default=())
+    #: What the floor withheld in ``latest``: its flags mark latest-date reads (``current``).
+    latest_floor: FloorView | None = None
 
     @property
     def unverified(self) -> frozenset[str]:
         """Context ids whose was-prices are unverified: promotions there are withheld."""
         return frozenset(c for shop in self.imported for c in shop.contexts)
 
+    @cached_property
+    def ids(self) -> ProductIds:
+        """Current and old product ids (``pi_api.ids``), built once per generation at load."""
+        return product_ids(self.dataset)
+
     @property
     def current(self) -> DatasetV3:
         """The dataset for a latest-date read: ``latest`` if a source is stale."""
         return self.dataset if self.latest is None else self.latest
+
+    @property
+    def current_floor(self) -> FloorView:
+        """The floor view of ``current``: a stale source's flags are as of its own last date."""
+        return self.floor if self.latest_floor is None else self.latest_floor
 
     @property
     def markets(self) -> tuple[str, ...]:
@@ -186,7 +203,7 @@ class SnapshotSource:
             if loaded is not None:
                 self._files[path] = loaded
                 if path in self._paths:
-                    self._served[path] = _corrected(loaded)
+                    self._served[path] = _with_ids(_corrected(loaded))
                 changed = True
         if not changed:
             return
@@ -230,7 +247,10 @@ class SnapshotSource:
                 part = Loaded(path, only(file.dataset, sources), file.generation)
                 label = ",".join(f"{s}={path}" for s in sources)
                 by_scope.setdefault(part.scope, []).append((label, part))
-            views = {f"scope:{scope}": _view(parts) for scope, parts in by_scope.items()}
+            views = {
+                f"scope:{scope}": _with_ids(_view(parts), f"scope:{scope}")
+                for scope, parts in by_scope.items()
+            }
         except ValueError as error:  # CompositionError, or the composed view fails validation
             log.error("per-source view not rebuilt: %s", error)
             return None
@@ -307,22 +327,53 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
     )
 
 
+def _with_ids(loaded: Loaded, name: str | None = None) -> Loaded:
+    """``loaded`` with its product ids (``pi_api.ids``) built now, at load, off the request path."""
+    ids = loaded.ids
+    log.info(
+        "dataset %s loaded at generation %s: %d old product ids, %d dropped as "
+        "ambiguous, %d pairs with hashed or ambiguous ids (their members' old ids can't be "
+        "found)",
+        name or loaded.path,
+        loaded.generation,
+        len(ids.aliases),
+        ids.dropped,
+        ids.opaque_pairs,
+    )
+    return loaded
+
+
 def _corrected(loaded: Loaded) -> Loaded:
-    """The view as served: imported retailers corrected (``pi_api.dq``), the rest unchanged.
+    """The view as served: read-time views ``pi_api.floor``, then ``pi_api.dq`` (the file is
+    unchanged).
 
     The latest-date view (``latest``) gets the same correction, so a stale source's read never
     brings back what the view withholds. A collected source's ``cutoff`` is its own latest
     capture (``source_infos``); one without offers would fall back to the file's, so it is capped
     at the served (collected) cutoff and never reads as the import time.
     """
-    dataset, imported = imported_view(loaded.dataset)
+    floored, floor = floor_view(loaded.dataset)
+    dataset, imported = imported_view(floored)
+    current, latest_floor = None, None
+    if loaded.latest is not None:
+        latest, latest_floor = floor_view(loaded.latest)
+        current = imported_view(latest)[0]
     if not imported:
-        return loaded
-    current = None if loaded.latest is None else imported_view(loaded.latest)[0]
+        return replace(
+            loaded, dataset=dataset, floor=floor, latest=current, latest_floor=latest_floor
+        )
     shops = {shop.retailer for shop in imported}
     cutoff = dataset.meta.cutoff
     sources = tuple(
         s if s.source in shops or s.cutoff <= cutoff else s.model_copy(update={"cutoff": cutoff})
         for s in loaded.sources
     )
-    return replace(loaded, dataset=dataset, imported=imported, sources=sources, latest=current)
+    return replace(
+        loaded,
+        dataset=dataset,
+        imported=imported,
+        floor=floor,
+        sources=sources,
+        latest=current,
+        latest_floor=latest_floor,
+    )

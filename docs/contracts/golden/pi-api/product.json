@@ -21,6 +21,7 @@
         }
       ],
       "name": "Product p01",
+      "priceFlags": {},
       "prices": {
         "shop_a": {
           "amount": "90.00",
@@ -56,6 +57,7 @@
           "currency": "AED",
           "minor": 9000
         },
+        "priceFlag": null,
         "promoPct": "10.0",
         "rating": {
           "average": "4.20",
@@ -92,6 +94,7 @@
           "currency": "AED",
           "minor": 10000
         },
+        "priceFlag": null,
         "promoPct": null,
         "rating": {
           "average": "4.20",
@@ -134,16 +137,17 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.8.0",
+    "apiVersion": "1.11.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "product",
     "filters": {},
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.3",
+    "metricVersion": "2026-10-01.4",
     "scope": "fixture"
   },
   "reason": null,
+  "resolvedFrom": null,
   "status": "ok"
 }

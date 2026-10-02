@@ -25,7 +25,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, FastAPI, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -34,10 +34,11 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from pi_api import dq, export
+from pi_api import dq, export, floor
 from pi_api.analytics import (
     AssortmentQuery,
     AvailabilityQuery,
+    CategoryCompareQuery,
     CompareQuery,
     CompareRowsQuery,
     IndexQuery,
@@ -62,6 +63,8 @@ from pi_api.catalog import (
     HistoryQuery,
     InvalidQueryError,
     MetaView,
+    OfferView,
+    ProductCard,
     ProductDetail,
     ProductFilters,
     ProductNotFoundError,
@@ -71,14 +74,17 @@ from pi_api.catalog import (
     ScopeRef,
     StaleCursorError,
     admin_product_detail,
-    find,
     history,
     meta_view,
     product_cards,
     product_detail,
     product_page,
 )
+from pi_api.catalogue import CatalogueDetail, CatalogueSource, CatalogueSummary, LoadedCatalogue
+from pi_api.catalogue import detail as catalogue_detail
+from pi_api.catalogue import summary as catalogue_summary
 from pi_api.config import Settings
+from pi_api.ids import resolve
 from pi_api.source import (
     AmbiguousDatasetError,
     DataUnavailableError,
@@ -90,11 +96,21 @@ from pi_api.source import (
     SnapshotSource,
 )
 from pi_api.summary import SummaryCache, SummaryQuery, SummaryView, own_source, summary_view
-from pi_api.wire import API_VERSION, ApiMeta, Envelope, ErrorBody, envelope, error_body
-from pi_dataset import ContractModel, DatasetV3
+from pi_api.wire import (
+    API_VERSION,
+    ApiMeta,
+    Envelope,
+    ErrorBody,
+    ProductEnvelope,
+    ResolvedFrom,
+    envelope,
+    error_body,
+)
+from pi_dataset import ContractModel, DatasetV3, ProductV3
 from pi_metrics import (
     AssortmentGaps,
     Availability,
+    CategoryComparison,
     Caveat,
     CaveatCode,
     Comparison,
@@ -103,8 +119,10 @@ from pi_metrics import (
     PriceIndex,
     Promotions,
     ReviewsSummary,
+    Status,
     assortment_gaps,
     availability,
+    category_compare,
     compare,
     launches,
     price_index,
@@ -402,7 +420,7 @@ def _install_handlers(api: FastAPI) -> None:
 
 def _selected(query: ContractModel, data: object) -> frozenset[str]:
     """The retailer or context ids a request is about; empty means every one."""
-    if isinstance(data, Summary):
+    if isinstance(data, Summary | CatalogueDetail | CatalogueSummary):
         return frozenset({data.retailer})
     if isinstance(data, ProductDetail | AdminProductDetail):
         return frozenset(o.retailer for o in data.offers) or frozenset({""})
@@ -426,12 +444,51 @@ def _named(query: ContractModel) -> frozenset[str]:
     )
 
 
+def flagged[T](loaded: Loaded, data: T) -> T:
+    """``data`` with ``priceFlag`` set on each card or offer whose latest price was withheld
+    as invalid (``pi_api.floor``); unchanged when there is none. Cards and offers are latest-date
+    reads, so a stale source's flags are as of its own last date (``Loaded.current_floor``)."""
+    marks = loaded.current_floor.flagged
+    if not marks:
+        return data
+
+    def card(c: ProductCard) -> ProductCard:
+        flags = {
+            ctx: floor.PriceFlag.INVALID_LOW for ctx in sorted(c.prices) if (c.id, ctx) in marks
+        }
+        return c.model_copy(update={"price_flags": flags}) if flags else c
+
+    def offers[O: OfferView](product: str, views: tuple[O, ...]) -> tuple[O, ...]:
+        return tuple(
+            o.model_copy(update={"price_flag": floor.PriceFlag.INVALID_LOW})
+            if (product, o.context) in marks
+            else o
+            for o in views
+        )
+
+    out: object = data
+    if isinstance(data, ProductPage):
+        out = data.model_copy(update={"items": tuple(card(c) for c in data.items)})
+    elif isinstance(data, ProductDetail | AdminProductDetail):
+        out = data.model_copy(
+            update={"card": card(data.card), "offers": offers(data.card.id, data.offers)}
+        )
+    elif isinstance(data, tuple) and all(isinstance(c, ProductCard) for c in data):
+        out = tuple(card(c) for c in data)
+    return cast("T", out)
+
+
 def respond[T](
     loaded: Loaded, endpoint: str, query: ContractModel, metric: Metric[T]
 ) -> Envelope[T]:
-    owed = dq.caveats(loaded.imported, endpoint, _selected(query, metric.data))
+    selected = _selected(query, metric.data)
+    owed = (
+        *dq.caveats(loaded.imported, endpoint, selected),
+        *floor.caveats(loaded.floor, endpoint, selected),
+    )
     if owed:
         metric = metric.model_copy(update={"caveats": (*metric.caveats, *owed)})
+    metric = metric.model_copy(update={"data": flagged(loaded, metric.data)})
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
@@ -463,6 +520,31 @@ def stale_first[T](loaded: Loaded, metric: Metric[T], ids: Iterable[str | None] 
     return metric.model_copy(update={"caveats": (*stale, *metric.caveats)}) if stale else metric
 
 
+def find(loaded: Loaded, product_id: str) -> tuple[ProductV3, ResolvedFrom | None]:
+    """The product ``product_id`` names now (``pi_api.ids``); an old id says so."""
+    found = resolve(loaded.ids, product_id)
+    if not found:
+        raise ProductNotFoundError(product_id)
+    if found[0].id == product_id:
+        return found[0], None
+    return found[0], ResolvedFrom(requested_id=product_id, current_ids=tuple(p.id for p in found))
+
+
+def resolved[T](answer: Envelope[T], resolved_from: ResolvedFrom | None) -> ProductEnvelope[T]:
+    fields = {name: getattr(answer, name) for name in Envelope.model_fields}
+    return ProductEnvelope[T](**fields, resolved_from=resolved_from)
+
+
+def as_of(loaded: Loaded, product: ProductV3) -> ProductV3:
+    """``product`` in the latest-date view: each stale source at its own last date (ADR-0010).
+
+    ``pi_dataset.compose.latest`` keeps every product, so the id found in the view is there.
+    """
+    if loaded.latest is None:
+        return product
+    return next(p for p in loaded.latest.products if p.id == product.id)
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -472,6 +554,7 @@ def build_api(
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
     clock: Callable[[], datetime] = utc_now,
+    catalogues: CatalogueSource | None = None,
 ) -> FastAPI:
     """Routes only; ``create_app`` wraps them in the guards. Exposed for the OpenAPI export."""
     api = FastAPI(
@@ -511,41 +594,45 @@ def build_api(
         page = product_page(loaded.current, loaded.generation, query, images)
         return respond(loaded, "products", query, stale_first(loaded, page, query.retailer))
 
-    @api.get(f"{PREFIX}/products/{{product_id}}", response_model=Envelope[ProductDetail])
+    @api.get(f"{PREFIX}/products/{{product_id}}", response_model=ProductEnvelope[ProductDetail])
     def get_product(
         product_id: ProductId,
         query: Annotated[ScopeQuery, Query()],
         _: Annotated[Principal, Depends(principal)],
-    ) -> Envelope[ProductDetail]:
+    ) -> ProductEnvelope[ProductDetail]:
         loaded = source.select(query.market, query.scope)
-        ds = loaded.current
-        product = find(ds, product_id)
-        detail = product_detail(ds, product, hosts, images)
-        return respond(loaded, "product", query, stale_first(loaded, detail, product.offers))
+        found, resolved_from = find(loaded, product_id)
+        product = as_of(loaded, found)
+        detail = product_detail(loaded.current, product, hosts, images)
+        detail = stale_first(loaded, detail, product.offers)
+        return resolved(respond(loaded, "product", query, detail), resolved_from)
 
-    @api.get(f"{PREFIX}/admin/products/{{product_id}}", response_model=Envelope[AdminProductDetail])
+    @api.get(
+        f"{PREFIX}/admin/products/{{product_id}}",
+        response_model=ProductEnvelope[AdminProductDetail],
+    )
     def get_admin_product(
         product_id: ProductId,
         query: Annotated[ScopeQuery, Query()],
         _: Annotated[Principal, Depends(admin)],
-    ) -> Envelope[AdminProductDetail]:
+    ) -> ProductEnvelope[AdminProductDetail]:
         loaded = source.select(query.market, query.scope)
-        ds = loaded.current
-        product = find(ds, product_id)
-        detail = stale_first(
-            loaded, admin_product_detail(ds, product, hosts, images), product.offers
-        )
-        return respond(loaded, "admin_product", query, detail)
+        found, resolved_from = find(loaded, product_id)
+        product = as_of(loaded, found)
+        detail = admin_product_detail(loaded.current, product, hosts, images)
+        detail = stale_first(loaded, detail, product.offers)
+        return resolved(respond(loaded, "admin_product", query, detail), resolved_from)
 
-    @api.get(f"{PREFIX}/products/{{product_id}}/history", response_model=Envelope[History])
+    @api.get(f"{PREFIX}/products/{{product_id}}/history", response_model=ProductEnvelope[History])
     def get_history(
         product_id: ProductId,
         query: Annotated[HistoryQuery, Query()],
         _: Annotated[Principal, Depends(principal)],
-    ) -> Envelope[History]:
+    ) -> ProductEnvelope[History]:
         loaded = source.select(query.market, query.scope)
-        series = history(loaded.dataset, find(loaded.dataset, product_id), query)
-        return respond(loaded, "history", query, series)
+        product, resolved_from = find(loaded, product_id)
+        series = history(loaded.dataset, product, query)
+        return resolved(respond(loaded, "history", query, series), resolved_from)
 
     @api.get(f"{PREFIX}/coverage", response_model=Envelope[Coverage])
     def get_coverage(
@@ -557,7 +644,46 @@ def build_api(
     _metric_routes(api, source)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
+    _catalogue_routes(api, source, catalogues, images)
     return api
+
+
+def _catalogue_routes(
+    api: FastAPI, source: SnapshotSource, catalogues: CatalogueSource | None, images: EvidenceHosts
+) -> None:
+    def selected(retailer: str, query: ScopeQuery) -> tuple[Loaded, LoadedCatalogue]:
+        prices = source.select(query.market, query.scope)
+        if catalogues is None:
+            raise NotFoundError
+        return prices, catalogues.select(retailer, prices)
+
+    @api.get(f"{PREFIX}/catalogues/{{retailer}}", response_model=Envelope[CatalogueSummary])
+    def get_catalogue(
+        retailer: ProductId, query: Annotated[ScopeQuery, Query()], _: Viewer
+    ) -> Envelope[CatalogueSummary]:
+        prices, catalogue = selected(retailer, query)
+        data = catalogue_summary(catalogue)
+        return respond(
+            prices,
+            "catalogue",
+            query,
+            Metric(status=Status.OK, data=data, as_of=data.captured_to.date()),
+        )
+
+    @api.get(
+        f"{PREFIX}/catalogues/{{retailer}}/skus/{{sku}}", response_model=Envelope[CatalogueDetail]
+    )
+    def get_catalogue_sku(
+        retailer: ProductId, sku: ProductId, query: Annotated[ScopeQuery, Query()], _: Viewer
+    ) -> Envelope[CatalogueDetail]:
+        prices, catalogue = selected(retailer, query)
+        data = catalogue_detail(catalogue, sku, images)
+        return respond(
+            prices,
+            "catalogue_sku",
+            query,
+            Metric(status=Status.OK, data=data, as_of=data.record.captured_at.date()),
+        )
 
 
 def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
@@ -578,6 +704,29 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "compare", query, capped_comparison(metric, query.limit))
+
+    @api.get(
+        f"{PREFIX}/category-compare",
+        response_model=Envelope[CategoryComparison],
+        description=(
+            "Category-to-category prices across both full catalogues on the latest date: per "
+            "category, each retailer's n, median, mean, p25, p75, min and max, and the gap "
+            "between the two medians. No product matching: like-for-like pairs are /compare. "
+            "A cell with fewer than minCohort products is tooFew (its prices null, never 0) and "
+            "its row has no gap. Gap sign convention: retailers=<base>,<other>; gapPct = "
+            "(other median - base median) / base median x 100, so a positive gap means the "
+            "other retailer's median is higher and `cheaper` names the cheaper side. "
+            "coverage gives each side's priced, mapped and unmapped counts and its share in "
+            "the 'other' bucket; unmapped lists the breadcrumbs taxonomy@1 can't place."
+        ),
+    )
+    def get_category_compare(
+        query: Annotated[CategoryCompareQuery, Query()], _: Viewer
+    ) -> Envelope[CategoryComparison]:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = category_compare(loaded.dataset, base, other, query.level)
+        return respond(loaded, "category_compare", query, metric)
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
     def get_index(query: Annotated[IndexQuery, Query()], _: Viewer) -> Envelope[PriceIndex]:
@@ -750,6 +899,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         metric = stale_first(loaded, product_cards(loaded.current, query, images), query.retailer)
+        metric = metric.model_copy(update={"data": flagged(loaded, metric.data)})
         return _download(
             loaded,
             view=view.PRODUCTS,
@@ -873,8 +1023,9 @@ def create_app(  # noqa: PLR0913 -- the deployment's settings, keyword-only past
     evidence_hosts: EvidenceHosts | None = None,
     image_hosts: EvidenceHosts | None = None,
     clock: Callable[[], datetime] = utc_now,
+    catalogues: CatalogueSource | None = None,
 ) -> ASGIApp:
-    api = build_api(source, evidence_hosts, image_hosts, clock)
+    api = build_api(source, evidence_hosts, image_hosts, clock, catalogues)
     return NoStore(ServerErrors(Authenticate(RateLimit(api, buckets), verifier)))
 
 
@@ -897,6 +1048,8 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         assigned=settings.sources,
     )
     source.load_all()
+    catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)
+    catalogues.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())
     buckets = TokenBuckets(settings.rate_per_second, settings.rate_burst)
     return create_app(
@@ -905,4 +1058,5 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         buckets,
         evidence_hosts=settings.evidence_hosts,
         image_hosts=settings.image_hosts,
+        catalogues=catalogues,
     )

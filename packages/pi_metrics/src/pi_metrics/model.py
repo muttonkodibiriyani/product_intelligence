@@ -20,7 +20,7 @@ from pi_core import ReviewState
 from pi_dataset import ContractModel, Product, ProductV3
 
 #: Changes whenever a metric definition changes; recorded in docs/decision-log.md (design §7).
-METRIC_VERSION = "2026-10-01.3"
+METRIC_VERSION = "2026-10-01.4"
 #: Summary statistics need at least this many members (design §7.4).
 MIN_COHORT = 5
 #: Edge states a counted pair may have (design §7.2): approved (human or auto-accept) or locked.
@@ -119,6 +119,14 @@ class CaveatCode(StrEnum):
     #: A retailer's latest collection is older than the view's latest date (ADR-0010): its
     #: latest-date figures are as of its own last date. The API emits it first, one per retailer.
     STALE_SOURCE = "stale_source"
+    #: ``count`` of a retailer's offers had a price at or below 0.01 withheld as invalid.
+    INVALID_PRICE_EXCLUDED = "invalid_price_excluded"
+    #: ``count`` of a retailer's priced products whose breadcrumb no taxonomy@1 rule places (or
+    #: two place equally) in a common category.
+    UNMAPPED_CATEGORY = "unmapped_category"
+    #: ``count`` of a retailer's priced products with no breadcrumb in the served file, so no
+    #: common category: only their bucket is known.
+    BREADCRUMB_MISSING = "breadcrumb_missing"
 
 
 class Caveat(ContractModel):

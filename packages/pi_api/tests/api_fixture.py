@@ -24,6 +24,7 @@ from starlette.types import ASGIApp
 from metrics_fixture import metrics_dataset, rebuild
 from pi_api.app import TokenBuckets, create_app
 from pi_api.auth import TokenVerifier
+from pi_api.catalogue import CatalogueSource
 from pi_api.source import LocalStore, SnapshotSource
 from pi_dataset import Dataset, DatasetV3, dump_dataset
 
@@ -131,6 +132,7 @@ def make_client(
     image_hosts: Mapping[str, frozenset[str]] | None = None,
     clock: Callable[[], datetime] = lambda: CLOCK,
     assigned: Mapping[str, str] | None = None,
+    catalogues: CatalogueSource | None = None,
 ) -> tuple[Client, SnapshotSource]:
     source = SnapshotSource(LocalStore(root), paths, refresh_seconds=3600, assigned=assigned or {})
     if load:
@@ -143,5 +145,6 @@ def make_client(
         evidence_hosts=evidence_hosts,
         image_hosts=image_hosts,
         clock=clock,
+        catalogues=catalogues,
     )
     return Client(app), source

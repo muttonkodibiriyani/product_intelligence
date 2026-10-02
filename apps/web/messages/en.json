@@ -12,7 +12,9 @@
       "compare": "Compare",
       "promotions": "Promotions",
       "launches": "Launches",
-      "status": "Dataset"
+      "status": "Dataset",
+      "prices": "Prices",
+      "assistant": "Ryzan AI"
     },
     "mainNav": "Main"
   },
@@ -35,6 +37,8 @@
     "resetNeedsEmail": "Enter your email above first.",
     "resetSent": "If {email} has an account, a reset link is on its way.",
     "errors": {
+      "invalidEmail": "Enter a valid email address.",
+      "resetLater": "Couldn't send right now. Please try again later.",
       "badCredentials": "Email or password is incorrect.",
       "tooMany": "Too many attempts. Wait a few minutes, then try again.",
       "network": "No connection. Check your network and try again.",
@@ -108,16 +112,16 @@
       "subtitle": "{retailer} · one snapshot, {date}",
       "subtitleImported": "{retailer} · snapshot imported {date}, capture date unknown",
       "sample": "Data: {retailer}, {market}.",
-      "compareNote": "Comparison needs a second retailer or a second collection day. These cards show the layout they will use.",
+      "compareNote": "Which products both retailers carry, from the matched set; where a view can't be drawn yet, its layout and the reason.",
       "indexTitle": "Price index over time",
       "indexQuestion": "How the basket's price moves against the base retailer, day by day.",
-      "indexReason": "Needs more than one collection day; this dataset has one snapshot.",
+      "indexReason": "Needs a second collected retailer and more than one collection day.",
       "gapTitle": "Price gap distribution",
       "gapQuestion": "How far matched products' prices sit apart between two retailers.",
-      "gapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "gapReason": "Needs a second collected retailer with matched products.",
       "overlapTitle": "Assortment overlap",
       "overlapQuestion": "Which products both retailers carry, and which only one does.",
-      "overlapReason": "Needs a second retailer; Ulta UAE collection is blocked.",
+      "overlapReason": "Needs a second collected retailer with matched products.",
       "openCompare": "Open compare",
       "datasetTitle": "Dataset",
       "withheld": {
@@ -128,6 +132,17 @@
         "retailer_blocked": "This retailer can't be collected right now, so neither can its promotions.",
         "retailer_partial": "Only part of this retailer is collected, too little to measure its promotions.",
         "was_price_unverified": "This retailer's was-prices are unverified, so its discounts and promotions are not shown."
+      },
+      "intro": "Each retailer's own catalogue, and the two head to head on matched products.",
+      "headToHead": "Head to head",
+      "openPrices": "Compare by category",
+      "loading": "Loading the overview…",
+      "noRetailers": "No collected retailer to report on.",
+      "noPairs": "No comparable pairs yet.",
+      "overlap": {
+        "observed": "Observed",
+        "counted": "Comparable",
+        "onlyHere": "Only here"
       }
     }
   },
@@ -161,6 +176,10 @@
       "gap": "Gap: {other} dearest first",
       "gap_asc": "Gap: {other} cheapest first"
     },
+    "sortsNoPair": {
+      "gap": "Gap, dearest first (pick two retailers)",
+      "gap_asc": "Gap, cheapest first (pick two retailers)"
+    },
     "gapNeedsPair": "Pick two retailers to sort by gap.",
     "pair": "Gap: {other} vs {base}",
     "swap": "Swap base",
@@ -192,6 +211,9 @@
       "busy": "Two exports are already running. Try again in {seconds} s.",
       "nothing": "Nothing to export."
     },
+    "view": "Show as",
+    "viewGrid": "Grid",
+    "viewList": "List",
     "noImage": "No image"
   },
   "gap": {
@@ -276,6 +298,7 @@
     "history": "Price history",
     "historyLoading": "Loading price history…",
     "historyEmpty": "No price history for this product yet.",
+    "historyBegins": "History begins once nightly collection runs.",
     "historyTable": "Show as table",
     "date": "Date",
     "chartLabel": "Price per day at {retailers}",
@@ -389,5 +412,157 @@
     "loading": "Loading…",
     "preview": "Layout preview — not collected yet.",
     "empty": "Nothing to show for this selection."
+  },
+  "catalogue": {
+    "title": "Images and variants",
+    "hint": "Choose a SKU to view its images. The prices above belong to the offer SKU.",
+    "loading": "Loading images and variants…",
+    "returnSku": "Return to offer SKU {sku}",
+    "capture": "Archive timestamp {captured} · metadata imported {imported}",
+    "type": "Record type",
+    "variant": "Variant SKU",
+    "listing": "Product listing",
+    "stockId": "Stock system ID",
+    "unknown": "Unknown",
+    "identifiers": "Source identifiers",
+    "catalogueId": "Catalogue product ID",
+    "externalId": "External product ID",
+    "parentSummary": "This parent listing groups its variants; its own images and IDs may repeat theirs.",
+    "parents": "Parent products",
+    "variants": "Variant SKUs",
+    "noImages": "No captured image available",
+    "images": "Product images",
+    "imageNumber": "Image {n} of {count}",
+    "openImage": "Open image",
+    "notCaptured": "Not captured"
+  },
+  "price": {
+    "underReview": "Price under review"
+  },
+  "prices": {
+    "title": "Price analytics",
+    "intro": "Each retailer's full catalogue on its own, the two compared by category across both full catalogues, then head to head on the exactly matched products only.",
+    "perRetailer": "By retailer",
+    "perRetailerHint": "Full catalogue of the retailer you pick.",
+    "headToHead": "Exact matches only",
+    "headToHeadHint": "{other} vs {base} on matched products only.",
+    "loading": "Loading price analytics…",
+    "noRetailers": "No collected retailer to report on.",
+    "onePair": "Comparisons need two collected retailers.",
+    "noPairs": "No comparable pairs yet.",
+    "kpis": "At a glance",
+    "withheld": "Not shown for this retailer",
+    "openCompare": "Open compare",
+    "byCategory": "By category",
+    "byCategoryHint": "{other} vs {base} across both full catalogues."
+  },
+  "assistant": {
+    "title": "Ryzan AI Assistant",
+    "pageTitle": "Ryzan AI Assistant · Product Intelligence",
+    "intro": "Ask about prices, promotions, assortment and launches. Every number is quoted from the platform’s read-only data tools, with its data cutoff and source.",
+    "connect": {
+      "title": "Connect to enable",
+      "body": "Ryzan AI Assistant is not switched on yet. The owner has to turn on the AI model and its spending safeguards first. Until then no answers are generated, so nothing on this page is an AI answer.",
+      "status": "Not connected"
+    },
+    "samples": {
+      "title": "Suggested questions",
+      "badge": "Sample — not live data",
+      "hint": "Examples of what you will be able to ask once the assistant is connected."
+    },
+    "q": {
+      "gaps": "Where are the biggest price gaps today?",
+      "promo": "How much is on promotion at each retailer?",
+      "exclusive": "Which brands are only at one retailer?",
+      "index": "How has the price index moved?",
+      "unit": "Cheapest foundations per ml?",
+      "launches": "What launched in the last 30 days?",
+      "coverage": "How complete is the data for each retailer?"
+    },
+    "composer": {
+      "label": "Your question",
+      "placeholder": "Ask Ryzan AI Assistant…",
+      "send": "Send",
+      "disabled": "Sending is off until the assistant is connected.",
+      "stop": "Stop"
+    },
+    "promises": "Read-only tools only. Every number is cited. When the data is not enough, it says so instead of guessing.",
+    "progress": {
+      "label": "Progress",
+      "thinking": "Thinking",
+      "verifying": "Verifying numbers",
+      "retrying": "Re-checking the answer",
+      "tool": "Reading {tool}",
+      "toolEmpty": "{tool}: not enough data",
+      "toolError": "{tool}: unavailable"
+    },
+    "tools": {
+      "search_products": "Product search",
+      "get_product": "Product details",
+      "compare": "Price comparison",
+      "category_compare": "Category prices",
+      "index_trend": "Price index",
+      "promotions": "Promotions",
+      "assortment_gaps": "Assortment gaps",
+      "launches": "Launches",
+      "reviews_summary": "Reviews",
+      "coverage_status": "Data coverage",
+      "price_history": "Price history",
+      "availability": "Stock availability",
+      "price_ladder": "Price ladder",
+      "price_distribution": "Price distribution",
+      "brand_positioning": "Brand positioning",
+      "category_mix": "Category mix",
+      "assortment_breadth": "Assortment breadth",
+      "other": "Data tool",
+      "summary": "Market summary"
+    },
+    "answer": {
+      "product": "Product",
+      "skip": "Show full answer",
+      "sources": "Sources",
+      "cutoff": "data to",
+      "n": "n = {n}",
+      "source": "Source",
+      "dataset": "dataset",
+      "market": "Market",
+      "filters": "Filters",
+      "unverified": "Could not verify a written answer — showing the tool results instead",
+      "shown": "first {shown} of {total}",
+      "notEnough": "Not enough data",
+      "caveats": "Caveats"
+    },
+    "unavailable": {
+      "off": "Ryzan AI Assistant is switched off right now. No answer was generated.",
+      "questionCap": "You have reached today’s question limit. Try again tomorrow.",
+      "spendCap": "The assistant has reached its spending limit for now. No answer was generated.",
+      "invalid": "That question could not be read. Please rephrase it.",
+      "tooLong": "That question is too long. Please shorten it.",
+      "generic": "The assistant could not answer right now. No answer was generated."
+    },
+    "thread": {
+      "label": "Conversation",
+      "you": "You",
+      "working": "Working on your answer…",
+      "ready": "Answer ready.",
+      "stopped": "Stopped. No answer was shown."
+    },
+    "error": {
+      "signedOut": "Your session could not be verified. Reload the page and sign in again.",
+      "noAccess": "Your account does not have access to the assistant.",
+      "invalid": "That question could not be sent. Please rephrase it.",
+      "network": "The assistant could not be reached. Check your connection and try again.",
+      "timeout": "The answer took too long. Please try again.",
+      "generic": "Something went wrong. No answer was generated."
+    },
+    "sample": {
+      "title": "What an answer looks like",
+      "hint": "Assembled by this page from the platform’s data, not written by the AI model.",
+      "question": "What does the latest snapshot look like?",
+      "catalogue": "**{retailer}** lists **{products}** products.",
+      "priced": "**{priced}** of them have a price.",
+      "median": "The median price is **{median}**.",
+      "promo": "**{pct}%** of priced products are on promotion."
+    }
   }
 }

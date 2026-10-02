@@ -78,7 +78,7 @@ versioned snapshots.
 
   A document that fails validation is **never served**. The previous good generation stays live,
   and if there is none the endpoint returns `503 data_unavailable`.
-- **Per-source files (API 1.7.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
+- **Per-source files (API 1.10.0, [ADR-0010](../adr/0010-per-source-datasets.md)).** A
   `PI_API_DATASETS` entry may be `source=path` instead of a bare path. Each source (a retailer id)
   is then served only from its own file. The assigned files of one scope are composed into **one
   view** by `pi_dataset.compose`, so `select()` sees one dataset per scope, not several. Each
@@ -94,7 +94,7 @@ versioned snapshots.
     edges come only from a file that holds both retailers, so no edge is made across files.
   - A bare path in the same scope as a composed view is two datasets and stays
     `422 ambiguous_dataset`; don't mix the two forms in one scope.
-  - **Per-source as-of (API 1.8.0).** A source whose file ends before the view's last date is
+  - **Per-source as-of (API 1.11.0).** A source whose file ends before the view's last date is
     *stale*. Latest-date reads (`/compare`, `/promotions` and `/availability` with no `date`,
     `/summary`, `/products`, `/products/{id}` and the matching exports) read it at its own last
     date: `pi_dataset.compose.latest` builds that projection once per generation. Every response
@@ -556,7 +556,7 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
   is kept and `snapshot_import_date` says so. A collected context's `/summary` `asOf` is capped
   at that cutoff's day, and `/summary` without `retailer` picks a collected context.
   `meta.dates` and the series are left as published.
-- **Import day and per-source views (API 1.7.0).** The `snapshot_import_date` `<date>` is the
+- **Import day and per-source views (API 1.10.0).** The `snapshot_import_date` `<date>` is the
   import's local day in the market time zone, the day `meta.dates` count in (an import at
   21:15Z is 1 October in Dubai). The view applies to every served view: a whole file, and a
   composed per-source view after composition from the unchanged files. `/meta` `sources[].cutoff`
@@ -565,6 +565,104 @@ never changed. At load, once per generation, `pi_api` serves a corrected copy:
   only the imported source shows the import time.
 
 A dataset without an imported retailer is served as the same object, byte for byte.
+
+### Stable product links (planned; `pi_api.ids`)
+
+Owner requirement (task 01a0f907): a shared or product-page link still finds its product after
+the export pairs it with the other shop or splits a pair. "Not found" is only for a product no
+shop sells any more. The fix is read-side only: the served file is never changed or re-exported.
+
+- **Why ids change.** The export (`scripts/demo_export/v2.py`) gives a listing on its own the
+  token `<u|s>-<family>-<size>-<unit>`, and a pair `m-<ulta token>-<sephora token>`. The id is
+  the token, or `p-<sha256[:24]>` when the token is over 128 characters or has another
+  character.
+- **Read-time aliases.** An unhashed pair id holds both members' tokens. So at load, each
+  member's own id becomes an alias of the pair. An old pair id is read the same way, and each
+  half is looked up now. A family may hold `-`, so every `m-<u-…>-<s-…>` reading is tried.
+- **Rules.** An exact id always wins, so today's answers are unchanged. An alias two products
+  claim is dropped, never guessed. An old pair id whose readings name different products finds
+  nothing. A split answers both halves, the one at a `supported` retailer first, then in the
+  old id's order. Anything else is `404 not_found`. A removed product is never swapped for a
+  lookalike.
+- **Wire.** `/v1/products/{id}`, `/v1/products/{id}/history` and `/v1/admin/products/{id}`
+  answer with `resolvedFrom {requestedId, currentIds[1..2]}` on the envelope (`null` on an
+  exact match). `data` is the first current id. Clients rewrite their link to `currentIds`.
+  There is no HTTP redirect: a split has two targets, and `fetch()` hides redirects. The list
+  filters (`id=` on `/compare`, `/reviews-summary`) stay exact.
+- **Known gap.** A pair whose own id is hashed hides its members' tokens. A current pair id that
+  reads more than one way (a family holding `-s-<size>-<unit>`) registers no aliases, since its
+  members would be a guess. Links to such a pair's id, or to its members' old ids, stay not
+  found. Each load logs the count ("N pairs with hashed or ambiguous ids"), with the alias and
+  dropped counts. After deploy the owner reads it. Only if it
+  is above 0 does closing the gap become an export proposal (each product would list its
+  members' ids). An id that changes for another reason (a family re-assigned) is outside any
+  read-side fix.
+
+### Price floor (API 1.7.1, planned; `pi_api.floor`)
+
+A price or regular price of **0.01 or less** is not a real shelf price (a placeholder or a parse
+artefact). The dataset contract already refuses 0.00 and below, so such a file is never served
+(503 `data_unavailable`). For 0.01, at load and before the imported-retailer correction,
+`pi_api` serves a copy with those values nulled, on every retailer:
+
+- **Not observed, never measured.** Medians, means, histograms, ladders, brand prices, promotion
+  depths, gaps, the index and every export read a withheld value exactly as a missing one. No
+  response shows a price at or below the floor. Stored rows and files are never changed.
+- **Flags.** An offer whose latest price was withheld carries `priceFlag: "invalid_low"`
+  (`null` otherwise), and a product card carries `priceFlags` by context. A withheld regular
+  price alone is counted but not flagged.
+- **Still observed.** A withheld price still means the listing was there that day: presence
+  (launches, coverage, assortment gaps, the summary's product count and context pick) reads the
+  offer as observed, so a 0.01 on a day without a stock state is never a false launch.
+- **Caveat.** A priced response involving a retailer with withheld values carries
+  `invalid_price_excluded` with `{retailer, count}` ("<count> <retailer> items had a price of
+  0.01 or less …"), scoped like the imported-retailer caveats.
+
+A dataset without such a value is served as the same object.
+
+Additive summary fields in the same version: `/v1/summary` `meanPrice` (half-even, over the
+same prices as `medianPrice`, `null` below the minimum sample) and `/v1/compare`
+`summary.gapHist` (fixed edges −50 … 50 percent, 11 counts over every counted pair, not the
+page, so the counts sum to `summary.n`).
+
+### Category comparison (`/v1/category-compare`, planned; `pi_metrics.category_compare`)
+
+`GET /v1/category-compare?retailers=<base>,<other>&level=bucket|common` compares the two full
+catalogues category by category on the **latest date only** (no trend). There is no product
+matching (like-for-like pairs are `/compare`): every non-early product a context prices that
+day, in the market currency and above the price floor, counts in exactly one category per side.
+
+- **Rows.** Per category: `key` (stable, for client i18n), `label {en, ar}`, `shared` (both
+  sides price at least one product), and a cell per side with `n`, `median`, `mean`
+  (half-even), `p25`, `p75`, `min`, `max`. Ordered by the smaller side's `n`, then the total,
+  then the key. At `level=bucket` all nine buckets are rows (an empty one has `n = 0`).
+- **Thin cells.** A cell with fewer than `minCohort` (5) products is `tooFew` with
+  `reason: cohort_too_small`: `n` is served, every price figure is `null`, never 0. A blocked
+  side's cells are `retailer_blocked`.
+- **Gap.** Only when both cells have figures: `gap {amount, pct, cheaper}` from the two
+  medians, `pct = (other median − base median) / base median × 100`, so a positive gap means
+  the other retailer is dearer. `convention` states it on every response; `gapReason` says why
+  a gap is `null`. A category gap reflects each retailer's range, not like-for-like items.
+- **Levels.** `bucket` (default) is the exporter's nine codes; every product has one. `common`
+  is taxonomy@1 (`pi_metrics.taxonomy`): finer categories read from the retailer breadcrumb at
+  serve time, so a new rule is a code change, never a re-export. The deepest matching level
+  decides, by its head noun ("Powder Brush" is `tools`). A level that lists categories
+  ("Cleansers & Exfoliators", split on `&`, `,` and `and`) naming two of them is `ambiguous`,
+  never its last item. It also corrects the exporter's keyword order (an eye cream is
+  `eye_care`, bucket `skincare`).
+- **Coverage, honestly.** `coverage.{base,other}` gives `priced`, `mapped`, `unmapped`,
+  `noBreadcrumb`, and `otherBucket`/`otherPct` (the share in the catch-all `other` bucket).
+  A side's cells sum to `priced` at `level=bucket` and to `mapped` at `level=common`.
+  `unmapped[]` lists the most frequent unplaced breadcrumbs (`no_breadcrumb`, `no_rule`,
+  `ambiguous`; at most 50, `unmappedPaths` counts them all); each `path` is retailer text,
+  rendered as plain text only. At `level=common` the caveats `breadcrumb_missing` and
+  `unmapped_category` carry `{retailer, count}`. Today's served file holds the code only, so
+  `common` places nothing and says so: `not_enough_data` with `reason: field_not_collected`,
+  not `cohort_too_small`. Finer categories need breadcrumbs in the export (a future decision).
+- **Early offers** count in the `early_excluded` caveat only if seen on the latest date, as on
+  `/v1/summary`.
+- **Caveats** are scoped to the pair like `/compare`: early excluded, partial retailer, channel,
+  the imported-retailer notes and `invalid_price_excluded`.
 
 ## 7. Metric rules (owned by `pi_metrics`)
 

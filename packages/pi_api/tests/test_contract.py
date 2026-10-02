@@ -19,7 +19,7 @@ from pi_api.app import PREFIX
 from pi_api.catalog import AdminProductDetail, History, MetaView, ProductDetail, ProductPage
 from pi_api.contract import main, openapi, openapi_text
 from pi_api.summary import SummaryView
-from pi_api.wire import Envelope
+from pi_api.wire import Envelope, ProductEnvelope
 from pi_metrics.assortment import AssortmentGaps
 from pi_metrics.availability import Availability
 from pi_metrics.compare import Comparison
@@ -44,9 +44,13 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
         Envelope[ProductPage],
         {},
     ),
-    "product": ("/products/p01", Envelope[ProductDetail], {}),
-    "admin-product": ("/admin/products/p01", Envelope[AdminProductDetail], {"role": "admin"}),
-    "history": ("/products/p05/history", Envelope[History], {}),
+    "product": ("/products/p01", ProductEnvelope[ProductDetail], {}),
+    "admin-product": (
+        "/admin/products/p01",
+        ProductEnvelope[AdminProductDetail],
+        {"role": "admin"},
+    ),
+    "history": ("/products/p05/history", ProductEnvelope[History], {}),
     "coverage": ("/coverage", Envelope[Coverage], {}),
     "products-gap": (
         "/products?retailer=shop_a&retailer=shop_b&sort=gap&limit=3",
@@ -166,7 +170,9 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
     Images are hotlinked, never copied or rehosted. img-product.sephora.me is the only host for
     PI-collected (sephora_me) images; media.alshaya.com is allowed solely to keep serving the
     ulta_ae view live since 2026-10-01 (decision log, 2026-10-01).
-    ``connect-src`` keeps the Firebase Auth and Storage hosts it already had.
+    ``connect-src`` keeps the Firebase Auth and Storage hosts it already had. The assistant
+    (switch-on build, App Check with reCAPTCHA Enterprise) adds exactly the reCAPTCHA script and
+    frame paths, the App Check token exchange and the me-central1 callable host.
     """
     hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
     (csp,) = [
@@ -187,6 +193,16 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
         "https://identitytoolkit.googleapis.com",
         "https://securetoken.googleapis.com",
         "https://firebasestorage.googleapis.com",
+        "https://content-firebaseappcheck.googleapis.com",
+        "https://me-central1-productintelligence-beeb3.cloudfunctions.net",
+    }
+    assert external.pop("script-src") == {
+        "https://www.google.com/recaptcha/",
+        "https://www.gstatic.com/recaptcha/",
+    }
+    assert external.pop("frame-src") == {
+        "https://www.google.com/recaptcha/",
+        "https://recaptcha.google.com/recaptcha/",
     }
     assert all(not hosts for hosts in external.values()), external
 

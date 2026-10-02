@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -183,6 +185,51 @@ def test_the_imported_retailer_is_corrected_in_composed_and_whole_views(tmp_path
     assert all(p.offers[SEPHORA].series.regular for p in whole.products if SEPHORA in p.offers)
 
 
+def test_the_floor_applies_before_dq_in_composed_and_whole_views(tmp_path: Path) -> None:
+    """``pi_api.floor`` first, then ``pi_api.dq``, as main serves a whole file (merge of #120).
+
+    Ulta's p2 regular is all 0.01: the floor withholds it, so dq counts one was-price (p1),
+    not two; in the other order dq would clear it first and the floor would count nothing.
+    """
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    low = {"amount": "0.01", "minor": 1, "currency": "AED"}
+    for product in combined["products"]:
+        offer = product["offers"][ULTA]
+        price = offer["series"]["price"]
+        regular = {**price[0], "minor": 20_000, "amount": "200.00"}
+        offer["series"]["regular"] = [low if product["id"] == "p2" else regular for _ in price]
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    views = {d.path: d for d in source.datasets()}
+    assert len(views) == 2
+    for loaded in views.values():
+        assert [(f.retailer, f.offers) for f in loaded.floor.floored] == [(ULTA, 1)]
+        assert [(shop.retailer, shop.was_prices) for shop in loaded.imported] == [(ULTA, 1)]
+
+
+def test_composed_and_whole_views_build_their_product_ids_at_load(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Each served view's ids (``pi_api.ids``, #158) are built and logged at load, never on a
+    request (merge of #120)."""
+    caplog.set_level(logging.INFO, logger="pi_api.source")
+    write(tmp_path, snapshot({"p1": BOTH, "p2": (ULTA,)}, dates=OLD), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    views = source.datasets()
+    assert len(views) == 2
+    assert all("ids" in vars(loaded) for loaded in views)
+    logged = sorted(
+        r.getMessage().split(" loaded at ")[0].removeprefix("dataset ")
+        for r in caplog.records
+        if "old product ids" in r.getMessage()
+    )
+    assert logged == [COMBINED, "scope:beauty"]
+
+
 def test_dataset_entries_reads_whole_and_per_source_paths() -> None:
     assert dataset_entries("datasets/uae/latest.json") == (("datasets/uae/latest.json",), {})
     raw = f" {SEPHORA}={SEPHORA_FILE}, {ULTA}={COMBINED},{COMBINED.replace('ae', 'sa')} ,"
@@ -348,6 +395,79 @@ def test_the_latest_date_view_keeps_the_imported_correction(tmp_path: Path) -> N
             for cid, offer in product.offers.items():
                 if cid in loaded.unverified:
                     assert offer.series.regular is None
+
+
+def test_the_latest_date_view_is_floored_too(tmp_path: Path) -> None:
+    """A stale Ulta read at its own last date never brings back a price the floor withholds
+    (``pi_api.floor``, merge of #120 into #126)."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    low = {"amount": "0.01", "minor": 1, "currency": "AED"}
+    for product in combined["products"]:
+        if product["id"] == "p2":
+            series = product["offers"][ULTA]["series"]
+            series["price"] = [low for _ in series["price"]]
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
+    source.load_all()
+    (loaded,) = source.datasets()
+    assert loaded.latest is not None
+    assert [(f.retailer, f.offers) for f in loaded.floor.floored] == [(ULTA, 1)]
+    for ds in (loaded.dataset, loaded.latest):
+        (p2,) = (p for p in ds.products if p.id == "p2")
+        assert all(v is None for v in p2.offers[ULTA].series.price)
+
+
+#: A pair whose Ulta half is an old id (``pi_api.ids``, #158).
+PAIR = "m-u-lip-1-ml-s-lip-1-ml"
+
+
+@pytest.mark.parametrize("route", ["products", "admin/products"])
+def test_an_old_product_id_reads_a_stale_source_at_its_own_last_date(
+    tmp_path: Path, route: str
+) -> None:
+    """Merge of #120 into #126: the id resolves through ``pi_api.ids``, the product is read
+    from the latest-date view, the stale caveat comes first, and ``resolvedFrom`` says so."""
+    write(tmp_path, snapshot({PAIR: BOTH, "p2": (ULTA,)}, dates=OLD), COMBINED)
+    write(tmp_path, snapshot({PAIR: (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    headers = bearer(role="admin") if route.startswith("admin") else bearer()
+    response = client.get(f"/api/v1/{route}/u-lip-1-ml", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["resolvedFrom"] == {"requestedId": "u-lip-1-ml", "currentIds": [PAIR]}
+    assert body["data"]["card"]["id"] == PAIR
+    assert body["caveats"][0]["code"] == "stale_source"
+    assert stale(body) == [STALE]
+    (ulta,) = (o for o in body["data"]["offers"] if o["retailer"] == ULTA)
+    assert ulta["price"]["minor"] == 10_000  # the view's own last date has no Ulta price
+    assert ulta["evidence"]["capturedAt"] == "2026-09-22T00:00:00Z"
+
+
+def test_the_products_export_reads_a_stale_source_as_of_and_flags_withheld_prices(
+    tmp_path: Path,
+) -> None:
+    """Merge of #120 into #126: the products export carries the stale caveat first, and
+    ``priceFlags`` where the floor withheld a stale source's price at its own last date (the
+    view's last date has no Ulta price, so the view's own floor flags nothing there)."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        if product["id"] == "p2":
+            price = product["offers"][ULTA]["series"]["price"]
+            price[-1] = {"amount": "0.01", "minor": 1, "currency": "AED"}
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    client, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    response = client.get("/api/v1/export/products?format=jsonl", headers=bearer())
+    assert response.status_code == 200, response.text
+    first, *rest = (json.loads(line) for line in response.text.splitlines())
+    manifest = first["manifest"]
+    rows = {r["id"]: r for r in rest}
+    assert manifest["caveats"][0]["code"] == "stale_source"
+    assert rows["p2"]["priceFlags"] == {ULTA: "invalid_low"}
+    assert rows["p1"]["prices"][ULTA]["minor"] == 10_000  # as of Ulta's own last date
+    cards = {c["id"]: c for c in get(client, "products")["data"]["items"]}
+    assert cards["p2"]["priceFlags"] == {ULTA: "invalid_low"}
 
 
 def test_a_whole_file_has_no_stale_source(tmp_path: Path) -> None:

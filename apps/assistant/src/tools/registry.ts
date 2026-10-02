@@ -16,7 +16,12 @@ import type { z } from "zod";
 
 import { ApiError, type ApiRequest, type MetricApi } from "../api/client.js";
 import { type Untrusted, untrusted } from "../guard/untrusted.js";
-import { type Bilingual, EnvelopeSchema, type NotEnoughDataReason } from "../api/envelope.js";
+import {
+  type Bilingual,
+  EnvelopeSchema,
+  NOT_ENOUGH_DATA_REASONS,
+  type NotEnoughDataReason,
+} from "../api/envelope.js";
 import { type Sanitised, sanitiseData } from "../guard/sanitise.js";
 import { type AnyToolDef, type CallerContext, ROLES, type Role } from "./types.js";
 
@@ -70,9 +75,13 @@ function prose(text: Bilingual): UntrustedBilingual {
   return { en: untrusted(text.en, PROSE_MAX_CHARS), ar: untrusted(text.ar, PROSE_MAX_CHARS) };
 }
 
-/** A caveat: its machine code plus the API's text in both languages, wrapped. */
+/**
+ * A caveat: its machine code, the API's text in both languages (wrapped) and its sanitised
+ * parameters. Only the parameters can supply numbers the answer quotes; the text never does.
+ */
 export interface Caveat extends UntrustedBilingual {
   readonly code: string;
+  readonly params?: Sanitised;
 }
 
 export interface ToolEnvelope {
@@ -174,6 +183,18 @@ const API_ERROR_MESSAGES: Record<ToolErrorCode, string> = {
   output_too_large: "Result too large; narrow the filters or lower limit.",
 };
 
+/** Said when a tool's view finds its part of the response withheld by the service. */
+export const WITHHELD_DETAIL: Bilingual = {
+  en: "The data service withheld this part of the data, so it is not measured (not zero).",
+  ar: "حجبت خدمة البيانات هذا الجزء، لذا فهو غير مقيس (وليس صفرًا).",
+};
+
+/** A view's withheld reason, kept only when it is one of the service's closed reasons. */
+function withheldReason(reason: string | undefined): NotEnoughDataReason | undefined {
+  if (reason === undefined) return undefined;
+  return NOT_ENOUGH_DATA_REASONS.find((known) => known === reason) ?? "no_match";
+}
+
 export class ToolRegistry {
   private readonly tools: ReadonlyMap<string, AnyToolDef>;
 
@@ -188,6 +209,11 @@ export class ToolRegistry {
       byName.set(tool.name, tool);
     }
     this.tools = byName;
+  }
+
+  /** Whether `name` is a declared tool (any role). */
+  has(name: string): boolean {
+    return this.tools.has(name);
   }
 
   /** Tools this caller may see; the model is never offered a tool it cannot call. */
@@ -228,30 +254,37 @@ export class ToolRegistry {
     if (!envelope.success) {
       return error(name, "upstream_invalid", API_ERROR_MESSAGES.upstream_invalid);
     }
-    const { meta, cohort, caveats, data } = envelope.data;
+    const { meta, cohort, caveats } = envelope.data;
+    const view =
+      tool.view && envelope.data.data !== undefined && envelope.data.data !== null
+        ? tool.view(envelope.data.data)
+        : undefined;
+    const data = view ? view.data : envelope.data.data;
+    const withheld = envelope.data.status === "ok" ? withheldReason(view?.withheld) : undefined;
+    const status = withheld === undefined ? envelope.data.status : "not_enough_data";
     const cut = truncation(data, tool.listKey);
+    const sanitiseOptions = {
+      evidenceHosts: this.config.evidenceHosts,
+      admin: caller.role === "admin",
+    };
     const result: ToolEnvelope = {
-      status: envelope.data.status,
+      status,
       // not_enough_data may still carry rows (e.g. compare below the cohort minimum).
       ...(data === undefined || data === null
         ? {}
         : {
-            data: withShown(
-              sanitiseData(data, {
-                evidenceHosts: this.config.evidenceHosts,
-                admin: caller.role === "admin",
-              }),
-              cut,
-            ),
+            data: withShown(sanitiseData(data, sanitiseOptions), cut),
           }),
-      ...(envelope.data.status === "ok"
+      ...(status === "ok"
         ? {}
-        : {
-            notEnoughData: {
-              reason: envelope.data.reason ?? "no_match",
-              detail: prose(envelope.data.detail ?? { en: "", ar: "" }),
-            },
-          }),
+        : withheld !== undefined
+          ? { notEnoughData: { reason: withheld, detail: prose(WITHHELD_DETAIL) } }
+          : {
+              notEnoughData: {
+                reason: envelope.data.reason ?? "no_match",
+                detail: prose(envelope.data.detail ?? { en: "", ar: "" }),
+              },
+            }),
       citation: {
         tool: tool.name,
         toolVersion: tool.version,
@@ -268,7 +301,11 @@ export class ToolRegistry {
             : { description: untrusted(cohort.description, PROSE_MAX_CHARS), n: cohort.n },
       },
       caveats: listedCaveats(
-        caveats.map(({ code, ...text }) => ({ code, ...prose(text) })),
+        caveats.map(({ code, params, ...text }) => ({
+          code,
+          ...prose(text),
+          params: sanitiseData(params, sanitiseOptions),
+        })),
         cut ? [truncatedCaveat(cut)] : [],
       ),
     };

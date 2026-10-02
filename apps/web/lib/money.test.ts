@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Money } from './api/types';
 import { golden, goldenNames } from './api/golden';
-import { currencyExponent, formatMoney, isValidMoney } from './money';
+import {
+  currencyExponent,
+  formatMoney,
+  isValidAmount,
+  isValidMoney,
+  isValidPrice,
+  priceState,
+} from './money';
 
 function moneyIn(v: unknown, out: Money[] = []): Money[] {
   if (Array.isArray(v)) v.forEach((x) => moneyIn(x, out));
@@ -46,5 +53,27 @@ describe('money', () => {
     const big = { amount: '90071992547409.93', minor: 9007199254740993, currency: 'AED' };
     expect(formatMoney(big, 'en')).toContain('90,071,992,547,409.93');
     expect(formatMoney({ amount: '129.50', minor: 12950, currency: 'AED' }, 'ar')).toMatch(/129\.50/);
+  });
+
+  it('treats a price of 0.01 or less as a placeholder, not a price', () => {
+    for (const bad of ['0.00', '0.01', '0', '0.010', '-5.00', 'abc', ''])
+      expect(isValidAmount(bad), bad).toBe(false);
+    for (const ok of ['0.02', '0.011', '1.00', '129.00', '0.50']) expect(isValidAmount(ok), ok).toBe(true);
+    expect(isValidPrice({ amount: '0.01', minor: 1, currency: 'AED' })).toBe(false);
+    expect(isValidPrice({ amount: '12.00', minor: 1200, currency: 'AED' })).toBe(true);
+    expect(isValidPrice(null)).toBe(false);
+  });
+
+  it('puts a price under review on the API flag or the 0.01 guard, and leaves a plain null alone', () => {
+    const aed = (amount: string) => ({ amount, minor: Math.round(Number(amount) * 100), currency: 'AED' });
+    // The flag, as the API will send it (price null).
+    expect(priceState({ price: null, priceFlag: 'invalid_low' } as never)).toBe('review');
+    // The local guard, until the flag ships.
+    expect(priceState({ price: aed('0.01') })).toBe('review');
+    // A real price.
+    expect(priceState({ price: aed('45.00') })).toBe('ok');
+    // No price and no flag: the caller's own "no price" handling.
+    expect(priceState({ price: null })).toBe('ok');
+    expect(priceState(null)).toBe('ok');
   });
 });

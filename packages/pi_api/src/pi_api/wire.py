@@ -6,10 +6,12 @@ import string
 from datetime import datetime
 from typing import Any
 
+from pydantic import Field
+
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.8.0"
+API_VERSION = "1.11.0"
 
 
 class Localized(ContractModel):
@@ -150,6 +152,36 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
             " وهي أقدم من بيانات المتاجر الأخرى."
         ),
     ),
+    CaveatCode.INVALID_PRICE_EXCLUDED: Localized(
+        en=(
+            "{count} {retailer} {count:item had|items had} a price of 0.01 or less, withheld"
+            " as invalid and left out of every figure."
+        ),
+        ar=(
+            "عروض لدى {retailer} بسعر 0.01 أو أقل، حُجب سعرها لعدم صحته واستُبعد من كل الأرقام:"
+            " {count}."
+        ),
+    ),
+    CaveatCode.UNMAPPED_CATEGORY: Localized(
+        en=(
+            "{count} {retailer} {count:item|items} could not be placed in a common category"
+            " and {count:is|are} listed as unmapped, not in any row."
+        ),
+        ar=(
+            "منتجات لدى {retailer} تعذّر تصنيفها في فئة مشتركة،"
+            " فهي مدرجة كغير مصنّفة لا في أي صف: {count}."
+        ),
+    ),
+    CaveatCode.BREADCRUMB_MISSING: Localized(
+        en=(
+            "{count} {retailer} {count:item has|items have} no category breadcrumb in this data,"
+            " so only the broad category is known; fine categories need a future export."
+        ),
+        ar=(
+            "منتجات لدى {retailer} بلا تسلسل فئات في هذه البيانات، فلا تُعرف إلا فئتها العامة؛"
+            " الفئات الدقيقة تتطلب تصديرًا لاحقًا: {count}."
+        ),
+    ),
 }
 
 
@@ -204,6 +236,22 @@ class Envelope[T](ContractModel):
     cohort: Cohort | None = None
     caveats: tuple[CaveatView, ...] = ()
     meta: ApiMeta
+
+
+class ResolvedFrom(ContractModel):
+    """An old product id answered with the products it names now (``pi_api.ids``)."""
+
+    requested_id: str
+    #: ``data`` is the first; two after a split, supported retailers first.
+    current_ids: tuple[str, ...] = Field(min_length=1, max_length=2)
+
+
+class ProductEnvelope[T](Envelope[T]):
+    """``/products/{id}``, its history and the admin view: ``resolvedFrom`` is set when the id
+    in the path is an old one (null on an exact match). Clients rewrite their link to
+    ``currentIds``."""
+
+    resolved_from: ResolvedFrom | None = None
 
 
 def envelope[T](metric: Metric[T], meta: ApiMeta) -> Envelope[T]:

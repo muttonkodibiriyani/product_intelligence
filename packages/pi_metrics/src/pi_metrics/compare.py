@@ -9,6 +9,7 @@ pair's exact, approved or locked edge; two contexts of one retailer need the sam
 from __future__ import annotations
 
 import statistics
+from bisect import bisect_right
 from collections import Counter, defaultdict
 from datetime import date
 from decimal import Decimal
@@ -47,6 +48,8 @@ LabelPair = tuple[str, str]
 #: At most this many ``size_labels_differ`` caveats, the most frequent; beyond it the
 #: ``size_labels_differ_total`` caveat leads the list with the full counts.
 LABEL_CAVEAT_CAP = 5
+#: Fixed ``gapHist`` bounds in gap percent, the same for every pair and group so they compare.
+GAP_EDGES = tuple(Decimal(e) for e in ("-50", "-25", "-10", "-5", "-1", "1", "5", "10", "25", "50"))
 
 
 class Gap(ContractModel):
@@ -77,6 +80,15 @@ class Basket(ContractModel):
     other: MoneyValue
 
 
+class GapHistogram(ContractModel):
+    """Counted pairs by ``gap.pct``. ``counts`` has ``len(edges) + 1`` bins: bin 0 is below
+    ``edges[0]``, bin k is ``[edges[k-1], edges[k])``, and the last is at or above ``edges[-1]``.
+    """
+
+    edges: tuple[str, ...]
+    counts: tuple[int, ...]
+
+
 class CompareSummary(ContractModel):
     n: int
     median_gap_pct: Pct
@@ -84,6 +96,8 @@ class CompareSummary(ContractModel):
     cheaper_counts: dict[str, int]
     equal_count: int
     basket: Basket
+    #: Every counted pair (all rows, never a page of them), on the fixed ``GAP_EDGES``.
+    gap_hist: GapHistogram
 
 
 class Side(ContractModel):
@@ -267,6 +281,13 @@ def pair_caveats(ds: DatasetV3, base: str, other: str, labels: list[LabelPair]) 
     return caveats
 
 
+def gap_histogram(pcts: list[Decimal]) -> GapHistogram:
+    counts = [0] * (len(GAP_EDGES) + 1)
+    for pct in pcts:
+        counts[bisect_right(GAP_EDGES, pct)] += 1
+    return GapHistogram(edges=tuple(str(e) for e in GAP_EDGES), counts=tuple(counts))
+
+
 def summarise(rows: tuple[PairRow, ...], base: str, other: str) -> CompareSummary | None:
     """Median/mean gap and basket over counted rows; ``None`` below the cohort minimum."""
     counted = [r for r in rows if r.gap is not None and r.base_price and r.other_price]
@@ -290,6 +311,7 @@ def summarise(rows: tuple[PairRow, ...], base: str, other: str) -> CompareSummar
         basket=Basket(
             base=MoneyValue.of(base_total, currency), other=MoneyValue.of(other_total, currency)
         ),
+        gap_hist=gap_histogram(pcts),
     )
 
 

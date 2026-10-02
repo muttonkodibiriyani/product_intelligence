@@ -64,6 +64,7 @@
           }
         ],
         "name": "Product p07",
+        "priceFlags": {},
         "prices": {
           "shop_a": {
             "amount": "50.00",
@@ -102,6 +103,7 @@
           }
         ],
         "name": "Product p08",
+        "priceFlags": {},
         "prices": {
           "shop_a": {
             "amount": "50.00",
@@ -140,6 +142,7 @@
           }
         ],
         "name": "Product p09",
+        "priceFlags": {},
         "prices": {
           "shop_a": {
             "amount": "50.00",
@@ -165,7 +168,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.8.0",
+    "apiVersion": "1.11.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "products",
@@ -175,7 +178,7 @@
     },
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.3",
+    "metricVersion": "2026-10-01.4",
     "scope": "fixture"
   },
   "reason": null,

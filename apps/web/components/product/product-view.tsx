@@ -19,11 +19,13 @@ import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
 import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
-import { Money } from '../ui/money';
+import { Price } from '../ui/money';
 import { GapView, MatchLabel } from '../ui/pair';
+import { Loading, Skeleton } from '../ui/skeleton';
 import { useMeta, useRetailerName } from '../use-meta';
 import { importedOn } from '../widgets/model';
 import { HistoryChart } from './history-chart';
+import { CatalogueGallery } from './catalogue-gallery';
 
 /** The contract's product id pattern; anything else is not sent to the API. */
 const PRODUCT_ID = /^[A-Za-z0-9._:-]{1,200}$/;
@@ -100,9 +102,7 @@ export function ProductView() {
     return (
       <div className="space-y-3">
         {backLink}
-        <p role="status" aria-busy className="text-ink-2">
-          {t('loading')}
-        </p>
+        <Loading>{t('loading')}</Loading>
       </div>
     );
 
@@ -163,6 +163,11 @@ export function ProductView() {
           >
             <Offers offers={d.offers} name={name} caveats={env.caveats} />
           </Section>
+          {[...new Set(d.offers.filter((o) => o.retailer === 'ulta_ae' && o.sku).map((o) => o.sku!))].map(
+            (sku) => (
+              <CatalogueGallery key={sku} sku={sku} />
+            ),
+          )}
           {d.pairs.length > 0 && (
             <Section title={t('pairs')} hint={t('pairsHint')}>
               <Pairs pairs={d.pairs} name={name} />
@@ -217,7 +222,6 @@ function Offers({
   const locale = useLocale();
   const caps = useMeta().data?.data?.capabilities;
   const show = { ratings: caps?.ratings ?? true, shades: caps?.shades ?? true, stock: caps?.stock ?? true };
-  const imported = (retailer: string) => importedOn(caveats, retailer);
   if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
   return (
     <div className="relative overflow-x-auto px-2">
@@ -265,6 +269,7 @@ function Offers({
         <tbody>
           {offers.map((o) => {
             const url = safeHttpUrl(o.evidence.url);
+            const importedAt = importedOn(caveats, o.retailer);
             return (
               <tr key={o.retailer} className="border-t border-line first:border-t-0">
                 <th scope="row" className={`${TD} text-start font-medium whitespace-nowrap`}>
@@ -274,10 +279,10 @@ function Offers({
                   )}
                 </th>
                 <td className={`${TD} text-end`}>
-                  {o.price ? <Money m={o.price} locale={locale} /> : <Dash />}
+                  <Price of={o} locale={locale} fallback={<Dash />} />
                 </td>
                 <td className={`${TD} text-end`}>
-                  {o.regular ? <Money m={o.regular} locale={locale} /> : <Dash />}
+                  <Price of={{ price: o.regular }} locale={locale} fallback={<Dash />} />
                 </td>
                 <td className={`${TD} text-end`}>
                   {o.promoPct ? <bdi dir="ltr" className="tabular-nums">{`${o.promoPct}%`}</bdi> : <Dash />}
@@ -317,9 +322,9 @@ function Offers({
                 </td>
                 <td className={`${TD} whitespace-nowrap`}>
                   {/* An imported retailer's capturedAt is its import time, never a capture date. */}
-                  {imported(o.retailer) ? (
-                    <time dateTime={imported(o.retailer)!} className="block text-xs text-ink-2">
-                      {t('imported', { date: formatDate(imported(o.retailer)!, locale) })}
+                  {importedAt ? (
+                    <time dateTime={importedAt} className="block text-xs text-ink-2">
+                      {t('imported', { date: formatDate(importedAt, locale) })}
                     </time>
                   ) : (
                     <time dateTime={o.evidence.capturedAt} className="block text-xs text-ink-2">
@@ -433,9 +438,12 @@ function History({ id, name }: { id: string; name: (id: string) => string }) {
   if (q.isError) return <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />;
   if (!q.data)
     return (
-      <p role="status" aria-busy className="text-ink-2">
-        {t('historyLoading')}
-      </p>
+      <div aria-busy>
+        <Skeleton kind="chart" />
+        <p role="status" className="mt-3 text-sm text-ink-2">
+          {t('historyLoading')}
+        </p>
+      </div>
     );
   const env = q.data;
   if (!env.data)

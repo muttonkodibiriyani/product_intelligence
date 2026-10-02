@@ -38,7 +38,16 @@ IMPORTED = frozenset({"ulta_ae"})
 
 #: Endpoints that show prices, was-prices or promotions (exports by the same name).
 PRICED = frozenset(
-    {"products", "product", "admin_product", "history", "compare", "promotions", "summary"}
+    {
+        "products",
+        "product",
+        "admin_product",
+        "history",
+        "compare",
+        "category_compare",
+        "promotions",
+        "summary",
+    }
 )
 
 

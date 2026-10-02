@@ -1,4 +1,4 @@
-import type { Money } from './api/types';
+import type { Money, Schemas } from './api/types';
 
 /** ISO 4217 minor-unit exponent, from the platform's currency data (AED 2, KWD 3, JPY 0). */
 export function currencyExponent(currency: string): number {
@@ -18,6 +18,39 @@ export function isValidMoney(m: Money): boolean {
   const digits = m.amount.replace('.', '').replace(/^(-?)0+(?=\d)/, '$1');
   return digits === String(m.minor) || (digits === '-0' && m.minor === 0);
 }
+
+/**
+ * Owner rule: a price of 0.01 or less is a placeholder, not a price. The API flags those
+ * `priceFlag: "invalid_low"` (with `price: null`); the amount itself stays a backstop. This is the
+ * one place that decides, so every table, chart and sort agrees.
+ */
+export function isValidAmount(amount: string): boolean {
+  if (!/^-?\d+(\.\d+)?$/.test(amount)) return false;
+  const v = Number(amount);
+  return Number.isFinite(v) && v > 0.01;
+}
+
+/** Anything with a price: an offer, a pair row's side, a top discount, a card's price at one retailer. */
+export type Priced = {
+  price?: (Pick<Money, 'amount'> & Partial<Money>) | null;
+  /** 'invalid_low': the API withheld the price as a placeholder (it sends `price: null`). */
+  priceFlag?: Schemas['PriceFlag'] | null;
+};
+
+/**
+ * `review`: the price is withheld as invalid, shown as "Price under review" and left out of every
+ * client-side sort, join and chart. `ok` otherwise, including a null price without the flag, which
+ * keeps its existing "no price" handling.
+ */
+export function priceState(x: Priced | null | undefined): 'ok' | 'review' {
+  if (!x) return 'ok';
+  if (x.priceFlag === 'invalid_low') return 'review';
+  return x.price && !isValidAmount(x.price.amount) ? 'review' : 'ok';
+}
+
+/** A present, real price: what item-level math may use. */
+export const isValidPrice = (m: (Pick<Money, 'amount'> & Partial<Money>) | null | undefined): m is Money =>
+  !!m && priceState({ price: m }) === 'ok';
 
 export type AppLocale = 'en' | 'ar';
 

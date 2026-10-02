@@ -29,6 +29,7 @@ from urllib.parse import urlsplit
 
 from pydantic import Field
 
+from pi_api.floor import PriceFlag
 from pi_core import AvailabilityState, Channel, MatchClass, ReviewState
 from pi_dataset import (
     Capabilities,
@@ -314,6 +315,9 @@ class ProductCard(ContractModel):
     #: URL on its retailer's ``PI_API_IMAGE_HOSTS``, else null. Never invented.
     image: SourceText | None = None
     prices: dict[str, MoneyValue | None]
+    #: API 1.7.1: why a ``prices`` entry is null when it was published but withheld:
+    #: ``invalid_low`` for a price of 0.01 or less (``pi_api.floor``). Only flagged contexts.
+    price_flags: dict[str, PriceFlag] = Field(default_factory=dict)
     matches: tuple[CardMatch, ...]
     #: Set when the search names exactly two retailers (base first); otherwise null.
     gap: PairGap | None = None
@@ -823,6 +827,9 @@ class OfferView(ContractModel):
     #: The retailer the offer is at; ``context`` says where it was observed.
     retailer: str
     price: MoneyValue | None
+    #: API 1.7.1: ``invalid_low`` when the published price was 0.01 or less and is withheld
+    #: (``price`` is then null and the offer is in no figure); null otherwise.
+    price_flag: PriceFlag | None = None
     regular: MoneyValue | None
     promo_pct: Annotated[str, Field(pattern=r"^-?\d+(\.\d+)?$")] | None
     rating: Rating | None
@@ -895,13 +902,6 @@ def _offer_fields(ds: DatasetV3, ctx: Context, offer: OfferV3) -> dict[str, Any]
 def _offers(ds: DatasetV3, product: ProductV3) -> list[tuple[Context, OfferV3]]:
     """The product's offers by context id, each with its context."""
     return [(context(ds, c), o) for c, o in sorted(product.offers.items())]
-
-
-def find(ds: DatasetV3, product_id: str) -> ProductV3:
-    for p in ds.products:
-        if p.id == product_id:
-            return p
-    raise ProductNotFoundError(product_id)
 
 
 def product_detail(
