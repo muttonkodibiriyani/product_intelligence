@@ -74,7 +74,11 @@ bucket). The rules the code enforces:
   generation and retried from the other writer's figures on a lost race, so two runs can never
   each spend the whole balance. A run's own cap is `min(PROXY_BYTE_CAP, cap_bytes - used_bytes)`
   at start (`run_cap` in the manifest). No ledger, an unreadable ledger or an exhausted one means
-  the run refuses to start.
+  the run refuses to start. Mid-run, the ledger is re-read before every proxied request; if the
+  bucket cannot be read (outage, lost connection, permission error) the meter reports exhausted
+  and `status.json` carries the fault in `proxy_ledger_fault`, so nothing more goes through the
+  proxy until the ledger answers again. A spend that cannot be written back stops the run with
+  the same error rather than going unrecorded.
 - Credentials are read from Secret Manager at run time with the job's own service account.
   Nothing in git, the image, the manifest or the logs carries them: the manifest records the
   secret's *resource name* only, and `ProxyEndpoint`'s repr hides the username and password.
