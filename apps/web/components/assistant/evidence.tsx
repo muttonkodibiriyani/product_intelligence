@@ -137,22 +137,22 @@ export function useSourceLabel() {
   const name = useRetailerName();
   return (c: Citation, total: number | null) => {
     const link = sourceLink(c, locale);
-    const page = link ? nav(link.page === 'dataset' ? 'status' : link.page) : tool(toolKey(c.tool));
+    // A linked pill is named after the page it opens; an unlinked one after the tool.
+    const page =
+      link.href && link.page ? nav(link.page === 'dataset' ? 'status' : link.page) : tool(toolKey(c.tool));
     const parts: string[] = [];
-    if (link) {
-      if (
-        link.retailers.length === 2 &&
-        (c.tool === 'compare' || c.tool === 'index_trend' || c.tool === 'category_compare')
-      )
-        parts.push(t('vs', { base: name(link.retailers[0]!), other: name(link.retailers[1]!) }));
-      else if (link.retailers.length > 0) parts.push(link.retailers.map((r) => name(r)).join(', '));
-      for (const v of [...link.brand, ...link.category]) parts.push(v);
-    }
+    if (
+      link.retailers.length === 2 &&
+      (c.tool === 'compare' || c.tool === 'index_trend' || c.tool === 'category_compare')
+    )
+      parts.push(t('vs', { base: name(link.retailers[0]!), other: name(link.retailers[1]!) }));
+    else if (link.retailers.length > 0) parts.push(link.retailers.map((r) => name(r)).join(', '));
+    for (const v of [...link.brand, ...link.category]) parts.push(v);
     if (c.tool === 'compare' && c.cohort)
       parts.push(t('matched', { total: c.cohort.n, n: formatCount(c.cohort.n, locale) }));
     else if (total !== null) parts.push(t('records', { total, n: formatCount(total, locale) }));
     parts.push(formatDate(c.cutoff, locale));
-    return { page, detail: parts.join(' · '), href: link?.href ?? null };
+    return { page, detail: parts.join(' · '), href: link.href };
   };
 }
 

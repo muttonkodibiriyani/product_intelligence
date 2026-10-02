@@ -151,18 +151,186 @@ describe('evidenceShares and evidenceTotal', () => {
   });
 });
 
+/** A linked pill's target, as the page reads it: the path and every query pair, order-free. */
+const parsed = (href: string) => {
+  const u = new URL(href, 'http://pi.test');
+  return { path: u.pathname, params: [...u.searchParams.entries()].sort() };
+};
+type Row = {
+  tool: string;
+  args: Record<string, unknown>;
+  /** The page and the exact query the link carries; `null` when the pill must stay plain text. */
+  link: { path: string; params: [string, string][] } | null;
+};
+const pairArg = { retailers: { base: 'ulta_ae', other: 'sephora_me' } };
+const PAIR: [string, string] = ['retailers', 'ulta_ae,sephora_me'];
+
+// One row per tool and argument combination: the link's query must equal the tool's arguments,
+// and an argument the page cannot read means no link at all (never a broader page).
+const TABLE: Row[] = [
+  // search_products: Products reads every argument
+  {
+    tool: 'search_products',
+    args: { q: 'foundation', retailer: ['ulta_ae'], matched: true, priceMax: '200', sort: 'name', limit: 10 },
+    link: {
+      path: '/en/explore/',
+      params: [
+        ['q', 'foundation'],
+        ['retailer', 'ulta_ae'],
+        ['matched', 'true'],
+        ['priceMax', '200'],
+      ],
+    },
+  },
+  {
+    tool: 'search_products',
+    args: {
+      brand: ['Dior', 'Huda Beauty'],
+      category: ['makeup'],
+      matched: false,
+      priceMin: '50',
+      sort: 'price_desc',
+    },
+    link: {
+      path: '/en/explore/',
+      params: [
+        ['brand', 'Dior'],
+        ['brand', 'Huda Beauty'],
+        ['category', 'makeup'],
+        ['matched', 'false'],
+        ['priceMin', '50'],
+        ['sort', 'price_desc'],
+      ],
+    },
+  },
+  { tool: 'search_products', args: {}, link: { path: '/en/explore/', params: [] } },
+  // get_product: the product
+  { tool: 'get_product', args: { id: 'p 1' }, link: { path: '/en/product/', params: [['id', 'p 1']] } },
+  { tool: 'get_product', args: {}, link: null },
+  // compare: pair, grouping, brand/category; never ids or a date
+  {
+    tool: 'compare',
+    args: { ...pairArg, groupBy: 'brand', brand: ['Dior'], limit: 25 },
+    link: { path: '/en/compare/', params: [PAIR, ['groupBy', 'brand'], ['brand', 'Dior']] },
+  },
+  {
+    tool: 'compare',
+    args: { ...pairArg, category: ['skincare', 'makeup'] },
+    link: { path: '/en/compare/', params: [PAIR, ['category', 'skincare'], ['category', 'makeup']] },
+  },
+  { tool: 'compare', args: { ...pairArg, ids: ['p01', 'p02'] }, link: null },
+  { tool: 'compare', args: { ...pairArg, date: '2026-09-29' }, link: null },
+  { tool: 'compare', args: { brand: ['Dior'] }, link: null },
+  // category_compare: the bucket level is the page's; common has no page
+  {
+    tool: 'category_compare',
+    args: pairArg,
+    link: { path: '/en/compare/', params: [PAIR, ['groupBy', 'category']] },
+  },
+  {
+    tool: 'category_compare',
+    args: { ...pairArg, level: 'bucket' },
+    link: { path: '/en/compare/', params: [PAIR, ['groupBy', 'category']] },
+  },
+  { tool: 'category_compare', args: { ...pairArg, level: 'common' }, link: null },
+  // index_trend: no page shows the index
+  { tool: 'index_trend', args: pairArg, link: null },
+  { tool: 'index_trend', args: { ...pairArg, brand: ['Dior'] }, link: null },
+  { tool: 'index_trend', args: { ...pairArg, from: '2026-09-01', to: '2026-09-30' }, link: null },
+  // promotions: shops, brand/category and the preset depths; never a date or an off-list depth
+  {
+    tool: 'promotions',
+    args: { retailer: ['ulta_ae'], minPct: 30, category: ['makeup'], limit: 25 },
+    link: {
+      path: '/en/promotions/',
+      params: [
+        ['retailer', 'ulta_ae'],
+        ['category', 'makeup'],
+        ['minPct', '30'],
+      ],
+    },
+  },
+  { tool: 'promotions', args: {}, link: { path: '/en/promotions/', params: [] } },
+  { tool: 'promotions', args: { minPct: 15 }, link: null },
+  { tool: 'promotions', args: { retailer: ['sephora_me'], date: '2026-09-29' }, link: null },
+  // assortment_gaps: Products cannot express "missing at one shop, present at the other"
+  { tool: 'assortment_gaps', args: { presentAt: 'ulta_ae', missingAt: 'sephora_me' }, link: null },
+  {
+    tool: 'assortment_gaps',
+    args: { presentAt: 'ulta_ae', missingAt: 'sephora_me', brand: ['Dior'] },
+    link: null,
+  },
+  // launches: brand/category only; never a shop or a since date
+  { tool: 'launches', args: {}, link: { path: '/en/launches/', params: [] } },
+  {
+    tool: 'launches',
+    args: { brand: ['Dior'], limit: 25 },
+    link: { path: '/en/launches/', params: [['brand', 'Dior']] },
+  },
+  { tool: 'launches', args: { retailer: ['ulta_ae'] }, link: null },
+  { tool: 'launches', args: { since: '2026-09-20' }, link: null },
+  // reviews_summary: one id is the product; a list has no page; filters open Products
+  {
+    tool: 'reviews_summary',
+    args: { ids: ['p01'] },
+    link: { path: '/en/product/', params: [['id', 'p01']] },
+  },
+  { tool: 'reviews_summary', args: { ids: ['p01', 'p02'] }, link: null },
+  {
+    tool: 'reviews_summary',
+    args: { brand: ['Dior'], retailer: ['ulta_ae', 'sephora_me'] },
+    link: {
+      path: '/en/explore/',
+      params: [
+        ['brand', 'Dior'],
+        ['retailer', 'ulta_ae'],
+        ['retailer', 'sephora_me'],
+      ],
+    },
+  },
+  // price_history: the product; a date window is not a page view
+  { tool: 'price_history', args: { id: 'p01' }, link: { path: '/en/product/', params: [['id', 'p01']] } },
+  { tool: 'price_history', args: { id: 'p01', from: '2026-09-01' }, link: null },
+  // coverage_status: Dataset shows every shop
+  { tool: 'coverage_status', args: {}, link: { path: '/en/dataset/', params: [] } },
+  { tool: 'coverage_status', args: { retailer: ['ulta_ae'] }, link: null },
+  // availability: no page shows stock
+  { tool: 'availability', args: {}, link: null },
+  { tool: 'availability', args: { retailer: ['ulta_ae'] }, link: null },
+  // summary tools: Prices shows the named shop; the defaults of tool and page need not agree
+  {
+    tool: 'price_ladder',
+    args: { retailer: 'ulta_ae' },
+    link: { path: '/en/prices/', params: [['retailer', 'ulta_ae']] },
+  },
+  { tool: 'price_distribution', args: {}, link: null },
+  {
+    tool: 'brand_positioning',
+    args: { retailer: 'sephora_me' },
+    link: { path: '/en/prices/', params: [['retailer', 'sephora_me']] },
+  },
+  { tool: 'category_mix', args: { retailer: 'ulta_ae' }, link: null },
+  { tool: 'assortment_breadth', args: {}, link: null },
+  // a tool the app does not know
+  { tool: 'something_new', args: { retailer: ['ulta_ae'] }, link: null },
+];
+
 describe('sourceLink', () => {
-  it('compare: the pair, grouping and filters in the compare URL', () => {
-    const link = sourceLink(
-      cite('compare', {
-        retailers: { base: 'ulta_ae', other: 'sephora_me' },
-        groupBy: 'brand',
-        brand: ['Dior'],
-        limit: 25,
-      }),
-      'ar',
-    );
-    expect(link).toEqual({
+  it.each(TABLE.map((r) => [r.tool, JSON.stringify(r.args), r] as const))(
+    '%s %s links exactly or not at all',
+    (_tool, _args, row) => {
+      const link = sourceLink(cite(row.tool, row.args), 'en');
+      if (row.link === null) {
+        expect(link.href).toBeNull();
+      } else {
+        expect(link.href).not.toBeNull();
+        expect(parsed(link.href!)).toEqual({ path: row.link.path, params: [...row.link.params].sort() });
+      }
+    },
+  );
+
+  it('keeps the scope for the label whether or not the pill links', () => {
+    expect(sourceLink(cite('compare', { ...pairArg, groupBy: 'brand', brand: ['Dior'] }), 'ar')).toEqual({
       page: 'compare',
       href: '/ar/compare/?retailers=ulta_ae%2Csephora_me&groupBy=brand&brand=Dior',
       retailers: ['ulta_ae', 'sephora_me'],
@@ -170,42 +338,21 @@ describe('sourceLink', () => {
       category: [],
       groupBy: 'brand',
     });
-  });
-  it('category_compare groups by category; index_trend opens Prices', () => {
-    const pair = { retailers: { base: 'ulta_ae', other: 'sephora_me' } };
-    expect(sourceLink(cite('category_compare', pair), 'en')?.href).toBe(
-      '/en/compare/?retailers=ulta_ae%2Csephora_me&groupBy=category',
-    );
-    expect(sourceLink(cite('index_trend', pair), 'en')?.href).toBe('/en/prices/');
-  });
-  it('promotions: shops, depth and filters; an off-list depth is dropped', () => {
-    expect(
-      sourceLink(cite('promotions', { retailer: ['ulta_ae'], minPct: 30, category: ['makeup'] }), 'en')?.href,
-    ).toBe('/en/promotions/?retailer=ulta_ae&category=makeup&minPct=30');
-    expect(sourceLink(cite('promotions', { minPct: 15 }), 'en')?.href).toBe('/en/promotions/');
-  });
-  it('search: the query and filters on Products; get_product: the product', () => {
-    expect(
-      sourceLink(
-        cite('search_products', { q: 'foundation', matched: true, retailer: ['ulta_ae'], priceMax: '200' }),
-        'en',
-      )?.href,
-    ).toBe('/en/explore/?q=foundation&retailer=ulta_ae&matched=true&priceMax=200');
-    expect(sourceLink(cite('get_product', { id: 'p 1' }), 'en')?.href).toBe('/en/product/?id=p%201');
-    expect(
-      sourceLink(cite('assortment_gaps', { presentAt: 'ulta_ae', missingAt: 'sephora_me' }), 'en'),
-    ).toMatchObject({
-      page: 'explore',
-      href: '/en/explore/?retailer=ulta_ae',
+    expect(sourceLink(cite('index_trend', { ...pairArg, brand: ['Dior'] }), 'en')).toMatchObject({
+      page: null,
+      href: null,
+      retailers: ['ulta_ae', 'sephora_me'],
+      brand: ['Dior'],
+    });
+    expect(sourceLink(cite('launches', { retailer: ['ulta_ae'], since: '2026-09-20' }), 'en')).toMatchObject({
+      page: 'launches',
+      href: null,
       retailers: ['ulta_ae'],
     });
+    expect(sourceLink(cite('category_compare', pairArg), 'en').groupBy).toBe('category');
   });
-  it('tools without a page link nowhere', () => {
-    expect(sourceLink(cite('something_new'), 'en')).toBeNull();
-    expect(sourceLink(cite('coverage_status'), 'en')?.href).toBe('/en/dataset/');
-    expect(sourceLink(cite('launches', { retailer: ['ulta_ae'] }), 'en')).toMatchObject({
-      href: '/en/launches/',
-      retailers: ['ulta_ae'],
-    });
+
+  it('the product link is URL-encoded', () => {
+    expect(sourceLink(cite('get_product', { id: 'p 1' }), 'en').href).toBe('/en/product/?id=p%201');
   });
 });

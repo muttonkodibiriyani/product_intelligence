@@ -90,9 +90,12 @@ describe('AnswerView', () => {
   it('cites the page, filters, cohort and date as one pill, and names products from the API', async () => {
     reduced = true;
     show(answer());
-    const pill = screen.getByRole('link', { name: /Compare/ });
-    expect(pill.textContent).toBe('Compareskincare · 42 matched · 30 Sept 2026');
-    expect(pill.getAttribute('href')).toMatch(/^\/en\/compare\/?\?category=skincare$/);
+    // This citation has no retailer pair, which the Compare page needs: the pill is plain text
+    // named after the tool, with the scope, the cohort and the date, and no link.
+    expect(screen.queryByRole('link', { name: /comparison/i })).toBeNull();
+    const pill = screen.getByText('Price comparison').parentElement!;
+    expect(pill.tagName).toBe('SPAN');
+    expect(pill.textContent).toBe('Price comparisonskincare · 42 matched · 30 Sept 2026');
     expect(document.body.textContent).not.toContain('2026-09-30');
     expect(document.body.textContent).not.toContain('n = 42');
     expect(screen.getByText('Prices exclude delivery.')).toBeTruthy();
