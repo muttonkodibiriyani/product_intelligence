@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { summaryBody } from './summary-fixture';
-import { test as base, expect, type Page, type Route } from '@playwright/test';
+import { test as base, expect, type Locator, type Page, type Route } from '@playwright/test';
 
 export const golden = (name: string): unknown =>
   JSON.parse(readFileSync(join(__dirname, '../../../docs/contracts/golden/pi-api', `${name}.json`), 'utf8'));
@@ -134,6 +134,45 @@ export async function signIn(page: Page, locale: 'en' | 'ar', password = PASSWOR
   await page.locator('input[name=email]').fill(EMAIL);
   await page.locator('input[name=password]').fill(password);
   await page.locator('button[type=submit]').click();
+}
+
+/** The main navigation: the sidebar on wide screens, the bottom tab bar on phones. */
+export const mainNav = (page: Page) => page.getByRole('navigation', { name: /^(Main|الرئيسية)$/ });
+
+/** The phone menu's navigation, listing every page; opened by `openMenu`. */
+export const allPagesNav = (page: Page) => page.getByRole('navigation', { name: /^(All pages|كل الصفحات)$/ });
+
+export async function openMenu(page: Page) {
+  await page.getByRole('button', { name: /^(Menu|القائمة)$/ }).click();
+  await expect(allPagesNav(page)).toBeVisible();
+}
+
+/**
+ * A nav link by name, wherever it lives: in the sidebar or tab bar when it is there, otherwise
+ * (a page off the phone's five tabs) in the phone menu, which this opens.
+ */
+export async function navLink(page: Page, name: string | RegExp): Promise<Locator> {
+  // The shell appears as soon as the session is in, a beat before sign-in's redirect lands; a
+  // menu opened before that would close on the route change.
+  await expect(page).not.toHaveURL(/\/sign-in\/?$/);
+  const nav = mainNav(page);
+  await expect(nav).toBeVisible();
+  const direct = nav.getByRole('link', { name });
+  if ((await direct.count()) > 0) return direct;
+  await openMenu(page);
+  return allPagesNav(page).getByRole('link', { name });
+}
+
+/** Follows a nav link by name (see `navLink`). */
+export async function openNav(page: Page, name: string | RegExp) {
+  await (await navLink(page, name)).click();
+}
+
+/** Signs out from the sidebar foot, or from the phone menu where the foot lives on small screens. */
+export async function signOut(page: Page) {
+  const button = page.getByRole('button', { name: /^(Sign out|تسجيل الخروج)$/ });
+  if ((await button.count()) === 0) await openMenu(page);
+  await button.click();
 }
 
 export async function noHorizontalScroll(page: Page) {

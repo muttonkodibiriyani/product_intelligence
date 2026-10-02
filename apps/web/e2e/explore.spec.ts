@@ -135,7 +135,8 @@ for (const locale of ['en', 'ar'] as const) {
   const cards = (page: Page) => page.getByRole('list', { name: T.results }).getByRole('listitem');
   /** Switches to the dense list (a table), the view the column tests are about. */
   async function asList(page: Page) {
-    await page.getByRole('button', { name: T.list }).click();
+    // Exact: the phone menu button ("القائمة") would otherwise match the Arabic "قائمة".
+    await page.getByRole('button', { name: T.list, exact: true }).click();
     await expect(page.getByRole('table')).toBeVisible();
   }
 
@@ -169,7 +170,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(T.count16)).toBeVisible();
       // Cards first: one per product, the grid button pressed.
       await expect(cards(page)).toHaveCount(products.data.items.length);
-      await expect(page.getByRole('button', { name: T.grid })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.grid, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect(page.getByRole('link', { name: products.data.items[0].name })).toBeVisible();
       await noHorizontalScroll(page);
       // The list is one click away, and stays the choice after a reload.
@@ -179,9 +183,12 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('columnheader', { name: 'Shop A' })).toBeVisible();
       await noHorizontalScroll(page);
       await page.reload();
-      await expect(page.getByRole('button', { name: T.list })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.list, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect(rows).toHaveCount(1 + products.data.items.length);
-      await page.getByRole('button', { name: T.grid }).click();
+      await page.getByRole('button', { name: T.grid, exact: true }).click();
       await expect(cards(page)).toHaveCount(products.data.items.length);
 
       const first = productCalls(mock)[0]!;

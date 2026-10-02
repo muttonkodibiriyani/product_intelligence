@@ -30,7 +30,13 @@ const ready = (env = envelope()): Q => ({ data: env, isError: false, error: null
 
 function show(state: ReturnType<typeof pairState<CategoryCompare>>, locale: 'en' | 'ar' = 'en') {
   return render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <CategoryCompareCard state={state} pair={pair} locale={locale} />
     </NextIntlClientProvider>,
   );

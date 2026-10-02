@@ -1,29 +1,44 @@
 @import 'tailwindcss';
 
 /*
- * The v3 system: ink on a near-white page, content on raised white panels, and six pastel pairs
- * (a tint and its ink) that each mean one thing: mint good or in stock, rose dearer or failing,
- * butter stale or partial, sky links and the second series, lavender the current place and
- * filters, blush the base retailer. Pastels are backgrounds; text always uses the matching ink.
+ * Ink on a quiet grey page, content on raised white panels. Two shops are the characters of the
+ * product: Ulta is burnt orange, Sephora is graphite, used as a dot, a bar or a thin rule, never
+ * as a fill behind text. Two outcomes carry meaning: good (green) is cheaper or better for the
+ * reader, bad (red) is dearer. The six pastel pairs are chart series only; they no longer name a
+ * retailer, a state or a place.
  */
 @theme {
     --font-sans:
         system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Roboto, 'Noto Sans', 'Noto Sans Arabic',
         'Geeza Pro', Tahoma, sans-serif;
-    --color-ink: #1d2130;
-    --color-ink-2: #5f6677;
-    --color-line: #e6e8ee;
-    --color-line-2: #f0f1f5;
+    --color-ink: #15171f;
+    --color-ink-2: #4b5160;
+    --color-ink-3: #8a90a0;
+    --color-line: #e4e6eb;
+    --color-line-2: #eef0f3;
     --color-line-3: #d8dbe4;
-    --color-page: #fbfbfd;
+    --color-page: #f6f6f8;
     --color-surface: #ffffff;
-    --color-surface-2: #f4f5f9;
-    --color-accent: #27628f;
-    --color-focus: #6b5bd2;
+    --color-surface-2: #f3f4f6;
+    --color-accent: #1f4f8f;
+    --color-focus: #4f46e5;
     --color-danger: #a33a3a;
     --color-warn: #7a5b0c;
     --color-warn-bg: #fdf4d8;
 
+    /* Retailer accents. */
+    --color-ulta: #d1541c;
+    --color-ulta-soft: #fcebe1;
+    --color-sephora: #1d2129;
+    --color-sephora-soft: #e9eaee;
+
+    /* Outcomes. */
+    --color-good: #187a43;
+    --color-good-soft: #e3f4ea;
+    --color-bad: #b3261e;
+    --color-bad-soft: #fbe9e7;
+
+    /* Chart series only (components/widgets): a tint and its ink. */
     --color-blush: #fce9ef;
     --color-blush-ink: #a13a60;
     --color-mint: #e3f5ec;
@@ -42,23 +57,8 @@
 
     --radius-card: 14px;
     --radius-ctl: 10px;
-    --shadow-card: 0 1px 2px rgb(29 33 48 / 0.04), 0 2px 8px rgb(29 33 48 / 0.04);
-    --shadow-pop: 0 12px 32px rgb(29 33 48 / 0.1), 0 2px 6px rgb(29 33 48 / 0.05);
-
-    /*
-     * Retailer and outcome tokens (PR 4; the same names and values PR 2 adds). Ulta is burnt
-     * orange, Sephora graphite: a dot, a bar or a thin rule, never a fill behind text. Good
-     * (green) is cheaper for the reader, bad (red) dearer.
-     */
-    --color-ink-3: #8a90a0;
-    --color-ulta: #d1541c;
-    --color-ulta-soft: #fcebe1;
-    --color-sephora: #1d2129;
-    --color-sephora-soft: #e9eaee;
-    --color-good: #187a43;
-    --color-good-soft: #e3f4ea;
-    --color-bad: #b3261e;
-    --color-bad-soft: #fbe9e7;
+    --shadow-card: 0 1px 2px rgb(21 23 31 / 0.05), 0 1px 1px rgb(21 23 31 / 0.03);
+    --shadow-pop: 0 12px 32px rgb(21 23 31 / 0.14), 0 2px 6px rgb(21 23 31 / 0.06);
 }
 
 html {
@@ -78,7 +78,7 @@ html {
 /* A raised white panel: every table, form block and summary sits on one. */
 @utility panel {
     background: var(--color-surface);
-    border: 1px solid rgb(29 33 48 / 0.06);
+    border: 1px solid var(--color-line);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
 }
@@ -125,7 +125,7 @@ html {
     color: var(--color-ink);
 }
 
-/* A small rounded label; pair it with one pastel tint and its ink. */
+/* A small rounded label; pair it with one tint and its ink. */
 @utility pill {
     display: inline-flex;
     align-items: center;

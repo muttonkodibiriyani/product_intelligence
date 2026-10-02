@@ -10,7 +10,13 @@ const name = (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id;
 
 function sortOptions(state: ExploreState, locale: 'en' | 'ar' = 'en') {
   render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <Toolbar state={state} update={() => {}} name={name} />
     </NextIntlClientProvider>,
   );

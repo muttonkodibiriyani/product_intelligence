@@ -1,5 +1,14 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  navLink,
+  noHorizontalScroll,
+  signIn,
+  test,
+  type Mock,
+} from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -129,7 +138,7 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api(firstDay) });
       await signIn(page, locale);
       // The nav keeps the page reachable and marks it "soon".
-      const link = page.getByRole('navigation').getByRole('link', { name: T.nav });
+      const link = await navLink(page, T.nav);
       await expect(link).toContainText(T.soon);
       await link.click();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/launches/$`));
@@ -179,7 +188,7 @@ for (const locale of ['en', 'ar'] as const) {
     }) => {
       const mock = await mockBackend(page, { onApi: api() });
       await signIn(page, locale);
-      const link = page.getByRole('navigation').getByRole('link', { name: T.nav });
+      const link = await navLink(page, T.nav);
       await expect(link).not.toContainText(T.soon);
       await link.click();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/launches/$`));
@@ -229,7 +238,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.locator('#rows table tbody tr')).toHaveCount(3);
       await expect(page.locator('#launch-pending')).toHaveText(T.pending);
       await expect(page.getByRole('note')).toHaveCount(0);
-      await expect(page.getByRole('navigation').getByRole('link', { name: T.nav })).toContainText(T.soon);
+      await expect(await navLink(page, T.nav)).toContainText(T.soon);
       expect(mock.errors).toEqual([]);
     });
 

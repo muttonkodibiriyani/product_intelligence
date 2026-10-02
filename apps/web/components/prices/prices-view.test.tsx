@@ -84,7 +84,13 @@ function show(search: string, locale: 'en' | 'ar' = 'en') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+      <NextIntlClientProvider
+        locale={locale}
+        messages={locale === 'ar' ? ar : en}
+        onError={(e) => {
+          throw e;
+        }}
+      >
         <PricesView />
       </NextIntlClientProvider>
     </QueryClientProvider>,

@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { NextIntlClientProvider } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { ReactNode } from 'react';
-import { AppHeader } from '@/components/app-header';
+import { AppShell } from '@/components/app-shell';
 import { AuthProvider } from '@/components/auth-provider';
 import { formats } from '@/i18n/formats';
 import { dirOf, isLocale, locales } from '@/i18n/routing';
@@ -47,18 +46,7 @@ export default async function LocaleLayout({
         </a>
         <NextIntlClientProvider locale={locale} messages={messages} formats={formats}>
           <AuthProvider>
-            <AppHeader />
-            <main id="main" className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
-              {children}
-            </main>
-            <footer className="mx-auto max-w-screen-2xl px-4 pb-6 text-xs text-ink-2 sm:px-6">
-              <Link
-                href={`/${locale}/dataset/#about-data`}
-                className="text-accent underline-offset-2 hover:underline focus-visible:outline-2"
-              >
-                {t('aboutData')}
-              </Link>
-            </footer>
+            <AppShell>{children}</AppShell>
           </AuthProvider>
         </NextIntlClientProvider>
       </body>

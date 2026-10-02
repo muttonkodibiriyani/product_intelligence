@@ -14,7 +14,13 @@ const firstDay = Object.fromEntries(
 
 function show(s: Series) {
   return render(
-    <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale="en"
+      messages={en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <HistoryChart series={s} name={(id) => id} />
     </NextIntlClientProvider>,
   );

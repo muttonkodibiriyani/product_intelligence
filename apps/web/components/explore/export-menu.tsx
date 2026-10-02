@@ -2,8 +2,9 @@
 
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
-import { ApiError } from '@/lib/api/client';
-import { EXPORT_MAX_ROWS, toExportQuery, type ExploreState } from '@/lib/explore';
+import { ApiError, type ExportPath } from '@/lib/api/client';
+import type { QueryOf } from '@/lib/api/types';
+import { EXPORT_MAX_ROWS } from '@/lib/explore';
 import { saveFile } from '@/lib/save-file';
 import { useAuth } from '../auth-provider';
 import { errorText } from '../error-notice';
@@ -17,11 +18,26 @@ type Status =
   | { kind: 'failed'; error: unknown };
 
 /**
- * Downloads every product that matches the list's filters, in the list's order, as CSV or JSONL.
- * The file is fetched with the Bearer token (an export link can't carry it), then saved. The API
- * caps exports at 50 000 rows and runs two at a time per instance; both refusals say what to do.
+ * Downloads every row that matches a list's filters, in the list's order, as CSV or JSONL: the
+ * products (`/api/v1/export/products`) or the promotions. The file is fetched with the Bearer
+ * token (an export link can't carry it), then saved. The API caps exports at 50 000 rows and
+ * runs two at a time per instance; both refusals say what to do.
  */
-export function ExportMenu({ state, total, n }: { state: ExploreState; total: number; n: string }) {
+export function ExportMenu<P extends ExportPath>({
+  path,
+  query,
+  fallback,
+  total,
+  n,
+}: {
+  path: P;
+  /** The list's filters as the export endpoint takes them, in the format asked for. */
+  query: (format: Format) => QueryOf<P> & { format: Format };
+  /** The file name's stem when the response names none: "pi-products". */
+  fallback: string;
+  total: number;
+  n: string;
+}) {
   const t = useTranslations('explore.export');
   const te = useTranslations('errors');
   const { api } = useAuth();
@@ -51,10 +67,10 @@ export function ExportMenu({ state, total, n }: { state: ExploreState; total: nu
     abort.current = ctl;
     setStatus({ kind: 'working', format });
     try {
-      const { blob, filename } = await api.download('/api/v1/export/products', {
-        query: toExportQuery(state, format),
+      const { blob, filename } = await api.download(path, {
+        query: query(format),
         signal: ctl.signal,
-        fallback: `pi-products.${format}`,
+        fallback: `${fallback}.${format}`,
       });
       if (ctl.signal.aborted) return;
       saveFile(blob, filename);

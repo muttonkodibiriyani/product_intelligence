@@ -9,7 +9,13 @@ afterEach(cleanup);
 
 const mount = (env: Parameters<typeof EmptyResults>[0]['env'], locale: 'en' | 'ar' = 'en') =>
   render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <EmptyResults env={env} />
     </NextIntlClientProvider>,
   );

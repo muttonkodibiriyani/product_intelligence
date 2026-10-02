@@ -12,6 +12,7 @@ import { TOOLS, compare } from "../src/tools/definitions.js";
 import { ToolRegistry, type ToolEnvelope } from "../src/tools/registry.js";
 import { COMPARE_DATA, FakeApi, PAIR, okEnvelope } from "./fake-api.js";
 import { CONFIG, prices } from "./meter-fixtures.js";
+import { RUNBOOK_LIMITS } from "./runbook-seed.js";
 
 const VIEWER = { uid: "u1", role: "viewer" } as const;
 const NOW = new Date("2026-09-30T12:00:00Z");
@@ -19,7 +20,7 @@ const USAGE: TokenUsage = { input: 5_000, cachedInput: 0, output: 200, thinking:
 const FLOW_CONFIG = {
   ...CONFIG,
   promptVersion: PROMPT_VERSION,
-  limits: { ...CONFIG.limits, maxInputTokens: 100_000 },
+  limits: RUNBOOK_LIMITS,
 };
 const GOOD =
   "[[product:p01]] is cheaper at north: 100.00 vs 120.00.\nSource: compare, n 8, cutoff 2026-09-15.";
