@@ -166,7 +166,11 @@ def test_hosting_routes_api_before_the_spa_catch_all() -> None:
 
 
 def _csp_directives() -> dict[str, list[str]]:
-    """The hosting ``Content-Security-Policy`` as ``{directive: [sources]}``."""
+    """The hosting ``Content-Security-Policy`` as ``{directive: [sources]}``.
+
+    Directive names are case-insensitive and a browser enforces only the first of a repeated
+    directive (CSP3), so names are lowercased and a repeat fails rather than being shadowed.
+    """
     hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
     (csp,) = [
         h["value"]
@@ -174,7 +178,13 @@ def _csp_directives() -> dict[str, list[str]]:
         for h in block["headers"]
         if h["key"] == "Content-Security-Policy"
     ]
-    return {name: sources for name, *sources in (d.split() for d in csp.split(";") if d.strip())}
+    parsed = [
+        (name.lower(), sources)
+        for name, *sources in (d.split() for d in csp.split(";") if d.strip())
+    ]
+    names = [name for name, _ in parsed]
+    assert len(names) == len(set(names)), f"repeated CSP directive: {names}"
+    return dict(parsed)
 
 
 def test_the_csp_names_only_the_expected_external_hosts() -> None:
