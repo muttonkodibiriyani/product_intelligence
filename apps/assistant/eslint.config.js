@@ -3,7 +3,8 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["node_modules/", "coverage/", "lib/"] },
+  // evals/stubs: vendored CommonJS stand-ins for optional deps (decision log), not app code.
+  { ignores: ["node_modules/", "coverage/", "lib/", "evals/stubs/"] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   {
