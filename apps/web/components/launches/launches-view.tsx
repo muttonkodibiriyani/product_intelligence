@@ -11,6 +11,7 @@ import {
   parseLaunches,
   toLaunchesQuery,
   toLaunchesSearch,
+  windowEnd,
   WINDOWS,
   type LaunchesState,
 } from '@/lib/launches';
@@ -19,6 +20,7 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
 import { FilterChips } from '../ui/filter-chips';
+import { Known } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { Segmented } from '../ui/segmented';
 import { Loading } from '../ui/skeleton';
@@ -141,13 +143,15 @@ function ShopDays({ days }: { days: number }) {
 /** The list for the chosen window, newest first; the window and any filters live in the URL. */
 function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readiness: LaunchReadiness }) {
   const t = useTranslations('launches');
+  const tr = useTranslations('reasons');
   const locale = useLocale();
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const { api } = useAuth();
   const name = useRetailerName();
-  const cutoff = meta.data!.cutoff;
+  // The window ends on the last collection day, a market date, never the cutoff's UTC date.
+  const end = windowEnd(meta.data!);
 
   const search = sp.toString();
   const parsed = useMemo(() => parseLaunches(new URLSearchParams(search)), [search]);
@@ -161,8 +165,8 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
   };
 
   const q = useQuery({
-    queryKey: ['launches', key, cutoff],
-    queryFn: ({ signal }) => api!.get('/api/v1/launches', { query: toLaunchesQuery(state, cutoff), signal }),
+    queryKey: ['launches', key, end],
+    queryFn: ({ signal }) => api!.get('/api/v1/launches', { query: toLaunchesQuery(state, end), signal }),
     enabled: !!api,
   });
   const env = q.data;
@@ -219,6 +223,12 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
               {env.status !== 'ok' && (
                 <p role="status" className="text-sm text-ink-2">
                   {t('unavailable')}
+                  {env.reason && (
+                    <>
+                      {' '}
+                      <Known t={tr} v={env.reason} />
+                    </>
+                  )}
                 </p>
               )}
               {ok && (

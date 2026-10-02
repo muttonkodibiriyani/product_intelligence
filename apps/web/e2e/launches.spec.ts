@@ -92,6 +92,7 @@ for (const locale of ['en', 'ar'] as const) {
           // The golden retailer names are English in both languages: the page never translates them.
           pending: 'Shop C غير مشمول بعد: 1 من 2 أيام جمع.',
           notApplicable: 'المنتجات الجديدة غير متاحة لهذه البيانات بعد.',
+          notApplicableWhy: 'هذا العرض لا ينطبق على هذا النوع من الكتالوجات.',
           asOf: /البيانات حتى .*2026/,
           back: 'العودة إلى المنتجات الجديدة',
         }
@@ -116,6 +117,7 @@ for (const locale of ['en', 'ar'] as const) {
           more: 'Show up to 500',
           pending: 'Shop C is not included yet: 1 of 2 collection days.',
           notApplicable: "Launches aren't available for this dataset yet.",
+          notApplicableWhy: "This view doesn't apply to this kind of catalogue.",
           asOf: /Data as of 30 Sept? 2026/,
           back: 'Back to launches',
         };
@@ -249,7 +251,10 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api(meta, () => notApplicable) });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/launches/`);
-      await expect(page.getByRole('status').filter({ hasText: T.notApplicable })).toBeVisible();
+      const line = page.getByRole('status').filter({ hasText: T.notApplicable });
+      await expect(line).toBeVisible();
+      // The API's reason, in the user's language, on the same line.
+      await expect(line).toHaveText(`${T.notApplicable} ${T.notApplicableWhy}`);
       await expect(page.getByRole('note')).toHaveCount(0);
       await expect(page.locator('#rows')).toHaveCount(0);
       expect(mock.errors).toEqual([]);
