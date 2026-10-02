@@ -219,9 +219,11 @@ html {
 }
 
 /*
- * A gap bar centred on zero. The fill is an `<i data-side="good|bad" style="width: n%">`: good
- * runs from the middle towards the start of the line, bad towards the end, so the bar mirrors
- * with the reading direction. `n` is the gap as a share of the half width.
+ * A gap bar centred on zero. The fill is an `<i>` sized inline (`width: n%`, the gap as a share of
+ * the half width) that runs from the middle towards the start or the end of the line, so the bar
+ * mirrors with the reading direction. On the Overview it is `data-at="start|end"` in the cheaper
+ * shop's colour, set inline (no green or red); the product table's `data-side="good|bad"` keeps
+ * the outcome colours.
  */
 @utility gapbar {
     position: relative;
@@ -244,6 +246,12 @@ html {
         height: 100%;
         max-width: 50%;
         border-radius: 3px;
+    }
+    & > i[data-at='start'] {
+        inset-inline-end: 50%;
+    }
+    & > i[data-at='end'] {
+        inset-inline-start: 50%;
     }
     & > i[data-side='good'] {
         inset-inline-end: 50%;
