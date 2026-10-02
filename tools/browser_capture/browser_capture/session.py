@@ -5,7 +5,7 @@ Everything Playwright-specific lives in ``pw``; tests use a fake that satisfies 
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -51,6 +51,9 @@ class Visit:
     rendered: str
     title: str
     hops: tuple[Hop, ...] = ()  # redirects before the final document, in order
+    document_url: str = ""  # the URL whose answer is ``server_body``; "" when none was served
+    documents: tuple[Hop, ...] = ()  # every main-frame document served, in order
+    navigated_away: bool = False  # the page moved on by script after the document loaded
     screenshot: bytes | None = None
     idle_timeout: bool = False  # the network never went quiet within the cap; captured anyway
     nav_ms: int = 0
@@ -80,10 +83,21 @@ class Session(Protocol):
         """Plain GET through the browser's own request stack (its headers, no JS, no redirects)."""
         ...
 
-    def visit(
-        self, url: str, gate: Gate, *, nav_timeout_s: float, idle_timeout_s: float, screenshot: bool
+    def visit(  # noqa: PLR0913 - the job's knobs, all keyword-only
+        self,
+        url: str,
+        gate: Gate,
+        *,
+        nav_timeout_s: float,
+        idle_timeout_s: float,
+        screenshot: bool,
+        pace: Callable[[str], None],
     ) -> Visit:
-        """Open ``url`` in a fresh context, every request passing through ``gate`` first."""
+        """Open ``url`` in a fresh browser, every request passing through ``gate`` first.
+
+        Redirect hops are followed one at a time as new navigations, each decided by the gate
+        and paced on its host through ``pace(url)`` before it is requested.
+        """
         ...
 
     def close(self) -> None: ...

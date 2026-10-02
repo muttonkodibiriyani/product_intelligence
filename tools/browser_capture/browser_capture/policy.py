@@ -1,16 +1,20 @@
 """What the real browser may ask for, decided before each request leaves (ADR-0006 rung 2).
 
-Documents (the main-frame navigation and every redirect hop it takes, and any child frame) must
-be ``https`` on the shop's own storefront host set, exactly as the page jobs gate their hops
-(sephora_snapshot, #167). Pictures, media, fonts, beacons and sockets are never requested here:
+Documents (the main-frame navigation, every redirect hop it takes, every JavaScript navigation
+and any child frame) must be ``https`` on the shop's own storefront host set, exactly as the page
+jobs gate their hops (sephora_snapshot, #167), and must pass the job's ``document_check`` (the
+host's robots.txt, fail closed). Pop-up windows are refused outright: a page view is one
+document. Pictures, media, fonts, beacons, sockets and workers are never requested here:
 pictures are collected separately and direct. Scripts, styles and data calls are what makes a
-client-side shop render at all. Under the ``record`` policy they may go to any ``https`` host
-and every host is counted, so the first slice reports the exact set a later run then enforces
-with an explicit host list, fail closed: anything else is aborted and counted, never guessed.
+client-side shop render at all. Under the ``record`` policy GET calls may go to any ``https``
+host and every host is counted, so the first slice reports the exact set a later run then
+enforces with an explicit host list, fail closed: anything else is aborted and counted, never
+guessed. Writes (anything but GET/HEAD) never leave the storefront under either policy.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Final
 from urllib.parse import urlsplit
@@ -18,6 +22,11 @@ from urllib.parse import urlsplit
 RECORD: Final = "record"
 ENFORCE_HOSTS: Final = "enforce"
 DOCUMENT: Final = "document"
+MAIN: Final = "main"  # the page's own frame
+FRAME: Final = "frame"  # a child frame of the page
+POPUP: Final = "popup"  # a window the page opened: always refused
+HTTPS_ONLY: Final = frozenset({"https"})
+READ_METHODS: Final = frozenset({"GET", "HEAD"})
 #: Chromium resource types the browser is never allowed to request from this job.
 NEVER_TYPES: Final = frozenset(
     {
@@ -36,14 +45,19 @@ NEVER_TYPES: Final = frozenset(
 RENDER_TYPES: Final = frozenset({"script", "stylesheet", "xhr", "fetch"})
 
 
-def host_refusal(url: str, allowed: frozenset[str]) -> str | None:
-    """Why ``url`` is not a plain https address on one of ``allowed``; None when it is."""
+def host_refusal(
+    url: str, allowed: frozenset[str], *, schemes: frozenset[str] = HTTPS_ONLY
+) -> str | None:
+    """Why ``url`` is not a plain address on one of ``allowed``; None when it is.
+
+    ``schemes`` is https only in the job; the real-browser test passes http for localhost.
+    """
     parts = urlsplit(url)
-    if parts.scheme != "https":
-        return f"scheme {parts.scheme or 'none'!r} is not https"
+    if parts.scheme not in schemes:
+        return f"scheme {parts.scheme or 'none'!r} is not {' or '.join(sorted(schemes))}"
     if "@" in parts.netloc:
         return "userinfo in host"
-    if parts.port is not None:
+    if parts.port is not None and schemes == HTTPS_ONLY:
         return f"explicit port {parts.port}"
     if parts.hostname is None or parts.hostname.lower() not in allowed:
         return f"host {parts.netloc.lower()!r} is not in the allowed set"
@@ -58,48 +72,70 @@ class Decision:
 
 @dataclass
 class Gate:
-    """Per-visit request policy with its own counters; one Gate per page visit."""
+    """Per-visit request policy with its own counters; one Gate per page visit.
+
+    ``document_check`` is the job's say on a document target that passed the host rules (its
+    robots.txt verdict, a stopped host); it returns the refusal reason or None.
+    """
 
     hosts: frozenset[str]
     subresources: str = RECORD  # RECORD or ENFORCE_HOSTS
     subresource_hosts: frozenset[str] = frozenset()
+    document_check: Callable[[str], str | None] | None = None
+    schemes: frozenset[str] = HTTPS_ONLY
     counts: dict[str, int] = field(default_factory=dict)
     hosts_seen: dict[str, int] = field(default_factory=dict)
     refused_document: tuple[str, str] | None = None  # (url, why) for the first refused document
 
-    def _count(self, key: str) -> None:
-        self.counts[key] = self.counts.get(key, 0) + 1
+    def count(self, key: str, n: int = 1) -> None:
+        self.counts[key] = self.counts.get(key, 0) + n
 
-    def decide(self, url: str, resource_type: str, is_navigation: bool) -> Decision:
+    def decide(
+        self,
+        url: str,
+        resource_type: str,
+        is_navigation: bool,
+        *,
+        method: str = "GET",
+        scope: str = MAIN,
+    ) -> Decision:
+        if scope == POPUP:
+            self.count("refused_popup")
+            return Decision(False, "popup")
         if is_navigation or resource_type == DOCUMENT:
-            return self._document(url)
+            return self._document(url, scope)
         if resource_type in NEVER_TYPES or resource_type not in RENDER_TYPES:
-            self._count(f"refused_type_{resource_type}")
+            self.count(f"refused_type_{resource_type}")
             return Decision(False, f"never:{resource_type}")
-        return self._render(url, resource_type)
+        return self._render(url, resource_type, method)
 
-    def _document(self, url: str) -> Decision:
-        why = host_refusal(url, self.hosts)
+    def _document(self, url: str, scope: str) -> Decision:
+        why = host_refusal(url, self.hosts, schemes=self.schemes)
+        if why is None and self.document_check is not None:
+            why = self.document_check(url)
         if why is not None:
-            self._count("refused_document")
+            self.count(f"refused_{scope}_document" if scope != MAIN else "refused_document")
             if self.refused_document is None:
                 self.refused_document = (url, why)
             return Decision(False, f"document: {why}")
-        self._count("documents")
+        self.count("documents" if scope == MAIN else "frame_documents")
         return Decision(True, DOCUMENT)
 
-    def _render(self, url: str, resource_type: str) -> Decision:
+    def _render(self, url: str, resource_type: str, method: str) -> Decision:
         parts = urlsplit(url)
         host = (parts.hostname or "").lower()
-        if parts.scheme != "https" or not host:
-            self._count("refused_http")
+        if parts.scheme not in self.schemes or not host:
+            self.count("refused_http")
             return Decision(False, "http")
         self.hosts_seen[host] = self.hosts_seen.get(host, 0) + 1
         own = host in self.hosts
+        if not own and method.upper() not in READ_METHODS:
+            self.count("refused_third_party_write")
+            return Decision(False, f"write:{host}")
         if not own and self.subresources != RECORD and host not in self.subresource_hosts:
-            self._count("refused_third_party")
+            self.count("refused_third_party")
             return Decision(False, f"host:{host}")
-        self._count(f"render_{resource_type}")
+        self.count(f"render_{resource_type}")
         if not own:
-            self._count("third_party")
+            self.count("third_party")
         return Decision(True, f"render:{resource_type}")

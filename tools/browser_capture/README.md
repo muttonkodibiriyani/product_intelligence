@@ -32,22 +32,42 @@ What "ordinary browser" means here, enforced by the job and recorded in `manifes
 
 ## The request gate
 
-Everything the page asks for passes `policy.Gate.decide` before it leaves. Documents (the
-navigation and every redirect hop) must be https, have no userinfo or port, and sit on a host in
-`HOSTS` (default: the hosts of the plan's own URLs). A refused document aborts the navigation and
-the item is recorded `hop_host_refused` with the refused target as `final_url` and nothing
-stored. Pictures, media, fonts, beacons, pings, websockets, manifests and anything of unknown
-type never leave. Scripts, stylesheets and data calls (`xhr`, `fetch`) follow `SUBRESOURCES`:
+Every request path a page has goes through `policy.Gate.decide` or is shut, at the browser
+context so pop-up windows are covered too:
 
-- `record` (default): allowed to any https host; the hosts and counts are written per page as
-  `hosts_seen` and `requests`. This is for the first run on a shop: the report yields the list
-  of hosts the page really needs.
-- a host list (`SUBRESOURCES=cdn.example,api.example`): only those hosts; the rest are aborted
-  and counted as `refused_third_party`. This is the production setting once the list is known.
+- **Documents.** The navigation, every redirect hop, every child-frame document and anything a
+  script navigates to must be https, have no userinfo or port, sit on a host in `HOSTS`
+  (default: the hosts of the plan's own URLs) and pass the job's own check: the host is not
+  stopped and its `robots.txt` (read for every allowed host before the first page) allows the
+  path. Documents are fetched by the handler with redirects **not** followed; a 3xx is never
+  passed to Chromium. The hop is recorded, the navigation cancelled, and the hop is opened as a
+  fresh navigation only after the gate and the per-host pacing have had their say (at most 5).
+  A refused target ends the item with nothing stored: `hop_host_refused` (host rules),
+  `robots_disallowed` or `robots_unavailable`, with the refused URL as `final_url`. A frame
+  that redirects is simply refused (`refused_frame_redirect`).
+- **Pop-up windows** are refused at the gate (`refused_popup`) and closed (`popups_closed`).
+- **Service workers** are blocked by the context (`service_workers="block"`), so no worker script
+  is ever requested and nothing runs behind the page.
+- **WebSockets** are refused before the handshake (`refused_websocket`); none is ever connected.
+- **Pictures, media, fonts, beacons, pings, manifests, text tracks, event sources** and anything
+  of unknown type never leave (`refused_type_<type>`).
+- **Scripts, stylesheets and data calls** (`xhr`, `fetch`) must be https. A data call that is not
+  a `GET`/`HEAD` and does not go to the storefront's own hosts is refused in every mode
+  (`refused_third_party_write`): the capture never writes to anyone else. The rest follows
+  `SUBRESOURCES`:
+  - `record` (default): allowed to any https host; the hosts and counts are written per page as
+    `hosts_seen` and `requests`. This is for the first run on a shop: the report yields the list
+    of hosts the page really needs.
+  - a host list (`SUBRESOURCES=cdn.example,api.example`): only those hosts; the rest are aborted
+    and counted as `refused_third_party`. This is the production setting once the list is known.
 
-Playwright is not guaranteed to route every redirect hop through the handler, so the job also
-audits the chain it gets back after the fact: any hop off the allowed set is `hop_host_refused`
-even if it was fetched, and its bodies are not stored.
+Each row records `document_url` (the document the DOM belongs to) and `documents` (every
+document the main frame committed). When a script moved the page after the asked-for document
+loaded, the row is `navigated_away` with the reason `script moved to <url>`, so the evidence is
+never read as the page that was asked for.
+
+The job also audits the chain it gets back after the fact: any hop or document off the allowed
+set is `hop_host_refused` even if it was fetched, and its bodies are not stored.
 
 ## Output
 
@@ -69,8 +89,9 @@ Under `gs://$BUCKET/$PREFIX/` (or `file:<dir>` for local runs), never rewritten:
 Sharded runs (`CLOUD_RUN_TASK_COUNT` > 1) suffix `manifest.tN.json`, `status.tN.json` and
 `part-tN-NNNN` so tasks never overwrite each other.
 
-States: `ok`, `http_error`, `blocked`, `rate_limited`, `transport_error`, `hop_host_refused`,
-`robots_disallowed`, `robots_unavailable`, `skipped_cutoff`, `skipped_host_stopped`. There is no
+States: `ok`, `navigated_away`, `http_error`, `blocked`, `rate_limited`, `transport_error`,
+`hop_host_refused`, `robots_disallowed`, `robots_unavailable`, `skipped_cutoff`,
+`skipped_host_stopped`. There is no
 silent default: an item without a document response is `http_error` with reason
 `no document response`.
 
@@ -94,5 +115,19 @@ docker run --rm --network host --ipc=host --init \
 ```
 
 The unit tests drive `run.Job` through a scripted fake session and a `file:` store; no real
-retailer page is ever used in a fixture, and the Playwright adapter (`pw.py`) is exercised only
-by the job itself.
+retailer page is ever used in a fixture. The Playwright adapter (`pw.py`) is proven by
+`tests/test_browser_pw_live.py` against a local site (`tests/localsite.py`: `localhost` is the
+storefront, `127.0.0.1` the third party) that serves a page with pictures, a cross-host frame,
+third-party GET and POST calls, two pop-ups, a service worker and two WebSockets. The test asserts
+that exactly the gate-allowed requests reach the server, that off-storefront and robots-refused
+redirects stop before the hop is requested, that an own-host redirect is paced and recorded, that
+a gzip document is kept decoded, and that a script navigation is flagged. It runs only inside the
+job image (`BROWSER_CAPTURE_LIVE=1`; CI has no browser and skips it):
+
+```sh
+docker run --rm --network host --ipc=host --init -v "$PWD/tools:/work:ro" \
+  -e PYTHONPATH=/work/page_capture:/work/browser_capture -e BROWSER_CAPTURE_LIVE=1 \
+  -e CHROMIUM_ARGS='--no-sandbox --disable-dev-shm-usage --single-process --no-zygote' \
+  pi-browser-capture:dev sh -c "pip install -q pytest && cd /work/browser_capture && \
+  python -m pytest tests/test_browser_pw_live.py -q"
+```

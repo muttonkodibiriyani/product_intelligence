@@ -55,6 +55,7 @@ OK, HTTP_ERROR, BLOCKED, RATE_LIMITED, TRANSPORT_ERROR = (
     "transport_error",
 )
 HOP_HOST_REFUSED = "hop_host_refused"
+NAVIGATED_AWAY = "navigated_away"
 ROBOTS_DISALLOWED, ROBOTS_UNAVAILABLE = "robots_disallowed", "robots_unavailable"
 SKIPPED_CUTOFF, SKIPPED_HOST_STOPPED = "skipped_cutoff", "skipped_host_stopped"
 
@@ -140,6 +141,15 @@ class HostState:
     rl_streak: int = 0
     err_streak: int = 0
     counts: dict[str, int] = field(default_factory=dict)
+
+
+def refused_state(why: str) -> str:
+    """Which explicit state a refused document target gets, from the gate's reason."""
+    if why.startswith("robots disallowed"):
+        return ROBOTS_DISALLOWED
+    if why.startswith("robots unavailable") or why.startswith("robots.txt not read"):
+        return ROBOTS_UNAVAILABLE
+    return HOP_HOST_REFUSED
 
 
 class Job:
@@ -239,6 +249,10 @@ class Job:
                 "proxy": None,
                 "launch_args": list(engine.launch_args),
                 "fresh_browser_per_page": True,
+                "service_workers": "block",
+                "websockets": "refused",
+                "popups": "refused and closed",
+                "documents": "fetched with redirects not followed; each hop is a new navigation",
             },
         }
         self.store.put(self.named("manifest.json"), json.dumps(doc).encode(), gz=False)
@@ -289,6 +303,27 @@ class Job:
             host.stopped_url = url
             self.count("hosts_stopped")
             print(json.dumps({"host_stopped": host.host, "reason": reason, "url": url}), flush=True)
+
+    def pace_url(self, url: str) -> None:
+        self.pace(self.host_for(url))
+
+    def document_check(self, url: str) -> str | None:
+        """The job's say on a document target the gate's host rules let through.
+
+        Robots are read for every allowed host before the first page (``load``), so this never
+        makes a request; a host without a verdict is refused, fail closed.
+        """
+        host = self.host_for(url)
+        if host.stopped:
+            return f"host stopped: {host.stopped}"
+        if host.robots is None:
+            return "robots.txt not read for this host"
+        verdict = host.robots.verdict(url)
+        if verdict == robots.ALLOWED:
+            return None
+        if verdict == robots.DISALLOWED:
+            return "robots disallowed"
+        return f"robots {verdict}: {host.robots.reason}"
 
     # ------------------------------------------------------------------ robots
     def answer(self, url: str) -> Answer | None:
@@ -389,7 +424,12 @@ class Job:
             reason = host.robots.reason if host.robots else ""
             self.record_page({**rec, "state": state, "reason": reason}, host)
             return
-        gate = Gate(self.allowed, self.cfg.subresources, frozenset(self.cfg.subresource_hosts))
+        gate = Gate(
+            self.allowed,
+            self.cfg.subresources,
+            frozenset(self.cfg.subresource_hosts),
+            document_check=self.document_check,
+        )
         self.pace(host)
         rec["at"] = self.clock().isoformat()
         try:
@@ -399,14 +439,17 @@ class Job:
                 nav_timeout_s=self.cfg.nav_timeout_s,
                 idle_timeout_s=self.cfg.idle_timeout_s,
                 screenshot=self.cfg.screenshot,
+                pace=self.pace_url,
             )
         except TransportError as exc:
             rec["requests"] = dict(gate.counts)
             if gate.refused_document is not None:
                 url, why = gate.refused_document
-                self.count("hop_host_refused")
-                self.stop_host(host, f"redirect off the storefront to {url}: {why}", item.url)
-                rec |= {"state": HOP_HOST_REFUSED, "reason": f"{url}: {why}", "final_url": url}
+                state = refused_state(why)
+                self.count(state)
+                if state == HOP_HOST_REFUSED:
+                    self.stop_host(host, f"redirect off the storefront to {url}: {why}", item.url)
+                rec |= {"state": state, "reason": f"{url}: {why}", "final_url": url}
             else:
                 host.err_streak += 1
                 self.count("transport_error")
@@ -426,13 +469,16 @@ class Job:
             "status": visit.status,
             "redirects": len(visit.hops),
             "hops": [{"url": h.url, "status": h.status} for h in visit.hops],
+            "document_url": visit.document_url,
+            "documents": [{"url": d.url, "status": d.status} for d in visit.documents],
+            "navigated_away": visit.navigated_away,
             "nav_ms": visit.nav_ms,
             "settle_ms": visit.settle_ms,
             "idle_timeout": visit.idle_timeout,
             "requests": dict(visit.gate_counts),
             "hosts_seen": dict(visit.hosts_seen),
         }
-        chain = [h.url for h in visit.hops] + [visit.final_url]
+        chain = [h.url for h in visit.hops] + [d.url for d in visit.documents] + [visit.final_url]
         off = next(((u, w) for u in chain if (w := host_refusal(u, self.allowed))), None)
         if off is not None:  # the gate should have aborted this; the evidence is not kept
             url, why = off
@@ -451,6 +497,8 @@ class Job:
             host.rl_streak = 0
             if visit.status is None:
                 rec |= {"state": HTTP_ERROR, "reason": "no document response"}
+            elif visit.navigated_away:  # the DOM belongs to a later document than asked for
+                rec |= {"state": NAVIGATED_AWAY, "reason": f"script moved to {visit.final_url}"}
             else:
                 rec["state"] = OK if 200 <= visit.status < 300 else HTTP_ERROR
             self.record_page(rec, host)
@@ -539,6 +587,8 @@ class Job:
             ),
             flush=True,
         )
+        for host in sorted(self.allowed):  # every document target is checked against these
+            self.robots_verdict(f"https://{host}/")
 
     def run(self) -> None:
         self.load()

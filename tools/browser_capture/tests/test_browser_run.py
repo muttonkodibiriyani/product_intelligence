@@ -46,6 +46,7 @@ def visit(  # noqa: PLR0913
     final_url: str | None = None,
     shot: bytes | None = b"\x89PNG",
     idle_timeout: bool = False,
+    navigated_away: bool = False,
 ) -> Visit:
     return Visit(
         status=status,
@@ -59,6 +60,9 @@ def visit(  # noqa: PLR0913
         idle_timeout=idle_timeout,
         nav_ms=120,
         settle_ms=800,
+        document_url=final_url or url,
+        documents=(Hop(final_url or url, status or 0),),
+        navigated_away=navigated_away,
         gate_counts={"documents": 1 + len(hops), "render_script": 3, "third_party": 2},
         hosts_seen={"www.shop.example": 1, "cdn.vendor.test": 2},
     )
@@ -90,7 +94,7 @@ class FakeSession:
             raise got
         return got
 
-    def visit(
+    def visit(  # noqa: PLR0913
         self,
         url: str,
         gate: policy.Gate,
@@ -98,8 +102,10 @@ class FakeSession:
         nav_timeout_s: float,
         idle_timeout_s: float,
         screenshot: bool,
+        pace: Callable[[str], None],
     ) -> Visit:
         self.calls.append(("visit", url))
+        self.pace = pace
         got = self.visits.get(url)
         if callable(got):
             got = got(gate)
@@ -266,6 +272,10 @@ def test_an_allowed_page_is_visited_once_with_its_evidence_stored(tmp_path: Path
         "proxy": None,
         "launch_args": [],
         "fresh_browser_per_page": True,
+        "service_workers": "block",
+        "websockets": "refused",
+        "popups": "refused and closed",
+        "documents": "fetched with redirects not followed; each hop is a new navigation",
     }
     assert manifest["hosts"] == ["www.shop.example"]  # derived from the plan
     assert manifest["subresources"] == {"policy": "record", "hosts": []}
@@ -300,10 +310,12 @@ def test_a_wall_on_robots_txt_stops_the_host_before_any_page_is_opened(tmp_path:
     job.finish()
     assert session.calls == [("answer", f"{SHOP}/robots.txt")]
     rows = read_parts(tmp_path, "pages")
-    assert [r["state"] for r in rows] == ["robots_unavailable", "skipped_host_stopped"]
+    # robots are read for every host before the first page, so the wall stops the host up front
+    assert [r["state"] for r in rows] == ["skipped_host_stopped", "skipped_host_stopped"]
     assert "challenge on robots.txt" in rows[0]["reason"]
     status = read_json(tmp_path, "status.json")
     assert status["hosts_blocked"] == {"www.shop.example": rows[0]["reason"]}
+    assert status["counts"]["robots_unavailable"] == 1
     assert status["counts"]["block_challenge"] == 1
     assert status["counts"]["hosts_stopped"] == 1
 
@@ -440,6 +452,83 @@ def test_a_redirect_that_stays_on_the_storefront_is_kept_with_its_chain(tmp_path
     job.run()
     rec = job.parts.buf["pages"][0]
     assert (rec["state"], rec["redirects"], rec["final_url"]) == ("ok", 1, f"{SHOP}/p/new")
+
+
+def test_robots_are_read_for_every_allowed_host_before_the_first_page(tmp_path: Path) -> None:
+    url = f"{SHOP}/p/1"
+    session = FakeSession(
+        {
+            f"{SHOP}/robots.txt": answer(200, ROBOTS),
+            "https://m.shop.example/robots.txt": answer(404, ""),
+        },
+        {url: visit(url)},
+    )
+    job, _ = make_job(tmp_path, session, [url], hosts=("www.shop.example", "m.shop.example"))
+    job.run()
+    reads = [u for kind, u in session.calls if kind == "answer"]
+    assert reads == ["https://m.shop.example/robots.txt", f"{SHOP}/robots.txt"]
+    assert session.calls.index(("visit", url)) > 1
+    assert job.document_check("https://m.shop.example/p/9") is None  # 404 robots: allow all
+    assert job.document_check(f"{SHOP}/private/x") == "robots disallowed"
+    assert job.document_check(f"{SHOP}/p/2") is None
+
+
+def test_the_document_check_refuses_a_stopped_or_unread_host(tmp_path: Path) -> None:
+    url = f"{SHOP}/p/1"
+    session = FakeSession({f"{SHOP}/robots.txt": answer(200, ROBOTS)}, {url: visit(url)})
+    job, _ = make_job(tmp_path, session, [url])
+    assert job.document_check(url) == "robots.txt not read for this host"  # before load()
+    job.load()
+    assert job.document_check(url) is None
+    job.stop_host(job.hosts["www.shop.example"], "test", url)
+    assert job.document_check(url) == "host stopped: test"
+
+
+def test_a_redirect_the_robots_rules_refuse_is_an_explicit_state_and_keeps_the_host(
+    tmp_path: Path,
+) -> None:
+    urls = [f"{SHOP}/p/1", f"{SHOP}/p/2"]
+
+    def redirected(gate: policy.Gate) -> Exception:
+        assert gate.decide(urls[0], "document", True).allow
+        assert not gate.decide(f"{SHOP}/private/x", "document", True).allow
+        return TransportError("document refused")
+
+    session = FakeSession(
+        {f"{SHOP}/robots.txt": answer(200, ROBOTS)}, {urls[0]: redirected, urls[1]: visit(urls[1])}
+    )
+    job, _ = make_job(tmp_path, session, urls)
+    job.run()
+    rows = job.parts.buf["pages"]
+    assert [r["state"] for r in rows] == ["robots_disallowed", "ok"]
+    assert rows[0]["reason"] == f"{SHOP}/private/x: robots disallowed"
+    assert rows[0]["final_url"] == f"{SHOP}/private/x"
+    assert job.hosts["www.shop.example"].stopped is None
+
+
+def test_a_script_navigation_is_kept_but_flagged_as_another_document(tmp_path: Path) -> None:
+    url = f"{SHOP}/p/1"
+    got = visit(url, final_url=f"{SHOP}/p/1?moved", navigated_away=True)
+    session = FakeSession({f"{SHOP}/robots.txt": answer(200, ROBOTS)}, {url: got})
+    job, _ = make_job(tmp_path, session, [url])
+    job.run()
+    rec = job.parts.buf["pages"][0]
+    assert rec["state"] == "navigated_away"
+    assert rec["reason"] == f"script moved to {SHOP}/p/1?moved"
+    assert rec["navigated_away"] is True
+    assert rec["document_url"] == f"{SHOP}/p/1?moved"
+    assert rec["documents"] == [{"url": f"{SHOP}/p/1?moved", "status": 200}]
+    assert "raw_server" in rec  # the evidence is kept, the state says what it is
+
+
+def test_the_adapter_paces_hops_through_the_job(tmp_path: Path) -> None:
+    url = f"{SHOP}/p/1"
+    session = FakeSession({f"{SHOP}/robots.txt": answer(200, ROBOTS)}, {url: visit(url)})
+    job, sleeps = make_job(tmp_path, session, [url])
+    job.run()
+    before = len(sleeps)
+    session.pace(f"{SHOP}/p/hop")  # what pw.py calls before re-navigating to a hop
+    assert len(sleeps) == before + 1
 
 
 # ------------------------------------------------------------------- blocks, errors
@@ -596,3 +685,17 @@ def test_store_is_the_shared_page_capture_store(tmp_path: Path) -> None:
     store = Store(f"file:{tmp_path}", "x")
     assert store.put("a.txt", b"hi", gz=False) == "a.txt"
     assert (tmp_path / "x" / "a.txt").read_bytes() == b"hi"
+
+
+@pytest.mark.parametrize(
+    ("why", "state"),
+    [
+        ("robots disallowed", "robots_disallowed"),
+        ("robots unavailable: http 500 reading robots.txt", "robots_unavailable"),
+        ("robots.txt not read for this host", "robots_unavailable"),
+        ("host 'evil.test' is not in the allowed set", "hop_host_refused"),
+        ("host stopped: 2 consecutive 429", "hop_host_refused"),
+    ],
+)
+def test_a_refused_document_gets_the_state_its_reason_names(why: str, state: str) -> None:
+    assert run.refused_state(why) == state
