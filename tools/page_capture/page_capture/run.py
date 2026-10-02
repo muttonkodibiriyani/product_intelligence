@@ -253,7 +253,12 @@ class Job:
         self.clock = clock
         self.sleep = sleep
         self.started = clock()
-        self.parts = Parts(self.store, BATCH, on_flush=self.progress)
+        # A sharded run has one writer per task; names carry the task index so the
+        # tasks never overwrite each other's parts or summaries.
+        self.tag = f"t{cfg.task_index}" if cfg.task_count > 1 else ""
+        self.parts = Parts(
+            self.store, BATCH, on_flush=self.progress, label=f"{self.tag}-" if self.tag else ""
+        )
         self.hosts: dict[str, HostState] = {}
         self.counts: dict[str, int] = {}
         self.robots_log: dict[str, dict[str, Any]] = {}
@@ -283,7 +288,14 @@ class Job:
             "stopped": self.stopped,
             "proxy_bytes": self.meter.used,
         }
-        self.store.put("progress.json", json.dumps(state).encode(), gz=False)
+        self.store.put(self.named("progress.json"), json.dumps(state).encode(), gz=False)
+
+    def named(self, base: str) -> str:
+        """``progress.json`` for a single task, ``progress.t1.json`` for task 1 of a shard."""
+        if not self.tag:
+            return base
+        stem, dot, ext = base.rpartition(".")
+        return f"{stem}.{self.tag}{dot}{ext}"
 
     def manifest(self, plan_sha: str, total: int) -> None:
         doc = {
@@ -311,12 +323,14 @@ class Job:
                 "byte_cap": self.cfg.proxy_byte_cap,
             },
         }
-        self.store.put("manifest.json", json.dumps(doc).encode(), gz=False)
+        self.store.put(self.named("manifest.json"), json.dumps(doc).encode(), gz=False)
 
     def finish(self) -> None:
         self.parts.flush_all()
         self.store.put(
-            "robots.json", json.dumps(self.robots_log, ensure_ascii=False).encode(), gz=False
+            self.named("robots.json"),
+            json.dumps(self.robots_log, ensure_ascii=False).encode(),
+            gz=False,
         )
         outcome = "complete"
         if self.stopped and self.stopped.startswith("error"):
@@ -339,7 +353,7 @@ class Job:
             "proxy_bytes": self.meter.used,
             "proxy_byte_cap": self.cfg.proxy_byte_cap,
         }
-        self.store.put("status.json", json.dumps(status).encode(), gz=False)
+        self.store.put(self.named("status.json"), json.dumps(status).encode(), gz=False)
         self.progress()
 
     # ------------------------------------------------------------------ fetch

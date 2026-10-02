@@ -363,7 +363,7 @@ def test_shard_limit_and_images_off(tmp_path: Path) -> None:
     job.finish()
     assert [r["id"] for r in _records(tmp_path, "pages")] == ["1", "3"]
     assert _records(tmp_path, "images") == []
-    manifest = _json(tmp_path, "manifest.json")
+    manifest = _json(tmp_path, "manifest.t1.json")  # task 1 of 2 writes its own summaries
     assert manifest["shard"] == {"index": 1, "count": 2}
     assert manifest["items_shard"] == 2
 

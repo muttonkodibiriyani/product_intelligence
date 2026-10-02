@@ -221,3 +221,32 @@ def test_without_proxy_hosts_no_proxy_client_is_built(tmp_path: object) -> None:
     job = run.Job(cfg, client=_Client(), store=Store(cfg.bucket, "r"), clock=lambda: T0)
     assert job.proxy_client is None
     assert job.client_for(job.host_for("https://www.nysaa.com/"), "html") is job.client
+
+
+def test_sharded_tasks_write_distinct_names(tmp_path: object) -> None:
+    """Two tasks of one run must never overwrite each other's parts or summaries."""
+    written: dict[int, set[str]] = {}
+    for index in range(2):
+        env = {
+            **_env(),
+            "BUCKET": f"file:{tmp_path}",
+            "CLOUD_RUN_TASK_INDEX": str(index),
+            "CLOUD_RUN_TASK_COUNT": "2",
+        }
+        job = run.Job(
+            run.config_from_env(env),
+            client=_Client(),
+            store=Store(f"file:{tmp_path}", "r"),
+            clock=lambda: T0,
+            sleep=lambda _s: None,
+        )
+        job.plan = Plan("faces_ae", "faces", ())
+        job.one(Item(f"f-{index}", f"https://www.faces.ae/en/p/{index}.html", "en-AE", "html", {}))
+        job.finish()
+        root = tmp_path / "r"  # type: ignore[operator]
+        written[index] = {str(f.relative_to(root)) for f in root.rglob("*") if f.is_file()}
+    only_second = written[1] - written[0]
+    assert "pages/part-t1-0000.jsonl.gz" in only_second
+    assert {"progress.t1.json", "status.t1.json", "robots.t1.json"} <= only_second
+    assert "pages/part-t0-0000.jsonl.gz" in written[0]
+    assert "progress.json" not in written[1]

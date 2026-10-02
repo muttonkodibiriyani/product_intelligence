@@ -40,7 +40,7 @@ Ordinary-access rules the job enforces itself:
 | `EGRESS` | label recorded in the manifest (e.g. `cloud-run-me-central1`) |
 | `UA` | User-Agent; default stock Chrome 140 desktop. Never a spoofed TLS profile |
 | `GIT_SHA` | recorded in the manifest |
-| `CLOUD_RUN_TASK_INDEX` / `CLOUD_RUN_TASK_COUNT` | sharding: item *i* belongs to task *i mod count* |
+| `CLOUD_RUN_TASK_INDEX` / `CLOUD_RUN_TASK_COUNT` | sharding: item *i* belongs to task *i mod count*; with more than one task every task writes its own names (`pages/part-t1-0000.jsonl.gz`, `progress.t1.json`, `manifest.t1.json`, …) so tasks never overwrite each other |
 | `PROXY_HOSTS` | comma list of page hosts fetched through the residential proxy; empty = no proxy |
 | `PROXY_SECRET` | Secret Manager version resource holding the proxy endpoint JSON; required with `PROXY_HOSTS` |
 | `PROXY_BYTE_CAP` | wire bytes the run may move through the proxy; default and ceiling 1 800 000 000 |

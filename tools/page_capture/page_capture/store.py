@@ -68,12 +68,23 @@ class Store:
 
 
 class Parts:
-    """Batched JSONL streams: ``<stream>/part-NNNN.jsonl.gz``."""
+    """Batched JSONL streams: ``<stream>/part-[<label>]NNNN.jsonl.gz``.
 
-    def __init__(self, store: Store, batch: int = 100, on_flush: Callable[[], None] | None = None):
+    ``label`` keeps parallel writers apart: a sharded run passes ``t<index>-`` so two
+    tasks never overwrite each other's ``part-0000``.
+    """
+
+    def __init__(
+        self,
+        store: Store,
+        batch: int = 100,
+        on_flush: Callable[[], None] | None = None,
+        label: str = "",
+    ):
         self.store = store
         self.batch = batch
         self.on_flush = on_flush
+        self.label = label
         self.buf: dict[str, list[dict[str, Any]]] = {}
         self.parts: dict[str, int] = {}
 
@@ -88,7 +99,7 @@ class Parts:
             return None
         n = self.parts.get(stream, 0)
         data = "".join(json.dumps(r, ensure_ascii=False, default=str) + "\n" for r in recs)
-        name = self.store.put(f"{stream}/part-{n:04d}.jsonl.gz", data.encode())
+        name = self.store.put(f"{stream}/part-{self.label}{n:04d}.jsonl.gz", data.encode())
         self.parts[stream] = n + 1
         self.buf[stream] = []
         if self.on_flush is not None:
