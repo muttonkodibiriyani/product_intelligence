@@ -26,6 +26,7 @@ import { ToolRegistry } from "../src/tools/registry.js";
 import type { CallerContext } from "../src/tools/types.js";
 import { FakeApi, okEnvelope } from "./fake-api.js";
 import { CONFIG, prices } from "./meter-fixtures.js";
+import { RUNBOOK_LIMITS } from "./runbook-seed.js";
 
 const BUDGET_ID = "0d2c8a54-6f1e-4b7a-9c3d-2e5f8a1b7c90";
 const KILL_SWITCH_ENV = {
@@ -250,7 +251,7 @@ function realFlow() {
   const store = new MemoryUsageStore({
     ...CONFIG,
     promptVersion: PROMPT_VERSION,
-    limits: { ...CONFIG.limits, maxInputTokens: 100_000 },
+    limits: RUNBOOK_LIMITS,
   });
   const meter = new SpyMeter(store, prices());
   const api = new FakeApi(() => okEnvelope({}));

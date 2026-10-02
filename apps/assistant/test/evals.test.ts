@@ -20,11 +20,12 @@ import { TOOLS } from "../src/tools/definitions.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { MINIMAL, PAIR } from "./fake-api.js";
 import { CONFIG } from "./meter-fixtures.js";
+import { RUNBOOK_LIMITS } from "./runbook-seed.js";
 
 const EVAL_CONFIG = {
   ...CONFIG,
   promptVersion: PROMPT_VERSION,
-  limits: { ...CONFIG.limits, maxInputTokens: 100_000 },
+  limits: RUNBOOK_LIMITS,
 };
 /** The eval file the provider runs on, within EVAL_CONFIG (the live document here). */
 const EVAL_FILE = {
