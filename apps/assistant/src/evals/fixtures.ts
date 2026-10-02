@@ -8,6 +8,9 @@
  * - n04's name is a prompt-injection string with an image link.
  * - Offer evidence carries admin-only `runId`/`source`, which viewers must never see.
  * - Trend and launches need history: `capability_off`.
+ * - p01 history at north: 110.00 on 2026-09-01, 100.00 on 2026-09-15.
+ * - Out-of-stock share: 25.0 at north; /summary for north: skincare ladder median 64.00, Lumen
+ *   brand median 58.75; /summary for south withholds its prices section (`cohort_too_small`).
  * - Scenario "thin": every endpoint answers `cohort_too_small`.
  */
 import type { ApiRequest, MetricApi } from "../api/client.js";
@@ -177,10 +180,129 @@ function product(id: string) {
   };
 }
 
+function history(id: string) {
+  const point = (date: string, price: string) => ({
+    availability: "in_stock",
+    date,
+    price: money(price),
+    regular: money(price),
+  });
+  return ok(
+    "history",
+    {
+      id,
+      series: {
+        north: [point("2026-09-01", "110.00"), point("2026-09-15", "100.00")],
+        south: [point("2026-09-15", "120.00")],
+      },
+    },
+    null,
+  );
+}
+
+function availability() {
+  const counts = (inStock: number, low: number, out: number) => ({
+    blocked: 0,
+    in_stock: inStock,
+    low_stock: low,
+    not_deliverable: 0,
+    not_observed: 0,
+    out_of_stock: out,
+    removed: 0,
+    unknown: 0,
+  });
+  return ok(
+    "availability",
+    {
+      denominator: "offers in an observed stock state (in_stock, low_stock, out_of_stock)",
+      retailers: [
+        {
+          retailer: "north",
+          counts: counts(5, 1, 2),
+          denominator: 8,
+          lowStockShare: "12.5",
+          outOfStockShare: "25.0",
+          reason: null,
+        },
+        {
+          retailer: "south",
+          counts: counts(5, 0, 0),
+          denominator: 5,
+          lowStockShare: "0.0",
+          outOfStockShare: "0.0",
+          reason: null,
+        },
+      ],
+    },
+    { description: "offers in an observed stock state on the date", n: 13 },
+  );
+}
+
+function summary(query: ApiRequest["query"]) {
+  const asked = [query?.retailer ?? []].flat();
+  const retailer = asked.includes("south") ? "south" : "north";
+  const withheld = retailer === "south";
+  const prices = {
+    brandPrice: [{ brand: "Lumen", median: money("58.75"), n: 4 }],
+    ladder: [
+      {
+        category: "skincare",
+        min: money("39.90"),
+        p25: money("45.50"),
+        median: money("64.00"),
+        p75: money("95.00"),
+        max: money("120.00"),
+        n: 7,
+      },
+    ],
+    medianPrice: money("64.00"),
+    priceHist: { counts: [3, 2, 2], edges: ["39.90", "66.60", "93.30", "120.00"] },
+    priced: 7,
+  };
+  const empty = {
+    brandPrice: null,
+    ladder: null,
+    medianPrice: null,
+    priceHist: null,
+    priced: null,
+  };
+  return ok(
+    "summary",
+    {
+      retailer,
+      asOf: "2026-09-15",
+      currency: CURRENCY,
+      freshness: { ageDays: 0, cutoff: META.cutoff, status: "fresh" },
+      products: 8,
+      brands: 2,
+      categories: 1,
+      categoryMix: [{ category: CATEGORY, n: 8 }],
+      ...(withheld ? empty : prices),
+      promoDepth: null,
+      promoSharePct: null,
+      ratingPrice: null,
+      topDiscounts: null,
+      withheld: [
+        ...(withheld ? [{ section: "prices", reason: "cohort_too_small" }] : []),
+        { section: "promotions", reason: "cohort_too_small" },
+        { section: "ratings", reason: "cohort_too_small" },
+      ],
+    },
+    { description: "offers observed with a price on the latest date", n: withheld ? 2 : 8 },
+  );
+}
+
 function standard(request: ApiRequest): unknown {
   const path = request.path.startsWith(PREFIX) ? request.path.slice(PREFIX.length) : "";
   if (path === "/products") {
     return ok("products", { items: CARDS, total: CARDS.length, nextCursor: null }, null);
+  }
+  const historyOf = /^\/products\/([^/]+)\/history$/.exec(path);
+  if (historyOf) {
+    const id = decodeURIComponent(historyOf[1] ?? "");
+    return product(id) === undefined
+      ? notEnough("history", "not_in_scope", "Unknown product.", "منتج غير معروف.")
+      : history(id);
   }
   if (path.startsWith("/products/")) {
     const data = product(decodeURIComponent(path.slice("/products/".length)));
@@ -321,6 +443,10 @@ function standard(request: ApiRequest): unknown {
         },
         null,
       );
+    case "/availability":
+      return availability();
+    case "/summary":
+      return summary(request.query);
     default:
       return notEnough("unknown", "not_in_scope", "Not available.", "غير متاح.");
   }

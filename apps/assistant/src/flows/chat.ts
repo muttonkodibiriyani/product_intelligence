@@ -102,6 +102,26 @@ export interface ChatAnswer {
   readonly costUsd: string;
 }
 
+/**
+ * Progress streamed to the caller while a question runs (design §11). Only stages and tool
+ * outcomes: model text is never streamed, because numbers are shown only after the verifier
+ * has checked them, in the final `ChatAnswer`. Tool names come from the registry; tool
+ * arguments and results are not included.
+ */
+export type ChatProgress =
+  | { readonly type: "status"; readonly stage: "thinking" | "verifying" | "retrying" }
+  | {
+      readonly type: "tool";
+      readonly name: string;
+      readonly status: ToolResult["status"];
+      readonly code?: string;
+    };
+
+export type ProgressSink = (progress: ChatProgress) => void;
+
+/** Streamed in place of a function name the model made up (never echoed). */
+export const UNKNOWN_TOOL = "unknown";
+
 export type FlowCode =
   | "invalid_question"
   | "history_unavailable"
@@ -167,7 +187,20 @@ export class ChatFlow {
     },
   ) {}
 
-  async answer(input: ChatInput, caller: CallerContext, idToken: string): Promise<ChatAnswer> {
+  async answer(
+    input: ChatInput,
+    caller: CallerContext,
+    idToken: string,
+    onProgress?: ProgressSink,
+  ): Promise<ChatAnswer> {
+    // A failing sink (e.g. a disconnected client) never affects the answer.
+    const emit = (progress: ChatProgress): void => {
+      try {
+        onProgress?.(progress);
+      } catch {
+        // ignored
+      }
+    };
     // Strict parse here too: a request carrying `history` or any other extra key is refused.
     const parsed = ChatRequestSchema.safeParse(input);
     if (!parsed.success) {
@@ -220,12 +253,15 @@ export class ChatFlow {
     const system = systemPrompt(locale);
 
     try {
-      let reply = await this.toolLoop(open, state, system, tools, caller, idToken);
+      emit({ type: "status", stage: "thinking" });
+      let reply = await this.toolLoop(open, state, system, tools, caller, idToken, emit);
+      emit({ type: "status", stage: "verifying" });
       let check = this.check(reply.text, state.results);
       const firstPassVerified = check.verified;
       if (!check.verified) {
         state.turns.push({ role: "model", text: reply.text, toolCalls: [] });
         state.turns.push({ role: "user", text: verifierRetry(check.unsupported) });
+        emit({ type: "status", stage: "retrying" });
         reply = await this.generate(open, state, system, []);
         check = this.check(reply.text, state.results);
       }
@@ -261,6 +297,7 @@ export class ChatFlow {
     tools: readonly ToolSpec[],
     caller: CallerContext,
     idToken: string,
+    emit: ProgressSink,
   ): Promise<ModelReply> {
     const maxToolCalls = this.deps.maxToolCalls ?? MAX_TOOL_CALLS;
     for (;;) {
@@ -279,6 +316,13 @@ export class ChatFlow {
         state.records.push({
           name: call.name,
           args: call.args,
+          status: result.status,
+          ...(result.status === "error" ? { code: result.code } : {}),
+        });
+        // The model's function name is model text: only a declared tool's name is streamed.
+        emit({
+          type: "tool",
+          name: this.deps.registry.has(call.name) ? call.name : UNKNOWN_TOOL,
           status: result.status,
           ...(result.status === "error" ? { code: result.code } : {}),
         });

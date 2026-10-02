@@ -40,8 +40,8 @@ async function reset(a, lang = 'en') {
  for (const lang of ['en', 'ar']) {
   T.S.lang = lang;
   const sent = T.t('resetSent'), later = T.t('errResetLater');
-  // A sent link, and an unknown address, give the same answer, with nothing logged.
-  for (const a of [[200], [400, 'EMAIL_NOT_FOUND']]) {
+  // A sent link, an unknown address and a disabled account give the same answer, with nothing logged.
+  for (const a of [[200], [400, 'EMAIL_NOT_FOUND'], [400, 'USER_DISABLED : The user account has been disabled by an administrator.']]) {
    const r = await reset(a, lang);
    assert.deepStrictEqual([r.info, r.err, r.warned.length], [sent, null, 0], `${lang} ${a}: should read as sent`);
   }
