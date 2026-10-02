@@ -32,7 +32,13 @@ const name = (id: string) => ({ sephora_me: 'Sephora', ulta_ae: 'Ulta' })[id] ??
 
 function tiles(retailers: Promo[], list: Item[] = items, locale: 'en' | 'ar' = 'en') {
   return render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <ShopTiles retailers={retailers} items={list} name={name} />
     </NextIntlClientProvider>,
   );

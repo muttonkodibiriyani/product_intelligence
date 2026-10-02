@@ -1,4 +1,8 @@
-"""Pure extraction helpers for Sephora UAE payloads (no network)."""
+"""Pure extraction helpers for Sephora Middle East payloads (no network).
+
+One storefront per ``country`` (``AE`` = /ae-en, /ae-ar; ``SA`` = /sa-en, /sa-ar). The defaults
+keep the UAE behaviour of the first snapshot; the KSA snapshot (task 01a0fc6d) passes ``"SA"``.
+"""
 
 from __future__ import annotations
 
@@ -11,11 +15,13 @@ from xml.etree.ElementTree import ParseError
 from defusedxml import ElementTree  # type: ignore[import-untyped]
 
 SITE = "https://www.sephora.me"
+COUNTRIES = ("AE", "SA")
 LOCALES = ("en-AE", "ar-AE")
 SITEMAPS_PER_LOCALE = 40
-_PDP_RE = re.compile(r"^https://www\.sephora\.me/ae-(en|ar)/p/[^/]+/(P\d+|\d+)/?$")
+_PDP_RE = re.compile(r"^https://www\.sephora\.me/(ae|sa)-(en|ar)/p/[^/]+/(P\d+|\d+)/?$")
 _LD_RE = re.compile(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', re.DOTALL)
-# Fields dropped from the stored extract: long marketing text, not used by the connector.
+# Fields dropped from the compact extract: long marketing text, not used by the connector.
+# ``extract_pdp(..., full=True)`` keeps them (capture principle: store everything the page offers).
 _DROP = ("longDescription", "c_ingredients", "c_tips", "c_usage", "c_testResults", "seoData")
 CHALLENGE_MARKERS = (
     "/cdn-cgi/challenge-platform/",
@@ -27,6 +33,18 @@ CHALLENGE_MARKERS = (
 )
 
 
+def check_country(country: str) -> str:
+    if country not in COUNTRIES:
+        raise ValueError(f"country must be one of {COUNTRIES}, got {country!r}")
+    return country
+
+
+def locales(country: str = "AE") -> tuple[str, str]:
+    """``("en-XX", "ar-XX")`` for a storefront."""
+    cc = check_country(country)
+    return (f"en-{cc}", f"ar-{cc}")
+
+
 def sitemap_urls(locale: str) -> list[str]:
     return [
         f"{SITE}/sitemap/{locale}/catalog/productSlugsCO-{i}.xml"
@@ -34,8 +52,9 @@ def sitemap_urls(locale: str) -> list[str]:
     ]
 
 
-def parse_sitemap(xml: bytes) -> list[tuple[str, str, str]]:
-    """UAE PDP URLs in one product sitemap as (lang, product_id, url)."""
+def parse_sitemap(xml: bytes, country: str = "AE") -> list[tuple[str, str, str]]:
+    """PDP URLs of one storefront in a product sitemap, as (lang, product_id, url)."""
+    cc = check_country(country).lower()
     try:
         root = ElementTree.fromstring(xml)
     except ParseError as exc:
@@ -44,8 +63,8 @@ def parse_sitemap(xml: bytes) -> list[tuple[str, str, str]]:
     for loc in root.iter("{http://www.sitemaps.org/schemas/sitemap/0.9}loc"):
         url = (loc.text or "").strip()
         m = _PDP_RE.match(url)
-        if m:
-            out.append((m.group(1), m.group(2), url))
+        if m and m.group(1) == cc:
+            out.append((m.group(2), m.group(3), url))
     return out
 
 
@@ -57,8 +76,8 @@ def _rsc_text(html: str) -> str:
     return "".join(json.loads(f'"{chunk}"') for chunk in _PUSH_RE.findall(html))
 
 
-def extract_pdp(html: str) -> dict[str, Any]:
-    """Compact extract of a PDP: productDetails (minus long text) + JSON-LD blocks."""
+def extract_pdp(html: str, *, full: bool = False) -> dict[str, Any]:
+    """Extract of a PDP: productDetails (minus long text unless ``full``) + JSON-LD blocks."""
     text = _rsc_text(html)
     key = '"productDetails":'
     i = text.find(key)
@@ -67,8 +86,9 @@ def extract_pdp(html: str) -> dict[str, Any]:
     details, _ = json.JSONDecoder().raw_decode(text, i + len(key))
     if not isinstance(details, dict) or "id" not in details:
         raise ValueError("productDetails malformed")
-    for k in _DROP:
-        details.pop(k, None)
+    if not full:
+        for k in _DROP:
+            details.pop(k, None)
     ld = []
     for block in _LD_RE.findall(html):
         try:

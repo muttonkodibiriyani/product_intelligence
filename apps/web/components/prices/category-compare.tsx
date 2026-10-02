@@ -1,6 +1,5 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { Bucket, CategoryCompare, Side } from '@/lib/api/category-compare';
@@ -10,14 +9,8 @@ import { formatMoney, isValidPrice } from '@/lib/money';
 import { ErrorNotice } from '../error-notice';
 import { Card } from '../ui/card';
 import { Known } from '../ui/known';
-import { Skeleton } from '../ui/skeleton';
 import { pct } from '../widgets/model';
 import type { PairState } from '../widgets/use-compare';
-
-const BucketGapWidget = dynamic(() => import('../widgets/charts').then((m) => m.BucketGapWidget), {
-  ssr: false,
-  loading: () => <Skeleton kind="chart" />,
-});
 
 type Pair = { base: string; other: string; name: (id: string) => string };
 
@@ -72,7 +65,6 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
   const ids: [string, string] = [pair.base, pair.other];
   const label = (b: Bucket) => b.label?.[lc] || t(`name.${b.key}`);
   const scale = logScale(data.buckets, ids);
-  const ok = data.buckets.filter((b) => b.status === 'ok');
   const thin = data.buckets.filter((b) => b.status === 'too_few');
   const blocked = data.buckets.filter((b) => b.status === 'blocked');
 
@@ -224,9 +216,6 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
         ))}
       </ul>
 
-      {ok.length > 0 && (
-        <BucketGapWidget data={ok} currency={scale.currency} locale={locale} pair={pair} label={label} />
-      )}
       {thin.length > 0 && (
         <p className="text-sm text-ink-2">
           {t('tooFewList', {
@@ -340,8 +329,7 @@ function SideHead({
                 x={scale.x(v, rtl)}
                 y={10}
                 textAnchor="middle"
-                className="fill-ink-2"
-                style={{ fontSize: 9, fontVariantNumeric: 'tabular-nums' }}
+                className="fill-ink-2 text-[9px] tabular-nums"
               >
                 {whole(v, currency, locale)}
               </text>

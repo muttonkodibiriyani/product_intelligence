@@ -41,7 +41,13 @@ function view(env: Env, query = '', locale: 'en' | 'ar' = 'en') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+      <NextIntlClientProvider
+        locale={locale}
+        messages={locale === 'ar' ? ar : en}
+        onError={(e) => {
+          throw e;
+        }}
+      >
         <PromotionsView />
       </NextIntlClientProvider>
     </QueryClientProvider>,

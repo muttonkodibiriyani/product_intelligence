@@ -146,6 +146,21 @@ html {
     color: var(--color-ink-2);
 }
 
+/* ECharts tooltip rows (components/widgets/charts.tsx): the tooltip is an HTML string, so these are
+   plain classes rather than style attributes, which the CSP would block without 'unsafe-inline'. */
+.tip-row {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+.tip-row b,
+.tip-head {
+    font-weight: 600;
+}
+.tip-head {
+    margin-bottom: 0.25rem;
+}
+
 /* Skeleton bars (components/ui/skeleton.tsx): a shimmer that follows the reading direction, still under reduced motion. */
 @utility skeleton {
     background: linear-gradient(
