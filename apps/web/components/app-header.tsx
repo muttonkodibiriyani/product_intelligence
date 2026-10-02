@@ -5,18 +5,29 @@ import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useAuth } from './auth-provider';
 import { LangSwitch } from './lang-switch';
+import { launchReadiness } from './launches/readiness';
+import { useMeta } from './use-meta';
 
 export function AppHeader() {
   const t = useTranslations('app');
   const locale = useLocale();
   const { state, auth } = useAuth();
   const pathname = usePathname();
+  // Visibility rule (nav table, Launches row): the page is always reachable, but says "soon"
+  // until every shop has the collection days a launch needs. Nothing to say until /meta answers.
+  const meta = useMeta();
+  const launchesSoon = !!meta.data && !launchReadiness(meta.data).allReady;
   const nav = [
     { href: `/${locale}/explore/`, label: t('nav.explore'), match: /^\/(en|ar)\/(explore|product)\// },
     { href: `/${locale}/prices/`, label: t('nav.prices'), match: /^\/(en|ar)\/prices\// },
     { href: `/${locale}/compare/`, label: t('nav.compare'), match: /^\/(en|ar)\/compare\// },
     { href: `/${locale}/promotions/`, label: t('nav.promotions'), match: /^\/(en|ar)\/promotions\// },
-    { href: `/${locale}/launches/`, label: t('nav.launches'), match: /^\/(en|ar)\/launches\// },
+    {
+      href: `/${locale}/launches/`,
+      label: t('nav.launches'),
+      match: /^\/(en|ar)\/launches\//,
+      soon: launchesSoon,
+    },
     { href: `/${locale}/dataset/`, label: t('nav.status'), match: /^\/(en|ar)\/dataset\// },
     { href: `/${locale}/assistant/`, label: t('nav.assistant'), match: /^\/(en|ar)\/assistant\// },
   ];
@@ -56,6 +67,11 @@ export function AppHeader() {
                       }`}
                     >
                       {n.label}
+                      {n.soon && (
+                        <span className="pill ms-1.5 bg-butter align-[1px] text-[11px] text-butter-ink">
+                          {t('nav.soon')}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
