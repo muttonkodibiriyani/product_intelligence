@@ -3,10 +3,12 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { Fragment } from 'react';
 import { firstTable, toolKey, unavailableNote } from '@/lib/assistant/answer';
+import { evidenceCards, evidenceShares } from './evidence-model';
 import { type Block, type Inline, parseAnswer } from '@/lib/assistant/markdown';
 import { useReveal } from '@/lib/assistant/reveal';
-import type { ChatAnswer, Citation, UntrustedBilingual } from '@/lib/assistant/types';
+import type { ChatAnswer, UntrustedBilingual } from '@/lib/assistant/types';
 import { plain } from '@/lib/assistant/types';
+import { EvidenceCards, ShareTiles, SourcePills } from './evidence';
 import { ProductRef } from './product-ref';
 
 const TH = 'th text-start whitespace-nowrap';
@@ -30,11 +32,12 @@ function Inlines({ c }: { c: readonly Inline[] }) {
   );
 }
 
-function BlockView({ b }: { b: Block }) {
+/** The answer's blocks; the first paragraph is the conclusion and reads a size up. */
+function BlockView({ b, conclusion = false }: { b: Block; conclusion?: boolean }) {
   switch (b.t) {
     case 'p':
       return (
-        <p>
+        <p className={conclusion ? 'text-base leading-normal font-medium text-ink' : undefined}>
           <Inlines c={b.c} />
         </p>
       );
@@ -92,55 +95,11 @@ function useBilingual() {
   return (text: UntrustedBilingual) => plain(locale === 'ar' ? text.ar : text.en);
 }
 
-function CitationChip({ c, n }: { c: Citation; n: number }) {
-  const t = useTranslations('assistant.answer');
-  const tool = useTranslations('assistant.tools');
-  const filters = Object.entries(c.filters).filter(
-    ([, v]) => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0),
-  );
-  return (
-    <li>
-      <details className="rounded-ctl border border-line-2 bg-surface px-2 py-1 text-xs">
-        <summary className="cursor-pointer list-none">
-          <span className="me-1 rounded-ctl bg-surface-2 px-1 font-medium tabular-nums">{n}</span>
-          {tool(toolKey(c.tool))} · {t('cutoff')} <bdi className="tabular-nums">{c.cutoff}</bdi>
-          {c.cohort && (
-            <>
-              {' '}
-              · <bdi>{plain(c.cohort.description)}</bdi> ({t('n', { n: c.cohort.n })})
-            </>
-          )}
-        </summary>
-        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-ink-2">
-          <dt>{t('source')}</dt>
-          <dd>
-            <bdi dir="ltr">
-              {c.tool} · API {c.apiVersion} · {t('dataset')} {c.datasetGeneration}
-            </bdi>
-          </dd>
-          <dt>{t('market')}</dt>
-          <dd>
-            {c.market} · {c.currency}
-          </dd>
-          {filters.length > 0 && (
-            <>
-              <dt>{t('filters')}</dt>
-              <dd>
-                <bdi dir="ltr">
-                  {filters
-                    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`)
-                    .join(' · ')}
-                </bdi>
-              </dd>
-            </>
-          )}
-        </dl>
-      </details>
-    </li>
-  );
-}
-
-/** One assistant answer: verified text revealed section by section, then its evidence. */
+/**
+ * One assistant answer: the conclusion first, the evidence the tools returned (product cards,
+ * per-shop shares), the rest of the verified text, then "From" pills that open the page each
+ * number came from. The text is revealed block by block; the evidence comes with the first.
+ */
 export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
   const t = useTranslations('assistant.answer');
   const un = useTranslations('assistant.unavailable');
@@ -158,19 +117,35 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
     );
   }
 
+  const conclusion = blocks[0]?.t === 'p';
+  const evidence = answer.toolResults.map((r) => ({ cards: evidenceCards(r), shares: evidenceShares(r) }));
+  const hasEvidence = evidence.some((e) => e.cards.length > 0 || e.shares.length > 0);
+
   return (
     <div className="space-y-3 text-sm">
       {answer.status === 'unverified' && <p className="pill bg-butter text-butter-ink">{t('unverified')}</p>}
       <div className="space-y-2" aria-busy={!revealed}>
         {blocks.slice(0, shown).map((b, i) => (
-          <BlockView key={i} b={b} />
+          <Fragment key={i}>
+            <BlockView b={b} conclusion={i === 0 && conclusion} />
+            {i === 0 && hasEvidence && (
+              <div className="space-y-3 py-1">
+                {evidence.map((e, j) => (
+                  <Fragment key={j}>
+                    <ShareTiles shares={e.shares} />
+                    <EvidenceCards cards={e.cards} />
+                  </Fragment>
+                ))}
+              </div>
+            )}
+          </Fragment>
         ))}
       </div>
       {!revealed && (
         <button
           type="button"
           onClick={skip}
-          className="text-xs text-sky-ink underline-offset-2 hover:underline focus-visible:outline-2"
+          className="text-xs text-accent underline-offset-2 hover:underline focus-visible:outline-2"
         >
           {t('skip')}
         </button>
@@ -240,16 +215,7 @@ export function AnswerView({ answer, id }: { answer: ChatAnswer; id: string }) {
             </div>
           )}
 
-          {answer.citations.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-ink-2">{t('sources')}</p>
-              <ol className="flex flex-wrap gap-1.5">
-                {answer.citations.map((c, i) => (
-                  <CitationChip key={i} c={c} n={i + 1} />
-                ))}
-              </ol>
-            </div>
-          )}
+          <SourcePills citations={answer.citations} toolResults={answer.toolResults} />
         </>
       )}
     </div>
