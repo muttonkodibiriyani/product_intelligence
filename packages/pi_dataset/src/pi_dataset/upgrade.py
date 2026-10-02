@@ -4,8 +4,9 @@ Pure and deterministic, but not total: it fails loudly (``UpgradeError``) rather
 Per the ADR-0008 §4 table it sets ``schema``, ``meta.profile`` and ``meta.attributeSet`` from the
 profile, one online, location-less context per retailer with the retailer's id (so every v2 offer
 key is a valid context id), ``label``/``system`` ``null`` on sizes, empty offer attributes, the
-offer's ``sku`` as ``evidence.itemKey`` (kind ``sku``; ``null`` without one) and ``null``
-``notObserved[].context``. Everything else is copied unchanged.
+offer's ``sku`` as ``evidence.itemKey`` (kind ``sku``; ``null`` without one), ``null``
+``listingCount`` (v2 doesn't state it) and ``null`` ``notObserved[].context``. Everything else
+is copied unchanged.
 
 The item key is what lets rule (a) tell size variants apart: a retailer may publish several
 variants on one page (one ``url``, a sku each), which as unkeyed offers would read as one source

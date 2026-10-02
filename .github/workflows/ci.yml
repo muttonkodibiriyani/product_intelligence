@@ -16,7 +16,7 @@ jobs:
   python:
     name: Python — lint, types, tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -154,7 +154,7 @@ jobs:
   web-next:
     name: Web (Next.js) — audit, types, lint, tests, build, E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: apps/web

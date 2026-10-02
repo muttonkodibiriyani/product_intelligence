@@ -37,6 +37,8 @@ class Settings(PiModel):
     project_id: str = Field(min_length=1)
     #: Dataset objects to serve, e.g. ``datasets/uae/latest.json`` (gzip content is detected).
     datasets: tuple[str, ...] = Field(min_length=1)
+    #: Optional SKU identities and galleries; these never change the price dataset's cutoff.
+    catalogues: tuple[str, ...] = ()
     #: GCS bucket holding ``datasets``; ``None`` reads them from ``local_dir`` (dev and tests).
     bucket: str | None = None
     local_dir: str | None = None
@@ -56,9 +58,12 @@ class Settings(PiModel):
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
         datasets = tuple(d.strip() for d in env.get("PI_API_DATASETS", "").split(",") if d.strip())
-        for path in datasets:
+        catalogues = tuple(
+            d.strip() for d in env.get("PI_API_CATALOGUES", "").split(",") if d.strip()
+        )
+        for path in (*datasets, *catalogues):
             if not _OBJECT.match(path) or ".." in path:
-                msg = f"PI_API_DATASETS entry {path!r} is not a plain .json object path"
+                msg = f"dataset/catalogue entry {path!r} is not a plain .json object path"
                 raise ValueError(msg)
         bucket = env.get("PI_API_BUCKET") or None
         local_dir = env.get("PI_API_LOCAL_DIR") or None
@@ -68,6 +73,7 @@ class Settings(PiModel):
         return cls(
             project_id=env.get("PI_API_FIREBASE_PROJECT", ""),
             datasets=datasets,
+            catalogues=catalogues,
             bucket=bucket,
             local_dir=local_dir,
             refresh_seconds=int(env.get("PI_API_REFRESH_SECONDS", "60")),

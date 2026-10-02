@@ -41,7 +41,7 @@ async function openExplorer(page: import('@playwright/test').Page, locale: 'en' 
   await signIn(page, locale);
   await expect(page.getByRole('navigation')).toBeVisible();
   await page.goto(`/app/${locale}/explore/${search}`);
-  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('list', { name: locale === 'ar' ? 'النتائج' : 'Results' })).toBeVisible();
 }
 
 for (const locale of ['en', 'ar'] as const) {

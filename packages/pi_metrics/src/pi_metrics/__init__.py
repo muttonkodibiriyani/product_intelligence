@@ -7,6 +7,7 @@ reason, the cohort and caveats. The API assembles its envelope from that mechani
 
 from pi_metrics.assortment import AssortmentGaps, GapLabel, assortment_gaps
 from pi_metrics.availability import Availability, availability
+from pi_metrics.category_compare import CategoryComparison, category_compare
 from pi_metrics.compare import (
     GAP_CONVENTION,
     Comparison,
@@ -61,6 +62,7 @@ __all__ = [
     "AssortmentGaps",
     "Availability",
     "Band",
+    "CategoryComparison",
     "Caveat",
     "CaveatCode",
     "Cheaper",
@@ -88,6 +90,7 @@ __all__ = [
     "UnknownInput",
     "assortment_gaps",
     "availability",
+    "category_compare",
     "compare",
     "coverage",
     "gap",

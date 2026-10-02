@@ -23,8 +23,10 @@ import { Card } from '../ui/card';
 import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
 import { Known } from '../ui/known';
-import { Money } from '../ui/money';
+import { Price } from '../ui/money';
 import { RetailerChecks } from '../ui/retailer-checks';
+import { PageHeader } from '../ui/page-header';
+import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
 
 const TH = 'th';
@@ -62,12 +64,7 @@ export function PromotionsView() {
 
   return (
     <section aria-labelledby="promotions-title" className="space-y-6">
-      <div>
-        <h1 id="promotions-title" className="text-2xl font-bold tracking-tight">
-          {t('title')}
-        </h1>
-        <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>
-      </div>
+      <PageHeader id="promotions-title" title={t('title')} intro={t('intro')} />
 
       <div className="flex flex-wrap items-start gap-x-8 gap-y-3 panel px-5 py-4">
         <RetailerChecks value={state.retailer} onChange={(retailer) => update({ retailer })} />
@@ -99,9 +96,9 @@ export function PromotionsView() {
       {q.isError && !env ? (
         <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
       ) : !env ? (
-        <p role="status" aria-busy className="text-ink-2">
+        <Loading kind="table" rows={6}>
           {t('loading')}
-        </p>
+        </Loading>
       ) : (
         <>
           <EnvNotes env={env} />
@@ -258,10 +255,10 @@ function Items({
                 <bdi className="tabular-nums whitespace-nowrap" dir="ltr">{`−${i.depthPct}%`}</bdi>
               </td>
               <td className={`${TD} text-end`}>
-                <Money m={i.price} locale={locale} />
+                <Price of={i} locale={locale} />
               </td>
               <td className={`${TD} text-end text-ink-2`}>
-                <Money m={i.regular} locale={locale} />
+                <Price of={{ price: i.regular }} locale={locale} />
               </td>
             </tr>
           ))}

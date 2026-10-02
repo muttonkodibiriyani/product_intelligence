@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "promptfoo": "0.123.1"
+  },
+  "overrides": {
+    "basic-ftp": "^6.2.1"
   }
 }
