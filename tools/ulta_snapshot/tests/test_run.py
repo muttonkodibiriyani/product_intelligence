@@ -6,6 +6,7 @@ import gzip
 import html
 import io
 import json
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ from ulta_snapshot.run import (
     floored_prior,
     main,
     make_run,
+    owner_item,
     policy,
     prior_bytes,
     run_options,
@@ -462,3 +464,24 @@ def test_prior_is_floored_at_what_this_folder_already_used(tmp_path: Path) -> No
     assert prior == 5_000_000
     assert "below this folder's record" in note
     assert floored_prior({"PRIOR_GB": "0.01"}, tmp_path)[0] == 10_000_000
+
+
+@pytest.mark.parametrize(
+    "ref", ["", "  ", "PASTE_OWNER_ITEM_HERE", "ADR-0006 Am.2", "ADR-0006 Amendment 2", "adr-0006"]
+)
+def test_a_rerun_needs_a_new_owner_item_not_an_adr(ref: str) -> None:
+    with pytest.raises(SystemExit, match="new owner item"):
+        owner_item({"OWNER_APPROVAL_REF": ref})
+    with pytest.raises(SystemExit, match="new owner item"):
+        owner_item({})
+
+
+def test_owner_item_id_is_passed_through() -> None:
+    assert owner_item({"OWNER_APPROVAL_REF": " owner-item-2026-10-09 "}) == "owner-item-2026-10-09"
+
+
+def test_runbook_does_not_prefill_an_approval() -> None:
+    text = (Path(__file__).parents[3] / "docs/runbooks/ulta-proxy-test.md").read_text()
+    assert 'OWNER_APPROVAL_REF="$OWNER_ITEM"' in text
+    assert "OWNER_ITEM=PASTE_OWNER_ITEM_HERE" in text
+    assert not re.search(r'OWNER_APPROVAL_REF="(?!\$OWNER_ITEM")', text)

@@ -19,7 +19,8 @@ Writes to ``OUT_DIR`` (the loader's input layout, see ``load.py``):
 * ``evidence/``: the fetcher's content-addressed raw payloads.
 
 Env: ``OUT_DIR``, ``URLS_FILE`` (one product URL per line), ``PRIOR_GB`` or ``PRIOR_BYTES``
-(required; already used from the allowance, rounded up), ``OWNER_APPROVAL_REF``,
+(required; already used from the allowance, rounded up), ``OWNER_APPROVAL_REF`` (the new owner
+item id for this run; required, an ADR reference is refused),
 ``SECRET_RESOURCE`` (a pinned ``.../versions/<n>``), ``CAPTURE_JSON`` (default off),
 ``MAX_PAGES`` (default 20),
 ``GOOGLE_OAUTH_ACCESS_TOKEN`` (the operator's own short-lived token, e.g.
@@ -610,6 +611,22 @@ def floored_prior(env: Mapping[str, str], out: Path) -> tuple[int, str]:
     return given, f"PRIOR: {given} bytes (folder record {floor})"
 
 
+#: Not a new owner item: blank, the runbook's placeholder, or an ADR (an ADR records a past ruling).
+_OWNER_ITEM_PLACEHOLDER = "PASTE_OWNER_ITEM_HERE"
+
+
+def owner_item(env: Mapping[str, str]) -> str:
+    """``OWNER_APPROVAL_REF``: the id of the new, dated owner item for this run. Required.
+
+    ADR-0006 Am.2 approved rung 5 for ulta.ae, but ulta.ae is blocked since the 2026-09-30 22:53Z
+    challenge, so every re-run needs a new owner item; an ADR reference is refused."""
+    ref = env.get("OWNER_APPROVAL_REF", "").strip()
+    if not ref or ref == _OWNER_ITEM_PLACEHOLDER or ref.upper().startswith("ADR"):
+        msg = "set OWNER_APPROVAL_REF to the new owner item id for this run (not an ADR)"
+        raise SystemExit(msg)
+    return ref
+
+
 def prior_bytes(env: Mapping[str, str]) -> int:
     """Bytes already used from the allowance: ``PRIOR_BYTES``, else ``PRIOR_GB`` (the IPRoyal
     dashboard figure) rounded up to a whole byte. One of them is required: no default of 0."""
@@ -632,7 +649,7 @@ def main() -> int:
         urls = [u.strip() for u in text.splitlines() if u.strip()]
     pol = policy(
         prior,
-        os.environ["OWNER_APPROVAL_REF"],
+        owner_item(os.environ),
         os.environ["SECRET_RESOURCE"],
     )
     run = make_run(
