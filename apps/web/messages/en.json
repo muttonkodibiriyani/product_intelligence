@@ -176,6 +176,10 @@
       "gap": "Gap: {other} dearest first",
       "gap_asc": "Gap: {other} cheapest first"
     },
+    "sortsNoPair": {
+      "gap": "Gap, dearest first (pick two retailers)",
+      "gap_asc": "Gap, cheapest first (pick two retailers)"
+    },
     "gapNeedsPair": "Pick two retailers to sort by gap.",
     "pair": "Gap: {other} vs {base}",
     "swap": "Swap base",
