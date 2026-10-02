@@ -4,24 +4,32 @@ Each configured object is loaded, validated with ``pi_dataset`` and swapped in a
 document that fails validation is never served: the previous good one stays live, and with none
 the API answers ``503 data_unavailable``. Generation checks run at most every
 ``refresh_seconds``, in a background thread, so a request never waits on storage after startup.
+
+A path is served whole, or (ADR-0010) a source is assigned a path: then only that source's part
+of the file is read, and the assigned sources of one scope are composed into one view
+(``pi_dataset.compose``). Composed views are rebuilt only when every assigned file has a good
+generation; until then the previous view stays live, and with none they are not served.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 import time
 import zlib
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 from pathlib import Path
+from types import MappingProxyType
 from typing import Protocol
 
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
 from pi_api.ids import ProductIds, product_ids
 from pi_dataset import DatasetError, DatasetV3, load_any
+from pi_dataset.compose import SourceInfo, compose, only, source_infos
 from pi_metrics.view import as_v3
 
 log = logging.getLogger(__name__)
@@ -83,6 +91,8 @@ class Loaded:
     #: Always v3: a v2 snapshot is upgraded once, at load (ADR-0008 §4).
     dataset: DatasetV3
     generation: str
+    #: Each source with its own file's cutoff, dates and capabilities.
+    sources: tuple[SourceInfo, ...] = field(default=())
     #: Imported retailers the served ``dataset`` was corrected for at load (``pi_api.dq``).
     imported: tuple[Imported, ...] = ()
     #: Prices at or below 0.01 the served ``dataset`` withholds (``pi_api.floor``).
@@ -142,7 +152,7 @@ def parse(data: bytes, *, allow_test: bool = False, limit: int = MAX_DATASET_BYT
 
 
 class SnapshotSource:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - store and paths, then keyword-only options
         self,
         store: ObjectStore,
         paths: Sequence[str],
@@ -150,12 +160,20 @@ class SnapshotSource:
         clock: Callable[[], float] = time.monotonic,
         *,
         allow_test: bool = False,
+        assigned: Mapping[str, str] = MappingProxyType({}),
     ) -> None:
+        """``paths`` are served whole; ``assigned`` maps a source (retailer id) to its path."""
         self._allow_test = allow_test
         self._store = store
         self._paths = tuple(paths)
+        self._assigned = dict(assigned)
         self._refresh = refresh_seconds
         self._clock = clock
+        #: The latest good generation of every configured path.
+        self._files: dict[str, Loaded] = {}
+        #: Each path's file as served: its latest good generation with the dq view applied.
+        self._served: dict[str, Loaded] = {}
+        #: What is served: whole paths by path, composed views by scope.
         self._loaded: dict[str, Loaded] = {}
         self._lock = threading.Lock()
         self._checked = -float("inf")
@@ -163,42 +181,64 @@ class SnapshotSource:
 
     def load_all(self) -> None:
         """Checks every path now, loading any new generation. Never raises for bad data."""
-        for path in self._paths:
-            current = self._loaded.get(path)
-            try:
-                if current is not None and self._store.generation(path) == current.generation:
-                    continue
-                data, generation = self._store.read(path)
-                # Upgraded here, off the request path; a v2 that can't be is not loaded.
-                # Read-time views (``pi_api.floor``, then ``pi_api.dq``); the file is unchanged.
-                floored, floor = floor_view(parse(data, allow_test=self._allow_test))
-                dataset, imported = imported_view(floored)
-                loaded = Loaded(
-                    path=path,
-                    dataset=dataset,
-                    generation=generation,
-                    imported=imported,
-                    floor=floor,
-                )
-            except (DatasetError, ValueError, OSError, zlib.error) as error:
-                log.warning("dataset %s not loaded: %s", path, type(error).__name__)
-                continue
-            except Exception:  # storage client errors: keep serving what we have
-                log.exception("dataset %s: storage error", path)
-                continue
-            with self._lock:
-                self._loaded = {**self._loaded, path: loaded}  # one reference swap
-            ids = loaded.ids
-            log.info(
-                "dataset %s loaded at generation %s: %d old product ids, %d dropped as "
-                "ambiguous, %d pairs with hashed or ambiguous ids (their members' old ids can't be "
-                "found)",
-                path,
-                generation,
-                len(ids.aliases),
-                ids.dropped,
-                ids.opaque_pairs,
-            )
+        changed = False
+        for path in dict.fromkeys((*self._paths, *self._assigned.values())):
+            loaded = self._load(path)
+            if loaded is not None:
+                self._files[path] = loaded
+                if path in self._paths:
+                    self._served[path] = _with_ids(_corrected(loaded))
+                changed = True
+        if not changed:
+            return
+        served = dict(self._served)
+        groups = self._composed() if self._assigned else None
+        with self._lock:
+            kept = {k: v for k, v in self._loaded.items() if k not in self._paths}
+            self._loaded = {**served, **(kept if groups is None else groups)}  # one swap
+
+    def _load(self, path: str) -> Loaded | None:
+        """The path's new generation, or ``None`` when unchanged or not loadable."""
+        current = self._files.get(path)
+        try:
+            if current is not None and self._store.generation(path) == current.generation:
+                return None
+            data, generation = self._store.read(path)
+            # Upgraded here, off the request path; a v2 that can't be is not loaded.
+            dataset = parse(data, allow_test=self._allow_test)
+        except (DatasetError, ValueError, OSError, zlib.error) as error:
+            log.warning("dataset %s not loaded: %s", path, type(error).__name__)
+            return None
+        except Exception:  # storage client errors: keep serving what we have
+            log.exception("dataset %s: storage error", path)
+            return None
+        log.info("dataset %s loaded at generation %s", path, generation)
+        return Loaded(path, dataset, generation, source_infos(dataset))
+
+    def _composed(self) -> dict[str, Loaded] | None:
+        """One view per scope of the assigned sources; ``None`` keeps the previous views."""
+        missing = sorted(s for s, p in self._assigned.items() if p not in self._files)
+        if missing:
+            log.warning("per-source view not rebuilt: no good file yet for %s", missing)
+            return None
+        by_path: dict[str, list[str]] = {}
+        for source, path in self._assigned.items():
+            by_path.setdefault(path, []).append(source)
+        by_scope: dict[str, list[tuple[str, Loaded]]] = {}
+        try:
+            for path, sources in by_path.items():
+                file = self._files[path]
+                part = Loaded(path, only(file.dataset, sources), file.generation)
+                label = ",".join(f"{s}={path}" for s in sources)
+                by_scope.setdefault(part.scope, []).append((label, part))
+            views = {
+                f"scope:{scope}": _with_ids(_view(parts), f"scope:{scope}")
+                for scope, parts in by_scope.items()
+            }
+        except ValueError as error:  # CompositionError, or the composed view fails validation
+            log.error("per-source view not rebuilt: %s", error)
+            return None
+        return views
 
     def maybe_refresh(self) -> None:
         """Starts a background check if one is due; returns at once."""
@@ -219,7 +259,10 @@ class SnapshotSource:
 
     def datasets(self) -> tuple[Loaded, ...]:
         loaded = self._loaded
-        return tuple(loaded[p] for p in self._paths if p in loaded)
+        return (
+            *(loaded[p] for p in self._paths if p in loaded),
+            *(v for k, v in loaded.items() if k not in self._paths),
+        )
 
     def select(self, market: str | None, scope: str | None) -> Loaded:
         """The one dataset for ``market``/``scope``; either may be omitted if unambiguous."""
@@ -243,3 +286,51 @@ class SnapshotSource:
 
 class AmbiguousDatasetError(ValueError):
     """More than one dataset matches; the caller must say which (422)."""
+
+
+def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
+    """The parts of one scope as one view, with a generation that changes with any part's."""
+    composed = compose([p.dataset for _, p in parts])
+    if composed.merged_ids:
+        log.info("per-source view: %d product ids merged across files", len(composed.merged_ids))
+    stamp = "|".join(f"{label}@{p.generation}" for label, p in parts)
+    generation = "c" + hashlib.sha256(stamp.encode()).hexdigest()[:16]
+    path = ",".join(label for label, _ in parts)
+    return _corrected(Loaded(path, composed.dataset, generation, composed.sources))
+
+
+def _with_ids(loaded: Loaded, name: str | None = None) -> Loaded:
+    """``loaded`` with its product ids (``pi_api.ids``) built now, at load, off the request path."""
+    ids = loaded.ids
+    log.info(
+        "dataset %s loaded at generation %s: %d old product ids, %d dropped as "
+        "ambiguous, %d pairs with hashed or ambiguous ids (their members' old ids can't be "
+        "found)",
+        name or loaded.path,
+        loaded.generation,
+        len(ids.aliases),
+        ids.dropped,
+        ids.opaque_pairs,
+    )
+    return loaded
+
+
+def _corrected(loaded: Loaded) -> Loaded:
+    """The view as served: read-time views ``pi_api.floor``, then ``pi_api.dq`` (the file is
+    unchanged).
+
+    A collected source's ``cutoff`` is its own latest capture (``source_infos``); one without
+    offers would fall back to the file's, so it is capped at the served (collected) cutoff and
+    never reads as the import time.
+    """
+    floored, floor = floor_view(loaded.dataset)
+    dataset, imported = imported_view(floored)
+    if not imported:
+        return replace(loaded, dataset=dataset, floor=floor)
+    shops = {shop.retailer for shop in imported}
+    cutoff = dataset.meta.cutoff
+    sources = tuple(
+        s if s.source in shops or s.cutoff <= cutoff else s.model_copy(update={"cutoff": cutoff})
+        for s in loaded.sources
+    )
+    return replace(loaded, dataset=dataset, imported=imported, floor=floor, sources=sources)
