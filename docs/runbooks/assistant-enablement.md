@@ -67,6 +67,37 @@ thing only: a message in any other currency turns the assistant off (fail closed
 **Off / rollback:** disconnect the topic in the budget's *Manage notifications*, then
 `gcloud pubsub topics delete pi-budget-alerts`.
 
+### 1b. The $5 Vertex alert budget (§10.1, decision log 2026-09-30)
+
+Sections 9 and 10 gate on this alert. It is a second, email-only budget scoped to Vertex AI. It
+costs nothing and cuts nothing off: it only emails. The hard stops stay the $4.00 meter cap
+(section 4) and the kill switch on the $25 budget (section 5).
+
+Console: *Billing → Budgets & alerts → Create budget*:
+
+- Name: `pi-vertex-5usd`.
+- Scope: *Projects* = `productintelligence-beeb3` only; *Services* = **Vertex AI** only. Leave
+  credits at the default (included).
+- Amount: *Specified amount*, $5.00, or AED 18.36 if `<CURRENCY>` is AED (fixed peg 3.6725).
+- Thresholds: 50 %, 90 % and 100 % of *Actual*.
+- Notifications: *Email alerts to billing admins and users*. **No Pub/Sub topic**: the kill
+  switch listens only to `pi-monthly-25usd`, and a second publisher would trip it on Vertex
+  spend alone.
+
+**Verify** (console, *Budgets & alerts*): `pi-vertex-5usd` shows $5.00 (or AED 18.36), scope
+one project and the single service Vertex AI, the three thresholds and the email recipients,
+and no connected Pub/Sub topic. `pi-monthly-25usd` still shows `pi-budget-alerts`. Only if
+`billingbudgets.googleapis.com` is already in `enabled-before.txt` (do not enable it for this),
+the same check from the shell:
+
+```sh
+gcloud billing budgets list --billing-account=<BILLING_ACCOUNT_ID> \
+  --format='table(displayName,amount.specifiedAmount,budgetFilter.services,budgetFilter.projects,notificationsRule.pubsubTopic)'
+```
+
+**Off / rollback:** delete `pi-vertex-5usd` in *Budgets & alerts*. Deleting it re-closes the
+section 9 and 10 gates: do not enable Vertex or switch on without it.
+
 ## 2. APIs for the Functions deploy (§9.4 step 0, §10)
 
 ```sh
@@ -187,7 +218,7 @@ tighter than the design's §9.3 ($5 a month, 40/150 questions a day): $4.00 a mo
 label, $0.40 a day for chat, CI $1.50, 10 questions a day per viewer and 30 per admin, at most 4
 model calls and 1500 output tokens per question, and thinking off (`thinkingBudget` 0) on
 `gemini-2.5-flash`. At the design's planning figure of $0.015 a question, 4.00 covers about 260
-questions a month, under the $5 budget alert. The meter enforces `caps.monthUsd = 4.00` before
+questions a month, under the $5 budget alert (section 1b). The meter enforces `caps.monthUsd = 4.00` before
 every call, reserving each call's worst-case cost, across every label, CI included. The kill
 switch is the backstop. Raising any of them needs the owner's OK.
 
@@ -389,7 +420,10 @@ would lock it out. The callable enforces in code.
 
 **Verify:** App Check shows the web app as registered with reCAPTCHA Enterprise. The *APIs* tab
 shows every product as **Unenforced**. `gcloud recaptcha keys list` shows the key with the two
-domains. After switch-on, check *Security → reCAPTCHA → the key → Assessments*: the free tier
+domains (add a preview channel's origin only if you test there). The browser API key
+(`<WEB_API_KEY>`, *APIs & Services → Credentials*): if it has API restrictions, they include
+**Firebase App Check API**, or the token exchange fails with 403; its HTTP-referrer list holds
+the two site roots. After switch-on, check *Security → reCAPTCHA → the key → Assessments*: the free tier
 is 10,000 assessments a month, and App Check refreshes about one token per user per hour, so
 usage should stay far below it.
 
@@ -415,8 +449,8 @@ few minutes).
 **Off / rollback:** the same loop with `--disable-ttl`.
 
 **Vertex.** The owner approved enabling it in this one pass. Run it only after sections 5–6
-verify (§10.1 items 1–2: #51 and the kill switch are merged, the owner's $5 alert is set, and
-the kill switch is deployed and proven):
+verify (§10.1 items 1–2: #51 and the kill switch are merged, the owner's $5 alert is set
+(section 1b), and the kill switch is deployed and proven):
 
 ```sh
 gcloud services enable aiplatform.googleapis.com
@@ -456,7 +490,7 @@ Run this only when **all** of these hold. If any is false, stop:
 
 - sections 1–9 are done and verified;
 - the Coordinator has relayed the owner's explicit OK for switch-on;
-- **the $5 budget alert exists** (section 1) and points at the budget topic;
+- **the $5 Vertex alert budget exists** (section 1b, email only) and its Verify still holds;
 - **`prices.json` is re-verified by the owner**: each per-token price in
   `apps/assistant/config/prices.json` on `<CHAT_SHA>` matches the live Vertex AI price page for
   `gemini-2.5-flash` in `<VERTEX_LOCATION>`. If one differs, stop and report. Agents never edit
@@ -491,6 +525,11 @@ gcloud run services describe pi-api --region=me-central1 \
 
 **10b. Deploy the chat callable (it stays off: `enabled` is still `false`).**
 
+Run 10b only after **section 9** (`<VERTEX_LOCATION>` recorded) **and 10a** (all three `PI_*`
+lines filled): a missing or malformed `PI_*` value makes the revision refuse to start. The same
+gate binds a dark deploy of `assistantChat` folded into a main deploy: sections 1–9 done and
+verified, and the 10a lines filled, from the same `<CHAT_SHA>`.
+
 ```sh
 npm ci --prefix apps/assistant
 npx -y firebase-tools@14.27.0 deploy --config apps/assistant/firebase.json \
@@ -500,23 +539,85 @@ gcloud run services describe assistantchat --region=me-central1 \
 # must print pi-assistant@productintelligence-beeb3.iam.gserviceaccount.com
 ```
 
-If it prints any other account, run the 10f rollback and stop. A missing or malformed `PI_*`
-value makes the revision refuse to start; the log names the variable, never its value.
+If it prints any other account, run **10f step 3** (delete the callable) and stop. A missing or
+malformed `PI_*` value makes the revision refuse to start; the log names the variable, never its
+value.
 
-**10c. Web build with the assistant panel, then Hosting.** Build exactly as in
-`apps/web/README.md`, with the two public flags (the reCAPTCHA *site* key is public, not a
-secret):
+**Verify**
 
 ```sh
+gcloud run services describe assistantchat --region=me-central1 \
+  --format='value(status.conditions[0].type,status.conditions[0].status)'
+# must print: Ready True
+gcloud run services describe assistantchat --region=me-central1 \
+  --format='value(spec.template.metadata.annotations)' | tr ';' '\n' | grep -i scale
+# maxScale 5; minScale absent or 0 (index.ts: minInstances 0, maxInstances 5)
+```
+
+- **The public invoker is expected.** A gen2 callable's Cloud Run service is invocable by
+  `allUsers`; Firebase Auth, `enforceAppCheck: true` and `enabled: false` gate it. Do not make it
+  private: that breaks every callable request.
+- **Build cost.** The deploy runs Cloud Build and pushes an image to `gcf-artifacts` in
+  `me-central1`, which shares the 0.5 GB Artifact Registry free tier with the `pi-api` images.
+  Keep the image cleanup policy the CLI offers on the first functions deploy in the region
+  (section 5); if it asks again, accept 1 day. Scale-to-zero means no idle cost.
+
+**10c. Web build with the assistant panel, then Hosting.** This is a **live Hosting release**: it
+replaces everything on the site, not just the panel. Linux, Node 22.
+
+1. **Record the live release** (for 10f step 2). The token goes through stdin, never argv:
+
+```sh
+gcloud auth print-access-token | sed 's/^/Authorization: Bearer /' | curl -sS -H @- \
+  "https://firebasehosting.googleapis.com/v1beta1/sites/$PROJECT/channels/live/releases?pageSize=1" \
+  | grep -o '"name": *"sites/[^"]*/versions/[^"]*"' | head -1
+```
+
+Note the printed version as `<LIVE_VERSION>`.
+
+2. **Same web code as live.** `<LIVE_WEB_SHA>` is the main commit of the last Hosting deploy (the
+main-deploy record). Then:
+
+```sh
+git log --oneline <LIVE_WEB_SHA>..<CHAT_SHA> -- apps/web infra/firebase.json
+```
+
+Empty output: only the panel flags differ from live; go on. Otherwise those commits ship too,
+without the main deploy's smokes: **stop** and send the list to the Coordinator. Go on only
+after the Coordinator relays that the owner accepts that list (or after a main deploy from
+`<CHAT_SHA>`).
+
+3. **Build with the two public flags**, exactly as in `apps/web/README.md` (the reCAPTCHA *site*
+key is public, not a secret). `npm run build` runs the bundle check and `csp.mjs --check`:
+
+```sh
+node --version   # v22.x
 apps/web/build.sh verify
 (cd apps/web && npm ci && NEXT_PUBLIC_ASSISTANT_ENABLED=true \
   NEXT_PUBLIC_RECAPTCHA_SITE=<RECAPTCHA_SITE_KEY> npm run build)
+```
+
+4. **Gates. Each must pass, or stop and report:**
+
+```sh
+(cd apps/web && node scripts/check-bundle.mjs out && node scripts/csp.mjs out --check)
+# must end "... inline script hashes (... inline scripts) match"
+grep -o 'img-src[^;]*' infra/firebase.json
+# must list every host in <EVIDENCE_HOSTS> (10a)
+grep -o 'connect-src[^;]*' infra/firebase.json | tr ' ' '\n' | grep -E 'firebaseappcheck|cloudfunctions'
+# must print content-firebaseappcheck.googleapis.com and the me-central1 cloudfunctions.net host
+```
+
+Do not run `csp:write` on the deploy checkout; the hashes are committed in the PR.
+
+5. **Deploy and confirm the new release:**
+
+```sh
 rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist && cp -r apps/web/out infra/web-dist/app
 (cd infra && npx -y firebase-tools@14.27.0 deploy --only hosting --project productintelligence-beeb3)
 ```
 
-If `npm run build` fails on the CSP hashes, stop and report. Do not run `csp:write` on the
-deploy checkout; the hashes are committed in the PR.
+Re-run step 1: it must print a version other than `<LIVE_VERSION>`.
 
 Then re-run the §10.1 checklist. Everything below is the version pre-check, the flip and the
 smoke.
@@ -567,8 +668,8 @@ If any check fails, turn it off (10f, step 1) and report.
 
 1. Instant off: set `assistant_config/current.enabled` to `false` in the console. The meter
    re-reads it before every model call, so spend stops at once.
-2. Remove the panel: rebuild the web exactly as in 10c without the two `NEXT_PUBLIC_*` flags, and
-   redeploy Hosting. Or roll back the release in the *Hosting* console.
+2. Remove the panel: in the *Hosting* console, roll back to `<LIVE_VERSION>` (10c step 1). Or
+   rebuild the web exactly as in 10c without the two `NEXT_PUBLIC_*` flags and redeploy Hosting.
 3. Remove the callable:
 
 ```sh
