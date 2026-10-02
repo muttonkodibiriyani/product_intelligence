@@ -6,6 +6,8 @@
 const NAMES: Readonly<Record<string, string>> = {
   ulta_ae: 'Ulta',
   sephora_me: 'Sephora',
+  // The same shop under the id some fixtures and older data use.
+  sephora_ae: 'Sephora',
 };
 
 /** The display name for a retailer id; `fallback` is the name /meta sent, if any. */

@@ -48,7 +48,7 @@ for (const locale of ['en', 'ar'] as const) {
           more: 'اعرض حتى 500',
           detail: 'تعذّر جمع بيانات أحد المتاجر المحددة.',
           blocked: 'محظور',
-          noSummary: 'لا ملخص',
+          noSummary: 'لا توجد منتجات مطابَقة للمقارنة بعد.',
           notCounted: 'غير محسوب',
           back: 'العودة إلى المقارنة',
           brand: 'العلامة التجارية: Fixture Beauty',
@@ -68,7 +68,7 @@ for (const locale of ['en', 'ar'] as const) {
           more: 'Show up to 500',
           detail: 'A selected retailer could not be collected.',
           blocked: 'Blocked',
-          noSummary: 'No summary',
+          noSummary: 'No matched products to compare yet.',
           notCounted: 'Not counted',
           back: 'Back to comparison',
           brand: 'Brand: Fixture Beauty',
@@ -96,7 +96,9 @@ for (const locale of ['en', 'ar'] as const) {
       const counted = page.locator('dt', { hasText: T.counted }).locator('xpath=..');
       await expect(counted).toContainText('6');
       await expect(page.getByText('+2.4%').first()).toBeVisible();
-      await expect(page.getByText(T.caveat)).toBeVisible();
+      // The API's caveat is not a box on this page: it lives under About the data.
+      await expect(page.getByRole('note')).toHaveCount(0);
+      await expect(page.locator('main')).not.toContainText(T.caveat);
       await expect(page.getByText(T.all15)).toBeVisible();
       await expect(page.locator('#rows table tbody tr')).toHaveCount(15);
       // p05: 80 vs 100 → +25.0%; an excluded row says it isn't counted.
@@ -136,14 +138,17 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors).toEqual([]);
     });
 
-    test('a blocked retailer: the API detail, the side marked blocked, no summary numbers', async ({
+    test('a blocked retailer: no note box, the side marked blocked, one line in place of the summary', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api(() => blocked) });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/compare/?retailers=shop_a%2Cshop_d`);
-      await expect(page.getByRole('note')).toContainText(T.detail);
+      await expect(page.getByRole('note')).toHaveCount(0);
+      await expect(page.locator('main')).not.toContainText(T.detail);
       await expect(page.getByRole('row', { name: /^Shop D/ })).toContainText(T.blocked);
+      // The pair picker names the shop only, with no status tag after it.
+      await expect(page.getByLabel(T.other).locator('option[value=shop_d]')).toHaveText('Shop D');
       await expect(page.getByText(T.noSummary)).toBeVisible();
       await expect(page.locator('dl')).toHaveCount(0);
       await noHorizontalScroll(page);
