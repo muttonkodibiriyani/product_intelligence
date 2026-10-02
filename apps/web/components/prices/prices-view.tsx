@@ -10,7 +10,6 @@ import { formatCount } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
 import { ErrorNotice } from '../error-notice';
 import { Card, CardGrid } from '../ui/card';
-import { CaveatNotes } from '../ui/env-notes';
 import { Known } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { Loading, Skeleton } from '../ui/skeleton';
@@ -254,7 +253,6 @@ function RetailerSection({
   const topOptions = TOPS.map((n) => ({ value: n as Top, label: tw('controls.top', { n }) }));
   return (
     <div className="space-y-4">
-      <CaveatNotes caveats={row.caveats} />
       <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
         <Fact k={tk('products')}>{d.products === null ? tk('none') : formatCount(d.products, locale)}</Fact>
         <Fact k={tw('priced')}>{d.priced === null ? tk('none') : formatCount(d.priced, locale)}</Fact>

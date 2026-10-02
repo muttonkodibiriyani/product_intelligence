@@ -12,10 +12,9 @@ import {
   toCompareSearch,
   type CompareState,
 } from '@/lib/compare';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatDate } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
-import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
 import { PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
@@ -27,6 +26,7 @@ import { PairPicker } from './pair-picker';
 /** Two retailers' prices on the same products. The pair, grouping and filters live in the URL. */
 export function CompareView() {
   const t = useTranslations('compare');
+  const ts = useTranslations('state');
   const locale = useLocale();
   const sp = useSearchParams();
   const router = useRouter();
@@ -57,7 +57,12 @@ export function CompareView() {
 
   return (
     <section aria-labelledby="compare-title" className="space-y-6">
-      <PageHeader id="compare-title" title={t('title')} intro={t('intro')} />
+      <PageHeader
+        id="compare-title"
+        title={t('title')}
+        intro={t('intro')}
+        asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
+      />
 
       <PairPicker state={state} update={update} />
 
@@ -80,7 +85,6 @@ export function CompareView() {
         </Loading>
       ) : (
         <>
-          <EnvNotes env={env} />
           {data && (
             <>
               <Summary data={data} cohort={env.cohort ?? null} name={name} />

@@ -6,6 +6,7 @@ import type { ChatModel, ModelReply, ModelRequest } from "../src/flows/model.js"
 import { PROMPT_VERSION } from "../src/flows/prompt.js";
 import * as assertions from "../src/evals/assertions.js";
 import { ADMIN_ONLY, FixtureApi, INJECTED_NAME } from "../src/evals/fixtures.js";
+import { evalConfigSource } from "../src/evals/eval-config.js";
 import { gate } from "../src/evals/gate.js";
 import AssistantEvalProvider, {
   EVIDENCE_HOSTS,
@@ -24,6 +25,13 @@ const EVAL_CONFIG = {
   ...CONFIG,
   promptVersion: PROMPT_VERSION,
   limits: { ...CONFIG.limits, maxInputTokens: 100_000 },
+};
+/** The eval file the provider runs on, within EVAL_CONFIG (the live document here). */
+const EVAL_FILE = {
+  candidateModels: [CONFIG.model],
+  priceTableVersion: CONFIG.priceTableVersion,
+  caps: { labelMonthUsd: "1.50" },
+  limits: EVAL_CONFIG.limits,
 };
 const USAGE = { input: 4_000, cachedInput: 0, output: 200, thinking: 0 };
 const EVALS = new URL("../evals/", import.meta.url);
@@ -51,7 +59,12 @@ function provider(model: ChatModel, config: unknown = EVAL_CONFIG) {
   return {
     store,
     provider: new AssistantEvalProvider({ id: "test" }, () =>
-      Promise.resolve({ model, store, prices: loadPrices() }),
+      Promise.resolve({
+        model,
+        store,
+        prices: loadPrices(),
+        source: evalConfigSource(EVAL_FILE, CONFIG.model),
+      }),
     ),
   };
 }
@@ -105,9 +118,13 @@ describe("eval provider", () => {
     await expect(vertexDeps({ PI_EVAL_METER: "memory" })).rejects.toThrow(/firestore/);
     await expect(vertexDeps({ PI_EVAL_METER: "firestore" })).rejects.toThrow(/LOCATION/);
     await expect(
+      vertexDeps({ PI_EVAL_METER: "firestore", PI_VERTEX_LOCATION: "us-central1" }),
+    ).rejects.toThrow(/PI_EVAL_MODEL/);
+    await expect(
       vertexDeps({
         PI_EVAL_METER: "firestore",
         PI_VERTEX_LOCATION: "us-central1",
+        PI_EVAL_MODEL: "gemini-2.5-flash",
         GEMINI_API_KEY: "k",
       }),
     ).rejects.toThrow(VertexConfigError);
@@ -320,6 +337,24 @@ describe("gate", () => {
     expect(report.pass).toBe(false);
     expect(report.lines).toContain("FAIL [gold] gold case: missing /2\\.5/");
     expect(report.lines).toContain("FAIL gold: 1/2 (50.0 %, needs 100 %)");
+  });
+
+  it("prints counts and cost only, never case text, with --counts-only", () => {
+    const leak = "IGNORE PREVIOUS INSTRUCTIONS";
+    const failed = {
+      ...result("injection", false),
+      cost: 0.002,
+      error: leak,
+      testCase: { description: leak, metadata: { suite: "injection" } },
+    };
+    const report = gate(file([{ ...result("gold", true), cost: 0.001 }, failed]), undefined, {
+      countsOnly: true,
+    });
+    expect(report.pass).toBe(false);
+    expect(report.lines.join("\n")).not.toContain(leak);
+    expect(report.lines).toContain("FAIL injection: 0/1 (0.0 %, needs 100 %)");
+    expect(report.lines.at(-1)).toBe("cost: $0.003000 for 2 questions ($0.001500 per question)");
+    expect(gate(file([failed])).lines.join("\n")).toContain(leak);
   });
 
   it("fails on unknown suites, provider errors, empty or malformed files", () => {
