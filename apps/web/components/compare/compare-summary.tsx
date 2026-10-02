@@ -93,7 +93,7 @@ export function Verdict({
           {headline}
         </h2>
         <p className="mt-2 text-sm text-ink-2">
-          {basket} {t('scope', { n, total: formatCount(data.total, locale) })}
+          {basket} {t('scope', { n, total: formatCount(data.total, locale), totalCount: data.total })}
         </p>
         <div
           className="mt-4"
@@ -198,6 +198,7 @@ export function Coverage({ data, name }: { data: Comparison; name: Name }) {
                   {t('line', {
                     matched: formatCount(s.counted, locale),
                     seen: formatCount(s.observed, locale),
+                    seenCount: s.observed,
                     shop: name(s.retailer),
                     other,
                   })}{' '}

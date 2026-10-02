@@ -205,12 +205,49 @@ describe('CompareRows', () => {
     expect(text(p05)).toContain('AED 80.00');
     expect(text(p05)).toContain('AED 100.00');
     expect(text(p05)).toContain('+AED 20.00');
-    expect(text(p05)).toContain('Shop A, by 25%');
+    expect(text(p05)).toContain('Shop B, 25% dearer');
     expect(
       within(p05).getByRole('link', { name: 'Both listings: Product p05' }).getAttribute('href'),
     ).toMatch(/^\/en\/product\/?\?id=p05&back=compare&from=retailers%3Dshop_a%252Cshop_b$/);
     expect(text(screen.getByRole('row', { name: /Product p02/ }))).toContain('Same price');
     expect(text(screen.getByRole('row', { name: /Product p03/ }))).toContain('Shop B, by 9.1%');
+  });
+
+  it('tells the truth about the gap from both sides, since the API measures it against the base price', () => {
+    const d = compare.data!;
+    const money = (amount: string) => ({ amount, currency: 'AED', minor: Math.round(Number(amount) * 100) });
+    // (basePrice, otherPrice, gap.pct, gap.cheaper) exactly as /compare sends them: pct = (other − base) / base.
+    const pair = (id: string, base: string, other: string, pct: string, cheaper: 'base' | 'other') => ({
+      ...d.rows.find((r) => r.id === 'p05')!,
+      id,
+      name: `Product ${id}`,
+      basePrice: money(base),
+      otherPrice: money(other),
+      gap: { amount: minus(money(other), money(base))!, pct, cheaper },
+    });
+    const rows = [
+      pair('q1', '50.00', '150.00', '200.0', 'base'), // base is 66.7% cheaper, NOT "by 200%"
+      pair('q2', '150.00', '50.00', '-66.7', 'other'),
+      pair('q3', '80.00', '100.00', '25.0', 'base'), // base is 20% cheaper, NOT "by 25%"
+      pair('q4', '100.00', '80.00', '-20.0', 'other'),
+    ];
+    // Arabic percentages carry bidi marks ("25\u200e%\u200e"); drop them so the words can be read.
+    const pill = (id: string) =>
+      text(screen.getByRole('row', { name: new RegExp(`Product ${id}`) })).replace(/[\u200e\u200f]/g, '');
+    show(<CompareRows data={{ ...d, rows, total: 4 }} name={name} from="" />);
+    expect(pill('q1')).toContain('Shop B, 200% dearer');
+    expect(pill('q1')).not.toContain('by 200%');
+    expect(pill('q2')).toContain('Shop B, by 66.7%');
+    expect(pill('q3')).toContain('Shop B, 25% dearer');
+    expect(pill('q3')).not.toContain('Shop A, by');
+    expect(pill('q4')).toContain('Shop B, by 20%');
+    cleanup();
+    show(<CompareRows data={{ ...d, rows, total: 4 }} name={name} from="" />, 'ar');
+    expect(pill('q1')).toContain('Shop B، أغلى بنسبة 200%');
+    expect(pill('q2')).toContain('Shop B، بنسبة 66.7%');
+    expect(pill('q3')).toContain('Shop B، أغلى بنسبة 25%');
+    expect(pill('q4')).toContain('Shop B، بنسبة 20%');
+    expect(document.body.textContent).not.toMatch(/[{}]|undefined|NaN/);
   });
 
   it('folds everything that could not be compared into one line, with the reasons behind it', () => {

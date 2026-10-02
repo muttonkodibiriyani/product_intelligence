@@ -16,11 +16,12 @@ type Status =
   | { kind: 'failed'; error: unknown };
 
 /**
- * Downloads the comparison for the current pair and filters as CSV through /export/compare, with
+ * Downloads every row of the comparison for the current pair and filters (matched and excluded
+ * alike; the server does not filter) as CSV through /export/compare, with
  * the Bearer token (a link can't carry it). The API runs two exports at a time; a refusal says
  * when to try again.
  */
-export function ExportMatched({ state, n }: { state: CompareState; n: string }) {
+export function ExportMatched({ state }: { state: CompareState }) {
   const t = useTranslations('compare.export');
   const te = useTranslations('errors');
   const { api } = useAuth();
@@ -83,7 +84,7 @@ export function ExportMatched({ state, n }: { state: CompareState; n: string }) 
       <button
         type="button"
         disabled={!api || status.kind === 'working' || status.kind === 'busy'}
-        title={t('title', { n })}
+        title={t('title')}
         aria-describedby={message ? statusId : undefined}
         onClick={() => void run()}
         className="btn py-1.5 text-sm focus-visible:outline-2"

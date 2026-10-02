@@ -78,11 +78,11 @@ for (const locale of ['en', 'ar'] as const) {
           hide: 'أخفِها',
           notSold: 'يبيعه Shop A فقط.',
           tooSmall: 'عدد المنتجات قليل جدًا',
-          of15: 'يظهر 3 من 15 منتج',
+          of15: 'يظهر 3 من 15 منتجًا',
           more: 'اعرض حتى 500',
           emptyBlocked: 'لا منتجات متطابقة بين Shop A وShop D بعد',
           emptyPair: 'لا منتجات متطابقة بين Shop A وShop B بعد',
-          p05: 'Shop A، بنسبة 25',
+          p05: 'Shop B، أغلى بنسبة 25',
           reasonLead: 'لا يمكن مقارنة شيء لهذين المتجرين:',
           blocks: 'هذا المتجر يمنع الجمع.',
           detail: 'تعذّر جمع بيانات أحد المتاجر المحددة.',
@@ -94,7 +94,7 @@ for (const locale of ['en', 'ar'] as const) {
           open: 'العرضان',
           back: 'العودة إلى المقارنة',
           brand: 'العلامة التجارية: Fixture Beauty',
-          exportLabel: 'تصدير المنتجات المتطابقة',
+          exportLabel: 'تصدير كل صفوف المقارنة',
         }
       : {
           nav: 'Compare',
@@ -127,7 +127,7 @@ for (const locale of ['en', 'ar'] as const) {
           open: 'Both listings',
           back: 'Back to comparison',
           brand: 'Brand: Fixture Beauty',
-          exportLabel: 'Export matched products',
+          exportLabel: 'Export all compared rows',
         };
 
   // Arabic is written with Western digits here, as the page formats them.
@@ -162,7 +162,7 @@ for (const locale of ['en', 'ar'] as const) {
       // Only the matched products are rows; everything else is one line with its reasons.
       await expect(page.locator('#matched-title')).toHaveText(T.matchedTitle);
       await expect(matchedRows(page)).toHaveCount(6);
-      // p05: 80 vs 100 → +20.00, Shop A cheaper by 25%.
+      // p05: 80 vs 100 → +20.00; Shop B is 25% dearer (the gap is a share of Shop A's price).
       await expect(
         page.locator('#matched tr, #matched li').filter({ hasText: 'Product p05' }).first(),
       ).toContainText(T.p05);

@@ -43,16 +43,23 @@ function ProductCell({ r, locale, from }: { r: PairRow; locale: string; from: st
   );
 }
 
-/** "Ulta, by 4.7%" tinted for the cheaper shop, or "Same price". */
+/**
+ * "Ulta, by 9.1%" when the other shop is cheaper, "Ulta, 25% dearer" when the base is, or "Same
+ * price". gap.pct is (other − base) as a share of the BASE price, so it only reads as "cheaper by"
+ * from the other shop's side: 80 vs 100 is +25%, and the base is 20% cheaper, not 25%. Rather than
+ * re-derive a number the API did not send, the pill names the other shop both ways.
+ */
 function CheaperPill({ r, data, name }: { r: Matched; data: Comparison; name: Name }) {
   const t = useTranslations('compare.matched');
   const locale = useLocale();
   if (r.gap.cheaper === 'equal')
     return <span className="pill bg-surface-2 text-ink-2 whitespace-nowrap">{t('same')}</span>;
-  const shop = name(r.gap.cheaper === 'base' ? data.base : data.other);
+  const shop = name(data.other);
   return (
     <span className="pill whitespace-nowrap" style={GOOD}>
-      {t('cheaperBy', { shop, pct: pct(r.gap.pct.replace(/^-/, ''), locale) })}
+      {r.gap.cheaper === 'base'
+        ? t('dearer', { shop, pct: pct(r.gap.pct, locale) })
+        : t('cheaperBy', { shop, pct: pct(r.gap.pct.replace(/^-/, ''), locale) })}
     </span>
   );
 }

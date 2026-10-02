@@ -84,7 +84,7 @@ export function CompareView() {
         title={t('title')}
         intro={t('intro')}
         asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
-        tools={summary && <ExportMatched state={state} n={formatCount(summary.n, locale)} />}
+        tools={summary && <ExportMatched state={state} />}
       />
 
       <PairPicker state={state} update={update} fixed={fixed} />
@@ -133,6 +133,7 @@ export function CompareView() {
                   {t('matched.shownOfTotal', {
                     shown: formatCount(data.rows.length, locale),
                     total: formatCount(data.total, locale),
+                    totalCount: data.total,
                   })}
                 </p>
               )}

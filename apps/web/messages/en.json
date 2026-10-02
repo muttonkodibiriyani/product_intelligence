@@ -353,8 +353,8 @@
     "pickPairHint": "The first shop is the one every difference is measured from.",
     "loading": "Loading comparison…",
     "export": {
-      "label": "Export matched products",
-      "title": "Download the {n} matched products as CSV",
+      "label": "Export all compared rows",
+      "title": "Download every row of this comparison, matched or not, as CSV",
       "preparing": "Preparing the file…",
       "saved": "Saved {filename}.",
       "busy": "Two exports are already running. Try again in {seconds} s."
@@ -394,6 +394,7 @@
       "difference": "Difference",
       "cheaper": "Who's cheaper",
       "cheaperBy": "{shop}, by {pct}",
+      "dearer": "{shop}, {pct} dearer",
       "same": "Same price",
       "open": "Both listings",
       "none": "None of the listed products is matched. The summary counts every product, not only the ones listed here."
