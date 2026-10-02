@@ -43,6 +43,21 @@ function ProductCell({ r, locale, from }: { r: PairRow; locale: string; from: st
   );
 }
 
+/** "3 of 15 products are listed", next to the matched title when the API cut the list. */
+export function ShownOfTotal({ shown, total }: { shown: number; total: number }) {
+  const t = useTranslations('compare.matched');
+  const locale = useLocale();
+  return (
+    <p role="status" className="text-sm text-ink-2 tabular-nums">
+      {t('shownOfTotal', {
+        shown: formatCount(shown, locale),
+        total: formatCount(total, locale),
+        totalCount: total,
+      })}
+    </p>
+  );
+}
+
 /**
  * "Ulta, by 9.1%" when the other shop is cheaper, "Ulta, 25% dearer" when the base is, or "Same
  * price". gap.pct is (other − base) as a share of the BASE price, so it only reads as "cheaper by"

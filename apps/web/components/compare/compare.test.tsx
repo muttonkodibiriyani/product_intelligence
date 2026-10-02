@@ -11,7 +11,7 @@ import pagesEn from '@/messages/en.json';
 import widgetsAr from '@/messages/widgets.ar.json';
 import widgetsEn from '@/messages/widgets.en.json';
 import { CompareEmpty } from './compare-empty';
-import { CompareRows } from './compare-rows';
+import { CompareRows, ShownOfTotal } from './compare-rows';
 import { Coverage, Verdict } from './compare-summary';
 import { excludedGroups, gapShare, minus, retailerTone, splitRows, verdict } from './model';
 
@@ -196,6 +196,47 @@ describe('Verdict', () => {
   });
 });
 
+describe('Arabic counted nouns', () => {
+  // ICU plural on the raw count: one / two / few (3–10) / many (11–99) / other (100+), digits Latin.
+  const cases: [number, string][] = [
+    [1, 'منتج واحد'],
+    [2, 'منتجين'],
+    [3, '3 منتجات'],
+    [11, '11 منتجًا'],
+    [100, '100 منتج'],
+  ];
+  const d = withSummary(compare.data!);
+  const body = () => text(document.body).replace(/[\u200e\u200f]/g, '');
+
+  it.each(cases)('verdict.scope with %i products in the view', (n, noun) => {
+    show(<Verdict data={{ ...d, total: n }} name={name} />, 'ar');
+    expect(body()).toContain(`أي 6 من ${noun} يبيعها أحد المتجرين`);
+    expect(body()).not.toMatch(/[{}]|undefined|NaN/);
+  });
+
+  it.each(cases)('coverage.line with %i products seen', (n, noun) => {
+    const sides = {
+      base: { ...d.sides.base, counted: 1, observed: n },
+      other: { ...d.sides.other, counted: 1, observed: n },
+    };
+    show(<Coverage data={{ ...d, sides }} name={name} />, 'ar');
+    const verb = n === 1 ? 'يبيعه' : n === 2 ? 'يبيعهما' : 'يبيعها';
+    expect(body()).toContain(`1 من ${noun} ${verb} Shop A في هذا العرض متطابقة مع Shop B.`);
+    expect(body()).toContain(`1 من ${noun} ${verb} Shop B في هذا العرض متطابقة مع Shop A.`);
+    expect(body()).not.toMatch(/[{}]|undefined|NaN/);
+  });
+
+  it.each(cases)('matched.shownOfTotal with %i products in total', (n, noun) => {
+    show(<ShownOfTotal shown={1} total={n} />, 'ar');
+    expect(text(screen.getByRole('status'))).toBe(`يظهر 1 من ${noun}`);
+  });
+
+  it('keeps the English forms', () => {
+    show(<ShownOfTotal shown={3} total={15} />);
+    expect(text(screen.getByRole('status'))).toBe('3 of 15 products are listed');
+  });
+});
+
 describe('CompareRows', () => {
   it('lists the matched products with the API gap, who is cheaper, and a link to both listings', () => {
     show(<CompareRows data={compare.data!} name={name} from="?retailers=shop_a%2Cshop_b" />);
@@ -308,12 +349,11 @@ describe('CompareEmpty', () => {
         category={{ kind: 'empty', env: null }}
       />,
     );
-    expect(text(screen.getByRole('heading', { level: 2 }))).toContain(
-      'No products are matched between Shop A and Shop D yet',
+    expect(text(screen.getByRole('heading', { level: 2 }))).toBe('This retailer blocks collection.');
+    expect(text(screen.getByText(/Nothing can be compared for this pair\./))).toBe(
+      'Nothing can be compared for this pair. A selected retailer could not be collected.',
     );
-    expect(text(screen.getByText(/Nothing can be compared for this pair:/))).toContain(
-      'This retailer blocks collection. A selected retailer could not be collected.',
-    );
+    expect(document.body.textContent).not.toMatch(/No products are matched|too few/i);
     const tiles = screen.getAllByRole('listitem').map((li) => li.textContent);
     expect(tiles[0]).toContain('Shop A');
     expect(tiles[0]).toContain('14 products seen');
@@ -328,6 +368,80 @@ describe('CompareEmpty', () => {
       /^\/en\/explore\/?$/,
     );
     expect(screen.queryByText(/median price by category/)).toBeNull();
+  });
+
+  // What /compare sends when it withholds the comparison: no rows, no summary, zero on both sides.
+  const withheld = (status: Env['status'], reason: Env['reason'], rows = 0): Env => {
+    const d = compare.data!;
+    const empty = { counted: 0, observed: rows, onlyHere: 0, reason: null, status: 'supported' as const };
+    return {
+      ...compare,
+      status,
+      reason,
+      detail: null,
+      data: {
+        ...d,
+        rows: d.rows.filter((r) => !r.counted).slice(0, rows),
+        summary: null,
+        total: rows,
+        truncated: false,
+        sides: { base: { ...empty, retailer: 'shop_a' }, other: { ...empty, retailer: 'shop_b' } },
+      },
+    };
+  };
+  const empty = (env: Env, locale: 'en' | 'ar' = 'en') =>
+    show(
+      <CompareEmpty
+        env={env}
+        data={env.data}
+        pair={{ base: 'shop_a', other: 'shop_b' }}
+        name={name}
+        category={{ kind: 'empty', env: null }}
+      />,
+      locale,
+    );
+
+  it('leads with the API reason when the comparison was withheld, not with a claim about products', () => {
+    empty(withheld('not_enough_data', 'not_applicable'));
+    expect(text(screen.getByRole('heading', { level: 2 }))).toBe(
+      "This view doesn't apply to this kind of catalogue.",
+    );
+    expect(text(screen.getByRole('heading', { level: 2 }).nextElementSibling)).toBe(
+      'Nothing can be compared for this pair.',
+    );
+    expect(document.body.textContent).not.toMatch(/No products are matched|too few|Both shops have been/i);
+    cleanup();
+
+    empty(withheld('not_enough_data', 'currency_mismatch', 9));
+    expect(text(screen.getByRole('heading', { level: 2 }))).toBe('Prices are in different currencies.');
+    expect(document.body.textContent).not.toMatch(/No products are matched|too few/i);
+    cleanup();
+
+    empty(withheld('not_enough_data', 'not_applicable'), 'ar');
+    expect(text(screen.getByRole('heading', { level: 2 }))).toBe(
+      'هذا العرض لا ينطبق على هذا النوع من الكتالوجات.',
+    );
+    expect(document.body.textContent).not.toContain('لا منتجات متطابقة');
+    expect(document.body.textContent).not.toMatch(/[{}]|undefined|NaN/);
+  });
+
+  it('keeps "too few" only for the cohort reason, with the reason after it', () => {
+    const env = withheld('not_enough_data', 'cohort_too_small', 9);
+    const d = env.data!;
+    empty({
+      ...env,
+      data: {
+        ...d,
+        sides: { base: { ...d.sides.base, counted: 3 }, other: { ...d.sides.other, counted: 3 } },
+      },
+    });
+    expect(text(screen.getByRole('heading', { level: 2 }))).toBe(
+      'Only 3 products are matched between Shop A and Shop B, too few for a verdict',
+    );
+    expect(text(screen.getByRole('heading', { level: 2 }).nextElementSibling)).toBe(
+      'Too few products to give a reliable number.',
+    );
+    expect(document.body.textContent).not.toContain('Nothing can be compared');
   });
 
   it('shows the category medians that already exist, and counts the rows waiting for a reviewer', () => {

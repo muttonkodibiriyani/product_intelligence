@@ -22,7 +22,7 @@ import { useMeta, useRetailerName } from '../use-meta';
 import { activeRetailers } from '../widgets/model';
 import { useCategoryCompare } from '../widgets/use-category';
 import { CompareEmpty } from './compare-empty';
-import { CompareRows } from './compare-rows';
+import { CompareRows, ShownOfTotal } from './compare-rows';
 import { About, Coverage, Groups, Verdict } from './compare-summary';
 import { ExportMatched } from './export-matched';
 import { PairPicker } from './pair-picker';
@@ -128,15 +128,7 @@ export function CompareView() {
               <h2 id="matched-title" className="text-base font-semibold">
                 {t('matched.title', { n: formatCount(summary.n, locale), count: summary.n })}
               </h2>
-              {data.truncated && (
-                <p role="status" className="text-sm text-ink-2 tabular-nums">
-                  {t('matched.shownOfTotal', {
-                    shown: formatCount(data.rows.length, locale),
-                    total: formatCount(data.total, locale),
-                    totalCount: data.total,
-                  })}
-                </p>
-              )}
+              {data.truncated && <ShownOfTotal shown={data.rows.length} total={data.total} />}
             </div>
             <p className="mt-1 text-sm text-ink-2">{t('matched.hint')}</p>
             <div className="mt-3">

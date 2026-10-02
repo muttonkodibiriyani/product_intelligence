@@ -50,6 +50,11 @@ export function CompareEmpty({
   const awaiting =
     data && !data.truncated ? data.rows.filter((r) => r.excludedReason === 'match_unreviewed').length : null;
   const detail = env.detail ? (locale === 'ar' ? env.detail.ar : env.detail.en) : null;
+  // When the API withheld the comparison itself (a blocked side, a currency mismatch, a catalogue
+  // this view does not apply to), its reason is the headline: "no products are matched" would be
+  // a claim about products the API never assessed. Below the cohort minimum the matched products
+  // are real, so the "too few" line stands and the reason follows it.
+  const withheld = env.status !== 'ok' && env.reason && env.reason !== 'cohort_too_small' ? env.reason : null;
 
   return (
     <div className="space-y-5">
@@ -76,14 +81,23 @@ export function CompareEmpty({
           </svg>
         </span>
         <h2 id="empty-title" className="text-lg font-semibold tracking-tight text-balance">
-          {matched > 0
-            ? t('tooFew', { n: formatCount(matched, locale), count: matched, base, other })
-            : t('title', { base, other })}
+          {withheld ? (
+            <Known t={tr} v={withheld} />
+          ) : matched > 0 ? (
+            t('tooFew', { n: formatCount(matched, locale), count: matched, base, other })
+          ) : (
+            t('title', { base, other })
+          )}
         </h2>
         <p className="mt-2 text-sm text-ink-2">
-          {env.reason ? (
+          {withheld ? (
             <>
-              {t('reason')} <Known t={tr} v={env.reason} />
+              {t('reason')}
+              {detail && ` ${detail}`}
+            </>
+          ) : env.reason ? (
+            <>
+              <Known t={tr} v={env.reason} />
               {detail && ` ${detail}`}
             </>
           ) : (

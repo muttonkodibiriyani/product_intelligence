@@ -80,10 +80,9 @@ for (const locale of ['en', 'ar'] as const) {
           tooSmall: 'عدد المنتجات قليل جدًا',
           of15: 'يظهر 3 من 15 منتجًا',
           more: 'اعرض حتى 500',
-          emptyBlocked: 'لا منتجات متطابقة بين Shop A وShop D بعد',
           emptyPair: 'لا منتجات متطابقة بين Shop A وShop B بعد',
           p05: 'Shop B، أغلى بنسبة 25',
-          reasonLead: 'لا يمكن مقارنة شيء لهذين المتجرين:',
+          reasonLead: 'لا يمكن مقارنة شيء لهذين المتجرين.',
           blocks: 'هذا المتجر يمنع الجمع.',
           detail: 'تعذّر جمع بيانات أحد المتاجر المحددة.',
           blocked: 'محظور',
@@ -94,7 +93,7 @@ for (const locale of ['en', 'ar'] as const) {
           open: 'العرضان',
           back: 'العودة إلى المقارنة',
           brand: 'العلامة التجارية: Fixture Beauty',
-          exportLabel: 'تصدير كل صفوف المقارنة',
+          exportLabel: 'تصدير كل صفوف هذه المقارنة',
         }
       : {
           nav: 'Compare',
@@ -113,10 +112,9 @@ for (const locale of ['en', 'ar'] as const) {
           tooSmall: 'Too few products',
           of15: '3 of 15 products are listed',
           more: 'Show up to 500',
-          emptyBlocked: 'No products are matched between Shop A and Shop D yet',
           emptyPair: 'No products are matched between Shop A and Shop B yet',
           p05: '+AED 20.00',
-          reasonLead: 'Nothing can be compared for this pair:',
+          reasonLead: 'Nothing can be compared for this pair.',
           blocks: 'This retailer blocks collection.',
           detail: 'A selected retailer could not be collected.',
           blocked: 'Blocked',
@@ -127,7 +125,7 @@ for (const locale of ['en', 'ar'] as const) {
           open: 'Both listings',
           back: 'Back to comparison',
           brand: 'Brand: Fixture Beauty',
-          exportLabel: 'Export all compared rows',
+          exportLabel: 'Export all rows of this comparison',
         };
 
   // Arabic is written with Western digits here, as the page formats them.
@@ -216,8 +214,10 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api(() => blocked) });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/compare/?retailers=shop_a%2Cshop_d`);
-      await expect(page.locator('#empty-title')).toHaveText(T.emptyBlocked);
-      await expect(page.locator('#empty-title + p')).toHaveText(`${T.reasonLead} ${T.blocks} ${T.detail}`);
+      // The API withheld the comparison: its reason is the headline, not a claim about products.
+      await expect(page.locator('#empty-title')).toHaveText(T.blocks);
+      await expect(page.locator('#empty-title + p')).toHaveText(`${T.reasonLead} ${T.detail}`);
+      await expect(page.locator('main')).not.toContainText(T.emptyPair.replace('Shop B', 'Shop D'));
       await expect(page.getByRole('listitem').filter({ hasText: 'Shop D' })).toContainText(T.blocked);
       await expect(page.locator('#verdict-title')).toHaveCount(0);
       await expect(page.locator('#matched')).toHaveCount(0);
