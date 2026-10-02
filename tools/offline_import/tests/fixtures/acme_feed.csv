@@ -1,0 +1,12 @@
+Variant ID,SKU,EAN,Product Name,Product Name AR,Brand,Category,Size,Shade,Price,Sale Price,In Stock,Qty,Image
+AB-1001,ACME-LIP-01,2000000001012,Acme Velvet Lipstick,أحمر شفاه أكمي,Acme Beauty,Makeup > Lips,3.5 g,Coral Dawn,89.00,,yes,12,https://acme-beauty.example/img/ab-1001.jpg
+AB-1002,ACME-LIP-02,2000000001029,Acme Velvet Lipstick,أحمر شفاه أكمي,Acme Beauty,Makeup > Lips,3.5 g,Plum Night,120.00,99.00,0,0,
+AB-1003,ACME-SER-01,2000000001036,Acme Glow Serum,,Acme Beauty,Skincare > Serums,30 ml,,,,,5,
+AB-1004,ACME-SER-02,,Acme Glow Serum,,Acme Beauty,Skincare > Serums,50 ml,,0,,yes,,
+,ACME-MSK-01,,Acme Clay Mask,,Acme Beauty,Skincare > Masks,75 ml,,45.00,,yes,,
+AB-1001,ACME-LIP-01,2000000001012,Acme Velvet Lipstick (dup),,Acme Beauty,Makeup > Lips,3.5 g,Coral Dawn,89.00,,yes,,
+AB-1005,ACME-TNR-01,,Acme Rose Toner,,Acme Beauty,Skincare > Toners,200 ml,,abc,,yes,,
+AB-1006,ACME-OIL-01,,Acme Hair Oil,,Acme Beauty,Hair > Oils,100 ml,,65.00,,maybe,,
+AB-1007,ACME-BLM-01,,Acme Lip Balm,,Acme Beauty,Makeup > Lips,4 g,,-5,,yes,,
+AB-1008,ACME-FND-01,2000000001043,Acme Soft Foundation,,Acme Beauty,Makeup > Face,30 ml,Sand 02,"1,150.50",,low,,
+AB-1009,ACME-CRM-01,1234567890123,Acme Night Cream,,Acme Beauty,Skincare > Moisturisers,50 ml,,140.00,,,,

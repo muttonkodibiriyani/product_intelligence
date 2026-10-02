@@ -1,0 +1,172 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "retailers": [
+      {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": true
+              },
+              {
+                "date": "2026-09-29",
+                "observed": true
+              },
+              {
+                "date": "2026-09-30",
+                "observed": true
+              }
+            ],
+            "freshness": "2026-09-30",
+            "id": "shop_a",
+            "label": {
+              "en": "Shop A"
+            },
+            "location": null,
+            "productCount": 14,
+            "status": "supported"
+          }
+        ],
+        "freshness": "2026-09-30",
+        "id": "shop_a",
+        "matchedCount": 10,
+        "name": "Shop A",
+        "note": null,
+        "productCount": 14,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": true
+              },
+              {
+                "date": "2026-09-29",
+                "observed": true
+              },
+              {
+                "date": "2026-09-30",
+                "observed": true
+              }
+            ],
+            "freshness": "2026-09-30",
+            "id": "shop_b",
+            "label": {
+              "en": "Shop B"
+            },
+            "location": null,
+            "productCount": 13,
+            "status": "supported"
+          }
+        ],
+        "freshness": "2026-09-30",
+        "id": "shop_b",
+        "matchedCount": 9,
+        "name": "Shop B",
+        "note": null,
+        "productCount": 13,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": true
+              },
+              {
+                "date": "2026-09-29",
+                "observed": true
+              },
+              {
+                "date": "2026-09-30",
+                "observed": true
+              }
+            ],
+            "freshness": "2026-09-30",
+            "id": "shop_c",
+            "label": {
+              "en": "Shop C"
+            },
+            "location": null,
+            "productCount": 2,
+            "status": "partial"
+          }
+        ],
+        "freshness": "2026-09-30",
+        "id": "shop_c",
+        "matchedCount": 1,
+        "name": "Shop C",
+        "note": {
+          "en": "Makeup only."
+        },
+        "productCount": 2,
+        "since": "2026-09-01",
+        "status": "partial"
+      },
+      {
+        "contexts": [
+          {
+            "channel": "online",
+            "dates": [
+              {
+                "date": "2026-09-28",
+                "observed": false
+              },
+              {
+                "date": "2026-09-29",
+                "observed": false
+              },
+              {
+                "date": "2026-09-30",
+                "observed": false
+              }
+            ],
+            "freshness": null,
+            "id": "shop_d",
+            "label": {
+              "en": "Shop D"
+            },
+            "location": null,
+            "productCount": 0,
+            "status": "blocked"
+          }
+        ],
+        "freshness": null,
+        "id": "shop_d",
+        "matchedCount": 0,
+        "name": "Shop D",
+        "note": null,
+        "productCount": 0,
+        "since": null,
+        "status": "blocked"
+      }
+    ]
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.11.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "coverage",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.4",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

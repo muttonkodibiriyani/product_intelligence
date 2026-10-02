@@ -1,0 +1,23 @@
+{
+  "name": "@pi/assistant-evals",
+  "version": "0.1.0",
+  "private": true,
+  "description": "promptfoo suites for the PI assistant (design \u00a78). Separate lockfile keeps promptfoo out of the function bundle.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22"
+  },
+  "scripts": {
+    "validate": "PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_UPDATE=1 PROMPTFOO_DISABLE_SHARING=1 promptfoo validate -c promptfooconfig.yaml",
+    "eval:smoke": "PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_UPDATE=1 PROMPTFOO_DISABLE_SHARING=1 promptfoo eval -c promptfooconfig.yaml -j 1 --filter-metadata tier=smoke --no-progress-bar -o results.json",
+    "eval:full": "PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_UPDATE=1 PROMPTFOO_DISABLE_SHARING=1 promptfoo eval -c promptfooconfig.yaml -j 1 --no-progress-bar -o results.json"
+  },
+  "devDependencies": {
+    "jks-js": "file:./stubs/jks-js",
+    "promptfoo": "0.123.1"
+  },
+  "overrides": {
+    "basic-ftp": "^6.2.1",
+    "jks-js": "$jks-js"
+  }
+}

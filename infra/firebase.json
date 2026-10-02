@@ -1,0 +1,109 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": "web-dist",
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "pi-api",
+          "region": "me-central1"
+        }
+      },
+      {
+        "source": "/app/**",
+        "destination": "/app/404.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(), microphone=(), geolocation=()"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; img-src 'self' data: https://img-product.sephora.me https://media.alshaya.com; style-src 'self' 'unsafe-inline'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ 'sha256-1JhQ+NRJkkQ2hYxMaxB1RdJs5B7Gb790p7anMcZKv94=' 'sha256-3DX6GXJcIJ62HOtwuIJJI3tvwMCHFD02ZGDG1TBrZuY=' 'sha256-5IoyhFVxjWRXuG20vFa5oUEaODzzlvoisKWlgu8lclw=' 'sha256-8a8lfXTcNTS+4FqtMgSBfrBxFe/kT/yFgODKAlrIQKs=' 'sha256-F1Kmcgzh148ZEeRPogbPo0Lq8YEQJt6UlDmjk+Z8xUw=' 'sha256-HHgI5pAmwuy1C0UO4aN48uGn2DbRt+ExyVv6+xs/IXQ=' 'sha256-JdHhghaDIDfJtsnHZ5Yudg8FCWH24VvHrzERTuQvsf8=' 'sha256-OBTN3RiyCV4Bq7dFqZ5a2pAXjnCcCYeTJMO2I/LYKeo=' 'sha256-T6WvbnmZnN8Gj9BXP8byToLj/e6RsEBKCOADLebMIEM=' 'sha256-VAQFt1h68ZdbzSz5nptX3zIO4W8KfMGXqkJOYeZX+Lg=' 'sha256-aaKCocJMy2xrdr35VC30sTicOYQyUiq5ZiWWUbTLA5A=' 'sha256-bIcyOkmu0jaBueI1Q3FtCeK2wqYtMXVERS7iXQdzeOA=' 'sha256-dP86fkW6uawPNtbJCoqcvzmv331ScOcQ81fNBmx0PAE=' 'sha256-iDzZmrwtc9toohrRw1KxxFIYeGBFsgwzxtQUbcgJhhA=' 'sha256-iYJMaH+M5pgMfhRMQyAQcueiw+fdmqkvxYKTm1niH9A=' 'sha256-ji2kypGS4HKhtIDitP2xucJEAOBaXU025Mv2bH8uL6M=' 'sha256-p0xiVl4iRp1Pb/fz0jB2dtNguQHoWBu3WZTZ5e6w7x4=' 'sha256-pdOmMrsdljn4SLBKfRjMILeCtERmLzxXeFkNg6AYDmU=' 'sha256-rrjb6aPLkhpCsWe2rKzTGnkQwG70JuC9GpO9q55I/jo=' 'sha256-s3Cmryzu4B/BuHN/0AF7jQDldOPtFKRIhFCGaNhl00Q=' 'sha256-tysbilOH2wuclwUqwWuANNs93RgoP+a/KdP1xSo/Em0=' 'sha256-uDm3NSJ0rXYz3JYgbnsYP5d/Kd9xK/BImxUY6Waz35k=' 'sha256-xOAdsV66S/4EVQzuKVgrR6PMXDlunTNbEI8HBb7AKJs=' 'sha256-xqAuiMSPxLCu6kIpKahyQM9s35WZpwxMtRECXU0m7p0=' 'sha256-zapkl58MAF78MUsoVUPkN/sfj0awH7Qj2wiwBIwBxqo='; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com https://content-firebaseappcheck.googleapis.com https://me-central1-productintelligence-beeb3.cloudfunctions.net; frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(html|json)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  },
+  "emulators": {
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 59099
+    },
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 58080
+    },
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 59199
+    },
+    "hub": {
+      "host": "127.0.0.1",
+      "port": 54400
+    },
+    "logging": {
+      "host": "127.0.0.1",
+      "port": 54500
+    },
+    "ui": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 54000
+    },
+    "singleProjectMode": true
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "stale_cursor",
+    "message": "the data changed; restart from the first page"
+  }
+}

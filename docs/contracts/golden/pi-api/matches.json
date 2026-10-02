@@ -1,0 +1,65 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "items": [
+      {
+        "a": "shop_a",
+        "b": "shop_b",
+        "brand": "Fixture Beauty",
+        "confidence": "0.95",
+        "decidedBy": "human",
+        "matchClass": "exact",
+        "method": "fixture",
+        "name": "Product p01",
+        "productId": "p01",
+        "reviewState": "approved",
+        "stage": "reviewed"
+      },
+      {
+        "a": "shop_a",
+        "b": "shop_b",
+        "brand": "Sample Labs",
+        "confidence": "0.95",
+        "decidedBy": "human",
+        "matchClass": "exact",
+        "method": "fixture",
+        "name": "Product p02",
+        "productId": "p02",
+        "reviewState": "approved",
+        "stage": "reviewed"
+      },
+      {
+        "a": "shop_a",
+        "b": "shop_b",
+        "brand": "Fixture Beauty",
+        "confidence": "0.95",
+        "decidedBy": "human",
+        "matchClass": "exact",
+        "method": "fixture",
+        "name": "Product p03",
+        "productId": "p03",
+        "reviewState": "locked",
+        "stage": "reviewed"
+      }
+    ],
+    "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjMsImYiOiJlYjU0ODM4ZDgyZWE5Mjk3In0",
+    "total": 12
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.11.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "matches",
+    "filters": {
+      "limit": 3
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.4",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

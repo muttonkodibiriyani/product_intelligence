@@ -1,0 +1,1311 @@
+{
+  "$defs": {
+    "AttributeBlock": {
+      "description": "Where the product page shows a key; a client renders an unknown block as key/value.",
+      "enum": [
+        "summary",
+        "size_run",
+        "swatches",
+        "nutrition",
+        "combo",
+        "fees",
+        "channel"
+      ],
+      "title": "AttributeBlock",
+      "type": "string"
+    },
+    "AttributeDef": {
+      "additionalProperties": false,
+      "properties": {
+        "block": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttributeBlock"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capability": {
+          "title": "Capability",
+          "type": "boolean"
+        },
+        "facet": {
+          "title": "Facet",
+          "type": "boolean"
+        },
+        "key": {
+          "pattern": "^[a-z][A-Za-z0-9_]{1,62}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "additionalProperties": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Label",
+          "type": "object"
+        },
+        "level": {
+          "$ref": "#/$defs/AttributeLevel"
+        },
+        "type": {
+          "$ref": "#/$defs/AttributeType"
+        },
+        "values": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/EnumValue"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Values"
+        }
+      },
+      "required": [
+        "key",
+        "level",
+        "type",
+        "values",
+        "label",
+        "facet",
+        "block",
+        "capability"
+      ],
+      "title": "AttributeDef",
+      "type": "object"
+    },
+    "AttributeLevel": {
+      "enum": [
+        "product",
+        "offer"
+      ],
+      "title": "AttributeLevel",
+      "type": "string"
+    },
+    "AttributeType": {
+      "enum": [
+        "text",
+        "enum",
+        "decimal",
+        "money",
+        "bool",
+        "text_list",
+        "object"
+      ],
+      "title": "AttributeType",
+      "type": "string"
+    },
+    "AvailabilityState": {
+      "description": "Observed availability of an offer. A failed crawl is never OUT_OF_STOCK (DAT-06).",
+      "enum": [
+        "in_stock",
+        "low_stock",
+        "out_of_stock",
+        "not_deliverable",
+        "removed",
+        "not_observed",
+        "blocked",
+        "unknown"
+      ],
+      "title": "AvailabilityState",
+      "type": "string"
+    },
+    "Capabilities": {
+      "additionalProperties": false,
+      "description": "What this snapshot can answer. All explicit: a consumer never guesses from absence.",
+      "properties": {
+        "campaigns": {
+          "title": "Campaigns",
+          "type": "boolean"
+        },
+        "coverage": {
+          "title": "Coverage",
+          "type": "boolean"
+        },
+        "history": {
+          "title": "History",
+          "type": "boolean"
+        },
+        "images": {
+          "title": "Images",
+          "type": "boolean"
+        },
+        "promotions": {
+          "title": "Promotions",
+          "type": "boolean"
+        },
+        "ratings": {
+          "title": "Ratings",
+          "type": "boolean"
+        },
+        "shades": {
+          "title": "Shades",
+          "type": "boolean"
+        },
+        "sizes": {
+          "title": "Sizes",
+          "type": "boolean"
+        },
+        "stock": {
+          "title": "Stock",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "history",
+        "promotions",
+        "campaigns",
+        "stock",
+        "sizes",
+        "shades",
+        "coverage",
+        "images",
+        "ratings"
+      ],
+      "title": "Capabilities",
+      "type": "object"
+    },
+    "Channel": {
+      "description": "Commercial channel of an observation (PRC-14). Pickup is never dine-in.",
+      "enum": [
+        "online",
+        "marketplace",
+        "delivery",
+        "pickup",
+        "dine_in_evidenced",
+        "offline_audit"
+      ],
+      "title": "Channel",
+      "type": "string"
+    },
+    "Context": {
+      "additionalProperties": false,
+      "description": "One priced place an item is sold: retailer, channel and optionally a location (§2).",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/Channel"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "additionalProperties": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Label",
+          "type": "object"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Location"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retailer": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "Retailer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "retailer",
+        "channel",
+        "location",
+        "label"
+      ],
+      "title": "Context",
+      "type": "object"
+    },
+    "DecidedBy": {
+      "enum": [
+        "human",
+        "auto"
+      ],
+      "title": "DecidedBy",
+      "type": "string"
+    },
+    "EnumValue": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "\\S",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "additionalProperties": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Label",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "EnumValue",
+      "type": "object"
+    },
+    "EvidenceV3": {
+      "additionalProperties": false,
+      "properties": {
+        "capturedAt": {
+          "format": "date-time",
+          "title": "Capturedat",
+          "type": "string"
+        },
+        "itemKey": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Itemkey"
+        },
+        "itemKeyKind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemKeyKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "source": {
+          "pattern": "\\S",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capturedAt",
+        "source",
+        "runId",
+        "itemKey",
+        "itemKeyKind"
+      ],
+      "title": "EvidenceV3",
+      "type": "object"
+    },
+    "FieldStatus": {
+      "enum": [
+        "ok",
+        "partial",
+        "not_collected",
+        "not_published",
+        "parse_failure",
+        "blocked"
+      ],
+      "title": "FieldStatus",
+      "type": "string"
+    },
+    "ItemKeyKind": {
+      "enum": [
+        "sku",
+        "menu_item_id",
+        "source_product_id"
+      ],
+      "title": "ItemKeyKind",
+      "type": "string"
+    },
+    "JsonValue": {},
+    "Location": {
+      "additionalProperties": false,
+      "description": "A branch or area. No coordinates on the wire.",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "city": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "City"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "additionalProperties": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Label",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "city",
+        "area"
+      ],
+      "title": "Location",
+      "type": "object"
+    },
+    "MarketInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "locales": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Locales",
+          "type": "array"
+        },
+        "timeZone": {
+          "pattern": "\\S",
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "country",
+        "currency",
+        "timeZone",
+        "locales"
+      ],
+      "title": "MarketInfo",
+      "type": "object"
+    },
+    "MatchClass": {
+      "description": "Relationship classes between variants (MAT-01).",
+      "enum": [
+        "exact",
+        "family",
+        "size_normalized",
+        "substitute"
+      ],
+      "title": "MatchClass",
+      "type": "string"
+    },
+    "MatchEdge": {
+      "additionalProperties": false,
+      "description": "One edge between two retailers' offers of a product; retailer ids in canonical order.\n\nAn edge is the only evidence that two offers are the same item. Grouping offers under one\n``Product`` is a presentation choice, **not** an identity claim: a pair is comparable only\nthrough its own edge, and nothing is inferred transitively (an exact a-b edge and an exact\nb-c edge say nothing about a-c; blueprint §8, \"no transitive exact identity\").\n\nProducer mapping from ``pi_db.match_edge``: ``review_state`` verbatim; ``decidedBy`` is\n``null`` for ``proposed``, ``human`` when ``reviewer`` is set, and ``auto`` when it is not\n(the auto-accept / hard-constraint reject policy of ``algo_version``). Reviewer identities\nare never published (SEC-06). ``confidence`` is ``score``.",
+      "properties": {
+        "a": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "A",
+          "type": "string"
+        },
+        "b": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "B",
+          "type": "string"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "decidedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecidedBy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "matchClass": {
+          "$ref": "#/$defs/MatchClass"
+        },
+        "method": {
+          "pattern": "\\S",
+          "title": "Method",
+          "type": "string"
+        },
+        "reviewState": {
+          "$ref": "#/$defs/ReviewState"
+        },
+        "stage": {
+          "pattern": "\\S",
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "matchClass",
+        "reviewState",
+        "decidedBy",
+        "confidence",
+        "method",
+        "stage"
+      ],
+      "title": "MatchEdge",
+      "type": "object"
+    },
+    "MetaV3": {
+      "additionalProperties": false,
+      "properties": {
+        "attributeSet": {
+          "items": {
+            "$ref": "#/$defs/AttributeDef"
+          },
+          "title": "Attributeset",
+          "type": "array"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/Capabilities"
+        },
+        "contexts": {
+          "items": {
+            "$ref": "#/$defs/Context"
+          },
+          "minItems": 1,
+          "title": "Contexts",
+          "type": "array"
+        },
+        "cutoff": {
+          "format": "date-time",
+          "title": "Cutoff",
+          "type": "string"
+        },
+        "dates": {
+          "items": {
+            "format": "date",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Dates",
+          "type": "array"
+        },
+        "fields": {
+          "patternProperties": {
+            "\\S": {
+              "$ref": "#/$defs/FieldStatus"
+            }
+          },
+          "title": "Fields",
+          "type": "object"
+        },
+        "generatedAt": {
+          "format": "date-time",
+          "title": "Generatedat",
+          "type": "string"
+        },
+        "kind": {
+          "const": "snapshot",
+          "title": "Kind",
+          "type": "string"
+        },
+        "markets": {
+          "items": {
+            "$ref": "#/$defs/MarketInfo"
+          },
+          "minItems": 1,
+          "title": "Markets",
+          "type": "array"
+        },
+        "matchStage": {
+          "pattern": "\\S",
+          "title": "Matchstage",
+          "type": "string"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "profile": {
+          "$ref": "#/$defs/ProfileInfo"
+        },
+        "retailers": {
+          "items": {
+            "$ref": "#/$defs/Retailer"
+          },
+          "minItems": 1,
+          "title": "Retailers",
+          "type": "array"
+        },
+        "scope": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+          "title": "Scope",
+          "type": "string"
+        },
+        "test": {
+          "default": false,
+          "title": "Test",
+          "type": "boolean"
+        },
+        "vertical": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "Vertical",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "cutoff",
+        "generatedAt",
+        "scope",
+        "vertical",
+        "markets",
+        "retailers",
+        "dates",
+        "matchStage",
+        "capabilities",
+        "fields",
+        "producer",
+        "profile",
+        "attributeSet",
+        "contexts"
+      ],
+      "title": "MetaV3",
+      "type": "object"
+    },
+    "MoneyValue": {
+      "additionalProperties": false,
+      "description": "An exact amount at its currency's ISO 4217 exponent, as text plus integer minor units.",
+      "properties": {
+        "amount": {
+          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "minor": {
+          "title": "Minor",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "amount",
+        "minor",
+        "currency"
+      ],
+      "title": "MoneyValue",
+      "type": "object"
+    },
+    "NotObservedV3": {
+      "additionalProperties": false,
+      "properties": {
+        "categories": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Categories"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{1,62}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Context"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "retailer": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "Retailer",
+          "type": "string"
+        },
+        "start": {
+          "format": "date",
+          "title": "Start",
+          "type": "string"
+        },
+        "why": {
+          "additionalProperties": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Why",
+          "type": "object"
+        }
+      },
+      "required": [
+        "retailer",
+        "start",
+        "end",
+        "categories",
+        "why",
+        "context"
+      ],
+      "title": "NotObservedV3",
+      "type": "object"
+    },
+    "OfferV3": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]{1,62}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Attributes",
+          "type": "object"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "early": {
+          "title": "Early",
+          "type": "boolean"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceV3"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image"
+        },
+        "listingCount": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listingcount"
+        },
+        "rating": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rating"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "series": {
+          "$ref": "#/$defs/Series"
+        },
+        "shadeCount": {
+          "minimum": 0,
+          "title": "Shadecount",
+          "type": "integer"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SizeV3"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sku": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sku"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Url"
+        }
+      },
+      "required": [
+        "currency",
+        "sku",
+        "url",
+        "size",
+        "shadeCount",
+        "rating",
+        "early",
+        "series",
+        "evidence"
+      ],
+      "title": "OfferV3",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "properties": {
+        "commit": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{7,40}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit"
+        },
+        "name": {
+          "pattern": "\\S",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "\\S",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
+    "ProductV3": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]{1,62}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Attributes",
+          "type": "object"
+        },
+        "brand": {
+          "pattern": "\\S",
+          "title": "Brand",
+          "type": "string"
+        },
+        "category": {
+          "items": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Category",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image"
+        },
+        "matches": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MatchEdge"
+          },
+          "title": "Matches",
+          "type": "array"
+        },
+        "name": {
+          "pattern": "\\S",
+          "title": "Name",
+          "type": "string"
+        },
+        "offers": {
+          "minProperties": 1,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{1,62}$": {
+              "$ref": "#/$defs/OfferV3"
+            }
+          },
+          "title": "Offers",
+          "type": "object"
+        },
+        "shades": {
+          "default": [],
+          "items": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "title": "Shades",
+          "type": "array"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit"
+        }
+      },
+      "required": [
+        "id",
+        "brand",
+        "name",
+        "category",
+        "unit",
+        "offers"
+      ],
+      "title": "ProductV3",
+      "type": "object"
+    },
+    "ProfileInfo": {
+      "additionalProperties": false,
+      "description": "``meta.profile``: which profile version is in force, and its size rules (ADR-0008 §1).",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "sizeLabelsComparable": {
+          "title": "Sizelabelscomparable",
+          "type": "boolean"
+        },
+        "sizeSystemRequired": {
+          "title": "Sizesystemrequired",
+          "type": "boolean"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "sizeLabelsComparable",
+        "sizeSystemRequired"
+      ],
+      "title": "ProfileInfo",
+      "type": "object"
+    },
+    "Rating": {
+      "additionalProperties": false,
+      "description": "The retailer's published rating on its own ``scale`` (e.g. ``\"5\"`` for 0-5 stars).\n\nThe producer never rescales; consumers compare ratings only on the same scale or after\nnormalising ``average / scale`` themselves.",
+      "properties": {
+        "average": {
+          "pattern": "^\\d+(\\.\\d+)?$",
+          "title": "Average",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "scale": {
+          "pattern": "^\\d+(\\.\\d+)?$",
+          "title": "Scale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "average",
+        "scale",
+        "count"
+      ],
+      "title": "Rating",
+      "type": "object"
+    },
+    "Retailer": {
+      "additionalProperties": false,
+      "properties": {
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "earlyExamples": {
+          "default": false,
+          "title": "Earlyexamples",
+          "type": "boolean"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{1,62}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "logo": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logo"
+        },
+        "name": {
+          "pattern": "\\S",
+          "title": "Name",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "minProperties": 1,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Since"
+        },
+        "status": {
+          "$ref": "#/$defs/RetailerStatus"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "country",
+        "status",
+        "since",
+        "note"
+      ],
+      "title": "Retailer",
+      "type": "object"
+    },
+    "RetailerStatus": {
+      "description": "Coverage of a retailer in this snapshot. Only ``supported`` backs an absence claim.",
+      "enum": [
+        "supported",
+        "partial",
+        "blocked",
+        "pending",
+        "retired"
+      ],
+      "title": "RetailerStatus",
+      "type": "string"
+    },
+    "ReviewState": {
+      "description": "Lifecycle of a match edge (MAT-05, MAT-07).",
+      "enum": [
+        "proposed",
+        "approved",
+        "rejected",
+        "locked"
+      ],
+      "title": "ReviewState",
+      "type": "string"
+    },
+    "Series": {
+      "additionalProperties": false,
+      "description": "One entry per ``meta.dates``; ``null`` means not observed that day, never zero.\n\n``price`` is the selling price observed; ``regular`` is the retailer's stated regular (was)\nprice. There is no promo series: promotion depth is derived from the two by the metric layer,\nso the contract carries only what was observed.\n\nEvery price is positive (a zero or negative \"price\" is a parse failure, recorded in\n``meta.fields``, never a value). ``availability`` uses ``null`` for \"not observed that day\",\nlike the money series; the ``not_observed`` state is therefore not allowed in a series, so\nthere is one spelling.",
+      "properties": {
+        "availability": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AvailabilityState"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Availability"
+        },
+        "price": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Price",
+          "type": "array"
+        },
+        "regular": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MoneyValue"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Regular"
+        }
+      },
+      "required": [
+        "price"
+      ],
+      "title": "Series",
+      "type": "object"
+    },
+    "SizeV3": {
+      "additionalProperties": false,
+      "description": "The size of the thing priced, as published: a measure, a label, or both. Never converted.\n\n``{\"value\": \"250\", \"unit\": \"ml\"}``, ``{\"label\": \"Medium\"}``, or a count such as\n``{\"value\": \"9\", \"unit\": \"pcs\", \"label\": \"9 pcs\"}``. ``system`` names the label's namespace\n(``alpha``, ``eu``, ``uk``, ``us``) where it matters.",
+      "properties": {
+        "label": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "system": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "System"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "label",
+        "system"
+      ],
+      "title": "SizeV3",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/muttonkodibiriyani/product_intelligence/docs/contracts/pi-dataset-v3.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Published snapshot contract v3 (ADR-0008). Generated from pi_dataset; do not edit. Cross-field rules (context ids, identity rules, declared attributes, profile size rules, plus every v2 rule) are in docs/contracts/pi-dataset-v3.md and enforced by pi_dataset.load_any.",
+  "properties": {
+    "meta": {
+      "$ref": "#/$defs/MetaV3"
+    },
+    "notObserved": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/NotObservedV3"
+      },
+      "title": "Notobserved",
+      "type": "array"
+    },
+    "products": {
+      "items": {
+        "$ref": "#/$defs/ProductV3"
+      },
+      "minItems": 1,
+      "title": "Products",
+      "type": "array"
+    },
+    "schema": {
+      "const": "pi.dataset/v3",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "meta",
+    "products"
+  ],
+  "title": "pi.dataset/v3",
+  "type": "object"
+}

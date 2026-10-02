@@ -1,0 +1,13 @@
+src/
+dist/
+artifact/
+out/
+out-assistant/
+.next/
+package-lock.json
+deployed.sha256
+playwright-report/
+test-results/
+lib/api/schema.gen.ts
+test/
+README.md

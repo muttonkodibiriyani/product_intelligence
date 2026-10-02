@@ -1,0 +1,292 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "attributeSet": [
+      {
+        "block": "summary",
+        "capability": true,
+        "facet": true,
+        "key": "finish",
+        "label": {
+          "ar": "اللمسة النهائية",
+          "en": "Finish"
+        },
+        "level": "product",
+        "type": "text",
+        "values": null
+      },
+      {
+        "block": "summary",
+        "capability": true,
+        "facet": true,
+        "key": "concentration",
+        "label": {
+          "ar": "التركيز",
+          "en": "Concentration"
+        },
+        "level": "product",
+        "type": "text",
+        "values": null
+      },
+      {
+        "block": "swatches",
+        "capability": true,
+        "facet": true,
+        "key": "shadeFamilies",
+        "label": {
+          "ar": "عائلات الدرجات",
+          "en": "Shade families"
+        },
+        "level": "product",
+        "type": "text_list",
+        "values": null
+      }
+    ],
+    "capabilities": {
+      "campaigns": false,
+      "coverage": true,
+      "history": true,
+      "images": false,
+      "promotions": true,
+      "ratings": true,
+      "shades": false,
+      "sizes": true,
+      "stock": true
+    },
+    "categories": [
+      {
+        "children": [],
+        "count": 2,
+        "key": "makeup"
+      },
+      {
+        "children": [],
+        "count": 14,
+        "key": "skincare"
+      }
+    ],
+    "contexts": [
+      {
+        "channel": "online",
+        "id": "shop_a",
+        "label": {
+          "en": "Shop A"
+        },
+        "location": null,
+        "retailer": "shop_a"
+      },
+      {
+        "channel": "online",
+        "id": "shop_b",
+        "label": {
+          "en": "Shop B"
+        },
+        "location": null,
+        "retailer": "shop_b"
+      },
+      {
+        "channel": "online",
+        "id": "shop_c",
+        "label": {
+          "en": "Shop C"
+        },
+        "location": null,
+        "retailer": "shop_c"
+      },
+      {
+        "channel": "online",
+        "id": "shop_d",
+        "label": {
+          "en": "Shop D"
+        },
+        "location": null,
+        "retailer": "shop_d"
+      }
+    ],
+    "cutoff": "2026-09-30T00:00:00Z",
+    "datasets": [
+      {
+        "cutoff": "2026-09-30T00:00:00Z",
+        "generation": "1790000000000000000",
+        "markets": [
+          "AE"
+        ],
+        "scope": "fixture"
+      }
+    ],
+    "dates": [
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30"
+    ],
+    "fields": {
+      "price": "ok",
+      "rating": "ok",
+      "regular": "ok",
+      "stock": "ok"
+    },
+    "kind": "snapshot",
+    "matchStage": "reviewed",
+    "profile": {
+      "name": "beauty",
+      "sizeLabelsComparable": false,
+      "sizeSystemRequired": false,
+      "version": 1
+    },
+    "retailers": [
+      {
+        "country": "AE",
+        "id": "shop_a",
+        "name": "Shop A",
+        "note": null,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "country": "AE",
+        "id": "shop_b",
+        "name": "Shop B",
+        "note": null,
+        "since": "2026-09-01",
+        "status": "supported"
+      },
+      {
+        "country": "AE",
+        "id": "shop_c",
+        "name": "Shop C",
+        "note": {
+          "en": "Makeup only."
+        },
+        "since": "2026-09-01",
+        "status": "partial"
+      },
+      {
+        "country": "AE",
+        "id": "shop_d",
+        "name": "Shop D",
+        "note": null,
+        "since": null,
+        "status": "blocked"
+      }
+    ],
+    "sources": [
+      {
+        "capabilities": {
+          "campaigns": false,
+          "coverage": true,
+          "history": true,
+          "images": false,
+          "promotions": true,
+          "ratings": true,
+          "shades": false,
+          "sizes": true,
+          "stock": true
+        },
+        "cutoff": "2026-09-30T00:00:00Z",
+        "fields": {
+          "price": "ok",
+          "rating": "ok",
+          "regular": "ok",
+          "stock": "ok"
+        },
+        "generatedAt": "2026-09-30T01:00:00Z",
+        "lastDate": "2026-09-30",
+        "matchStage": "reviewed",
+        "products": 14,
+        "source": "shop_a"
+      },
+      {
+        "capabilities": {
+          "campaigns": false,
+          "coverage": true,
+          "history": true,
+          "images": false,
+          "promotions": true,
+          "ratings": true,
+          "shades": false,
+          "sizes": true,
+          "stock": true
+        },
+        "cutoff": "2026-09-30T00:00:00Z",
+        "fields": {
+          "price": "ok",
+          "rating": "ok",
+          "regular": "ok",
+          "stock": "ok"
+        },
+        "generatedAt": "2026-09-30T01:00:00Z",
+        "lastDate": "2026-09-30",
+        "matchStage": "reviewed",
+        "products": 14,
+        "source": "shop_b"
+      },
+      {
+        "capabilities": {
+          "campaigns": false,
+          "coverage": true,
+          "history": true,
+          "images": false,
+          "promotions": true,
+          "ratings": true,
+          "shades": false,
+          "sizes": true,
+          "stock": true
+        },
+        "cutoff": "2026-09-30T00:00:00Z",
+        "fields": {
+          "price": "ok",
+          "rating": "ok",
+          "regular": "ok",
+          "stock": "ok"
+        },
+        "generatedAt": "2026-09-30T01:00:00Z",
+        "lastDate": "2026-09-30",
+        "matchStage": "reviewed",
+        "products": 2,
+        "source": "shop_c"
+      },
+      {
+        "capabilities": {
+          "campaigns": false,
+          "coverage": true,
+          "history": true,
+          "images": false,
+          "promotions": true,
+          "ratings": true,
+          "shades": false,
+          "sizes": true,
+          "stock": true
+        },
+        "cutoff": "2026-09-30T00:00:00Z",
+        "fields": {
+          "price": "ok",
+          "rating": "ok",
+          "regular": "ok",
+          "stock": "ok"
+        },
+        "generatedAt": "2026-09-30T01:00:00Z",
+        "lastDate": "2026-09-30",
+        "matchStage": "reviewed",
+        "products": 0,
+        "source": "shop_d"
+      }
+    ],
+    "test": false,
+    "vertical": "beauty"
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.11.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "meta",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.4",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

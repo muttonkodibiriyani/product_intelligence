@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+.turbo/
+
+# Firebase / local
+.firebase/
+*.log
+firebase-debug.log*
+.env
+.env.*
+!.env.example
+
+# Secrets — never commit
+*service-account*.json
+*-sa.json
+*.pem
+*.key
+credentials/
+
+# Data captured locally
+data/
+evidence/
+images/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+# Static web build copied in at deploy time (never committed)
+infra/web-dist/
+# Offline artifact build of the dashboard (apps/web/build.sh artifact)
+apps/web/artifact/

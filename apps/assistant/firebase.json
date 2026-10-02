@@ -1,0 +1,23 @@
+{
+  "functions": [
+    {
+      "codebase": "assistant",
+      "source": ".",
+      "runtime": "nodejs22",
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"],
+      "ignore": [
+        ".env*",
+        "coverage",
+        "evals",
+        "firebase-debug.log",
+        "node_modules",
+        "pytests",
+        "src",
+        "test",
+        "*.config.ts",
+        "*.config.js",
+        "tsconfig*.json"
+      ]
+    }
+  ]
+}

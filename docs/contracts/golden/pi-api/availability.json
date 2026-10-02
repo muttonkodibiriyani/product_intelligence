@@ -1,0 +1,94 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "denominator": "offers in an observed stock state (in_stock, low_stock, out_of_stock)",
+    "retailers": [
+      {
+        "counts": {
+          "blocked": 0,
+          "in_stock": 2,
+          "low_stock": 1,
+          "not_deliverable": 0,
+          "not_observed": 8,
+          "out_of_stock": 2,
+          "removed": 1,
+          "unknown": 0
+        },
+        "denominator": 5,
+        "lowStockShare": "20.0",
+        "outOfStockShare": "40.0",
+        "reason": null,
+        "retailer": "shop_a"
+      },
+      {
+        "counts": {
+          "blocked": 0,
+          "in_stock": 6,
+          "low_stock": 0,
+          "not_deliverable": 0,
+          "not_observed": 7,
+          "out_of_stock": 0,
+          "removed": 0,
+          "unknown": 0
+        },
+        "denominator": 6,
+        "lowStockShare": "0.0",
+        "outOfStockShare": "0.0",
+        "reason": null,
+        "retailer": "shop_b"
+      },
+      {
+        "counts": {
+          "blocked": 0,
+          "in_stock": 0,
+          "low_stock": 0,
+          "not_deliverable": 0,
+          "not_observed": 2,
+          "out_of_stock": 0,
+          "removed": 0,
+          "unknown": 0
+        },
+        "denominator": 0,
+        "lowStockShare": null,
+        "outOfStockShare": null,
+        "reason": "retailer_partial",
+        "retailer": "shop_c"
+      },
+      {
+        "counts": {
+          "blocked": 0,
+          "in_stock": 0,
+          "low_stock": 0,
+          "not_deliverable": 0,
+          "not_observed": 0,
+          "out_of_stock": 0,
+          "removed": 0,
+          "unknown": 0
+        },
+        "denominator": 0,
+        "lowStockShare": null,
+        "outOfStockShare": null,
+        "reason": "retailer_blocked",
+        "retailer": "shop_d"
+      }
+    ]
+  },
+  "detail": {
+    "ar": "بيانات أحد المتاجر المحددة مجمّعة جزئياً فقط.",
+    "en": "A selected retailer is only partly collected."
+  },
+  "meta": {
+    "apiVersion": "1.11.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "availability",
+    "filters": {},
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-01.4",
+    "scope": "fixture"
+  },
+  "reason": "retailer_partial",
+  "status": "not_enough_data"
+}

@@ -1,0 +1,28 @@
+# PI assistant eval suites (design §8). Every case runs the real ChatFlow over fixture tools;
+# real model calls need PI_EVAL_METER=firestore and PI_VERTEX_LOCATION (see provider.ts).
+# Seed cases use hand-built fixtures; they move to the #39 goldens in the tool-alignment PR.
+description: PI assistant
+prompts:
+  - "{{question}}"
+providers:
+  - id: file://../src/evals/provider.ts
+    label: pi-assistant
+# Scripts run with -j 1 (one question at a time against the shared meter), telemetry, update
+# checks and sharing off. Results go to results.json only.
+defaultTest:
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:noAdminLeak
+      metric: no_admin_leak
+    - type: javascript
+      value: file://../src/evals/assertions.ts:firstPass
+      metric: first_pass_verified
+      weight: 0
+tests:
+  - file://suites/gold.yaml
+  - file://suites/direction.yaml
+  - file://suites/not-enough-data.yaml
+  - file://suites/refusals.yaml
+  - file://suites/injection.yaml
+  - file://suites/permissions.yaml
+  - file://suites/language.yaml
