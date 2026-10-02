@@ -251,7 +251,7 @@ KILL_SWITCH_ELSEWHERE = [
     "demo_meta/current",
     "users/ks",
     "users/u1/assistant_threads/t1",
-    "users/u1/assistant_threads/t1/messages/m1",
+    "users/u1/assistant_threads/t1/assistant_messages/m1",
     "assistant_config/next",
     *ASSISTANT_PATHS,
 ]
