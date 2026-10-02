@@ -1,0 +1,4 @@
+# Capture container only. No curl_cffi, no stealth packages, no proxy client (owner ruling).
+httpx==0.28.1
+defusedxml==0.7.1
+google-cloud-storage==2.19.0
