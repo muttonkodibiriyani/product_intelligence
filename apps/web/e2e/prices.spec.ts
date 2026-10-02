@@ -1,38 +1,37 @@
 import type { Page, Route } from '@playwright/test';
 import { categoryCompareBody, THIN, type Counts } from './category-compare-fixture';
-import {
-  expect,
-  golden,
-  mockBackend,
-  noHorizontalScroll,
-  signIn,
-  test,
-  withSummary,
-  type Mock,
-} from './fixtures';
+import { summaryBlocked, summaryBody } from './summary-fixture';
+import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const meta = golden('meta') as Json;
 const compare = golden('compare') as Json;
 
+/** Shop B's summary withheld: status not ok, a reason, counts null, no section drawn. */
+const blockedB = { ...summaryBlocked, data: { ...summaryBlocked.data, retailer: 'shop_b' } };
+
 /** /prices for shop_a vs shop_b: the summaries, the matched pairs and the category comparison. */
-function api(counts: Counts = {}) {
-  return withSummary(async (route: Route) => {
+function api(counts: Counts = {}, withheld = false) {
+  return async (route: Route) => {
     const u = new URL(route.request().url());
     const p = u.pathname;
     if (p === '/api/v1/meta') return route.fulfill({ json: meta });
+    if (p === '/api/v1/summary')
+      return route.fulfill({
+        json: withheld && u.searchParams.get('retailer') === 'shop_b' ? blockedB : summaryBody,
+      });
     if (p === '/api/v1/compare') return route.fulfill({ json: compare });
     if (p === '/api/v1/category-compare') {
       const [base, other] = (u.searchParams.get('retailers') ?? '').split(',');
       return route.fulfill({ json: categoryCompareBody(base, other, counts) });
     }
     return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
-  });
+  };
 }
 
-async function open(page: Page, locale: 'en' | 'ar', counts: Counts = {}): Promise<Mock> {
-  const mock = await mockBackend(page, { onApi: api(counts) });
+async function open(page: Page, locale: 'en' | 'ar', counts: Counts = {}, withheld = false): Promise<Mock> {
+  const mock = await mockBackend(page, { onApi: api(counts, withheld) });
   await signIn(page, locale);
   await expect(page.getByRole('navigation')).toBeVisible();
   await page.goto(`/app/${locale}/prices/`);
@@ -73,6 +72,8 @@ for (const locale of ['en', 'ar'] as const) {
           // Arabic percentages carry LRM marks (50‎%‎); the retailer names stay as the API sent them.
           gapTakeaway:
             /Shop B أغلى في 50\u200e?%\u200e? من 6 أزواج مطابقة وأرخص في 33\.3\u200e?%\u200e?؛ و16\.7\u200e?%\u200e? في النطاق المحيط بالصفر\./,
+          retailer: 'المتجر',
+          noSummary: 'لا يوجد ملخص أسعار لـShop B بعد. هذا المتجر يمنع الجمع.',
         }
       : {
           title: 'Prices by category',
@@ -99,6 +100,8 @@ for (const locale of ['en', 'ar'] as const) {
           nPairs: 'n = 6 comparable pairs',
           gapTakeaway:
             'Shop B is dearer on 50% of 6 matched pairs and cheaper on 33.3%; 16.7% sit in the band around zero.',
+          retailer: 'Retailer',
+          noSummary: 'No price summary for Shop B yet. This retailer blocks collection.',
         };
 
   test.describe(`${locale} prices`, () => {
@@ -198,6 +201,23 @@ for (const locale of ['en', 'ar'] as const) {
         await expect(cells.last()).toHaveText('–');
       }
       await expect(card).toContainText(T.tooFewList);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('a retailer whose summary is withheld says why: no blank chart, no zero', async ({ page }) => {
+      const mock = await open(page, locale, {}, true);
+      await expect(page.locator('#p-hist [data-takeaway]')).toBeVisible();
+      await page.getByRole('group', { name: T.retailer }).getByRole('button', { name: 'Shop B' }).click();
+      await expect(page).toHaveURL(/[?&]retailer=shop_b(&|$)/);
+      const section = page.locator('section[aria-labelledby="per-retailer"]');
+      await expect(section.getByRole('status')).toHaveText(T.noSummary);
+      await expect(section.locator('[data-chart]')).toHaveCount(0);
+      await expect(section.locator('[data-takeaway]')).toHaveCount(0);
+      await expect(section.locator('dl')).toHaveCount(0);
+      await expect(section).not.toContainText(/\b0\b/);
+      // The pair's own charts are untouched by one side's summary.
+      await expect(page.locator('#p-gap-hist [data-takeaway]')).toBeVisible();
+      if (isPhone()) await noHorizontalScroll(page);
       expect(mock.errors).toEqual([]);
     });
 

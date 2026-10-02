@@ -40,7 +40,8 @@
     "median": "Median",
     "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. The price axis grows by multiples, not fixed amounts (a log scale), so cheap and expensive categories fit on one chart.",
     "label": "Price ranges by category, {n} categories.",
-    "takeaway": "Category medians run from {low} in {lowCat} to {high} in {highCat}."
+    "takeaway": "Category medians run from {low} in {lowCat} to {high} in {highCat}.",
+    "takeawayOne": "Only one category has a median so far: {cat} at {median}."
   },
   "promo": {
     "title": "Promotion depth",
@@ -52,9 +53,10 @@
   },
   "brands": {
     "title": "Brand price positioning",
-    "question": "Median price of the {n} brands with the most products.",
+    "question": "Median price of the {n, plural, one {brand} other {# brands}} with the most products.",
     "label": "Median price per brand, {n} brands, highest first.",
-    "takeaway": "Of the {n} largest brands, {high} has the highest median at {highPrice} and {low} the lowest at {lowPrice}."
+    "takeaway": "Of the {n} largest brands, {high} has the highest median at {highPrice} and {low} the lowest at {lowPrice}.",
+    "takeawayOne": "Only one brand is large enough to rank so far: {brand}, median {median}."
   },
   "mix": {
     "title": "Category mix",

@@ -18,7 +18,6 @@ import { MAX_LIMIT } from '@/lib/url-state';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
-import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
 import { PageHeader } from '../ui/page-header';
 import { Segmented } from '../ui/segmented';
@@ -36,12 +35,20 @@ const TD = 'px-3 py-2.5 align-top';
  */
 export function LaunchesView() {
   const t = useTranslations('launches');
+  const ts = useTranslations('state');
+  const locale = useLocale();
   const meta = useMeta();
   const readiness = useMemo(() => launchReadiness(meta.data), [meta.data]);
   const shown = !!meta.data && readiness.anyReady;
+  const cutoff = meta.data?.data?.cutoff;
   return (
     <section aria-labelledby="launches-title" className="space-y-6">
-      <PageHeader id="launches-title" title={t('title')} intro={shown ? t('intro') : undefined} />
+      <PageHeader
+        id="launches-title"
+        title={t('title')}
+        intro={shown ? t('intro') : undefined}
+        asOf={cutoff && ts('asOf', { date: formatDate(cutoff, locale) })}
+      />
       {meta.isError ? (
         <ErrorNotice error={meta.error} onRetry={() => void meta.refetch()} />
       ) : !meta.data ? (
@@ -209,9 +216,13 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
             </Loading>
           ) : (
             <>
-              <EnvNotes env={env} />
+              {env.status !== 'ok' && (
+                <p role="status" className="text-sm text-ink-2">
+                  {t('unavailable')}
+                </p>
+              )}
               {ok && (
-                <div id="rows" className={env.caveats.length ? 'mt-3' : ''}>
+                <div id="rows">
                   <Items items={data.items} name={name} from={key} />
                   {data.truncated && (
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
@@ -236,7 +247,7 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
         </div>
       </section>
       {waiting.length > 0 && (
-        <p role="note" className="text-sm text-ink-2">
+        <p id="launch-pending" className="text-sm text-ink-2">
           {waiting.map((s, i) => (
             <span key={s.id}>
               {i > 0 && ' · '}

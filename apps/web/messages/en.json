@@ -485,6 +485,7 @@
     "headToHeadHint": "{other} vs {base} on matched products only.",
     "loading": "Loading price analytics…",
     "noRetailers": "No collected retailer to report on.",
+    "noSummary": "No price summary for {retailer} yet.",
     "onePair": "Comparisons need two collected retailers.",
     "noPairs": "No comparable pairs yet.",
     "kpis": "At a glance",

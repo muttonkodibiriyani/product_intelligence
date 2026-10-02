@@ -91,7 +91,8 @@ for (const locale of ['en', 'ar'] as const) {
           more: 'اعرض حتى 500',
           // The golden retailer names are English in both languages: the page never translates them.
           pending: 'Shop C غير مشمول بعد: 1 من 2 أيام جمع.',
-          notApplicable: 'هذا العرض لا ينطبق على هذا النوع من الكتالوجات.',
+          notApplicable: 'المنتجات الجديدة غير متاحة لهذه البيانات بعد.',
+          asOf: /البيانات حتى .*2026/,
           back: 'العودة إلى المنتجات الجديدة',
         }
       : {
@@ -114,7 +115,8 @@ for (const locale of ['en', 'ar'] as const) {
           of40: '3 of 40 products',
           more: 'Show up to 500',
           pending: 'Shop C is not included yet: 1 of 2 collection days.',
-          notApplicable: "This view doesn't apply to this kind of catalogue.",
+          notApplicable: "Launches aren't available for this dataset yet.",
+          asOf: /Data as of 30 Sept? 2026/,
           back: 'Back to launches',
         };
 
@@ -170,7 +172,7 @@ for (const locale of ['en', 'ar'] as const) {
   });
 
   test.describe(`${locale} launches, populated: three collection days`, () => {
-    test('lists the last 30 days newest first, with the caveat on withheld ones and no "soon"', async ({
+    test('lists the last 30 days newest first, dated by the data, with no caveat box and no "soon"', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api() });
@@ -181,8 +183,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/launches/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
       await expect(page.getByRole('heading', { level: 2, name: T.newIn30 })).toBeVisible();
-      // The caveat's wording is the API's; take it from the same golden the mock serves.
-      await expect(page.getByRole('note')).toContainText(golden1.caveats[0][locale]);
+      // The data is explained once, on Dataset: the served caveat draws no box here.
+      await expect(page.locator('main')).toContainText(T.asOf);
+      await expect(page.getByRole('note')).toHaveCount(0);
+      await expect(page.locator('main')).not.toContainText(golden1.caveats[0][locale]);
       await expect(page.getByText(T.three)).toBeVisible();
       const rows = page.locator('#rows table tbody tr');
       await expect(rows).toHaveCount(3);
@@ -221,7 +225,8 @@ for (const locale of ['en', 'ar'] as const) {
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/launches/`);
       await expect(page.locator('#rows table tbody tr')).toHaveCount(3);
-      await expect(page.locator('main').getByRole('note').last()).toHaveText(T.pending);
+      await expect(page.locator('#launch-pending')).toHaveText(T.pending);
+      await expect(page.getByRole('note')).toHaveCount(0);
       await expect(page.getByRole('navigation').getByRole('link', { name: T.nav })).toContainText(T.soon);
       expect(mock.errors).toEqual([]);
     });
@@ -244,7 +249,8 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api(meta, () => notApplicable) });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/launches/`);
-      await expect(page.getByRole('note')).toHaveText(T.notApplicable);
+      await expect(page.getByRole('status').filter({ hasText: T.notApplicable })).toBeVisible();
+      await expect(page.getByRole('note')).toHaveCount(0);
       await expect(page.locator('#rows')).toHaveCount(0);
       expect(mock.errors).toEqual([]);
     });

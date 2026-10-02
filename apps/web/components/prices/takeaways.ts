@@ -15,24 +15,31 @@ export function histTakeaway(h: Summary['priceHist']) {
   return { lo: top.lo, hi: top.hi, share: top.count / total, count: top.count, total };
 }
 
-/** The categories with the lowest and the highest median; nothing to say with fewer than two. */
+/**
+ * The categories with the lowest and the highest median among those the chart draws; with one
+ * category the two are the same and `n` says so. Null when there is nothing to draw.
+ */
 export function ladderTakeaway(ladder: Summary['ladder']) {
   const rows = ladderRows(ladder);
-  if (rows.length < 2) return null;
+  if (rows.length === 0) return null;
   const byMedian = [...rows].sort((a, b) => a.v[2] - b.v[2]);
   const low = byMedian[0]!;
   const high = byMedian[byMedian.length - 1]!;
   return {
+    n: rows.length,
     low: { category: low.category, median: low.p50 },
     high: { category: high.category, median: high.p50 },
   };
 }
 
-/** Among the `top` largest brands the chart ranks, the dearest and the cheapest by median. */
+/**
+ * Among the `top` largest brands the chart ranks, the dearest and the cheapest by median; with one
+ * brand the two are the same and `n` says so. Null when there is nothing to draw.
+ */
 export function brandTakeaway(brands: Summary['brandPrice'], top: number) {
   // The same rows the chart draws: the largest brands by products, those with a usable median.
   const rows = (brands ?? []).slice(0, top).filter((b) => num(b.median.amount) > 0);
-  if (rows.length < 2) return null;
+  if (rows.length === 0) return null;
   const sorted = [...rows].sort((a, b) => num(a.median.amount) - num(b.median.amount));
   const low = sorted[0]!;
   const high = sorted[sorted.length - 1]!;

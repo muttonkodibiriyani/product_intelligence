@@ -13,6 +13,7 @@ import { Known } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { Segmented } from '../ui/segmented';
 import { Loading, Skeleton } from '../ui/skeleton';
+import { useRetailerName } from '../use-meta';
 import { PairKpis, type RetailerSummary } from '../widgets/kpis';
 import { amount, compareHref, pct } from '../widgets/model';
 import { useCategoryCompare } from '../widgets/use-category';
@@ -58,6 +59,8 @@ export function PricesView() {
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const tr = useTranslations('reasons');
+  const name = useRetailerName();
   const { ids, pair, loading, error } = useRetailers();
   const s = useSummaries(ids);
 
@@ -70,9 +73,12 @@ export function PricesView() {
   };
   const wanted = sp.get('retailer');
   const selected = (wanted && ids.includes(wanted) ? wanted : ids[0]) ?? null;
-  // Rows are keyed by the retailer the API answered for; the asked-for id is the fallback.
-  const row =
-    s.rows.find((r) => r.retailer === selected) ?? s.rows[selected ? ids.indexOf(selected) : 0] ?? s.rows[0];
+  // A summary the API withheld for this retailer: the page says why, never another retailer's data.
+  const missing = selected ? s.missing.find((m) => m.retailer === selected) : undefined;
+  // Rows are keyed by the retailer the API answered for; the asked-for id's position is the fallback.
+  const row = missing
+    ? undefined
+    : (s.rows.find((r) => r.retailer === selected) ?? s.rows[selected ? ids.indexOf(selected) : 0]);
   const topRaw = Number(sp.get('top'));
   const top: Top = (TOPS as readonly number[]).includes(topRaw) ? (topRaw as Top) : 10;
 
@@ -83,7 +89,7 @@ export function PricesView() {
         <ErrorNotice error={error} />
       ) : loading || (s.loading && s.rows.length === 0) ? (
         <Loading kind="chart">{t('loading')}</Loading>
-      ) : ids.length === 0 || (!row && !s.error) ? (
+      ) : ids.length === 0 || (!row && !missing && !s.error) ? (
         <p className="text-sm text-ink-2">{t('noRetailers')}</p>
       ) : (
         <>
@@ -93,15 +99,18 @@ export function PricesView() {
                 <Segmented
                   label={tw('controls.retailer')}
                   value={selected ?? ''}
-                  options={ids.map((id) => ({
-                    value: id,
-                    label: s.rows.find((r) => r.retailer === id)?.name ?? id,
-                  }))}
+                  options={ids.map((id) => ({ value: id, label: name(id) }))}
                   onChange={(v) => set('retailer', v === ids[0] ? null : v)}
                 />
               )}
             </SectionHead>
-            {s.error && !row && <ErrorNotice error={s.error.error} onRetry={s.error.retry} />}
+            {s.error && !row && !missing && <ErrorNotice error={s.error.error} onRetry={s.error.retry} />}
+            {missing && (
+              <p role="status" className="text-sm text-ink-2">
+                {t('noSummary', { retailer: name(missing.retailer) })}{' '}
+                {missing.env.reason && <Known t={tr} v={missing.env.reason} />}
+              </p>
+            )}
             {row && (
               <RetailerSection
                 row={row}
@@ -203,56 +212,94 @@ function RetailerSection({
         </p>
       )}
       <CardGrid>
-        {d.priceHist && hist && (
-          <Card id="p-hist" title={tw('hist.title')} question={tw('hist.question')} span={6}>
-            <Takeaway>
-              {tw('hist.takeaway', {
-                lo: amount(hist.lo, d.currency, locale, true),
-                hi: amount(hist.hi, d.currency, locale, true),
-                share: pct((hist.share * 100).toFixed(1), locale),
-              })}
-            </Takeaway>
-            <PriceHistWidget data={d.priceHist} {...p} />
+        {d.priceHist && (
+          <Card
+            id="p-hist"
+            title={tw('hist.title')}
+            question={tw('hist.question')}
+            span={6}
+            state={hist ? 'ready' : 'empty'}
+          >
+            {hist && (
+              <>
+                <Takeaway>
+                  {tw('hist.takeaway', {
+                    lo: amount(hist.lo, d.currency, locale, true),
+                    hi: amount(hist.hi, d.currency, locale, true),
+                    share: pct((hist.share * 100).toFixed(1), locale),
+                  })}
+                </Takeaway>
+                <PriceHistWidget data={d.priceHist} {...p} />
+              </>
+            )}
           </Card>
         )}
-        {d.ladder && ladder && (
-          <Card id="p-ladder" title={tw('ladder.title')} question={tw('ladder.question')} span={6}>
-            <Takeaway>
-              {tw('ladder.takeaway', {
-                lowCat: ladder.low.category,
-                low: formatMoney(ladder.low.median, lc),
-                highCat: ladder.high.category,
-                high: formatMoney(ladder.high.median, lc),
-              })}
-            </Takeaway>
-            <LadderWidget data={d.ladder} {...p} />
+        {d.ladder && (
+          <Card
+            id="p-ladder"
+            title={tw('ladder.title')}
+            question={tw('ladder.question')}
+            span={6}
+            state={ladder ? 'ready' : 'empty'}
+          >
+            {ladder && (
+              <>
+                <Takeaway>
+                  {ladder.n === 1
+                    ? tw('ladder.takeawayOne', {
+                        cat: ladder.low.category,
+                        median: formatMoney(ladder.low.median, lc),
+                      })
+                    : tw('ladder.takeaway', {
+                        lowCat: ladder.low.category,
+                        low: formatMoney(ladder.low.median, lc),
+                        highCat: ladder.high.category,
+                        high: formatMoney(ladder.high.median, lc),
+                      })}
+                </Takeaway>
+                <LadderWidget data={d.ladder} {...p} />
+              </>
+            )}
           </Card>
         )}
-        {d.brandPrice && brands && (
+        {d.brandPrice && (
           <Card
             id="p-brands"
             title={tw('brands.title')}
             question={tw('brands.question', { n: Math.min(top, d.brandPrice.length) })}
             span={12}
+            state={brands ? 'ready' : 'empty'}
             tools={
-              <Segmented
-                label={tw('controls.topLabel')}
-                value={top}
-                options={topOptions.filter((o) => o.value <= Math.max(5, d.brandPrice!.length))}
-                onChange={onTop}
-              />
+              // A choice only once there are more brands than the smallest cut.
+              d.brandPrice.length > TOPS[0] && (
+                <Segmented
+                  label={tw('controls.topLabel')}
+                  value={top}
+                  options={topOptions.filter((o) => o.value <= d.brandPrice!.length || o.value === top)}
+                  onChange={onTop}
+                />
+              )
             }
           >
-            <Takeaway>
-              {tw('brands.takeaway', {
-                n: brands.n,
-                high: brands.high.brand,
-                highPrice: formatMoney(brands.high.median, lc),
-                low: brands.low.brand,
-                lowPrice: formatMoney(brands.low.median, lc),
-              })}
-            </Takeaway>
-            <BrandPriceWidget data={d.brandPrice} top={top} {...p} />
+            {brands && (
+              <>
+                <Takeaway>
+                  {brands.n === 1
+                    ? tw('brands.takeawayOne', {
+                        brand: brands.low.brand,
+                        median: formatMoney(brands.low.median, lc),
+                      })
+                    : tw('brands.takeaway', {
+                        n: brands.n,
+                        high: brands.high.brand,
+                        highPrice: formatMoney(brands.high.median, lc),
+                        low: brands.low.brand,
+                        lowPrice: formatMoney(brands.low.median, lc),
+                      })}
+                </Takeaway>
+                <BrandPriceWidget data={d.brandPrice} top={top} {...p} />
+              </>
+            )}
           </Card>
         )}
       </CardGrid>
@@ -348,7 +395,7 @@ function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
     <section aria-labelledby="head-to-head" className="space-y-4">
       {head}
       <PairKpis data={data} pair={pair} locale={locale} href={href} />
-      {data.summary && gap && (
+      {data.summary && (
         <CardGrid>
           <Card
             id="p-gap-hist"
@@ -356,17 +403,23 @@ function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
             meta={nPairs}
             question={tw('gapHist.question', { other: names.other })}
             span={12}
+            state={gap ? 'ready' : 'empty'}
+            reason={cmp.env.reason ? <Known t={tr} v={cmp.env.reason} /> : undefined}
           >
-            <Takeaway>
-              {tw(gap.same > 0 ? 'gapHist.takeawaySame' : 'gapHist.takeaway', {
-                other: names.other,
-                n: gap.n,
-                dearer: share(gap.dearer),
-                cheaper: share(gap.cheaper),
-                same: share(gap.same),
-              })}
-            </Takeaway>
-            <GapHistWidget data={data.summary.gapHist} currency={currency} locale={locale} pair={pair} />
+            {gap && (
+              <>
+                <Takeaway>
+                  {tw(gap.same > 0 ? 'gapHist.takeawaySame' : 'gapHist.takeaway', {
+                    other: names.other,
+                    n: gap.n,
+                    dearer: share(gap.dearer),
+                    cheaper: share(gap.cheaper),
+                    same: share(gap.same),
+                  })}
+                </Takeaway>
+                <GapHistWidget data={data.summary.gapHist} currency={currency} locale={locale} pair={pair} />
+              </>
+            )}
           </Card>
         </CardGrid>
       )}

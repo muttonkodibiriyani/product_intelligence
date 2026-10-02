@@ -21,8 +21,13 @@ describe('Prices takeaways', () => {
     const t = ladderTakeaway(s.ladder)!;
     expect(t.low).toEqual({ category: s.ladder![0]!.category, median: s.ladder![0]!.p50 });
     expect(t.high.category).toBe(s.ladder!.at(-1)!.category);
+    expect(t.n).toBe(s.ladder!.length);
     expect(ladderTakeaway(null)).toBeNull();
-    expect(ladderTakeaway(s.ladder!.slice(0, 1))).toBeNull();
+    expect(ladderTakeaway([])).toBeNull();
+    // One category: the same row at both ends, and n says so.
+    const one = ladderTakeaway(s.ladder!.slice(0, 1))!;
+    expect(one.n).toBe(1);
+    expect(one.low).toEqual(one.high);
   });
 
   it('ranks only the brands the chart draws: the largest `top`, with a usable median', () => {
@@ -34,9 +39,13 @@ describe('Prices takeaways', () => {
     const all = brandTakeaway(s.brandPrice, 20)!;
     expect(all.n).toBe(Math.min(20, s.brandPrice!.length));
     expect(brandTakeaway(null, 10)).toBeNull();
+    // A brand without a usable median is not drawn, so it is not ranked either.
     expect(
       brandTakeaway([{ brand: 'x', n: 1, median: { amount: '0.00', currency: 'AED', minor: 0 } }], 10),
     ).toBeNull();
+    const one = brandTakeaway(s.brandPrice!.slice(0, 1), 10)!;
+    expect(one.n).toBe(1);
+    expect(one.low).toEqual(one.high);
   });
 
   it('splits the matched pairs by the sign of their gap band', () => {
