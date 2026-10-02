@@ -174,3 +174,55 @@ owner's decision recorded here.
 - The enum value and the widened method↔rung CHECK are added by pi_db migration 0002; migration 0001 is unchanged.
 - The pi_core parity test covers the new mapping.
 - An imported run is `partial` unless its mapping declares `complete_catalogue: true`. This means a feed never implies that listings missing from it were removed.
+
+## Amendment 4 (2026-10-02 UTC): task 01a0fc6d, proxy scope beyond ulta.ae and the shared ledger
+
+**Owner GO.** On 2026-10-02 at 12:23 UTC the owner answered the Deep Coder's scope form for tm8
+task `01a0fc6d-b254-750e-9e96-909ee8123f45` ("Scraping All the data in the asked part of
+requirement available in the html"); the response is tm8 form response
+`01a0fc8f-64f0-771d-bb52-8f95cd40d96d` on form `01a0fc8c-aa31-7751-9043-65ca686635fe`. Verbatim:
+shops "Faces UAE, Nysaa UAE, Sephora KSA, Noon UAE, Amazon UAE, KSA fashion matrix"; languages
+"English and Arabic"; proxy "if it blocks any website and than lets use UAE proxy to scarape but
+must try scraoing it"; cap "1.8gb cap only use when it is extrememly necessary"; pictures "No -
+keep Scrapify's Ulta pictures and record picture links for the other shops", which the owner
+then reversed in a direct message to the Deep Coder the same day: "image downloads are neeed fro
+all other shops brands man dont skip this" (pictures are fetched directly from the image hosts,
+never through the proxy). Ulta UAE and Sephora UAE are outside the task. The GO was reaffirmed by the owner on the task on 2026-10-02 after the
+coordinator's freeze was reported. There is no owner message or form approving a new proxy
+purchase; the only balance is the 2 GB bought under Amendment 2.
+
+**What this changes.** Amendment 2 limited the proxy to ulta.ae. For task 01a0fc6d the proxy may
+also be used, through `tools/page_capture` only, for the page hosts of the shops above and no other
+(`page_capture.proxy.ALLOWED_HOSTS`; a `PROXY_HOSTS` entry outside the list is refused at start).
+ulta.ae is not in that list: its proxy use stays with `pi_fetch` under Amendment 2.
+
+**Conditions, all enforced in code and covered by tests:**
+
+1. **One ledger for the whole balance.** The 1.8 GB cap is over *all* runs and *all* sources,
+   including the ulta.ae snapshots. A proxied run needs `PROXY_LEDGER`, a JSON object in the
+   capture bucket holding `cap_bytes`, `used_bytes` and per-run figures. It is created once by
+   hand from the IPRoyal dashboard balance, with the bytes already consumed entered. `pi_fetch`'s
+   ulta.ae proxy spend never touches this ledger: before any `page_capture` proxied run the
+   ulta.ae consumption must be read from the IPRoyal dashboard and entered by hand, and the
+   figure re-checked against the dashboard whenever `pi_fetch` has run since. Every proxied
+   response is added with a compare-and-swap on the object's generation, and the balance is
+   re-read before every proxied request, so a run stops when the shared balance is gone even
+   when another run spent it (at most one in-flight response per run can overshoot); a run's cap
+   is what the ledger has left or its own `PROXY_BYTE_CAP`, whichever is smaller; an exhausted,
+   missing or unreadable ledger refuses the run or stops the proxied hosts.
+   Until the ledger exists with the dashboard figure entered, no proxied run starts.
+2. **No sharded proxied runs.** A job with more than one Cloud Run task is refused the proxy.
+3. **Redirects do not bypass robots or the route.** Every redirect hop is checked against the
+   target host's robots.txt (fail-closed) and stop state, paced on that host and fetched through
+   that host's own route; a proxied host redirecting elsewhere leaves the proxy.
+4. **Everything in Amendment 2 still holds:** stop at the first challenge or 401/403, no solving,
+   no stealth, no cookie reuse, no logins, pictures direct, credentials from Secret Manager only.
+
+**Evidence so far (2026-10-02).** Two-page proxied probes of Nysaa, Amazon.ae and Noon (under
+0.01 GB in total) showed the refusals are client-side, not address-based: Nysaa answered 403 to
+robots.txt through the proxy, Amazon served its `bm-verify` challenge, Noon refused the connection
+from Spain, Doha and the proxy alike. All three were stopped under the stop-at-first-challenge rule
+and the owner was asked by form (01a0fd0e-0cde-7ec1-96a1-3b5920853942) whether a plain real-browser
+capture may be tried. No further proxy use is planned; Faces, Sephora KSA and the KSA matrix are
+captured directly.
+
