@@ -254,7 +254,9 @@ describe('CategoryCompareCard', () => {
     expect(screen.getByText('Too few to compare: Concealer — Shop B n = 3.')).toBeTruthy();
     expect(screen.getByText("'Other' holds 26.1% of Shop A's products.")).toBeTruthy();
     expect(screen.getByText('Not yet in a category: 2')).toBeTruthy();
-    expect(screen.getByText('12 priced products have no breadcrumb and sit in no category.')).toBeTruthy();
+    // The API's caveat on the uncategorised products is not a box on this page: it lives under About the data.
+    expect(screen.queryByText('12 priced products have no breadcrumb and sit in no category.')).toBeNull();
+    expect(screen.queryByRole('note')).toBeNull();
   });
 
   it('renders in Arabic', () => {

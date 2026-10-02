@@ -19,7 +19,7 @@ import {
 import { formatCount } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
-import { EnvNotes } from '../ui/env-notes';
+import { AboutDataLink } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
 import { ExportMenu } from './export-menu';
@@ -131,12 +131,16 @@ export function Explorer() {
           </div>
         </div>
 
+        <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>
+        <p className="mt-1 text-xs text-ink-2">
+          <AboutDataLink />
+        </p>
+
         {restarted && (
           <p role="status" className="mt-3 rounded-ctl bg-butter px-4 py-2.5 text-sm text-warn">
             {t('restarted')}
           </p>
         )}
-        {first && <EnvNotes env={first} className="mt-3" />}
 
         <div className="mt-4">
           {q.isError && !q.data ? (

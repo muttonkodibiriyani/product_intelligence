@@ -29,6 +29,9 @@ const api = (summary: unknown) => async (r: Route) => {
   return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
 };
 
+/** A caveat box anywhere but inside the Dataset section, which is the one place allowed one. */
+const noteOutsideDataset = (page: Page) => page.locator('main [role=note]:not(#dataset [role=note])');
+
 /** Every chart drew: an SVG inside each chart box. */
 async function chartsDrawn(page: Page, n: number) {
   const charts = page.locator('main [data-chart] svg');
@@ -55,15 +58,20 @@ for (const locale of ['en', 'ar'] as const) {
         rating: 'التقييم مقابل السعر',
         mix: 'توزيع الفئات',
         share: 'تركّز العلامات التجارية',
-        withheld: 'لا تُجمع العروض لهذا المتجر بعد.',
+        withheld: 'خصومات Sephora: غير متاحة بعد',
         depth: 'عمق العروض',
         top: 'أكبر التخفيضات',
         dataset: 'مجموعة البيانات الحالية',
         preview: 'معاينة للتصميم',
         index: 'مؤشر الأسعار عبر الزمن',
         blocked: 'هذا المتجر يمنع الجمع.',
-        pricesOff: 'مخططات الأسعار غير معروضة. هذا الحقل غير مُجمَّع بعد.',
-        ratingsOff: 'مخطط التقييم غير معروض. غير مُجمَّع لهذا المتجر.',
+        noRetailers: 'لا يوجد متجر مُجمَّع لعرض بياناته.',
+        about: 'عن البيانات',
+        navDataset: 'البيانات',
+        aboutP1: /تُجمع الأسعار من كل متجر/,
+        partial: 'مُجمَّع جزئيًا',
+        pricesOff: 'مخططات الأسعار غير معروضة.',
+        ratingsOff: 'مخطط التقييم غير معروض.',
         median: 'السعر الوسيط',
         none: 'غير مُقاس',
         noImage: 'لا توجد صورة',
@@ -81,15 +89,20 @@ for (const locale of ['en', 'ar'] as const) {
         rating: 'Rating vs price',
         mix: 'Category mix',
         share: 'Brand concentration',
-        withheld: 'Promotions are not collected for this retailer yet.',
+        withheld: 'Sephora discounts: not available yet',
         depth: 'Promotion depth',
         top: 'Top discounts',
         dataset: 'Current dataset',
         preview: 'Layout preview',
         index: 'Price index over time',
         blocked: 'This retailer blocks collection.',
-        pricesOff: "Price charts aren't shown. This field isn't collected yet.",
-        ratingsOff: "The rating chart isn't shown. Not collected for this retailer.",
+        noRetailers: 'No collected retailer to report on.',
+        about: 'About the data',
+        navDataset: 'Dataset',
+        aboutP1: /Prices are collected from each shop on the dates shown/,
+        partial: 'Partly collected',
+        pricesOff: "Price charts aren't shown.",
+        ratingsOff: "The rating chart isn't shown.",
         median: 'Median price',
         none: 'Not measured',
         noImage: 'No image',
@@ -108,7 +121,10 @@ for (const locale of ['en', 'ar'] as const) {
       for (const name of [T.ladder, T.brands, T.hist, T.rating, T.mix, T.share, T.dataset])
         await expect(h2(page, name)).toBeVisible();
       for (const name of [T.depth, T.top]) await expect(h2(page, name)).toHaveCount(0);
+      // No caveat box anywhere on the page; the only place one may live is the Dataset section.
       await expect(page.locator('main [role=note]')).toHaveCount(0);
+      await expect(noteOutsideDataset(page)).toHaveCount(0);
+      await expect(page.getByRole('link', { name: T.about }).first()).toBeVisible();
       await chartsDrawn(page, 6);
       await noHorizontalScroll(page);
 
@@ -162,14 +178,16 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 
-    test('prices and ratings withheld: the note says why their cards are missing', async ({ page }) => {
+    test('prices and ratings withheld: their cards are simply missing, with no note box', async ({
+      page,
+    }) => {
       const mock = await mockBackend(page, { onApi: api(summaryPricesWithheld) });
       await signIn(page, locale);
-      const note = page.locator('main [role=note]');
-      await expect(note).toHaveCount(1);
-      await expect(note.locator('p')).toHaveText([T.pricesOff, T.ratingsOff]);
       // Measured tiles stay; the median price reads as not measured, never as zero.
       await expect(page.getByText(T.products, { exact: true })).toBeVisible();
+      await expect(page.locator('main [role=note]')).toHaveCount(0);
+      await expect(page.locator('main')).not.toContainText(T.pricesOff);
+      await expect(page.locator('main')).not.toContainText(T.ratingsOff);
       const median = page.locator('main dl > div').filter({ has: page.getByText(T.median, { exact: true }) });
       await expect(median.locator('dd')).toHaveText(T.none);
       for (const name of [T.ladder, T.brands, T.hist, T.rating, T.share, T.depth, T.top])
@@ -194,9 +212,9 @@ for (const locale of ['en', 'ar'] as const) {
           : r.fulfill({ status: 404, body: '' });
       });
       await signIn(page, locale);
-      // A retailer /meta doesn't name (sephora_me) still renders, by its id.
+      // A retailer /meta doesn't name (sephora_me) renders by the shop's own name, never its id.
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.locator('main').getByText('sephora_me').first()).toBeVisible();
+      await expect(page.locator('main')).not.toContainText('sephora_me');
       const top = page.locator('#w-top');
       await expect(h2(page, T.top)).toBeVisible();
       const rows = top.locator('tbody tr');
@@ -279,11 +297,36 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 
-    test('a blocked retailer: why, and the dataset; no tiles or charts', async ({ page }) => {
+    test('Dataset page: the nav opens it; About the data explains in plain words, once', async ({ page }) => {
+      const mock = await mockBackend(page, { onApi: api(summaryNoPromo) });
+      await signIn(page, locale);
+      await page.getByRole('navigation').getByRole('link', { name: T.navDataset }).click();
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/dataset/$`));
+      await expect(page.getByRole('heading', { level: 1, name: T.dataset })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2, name: T.about })).toBeVisible();
+      await expect(page.locator('#about-data')).toContainText(T.aboutP1);
+      // The retailers keep their status here, and only here: Shop C reads as partly collected.
+      await expect(page.locator('#dataset tr').filter({ hasText: 'Shop C' })).toContainText(T.partial);
+      // The footer's link lands on the same section.
+      await expect(page.locator('footer').getByRole('link', { name: T.about })).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/dataset/#about-data$`),
+      );
+      await expect(noteOutsideDataset(page)).toHaveCount(0);
+      await noHorizontalScroll(page);
+      expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('a blocked retailer: one plain line and the dataset; no note box, tiles or charts', async ({
+      page,
+    }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBlocked) });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.getByRole('note').filter({ hasText: T.blocked })).toBeVisible();
+      await expect(page.getByText(T.noRetailers)).toBeVisible();
+      await expect(page.locator('main')).not.toContainText(T.blocked);
+      await expect(page.locator('main [role=note]')).toHaveCount(0);
       await expect(h2(page, T.dataset)).toBeVisible();
       await expect(page.getByText(T.products, { exact: true })).toHaveCount(0);
       await expect(page.locator('main [data-chart]')).toHaveCount(0);

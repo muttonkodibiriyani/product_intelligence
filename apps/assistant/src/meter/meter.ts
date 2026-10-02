@@ -64,7 +64,8 @@ export type RefusalCode =
   | "call_cap"
   | "month_cap"
   | "label_month_cap"
-  | "label_day_cap";
+  | "label_day_cap"
+  | "eval_above_live";
 
 export class MeterRefusal extends Error {
   constructor(readonly code: RefusalCode) {
@@ -124,12 +125,33 @@ export interface MeteredCall<T> {
   readonly value: T;
 }
 
+/**
+ * Where the meter's config comes from. It is re-read before every call and throws a
+ * `MeterRefusal` on anything it does not accept. The live function only ever uses
+ * `liveConfig`; the eval provider passes its own source.
+ */
+export type ConfigSource = (store: UsageStore, prices: Prices) => Promise<AssistantConfig>;
+
+/** `assistant_config/current`, checked fail-closed. */
+export const liveConfig: ConfigSource = async (store, prices) => {
+  const parsed = AssistantConfigSchema.safeParse(await store.readConfig());
+  if (!parsed.success) throw new MeterRefusal("config_invalid");
+  const config = parsed.data;
+  if (!config.enabled) throw new MeterRefusal("disabled");
+  if (config.priceTableVersion !== prices.version) {
+    throw new MeterRefusal("price_table_mismatch");
+  }
+  if (!prices.has(config.model)) throw new MeterRefusal("unknown_model");
+  return config;
+};
+
 export class Meter {
   constructor(
     private readonly store: UsageStore,
     private readonly prices: Prices,
     private readonly clock: () => Date = () => new Date(),
     private readonly newId: () => string = () => crypto.randomUUID(),
+    private readonly source: ConfigSource = liveConfig,
   ) {}
 
   private async guard<T>(work: () => Promise<T>): Promise<T> {
@@ -143,16 +165,7 @@ export class Meter {
 
   /** Load and check the config. Every refusal here is fail-closed. */
   async config(): Promise<AssistantConfig> {
-    const raw = await this.guard(() => this.store.readConfig());
-    const parsed = AssistantConfigSchema.safeParse(raw);
-    if (!parsed.success) throw new MeterRefusal("config_invalid");
-    const config = parsed.data;
-    if (!config.enabled) throw new MeterRefusal("disabled");
-    if (config.priceTableVersion !== this.prices.version) {
-      throw new MeterRefusal("price_table_mismatch");
-    }
-    if (!this.prices.has(config.model)) throw new MeterRefusal("unknown_model");
-    return config;
+    return this.guard(() => this.source(this.store, this.prices));
   }
 
   /** Open a question: kill switch, config and the per-user daily question cap. */
