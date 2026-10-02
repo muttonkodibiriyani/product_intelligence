@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { categoryCompareBody, THIN } from './category-compare-fixture';
 import { expect, golden, mockBackend, noHorizontalScroll, openNav, signIn, test } from './fixtures';
 import {
   IMG,
@@ -9,7 +10,6 @@ import {
   summaryBlocked,
   summaryBody,
   summaryImages,
-  summaryNoPromo,
   summaryPricesWithheld,
   summaryUlta,
 } from './summary-fixture';
@@ -20,183 +20,280 @@ const PNG = Buffer.from(
   'base64',
 );
 
-const meta = golden('meta');
-
-const api = (summary: unknown) => async (r: Route) => {
-  const p = new URL(r.request().url()).pathname;
-  if (p === '/api/v1/summary') return r.fulfill({ json: summary });
-  if (p === '/api/v1/meta') return r.fulfill({ json: meta });
-  return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+type Meta = { data: { retailers: { id: string; status: string }[] } };
+const goldenMeta = golden('meta') as Meta;
+/** The golden /meta with shop_c blocked, so the Overview reports on exactly the pair shop_a/shop_b. */
+const twoShops: Meta = {
+  ...goldenMeta,
+  data: {
+    ...goldenMeta.data,
+    retailers: goldenMeta.data.retailers.map((r) => (r.id === 'shop_c' ? { ...r, status: 'blocked' } : r)),
+  },
 };
 
-/** A caveat box anywhere but inside the Dataset section, which is the one place allowed one. */
-const noteOutsideDataset = (page: Page) => page.locator('main [role=note]:not(#dataset [role=note])');
+type Summary = typeof summaryBody;
+/** A /summary body as one of the pair's shops, with its own counts. */
+const asShop = (body: Summary, retailer: string, data: Partial<Summary['data']> = {}): Summary => ({
+  ...body,
+  data: { ...body.data, retailer, ...data },
+  meta: { ...body.meta, filters: { retailer } },
+});
+const shopA = asShop(summaryBody, 'shop_a');
+const shopB = asShop(summaryBody, 'shop_b', { products: 4700, priced: 4680, promoSharePct: '12.0' });
 
-/** Every chart drew: an SVG inside each chart box. */
-async function chartsDrawn(page: Page, n: number) {
-  const charts = page.locator('main [data-chart] svg');
-  await expect(charts).toHaveCount(n, { timeout: 15_000 });
-  // Each keeps its own label for screen readers: ECharts' generated English data dump never
-  // replaces it (in Arabic too).
-  for (const label of await page
-    .locator('main [data-chart]')
-    .evaluateAll((els) => els.map((e) => e.ariaLabel)))
-    expect(label).not.toMatch(/^This is a chart|^$/);
-}
+const compare = golden('compare') as { data: { summary: unknown; rows: unknown[] } };
+/** /compare with no matched product yet: the API's candidate and observed counts, no summary. */
+const compareEmpty = { ...compare, data: { ...compare.data, summary: null, rows: [] } };
+
+/**
+ * The Overview's four requests: /meta, one /summary per retailer, and the pair's /compare and
+ * /category-compare. `summary` answers by the retailer asked for; `categories: false` is a
+ * backend without the category route, which the page treats as not available.
+ */
+const api =
+  (
+    summary: unknown | ((retailer: string | null) => unknown),
+    {
+      meta = goldenMeta,
+      cmp = compare,
+      categories = true,
+    }: { meta?: Meta; cmp?: unknown; categories?: boolean } = {},
+  ) =>
+  async (r: Route) => {
+    const url = new URL(r.request().url());
+    const p = url.pathname;
+    if (p === '/api/v1/summary')
+      return r.fulfill({
+        json: typeof summary === 'function' ? summary(url.searchParams.get('retailer')) : summary,
+      });
+    if (p === '/api/v1/meta') return r.fulfill({ json: meta });
+    if (p === '/api/v1/compare') return r.fulfill({ json: cmp });
+    if (p === '/api/v1/category-compare' && categories)
+      return r.fulfill({ json: categoryCompareBody('shop_a', 'shop_b', THIN) });
+    return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+  };
+const byShop = (a: unknown, b: unknown) => (retailer: string | null) => (retailer === 'shop_b' ? b : a);
 
 for (const locale of ['en', 'ar'] as const) {
   const ar = locale === 'ar';
   const T = ar
     ? {
         title: 'نظرة عامة',
-        compare: 'المقارنة',
+        early: 'قراءة مبكرة:',
+        earlyNote: 'عناصر العينة المبكرة غير المحتسبة: 1.',
+        lead: 'Shop A أرخص في 3 من 6 منتجات مطابَقة. Shop B أرخص في 2، و1 بالسعر نفسه.',
+        scope: 'أي 6 من 15 منتجًا يبيعها أحد المتجرين؛ ولا يمكن مقارنة الباقي بعد.',
+        see: 'اعرض المنتجات الـ6',
+        emptyTitle: 'لا توجد منتجات مطابَقة بين Shop A وShop B بعد.',
+        categoryRead: 'بحسب الأسعار الوسيطة للفئات، Shop B أرخص في 5 من 8 فئات مقارَنة.',
+        categoryNone: 'مقارنة الفئات غير متاحة بعد.',
+        observed: 'منتجًا مرصودًا',
+        eitherShop: 'منتجات يبيعها أحد المتجرين',
+        openPrices: 'قارن حسب الفئة',
+        browse: 'تصفح كل المنتجات',
         products: 'المنتجات المتتبَّعة',
+        more: 'Shop A يعرض 112 منتجًا أكثر',
+        byCategory: 'السعر الوسيط حسب الفئة',
+        catCheaper: 'من 8 فئات أرخص لدى Shop B',
+        median: 'السعر الوسيط',
+        none: 'غير مُقاس',
         promo: 'ضمن العروض',
-        ladder: 'سلّم الأسعار حسب الفئة',
-        brands: 'تموضع أسعار العلامات التجارية',
-        hist: 'توزيع الأسعار',
-        rating: 'التقييم مقابل السعر',
-        mix: 'توزيع الفئات',
-        share: 'تركّز العلامات التجارية',
-        withheld: 'خصومات Sephora: غير متاحة بعد',
-        depth: 'عمق العروض',
+        deepest: /أعمق تخفيض 50.{0,4}، لدى Shop A/,
+        collected: /جُمعت بيانات Shop A في /,
+        categories: 'أين يكون كل متجر أرخص',
+        tooFew: 'عدد قليل جدًا (n = 3)',
+        same: 'متساويان',
+        cheaper: 'Shop B أرخص',
+        basket: 'المنتجات المطابَقة وجهًا لوجه',
+        tally: 'Shop A أرخص في 3، السعر نفسه في 1، Shop B أرخص في 2',
         top: 'أكبر التخفيضات',
+        topAt: 'أعمق التخفيضات لدى Shop A',
         dataset: 'مجموعة البيانات الحالية',
-        preview: 'معاينة للتصميم',
-        index: 'مؤشر الأسعار عبر الزمن',
         blocked: 'هذا المتجر يمنع الجمع.',
         noRetailers: 'لا يوجد متجر مُجمَّع لعرض بياناته.',
         about: 'عن البيانات',
         navDataset: 'البيانات',
         aboutP1: /تُجمع الأسعار من كل متجر/,
         partial: 'مُجمَّع جزئيًا',
-        pricesOff: 'مخططات الأسعار غير معروضة.',
-        ratingsOff: 'مخطط التقييم غير معروض.',
-        median: 'السعر الوسيط',
-        none: 'غير مُقاس',
         noImage: 'لا توجد صورة',
         credit: 'صور المنتجات: Sephora، من img-product.sephora.me.',
         creditUlta: 'صور المنتجات: Ulta Beauty، من media.alshaya.com.',
       }
     : {
         title: 'Overview',
-        compare: 'Compare',
+        early: 'Early read:',
+        earlyNote: '1 early sample item is not counted.',
+        lead: 'Shop A is cheaper on 3 of the 6 matched products. Shop B is cheaper on 2; 1 costs the same.',
+        scope: 'That is 6 of the 15 products either shop sells; the rest cannot be compared yet.',
+        see: 'See the 6 products',
+        emptyTitle: 'No products are matched between Shop A and Shop B yet.',
+        categoryRead: 'By category medians, Shop B is cheaper in 5 of the 8 compared categories.',
+        categoryNone: 'Category comparison is not available yet.',
+        observed: 'products seen',
+        eitherShop: 'Products either shop sells',
+        openPrices: 'Compare by category',
+        browse: 'Browse all products',
         products: 'Products tracked',
+        more: 'Shop A lists 112 more products',
+        byCategory: 'Median price by category',
+        catCheaper: 'of 8 categories cheaper at Shop B',
+        median: 'Median price',
+        none: 'Not measured',
         promo: 'On promotion',
-        ladder: 'Price ladder by category',
-        brands: 'Brand price positioning',
-        hist: 'Price distribution',
-        rating: 'Rating vs price',
-        mix: 'Category mix',
-        share: 'Brand concentration',
-        withheld: 'Sephora discounts: not available yet',
-        depth: 'Promotion depth',
+        deepest: /Deepest cut 50% off, at Shop A/,
+        collected: /Shop A collected /,
+        categories: 'Where each shop is cheaper',
+        tooFew: 'too few (n = 3)',
+        same: 'same',
+        cheaper: 'Shop B cheaper',
+        basket: 'Matched products, head to head',
+        tally: 'Shop A cheaper on 3, same price on 1, Shop B cheaper on 2',
         top: 'Top discounts',
+        topAt: 'Deepest discounts at Shop A',
         dataset: 'Current dataset',
-        preview: 'Layout preview',
-        index: 'Price index over time',
         blocked: 'This retailer blocks collection.',
         noRetailers: 'No collected retailer to report on.',
         about: 'About the data',
         navDataset: 'Dataset',
         aboutP1: /Prices are collected from each shop on the dates shown/,
         partial: 'Partly collected',
-        pricesOff: "Price charts aren't shown.",
-        ratingsOff: "The rating chart isn't shown.",
-        median: 'Median price',
-        none: 'Not measured',
         noImage: 'No image',
         credit: 'Product images: Sephora, served from img-product.sephora.me.',
         creditUlta: 'Product images: Ulta Beauty, served from media.alshaya.com.',
       };
   const h2 = (page: Page, name: string) => page.getByRole('heading', { level: 2, name, exact: true });
+  const tile = (page: Page, k: string) =>
+    page.locator('#kpi-band dl > div').filter({ has: page.getByText(k, { exact: true }) });
 
   test.describe(locale, () => {
-    test('today’s snapshot: only widgets with data, promotions wait on Compare', async ({ page }) => {
-      const mock = await mockBackend(page, { onApi: api(summaryNoPromo) });
+    test('two shops: one sentence, four numbers, where each is cheaper, the basket, the discounts', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, { onApi: api(byShop(shopA, shopB), { meta: twoShops }) });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.getByText(T.products, { exact: true })).toBeVisible();
-      await expect(page.getByText(T.promo, { exact: true })).toHaveCount(0);
-      for (const name of [T.ladder, T.brands, T.hist, T.rating, T.mix, T.share, T.dataset])
-        await expect(h2(page, name)).toBeVisible();
-      for (const name of [T.depth, T.top]) await expect(h2(page, name)).toHaveCount(0);
-      // No caveat box anywhere on the page; the only place one may live is the Dataset section.
-      await expect(page.locator('main [role=note]')).toHaveCount(0);
-      await expect(noteOutsideDataset(page)).toHaveCount(0);
-      await expect(page.getByRole('link', { name: T.about }).first()).toBeVisible();
-      await chartsDrawn(page, 6);
-      await noHorizontalScroll(page);
+      // One page: no Overview/Compare tabs any more.
+      await expect(page.getByRole('tab')).toHaveCount(0);
 
-      await page.getByRole('tab', { name: T.compare }).click();
-      await expect(page).toHaveURL(/\?view=compare$/);
-      await expect(h2(page, T.index)).toBeVisible();
-      await expect(h2(page, T.depth)).toBeVisible();
-      await expect(page.locator('main [role=note]')).toHaveCount(5);
-      await expect(page.locator('main [role=note]').first()).toContainText(T.preview);
-      await expect(page.locator('main [role=note]').nth(3)).toContainText(T.withheld);
-      await noHorizontalScroll(page);
+      // The headline from /compare's own counts: 3 + 2 + 1 of 6, of the 15 products either shop
+      // sells; "early" only because the golden /compare carries an early_excluded caveat (count 1).
+      const headline = page.locator('#headline-title');
+      await expect(headline).toHaveText(`${T.early} ${T.lead}`);
+      const sentence = page.locator('section', { has: headline });
+      await expect(sentence).toContainText(T.scope);
+      await expect(sentence).toContainText(T.earlyNote);
+      await expect(sentence).not.toContainText(/candidate|مرشح/);
+      await expect(page.getByRole('link', { name: T.see, exact: true })).toHaveAttribute(
+        'href',
+        /\/compare\/\?retailers=shop_a(,|%2C)shop_b$/,
+      );
 
-      expect(mock.external).toEqual([]);
-      expect(mock.errors).toEqual([]);
-    });
+      // The band: one hero per card, both shops under it, and who leads from the two values shown.
+      await expect(page.locator('#kpi-band dl > div')).toHaveCount(4);
+      await expect(tile(page, T.products)).toContainText('9,512');
+      await expect(tile(page, T.products)).toContainText(T.more);
+      await expect(tile(page, T.byCategory)).toContainText('5');
+      await expect(tile(page, T.byCategory)).toContainText(T.catCheaper);
+      await expect(tile(page, T.median)).toHaveCount(0);
+      await expect(tile(page, T.promo)).toContainText('18.4');
+      await expect(tile(page, T.promo)).toContainText('12');
+      await expect(tile(page, T.promo)).toContainText(T.deepest);
+      await expect(page.locator('#kpi-band')).toContainText(T.collected);
 
-    test('with regular prices: promotion widgets join, marks drill into the list', async ({ page }) => {
-      const mock = await mockBackend(page, { onApi: api(summaryBody) });
-      await signIn(page, locale);
-      await expect(page.getByText(T.promo, { exact: true })).toBeVisible();
-      for (const name of [T.depth, T.top]) await expect(h2(page, name)).toBeVisible();
-      await chartsDrawn(page, 7);
+      // Where each shop is cheaper: nine category rows, HTML only, with the API's gap on each.
+      const cats = page.locator('#w-categories');
+      await expect(h2(page, T.categories)).toBeVisible();
+      await expect(cats.getByRole('rowheader')).toHaveCount(9);
+      // The gap bar is in the cheaper shop's colour and names it; never a green/red verdict.
+      await expect(cats.locator('.gapbar i[data-shop=shop_b]')).toHaveCount(5);
+      await expect(cats.locator('.gapbar i[data-shop=shop_a]')).toHaveCount(2);
+      await expect(cats.getByText(T.cheaper, { exact: true })).toHaveCount(5);
+      await expect(cats.locator('[data-side], .text-good, .text-bad')).toHaveCount(0);
+      await expect(cats.getByText(T.tooFew, { exact: true })).toBeVisible();
+      await expect(cats.getByText(T.same, { exact: true })).toBeVisible();
+
+      // The matched basket: both totals and the tally of who is cheaper how often.
+      const basket = page.locator('#w-basket');
+      await expect(h2(page, T.basket)).toBeVisible();
+      await expect(basket.getByRole('img')).toHaveAttribute('aria-label', T.tally);
+      await expect(basket).toContainText('580.75');
+      await expect(basket).toContainText('600.00');
+
+      // The deepest discounts, one card per shop, each row linking to its product.
       const top = page.locator('#w-top');
+      await expect(h2(page, T.topAt)).toBeVisible();
       await expect(top.getByRole('rowheader')).toHaveCount(5);
       await expect(top.getByRole('link', { name: 'Pillow Talk Matte Revolution Lipstick' })).toHaveAttribute(
         'href',
         /\/app\/(en|ar)\/product\/\?id=p-2$/,
       );
-      await noHorizontalScroll(page);
+      await expect(page.locator('#w-top-shop_b')).toBeVisible();
 
-      // A tooltip on hover, then a click on a ladder bar opens that category in the explorer.
-      const ladder = page.locator('#w-ladder [role=img]');
-      await ladder.scrollIntoViewIfNeeded(); // page.mouse does not scroll
-      const box = (await ladder.boundingBox())!;
-      const firstRow = page.locator('#w-ladder svg path, #w-ladder svg rect').first();
-      await expect(firstRow).toBeVisible();
-      await page.mouse.move(box.x + box.width / 2, box.y + 26);
-      await page.mouse.click(box.x + box.width / 2, box.y + 26);
-      await expect(page).toHaveURL(/\/explore\/\?category=Lipstick$/);
-
-      // A treemap tile drills into its category code, the path's first step, not the leaf.
-      await page.goBack();
-      const mix = page.locator('#w-mix [role=img]');
-      await expect(mix.locator('svg')).toBeVisible({ timeout: 15_000 });
-      await mix.scrollIntoViewIfNeeded();
-      const tile = (await mix.boundingBox())!;
-      await page.mouse.click(tile.x + 12, tile.y + 12); // the largest tile, Skincare › Moisturizers
-      await expect(page).toHaveURL(/\/explore\/\?category=Skincare$/);
-
-      expect(mock.external).toEqual([]);
-      expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
-    });
-
-    test('prices and ratings withheld: their cards are simply missing, with no note box', async ({
-      page,
-    }) => {
-      const mock = await mockBackend(page, { onApi: api(summaryPricesWithheld) });
-      await signIn(page, locale);
-      // Measured tiles stay; the median price reads as not measured, never as zero.
-      await expect(page.getByText(T.products, { exact: true })).toBeVisible();
-      await expect(page.locator('main [role=note]')).toHaveCount(0);
-      await expect(page.locator('main')).not.toContainText(T.pricesOff);
-      await expect(page.locator('main')).not.toContainText(T.ratingsOff);
-      const median = page.locator('main dl > div').filter({ has: page.getByText(T.median, { exact: true }) });
-      await expect(median.locator('dd')).toHaveText(T.none);
-      for (const name of [T.ladder, T.brands, T.hist, T.rating, T.share, T.depth, T.top])
-        await expect(h2(page, name)).toHaveCount(0);
-      await expect(h2(page, T.mix)).toBeVisible();
-      await chartsDrawn(page, 1);
+      // No chart on the Overview; the dataset panel closes the page.
+      await expect(page.locator('main [data-chart]')).toHaveCount(0);
+      await expect(h2(page, T.dataset)).toBeVisible();
       await noHorizontalScroll(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
+    });
+
+    test('no matched product yet: it says so, what each side has ready, and the category read', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, {
+        onApi: api(byShop(shopA, shopB), { meta: twoShops, cmp: compareEmpty }),
+      });
+      await signIn(page, locale);
+      await expect(page.locator('#headline-title')).toHaveText(T.emptyTitle);
+      const headline = page.locator('section', { has: page.locator('#headline-title') });
+      await expect(headline).toContainText(T.categoryRead);
+      // Readiness from /compare's own sides: what each shop has observed, and the products either
+      // shop sells; with no summary there is no confirmed count, so none is shown (never "0").
+      const tiles = headline.getByRole('listitem');
+      await expect(tiles).toHaveCount(3);
+      await expect(tiles.nth(0)).toContainText('14');
+      await expect(tiles.nth(0)).toContainText(T.observed);
+      await expect(tiles.nth(1)).toContainText('12');
+      await expect(tiles.nth(2)).toHaveText(`${T.eitherShop}15`);
+      await expect(headline.getByRole('link', { name: T.openPrices, exact: true })).toHaveAttribute(
+        'href',
+        /\/prices\/$/,
+      );
+      await expect(headline.getByRole('link', { name: T.browse, exact: true })).toHaveAttribute(
+        'href',
+        /\/explore\/$/,
+      );
+      // No basket without a matched product; the category table and the band stay.
+      await expect(page.locator('#w-basket')).toHaveCount(0);
+      await expect(h2(page, T.categories)).toBeVisible();
+      await expect(page.locator('#kpi-band dl > div')).toHaveCount(4);
+      await expect(h2(page, T.dataset)).toBeVisible();
+      await noHorizontalScroll(page);
+      expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('prices withheld, no category route: the median reads as not measured, never as zero', async ({
+      page,
+    }) => {
+      const withheld = (id: string) => asShop(summaryPricesWithheld as unknown as Summary, id);
+      const mock = await mockBackend(page, {
+        onApi: api(byShop(withheld('shop_a'), withheld('shop_b')), { meta: twoShops, categories: false }),
+      });
+      await signIn(page, locale);
+      await expect(page.locator('#headline-title')).toContainText(T.lead);
+      // Without the category comparison the second card is the median, and nothing is measured.
+      const median = tile(page, T.median);
+      await expect(median.locator('dd').first()).toHaveText(T.none);
+      await expect(tile(page, T.byCategory)).toHaveCount(0);
+      await expect(tile(page, T.promo).locator('dd').first()).toHaveText(T.none);
+      await expect(page.locator('#kpi-band')).not.toContainText('%');
+      await expect(page.locator('#w-categories')).toContainText(T.categoryNone);
+      await expect(page.locator('#w-top')).toHaveCount(0);
+      await expect(page.locator('main [data-chart]')).toHaveCount(0);
+      await noHorizontalScroll(page);
+      expect(mock.external).toEqual([]);
+      expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 
     test('product images: lazy, no referrer, the retailer host only, a placeholder otherwise', async ({
@@ -298,8 +395,13 @@ for (const locale of ['en', 'ar'] as const) {
     });
 
     test('Dataset page: the nav opens it; About the data explains in plain words, once', async ({ page }) => {
-      const mock = await mockBackend(page, { onApi: api(summaryNoPromo) });
+      const mock = await mockBackend(page, { onApi: api(byShop(shopA, shopB)) });
       await signIn(page, locale);
+      // The top bar's link to the data, before the nav is used.
+      await expect(page.getByRole('link', { name: T.about }).first()).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/dataset/#about-data$`),
+      );
       await openNav(page, T.navDataset);
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/dataset/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.dataset })).toBeVisible();
@@ -312,22 +414,27 @@ for (const locale of ['en', 'ar'] as const) {
         'href',
         new RegExp(`/${locale}/dataset/#about-data$`),
       );
-      await expect(noteOutsideDataset(page)).toHaveCount(0);
+      await expect(page.locator('main [role=note]:not(#dataset [role=note])')).toHaveCount(0);
       await noHorizontalScroll(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });
 
-    test('a blocked retailer: one plain line and the dataset; no note box, tiles or charts', async ({
+    test('a blocked retailer: one plain line with the link to the data, and the dataset; no note box, sentence, tiles or charts', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBlocked) });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
       await expect(page.getByText(T.noRetailers)).toBeVisible();
+      await expect(page.getByText(T.noRetailers).getByRole('link', { name: T.about })).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/dataset/#about-data$`),
+      );
       await expect(page.locator('main')).not.toContainText(T.blocked);
       await expect(page.locator('main [role=note]')).toHaveCount(0);
       await expect(h2(page, T.dataset)).toBeVisible();
+      await expect(page.locator('#headline-title')).toHaveCount(0);
       await expect(page.getByText(T.products, { exact: true })).toHaveCount(0);
       await expect(page.locator('main [data-chart]')).toHaveCount(0);
       expect(mock.external).toEqual([]);
