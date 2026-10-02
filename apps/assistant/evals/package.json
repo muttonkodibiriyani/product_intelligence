@@ -13,9 +13,11 @@
     "eval:full": "PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_UPDATE=1 PROMPTFOO_DISABLE_SHARING=1 promptfoo eval -c promptfooconfig.yaml -j 1 --no-progress-bar -o results.json"
   },
   "devDependencies": {
+    "jks-js": "file:./stubs/jks-js",
     "promptfoo": "0.123.1"
   },
   "overrides": {
-    "basic-ftp": "^6.2.1"
+    "basic-ftp": "^6.2.1",
+    "jks-js": "$jks-js"
   }
 }
