@@ -1,4 +1,4 @@
-# Generic page/picture capture job (task 01a0fc6d). Plain httpx only; no proxy, no stealth packages.
+# Generic page/picture capture job (task 01a0fc6d). Plain httpx only; no stealth packages.
 FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .

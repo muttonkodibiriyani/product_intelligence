@@ -41,6 +41,28 @@ Ordinary-access rules the job enforces itself:
 | `UA` | User-Agent; default stock Chrome 140 desktop. Never a spoofed TLS profile |
 | `GIT_SHA` | recorded in the manifest |
 | `CLOUD_RUN_TASK_INDEX` / `CLOUD_RUN_TASK_COUNT` | sharding: item *i* belongs to task *i mod count* |
+| `PROXY_HOSTS` | comma list of page hosts fetched through the residential proxy; empty = no proxy |
+| `PROXY_SECRET` | Secret Manager version resource holding the proxy endpoint JSON; required with `PROXY_HOSTS` |
+| `PROXY_BYTE_CAP` | wire bytes the run may move through the proxy; default and ceiling 1 800 000 000 |
+
+## Proxy rules
+
+The proxy is a paid, owner-capped resource (1.8 GB in total) and is used only for a shop that
+has refused the direct route from both Europe and the Cloud Run region (recon evidence in the
+bucket). The rules the code enforces:
+
+- Only hosts named in `PROXY_HOSTS` go through the proxy. Robots.txt for those hosts is read
+  through the proxy too (same route, same answer the shop gives that route).
+- Pictures and every other host always go direct, whatever `PROXY_HOSTS` says.
+- Credentials are read from Secret Manager at run time with the job's own service account.
+  Nothing in git, the image, the manifest or the logs carries them: the manifest records the
+  secret's *resource name* only, and `ProxyEndpoint`'s repr hides the username and password.
+- Every proxied response is charged to a meter at its compressed wire size plus 1 000 bytes of
+  request overhead. When the meter reaches `PROXY_BYTE_CAP` the proxied hosts stop with the
+  state `proxy_cap` and the run continues for everything else; `progress.json` and
+  `status.json` carry `proxy_bytes` so the spend is visible while the job runs.
+- Stop rules are unchanged: the first 401/403 or challenge page on a proxied host stops that
+  host. The proxy is a different exit address, not a way around a refusal.
 
 ## Plan format
 

@@ -38,7 +38,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from page_capture import blocks, robots
+from page_capture import blocks, proxy, robots
 from page_capture.plan import Item, Plan, parse_plan, shard
 from page_capture.store import Parts, Store
 
@@ -84,6 +84,7 @@ SKIPPED_CUTOFF, SKIPPED_HOST_STOPPED, DUPLICATE = (
     "skipped_host_stopped",
     "duplicate",
 )
+PROXY_CAP = "proxy_cap"
 
 
 class Stop(Exception):  # noqa: N818
@@ -128,6 +129,9 @@ class Config:
     task_index: int = 0
     task_count: int = 1
     git_sha: str = ""
+    proxy_hosts: tuple[str, ...] = ()
+    proxy_secret: str = ""
+    proxy_byte_cap: int = proxy.DEFAULT_BYTE_CAP
 
 
 def config_from_env(env: Mapping[str, str]) -> Config:
@@ -146,6 +150,17 @@ def config_from_env(env: Mapping[str, str]) -> Config:
     )
     if count < 1 or not 0 <= index < count:
         raise ValueError(f"task index {index} outside 0..{count - 1}")
+    proxy_hosts = tuple(
+        h.strip().lower() for h in env.get("PROXY_HOSTS", "").split(",") if h.strip()
+    )
+    proxy_secret = env.get("PROXY_SECRET", "").strip()
+    if proxy_hosts and not proxy_secret:
+        raise ValueError("PROXY_HOSTS needs PROXY_SECRET (a Secret Manager version name)")
+    if proxy_secret and not proxy_hosts:
+        raise ValueError("PROXY_SECRET without PROXY_HOSTS: name the hosts the proxy is for")
+    proxy_cap = int(env.get("PROXY_BYTE_CAP", str(proxy.DEFAULT_BYTE_CAP)))
+    if proxy_cap <= 0 or proxy_cap > proxy.DEFAULT_BYTE_CAP:
+        raise ValueError(f"PROXY_BYTE_CAP must be within 1..{proxy.DEFAULT_BYTE_CAP} (owner cap)")
     return Config(
         bucket=env["BUCKET"],
         prefix=env["PREFIX"],
@@ -160,6 +175,9 @@ def config_from_env(env: Mapping[str, str]) -> Config:
         task_index=index,
         task_count=count,
         git_sha=env.get("GIT_SHA", ""),
+        proxy_hosts=proxy_hosts,
+        proxy_secret=proxy_secret,
+        proxy_byte_cap=proxy_cap,
     )
 
 
@@ -215,7 +233,7 @@ class Fetched:
 
 
 class Job:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only injection points for tests
         self,
         cfg: Config,
         *,
@@ -223,9 +241,14 @@ class Job:
         store: Store | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         sleep: Callable[[float], None] = time.sleep,
+        proxy_client: HttpClient | None = None,
     ) -> None:
         self.cfg = cfg
         self.client: HttpClient = client or httpx.Client(follow_redirects=True, timeout=30.0)
+        self.proxy_client: HttpClient | None = proxy_client
+        if cfg.proxy_hosts and self.proxy_client is None:
+            self.proxy_client = proxy.proxy_client(proxy.endpoint_from_secret(cfg.proxy_secret))
+        self.meter = proxy.Meter(cfg.proxy_byte_cap)
         self.store = store or Store(cfg.bucket, cfg.prefix)
         self.clock = clock
         self.sleep = sleep
@@ -258,6 +281,7 @@ class Job:
             "counts": self.counts,
             "hosts_stopped": {h.host: h.stopped for h in self.hosts.values() if h.stopped},
             "stopped": self.stopped,
+            "proxy_bytes": self.meter.used,
         }
         self.store.put("progress.json", json.dumps(state).encode(), gz=False)
 
@@ -281,6 +305,11 @@ class Job:
             "python": platform.python_version(),
             "httpx": httpx.__version__,
             "git_sha": self.cfg.git_sha,
+            "proxy": {
+                "hosts": list(self.cfg.proxy_hosts),
+                "secret": self.cfg.proxy_secret,  # the resource name only, never the payload
+                "byte_cap": self.cfg.proxy_byte_cap,
+            },
         }
         self.store.put("manifest.json", json.dumps(doc).encode(), gz=False)
 
@@ -307,6 +336,8 @@ class Job:
                 for h in self.hosts.values()
             },
             "counts": self.counts,
+            "proxy_bytes": self.meter.used,
+            "proxy_byte_cap": self.cfg.proxy_byte_cap,
         }
         self.store.put("status.json", json.dumps(status).encode(), gz=False)
         self.progress()
@@ -323,12 +354,16 @@ class Job:
     def fetch(self, url: str, hdrs: Mapping[str, str], kind: str, pace_s: float) -> Fetched:
         """One paced GET on an unstopped host. Applies the stop rules; never retries."""
         host = self.host_for(url)
-        self.pace(host, pace_s)
-        self.client.cookies.clear()
         at = self.clock().isoformat()
+        client = self.client_for(host, kind)
+        if client is None:
+            self.stop_host(host, f"proxy byte cap {self.cfg.proxy_byte_cap} reached", url)
+            return Fetched(PROXY_CAP, None, url, "", b"", 0, at, "proxy byte cap")
+        self.pace(host, pace_s)
+        client.cookies.clear()
         t0 = time.monotonic()
         try:
-            r = self.client.get(url, headers=hdrs)
+            r = client.get(url, headers=hdrs)
         except httpx.HTTPError as exc:
             host.err_streak += 1
             self.count("transport_error")
@@ -337,6 +372,11 @@ class Job:
                 self.stop_host(host, f"{TRANSPORT_ERROR_LIMIT} consecutive transport errors", url)
             return Fetched(TRANSPORT_ERROR, None, url, "", b"", 0, at, reason)
         host.err_streak = 0
+        if client is self.proxy_client:
+            n = proxy.wire_bytes(r)
+            self.meter.charge(n)
+            self.count("proxy_bytes", n + proxy.REQUEST_ALLOWANCE)
+            self.count("proxy_requests")
         ms = int((time.monotonic() - t0) * 1000)
         content_type = r.headers.get("content-type", "")
         self.count(f"http_{r.status_code}")
@@ -373,6 +413,17 @@ class Job:
         return Fetched(
             BLOCKED, r.status_code, str(r.url), content_type, r.content, ms, at, verdict.reason
         )
+
+    def client_for(self, host: HostState, kind: str) -> HttpClient | None:
+        """The direct client, or the proxy client for a named page host; None once the cap is hit.
+
+        Pictures never go through the proxy, whatever host serves them.
+        """
+        if kind == "image" or host.host not in self.cfg.proxy_hosts or self.proxy_client is None:
+            return self.client
+        if self.meter.exhausted:
+            return None
+        return self.proxy_client
 
     def stop_host(self, host: HostState, reason: str, url: str) -> None:
         host.stopped, host.stopped_url = reason, url
