@@ -252,13 +252,18 @@ def _refuse_constant(token: str) -> Any:
     raise ReadingError(f"{token} is not accepted in a capture line")
 
 
+def _refuse_float(text: str) -> Any:
+    raise ReadingError(f"untagged float {text} is not accepted in a capture line")
+
+
 def dumps(capture: ProductCapture) -> str:
     """One JSON line per capture (no float can appear: Decimals are tagged strings)."""
     return json.dumps(capture_to_json(capture), ensure_ascii=False, separators=(",", ":"))
 
 
 def loads(line: str) -> ProductCapture:
-    data = json.loads(line, parse_float=Decimal, parse_constant=_refuse_constant)
+    """The inverse of ``dumps``: an untagged float, NaN or Infinity in the line is refused."""
+    data = json.loads(line, parse_float=_refuse_float, parse_constant=_refuse_constant)
     if not isinstance(data, dict):
         raise ReadingError("a capture line must be a JSON object")
     return capture_from_json(data)

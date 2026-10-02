@@ -244,6 +244,10 @@ def test_json_decoding_refuses_floats_and_bad_decimals() -> None:
         decode_value({"$decimal": "abc"})
     with pytest.raises(ReadingError, match="JSON object"):
         loads("[1]")
+    with pytest.raises(ReadingError, match=r"untagged float 1\.5"):
+        loads('{"source": "s", "rating": 1.5}')
+    with pytest.raises(ReadingError, match="NaN is not accepted"):
+        loads('{"source": NaN}')
     assert decode_value({"$decimal": "1.50"}) == Decimal("1.50")
     with pytest.raises(ReadingError, match="unescaped tag key"):
         decode_value({"$decimal": "1", "x": 2})

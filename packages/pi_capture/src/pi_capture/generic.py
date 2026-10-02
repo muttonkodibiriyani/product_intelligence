@@ -469,12 +469,34 @@ def _compact(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
-_AMOUNT_RE = re.compile(r"^(?P<sign>[-+\u2212]?)(?P<body>\d[\d.,]*|[.,]\d{1,2})$")
+_AMOUNT_RE = re.compile(r"^(?P<sign>[-+\u2212]?)(?P<body>\d[\d., ]*|[.,]\d{1,2})$")
+_SPACED_RE = re.compile(r"^(?P<int>\d{1,3}(?: \d{3})+)(?:(?P<mark>[.,])(?P<frac>\d+))?$")
 _THIN_SPACES = str.maketrans({"\u00a0": " ", "\u202f": " ", "\u2009": " "})
+MAX_GROUP = 3  # thousands grouping: three digits per group, a first group of one to three
 
 
 class _AmountError(ValueError):
     """A printed amount that must not be turned into a number; ``str(e)`` says why."""
+
+
+def _grouped(groups: Sequence[str]) -> bool:
+    """``["1", "299", "000"]`` is thousands grouping; a first group of 4+ digits or a short later
+    group is not."""
+    return 1 <= len(groups[0]) <= MAX_GROUP and all(len(x) == MAX_GROUP for x in groups[1:])
+
+
+def _spaced(body: str) -> tuple[str, str]:
+    """Spaces are thousands grouping and nothing else: ``1 299,50`` reads, ``12 50`` does not."""
+    m = _SPACED_RE.match(body)
+    if m is None:
+        raise _AmountError("spaces do not read as thousands grouping")
+    integer = m.group("int").replace(" ", "")
+    if m.group("mark") is None:
+        return integer, "' ' read as thousands grouping"
+    if len(m.group("frac")) > MAX_GROUP:
+        raise _AmountError("more decimals than any currency allows")
+    note = f"' ' read as thousands grouping, {m.group('mark')!r} as the decimal mark"
+    return integer + "." + m.group("frac"), note
 
 
 def _unmix(body: str) -> tuple[str, str]:
@@ -483,25 +505,27 @@ def _unmix(body: str) -> tuple[str, str]:
     grouping = "," if decimal_mark == "." else "."
     head, _, tail = body.rpartition(decimal_mark)
     groups = head.split(grouping)
-    if grouping in tail or any(len(x) != 3 for x in groups[1:]) or not groups[0]:
+    if grouping in tail or not _grouped(groups):
         raise _AmountError("mixed separators do not read as a number")
     return "".join(groups) + "." + tail, f"decimal mark {decimal_mark!r}, grouping {grouping!r}"
 
 
 def _one_mark(body: str, mark: str, exponent: int) -> tuple[str, str | None]:
-    """Only ``mark`` present: repeated -> thousands; 1-2 digits after -> decimal; 3 -> ambiguous."""
+    """Only ``mark`` present: repeated -> thousands; 1-2 digits after -> decimal; 3 -> ambiguous
+    unless the first group has 4+ digits (then the mark cannot group and is the decimal mark)."""
     parts = body.split(mark)
     if len(parts) > 2:
-        if any(len(x) != 3 for x in parts[1:]) or not parts[0]:
+        if not _grouped(parts):
             raise _AmountError("separators do not read as a number")
         return "".join(parts), f"{mark!r} read as thousands grouping"
-    if len(parts[1]) == 3 and parts[0]:
+    if len(parts[1]) == MAX_GROUP and 1 <= len(parts[0]) <= MAX_GROUP:
         if mark == "." and exponent == 3:
             return parts[0] + "." + parts[1], "'.' read as the decimal mark (three minor places)"
         raise _AmountError("ambiguous separator: could be thousands or decimals")
-    if len(parts[1]) > 3:
+    if len(parts[1]) > MAX_GROUP:
         raise _AmountError("more decimals than any currency allows")
-    note = "',' read as the decimal mark" if mark == "," and parts[1] else None
+    worth_noting = bool(parts[1]) and (mark == "," or len(parts[1]) == MAX_GROUP)
+    note = f"{mark!r} read as the decimal mark" if worth_noting else None
     return (parts[0] or "0") + "." + parts[1] if parts[1] else parts[0], note
 
 
@@ -512,10 +536,13 @@ def _parse_amount(text: str, exponent: int) -> tuple[Decimal | None, str | None,
     must group thousands in threes; one mark used several times -> thousands grouping; one mark
     once with 1-2 digits after it -> decimal mark; one mark once with exactly 3 digits after it ->
     ambiguous ("1,250" is 1250 or 1.250), accepted only for a ``.`` when the currency has three
-    minor places (KWD, BHD, OMR print 12.500) and refused otherwise. Negative amounts, exponents,
+    minor places (KWD, BHD, OMR print 12.500) and refused otherwise. Grouping needs a first group
+    of one to three digits, so "1234,567" cannot be grouped and the mark is the decimal mark.
+    Spaces (plain, no-break, narrow, thin) are thousands grouping only: "1 299,50" reads,
+    "12 50" (fils set as a superscript) and "1 2 3" are refused. Negative amounts, exponents,
     words and non-finite values are refused.
     """
-    m = _AMOUNT_RE.match(text.translate(_THIN_SPACES).replace(" ", ""))
+    m = _AMOUNT_RE.match(text.translate(_THIN_SPACES).strip())
     if m is None:
         return None, f"not a number: {text!r}", None
     if m.group("sign") in {"-", "\u2212"}:
@@ -523,7 +550,9 @@ def _parse_amount(text: str, exponent: int) -> tuple[Decimal | None, str | None,
     body = m.group("body")
     note: str | None = None
     try:
-        if "." in body and "," in body:
+        if " " in body:
+            body, note = _spaced(body)
+        elif "." in body and "," in body:
             body, note = _unmix(body)
         elif "." in body or "," in body:
             body, note = _one_mark(body, "." if "." in body else ",", exponent)

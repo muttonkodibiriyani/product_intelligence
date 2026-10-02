@@ -165,6 +165,10 @@ def _price(amount: str, currency: str) -> Reading:
         ("1,299.00", "SAR", 129900),  # English grouping
         ("1 299,50", "SAR", 129950),  # space grouping with decimal comma
         ("1\u00a0299.50", "SAR", 129950),  # no-break space grouping
+        ("1\u202f299\u2009000", "SAR", 129900000),  # narrow and thin spaces group too
+        ("1 299.500", "KWD", 1299500),  # spaces group, so the mark is the decimal mark
+        ("1234,50", "AED", 123450),
+        ("1234.500", "KWD", 1234500),  # a 4-digit first group: '.' cannot be grouping
         ("1,299,000", "SAR", 129900000),  # repeated comma can only be grouping
         ("12.500", "KWD", 12500),  # three minor places: '.' + 3 digits is the decimal mark
         ("12.500", "BHD", 12500),
@@ -189,6 +193,17 @@ def test_decimal_comma_and_grouping_are_read_explicitly(
         ("1.299", "SAR", "ambiguous"),  # same with a dot in a two-place currency
         ("12,500", "KWD", "ambiguous"),  # comma + 3 digits is never read as KWD fils
         ("1,29,900", "SAR", "separators do not read"),  # lakh grouping is not three-digit
+        ("1234,567,00", "SAR", "separators do not read"),  # first group of four digits
+        ("1234,567.00", "SAR", "mixed separators"),  # first group of four digits
+        ("1234.567,00", "SAR", "mixed separators"),
+        ("1234,567", "SAR", "more decimals than SAR allows"),  # cannot group, so decimals
+        ("12 50", "AED", "spaces do not read"),  # superscript fils: was recorded as 1250
+        ("1 2 3", "AED", "spaces do not read"),  # was recorded as 123
+        ("1234 567", "AED", "spaces do not read"),
+        ("1 29 900", "AED", "spaces do not read"),
+        ("12 500 50", "AED", "spaces do not read"),  # a space is never a decimal mark
+        ("1 299,5000", "AED", "more decimals than any currency"),
+        ("1 299, 50", "AED", "spaces do not read"),  # a space after the mark
         ("1.299.5", "SAR", "separators do not read"),
         ("1,2.50", "SAR", "mixed separators"),
         ("1.299,5.0", "SAR", "mixed separators"),

@@ -24,7 +24,12 @@ package says what the page should have told us and what it actually did.
   (availability, seller, condition, a price range). `LOOKED_FOR` is the set of keys these
   extractors read. Printed amounts are parsed explicitly: `12,50` is a decimal comma, `1.299,00`
   and `1,299.00` are grouped thousands, `1,299` is ambiguous and refused, `12.500` is read as
-  three decimals only for KWD/BHD/OMR, and negative amounts are refused.
+  three decimals only for KWD/BHD/OMR, and negative amounts are refused. Grouping is three digits
+  a group with a first group of one to three, so `1234,567.00` is refused and in `1234,567` the
+  comma can only be the decimal mark. Spaces (plain, no-break, narrow, thin) are thousands
+  grouping and nothing else: `1 299,50` reads, `12 50` (fils set as a superscript) and `1 2 3`
+  are refused rather than read as 1250 and 123. `loads` refuses an untagged float, NaN or
+  Infinity in a capture line.
 * `pi_capture.coverage` — per retailer, per applicable page-sourced attribute: how many pages
   showed it, hid it, blocked us, could not be read, or was never looked for by the extractor.
   JSON and a plain Markdown table.
