@@ -8,7 +8,6 @@
 import type { Money, Schemas } from '@/lib/api/types';
 import { EMPTY_COMPARE, type GroupBy, toCompareSearch } from '@/lib/compare';
 import { EMPTY, type ProductSort, SORTS, toSearch } from '@/lib/explore';
-import { EMPTY_LAUNCHES, toLaunchesSearch } from '@/lib/launches';
 import { currencyExponent } from '@/lib/money';
 import type { NavKey } from '@/lib/nav';
 import { navHref } from '@/lib/nav';
@@ -336,14 +335,9 @@ export function sourceLink(c: Citation, locale: string): SourceLink {
       const href = `/${locale}/compare/${toCompareSearch({ ...EMPTY_COMPARE, ...p, groupBy, brand, category })}`;
       return { ...base, page, href };
     }
-    case 'category_compare': {
-      // Compare by category is the API's bucket level; the common level has no page.
-      const page = 'compare';
-      const level = f.level === undefined || f.level === 'bucket';
-      if (!p || !level || beyond(f, ['retailers', 'level'])) return { ...base, page, groupBy: 'category' };
-      const href = `/${locale}/compare/${toCompareSearch({ ...EMPTY_COMPARE, ...p, groupBy: 'category' })}`;
-      return { ...base, page, groupBy: 'category', href };
-    }
+    case 'category_compare':
+      // Compare by category shows matched-pair gaps, not the tool's per-category medians: no page.
+      return { ...base, groupBy: 'category' };
     case 'promotions': {
       // Promotions reads shops, brand/category and the preset depths only; not a date.
       const page = 'promotions';
@@ -354,16 +348,9 @@ export function sourceLink(c: Citation, locale: string): SourceLink {
       const href = `/${locale}/promotions/${toPromotionsSearch({ ...EMPTY_PROMOTIONS, retailer: retailers, brand, category, minPct })}`;
       return { ...base, page, href };
     }
-    case 'launches': {
-      // Launches reads brand/category and a preset window; not a shop nor a since date.
-      const page = 'launches';
-      if (beyond(f, ['brand', 'category'])) return { ...base, page };
-      return {
-        ...base,
-        page,
-        href: `/${locale}/launches/${toLaunchesSearch({ ...EMPTY_LAUNCHES, brand, category })}`,
-      };
-    }
+    case 'launches':
+      // Launches shows a preset window; the tool with no `since` covers all history: no page.
+      return base;
     case 'search_products': {
       // Products reads every argument of the search tool.
       const page = 'explore';

@@ -221,17 +221,9 @@ const TABLE: Row[] = [
   { tool: 'compare', args: { ...pairArg, ids: ['p01', 'p02'] }, link: null },
   { tool: 'compare', args: { ...pairArg, date: '2026-09-29' }, link: null },
   { tool: 'compare', args: { brand: ['Dior'] }, link: null },
-  // category_compare: the bucket level is the page's; common has no page
-  {
-    tool: 'category_compare',
-    args: pairArg,
-    link: { path: '/en/compare/', params: [PAIR, ['groupBy', 'category']] },
-  },
-  {
-    tool: 'category_compare',
-    args: { ...pairArg, level: 'bucket' },
-    link: { path: '/en/compare/', params: [PAIR, ['groupBy', 'category']] },
-  },
+  // category_compare: Compare by category shows pair gaps, not the medians; never a page
+  { tool: 'category_compare', args: pairArg, link: null },
+  { tool: 'category_compare', args: { ...pairArg, level: 'bucket' }, link: null },
   { tool: 'category_compare', args: { ...pairArg, level: 'common' }, link: null },
   // index_trend: no page shows the index
   { tool: 'index_trend', args: pairArg, link: null },
@@ -260,13 +252,9 @@ const TABLE: Row[] = [
     args: { presentAt: 'ulta_ae', missingAt: 'sephora_me', brand: ['Dior'] },
     link: null,
   },
-  // launches: brand/category only; never a shop or a since date
-  { tool: 'launches', args: {}, link: { path: '/en/launches/', params: [] } },
-  {
-    tool: 'launches',
-    args: { brand: ['Dior'], limit: 25 },
-    link: { path: '/en/launches/', params: [['brand', 'Dior']] },
-  },
+  // launches: the page shows a preset window, the tool all history; never a page
+  { tool: 'launches', args: {}, link: null },
+  { tool: 'launches', args: { brand: ['Dior'], limit: 25 }, link: null },
   { tool: 'launches', args: { retailer: ['ulta_ae'] }, link: null },
   { tool: 'launches', args: { since: '2026-09-20' }, link: null },
   // reviews_summary: one id is the product; a list has no page; filters open Products
@@ -345,7 +333,7 @@ describe('sourceLink', () => {
       brand: ['Dior'],
     });
     expect(sourceLink(cite('launches', { retailer: ['ulta_ae'], since: '2026-09-20' }), 'en')).toMatchObject({
-      page: 'launches',
+      page: null,
       href: null,
       retailers: ['ulta_ae'],
     });
