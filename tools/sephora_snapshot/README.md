@@ -21,6 +21,26 @@ Env for `run.py`:
 - `BUCKET` (`file:<dir>` for local tests);
 - `PREFIX`, `CUTOFF` (ISO-8601);
 - optional: `PACE` (>= 1.0 s, enforced), `LIMIT`, `TRPC`, `PLAN`;
+- capture options (task 01a0fc6d, KSA): `COUNTRY` (`AE` default or `SA`: picks the `en-SA`/`ar-SA`
+  locales and the `sa-*` sitemap entries), `FULL=1` (keep every `productDetails` field, nothing
+  dropped), `RAW=1` (store each page as `raw/<lang>-<pid>.html.gz` with its sha256 in the row),
+  `IMAGES=1` (download the EN product and variant pictures to `images/<sha256>.<ext>`, deduplicated
+  by URL, paced by `IMAGE_PACE` >= 1.0 s or the host's `Crawl-delay` if longer, each image host's
+  robots.txt read first and refused when unreadable; the first 401/403 or non-image 200 stops the
+  picture pass for the run, never the page pass), `IMAGE_HOSTS` (comma-separated exact hostnames
+  a picture may be fetched from, default `img-product.sephora.me`; a URL that is not `https` on
+  one of them is recorded `host_refused` and never requested). Pictures are always fetched
+  directly, never through a proxy. Redirects are never followed blindly: each hop (at most 5) is
+  gated before anything is requested for it, its robots.txt included. A picture hop must stay
+  on an allowed image host; a page, sitemap or tRPC hop on the storefront host
+  (`www.sephora.me`); a robots.txt hop on the very host whose robots.txt was asked for; all
+  `https`, exact host, no userinfo, no port. Anything else is `host_refused` (count
+  `hop_host_refused`), and a refused robots.txt hop leaves that host's robots unreadable, so its
+  pictures are refused too. A seed or plan URL off the storefront is `host_refused` without a
+  request. Allowed hops are then checked against the target host's robots.txt; every row records
+  `final_url` and, when there were hops, `redirects`. Bodies are read under a byte cap (pictures
+  10 MB, robots.txt 512 KB, pages 32 MB, sitemaps 50 MB as sitemaps.org allows); over it nothing
+  is stored and the row says `too_large`. See ADR-0009, amendment 2026-10-02.
 - or `AUTO=1` instead of `PREFIX`/`CUTOFF`/`PLAN` (setting any of them with `AUTO=1` makes no
   request: the run ends with outcome `refused` under its own new prefix and exits 1).
 
@@ -55,7 +75,8 @@ Retention and the day-10 check: the run bucket deletes objects 14 days after the
 at least 10 days old, has something to load, and has no finished `crawl_run` in pi_db. A held load
 therefore raises an alert four days before its run is deleted.
 
-`progress.json` records `mode`, `limit` and `trpc`.
+`progress.json` records `mode`, `limit`, `trpc`, `country`, `full`, `raw`, `images`,
+`image_hosts` and `image_pace_s`.
 
 Off-peak window: runs are scheduled in the UAE night, 18:00Z-02:00Z (22:00-06:00 Gulf time), and `CUTOFF` must fall inside it. Longer passes are split across nights, and each continuation excludes work already done (`plan.py --done`). The single exception was the owner-approved first snapshot (execution `9drcr`, 2026-09-30/10-01): it ran to its own 03:20Z cutoff.
 
