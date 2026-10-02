@@ -27,15 +27,17 @@ const PATH: Record<NavKey, string> = {
   promotions: 'promotions/',
   launches: 'launches/',
   prices: 'prices/',
-  // The Dataset section lives on the Overview until it has a page of its own.
-  dataset: '#dataset',
+  dataset: 'dataset/',
   assistant: 'assistant/',
 };
 
 export const navHref = (key: NavKey, locale: string): string => `/${locale}/${PATH[key]}`;
 
-/** Where "About the data" points: the Dataset section. */
+/** The Dataset page. */
 export const datasetHref = (locale: string): string => navHref('dataset', locale);
+
+/** Where every "About the data" link points: the plain-words section on the Dataset page. */
+export const aboutDataHref = (locale: string): string => `${datasetHref(locale)}#about-data`;
 
 const MATCH: Record<NavKey, RegExp | null> = {
   overview: /^\/(en|ar)\/?$/,
@@ -44,8 +46,7 @@ const MATCH: Record<NavKey, RegExp | null> = {
   promotions: /^\/(en|ar)\/promotions\//,
   launches: /^\/(en|ar)\/launches\//,
   prices: /^\/(en|ar)\/prices\//,
-  // An anchor on the Overview, so never the current page itself.
-  dataset: null,
+  dataset: /^\/(en|ar)\/dataset\//,
   assistant: /^\/(en|ar)\/assistant\//,
 };
 
@@ -57,10 +58,11 @@ export interface NavSignals {
   priced?: readonly (number | null)[];
   /** Any retailer whose discounts /summary measures (a share without a withheld reason). */
   promoMeasured?: boolean;
-  /** Collection days in the dataset (/meta `dates`). */
-  collectionDays?: number;
-  /** Any retailer that is a one-off import rather than a daily collection. */
-  oneOff?: boolean;
+  /**
+   * Every shop has the collection days launches need (`components/launches/readiness.ts`,
+   * from /meta); false while any shop is short of them.
+   */
+  launchesReady?: boolean;
 }
 
 export type NavState = 'shown' | 'hidden' | 'soon';
@@ -68,9 +70,9 @@ export type NavState = 'shown' | 'hidden' | 'soon';
 /**
  * Overview, Compare, Dataset and the assistant always show (Compare carries its own empty state).
  * Products and Prices need a retailer with priced products; Promotions a retailer whose discounts
- * are measured. Launches needs two collection days from every retailer: until the API counts days
- * per retailer, the dataset's day count stands in, and a one-off import counts as one day. While a
- * signal is unknown (still loading, or the request failed) the page stays reachable.
+ * are measured. Launches stays reachable but reads "soon" until every retailer has the collection
+ * days a launch needs. While a signal is unknown (still loading, or the request failed) the page
+ * stays reachable with nothing said.
  */
 export function navState(key: NavKey, s: NavSignals): NavState {
   switch (key) {
@@ -80,8 +82,7 @@ export function navState(key: NavKey, s: NavSignals): NavState {
     case 'promotions':
       return s.promoMeasured === false ? 'hidden' : 'shown';
     case 'launches':
-      if (s.collectionDays === undefined && s.oneOff === undefined) return 'shown';
-      return (s.collectionDays ?? 2) >= 2 && !s.oneOff ? 'shown' : 'soon';
+      return s.launchesReady === false ? 'soon' : 'shown';
     default:
       return 'shown';
   }

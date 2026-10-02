@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -164,6 +165,28 @@ def test_hosting_routes_api_before_the_spa_catch_all() -> None:
             assert "pinTag" not in rule["run"]
 
 
+def _csp_directives() -> dict[str, list[str]]:
+    """The hosting ``Content-Security-Policy`` as ``{directive: [sources]}``.
+
+    Directive names are case-insensitive and a browser enforces only the first of a repeated
+    directive (CSP3), so names are lowercased and a repeat fails rather than being shadowed.
+    """
+    hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
+    (csp,) = [
+        h["value"]
+        for block in hosting["headers"]
+        for h in block["headers"]
+        if h["key"] == "Content-Security-Policy"
+    ]
+    parsed = [
+        (name.lower(), sources)
+        for name, *sources in (d.split() for d in csp.split(";") if d.strip())
+    ]
+    names = [name for name, _ in parsed]
+    assert len(names) == len(set(names)), f"repeated CSP directive: {names}"
+    return dict(parsed)
+
+
 def test_the_csp_names_only_the_expected_external_hosts() -> None:
     """Thumbnails (API 1.3.0) are hotlinked from exactly one image host; nothing else is added.
 
@@ -173,19 +196,15 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
     ``connect-src`` keeps the Firebase Auth and Storage hosts it already had. The assistant
     (switch-on build, App Check with reCAPTCHA Enterprise) adds exactly the reCAPTCHA script and
     frame paths, the App Check token exchange and the me-central1 callable host.
+    Every unquoted source counts, not only dotted hosts, so a scheme-only ``https:`` or a ``*``
+    wildcard fails too; ``data:`` is allowed for inline images only.
     """
-    hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
-    (csp,) = [
-        h["value"]
-        for block in hosting["headers"]
-        for h in block["headers"]
-        if h["key"] == "Content-Security-Policy"
-    ]
     external = {
-        name: {s for s in sources if "." in s}
-        for name, *sources in (d.split() for d in csp.split(";") if d.strip())
+        name: {s for s in sources if not s.startswith("'")}
+        for name, sources in _csp_directives().items()
     }
     assert external.pop("img-src") == {
+        "data:",
         "https://img-product.sephora.me",
         "https://media.alshaya.com",
     }
@@ -205,6 +224,34 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
         "https://recaptcha.google.com/recaptcha/",
     }
     assert all(not hosts for hosts in external.values()), external
+
+
+def test_the_csp_keywords_are_pinned() -> None:
+    """Every quoted source is pinned per directive; script-src never relaxes past its hashes.
+
+    script-src is ``'self'`` plus the sha256 hashes of the static export's inline scripts
+    (``apps/web/scripts/csp.mjs``), never ``'unsafe-inline'``, ``'unsafe-eval'`` or
+    ``'strict-dynamic'``. style-src ``'unsafe-inline'`` is the one allowlisted exception, kept
+    for the inline style attributes the UI still renders; removing it is a tracked follow-up
+    (task M5, 2026-10-02), and this pin then shrinks to ``{"'self'"}``.
+    """
+    sha256 = re.compile(r"'sha256-[A-Za-z0-9+/]{43}='")
+    quoted = {
+        name: {"'sha256-…'" if sha256.fullmatch(s) else s for s in sources if s.startswith("'")}
+        for name, sources in _csp_directives().items()
+    }
+    assert not {"'unsafe-inline'", "'unsafe-eval'", "'strict-dynamic'"} & quoted["script-src"]
+    assert quoted == {
+        "default-src": {"'self'"},
+        "img-src": {"'self'"},
+        "style-src": {"'self'", "'unsafe-inline'"},  # allowlisted exception, see docstring
+        "script-src": {"'self'", "'sha256-…'"},
+        "connect-src": {"'self'"},
+        "frame-src": {"'self'"},
+        "frame-ancestors": {"'none'"},
+        "base-uri": {"'none'"},
+        "form-action": {"'none'"},
+    }
 
 
 @pytest.mark.parametrize(

@@ -11,8 +11,9 @@ import {
   type NavSignals,
   type NavState,
 } from '@/lib/nav';
+import { launchReadiness } from './launches/readiness';
 import { useMeta } from './use-meta';
-import { freshness, importedOn, promotions } from './widgets/model';
+import { promotions } from './widgets/model';
 import { useRetailers } from './widgets/use-compare';
 import { useSummaries } from './widgets/use-summaries';
 
@@ -37,19 +38,16 @@ export function useNav(): NavItem[] {
   const { ids } = useRetailers();
   const { rows, loading, error } = useSummaries(ids);
   const signals: NavSignals = {};
-  if (meta.data?.data) signals.collectionDays = meta.data.data.dates.length;
+  if (meta.data) signals.launchesReady = launchReadiness(meta.data).allReady;
   if (ids.length > 0 && !loading && !error) {
     signals.priced = rows.map((r) => r.data.priced);
     signals.promoMeasured = rows.some((r) => promotions(r.data).measured);
-    signals.oneOff = rows.some(
-      (r) => freshness(r.data.freshness) === 'snapshot' || importedOn(r.caveats, r.retailer) !== null,
-    );
   }
   const items: NavItem[] = [];
   for (const key of NAV_KEYS) {
     const state = navState(key, signals);
     if (state === 'hidden') continue;
-    const label = key === 'dataset' ? t('aboutData') : t(`nav.${key}`);
+    const label = key === 'dataset' ? t('nav.status') : t(`nav.${key}`);
     items.push({ key, href: navHref(key, locale), label, state, current: navMatches(key, pathname) });
   }
   return items;

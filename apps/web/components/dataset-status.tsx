@@ -3,17 +3,22 @@
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { formatDate, loc } from '@/lib/format';
+import { retailerName } from '@/lib/retailers';
 import { ErrorNotice } from './error-notice';
 import { useMeta } from './use-meta';
+import { EnvNotes } from './ui/env-notes';
 import { Known } from './ui/known';
 import { importedOn } from './widgets/model';
 
 /**
- * What data the app is looking at. Every value is shown as the API sent it. `nested` when it sits
- * in a card under the page's own heading.
+ * What data the app is looking at. Every value is shown as the API sent it, each shop by its own
+ * name. "About the data" at the end is the one place on the site that explains, in plain words,
+ * how the data is collected and why a figure may be missing. `nested` when it sits in a card under
+ * the page's own heading.
  */
 export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
   const H = nested ? 'h2' : 'h1';
+  const H2 = nested ? 'h3' : 'h2';
   const t = useTranslations('home');
   const tr = useTranslations('reasons');
   const locale = useLocale();
@@ -34,6 +39,7 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
       <H id="ds-title" className={nested ? 'text-base font-semibold' : 'text-2xl font-bold tracking-tight'}>
         {t('title')}
       </H>
+      {!nested && <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>}
       {env.status === 'not_enough_data' && env.reason && (
         <p className="mt-2 text-sm text-ink-2">
           {loc(env.detail, locale) || <Known t={tr} v={env.reason} />}
@@ -64,7 +70,7 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
               <Known t={t} k="values" v={m.matchStage} />
             </Row>
           </dl>
-          <h2 className="mt-8 text-base font-semibold">{t('retailers')}</h2>
+          <H2 className="mt-8 text-base font-semibold">{t('retailers')}</H2>
           <div className="relative mt-2 overflow-x-auto">
             <table className="w-full max-w-3xl text-sm">
               <tbody>
@@ -74,7 +80,7 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
                   return (
                     <tr key={r.id} className="border-t border-line">
                       <th scope="row" className="py-2 pe-6 text-start font-medium whitespace-nowrap">
-                        {r.name}
+                        {retailerName(r.id, r.name)}
                       </th>
                       <td className="py-2 pe-6">
                         <Known t={t} k="status" v={r.status} />
@@ -97,6 +103,23 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
           </div>
         </>
       )}
+      <section id="about-data" aria-labelledby="about-data-title" className="mt-8 scroll-mt-6">
+        <H2 id="about-data-title" className="text-base font-semibold">
+          {t('about.title')}
+        </H2>
+        <div className="mt-2 max-w-prose space-y-2 text-sm text-ink-2">
+          <p>{t('about.p1')}</p>
+          <p>{t('about.p2')}</p>
+          <p>{t('about.p3')}</p>
+        </div>
+        {/* The API's own notes on this collection, worded with shop names: the only note box on the site. */}
+        {(env.status === 'not_enough_data' || env.caveats.length > 0) && (
+          <>
+            <p className="mt-4 text-sm font-medium">{t('about.notes')}</p>
+            <EnvNotes env={env} className="mt-2 max-w-prose" />
+          </>
+        )}
+      </section>
     </section>
   );
 }

@@ -52,7 +52,7 @@ for (const locale of ['en', 'ar'] as const) {
           'العروض',
           'الجديد',
           'الأسعار',
-          'عن البيانات',
+          'البيانات',
           'مساعد ريزان',
         ],
         tabs: ['نظرة عامة', 'المنتجات', 'المقارنة', 'العروض', 'ريزان'],
@@ -71,16 +71,7 @@ for (const locale of ['en', 'ar'] as const) {
         noRole: 'No access yet',
         generic: 'Something failed on our side. Try again.',
         authDown: "Couldn't confirm your access just now",
-        pages: [
-          'Overview',
-          'Products',
-          'Compare',
-          'Promotions',
-          'Launches',
-          'Prices',
-          'About the data',
-          'Ryzan AI',
-        ],
+        pages: ['Overview', 'Products', 'Compare', 'Promotions', 'Launches', 'Prices', 'Dataset', 'Ryzan AI'],
         tabs: ['Overview', 'Products', 'Compare', 'Promotions', 'Ryzan'],
         launches: 'Launches',
         promotions: 'Promotions',
@@ -164,7 +155,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(main.getByText(new RegExp(`^${T.asOf}.*2026`))).toBeVisible();
       await expect(main.getByRole('link', { name: T.aboutData })).toHaveAttribute(
         'href',
-        new RegExp(`/app/${locale}/#dataset$`),
+        new RegExp(`/app/${locale}/dataset/#about-data$`),
       );
     });
 

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { summaryBody } from './summary-fixture';
-import { test as base, expect, type Page, type Route } from '@playwright/test';
+import { test as base, expect, type Locator, type Page, type Route } from '@playwright/test';
 
 export const golden = (name: string): unknown =>
   JSON.parse(readFileSync(join(__dirname, '../../../docs/contracts/golden/pi-api', `${name}.json`), 'utf8'));
@@ -148,16 +148,21 @@ export async function openMenu(page: Page) {
 }
 
 /**
- * Follows a nav link by name: from the sidebar or tab bar when it is there, otherwise (a page
- * off the phone's five tabs) through the phone menu.
+ * A nav link by name, wherever it lives: in the sidebar or tab bar when it is there, otherwise
+ * (a page off the phone's five tabs) in the phone menu, which this opens.
  */
-export async function openNav(page: Page, name: string | RegExp) {
+export async function navLink(page: Page, name: string | RegExp): Promise<Locator> {
   const nav = mainNav(page);
   await expect(nav).toBeVisible();
   const direct = nav.getByRole('link', { name });
-  if ((await direct.count()) > 0) return direct.click();
+  if ((await direct.count()) > 0) return direct;
   await openMenu(page);
-  await allPagesNav(page).getByRole('link', { name }).click();
+  return allPagesNav(page).getByRole('link', { name });
+}
+
+/** Follows a nav link by name (see `navLink`). */
+export async function openNav(page: Page, name: string | RegExp) {
+  await (await navLink(page, name)).click();
 }
 
 /** Signs out from the sidebar foot, or from the phone menu where the foot lives on small screens. */

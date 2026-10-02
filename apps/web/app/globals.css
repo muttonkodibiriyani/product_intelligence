@@ -138,6 +138,52 @@ html {
     font-weight: 600;
 }
 
+/* Table header cells and rows inside a panel. */
+@utility th {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-ink-2);
+}
+
+/* ECharts tooltip rows (components/widgets/charts.tsx): the tooltip is an HTML string, so these are
+   plain classes rather than style attributes, which the CSP would block without 'unsafe-inline'. */
+.tip-row {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+.tip-row b,
+.tip-head {
+    font-weight: 600;
+}
+.tip-head {
+    margin-bottom: 0.25rem;
+}
+
+/* Skeleton bars (components/ui/skeleton.tsx): a shimmer that follows the reading direction, still under reduced motion. */
+@utility skeleton {
+    background: linear-gradient(
+            90deg,
+            var(--color-line-2) 0 40%,
+            var(--color-surface-2) 50%,
+            var(--color-line-2) 60% 100%
+        )
+        100% 0 / 250% 100% var(--color-line-2);
+    @media (prefers-reduced-motion: no-preference) {
+        animation: skeleton 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+    }
+    [dir='rtl'] & {
+        animation-direction: reverse;
+    }
+}
+
+@keyframes skeleton {
+    to {
+        background-position: 0 0;
+    }
+}
+
 /*
  * A verdict on a product or a category: `verdict-good` when the reader pays less, `verdict-bad`
  * when more, `verdict-warn` when the number needs a review, and plain `verdict` (grey) when there
@@ -206,36 +252,5 @@ html {
     & > i[data-side='bad'] {
         inset-inline-start: 50%;
         background: var(--color-bad);
-    }
-}
-
-/* Table header cells and rows inside a panel. */
-@utility th {
-    padding: 0.625rem 0.75rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--color-ink-2);
-}
-
-/* Skeleton bars (components/ui/skeleton.tsx): a shimmer that follows the reading direction, still under reduced motion. */
-@utility skeleton {
-    background: linear-gradient(
-            90deg,
-            var(--color-line-2) 0 40%,
-            var(--color-surface-2) 50%,
-            var(--color-line-2) 60% 100%
-        )
-        100% 0 / 250% 100% var(--color-line-2);
-    @media (prefers-reduced-motion: no-preference) {
-        animation: skeleton 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
-    }
-    [dir='rtl'] & {
-        animation-direction: reverse;
-    }
-}
-
-@keyframes skeleton {
-    to {
-        background-position: 0 0;
     }
 }

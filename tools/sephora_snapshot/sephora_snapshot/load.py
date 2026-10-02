@@ -55,7 +55,16 @@ def _jsonb(v: Any) -> Jsonb:
 
 # A full run is 'succeeded' only if nothing was skipped: every seeded page and stock read was
 # attempted and came back 200 and parsed. Any of these counters > 0 makes the run 'partial'.
-_SKIP_PREFIXES = ("block_", "transport_error", "sitemap_fail", "pdp_en_http_", "pdp_ar_http_")
+_SKIP_PREFIXES = (
+    "block_",
+    "transport_error",
+    "sitemap_fail",
+    "pdp_en_http_",
+    "pdp_ar_http_",
+    "hop_",  # a redirect hop refused (host or robots) or a redirect chain too long
+    "host_refused",  # a seed or plan URL off the storefront host, never requested
+    "too_large",  # a body over its byte cap, dropped
+)
 _SKIP_SUFFIXES = ("_parse_error",)
 
 

@@ -9,9 +9,10 @@ import { AppTabbar } from './app-tabbar';
 import { useAuth } from './auth-provider';
 import { LangSwitch } from './lang-switch';
 import { BrandMark } from './nav-icon';
+import { AboutDataLink } from './ui/page-header';
 import { useNav } from './use-nav';
 
-const MAIN = 'min-w-0 flex-1 px-4 pt-5 pb-24 sm:px-7 lg:pb-10';
+const MAIN = 'min-w-0 flex-1 px-4 pt-5 pb-8 sm:px-7';
 
 /**
  * The page frame. Signed in with a role: a sidebar at the start edge on wide screens; on phones a
@@ -66,7 +67,17 @@ function Plain({ children }: { children: ReactNode }) {
       <main id="main" className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-7 sm:py-8">
         {children}
       </main>
+      <Foot className="mx-auto w-full max-w-screen-2xl pb-6" />
     </>
+  );
+}
+
+/** The foot of the main column: the link to the data, for a reader who reached the end of a page. */
+function Foot({ className = '' }: { className?: string }) {
+  return (
+    <footer className={`px-4 text-xs text-ink-2 sm:px-7 ${className}`}>
+      <AboutDataLink />
+    </footer>
   );
 }
 
@@ -79,6 +90,8 @@ function Shell({ children }: { children: ReactNode }) {
         <main id="main" className={MAIN}>
           {children}
         </main>
+        {/* Clears the phone's tab bar. */}
+        <Foot className="pb-24 lg:pb-8" />
       </div>
       <AppTabbar />
     </div>

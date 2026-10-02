@@ -37,8 +37,8 @@ for (const locale of ['en', 'ar'] as const) {
           nav: 'العروض',
           title: 'العروض',
           detail: 'بيانات أحد المتاجر المحددة مجمّعة جزئياً فقط.',
-          caveat: 'بيانات shop_c مجمّعة جزئياً.',
-          partial: 'هذا المتجر مغطّى جزئيًا فقط.',
+          caveat: 'مجمّعة جزئياً',
+          partial: 'خصومات Shop C: غير متاحة بعد',
           three: '3 منتجات',
           of40: '3 من 40 منتج',
           more: 'اعرض حتى 500',
@@ -49,8 +49,8 @@ for (const locale of ['en', 'ar'] as const) {
           nav: 'Promotions',
           title: 'Promotions',
           detail: 'A selected retailer is only partly collected.',
-          caveat: 'shop_c is only partly collected.',
-          partial: 'This retailer is only partly covered.',
+          caveat: 'only partly collected',
+          partial: 'Shop C discounts: not available yet',
           three: '3 products',
           of40: '3 of 40 products',
           more: 'Show up to 500',
@@ -59,7 +59,7 @@ for (const locale of ['en', 'ar'] as const) {
         };
 
   test.describe(`${locale} promotions`, () => {
-    test('lists discounts deepest first with each retailer’s share, and says why one has none', async ({
+    test('lists discounts deepest first with each retailer’s share; one without reads as not available', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api() });
@@ -67,10 +67,14 @@ for (const locale of ['en', 'ar'] as const) {
       await page.getByRole('navigation').getByRole('link', { name: T.nav }).click();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/promotions/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.getByRole('note')).toContainText(T.detail);
-      await expect(page.getByRole('note')).toContainText(T.caveat);
+      // No note box, no API detail or caveat wording, no retailer id: the row says it in one line.
+      await expect(page.getByRole('note')).toHaveCount(0);
+      await expect(page.locator('main')).not.toContainText(T.detail);
+      await expect(page.locator('main')).not.toContainText(T.caveat);
+      await expect(page.locator('main')).not.toContainText('shop_c');
       await expect(page.getByRole('row', { name: /^Shop A/ })).toContainText('50.0%');
       await expect(page.getByRole('row', { name: /^Shop C/ })).toContainText(T.partial);
+      await expect(page.getByRole('checkbox', { name: 'Shop C', exact: true })).toBeVisible();
       await expect(page.getByText(T.three)).toBeVisible();
       await expect(page.locator('#rows table tbody tr')).toHaveCount(3);
       await expect(page.getByRole('row', { name: /Product p05/ })).toContainText('−33.3%');

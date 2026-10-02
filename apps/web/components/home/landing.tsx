@@ -5,14 +5,14 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import { formatCount, formatDate } from '@/lib/format';
+import { formatCount } from '@/lib/format';
 import type { Schemas } from '@/lib/api/types';
 import { DatasetStatus } from '../dataset-status';
+import { AsOf } from './as-of';
 import { ErrorNotice } from '../error-notice';
 import { Card, CardGrid } from '../ui/card';
-import { CaveatNotes, EnvNotes } from '../ui/env-notes';
 import { Known } from '../ui/known';
-import { PageHeader } from '../ui/page-header';
+import { AboutDataLink, PageHeader } from '../ui/page-header';
 import { Loading, Skeleton } from '../ui/skeleton';
 import { KpiWidget, PairKpis, type RetailerSummary } from '../widgets/kpis';
 import { TopDiscountsWidget } from '../widgets/top-discounts';
@@ -25,14 +25,11 @@ import {
   cheaperShares,
   compareHref,
   crossCells,
-  freshness,
   gapRows,
-  importedOn,
   ladderRows,
   pct,
   promotions,
   promotionsHref,
-  WITHHELD_REASONS,
 } from '../widgets/model';
 
 // The charts (and ECharts with them) load after the page: the KPIs and the table come first.
@@ -106,7 +103,8 @@ export function Landing() {
     <div className="space-y-6">
       <PageHeader
         title={t('overview')}
-        intro={<Subtitle rows={s.rows} />}
+        intro={t('intro')}
+        asOf={s.rows.length > 0 ? <AsOf rows={s.rows} /> : undefined}
         tools={
           <div role="tablist" aria-label={t('tabs')} className="flex gap-1 rounded-ctl bg-surface-2 p-1">
             {(['overview', 'compare'] as const).map((v) => (
@@ -151,32 +149,10 @@ export function Landing() {
   );
 }
 
-/** One line per retailer: its snapshot date, or its import date when it was imported. */
-function Subtitle({ rows }: { rows: readonly RetailerSummary[] }) {
-  const t = useTranslations('home.landing');
-  const locale = useLocale();
-  if (rows.length === 0) return <p>{t('intro')}</p>;
-  return (
-    <>
-      {rows.map((r) => {
-        // An imported retailer's date is when it was imported; it is never called a snapshot date.
-        const imported =
-          freshness(r.data.freshness) === 'snapshot' || importedOn(r.caveats, r.retailer)
-            ? (importedOn(r.caveats, r.retailer) ?? r.data.freshness.cutoff)
-            : null;
-        return (
-          <p key={r.retailer}>
-            {t(imported ? 'subtitleImported' : 'subtitle', {
-              retailer: r.name,
-              date: formatDate(imported ?? r.data.asOf, locale),
-            })}
-          </p>
-        );
-      })}
-    </>
-  );
-}
-
+/**
+ * The as-of line: the date the collected data is as of, and for an imported retailer its import
+ * date (a one-off snapshot, never called a snapshot date). Nothing until the first row is in.
+ */
 /** The per-retailer widgets, one card per retailer per chart; `id`s stay unsuffixed for the first. */
 function RetailerCharts({ rows, locale }: { rows: readonly RetailerSummary[]; locale: string }) {
   const tw = useTranslations('widgets');
@@ -300,37 +276,6 @@ function RatingNote({ data }: { data: { n: number; ratedPct: string; points: unk
   );
 }
 
-/**
- * Why price or rating cards are missing for a retailer: /summary's own reason per withheld
- * section. Promotions are left out; they wait on the Compare tab with their reason as the caption.
- */
-function WithheldNote({ rows }: { rows: readonly RetailerSummary[] }) {
-  const t = useTranslations('widgets.withheld');
-  const tr = useTranslations('reasons');
-  const many = rows.length > 1;
-  const lines = rows.flatMap((r) =>
-    r.data.withheld
-      .filter((w) => w.section === 'prices' || w.section === 'ratings')
-      .map((w) => ({
-        key: `${r.retailer}:${w.section}`,
-        name: r.name,
-        section: w.section as 'prices' | 'ratings',
-        reason: w.reason,
-      })),
-  );
-  if (lines.length === 0) return null;
-  return (
-    <div role="note" className="space-y-1 panel px-4 py-3 text-sm">
-      {lines.map((w) => (
-        <p key={w.key}>
-          {many && <b className="font-semibold">{w.name}: </b>}
-          {t(w.section)} <Known t={tr} v={w.reason} />
-        </p>
-      ))}
-    </div>
-  );
-}
-
 function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair | null }) {
   const t = useTranslations('home.landing');
   const tw = useTranslations('widgets');
@@ -340,14 +285,13 @@ function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair 
 
   if (s.error && s.rows.length === 0) return <ErrorNotice error={s.error.error} onRetry={s.error.retry} />;
   if (s.loading && s.rows.length === 0) return <Loading kind="chart">{tc('loading')}</Loading>;
+  // Nothing to report on (every retailer withheld or thin): the dataset below says why.
   if (s.rows.length === 0)
     return (
       <div className="space-y-6">
-        {s.empty.length > 0 ? (
-          <EnvNotes env={s.empty[0]!} />
-        ) : (
-          <p className="text-sm text-ink-2">{t('noRetailers')}</p>
-        )}
+        <p className="text-sm text-ink-2">
+          {t('noRetailers')} <AboutDataLink />
+        </p>
         <Dataset />
       </div>
     );
@@ -357,13 +301,6 @@ function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair 
   const promoRows = s.rows.filter((r) => promotions(r.data).measured);
   return (
     <div className="space-y-6">
-      {s.rows.map((r) => (
-        <CaveatNotes key={r.retailer} caveats={r.caveats} />
-      ))}
-      {s.empty.map((e, i) => (
-        <EnvNotes key={`empty-${i}`} env={e} />
-      ))}
-      <WithheldNote rows={s.rows} />
       <KpiWidget rows={s.rows} locale={locale} />
       <p className="text-xs text-ink-2">{tw('drill')}</p>
       <RetailerCharts rows={s.rows} locale={locale} />
@@ -577,14 +514,14 @@ function Dataset() {
 /**
  * The Compare tab: the assortment overlap from /compare when the pair exists, the layout the index
  * and gap cards use when it does not, and a preview for each promotion widget a retailer withholds,
- * with the API's own reason as the caption.
+ * captioned with the plain "not available yet" line (the why lives under About the data).
  */
 function ComparePreview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair | null }) {
   const t = useTranslations('home.landing');
+  const ts = useTranslations('state');
   const locale = useLocale();
   const tw = useTranslations('widgets');
   const cmp = useCompareData(pair);
-  const many = s.rows.length > 1;
   const previews: [string, string, ReactNode][] = [];
   if (cmp.kind !== 'ready') {
     previews.push(
@@ -593,24 +530,16 @@ function ComparePreview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair:
       [t('overlapTitle'), t('overlapQuestion'), t('overlapReason')],
     );
   }
-  // Promotion widgets a retailer withholds: one preview per widget, with each retailer's reason.
-  const withheld = s.rows.flatMap((r) => {
-    const p = promotions(r.data);
-    return p.measured ? [] : [{ name: r.name, reason: p.reason }];
-  });
+  // Promotion widgets a retailer withholds: one preview per widget, one line per retailer.
+  const withheld = s.rows.filter((r) => !promotions(r.data).measured);
   if (withheld.length > 0) {
     const why = (
       <>
-        {withheld.map((w) => {
-          const text = (WITHHELD_REASONS as readonly string[]).includes(w.reason)
-            ? t(`withheld.${w.reason as (typeof WITHHELD_REASONS)[number]}`)
-            : t('withheld.other');
-          return (
-            <span key={w.name} className="block">
-              {many ? `${w.name}: ${text}` : text}
-            </span>
-          );
-        })}
+        {withheld.map((r) => (
+          <span key={r.retailer} className="block">
+            {ts('promoUnavailable', { retailer: r.name })}
+          </span>
+        ))}
       </>
     );
     previews.push([tw('promo.title'), tw('promo.question'), why], [tw('top.title'), tw('top.question'), why]);
