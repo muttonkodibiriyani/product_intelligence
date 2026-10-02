@@ -19,7 +19,7 @@ from pi_api.app import PREFIX
 from pi_api.catalog import AdminProductDetail, History, MetaView, ProductDetail, ProductPage
 from pi_api.contract import main, openapi, openapi_text
 from pi_api.summary import SummaryView
-from pi_api.wire import Envelope
+from pi_api.wire import Envelope, ProductEnvelope
 from pi_metrics.assortment import AssortmentGaps
 from pi_metrics.availability import Availability
 from pi_metrics.compare import Comparison
@@ -44,9 +44,13 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
         Envelope[ProductPage],
         {},
     ),
-    "product": ("/products/p01", Envelope[ProductDetail], {}),
-    "admin-product": ("/admin/products/p01", Envelope[AdminProductDetail], {"role": "admin"}),
-    "history": ("/products/p05/history", Envelope[History], {}),
+    "product": ("/products/p01", ProductEnvelope[ProductDetail], {}),
+    "admin-product": (
+        "/admin/products/p01",
+        ProductEnvelope[AdminProductDetail],
+        {"role": "admin"},
+    ),
+    "history": ("/products/p05/history", ProductEnvelope[History], {}),
     "coverage": ("/coverage", Envelope[Coverage], {}),
     "products-gap": (
         "/products?retailer=shop_a&retailer=shop_b&sort=gap&limit=3",

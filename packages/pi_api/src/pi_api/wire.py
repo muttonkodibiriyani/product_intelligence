@@ -6,10 +6,12 @@ import string
 from datetime import datetime
 from typing import Any
 
+from pydantic import Field
+
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.8.0"
+API_VERSION = "1.9.0"
 
 
 class Localized(ContractModel):
@@ -224,6 +226,22 @@ class Envelope[T](ContractModel):
     cohort: Cohort | None = None
     caveats: tuple[CaveatView, ...] = ()
     meta: ApiMeta
+
+
+class ResolvedFrom(ContractModel):
+    """An old product id answered with the products it names now (``pi_api.ids``)."""
+
+    requested_id: str
+    #: ``data`` is the first; two after a split, supported retailers first.
+    current_ids: tuple[str, ...] = Field(min_length=1, max_length=2)
+
+
+class ProductEnvelope[T](Envelope[T]):
+    """``/products/{id}``, its history and the admin view: ``resolvedFrom`` is set when the id
+    in the path is an old one (null on an exact match). Clients rewrite their link to
+    ``currentIds``."""
+
+    resolved_from: ResolvedFrom | None = None
 
 
 def envelope[T](metric: Metric[T], meta: ApiMeta) -> Envelope[T]:
