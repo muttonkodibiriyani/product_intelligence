@@ -74,12 +74,16 @@ describe('Arabic counts', () => {
     const messages = { ...ar, widgets: wAr };
     const t = createTranslator({ locale: 'ar-EG', messages, formats, onError: () => {} });
     const bad: string[] = [];
-    for (const key of keys(messages as Tree)) {
-      const src = key.split('.').reduce<string | Tree>((o, k) => (o as Tree)[k]!, messages as Tree) as string;
-      const args = Object.fromEntries([...src.matchAll(/\{(\w+)/g)].map(([, a]) => [a, 6]));
-      const out = (t as unknown as (k: string, a: object) => string)(key, args);
-      if (/[\u0660-\u0669]/.test(out)) bad.push(`${key}: ${out}`);
-    }
+    // Every Arabic plural branch: zero, one, two, few (6), many (11), other (100).
+    for (const n of [0, 1, 2, 6, 11, 100])
+      for (const key of keys(messages as Tree)) {
+        const src = key
+          .split('.')
+          .reduce<string | Tree>((o, k) => (o as Tree)[k]!, messages as Tree) as string;
+        const args = Object.fromEntries([...src.matchAll(/\{(\w+)/g)].map(([, a]) => [a, n]));
+        const out = (t as unknown as (k: string, a: object) => string)(key, args);
+        if (/[\u0660-\u0669]/.test(out)) bad.push(`${key} (n = ${n}): ${out}`);
+      }
     expect(bad).toEqual([]);
     expect(t('widgets.nPairs', { n: 6 })).toBe('n = 6 أزواج قابلة للمقارنة');
   });
