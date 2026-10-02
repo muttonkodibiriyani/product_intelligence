@@ -896,13 +896,6 @@ def _offers(ds: DatasetV3, product: ProductV3) -> list[tuple[Context, OfferV3]]:
     return [(context(ds, c), o) for c, o in sorted(product.offers.items())]
 
 
-def find(ds: DatasetV3, product_id: str) -> ProductV3:
-    for p in ds.products:
-        if p.id == product_id:
-            return p
-    raise ProductNotFoundError(product_id)
-
-
 def product_detail(
     ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts, images: EvidenceHosts = NO_HOSTS
 ) -> Metric[ProductDetail]:

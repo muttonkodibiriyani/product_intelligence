@@ -300,11 +300,16 @@ base|other|equal}` with `gapAmount = other − base`; the `convention` string tr
 | `launches` | `GET /api/v1/launches` | `retailer[]?`, `brand?`, `category?`, `since?`, `limit` (≤ 25, default 25) | `items[] {id, name, retailer, firstSeen}`; needs two or more runs, otherwise `capability_off` |
 | `reviews_summary` | `GET /api/v1/reviews-summary` | `id` (repeated, ≤ 25) **or** `brand?/category?`, `retailer[]?` | `retailers[] {retailer, n, avgRating, ratingCount, scale, reason}`. Distribution and themes → `field_not_collected` |
 | `coverage_status` | `GET /api/v1/coverage` | `retailer[]?` | `retailers[] {id, name, status supported\|partial\|blocked\|pending\|retired, productCount, matchedCount, freshness, since, note}` |
+| `price_history` | `GET /api/v1/products/{id}/history` | `id`, `from?/to?` | `series {<retailer>: [{date, price, regular, availability}]}`; needs history, otherwise `capability_off` |
+| `availability` | `GET /api/v1/availability` | `retailer[]?`, `brand?`, `category?`, `date?` | `denominator`; `retailers[] {retailer, counts{<stock state>}, denominator, outOfStockShare, lowStockShare, reason}` |
+| `price_ladder`, `price_distribution`, `brand_positioning`, `category_mix`, `assortment_breadth` | `GET /api/v1/summary` | `retailer?` (default: the retailer with the most collected offers) | 1:1 views over `/summary` sections (`ladder`; `priceHist`, `medianPrice`, `priced`; `brandPrice`; `categoryMix`, `products`; `products`, `priced`, `brands`, `categories`), each with `retailer`, `asOf`, `currency`, `freshness`. A section the API withheld becomes `not_enough_data` with its reason, never zero |
 
 Not assistant tools:
 
-- `/api/v1/matches`, `/api/v1/meta`, `/api/v1/products/{id}/history` and exports are FE and admin surfaces.
-- `/api/v1/availability` becomes a tenth tool once `capabilities.availability` exists.
+- `/api/v1/matches`, `/api/v1/meta`, `/api/v1/admin/*` and `/api/v1/export/*` are FE and admin
+  surfaces. `docs/design/assistant-tools.md` maps every operation to its tool or the reason for
+  its exclusion, and `apps/assistant/test/endpoint-map.test.ts` keeps that map complete.
+- Freshness is not a separate tool: `coverage_status` returns it per retailer.
 
 Stage 2 adds `create_report`, the only non-read tool. It writes only to the caller's own
 `reports/{uid}/` prefix and only through the server generator. It never changes governed data
@@ -406,7 +411,9 @@ Stage 2 adds `create_report`, the only non-read tool. It writes only to the call
   - `users/{uid}/assistant_threads/{threadId}` and `…/assistant_messages/{msgId}`:
     - Contents: role, text, citations, tool calls (names + validated inputs + result hash, not
       full results), model id, prompt version, dataset generation, tokens and cost.
-    - Client rule: read if `request.auth.uid == uid` and the role claim is valid.
+    - Client access: **none.** The web app reads and deletes its own threads through the chat
+      callable (Coordinator, 2026-10-01), so the rules keep denying every client read and no
+      read-own rule is added.
     - **Retention: 90 days.** Every document carries `expireAt`, with a Firestore TTL policy on
       it. The user can delete a thread at any time.
   - `assistant_usage_counters/{key}`: integer micro-USD `spent` and `reserved`, and question
@@ -804,12 +811,12 @@ month (the secret version; Pub/Sub and Functions stay in the free tier).
 | CI Workload Identity Federation pool → `pi-assistant-ci@` (`aiplatform.user` only, attribute condition pinned to repo id and `assistant-evals`, §8) | **needs OK** | free | Model evals in CI |
 | GitHub protected environment `assistant-evals` + eval workflow job (`.github` change, owner pushes) | **needs owner** | – | Model evals in CI |
 | Service-layer API deployed with `/v1/*` (#39) | Deep Coder's track | – | Stage 1c |
-| `recaptchaenterprise` + App Check | optional, **needs OK** | free ≤ 10 k/month | Stage 1 hardening |
+| `recaptchaenterprise` + App Check (reCAPTCHA Enterprise provider and site key for the web app) | **required before the chat callable can answer**, **needs OK**: `assistantChat` is deployed with `enforceAppCheck: true`, so every call without a valid App Check token is rejected. Owner-run with the kill-switch steps | free ≤ 10 k/month | Stage 1 deploy |
 | Budget → Pub/Sub → kill-switch subscriber (§9.4) | **required before Vertex enablement** (Coordinator, 2026-10-01). Code, rules and tests are in the kill-switch PR. Topic, SA, secret, Auth account and deploy are **owner steps, each needs OK** | ≈ $0.06/month (secret version) | Backstop for spend the meter cannot see |
 | Firestore TTL policies on `expireAt` for `assistant_usage_counters`, `assistant_reservations`, `assistant_threads` and `assistant_messages` (collection groups; every group name carries the `assistant_` prefix so a TTL policy cannot reach another collection) | **Infra/owner step**, not done by the assistant code: `gcloud firestore fields ttls update expireAt --collection-group=<group> --enable-ttl` per group | TTL deletes billed as deletes, ~$0 at pilot volume | 90-day retention (§6) |
 | Cloud Scheduler job (weekly briefing) | stage 1b, **needs OK** | free (≤ 3 jobs) | EXP-08 |
 | Storage lifecycle rule + `reports/**` prefix | stage 2 | cents | Reports |
-| Rules changes (threads read-own; no client report reads) | with the stage 1 PR, emulator-tested | – | Stage 1 |
+| Rules changes (no client report reads; threads are served by the callable, so no read-own rule) | none needed for stage 1 | – | Stage 1 |
 
 Nothing in this PR enables an API, creates a resource or deploys.
 
@@ -823,13 +830,15 @@ All of these must hold before Vertex is enabled or the chat callable is deployed
    one user holds `role: killswitch` (single-account check, §9.4 step 3).
 3. `assistant_config/current` is written by an admin, and it passes `AssistantConfigSchema`:
    - `promptVersion` **must equal `PROMPT_VERSION`** in `src/flows/prompt.ts`, currently
-     `chat-2026-10-01.2`. If it does not, every question is refused with
+     `chat-2026-10-01.3`. If it does not, every question is refused with
      `prompt_version_mismatch`. Each prompt change bumps the version, and the config must be
      updated in the same release.
    - `priceTableVersion` must equal the deployed price table.
    - `enabled: true`, and no `disabledBy`.
 4. Firestore TTL policies are on (Infra/owner step, table above).
 5. The service-layer API is deployed under `/api/v1`, and the Hosting freeze is lifted by Infra.
+6. App Check is registered for the web app with the reCAPTCHA Enterprise provider (table above),
+   and the web client initialises it; without it `assistantChat` rejects every call.
 
 ## 11. Rulings on the open questions
 
@@ -845,8 +854,17 @@ Coordinator rulings, 2026-09-30, under authority delegated by the owner (logged 
 4. **APIs, SA, WIF (§10).** Approved in principle. They are executed only after this doc is
    approved **and** the Coordinator gives an explicit go.
 
-Still open: the chat panel contract (`httpsCallable().stream()`) is to be confirmed with the
-Frontend Builder once this design is approved.
+**Chat panel contract** (split agreed with the Frontend Builder via the Coordinator,
+2026-10-01). The web app calls `assistantChat` with `httpsCallable().stream()`. While the
+question runs, the stream carries `ChatProgress` chunks (`src/flows/chat.ts`):
+
+- `{type: "status", stage: "thinking" | "verifying" | "retrying"}`;
+- `{type: "tool", name, status, code?}`, one per tool call.
+
+The call's result is the full `ChatAnswer`. **Model text is never streamed**: numbers reach
+the screen only after the verifier has checked them (§5), so the panel shows live progress
+(which tools ran), then the verified answer. Non-streaming callers get the same `ChatAnswer`.
+A failed chunk send (client gone) never affects the answer or the meter.
 
 ## 12. Stage timeline
 

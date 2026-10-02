@@ -21,7 +21,7 @@ export interface RetailerSummary {
 
 /**
  * The headline numbers, one row per retailer inside each tile so the catalogues read side by side:
- * products, brands, categories, median price, the promotion share where it is measured, and
+ * products, brands, categories, median price (with the mean under it when served), the promotion share where it is measured, and
  * freshness. Each tile opens the list it counts. An imported retailer's count and date say so; a
  * null count is withheld by /summary, never zero.
  */
@@ -55,7 +55,11 @@ export function KpiWidget({ rows, locale }: { rows: readonly RetailerSummary[]; 
         {per((r) => count(r.data.categories))}
       </Tile>
       <Tile k={t('median')} href={exploreHref(locale, { sort: 'price_asc' })} tone="bg-butter">
-        {per((r) => (r.data.medianPrice ? formatMoney(r.data.medianPrice, lc) : <None>{t('none')}</None>))}
+        {per(
+          (r) => (r.data.medianPrice ? formatMoney(r.data.medianPrice, lc) : <None>{t('none')}</None>),
+          // A null mean is left out, never shown as 0.
+          (r) => (r.data.meanPrice ? t('mean', { price: formatMoney(r.data.meanPrice, lc) }) : undefined),
+        )}
       </Tile>
       {promoRows.length > 0 && (
         <Tile

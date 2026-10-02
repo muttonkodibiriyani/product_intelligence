@@ -18,6 +18,7 @@ export function AppHeader() {
     { href: `/${locale}/promotions/`, label: t('nav.promotions'), match: /^\/(en|ar)\/promotions\// },
     { href: `/${locale}/launches/`, label: t('nav.launches'), match: /^\/(en|ar)\/launches\// },
     { href: `/${locale}/`, label: t('nav.status'), match: /^\/(en|ar)\/?$/ },
+    { href: `/${locale}/assistant/`, label: t('nav.assistant'), match: /^\/(en|ar)\/assistant\// },
   ];
   return (
     <header className="border-b border-line bg-surface">

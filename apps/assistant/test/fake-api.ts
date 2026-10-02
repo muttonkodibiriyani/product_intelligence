@@ -114,7 +114,9 @@ export const PAIR = { retailers: { base: "north", other: "south" } };
 /** The smallest valid input per tool; tools not listed accept {}. */
 export const MINIMAL: Readonly<Record<string, unknown>> = {
   get_product: { id: "p1" },
+  price_history: { id: "p1" },
   compare: PAIR,
+  category_compare: PAIR,
   index_trend: PAIR,
   assortment_gaps: { missingAt: "south", presentAt: "north" },
 };

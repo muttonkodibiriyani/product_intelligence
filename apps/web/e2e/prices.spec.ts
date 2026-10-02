@@ -63,6 +63,8 @@ for (const locale of ['en', 'ar'] as const) {
           ],
           tooFew: 'عدد قليل جدًا (n = 3)',
           tooFewList: /عدد قليل جدًا للمقارنة: الكونسيلر/,
+          gapHist: 'توزيع فروق الأسعار',
+          gapHistMeta: 'n = 6 أزواج قابلة للمقارنة',
         }
       : {
           title: 'Prices by category',
@@ -81,6 +83,8 @@ for (const locale of ['en', 'ar'] as const) {
           ],
           tooFew: 'too few (n = 3)',
           tooFewList: /Too few to compare: Concealer/,
+          gapHist: 'Spread of price gaps',
+          gapHistMeta: 'n = 6 comparable pairs',
         };
 
   test.describe(`${locale} prices by category`, () => {
@@ -107,6 +111,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(names).toHaveText(T.names);
       // Nothing is too few at the live counts.
       await expect(card).not.toContainText(T.tooFew);
+      // Counts keep Latin digits in Arabic too (WebKit defaults ar to Arabic-Indic).
+      await expect(page.locator('#p-gaps')).toContainText(
+        locale === 'ar' ? 'n = 6 أزواج قابلة للمقارنة' : 'n = 6 comparable pairs',
+      );
 
       const byCategory = await page.locator('#by-category').boundingBox();
       const exact = page.getByRole('heading', { name: T.headToHead });
@@ -136,6 +144,27 @@ for (const locale of ['en', 'ar'] as const) {
       }
       await expect(card).toContainText(T.tooFewList);
       expect(mock.errors).toEqual([]);
+    });
+
+    test('the spread of price gaps: every band of the served histogram, under exact matches', async ({
+      page,
+    }) => {
+      const mock = await open(page, locale);
+      const card = page.locator('#p-gap-hist');
+      await expect(card.getByRole('heading', { name: T.gapHist })).toBeVisible();
+      await expect(card).toContainText(T.gapHistMeta);
+      // ECharts' aria module replaces the label with its own data description once it renders.
+      const chart = card.locator('[data-chart]');
+      await expect(chart).toHaveAttribute('role', 'img');
+      // One y-axis label per served band: 11 (zero bands included), each in the visible text.
+      const bands = chart.locator('svg text').filter({ hasText: '%' });
+      await expect(bands).toHaveCount(11);
+      if (locale === 'en') await expect(bands.first()).toHaveText('< \u221250%');
+      const exact = await page.getByRole('heading', { name: T.headToHead }).boundingBox();
+      expect(exact!.y).toBeLessThan((await card.boundingBox())!.y);
+      if (isPhone()) await noHorizontalScroll(page);
+      expect(mock.errors).toEqual([]);
+      expect(mock.external).toEqual([]);
     });
   });
 }

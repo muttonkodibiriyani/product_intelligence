@@ -60,7 +60,9 @@ export function Toolbar({
         >
           {SORTS.map((s) => (
             <option key={s} value={s} disabled={(s === 'gap' || s === 'gap_asc') && !pair}>
-              {t(`sorts.${s}`, { other: names?.other ?? '–' })}
+              {(s === 'gap' || s === 'gap_asc') && !(pair && names)
+                ? t(`sortsNoPair.${s}`)
+                : t(`sorts.${s}`, { other: names?.other ?? '' })}
             </option>
           ))}
         </select>
