@@ -100,7 +100,8 @@ export function Explorer() {
               </p>
             )}
             <ActiveChips state={state} name={name} update={update} />
-            <div className="flex items-center gap-2 sm:ms-auto">
+            {/* Wraps on narrow screens so the row never scrolls sideways, whatever the font widths. */}
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:ms-auto">
               <button
                 type="button"
                 onClick={() => setFiltersOpen(true)}
