@@ -46,13 +46,34 @@ describe('CategoryHeadToHead', () => {
     expect(fragrance.textContent).toContain('420.00');
     expect(fragrance.textContent).toContain('395.00');
     expect(fragrance.textContent).toContain('-6.0%');
-    // Shop B (other) is cheaper: the fill reads as good and runs toward the start.
-    expect(fragrance.querySelector('.gapbar i')?.getAttribute('data-side')).toBe('good');
+    // Shop B (other) is cheaper: the fill runs toward the start in Shop B's colour, and says so.
+    const fill = fragrance.querySelector('.gapbar i')!;
+    expect(fill.getAttribute('data-shop')).toBe('shop_b');
+    expect(fill.getAttribute('data-at')).toBe('start');
+    expect(fill.getAttribute('style')).toContain('background: var(--color-series-b');
+    expect(fragrance.textContent).toContain('Shop B cheaper');
     const lips = row('Lips');
     expect(lips.textContent).toContain('+7.4%');
-    expect(lips.querySelector('.gapbar i')?.getAttribute('data-side')).toBe('bad');
+    expect(lips.querySelector('.gapbar i')?.getAttribute('data-shop')).toBe('shop_a');
+    expect(lips.querySelector('.gapbar i')?.getAttribute('data-at')).toBe('end');
+    expect(lips.querySelector('.gapbar i')?.getAttribute('style')).toContain(
+      'background: var(--color-series-a',
+    );
+    expect(lips.textContent).toContain('Shop A cheaper');
+    // No value judgement: the fill is never the good or bad tone.
+    expect(document.querySelector('[data-side], .text-good, .text-bad')).toBeNull();
     // Body has the widest gap on the table (concealer is too few), so its fill takes the whole half.
     expect(row('Body').querySelector('.gapbar i')?.getAttribute('style')).toContain('width: 50%');
+  });
+
+  it('the foot names the minimum and the unmapped count in the right number, in both languages', () => {
+    show(ready());
+    expect(screen.getByText(/A side needs at least 5 priced products/)).toBeTruthy();
+    expect(screen.getByText(/Not yet in a category: 301 products\./)).toBeTruthy();
+    cleanup();
+    show(ready(), 'ar');
+    expect(screen.getByText(/يحتاج كل طرف إلى 5 منتجات مسعّرة على الأقل/)).toBeTruthy();
+    expect(screen.getByText(/لم تُصنَّف بعد: 301 منتج\./)).toBeTruthy();
   });
 
   it('a bucket the API calls the same is "same", not a tiny gap', () => {
@@ -69,6 +90,22 @@ describe('CategoryHeadToHead', () => {
     expect(concealer.textContent).toContain('too few (n = 3)');
     expect(concealer.textContent).toContain('–');
     expect(concealer.textContent).not.toContain('%');
+  });
+
+  it('a side the API left out is "not available", never a count of 0 or too few (n = 0)', () => {
+    const r = ready() as Extract<PairState<CategoryCompare>, { kind: 'ready' }>;
+    const buckets = r.data.buckets.map((b) =>
+      b.key === 'cheek'
+        ? { ...b, sides: { shop_a: b.sides.shop_a! }, status: 'too_few' as const, gapPct: null }
+        : b,
+    );
+    const { row } = show({ ...r, data: { ...r.data, buckets } });
+    const cheek = row('Cheek');
+    expect(cheek.textContent).toContain('not available');
+    expect(cheek.textContent).not.toContain('n = 0');
+    expect(cheek.textContent).not.toMatch(/Shop B\s*0/);
+    expect(cheek.querySelectorAll('td:nth-child(2) i')).toHaveLength(1);
+    expect(cheek.textContent).not.toContain('%');
   });
 
   it('counts sit behind the bars for screen readers, both shops named', () => {

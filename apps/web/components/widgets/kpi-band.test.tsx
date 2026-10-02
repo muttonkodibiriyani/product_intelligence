@@ -107,4 +107,34 @@ describe('KpiBand', () => {
     expect(tile(m.widgets.kpi.median).textContent).toContain('50.00');
     expect(tile(m.widgets.kpi.freshness).textContent).toContain('حتى');
   });
+
+  it('Arabic counts take the right noun form at every count', () => {
+    const forms: [number, string, string][] = [
+      [1, 'يعرض منتجًا واحدًا أكثر', 'من فئة واحدة أرخص لدى Shop B'],
+      [2, 'يعرض منتجين أكثر', 'من فئتين أرخص لدى Shop B'],
+      [3, 'يعرض 3 منتجات أكثر', 'من 3 فئات أرخص لدى Shop B'],
+      [9, 'يعرض 9 منتجات أكثر', 'من 9 فئات أرخص لدى Shop B'],
+      [11, 'يعرض 11 منتجًا أكثر', 'من 11 فئة أرخص لدى Shop B'],
+      [100, 'يعرض 100 منتج أكثر', 'من 100 فئة أرخص لدى Shop B'],
+    ];
+    for (const [n, more, cats] of forms) {
+      const b = { ...summary, products: (summary.products ?? 0) + n };
+      const { m, tile } = band([row('shop_a', 'Shop A', summary), row('shop_b', 'Shop B', b)], 'ar', {
+        compared: n,
+        base: 0,
+        other: n,
+        same: 0,
+      });
+      expect(tile(m.widgets.kpi.products).textContent).toContain(`Shop B ${more}`);
+      expect(tile(m.widgets.kpi.byCategory).textContent).toContain(cats);
+      cleanup();
+    }
+  });
+
+  it('one more product is singular', () => {
+    const b = { ...summary, products: (summary.products ?? 0) + 1 };
+    const { m, tile } = band([row('shop_a', 'Shop A', summary), row('shop_b', 'Shop B', b)]);
+    expect(tile(m.widgets.kpi.products).textContent).toContain('Shop B lists 1 more product');
+    expect(tile(m.widgets.kpi.products).textContent).not.toContain('1 more products');
+  });
 });

@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { THIN, categoryCompareData } from '@/e2e/category-compare-fixture';
 import { parseCategoryCompare } from '@/lib/api/category-compare';
 import { golden } from '@/lib/api/golden';
-import type { Schemas } from '@/lib/api/types';
+import type { CaveatView, Schemas } from '@/lib/api/types';
 import {
   abs,
   bucketCheaper,
   categoryRead,
   deepestCut,
+  earlyExcluded,
   gapWidth,
   minus,
   retailerTone,
@@ -17,7 +18,8 @@ import {
   widestGap,
 } from './model';
 
-const compare = (golden('compare') as { data: Schemas['Comparison'] }).data;
+const compareBody = golden('compare') as { data: Schemas['Comparison']; caveats: CaveatView[] };
+const compare = compareBody.data;
 const buckets = parseCategoryCompare(categoryCompareData('shop_a', 'shop_b', THIN))!.buckets;
 
 describe('verdict', () => {
@@ -110,5 +112,22 @@ describe('money and bars', () => {
   it('deepestCut picks the largest depth as sent', () => {
     expect(deepestCut([{ depthPct: '44.4' }, { depthPct: '50.0' }, { depthPct: 'x' }])).toBe('50.0');
     expect(deepestCut([])).toBeNull();
+  });
+});
+
+describe('earlyExcluded', () => {
+  const cav = (count: string): CaveatView => ({ code: 'early_excluded', en: '', ar: '', params: { count } });
+  it('reads the count from the API caveat only; total above n is not "early"', () => {
+    expect(earlyExcluded(compareBody.caveats)).toEqual({ count: 1, caveat: compareBody.caveats[0] });
+    expect(compare.total).toBeGreaterThan(compare.summary!.n);
+    expect(earlyExcluded([])).toBeNull();
+    expect(earlyExcluded(undefined)).toBeNull();
+    expect(earlyExcluded([{ ...cav('1'), code: 'retailer_partial' }])).toBeNull();
+  });
+  it('a zero or unreadable count is not early either', () => {
+    expect(earlyExcluded([cav('0')])).toBeNull();
+    expect(earlyExcluded([cav('')])).toBeNull();
+    expect(earlyExcluded([cav('many')])).toBeNull();
+    expect(earlyExcluded([cav('12')])?.count).toBe(12);
   });
 });

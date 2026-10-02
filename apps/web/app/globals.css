@@ -173,9 +173,10 @@ html {
 }
 
 /*
- * A gap bar centred on zero. The fill is an `<i data-side="good|bad" style="width: n%">`: good
- * runs from the middle towards the start of the line, bad towards the end, so the bar mirrors
- * with the reading direction. `n` is the gap as a share of the half width.
+ * A gap bar centred on zero. The fill is an `<i data-at="start|end" style="width: n%; background: …">`:
+ * it runs from the middle towards the start or the end of the line, so the bar mirrors with the
+ * reading direction, in the colour of the shop that is cheaper (no green or red). `n` is the gap as
+ * a share of the half width.
  */
 @utility gapbar {
     position: relative;
@@ -199,13 +200,12 @@ html {
         max-width: 50%;
         border-radius: 3px;
     }
-    & > i[data-side='good'] {
+    /* The fill runs from the centre line toward one side; its colour is the cheaper shop's, set inline. */
+    & > i[data-at='start'] {
         inset-inline-end: 50%;
-        background: var(--color-good);
     }
-    & > i[data-side='bad'] {
+    & > i[data-at='end'] {
         inset-inline-start: 50%;
-        background: var(--color-bad);
     }
 }
 

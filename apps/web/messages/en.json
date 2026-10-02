@@ -132,7 +132,7 @@
         "tie": "{base} and {other} are each cheaper on {k} of the {n, plural, one {# matched product} other {# matched products}}.",
         "allSame": "All {n, plural, one {# matched product costs} other {# matched products cost}} the same at {base} and {other}.",
         "basket": "The same {n, plural, one {#-product} other {#-product}} basket costs <b><baseAmount></baseAmount></b> at {base} and <b><otherAmount></otherAmount></b> at {other}, a <pct></pct> median gap.",
-        "scope": "Only {n} of {total} candidate pairs are reviewed yet, so this is not a catalogue-wide verdict.",
+        "scope": "That is {n} of the {total, plural, one {# product} other {# products}} either shop sells; the rest cannot be compared yet.",
         "see": "See the {n, plural, one {# product} other {# products}}"
       },
       "empty": {
@@ -142,9 +142,9 @@
         "categoryTie": "By category medians, {base} and {other} are each cheaper in {k} of the {n, plural, one {# compared category} other {# compared categories}}.",
         "categorySame": "By category medians, {base} and {other} are the same in all {n, plural, one {# compared category} other {# compared categories}}.",
         "categoryNone": "The category comparison is not available yet.",
-        "observed": "products seen",
-        "candidates": "Candidate pairs",
-        "confirmed": "{n} confirmed as matches",
+        "observed": "{n, plural, one {product seen} other {products seen}}",
+        "eitherShop": "Products either shop sells",
+        "confirmed": "{n, plural, one {# confirmed as a match} other {# confirmed as matches}}",
         "browse": "Browse all products"
       }
     }

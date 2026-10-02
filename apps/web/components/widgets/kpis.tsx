@@ -61,7 +61,7 @@ export function KpiBand({
         ? t('sameProducts')
         : t('moreProducts', {
             shop: rows[products[0]! > products[1]! ? 0 : 1]!.name,
-            n: formatCount(Math.abs(products[0]! - products[1]!), locale),
+            n: Math.abs(products[0]! - products[1]!),
           })
       : null;
 
@@ -142,7 +142,7 @@ export function KpiBand({
 /** In how many of the compared categories each shop's median is the lower; ties and all-same say so. */
 function CategoryTile({ pair, read, locale }: { pair: Pair; read: CategoryRead; locale: string }) {
   const t = useTranslations('widgets.kpi');
-  const n = formatCount(read.compared, locale);
+  const n = read.compared;
   const lead = read.base === read.other ? null : read.base > read.other ? pair.base : pair.other;
   const hero = formatCount(lead ? Math.max(read.base, read.other) : read.base || read.same, locale);
   const small =

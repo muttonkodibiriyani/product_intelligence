@@ -6,9 +6,24 @@
  * be folded into one module once both land.
  */
 import type { Bucket } from '@/lib/api/category-compare';
-import type { Money, Schemas } from '@/lib/api/types';
+import type { CaveatView, Money, Schemas } from '@/lib/api/types';
 
 type CompareSummary = Schemas['CompareSummary'];
+
+/**
+ * The early sample items /compare left out, from its own `early_excluded` caveat (the API sends
+ * it only when the count is above zero). Null without the caveat or a readable count: the read
+ * is then not "early", whatever `total` says, since `total` also counts unreviewed, unmatched and
+ * single-shop products.
+ */
+export function earlyExcluded(
+  caveats: readonly CaveatView[] | null | undefined,
+): { count: number; caveat: CaveatView } | null {
+  const caveat = caveats?.find((c) => c.code === 'early_excluded');
+  if (!caveat) return null;
+  const count = Number(caveat.params?.count);
+  return Number.isInteger(count) && count > 0 ? { count, caveat } : null;
+}
 
 /** A retailer's colour: the shop's own tone for the two the design names, else a series tone by side. */
 export function retailerTone(id: string, side: 0 | 1): string {

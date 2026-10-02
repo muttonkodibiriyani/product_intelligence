@@ -80,19 +80,21 @@ for (const locale of ['en', 'ar'] as const) {
     ? {
         title: 'نظرة عامة',
         early: 'قراءة مبكرة:',
+        earlyNote: 'عناصر العينة المبكرة غير المحتسبة: 1.',
         lead: 'Shop A أرخص في 3 من 6 منتجات مطابَقة. Shop B أرخص في 2، و1 بالسعر نفسه.',
+        scope: 'أي 6 من 15 منتجًا يبيعها أحد المتجرين؛ ولا يمكن مقارنة الباقي بعد.',
         see: 'اعرض المنتجات الـ6',
         emptyTitle: 'لا توجد منتجات مطابَقة بين Shop A وShop B بعد.',
         categoryRead: 'بحسب الأسعار الوسيطة للفئات، Shop B أرخص في 5 من 8 فئات مقارَنة.',
         categoryNone: 'مقارنة الفئات غير متاحة بعد.',
         observed: 'منتجًا مرصودًا',
-        confirmed: '0 مؤكدة كمطابقات',
+        eitherShop: 'منتجات يبيعها أحد المتجرين',
         openPrices: 'قارن حسب الفئة',
         browse: 'تصفح كل المنتجات',
         products: 'المنتجات المتتبَّعة',
         more: 'Shop A يعرض 112 منتجًا أكثر',
         byCategory: 'السعر الوسيط حسب الفئة',
-        catCheaper: 'من 8 فئة أرخص لدى Shop B',
+        catCheaper: 'من 8 فئات أرخص لدى Shop B',
         median: 'السعر الوسيط',
         none: 'غير مُقاس',
         promo: 'ضمن العروض',
@@ -101,12 +103,14 @@ for (const locale of ['en', 'ar'] as const) {
         categories: 'أين يكون كل متجر أرخص',
         tooFew: 'عدد قليل جدًا (n = 3)',
         same: 'متساويان',
+        cheaper: 'Shop B أرخص',
         basket: 'المنتجات المطابَقة وجهًا لوجه',
         tally: 'Shop A أرخص في 3، السعر نفسه في 1، Shop B أرخص في 2',
         top: 'أكبر التخفيضات',
         topAt: 'أعمق التخفيضات لدى Shop A',
         dataset: 'مجموعة البيانات الحالية',
         blocked: 'هذا المتجر يمنع الجمع.',
+        noRetailers: 'لا يوجد متجر مُجمَّع لعرض بياناته.',
         noImage: 'لا توجد صورة',
         credit: 'صور المنتجات: Sephora، من img-product.sephora.me.',
         creditUlta: 'صور المنتجات: Ulta Beauty، من media.alshaya.com.',
@@ -114,13 +118,15 @@ for (const locale of ['en', 'ar'] as const) {
     : {
         title: 'Overview',
         early: 'Early read:',
+        earlyNote: '1 early sample item is not counted.',
         lead: 'Shop A is cheaper on 3 of the 6 matched products. Shop B is cheaper on 2; 1 costs the same.',
+        scope: 'That is 6 of the 15 products either shop sells; the rest cannot be compared yet.',
         see: 'See the 6 products',
         emptyTitle: 'No products are matched between Shop A and Shop B yet.',
         categoryRead: 'By category medians, Shop B is cheaper in 5 of the 8 compared categories.',
         categoryNone: 'Category comparison is not available yet.',
         observed: 'products seen',
-        confirmed: '0 confirmed as matches',
+        eitherShop: 'Products either shop sells',
         openPrices: 'Compare by category',
         browse: 'Browse all products',
         products: 'Products tracked',
@@ -135,12 +141,14 @@ for (const locale of ['en', 'ar'] as const) {
         categories: 'Where each shop is cheaper',
         tooFew: 'too few (n = 3)',
         same: 'same',
+        cheaper: 'Shop B cheaper',
         basket: 'Matched products, head to head',
         tally: 'Shop A cheaper on 3, same price on 1, Shop B cheaper on 2',
         top: 'Top discounts',
         topAt: 'Deepest discounts at Shop A',
         dataset: 'Current dataset',
         blocked: 'This retailer blocks collection.',
+        noRetailers: 'No collected retailer to report on.',
         noImage: 'No image',
         credit: 'Product images: Sephora, served from img-product.sephora.me.',
         creditUlta: 'Product images: Ulta Beauty, served from media.alshaya.com.',
@@ -159,9 +167,14 @@ for (const locale of ['en', 'ar'] as const) {
       // One page: no Overview/Compare tabs any more.
       await expect(page.getByRole('tab')).toHaveCount(0);
 
-      // The headline from /compare's own counts: 3 + 2 + 1 of 6, out of 15 candidate pairs.
+      // The headline from /compare's own counts: 3 + 2 + 1 of 6, of the 15 products either shop
+      // sells; "early" only because the golden /compare carries an early_excluded caveat (count 1).
       const headline = page.locator('#headline-title');
       await expect(headline).toHaveText(`${T.early} ${T.lead}`);
+      const sentence = page.locator('section', { has: headline });
+      await expect(sentence).toContainText(T.scope);
+      await expect(sentence).toContainText(T.earlyNote);
+      await expect(sentence).not.toContainText(/candidate|مرشح/);
       await expect(page.getByRole('link', { name: T.see, exact: true })).toHaveAttribute(
         'href',
         /\/compare\/\?retailers=shop_a(,|%2C)shop_b$/,
@@ -183,8 +196,11 @@ for (const locale of ['en', 'ar'] as const) {
       const cats = page.locator('#w-categories');
       await expect(h2(page, T.categories)).toBeVisible();
       await expect(cats.getByRole('rowheader')).toHaveCount(9);
-      await expect(cats.locator('.gapbar i[data-side=good]')).toHaveCount(5);
-      await expect(cats.locator('.gapbar i[data-side=bad]')).toHaveCount(2);
+      // The gap bar is in the cheaper shop's colour and names it; never a green/red verdict.
+      await expect(cats.locator('.gapbar i[data-shop=shop_b]')).toHaveCount(5);
+      await expect(cats.locator('.gapbar i[data-shop=shop_a]')).toHaveCount(2);
+      await expect(cats.getByText(T.cheaper, { exact: true })).toHaveCount(5);
+      await expect(cats.locator('[data-side], .text-good, .text-bad')).toHaveCount(0);
       await expect(cats.getByText(T.tooFew, { exact: true })).toBeVisible();
       await expect(cats.getByText(T.same, { exact: true })).toBeVisible();
 
@@ -223,14 +239,14 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.locator('#headline-title')).toHaveText(T.emptyTitle);
       const headline = page.locator('section', { has: page.locator('#headline-title') });
       await expect(headline).toContainText(T.categoryRead);
-      // Readiness from /compare's own sides: what each shop has observed, and the candidate pairs.
+      // Readiness from /compare's own sides: what each shop has observed, and the products either
+      // shop sells; with no summary there is no confirmed count, so none is shown (never "0").
       const tiles = headline.getByRole('listitem');
       await expect(tiles).toHaveCount(3);
       await expect(tiles.nth(0)).toContainText('14');
       await expect(tiles.nth(0)).toContainText(T.observed);
       await expect(tiles.nth(1)).toContainText('12');
-      await expect(tiles.nth(2)).toContainText('15');
-      await expect(tiles.nth(2)).toContainText(T.confirmed);
+      await expect(tiles.nth(2)).toHaveText(`${T.eitherShop}15`);
       await expect(headline.getByRole('link', { name: T.openPrices, exact: true })).toHaveAttribute(
         'href',
         /\/prices\/$/,
@@ -370,11 +386,15 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 
-    test('a blocked retailer: why, and the dataset; no sentence, tiles or charts', async ({ page }) => {
+    test('a blocked retailer: one plain line and the dataset; no note box, sentence, tiles or charts', async ({
+      page,
+    }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBlocked) });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.getByRole('note').filter({ hasText: T.blocked })).toBeVisible();
+      await expect(page.getByText(T.noRetailers)).toBeVisible();
+      await expect(page.locator('main')).not.toContainText(T.blocked);
+      await expect(page.locator('main [role=note]')).toHaveCount(0);
       await expect(h2(page, T.dataset)).toBeVisible();
       await expect(page.locator('#headline-title')).toHaveCount(0);
       await expect(page.getByText(T.products, { exact: true })).toHaveCount(0);

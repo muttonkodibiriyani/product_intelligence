@@ -18,8 +18,9 @@ type Pair = { base: string; other: string; name: (id: string) => string };
 
 /**
  * Where each shop is cheaper, category by category, on the full catalogues: both shops' product
- * counts as paired bars, both medians, and the API's gap as a zero-centred bar with the signed
- * percentage. Plain HTML and CSS; nothing is recomputed from the medians on screen.
+ * counts as paired bars, both medians, and the API's gap as a zero-centred bar in the cheaper
+ * shop's colour with the signed percentage and the shop named (no green or red: a lower median is
+ * a fact, not a verdict). Plain HTML and CSS; nothing is recomputed from the medians on screen.
  */
 export function CategoryHeadToHead({
   state,
@@ -81,36 +82,47 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
   const other = pair.name(pair.other);
   const label = (b: Bucket) => b.label?.[lc] || t(`name.${b.key}`);
   // The widest count and gap on the table, so every bar is read against the same scale.
-  const maxN = Math.max(0, ...data.buckets.flatMap((b) => [side(b, pair.base).n, side(b, pair.other).n]));
+  const maxN = Math.max(
+    0,
+    ...data.buckets.flatMap((b) => [side(b, pair.base)?.n ?? 0, side(b, pair.other)?.n ?? 0]),
+  );
   const maxGap = widestGap(data.buckets);
-  const currency = data.buckets.map((b) => side(b, pair.base).median?.currency).find(Boolean) ?? null;
+  const currency = data.buckets.map((b) => side(b, pair.base)?.median?.currency).find(Boolean) ?? null;
 
+  /** A side's product count as a bar; a side the API left out has no count, so no bar and no 0. */
   const count = (b: Bucket, id: string, i: 0 | 1) => {
-    const n = side(b, id).n;
+    const s = side(b, id);
     return (
       <span className="grid grid-cols-[1fr_auto] items-center gap-2">
         <span aria-hidden className="block h-1.5 overflow-hidden rounded-full bg-line-2">
-          <i
-            className="block h-full rounded-full"
-            style={{ width: `${share(n, maxN)}%`, background: retailerTone(id, i) }}
-          />
+          {s && (
+            <i
+              className="block h-full rounded-full"
+              style={{ width: `${share(s.n, maxN)}%`, background: retailerTone(id, i) }}
+            />
+          )}
         </span>
         <span className="text-xs text-ink-2 tabular-nums">
           <span className="sr-only">{pair.name(id)} </span>
-          {formatCount(n, locale)}
+          {s ? formatCount(s.n, locale) : '–'}
         </span>
       </span>
     );
   };
 
-  /** A side's median, or in its place why there is none: blocked by the retailer, or too few. */
+  /**
+   * A side's median, or in its place why there is none: blocked by the retailer, too few priced
+   * products (the API's own count), or not sent for this side at all.
+   */
   const median = (b: Bucket, id: string) => {
     const s = side(b, id);
-    if (s.status === 'ok' && s.median && isValidPrice(s.median))
+    if (s?.status === 'ok' && s.median && isValidPrice(s.median))
       return <Money m={s.median} locale={locale} />;
     return (
       <span className="text-xs text-ink-2">
-        {s.status === 'blocked' ? (
+        {!s ? (
+          t('sideMissing')
+        ) : s.status === 'blocked' ? (
           <Known t={tr} v={s.reason ?? 'retailer_blocked'} />
         ) : (
           t('tooFew', { n: s.n })
@@ -119,7 +131,10 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
     );
   };
 
-  /** The gap as the API sent it: a bar off the zero line toward the cheaper side, and the number. */
+  /**
+   * The gap as the API sent it: a bar off the zero line toward the cheaper side, in that shop's
+   * colour, the signed number, and the shop named.
+   */
   const gap = (b: Bucket) => {
     const who = bucketCheaper(b, pair.base, pair.other);
     if (who === null)
@@ -135,15 +150,25 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
           <span className="text-xs text-ink-2">{t('same')}</span>
         </span>
       );
-    // Negative means `other` is cheaper: the fill runs to the start side and reads as good for it.
+    // Negative means `other` is cheaper: the fill runs to the start side, in `other`'s colour.
     const otherCheaper = who === pair.other;
     return (
       <span className="inline-flex items-center gap-2">
         <span className="gapbar" aria-hidden>
-          <i data-side={otherCheaper ? 'good' : 'bad'} style={{ width: `${gapWidth(b.gapPct!, maxGap)}%` }} />
+          <i
+            data-shop={who}
+            data-at={otherCheaper ? 'start' : 'end'}
+            style={{
+              width: `${gapWidth(b.gapPct!, maxGap)}%`,
+              background: retailerTone(who, otherCheaper ? 1 : 0),
+            }}
+          />
         </span>
-        <span className={`text-sm font-medium ${otherCheaper ? 'text-good' : 'text-bad'}`}>
+        <span className="text-sm font-medium tabular-nums">
           <Pct v={b.gapPct!} />
+        </span>
+        <span className="text-xs whitespace-nowrap text-ink-2">
+          {t('cheaperAt', { shop: pair.name(who) })}
         </span>
       </span>
     );
@@ -196,31 +221,13 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
         {currency ? `${t('inCurrency', { currency })} ` : ''}
         {t('note', { base, other })}
         {data.minN > 0 && ` ${t('minN', { n: data.minN })}`}
-        {data.unmapped.length > 0 &&
-          ` ${t('unmapped', {
-            n: formatCount(
-              data.unmapped.reduce((a, u) => a + u.n, 0),
-              locale,
-            ),
-          })}`}
+        {data.unmapped.length > 0 && ` ${t('unmapped', { n: data.unmapped.reduce((a, u) => a + u.n, 0) })}`}
       </p>
     </>
   );
 }
 
-/** A bucket's side for a retailer; a side the API left out is an empty, too-few one. */
-function side(b: Bucket, id: string): Side {
-  return (
-    b.sides[id] ?? {
-      n: 0,
-      median: null,
-      mean: null,
-      p25: null,
-      p75: null,
-      min: null,
-      max: null,
-      status: 'too_few',
-      reason: null,
-    }
-  );
+/** A bucket's side for a retailer, or null when the API left it out: not a count of zero. */
+function side(b: Bucket, id: string): Side | null {
+  return b.sides[id] ?? null;
 }

@@ -163,9 +163,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(kpis).not.toContainText('%');
       await expect(page.locator('main p').filter({ hasText: T.subtitle })).toBeVisible();
 
-      // The API's own caveat text, in the user's language.
-      for (const c of [C.was, C.snap, C.parents])
-        await expect(page.getByText(ar ? c.ar : c.en, { exact: true }).first()).toBeVisible();
+      // No caveat note boxes on the Overview (owner decision, #171): the tiles carry the states and
+      // the dataset panel the detail; the raw was-price caveat is never pasted onto the page.
+      await expect(page.getByText(ar ? C.was.ar : C.was.en)).toHaveCount(0);
+      await expect(page.locator('main [role=note]:not(#dataset [role=note])')).toHaveCount(0);
 
       // The dataset panel: the imported retailer has an import date, the others keep "since".
       const row = page.locator('#dataset tr').filter({ hasText: 'Ulta Beauty UAE' });

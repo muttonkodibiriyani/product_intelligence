@@ -131,8 +131,8 @@
         "tailEqual": "والمنتجات الأخرى، وعددها {equal, number, latn}، بالسعر نفسه.",
         "tie": "{base} و{other} كل منهما أرخص في {k, number, latn} من {n, plural, zero {لا منتجات مطابَقة} one {منتج مطابَق واحد} two {منتجين مطابَقين} few {{n, number, latn} منتجات مطابَقة} many {{n, number, latn} منتجًا مطابَقًا} other {{n, number, latn} منتج مطابَق}}.",
         "allSame": "كل المنتجات المطابَقة، وعددها {n, number, latn}، بالسعر نفسه لدى {base} و{other}.",
-        "basket": "السلة نفسها من {n, number, latn} منتج تكلف <b><baseAmount></baseAmount></b> لدى {base} و<b><otherAmount></otherAmount></b> لدى {other}، بفجوة وسيطة <pct></pct>.",
-        "scope": "رُوجع {n, number, latn} فقط من {total, number, latn} زوجًا مرشحًا حتى الآن، فهذا ليس حكمًا على الكتالوج كله.",
+        "basket": "السلة نفسها من {n, plural, zero {لا منتجات} one {منتج واحد} two {منتجين} few {{n, number, latn} منتجات} many {{n, number, latn} منتجًا} other {{n, number, latn} منتج}} تكلف <b><baseAmount></baseAmount></b> لدى {base} و<b><otherAmount></otherAmount></b> لدى {other}، بفجوة وسيطة <pct></pct>.",
+        "scope": "أي {n, number, latn} من {total, plural, zero {لا منتجات} one {منتج واحد} two {منتجين} few {{total, number, latn} منتجات} many {{total, number, latn} منتجًا} other {{total, number, latn} منتج}} يبيعها أحد المتجرين؛ ولا يمكن مقارنة الباقي بعد.",
         "see": "اعرض {n, plural, zero {المنتجات} one {المنتج} two {المنتجين} few {المنتجات الـ{n, number, latn}} many {المنتجات الـ{n, number, latn}} other {المنتجات الـ{n, number, latn}}}"
       },
       "empty": {
@@ -142,9 +142,9 @@
         "categoryTie": "بحسب الأسعار الوسيطة للفئات، {base} و{other} كل منهما أرخص في {k, number, latn} من {n, plural, zero {لا فئات مقارَنة} one {فئة مقارَنة واحدة} two {فئتين مقارَنتين} few {{n, number, latn} فئات مقارَنة} many {{n, number, latn} فئة مقارَنة} other {{n, number, latn} فئة مقارَنة}}.",
         "categorySame": "بحسب الأسعار الوسيطة للفئات، {base} و{other} متساويان في كل الفئات المقارَنة، وعددها {n, number, latn}.",
         "categoryNone": "مقارنة الفئات غير متاحة بعد.",
-        "observed": "منتجًا مرصودًا",
-        "candidates": "الأزواج المرشحة",
-        "confirmed": "{n} مؤكدة كمطابقات",
+        "observed": "{n, plural, zero {منتج مرصود} one {منتج مرصود} two {منتجان مرصودان} few {منتجات مرصودة} many {منتجًا مرصودًا} other {منتج مرصود}}",
+        "eitherShop": "منتجات يبيعها أحد المتجرين",
+        "confirmed": "{n, plural, zero {لا مطابقة مؤكدة بعد} one {مطابقة مؤكدة واحدة} two {مطابقتان مؤكدتان} few {{n, number, latn} مطابقات مؤكدة} many {{n, number, latn} مطابقة مؤكدة} other {{n, number, latn} مطابقة مؤكدة}}",
         "browse": "تصفح كل المنتجات"
       }
     }

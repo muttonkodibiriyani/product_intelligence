@@ -4,13 +4,12 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { CategoryCompare } from '@/lib/api/category-compare';
-import { formatCount, formatDate } from '@/lib/format';
+import { formatCount, formatDate, loc } from '@/lib/format';
 import { navHref } from '@/lib/nav';
 import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
 import { DatasetStatus } from '../dataset-status';
 import { ErrorNotice } from '../error-notice';
 import { Card } from '../ui/card';
-import { CaveatNotes, EnvNotes } from '../ui/env-notes';
 import { Known } from '../ui/known';
 import { Money, Pct } from '../ui/money';
 import { PageHeader } from '../ui/page-header';
@@ -30,7 +29,7 @@ import {
   promotionsHref,
 } from '../widgets/model';
 import { CategoryHeadToHead } from './category-head-to-head';
-import { categoryRead, retailerTone, verdict, type CategoryRead } from './model';
+import { categoryRead, earlyExcluded, retailerTone, verdict, type CategoryRead } from './model';
 
 type Pair = NonNullable<ReturnType<typeof useRetailers>['pair']>;
 type Comparison = Schemas['Comparison'];
@@ -94,14 +93,11 @@ function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair 
 
   if (s.error && s.rows.length === 0) return <ErrorNotice error={s.error.error} onRetry={s.error.retry} />;
   if (s.loading && s.rows.length === 0) return <Loading kind="chart">{tc('loading')}</Loading>;
+  // Nothing to report on (every retailer withheld or thin): the dataset below says why.
   if (s.rows.length === 0)
     return (
       <div className="space-y-6">
-        {s.empty.length > 0 ? (
-          <EnvNotes env={s.empty[0]!} />
-        ) : (
-          <p className="text-sm text-ink-2">{t('noRetailers')}</p>
-        )}
+        <p className="text-sm text-ink-2">{t('noRetailers')}</p>
         <Dataset />
       </div>
     );
@@ -110,12 +106,6 @@ function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair 
   const matched = cmp.kind === 'ready' && cmp.data.summary !== null && cmp.data.summary.n > 0;
   return (
     <div className="space-y-6">
-      {s.rows.map((r) => (
-        <CaveatNotes key={r.retailer} caveats={r.caveats} />
-      ))}
-      {s.empty.map((e, i) => (
-        <EnvNotes key={`empty-${i}`} env={e} />
-      ))}
       {pair && <Headline pair={pair} cmp={cmp} read={read} cat={cat} />}
       <section id="kpi-band" aria-labelledby="kpi-band-title">
         <h2 id="kpi-band-title" className="sr-only">
@@ -137,10 +127,12 @@ function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair 
 
 /**
  * The one-line answer, from /compare's own counts: who is cheaper on how many of the matched
- * products, what the same basket costs at each shop, and how much of the candidate set that is.
- * Without a matched product yet it says so, with what is ready and the category read instead.
+ * products, what the same basket costs at each shop, and how many of the products either shop
+ * sells that is (`total` counts every product offered at either shop, matched or not). It is an
+ * "early read" only when the API's own early_excluded caveat says items were left out, never by
+ * default. Without a matched product yet it says so, with what is ready and the category read.
  */
-function Headline({
+export function Headline({
   pair,
   cmp,
   read,
@@ -183,8 +175,7 @@ function Headline({
   const leaderId = v.kind === 'lead' ? (v.leader === 'base' ? pair.base : pair.other) : null;
   const leader = leaderId ? pair.name(leaderId) : '';
   const trailer = v.kind === 'lead' ? (v.leader === 'base' ? other : base) : '';
-  const total = data.total;
-  const early = total > s.n;
+  const early = cmp.kind === 'ready' ? earlyExcluded(cmp.env.caveats) : null;
   const tail =
     v.kind !== 'lead'
       ? ''
@@ -221,7 +212,8 @@ function Headline({
           pct: () => <Pct v={s.medianGapPct} />,
           b: strong,
         })}
-        {early && ` ${t('scope', { n: s.n, total })}`}{' '}
+        {` ${t('scope', { n: s.n, total: data.total })}`}
+        {early && ` ${loc(early.caveat, locale)}`}{' '}
         <Link
           href={compareHref(locale, pair)}
           className="font-medium text-ink underline underline-offset-2 focus-visible:outline-2"
@@ -234,10 +226,11 @@ function Headline({
 }
 
 /**
- * No matched product yet: one sentence, what each side has ready (the API's own observed and
- * candidate counts), the category read when the medians are served, and the two places to go.
+ * No matched product yet: one sentence, what each side has ready (the API's own observed counts
+ * and how many products either shop sells), the category read when the medians are served, and
+ * the two places to go. A count the API did not send (no summary) is left out, never shown as 0.
  */
-function EmptyHeadline({
+export function EmptyHeadline({
   pair,
   data,
   reason,
@@ -291,7 +284,7 @@ function EmptyHeadline({
                 {formatCount(sides[i]!.observed, locale)}
               </p>
               <p className="text-xs text-ink-2">
-                {t('observed')}
+                {t('observed', { n: sides[i]!.observed })}
                 {sides[i]!.reason && (
                   <>
                     {' · '}
@@ -302,11 +295,9 @@ function EmptyHeadline({
             </li>
           ))}
           <li className="rounded-ctl bg-surface-2 px-4 py-3">
-            <p className="text-xs font-medium text-ink-2">{t('candidates')}</p>
+            <p className="text-xs font-medium text-ink-2">{t('eitherShop')}</p>
             <p className="mt-1 text-xl font-semibold tabular-nums">{formatCount(data!.total, locale)}</p>
-            <p className="text-xs text-ink-2">
-              {t('confirmed', { n: formatCount(data!.summary?.n ?? 0, locale) })}
-            </p>
+            {data!.summary && <p className="text-xs text-ink-2">{t('confirmed', { n: data!.summary.n })}</p>}
           </li>
         </ul>
       )}
@@ -324,9 +315,9 @@ function EmptyHeadline({
 
 /**
  * The matched basket head to head: what the same products cost at each shop, the API's median
- * gap, and a tally of who is cheaper how often, out of the candidate pairs it was counted on.
+ * gap, and a tally of who is cheaper how often, out of the products either shop sells.
  */
-function MatchedBasket({ pair, data }: { pair: Pair; data: Comparison }) {
+export function MatchedBasket({ pair, data }: { pair: Pair; data: Comparison }) {
   const t = useTranslations('widgets.basket');
   const locale = useLocale();
   const s = data.summary!;
