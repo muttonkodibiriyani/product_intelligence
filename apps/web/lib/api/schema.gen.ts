@@ -55,6 +55,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalogues/{retailer}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Catalogue */
+        get: operations["get_catalogue_api_v1_catalogues__retailer__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogues/{retailer}/skus/{sku}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Catalogue Sku */
+        get: operations["get_catalogue_sku_api_v1_catalogues__retailer__skus__sku__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/category-compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Category Compare
+         * @description Category-to-category prices across both full catalogues on the latest date: per category, each retailer's n, median, mean, p25, p75, min and max, and the gap between the two medians. No product matching: like-for-like pairs are /compare. A cell with fewer than minCohort products is tooFew (its prices null, never 0) and its row has no gap. Gap sign convention: retailers=<base>,<other>; gapPct = (other median - base median) / base median x 100, so a positive gap means the other retailer's median is higher and `cheaper` names the cheaper side. coverage gives each side's priced, mapped and unmapped counts and its share in the 'other' bucket; unmapped lists the breadcrumbs taxonomy@1 can't place.
+         */
+        get: operations["get_category_compare_api_v1_category_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/compare": {
         parameters: {
             query?: never;
@@ -394,6 +448,7 @@ export interface components {
             /** Location */
             location: string | null;
             price: components["schemas"]["MoneyValue"] | null;
+            priceFlag?: components["schemas"]["PriceFlag"] | null;
             /** Promopct */
             promoPct: string | null;
             rating: components["schemas"]["Rating"] | null;
@@ -422,7 +477,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.7.0
+             * @default 1.10.0
              */
             apiVersion: string;
             /** Currency */
@@ -444,7 +499,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-01.3
+             * @default 2026-10-01.4
              */
             metricVersion: string;
             /** Scope */
@@ -571,6 +626,146 @@ export interface components {
             matchClass: components["schemas"]["MatchClass"];
             reviewState: components["schemas"]["ReviewState"];
         };
+        /** CatalogueDetail */
+        CatalogueDetail: {
+            /** Children */
+            children: components["schemas"]["RelatedSku"][];
+            /** Duplicateimagesremoved */
+            duplicateImagesRemoved: number;
+            /** Generation */
+            generation: string;
+            /** Images */
+            images: components["schemas"]["GalleryImage"][];
+            /**
+             * Importedat
+             * Format: date-time
+             */
+            importedAt: string;
+            /** Parents */
+            parents: components["schemas"]["RelatedSku"][];
+            /** Provenance */
+            provenance: string;
+            record: components["schemas"]["CatalogueRecord"];
+            /** Retailer */
+            retailer: string;
+        };
+        /** CatalogueRecord */
+        CatalogueRecord: {
+            /**
+             * Capturedat
+             * Format: date-time
+             */
+            capturedAt: string;
+            /**
+             * Children
+             * @default []
+             */
+            children: components["schemas"]["SkuReference"][];
+            /** Excludedparentsummary */
+            excludedParentSummary: boolean;
+            /** Groupingmastersku */
+            groupingMasterSku: string;
+            /**
+             * Imageids
+             * @default []
+             */
+            imageIds: string[];
+            /** Isvariant */
+            isVariant: boolean;
+            /** Name */
+            name: string;
+            /** Optionvalues */
+            optionValues?: {
+                [key: string]: string;
+            };
+            /**
+             * Parents
+             * @default []
+             */
+            parents: components["schemas"]["SkuReference"][];
+            /** Producttype */
+            productType: string;
+            /** Sku */
+            sku: string;
+            sourceIds: components["schemas"]["SourceIds"];
+        };
+        /** CatalogueSummary */
+        CatalogueSummary: {
+            /**
+             * Capturedfrom
+             * Format: date-time
+             */
+            capturedFrom: string;
+            /**
+             * Capturedto
+             * Format: date-time
+             */
+            capturedTo: string;
+            /** Excludedparentsummaries */
+            excludedParentSummaries: number;
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            /** Generation */
+            generation: string;
+            /** Imageassets */
+            imageAssets: number;
+            /**
+             * Importedat
+             * Format: date-time
+             */
+            importedAt: string;
+            /** Parentchildlinks */
+            parentChildLinks: number;
+            /** Provenance */
+            provenance: string;
+            /** Retailer */
+            retailer: string;
+            /** Skurecords */
+            skuRecords: number;
+            /** Skuswithimages */
+            skusWithImages: number;
+            /** Sourcesha256 */
+            sourceSha256: string;
+            /** Uniqueimagecontents */
+            uniqueImageContents: number;
+            /** Unresolvedskus */
+            unresolvedSkus: number;
+            /** Variantskus */
+            variantSkus: number;
+        };
+        /** CategoryComparison */
+        CategoryComparison: {
+            /** Base */
+            base: string;
+            /**
+             * Convention
+             * @default gap compares the two cells' medians: gapAmount = other median - base median; gapPct = (other median - base median) / base median x 100. A positive gap means the other retailer's median is higher (dearer) than the base's; see cheaper. A category-level gap reflects each retailer's range in the category, not like-for-like items.
+             */
+            convention: string;
+            coverage: components["schemas"]["CoverageSides"];
+            level: components["schemas"]["Level"];
+            /**
+             * Mincohort
+             * @default 5
+             */
+            minCohort: number;
+            /** Other */
+            other: string;
+            /** Rows */
+            rows: components["schemas"]["CategoryRow"][];
+            /**
+             * Taxonomy
+             * @default taxonomy@1
+             */
+            taxonomy: string;
+            /** Unmapped */
+            unmapped: components["schemas"]["UnmappedPath"][];
+            /** Unmappedpaths */
+            unmappedPaths: number;
+        };
         /** CategoryNode */
         CategoryNode: {
             /**
@@ -582,6 +777,18 @@ export interface components {
             count: number;
             /** Key */
             key: string;
+        };
+        /** CategoryRow */
+        CategoryRow: {
+            base: components["schemas"]["Cell"];
+            gap: components["schemas"]["Gap"] | null;
+            gapReason: components["schemas"]["Reason"] | null;
+            /** Key */
+            key: string;
+            label: components["schemas"]["Label"];
+            other: components["schemas"]["Cell"];
+            /** Shared */
+            shared: boolean;
         };
         /** CategoryShare */
         CategoryShare: {
@@ -595,7 +802,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included" | "invalid_price_excluded" | "unmapped_category" | "breadcrumb_missing";
         /** CaveatView */
         CaveatView: {
             /** Ar */
@@ -607,6 +814,25 @@ export interface components {
             params: {
                 [key: string]: string;
             };
+        };
+        /**
+         * Cell
+         * @description One context's prices in one category. Below ``MIN_COHORT`` only ``n`` is served.
+         */
+        Cell: {
+            max: components["schemas"]["MoneyValue"] | null;
+            mean: components["schemas"]["MoneyValue"] | null;
+            median: components["schemas"]["MoneyValue"] | null;
+            min: components["schemas"]["MoneyValue"] | null;
+            /** N */
+            n: number;
+            p25: components["schemas"]["MoneyValue"] | null;
+            p75: components["schemas"]["MoneyValue"] | null;
+            reason: components["schemas"]["Reason"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Toofew */
+            tooFew: boolean;
         };
         /**
          * Channel
@@ -635,6 +861,7 @@ export interface components {
             };
             /** Equalcount */
             equalCount: number;
+            gapHist: components["schemas"]["GapHistogram"];
             /** Meangappct */
             meanGapPct: string;
             /** Mediangappct */
@@ -715,10 +942,10 @@ export interface components {
             /** Observed */
             observed: boolean;
         };
-        /** Coverage */
-        Coverage: {
-            /** Retailers */
-            retailers: components["schemas"]["RetailerCoverage"][];
+        /** CoverageSides */
+        CoverageSides: {
+            base: components["schemas"]["pi_metrics__category_compare__Coverage"];
+            other: components["schemas"]["pi_metrics__category_compare__Coverage"];
         };
         /**
          * DecidedBy
@@ -776,6 +1003,48 @@ export interface components {
             reason?: components["schemas"]["Reason"] | null;
             status: components["schemas"]["Status"];
         };
+        /** Envelope[CatalogueDetail] */
+        Envelope_CatalogueDetail_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["CatalogueDetail"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** Envelope[CatalogueSummary] */
+        Envelope_CatalogueSummary_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["CatalogueSummary"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** Envelope[CategoryComparison] */
+        Envelope_CategoryComparison_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["CategoryComparison"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
         /** Envelope[Comparison] */
         Envelope_Comparison_: {
             /**
@@ -798,7 +1067,7 @@ export interface components {
              */
             caveats: components["schemas"]["CaveatView"][];
             cohort?: components["schemas"]["Cohort"] | null;
-            data: components["schemas"]["Coverage"] | null;
+            data: components["schemas"]["pi_metrics__coverage__Coverage"] | null;
             detail?: components["schemas"]["Localized"] | null;
             meta: components["schemas"]["ApiMeta"];
             reason?: components["schemas"]["Reason"] | null;
@@ -1022,12 +1291,42 @@ export interface components {
          * @enum {string}
          */
         FreshnessStatus: "fresh" | "aging" | "stale" | "snapshot";
+        /** GalleryImage */
+        GalleryImage: {
+            /** Assetid */
+            assetId: string;
+            /** Caption */
+            caption: string;
+            /** Height */
+            height: number;
+            /** Roles */
+            roles: string[];
+            /** Sha256 */
+            sha256: string;
+            /** Sourceurl */
+            sourceUrl: string | null;
+            /** Url */
+            url: string | null;
+            /** Width */
+            width: number;
+        };
         /** Gap */
         Gap: {
             amount: components["schemas"]["MoneyValue"];
             cheaper: components["schemas"]["Cheaper"];
             /** Pct */
             pct: string;
+        };
+        /**
+         * GapHistogram
+         * @description Counted pairs by ``gap.pct``. ``counts`` has ``len(edges) + 1`` bins: bin 0 is below
+         *     ``edges[0]``, bin k is ``[edges[k-1], edges[k])``, and the last is at or above ``edges[-1]``.
+         */
+        GapHistogram: {
+            /** Counts */
+            counts: number[];
+            /** Edges */
+            edges: string[];
         };
         /** GapItem */
         GapItem: {
@@ -1097,6 +1396,13 @@ export interface components {
             n: number;
             reason: components["schemas"]["Reason"] | null;
         };
+        /** Label */
+        Label: {
+            /** Ar */
+            ar: string;
+            /** En */
+            en: string;
+        };
         /** LadderRow */
         LadderRow: {
             /** Category */
@@ -1135,6 +1441,11 @@ export interface components {
              */
             truncated: boolean;
         };
+        /**
+         * Level
+         * @enum {string}
+         */
+        Level: "bucket" | "common";
         /** Localized */
         Localized: {
             /** Ar */
@@ -1255,6 +1566,7 @@ export interface components {
             /** Location */
             location: string | null;
             price: components["schemas"]["MoneyValue"] | null;
+            priceFlag?: components["schemas"]["PriceFlag"] | null;
             /** Promopct */
             promoPct: string | null;
             rating: components["schemas"]["Rating"] | null;
@@ -1305,6 +1617,11 @@ export interface components {
             name: string;
             otherPrice: components["schemas"]["MoneyValue"] | null;
         };
+        /**
+         * PriceFlag
+         * @enum {string}
+         */
+        PriceFlag: "invalid_low";
         /** PriceHistogram */
         PriceHistogram: {
             /** Counts */
@@ -1343,6 +1660,10 @@ export interface components {
             matches: components["schemas"]["CardMatch"][];
             /** Name */
             name: string;
+            /** Priceflags */
+            priceFlags?: {
+                [key: string]: components["schemas"]["PriceFlag"];
+            };
             /** Prices */
             prices: {
                 [key: string]: components["schemas"]["MoneyValue"] | null;
@@ -1472,6 +1793,20 @@ export interface components {
          * @enum {string}
          */
         Reason: "capability_off" | "field_not_collected" | "retailer_blocked" | "retailer_partial" | "cohort_too_small" | "matches_unreviewed" | "no_match" | "not_in_scope" | "currency_mismatch" | "not_applicable" | "was_price_unverified";
+        /** RelatedSku */
+        RelatedSku: {
+            /** Name */
+            name: string | null;
+            /** Resolved */
+            resolved: boolean;
+            /** Selectionlabels */
+            selectionLabels: string[];
+            /** Selections */
+            selections: string[];
+            /** Sku */
+            sku: string;
+            sourceIds: components["schemas"]["SourceIds"] | null;
+        };
         /** RetailerAvailability */
         RetailerAvailability: {
             /** Counts */
@@ -1622,6 +1957,29 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** SkuReference */
+        SkuReference: {
+            /**
+             * Selections
+             * @default []
+             */
+            selections: string[];
+            /** Sku */
+            sku: string;
+        };
+        /** SourceIds */
+        SourceIds: {
+            /** Catalogueid */
+            catalogueId?: string | null;
+            /** Externalid */
+            externalId?: string | null;
+            /** Stockid */
+            stockId?: number | null;
+            /** Structuredid */
+            structuredId?: string | number | null;
+            /** Structuredproductid */
+            structuredProductId?: string | number | null;
+        };
         /**
          * SourceInfo
          * @description One source of a view, as its own file has it.
@@ -1679,6 +2037,7 @@ export interface components {
             freshness: components["schemas"]["Freshness"];
             /** Ladder */
             ladder: components["schemas"]["LadderRow"][] | null;
+            meanPrice: components["schemas"]["MoneyValue"] | null;
             medianPrice: components["schemas"]["MoneyValue"] | null;
             priceHist: components["schemas"]["PriceHistogram"] | null;
             /** Priced */
@@ -1713,10 +2072,50 @@ export interface components {
             price: components["schemas"]["MoneyValue"];
             regular: components["schemas"]["MoneyValue"];
         };
+        /**
+         * Unmapped
+         * @enum {string}
+         */
+        Unmapped: "no_breadcrumb" | "no_rule" | "ambiguous";
+        /**
+         * UnmappedPath
+         * @description A breadcrumb taxonomy@1 doesn't place at ``common``, so the next rule can be written.
+         */
+        UnmappedPath: {
+            /** N */
+            n: number;
+            /** Path */
+            path: string[];
+            reason: components["schemas"]["Unmapped"];
+            /** Retailer */
+            retailer: string;
+        };
         /** Withheld */
         Withheld: {
             reason: components["schemas"]["Reason"];
             section: components["schemas"]["Section"];
+        };
+        /** Coverage */
+        pi_metrics__category_compare__Coverage: {
+            /** Mapped */
+            mapped: number;
+            /** Nobreadcrumb */
+            noBreadcrumb: number;
+            /** Otherbucket */
+            otherBucket: number;
+            /** Otherpct */
+            otherPct: string | null;
+            /** Priced */
+            priced: number;
+            /** Retailer */
+            retailer: string;
+            /** Unmapped */
+            unmapped: number;
+        };
+        /** Coverage */
+        pi_metrics__coverage__Coverage: {
+            /** Retailers */
+            retailers: components["schemas"]["RetailerCoverage"][];
         };
     };
     responses: never;
@@ -1947,6 +2346,300 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_Availability_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_catalogue_api_v1_catalogues__retailer__get: {
+        parameters: {
+            query?: {
+                market?: string | null;
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                retailer: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_CatalogueSummary_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_catalogue_sku_api_v1_catalogues__retailer__skus__sku__get: {
+        parameters: {
+            query?: {
+                market?: string | null;
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                retailer: string;
+                sku: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_CatalogueDetail_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_category_compare_api_v1_category_compare_get: {
+        parameters: {
+            query: {
+                market?: string | null;
+                scope?: string | null;
+                /** @description Ordered pair <base>,<other>; the first is the base. */
+                retailers: string;
+                /** @description bucket: the exporter's nine top-level categories (every product has one). common: taxonomy@1's finer categories, read from the retailer breadcrumb; a file without breadcrumbs places nothing there (caveat breadcrumb_missing). */
+                level?: components["schemas"]["Level"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_CategoryComparison_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */

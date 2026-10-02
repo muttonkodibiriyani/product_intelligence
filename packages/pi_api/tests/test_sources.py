@@ -183,6 +183,30 @@ def test_the_imported_retailer_is_corrected_in_composed_and_whole_views(tmp_path
     assert all(p.offers[SEPHORA].series.regular for p in whole.products if SEPHORA in p.offers)
 
 
+def test_the_floor_applies_before_dq_in_composed_and_whole_views(tmp_path: Path) -> None:
+    """``pi_api.floor`` first, then ``pi_api.dq``, as main serves a whole file (merge of #120).
+
+    Ulta's p2 regular is all 0.01: the floor withholds it, so dq counts one was-price (p1),
+    not two; in the other order dq would clear it first and the floor would count nothing.
+    """
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    low = {"amount": "0.01", "minor": 1, "currency": "AED"}
+    for product in combined["products"]:
+        offer = product["offers"][ULTA]
+        price = offer["series"]["price"]
+        regular = {**price[0], "minor": 20_000, "amount": "200.00"}
+        offer["series"]["regular"] = [low if product["id"] == "p2" else regular for _ in price]
+    write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
+    write(tmp_path, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+    source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)
+    source.load_all()
+    views = {d.path: d for d in source.datasets()}
+    assert len(views) == 2
+    for loaded in views.values():
+        assert [(f.retailer, f.offers) for f in loaded.floor.floored] == [(ULTA, 1)]
+        assert [(shop.retailer, shop.was_prices) for shop in loaded.imported] == [(ULTA, 1)]
+
+
 def test_dataset_entries_reads_whole_and_per_source_paths() -> None:
     assert dataset_entries("datasets/uae/latest.json") == (("datasets/uae/latest.json",), {})
     raw = f" {SEPHORA}={SEPHORA_FILE}, {ULTA}={COMBINED},{COMBINED.replace('ae', 'sa')} ,"

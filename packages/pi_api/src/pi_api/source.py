@@ -25,6 +25,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from pi_api.dq import Imported, imported_view
+from pi_api.floor import FloorView, floor_view
 from pi_dataset import DatasetError, DatasetV3, load_any
 from pi_dataset.compose import SourceInfo, compose, only, source_infos
 from pi_metrics.view import as_v3
@@ -92,6 +93,8 @@ class Loaded:
     sources: tuple[SourceInfo, ...] = field(default=())
     #: Imported retailers the served ``dataset`` was corrected for at load (``pi_api.dq``).
     imported: tuple[Imported, ...] = ()
+    #: Prices at or below 0.01 the served ``dataset`` withholds (``pi_api.floor``).
+    floor: FloorView = field(default_factory=FloorView)
 
     @property
     def unverified(self) -> frozenset[str]:
@@ -287,19 +290,21 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
 
 
 def _corrected(loaded: Loaded) -> Loaded:
-    """The view as served: imported retailers corrected (``pi_api.dq``), the rest unchanged.
+    """The view as served: read-time views ``pi_api.floor``, then ``pi_api.dq`` (the file is
+    unchanged).
 
     A collected source's ``cutoff`` is its own latest capture (``source_infos``); one without
     offers would fall back to the file's, so it is capped at the served (collected) cutoff and
     never reads as the import time.
     """
-    dataset, imported = imported_view(loaded.dataset)
+    floored, floor = floor_view(loaded.dataset)
+    dataset, imported = imported_view(floored)
     if not imported:
-        return loaded
+        return replace(loaded, dataset=dataset, floor=floor)
     shops = {shop.retailer for shop in imported}
     cutoff = dataset.meta.cutoff
     sources = tuple(
         s if s.source in shops or s.cutoff <= cutoff else s.model_copy(update={"cutoff": cutoff})
         for s in loaded.sources
     )
-    return replace(loaded, dataset=dataset, imported=imported, sources=sources)
+    return replace(loaded, dataset=dataset, imported=imported, floor=floor, sources=sources)

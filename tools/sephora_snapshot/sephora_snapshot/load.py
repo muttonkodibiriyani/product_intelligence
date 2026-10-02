@@ -172,20 +172,35 @@ class Loader:
             return None
         if bid_key in self.brands:
             return self.brands[bid_key]
+        alias = f"sephora_me:{bid_key}"
         if lang == "en":
-            bid = self._one(
-                "INSERT INTO brand (name, aliases) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE"
-                " SET name=EXCLUDED.name RETURNING id",
-                (name, [f"sephora_me:{bid_key}"]),
+            # Never write a brand row this loader did not create: another source's load (e.g.
+            # ulta_ae) may own a row with the same name, and it must stay untouched (owner rule
+            # 2026-10-01). On a name clash the brand is not recorded and the clash is counted.
+            self.c.execute(
+                "INSERT INTO brand (name, aliases) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
+                (name, [alias]),
             )
+            bid = self._one(
+                "SELECT id FROM brand WHERE name=%s AND EXISTS"
+                " (SELECT 1 FROM unnest(aliases) a WHERE a LIKE 'sephora\\_me:%%')",
+                (name,),
+            )
+            if bid is None:
+                self.bump("brand_name_clash")
         else:
-            bid = self._one(
-                "SELECT id FROM brand WHERE %s = ANY(aliases)", (f"sephora_me:{bid_key}",)
-            )
+            bid = self._one("SELECT id FROM brand WHERE %s = ANY(aliases)", (alias,))
             if bid:
-                self.c.execute(
-                    "UPDATE brand SET name_ar=COALESCE(name_ar,%s) WHERE id=%s", (name, bid)
+                # Only fill a missing Arabic name on a row Sephora alone owns: a row that also
+                # carries another source's alias (e.g. ulta_ae merged in) is never written, and
+                # neither is a row whose name_ar is already set (no no-op row versions).
+                cur = self.c.execute(
+                    "UPDATE brand SET name_ar=%s WHERE id=%s AND name_ar IS NULL AND NOT EXISTS"
+                    " (SELECT 1 FROM unnest(aliases) a WHERE a NOT LIKE 'sephora\\_me:%%')",
+                    (name, bid),
                 )
+                if cur.rowcount == 0:
+                    self.bump("brand_name_ar_skipped")
         if bid:
             self.brands[bid_key] = bid
         return bid

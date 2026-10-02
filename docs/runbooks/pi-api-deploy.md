@@ -132,6 +132,19 @@ else, so every env var stays as it is.
   dashboard may hotlink images from. Today's value is
   `sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com`, the two external hosts in the
   Hosting CSP `img-src` (decision log, 2026-10-01). Without it every `ProductCard.image` is null.
+- **SKU galleries and identities** (API 1.7.0) optionally use `PI_API_CATALOGUES`, a comma-separated
+  list of `pi.catalogue/v1` objects, for example
+  `datasets/ae/beauty/catalogues/ulta_ae/latest.json`. These stay under the runtime identity's
+  existing `datasets/` read permission. `/api/v1/catalogues/{retailer}` reports inventory and
+  completeness; `/api/v1/catalogues/{retailer}/skus/{sku}` returns IDs, parent/child links and the
+  complete gallery behind the same Firebase login. Image URLs use the existing exact host map.
+  Identical downloaded bytes appear once per SKU gallery; the catalogue retains every source
+  asset reference. Missing linked SKUs remain unresolved, and parent summaries are marked using
+  explicit relationships, never the shape of a SKU. This optional dataset does not replace the
+  combined price dataset or advance its cutoff. Original capture and metadata import times are
+  separate. `offline_import.ulta_catalogue` validates an audited inventory against stored source
+  content, appends derived metadata to `listing_content` idempotently, then exports from that
+  database. It never writes price or stock observations.
 - **`--allow-unauthenticated` is deliberate.** Hosting rewrites call the service without an IAM
   identity, so `allUsers` gets `run.invoker`. Every route, unknown paths included, verifies the
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
