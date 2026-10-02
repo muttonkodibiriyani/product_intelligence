@@ -7,12 +7,15 @@ and the host's robots.txt is obeyed fail-closed: unreadable robots.txt means no 
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import unquote, urlsplit
+
+DEFAULT_IMAGE_HOSTS = frozenset({"img-product.sephora.me"})
 
 EXTENSIONS = {
     "image/jpeg": "jpg",
@@ -67,6 +70,30 @@ def image_urls(details: dict[str, Any]) -> list[str]:
     return out
 
 
+def host_refusal(url: str, allowed: Iterable[str]) -> str | None:  # noqa: PLR0911 - one per reason
+    """Why a picture URL must not be fetched, or ``None`` when it may.
+
+    Scraped content never chooses our request targets: only ``https``, only an exact hostname in
+    ``allowed`` (lower-cased; no suffix match), no userinfo, no port, no empty host.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "unparseable url"
+    if parts.scheme != "https":
+        return f"scheme {parts.scheme or 'none'!r} is not https"
+    if "@" in parts.netloc:
+        return "userinfo in host"
+    if parts.port is not None or parts.netloc.rsplit("]", 1)[-1].count(":"):
+        return "explicit port"
+    host = (parts.hostname or "").lower()
+    if not host:
+        return "empty host"
+    if host not in {h.lower() for h in allowed}:
+        return f"host {host!r} is not an allowed image host"
+    return None
+
+
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -96,13 +123,18 @@ def _compile(pattern: str) -> re.Pattern[str]:
 
 
 class Robots:
-    """Rules of the group matching our product token (else ``*``); unknown status is refused."""
+    """Rules of the group matching our product token (else ``*``); unknown status is refused.
+
+    ``crawl_delay`` is the group's ``Crawl-delay`` in seconds when it states one (RFC 9309 leaves
+    it to the operator; we honour it as a pacing floor).
+    """
 
     def __init__(self, text: str, status: int | None, agent_name: str = "pi-snapshot") -> None:
         self.status = status
-        groups: list[tuple[list[str], list[Rule]]] = []
+        groups: list[tuple[list[str], list[Rule], float | None]] = []
         agents: list[str] = []
         rules: list[Rule] = []
+        delay: float | None = None
         in_rules = False
         for raw in text.splitlines():
             line = raw.split("#", 1)[0].strip()
@@ -112,19 +144,26 @@ class Robots:
             key = key.lower()
             if key == "user-agent":
                 if in_rules:
-                    groups.append((agents, rules))
-                    agents, rules, in_rules = [], [], False
+                    groups.append((agents, rules, delay))
+                    agents, rules, delay, in_rules = [], [], None, False
                 agents.append(value.lower())
             elif agents and key in ("allow", "disallow"):
                 in_rules = True
                 if value:
                     rules.append(Rule(key == "allow", value, _compile(value)))
+            elif agents and key == "crawl-delay":
+                in_rules = True
+                with contextlib.suppress(ValueError):
+                    delay = float(value) if 0 < float(value) <= 3600 else delay
         if agents:
-            groups.append((agents, rules))
+            groups.append((agents, rules, delay))
         token = agent_name.lower()
-        mine = [r for a, rs in groups if token in a for r in rs]
-        star = [r for a, rs in groups if "*" in a for r in rs]
-        self.rules = mine if any(token in a for a, _ in groups) else star
+        mine = [g for g in groups if token in g[0]]
+        star = [g for g in groups if "*" in g[0]]
+        chosen = mine or star
+        self.rules = [r for _, rs, _ in chosen for r in rs]
+        delays = [d for _, _, d in chosen if d is not None]
+        self.crawl_delay: float | None = max(delays) if delays else None
 
     def allows(self, url: str) -> bool:
         if self.status in (404, 410):
