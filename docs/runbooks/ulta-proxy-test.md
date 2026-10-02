@@ -42,7 +42,7 @@ PRIOR_GB=0.00002
 # ==== nothing below needs editing; it stops at the first failed step ====
 (
 set -e
-test "$OWNER_ITEM" != PASTE_OWNER_ITEM_HERE || { echo "EDIT 0 first: a new owner item is required"; exit 1; }
+case "$OWNER_ITEM" in ""|PASTE_OWNER_ITEM_HERE) echo "EDIT 0 first: a new owner item is required"; exit 1;; esac
 test "$COMMIT" != PASTE_COMMIT_HERE || { echo "EDIT 1 first: set COMMIT"; exit 1; }
 cd ~ && rm -rf pi-ulta-test && git clone -q https://github.com/muttonkodibiriyani/product_intelligence.git pi-ulta-test
 cd ~/pi-ulta-test && git checkout -q "$COMMIT" && git log --oneline -1
@@ -226,7 +226,7 @@ EST_BYTES_PER_PAGE=
 # ==== nothing below needs editing ====
 (
 set -e
-test "$OWNER_ITEM" != PASTE_OWNER_ITEM_HERE || { echo "EDIT 0 first: a new owner item is required"; exit 1; }
+case "$OWNER_ITEM" in ""|PASTE_OWNER_ITEM_HERE) echo "EDIT 0 first: a new owner item is required"; exit 1;; esac
 test "$COMMIT" != PASTE_COMMIT_HERE || { echo "EDIT 1 first: set COMMIT"; exit 1; }
 test "$PRIOR_GB" != PASTE_GB_HERE || { echo "EDIT 2 first: set PRIOR_GB"; exit 1; }
 cd ~ && rm -rf pi-ulta-test && git clone -q https://github.com/muttonkodibiriyani/product_intelligence.git pi-ulta-test
