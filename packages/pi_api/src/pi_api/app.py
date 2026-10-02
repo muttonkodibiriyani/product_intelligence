@@ -74,7 +74,6 @@ from pi_api.catalog import (
     ScopeRef,
     StaleCursorError,
     admin_product_detail,
-    find,
     history,
     meta_view,
     product_cards,
@@ -85,6 +84,7 @@ from pi_api.catalogue import CatalogueDetail, CatalogueSource, CatalogueSummary,
 from pi_api.catalogue import detail as catalogue_detail
 from pi_api.catalogue import summary as catalogue_summary
 from pi_api.config import Settings
+from pi_api.ids import resolve
 from pi_api.source import (
     AmbiguousDatasetError,
     DataUnavailableError,
@@ -96,8 +96,17 @@ from pi_api.source import (
     SnapshotSource,
 )
 from pi_api.summary import SummaryCache, SummaryQuery, SummaryView, summary_view
-from pi_api.wire import API_VERSION, ApiMeta, Envelope, ErrorBody, envelope, error_body
-from pi_dataset import ContractModel
+from pi_api.wire import (
+    API_VERSION,
+    ApiMeta,
+    Envelope,
+    ErrorBody,
+    ProductEnvelope,
+    ResolvedFrom,
+    envelope,
+    error_body,
+)
+from pi_dataset import ContractModel, ProductV3
 from pi_metrics import (
     AssortmentGaps,
     Availability,
@@ -478,6 +487,21 @@ def respond[T](
     return envelope(metric, _api_meta(loaded, endpoint, _filters(query)))
 
 
+def find(loaded: Loaded, product_id: str) -> tuple[ProductV3, ResolvedFrom | None]:
+    """The product ``product_id`` names now (``pi_api.ids``); an old id says so."""
+    found = resolve(loaded.ids, product_id)
+    if not found:
+        raise ProductNotFoundError(product_id)
+    if found[0].id == product_id:
+        return found[0], None
+    return found[0], ResolvedFrom(requested_id=product_id, current_ids=tuple(p.id for p in found))
+
+
+def resolved[T](answer: Envelope[T], resolved_from: ResolvedFrom | None) -> ProductEnvelope[T]:
+    fields = {name: getattr(answer, name) for name in Envelope.model_fields}
+    return ProductEnvelope[T](**fields, resolved_from=resolved_from)
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -527,37 +551,41 @@ def build_api(
         page = product_page(loaded.dataset, loaded.generation, query, images)
         return respond(loaded, "products", query, page)
 
-    @api.get(f"{PREFIX}/products/{{product_id}}", response_model=Envelope[ProductDetail])
+    @api.get(f"{PREFIX}/products/{{product_id}}", response_model=ProductEnvelope[ProductDetail])
     def get_product(
         product_id: ProductId,
         query: Annotated[ScopeQuery, Query()],
         _: Annotated[Principal, Depends(principal)],
-    ) -> Envelope[ProductDetail]:
+    ) -> ProductEnvelope[ProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = product_detail(loaded.dataset, find(loaded.dataset, product_id), hosts, images)
-        return respond(loaded, "product", query, detail)
+        product, resolved_from = find(loaded, product_id)
+        detail = product_detail(loaded.dataset, product, hosts, images)
+        return resolved(respond(loaded, "product", query, detail), resolved_from)
 
-    @api.get(f"{PREFIX}/admin/products/{{product_id}}", response_model=Envelope[AdminProductDetail])
+    @api.get(
+        f"{PREFIX}/admin/products/{{product_id}}",
+        response_model=ProductEnvelope[AdminProductDetail],
+    )
     def get_admin_product(
         product_id: ProductId,
         query: Annotated[ScopeQuery, Query()],
         _: Annotated[Principal, Depends(admin)],
-    ) -> Envelope[AdminProductDetail]:
+    ) -> ProductEnvelope[AdminProductDetail]:
         loaded = source.select(query.market, query.scope)
-        detail = admin_product_detail(
-            loaded.dataset, find(loaded.dataset, product_id), hosts, images
-        )
-        return respond(loaded, "admin_product", query, detail)
+        product, resolved_from = find(loaded, product_id)
+        detail = admin_product_detail(loaded.dataset, product, hosts, images)
+        return resolved(respond(loaded, "admin_product", query, detail), resolved_from)
 
-    @api.get(f"{PREFIX}/products/{{product_id}}/history", response_model=Envelope[History])
+    @api.get(f"{PREFIX}/products/{{product_id}}/history", response_model=ProductEnvelope[History])
     def get_history(
         product_id: ProductId,
         query: Annotated[HistoryQuery, Query()],
         _: Annotated[Principal, Depends(principal)],
-    ) -> Envelope[History]:
+    ) -> ProductEnvelope[History]:
         loaded = source.select(query.market, query.scope)
-        series = history(loaded.dataset, find(loaded.dataset, product_id), query)
-        return respond(loaded, "history", query, series)
+        product, resolved_from = find(loaded, product_id)
+        series = history(loaded.dataset, product, query)
+        return resolved(respond(loaded, "history", query, series), resolved_from)
 
     @api.get(f"{PREFIX}/coverage", response_model=Envelope[Coverage])
     def get_coverage(

@@ -4,8 +4,9 @@
   "version": "0.2.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/check-bundle.mjs out && node scripts/csp.mjs out --check",
-    "csp:write": "node scripts/csp.mjs out --write",
+    "build": "npm run build:assistant && next build && node scripts/check-bundle.mjs out && node scripts/csp.mjs --check out out-assistant",
+    "build:assistant": "rm -rf out-assistant && NEXT_PUBLIC_ASSISTANT_ENABLED=true next build && node scripts/check-bundle.mjs out && mv out out-assistant",
+    "csp:write": "node scripts/csp.mjs --write out out-assistant",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --check .",
@@ -16,7 +17,9 @@
   },
   "dependencies": {
     "@firebase/app": "0.16.2",
+    "@firebase/app-check": "0.13.1",
     "@firebase/auth": "1.13.6",
+    "@firebase/functions": "0.14.0",
     "@tanstack/react-query": "5.104.0",
     "echarts": "6.1.0",
     "next": "16.3.8",

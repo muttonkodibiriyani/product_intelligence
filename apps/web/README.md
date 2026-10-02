@@ -85,6 +85,14 @@ The Next export has inline scripts, so `infra/firebase.json` pins their `sha256`
 hashes; `npm run build` fails when they no longer match. After a change, run `npm run csp:write`
 and commit `infra/firebase.json` with it.
 
+`npm run build` makes two exports: `out/` (the assistant off, as deployed today) and
+`out-assistant/` (`NEXT_PUBLIC_ASSISTANT_ENABLED=true`, for switch-on). The CSP lists the union
+of both builds' hashes, so it is valid for either. At switch-on the owner deploys
+`out-assistant/` instead of `out/` and writes the reCAPTCHA Enterprise site key into
+`infra/web-dist/app/assistant-app-check.json` as `{"recaptchaSiteKey": "<key>"}`
+(`docs/runbooks/assistant-enablement.md` §10c). The key is read at runtime, never built in, so
+the export and its hashes don't depend on it.
+
 The owner runs `npx -y firebase-tools@14.27.0 deploy --only hosting` from `infra/` (see
 `docs/runbooks/pi-api-deploy.md` §7). To roll back, redeploy with the legacy dashboard alone
 (the first `cp` above, without `/app`), or roll back the release in the Hosting console.

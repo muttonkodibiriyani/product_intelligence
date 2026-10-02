@@ -17,6 +17,7 @@ import { Loading, Skeleton } from '../ui/skeleton';
 import { CROSS_COLS, CROSS_ROWS, MIN_PAIRS } from '../widgets/constants';
 import { PairKpis, type RetailerSummary } from '../widgets/kpis';
 import {
+  gapHistBins,
   brandShare,
   categoryNodes,
   cheaperShares,
@@ -74,6 +75,10 @@ const CheaperShareWidget = dynamic(() => charts().then((m) => m.CheaperShareWidg
   loading: ChartSkeleton,
 });
 const GroupGapWidget = dynamic(() => charts().then((m) => m.GroupGapWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
+const GapHistWidget = dynamic(() => charts().then((m) => m.GapHistWidget), {
   ssr: false,
   loading: ChartSkeleton,
 });
@@ -455,6 +460,17 @@ function HeadToHead({
       {head}
       <PairKpis data={data} pair={pair} locale={locale} href={href} />
       <CardGrid>
+        {data.summary && gapHistBins(data.summary.gapHist).length > 0 && (
+          <Card
+            id="p-gap-hist"
+            title={tw('gapHist.title')}
+            meta={nPairs}
+            question={tw('gapHist.question', { other: names.other })}
+            span={12}
+          >
+            <GapHistWidget data={data.summary.gapHist} currency={currency} locale={locale} pair={pair} />
+          </Card>
+        )}
         {cross && cross.cells.length > 0 && (
           <Card
             id="p-cross"
