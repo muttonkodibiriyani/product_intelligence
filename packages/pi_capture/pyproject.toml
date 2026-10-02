@@ -1,0 +1,15 @@
+[project]
+name = "pi-capture"
+version = "0.1.0"
+description = "Page-capture registry: the 143 requirement attributes, raw-plus-normalised readings, generic page extractors and per-retailer coverage"
+requires-python = ">=3.12"
+dependencies = [
+  "pi-core",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pi_capture"]
