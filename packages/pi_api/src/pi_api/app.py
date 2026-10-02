@@ -484,7 +484,7 @@ def respond[T](
     selected = _selected(query, metric.data)
     owed = (
         *dq.caveats(loaded.imported, endpoint, selected),
-        *floor.caveats(loaded.floor, endpoint, selected),
+        *floor.caveats(loaded.current_floor, endpoint, selected),
     )
     if owed:
         metric = metric.model_copy(update={"caveats": (*metric.caveats, *owed)})
@@ -533,16 +533,6 @@ def find(loaded: Loaded, product_id: str) -> tuple[ProductV3, ResolvedFrom | Non
 def resolved[T](answer: Envelope[T], resolved_from: ResolvedFrom | None) -> ProductEnvelope[T]:
     fields = {name: getattr(answer, name) for name in Envelope.model_fields}
     return ProductEnvelope[T](**fields, resolved_from=resolved_from)
-
-
-def as_of(loaded: Loaded, product: ProductV3) -> ProductV3:
-    """``product`` in the latest-date view: each stale source at its own last date (ADR-0010).
-
-    ``pi_dataset.compose.latest`` keeps every product, so the id found in the view is there.
-    """
-    if loaded.latest is None:
-        return product
-    return next(p for p in loaded.latest.products if p.id == product.id)
 
 
 def utc_now() -> datetime:
@@ -602,7 +592,7 @@ def build_api(
     ) -> ProductEnvelope[ProductDetail]:
         loaded = source.select(query.market, query.scope)
         found, resolved_from = find(loaded, product_id)
-        product = as_of(loaded, found)
+        product = loaded.as_of(found)
         detail = product_detail(loaded.current, product, hosts, images)
         detail = stale_first(loaded, detail, product.offers)
         return resolved(respond(loaded, "product", query, detail), resolved_from)
@@ -618,7 +608,7 @@ def build_api(
     ) -> ProductEnvelope[AdminProductDetail]:
         loaded = source.select(query.market, query.scope)
         found, resolved_from = find(loaded, product_id)
-        product = as_of(loaded, found)
+        product = loaded.as_of(found)
         detail = admin_product_detail(loaded.current, product, hosts, images)
         detail = stale_first(loaded, detail, product.offers)
         return resolved(respond(loaded, "admin_product", query, detail), resolved_from)

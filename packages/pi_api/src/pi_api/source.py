@@ -28,7 +28,7 @@ from typing import Protocol
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
 from pi_api.ids import ProductIds, product_ids
-from pi_dataset import DatasetError, DatasetV3, load_any
+from pi_dataset import DatasetError, DatasetV3, ProductV3, load_any
 from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
 from pi_metrics.view import as_v3
 
@@ -124,6 +124,24 @@ class Loaded:
         """The floor view of ``current``: a stale source's flags are as of its own last date."""
         return self.floor if self.latest_floor is None else self.latest_floor
 
+    @cached_property
+    def latest_products(self) -> Mapping[str, ProductV3]:
+        """``latest``'s products by id, built once per generation at load (empty without it)."""
+        return {} if self.latest is None else {p.id: p for p in self.latest.products}
+
+    def as_of(self, product: ProductV3) -> ProductV3:
+        """``product`` in the latest-date view: each stale source at its own last date (ADR-0010).
+
+        ``pi_dataset.compose.latest`` keeps every product, so one missing there is a bug in the
+        view, never a not-found: it raises ``AsOfViewError`` (a 500) rather than guess.
+        """
+        if self.latest is None:
+            return product
+        found = self.latest_products.get(product.id)
+        if found is None:
+            raise AsOfViewError(product.id)
+        return found
+
     @property
     def markets(self) -> tuple[str, ...]:
         return tuple(m.country for m in self.dataset.meta.markets)
@@ -131,6 +149,13 @@ class Loaded:
     @property
     def scope(self) -> str:
         return self.dataset.meta.scope
+
+
+class AsOfViewError(RuntimeError):
+    """A product of the served view is missing from its latest-date view (an internal error)."""
+
+    def __init__(self, product_id: str) -> None:
+        super().__init__(f"product {product_id!r} is not in the latest-date view")
 
 
 class DataUnavailableError(Exception):
@@ -328,8 +353,10 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
 
 
 def _with_ids(loaded: Loaded, name: str | None = None) -> Loaded:
-    """``loaded`` with its product ids (``pi_api.ids``) built now, at load, off the request path."""
+    """``loaded`` with its product ids (``pi_api.ids``) and its latest-date index
+    (``latest_products``) built now, at load, off the request path."""
     ids = loaded.ids
+    loaded.latest_products  # noqa: B018 - builds the cached index
     log.info(
         "dataset %s loaded at generation %s: %d old product ids, %d dropped as "
         "ambiguous, %d pairs with hashed or ambiguous ids (their members' old ids can't be "
