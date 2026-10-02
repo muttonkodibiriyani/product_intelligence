@@ -47,7 +47,9 @@
     "premium": "Premium",
     "median": "Median",
     "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. The price axis grows by multiples, not fixed amounts (a log scale), so cheap and expensive categories fit on one chart.",
-    "label": "Price ranges by category, {n} categories."
+    "label": "Price ranges by category, {n} categories.",
+    "takeaway": "Category medians run from {low} in {lowCat} to {high} in {highCat}.",
+    "takeawayOne": "Only one category has a median so far: {cat} at {median}."
   },
   "promo": {
     "title": "Promotion depth",
@@ -59,8 +61,10 @@
   },
   "brands": {
     "title": "Brand price positioning",
-    "question": "Median price of the {n} brands with the most products.",
-    "label": "Median price per brand, {n} brands, highest first."
+    "question": "Median price of the {n, plural, one {brand} other {# brands}} with the most products.",
+    "label": "Median price per brand, {n} brands, highest first.",
+    "takeaway": "Of the {n} largest brands, {high} has the highest median at {highPrice} and {low} the lowest at {lowPrice}.",
+    "takeawayOne": "Only one brand is large enough to rank so far: {brand}, median {median}."
   },
   "mix": {
     "title": "Category mix",
@@ -70,7 +74,8 @@
   "hist": {
     "title": "Price distribution",
     "question": "How many products sit in each price band.",
-    "label": "Products per price band, {n} bands."
+    "label": "Products per price band, {n} bands.",
+    "takeaway": "The fullest band is {lo} to {hi}: {share} of priced products."
   },
   "rating": {
     "title": "Rating vs price",
@@ -141,7 +146,9 @@
     "below": "< {v}",
     "atLeast": "≥ {v}",
     "range": "{lo} to {hi}",
-    "label": "Matched pairs per price-gap band, {n} bands."
+    "label": "Matched pairs per price-gap band, {n} bands.",
+    "takeaway": "{other} is dearer on {dearer} of {n, plural, one {# matched pair} other {# matched pairs}} and cheaper on {cheaper}.",
+    "takeawaySame": "{other} is dearer on {dearer} of {n, plural, one {# matched pair} other {# matched pairs}} and cheaper on {cheaper}; {same} sit in the band around zero."
   },
   "groupGap": {
     "title": "Price gap by brand",

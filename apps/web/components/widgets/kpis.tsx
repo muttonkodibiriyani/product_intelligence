@@ -10,10 +10,10 @@ import { formatCount, formatDate } from '@/lib/format';
 import { formatMoney, isValidPrice } from '@/lib/money';
 import { navHref } from '@/lib/nav';
 import type { CaveatView, Money as MoneyValue } from '@/lib/api/types';
-import { abs, deepestCut, minus, retailerTone, share, type CategoryRead } from '../home/model';
+import { abs, deepestCut, minus, share, type CategoryRead } from '../home/model';
 import { Known } from '../ui/known';
 import { Money } from '../ui/money';
-import { RetailerDot } from '../ui/retailer-dot';
+import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { exploreHref, freshness, hasParents, importedOn, pct, promotions, promotionsHref } from './model';
 
 /** One retailer's /summary, fetched with an explicit `?retailer=`, and the caveats scoped to it. */
@@ -358,11 +358,11 @@ function ShopRow({
   sub?: ReactNode;
   children: ReactNode;
 }) {
-  const fill = id ? retailerTone(id, side) : 'var(--color-ink-3)';
+  const fill = id ? retailerColor(id, side) : 'var(--color-ink-3)';
   return (
     <>
       <span className="flex min-w-0 items-center gap-1.5 font-medium text-ink-2">
-        {id && <RetailerDot id={id} side={side} />}
+        {id && <RetailerDot id={id} index={side} />}
         {name && <span className="truncate">{name}</span>}
       </span>
       {mid ?? (
@@ -382,7 +382,7 @@ function ShopRow({
 function State({ id, side, children }: { id: string; side: 0 | 1; children: ReactNode }) {
   return (
     <span className="col-span-3 rounded-ctl bg-surface-2 px-2.5 py-1.5 text-ink-2">
-      <RetailerDot id={id} side={side} /> {children}
+      <RetailerDot id={id} index={side} /> {children}
     </span>
   );
 }

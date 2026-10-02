@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test';
 import { categoryCompareBody, THIN } from './category-compare-fixture';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, openNav, signIn, test } from './fixtures';
 import {
   IMG,
   IMG_BROKEN,
@@ -111,6 +111,10 @@ for (const locale of ['en', 'ar'] as const) {
         dataset: 'مجموعة البيانات الحالية',
         blocked: 'هذا المتجر يمنع الجمع.',
         noRetailers: 'لا يوجد متجر مُجمَّع لعرض بياناته.',
+        about: 'عن البيانات',
+        navDataset: 'البيانات',
+        aboutP1: /تُجمع الأسعار من كل متجر/,
+        partial: 'مُجمَّع جزئيًا',
         noImage: 'لا توجد صورة',
         credit: 'صور المنتجات: Sephora، من img-product.sephora.me.',
         creditUlta: 'صور المنتجات: Ulta Beauty، من media.alshaya.com.',
@@ -149,6 +153,10 @@ for (const locale of ['en', 'ar'] as const) {
         dataset: 'Current dataset',
         blocked: 'This retailer blocks collection.',
         noRetailers: 'No collected retailer to report on.',
+        about: 'About the data',
+        navDataset: 'Dataset',
+        aboutP1: /Prices are collected from each shop on the dates shown/,
+        partial: 'Partly collected',
         noImage: 'No image',
         credit: 'Product images: Sephora, served from img-product.sephora.me.',
         creditUlta: 'Product images: Ulta Beauty, served from media.alshaya.com.',
@@ -301,9 +309,9 @@ for (const locale of ['en', 'ar'] as const) {
           : r.fulfill({ status: 404, body: '' });
       });
       await signIn(page, locale);
-      // A retailer /meta doesn't name (sephora_me) still renders, by its id.
+      // A retailer /meta doesn't name (sephora_me) renders by the shop's own name, never its id.
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      await expect(page.locator('main').getByText('sephora_me').first()).toBeVisible();
+      await expect(page.locator('main')).not.toContainText('sephora_me');
       const top = page.locator('#w-top');
       await expect(h2(page, T.top)).toBeVisible();
       const rows = top.locator('tbody tr');
@@ -386,13 +394,43 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
 
-    test('a blocked retailer: one plain line and the dataset; no note box, sentence, tiles or charts', async ({
+    test('Dataset page: the nav opens it; About the data explains in plain words, once', async ({ page }) => {
+      const mock = await mockBackend(page, { onApi: api(byShop(shopA, shopB)) });
+      await signIn(page, locale);
+      // The top bar's link to the data, before the nav is used.
+      await expect(page.getByRole('link', { name: T.about }).first()).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/dataset/#about-data$`),
+      );
+      await openNav(page, T.navDataset);
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/dataset/$`));
+      await expect(page.getByRole('heading', { level: 1, name: T.dataset })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2, name: T.about })).toBeVisible();
+      await expect(page.locator('#about-data')).toContainText(T.aboutP1);
+      // The retailers keep their status here, and only here: Shop C reads as partly collected.
+      await expect(page.locator('#dataset tr').filter({ hasText: 'Shop C' })).toContainText(T.partial);
+      // The footer's link lands on the same section.
+      await expect(page.locator('footer').getByRole('link', { name: T.about })).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/dataset/#about-data$`),
+      );
+      await expect(page.locator('main [role=note]:not(#dataset [role=note])')).toHaveCount(0);
+      await noHorizontalScroll(page);
+      expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('a blocked retailer: one plain line with the link to the data, and the dataset; no note box, sentence, tiles or charts', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBlocked) });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
       await expect(page.getByText(T.noRetailers)).toBeVisible();
+      await expect(page.getByText(T.noRetailers).getByRole('link', { name: T.about })).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/dataset/#about-data$`),
+      );
       await expect(page.locator('main')).not.toContainText(T.blocked);
       await expect(page.locator('main [role=note]')).toHaveCount(0);
       await expect(h2(page, T.dataset)).toBeVisible();

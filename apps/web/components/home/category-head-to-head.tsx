@@ -10,9 +10,9 @@ import { errorText } from '../error-notice';
 import { Card } from '../ui/card';
 import { Known } from '../ui/known';
 import { Money, Pct } from '../ui/money';
-import { RetailerDot } from '../ui/retailer-dot';
+import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import type { PairState } from '../widgets/use-compare';
-import { bucketCheaper, gapWidth, retailerTone, share, widestGap } from './model';
+import { bucketCheaper, gapWidth, share, widestGap } from './model';
 
 type Pair = { base: string; other: string; name: (id: string) => string };
 
@@ -98,7 +98,7 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
           {s && (
             <i
               className="block h-full rounded-full"
-              style={{ width: `${share(s.n, maxN)}%`, background: retailerTone(id, i) }}
+              style={{ width: `${share(s.n, maxN)}%`, background: retailerColor(id, i) }}
             />
           )}
         </span>
@@ -160,7 +160,7 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
             data-at={otherCheaper ? 'start' : 'end'}
             style={{
               width: `${gapWidth(b.gapPct!, maxGap)}%`,
-              background: retailerTone(who, otherCheaper ? 1 : 0),
+              background: retailerColor(who, otherCheaper ? 1 : 0),
             }}
           />
         </span>
@@ -187,10 +187,10 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
                 {t('products')}
               </th>
               <th scope="col" className="th text-end whitespace-nowrap">
-                <RetailerDot id={pair.base} side={0} /> {t('medianOf', { shop: base })}
+                <RetailerDot id={pair.base} index={0} /> {t('medianOf', { shop: base })}
               </th>
               <th scope="col" className="th text-end whitespace-nowrap">
-                <RetailerDot id={pair.other} side={1} /> {t('medianOf', { shop: other })}
+                <RetailerDot id={pair.other} index={1} /> {t('medianOf', { shop: other })}
               </th>
               <th scope="col" className="th pe-5 text-start">
                 {t('gap')}

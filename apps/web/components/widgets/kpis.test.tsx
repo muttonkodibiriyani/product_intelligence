@@ -17,7 +17,13 @@ const pair = {
 
 function show(data: Schemas['Comparison']) {
   render(
-    <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale="en"
+      messages={en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <PairKpis data={data} pair={pair} locale="en" href="/compare" />
     </NextIntlClientProvider>,
   );

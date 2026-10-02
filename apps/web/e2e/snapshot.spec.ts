@@ -115,8 +115,8 @@ for (const locale of ['en', 'ar'] as const) {
         collected: '(للمتاجر التي نجمع بياناتها)',
         promo: 'ضمن العروض',
         age: /عمرها|جُمعت اليوم|حتى /,
-        subtitle: /· لقطة مستوردة في .+، وتاريخ جمعها غير معروف$/,
-        withheld: 'تخفيضات Ulta Beauty UAE: غير متاحة بعد.',
+        subtitle: /Ulta: لقطة لمرة واحدة مستوردة في /,
+        withheld: 'تخفيضات Ulta: غير متاحة بعد.',
         withheldWhy: 'أسعار ما قبل الخصم لدى هذا المتجر غير موثّقة، لذا لا تُقاس عروضه.',
         row: /^لقطة مستوردة في .+، وتاريخ جمعها غير معروف$/,
         top: 'أكبر التخفيضات',
@@ -135,8 +135,8 @@ for (const locale of ['en', 'ar'] as const) {
         collected: '(collected retailers)',
         promo: 'On promotion',
         age: /days? old|collected today|as of /,
-        subtitle: /· snapshot imported .+, capture date unknown$/,
-        withheld: 'Ulta Beauty UAE discounts: not available yet.',
+        subtitle: /Ulta: one-off snapshot imported /,
+        withheld: 'Ulta discounts: not available yet.',
         withheldWhy: "This retailer's was-prices are unverified, so its promotions are not measured.",
         row: /^snapshot imported .+, capture date unknown$/,
         top: 'Top discounts',
@@ -168,8 +168,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(ar ? C.was.ar : C.was.en)).toHaveCount(0);
       await expect(page.locator('main [role=note]:not(#dataset [role=note])')).toHaveCount(0);
 
-      // The dataset panel: the imported retailer has an import date, the others keep "since".
-      const row = page.locator('#dataset tr').filter({ hasText: 'Ulta Beauty UAE' });
+      // The dataset panel names the shop, never /meta's long name or the id; the imported retailer
+      // has an import date, the others keep "since".
+      const row = page.locator('#dataset tr').filter({ hasText: 'Ulta' });
+      await expect(row.locator('th')).toHaveText('Ulta');
       await expect(row.locator('td').nth(1)).toHaveText(T.row);
       await expect(
         page.locator('#dataset tr').filter({ hasText: 'Shop A' }).locator('td').nth(1),
@@ -197,8 +199,9 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('heading', { name: T.offersOn })).toHaveCount(0);
       const row = (name: string) =>
         page.locator('article table').first().locator('tbody tr').filter({ hasText: name });
-      await expect(row('Ulta Beauty UAE').locator('time')).toHaveText(T.offerImported);
-      await expect(row('Ulta Beauty UAE')).not.toContainText(T.captured);
+      await expect(row('Ulta').locator('time')).toHaveText(T.offerImported);
+      await expect(row('Ulta')).not.toContainText(T.captured);
+      await expect(page.locator('main')).not.toContainText('Ulta Beauty UAE');
       await expect(row('Shop A').locator('time')).toHaveText(T.captured);
       await noHorizontalScroll(page);
       expect(mock.external).toEqual([]);

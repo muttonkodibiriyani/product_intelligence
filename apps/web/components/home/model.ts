@@ -1,9 +1,9 @@
 /**
  * Pure shaping for the Overview: who leads on the matched set, who is cheaper by category, and
  * the bar widths. No React, so it is unit-tested; every figure comes from the API's own counts and
- * decimal strings, never recomputed from the rows on screen. `retailerTone`, `verdict`, `minus`
- * and `sign` match the Compare page's helpers (components/compare/model.ts in PR 5) so the two can
- * be folded into one module once both land.
+ * decimal strings, never recomputed from the rows on screen. `verdict`, `minus` and `sign` match
+ * the Compare page's helpers (components/compare/model.ts) so the two can be folded into one
+ * module. A shop's colour comes from components/ui/retailer-dot.tsx, the one table the whole app uses.
  */
 import type { Bucket } from '@/lib/api/category-compare';
 import type { CaveatView, Money, Schemas } from '@/lib/api/types';
@@ -23,13 +23,6 @@ export function earlyExcluded(
   if (!caveat) return null;
   const count = Number(caveat.params?.count);
   return Number.isInteger(count) && count > 0 ? { count, caveat } : null;
-}
-
-/** A retailer's colour: the shop's own tone for the two the design names, else a series tone by side. */
-export function retailerTone(id: string, side: 0 | 1): string {
-  if (/^ulta(_|$)/.test(id)) return 'var(--color-ulta, #d1541c)';
-  if (/^sephora(_|$)/.test(id)) return 'var(--color-sephora, #1d2129)';
-  return side === 0 ? 'var(--color-series-a, #e07c9d)' : 'var(--color-series-b, #5e9ad4)';
 }
 
 export type Verdict =

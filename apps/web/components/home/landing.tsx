@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { CategoryCompare } from '@/lib/api/category-compare';
-import { formatCount, formatDate, loc } from '@/lib/format';
+import { formatCount, loc } from '@/lib/format';
 import { navHref } from '@/lib/nav';
 import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
 import { DatasetStatus } from '../dataset-status';
@@ -12,24 +12,18 @@ import { ErrorNotice } from '../error-notice';
 import { Card } from '../ui/card';
 import { Known } from '../ui/known';
 import { Money, Pct } from '../ui/money';
-import { PageHeader } from '../ui/page-header';
-import { RetailerDot } from '../ui/retailer-dot';
+import { AboutDataLink, PageHeader } from '../ui/page-header';
+import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { Loading, Skeleton } from '../ui/skeleton';
 import { KpiBand, type RetailerSummary } from '../widgets/kpis';
 import { TopDiscountsWidget } from '../widgets/top-discounts';
 import { useCategoryCompare } from '../widgets/use-category';
 import { useCompareData, useRetailers, type PairState } from '../widgets/use-compare';
 import { useSummaries } from '../widgets/use-summaries';
-import {
-  compareHref,
-  exploreHref,
-  freshness,
-  importedOn,
-  promotions,
-  promotionsHref,
-} from '../widgets/model';
+import { compareHref, exploreHref, promotions, promotionsHref } from '../widgets/model';
+import { AsOf } from './as-of';
 import { CategoryHeadToHead } from './category-head-to-head';
-import { categoryRead, earlyExcluded, retailerTone, verdict, type CategoryRead } from './model';
+import { categoryRead, earlyExcluded, verdict, type CategoryRead } from './model';
 
 type Pair = NonNullable<ReturnType<typeof useRetailers>['pair']>;
 type Comparison = Schemas['Comparison'];
@@ -37,7 +31,8 @@ type Comparison = Schemas['Comparison'];
 /**
  * The Overview: one sentence on who is cheaper, the band of four numbers, where each shop is
  * cheaper by category, the matched basket head to head, and the deepest discounts. Every number
- * comes from the API with the list it was counted from one click away.
+ * comes from the API with the list it was counted from one click away. The top bar's as-of line
+ * names each shop's date (an imported shop its import date) once the first /summary is in.
  */
 export function Landing() {
   const t = useTranslations('home.landing');
@@ -45,7 +40,11 @@ export function Landing() {
   const s = useSummaries(ids);
   return (
     <div className="space-y-6">
-      <PageHeader title={t('overview')} intro={<Subtitle rows={s.rows} />} />
+      <PageHeader
+        title={t('overview')}
+        intro={t('intro')}
+        asOf={s.rows.length > 0 ? <AsOf rows={s.rows} /> : undefined}
+      />
       {error ? (
         <ErrorNotice error={error} />
       ) : loading ? (
@@ -54,32 +53,6 @@ export function Landing() {
         <Overview s={s} pair={pair} />
       )}
     </div>
-  );
-}
-
-/** One line per retailer: its snapshot date, or its import date when it was imported. */
-function Subtitle({ rows }: { rows: readonly RetailerSummary[] }) {
-  const t = useTranslations('home.landing');
-  const locale = useLocale();
-  if (rows.length === 0) return <p>{t('intro')}</p>;
-  return (
-    <>
-      {rows.map((r) => {
-        // An imported retailer's date is when it was imported; it is never called a snapshot date.
-        const imported =
-          freshness(r.data.freshness) === 'snapshot' || importedOn(r.caveats, r.retailer)
-            ? (importedOn(r.caveats, r.retailer) ?? r.data.freshness.cutoff)
-            : null;
-        return (
-          <p key={r.retailer}>
-            {t(imported ? 'subtitleImported' : 'subtitle', {
-              retailer: r.name,
-              date: formatDate(imported ?? r.data.asOf, locale),
-            })}
-          </p>
-        );
-      })}
-    </>
   );
 }
 
@@ -97,7 +70,9 @@ function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair 
   if (s.rows.length === 0)
     return (
       <div className="space-y-6">
-        <p className="text-sm text-ink-2">{t('noRetailers')}</p>
+        <p className="text-sm text-ink-2">
+          {t('noRetailers')} <AboutDataLink />
+        </p>
         <Dataset />
       </div>
     );
@@ -198,7 +173,7 @@ export function Headline({
                 shop: leader,
                 k: v.k,
                 n: v.n,
-                b: (c) => <b style={{ color: retailerTone(leaderId!, v.leader === 'base' ? 0 : 1) }}>{c}</b>,
+                b: (c) => <b style={{ color: retailerColor(leaderId!, v.leader === 'base' ? 0 : 1) }}>{c}</b>,
               })}
         {tail && ` ${tail}`}
       </h2>
@@ -277,7 +252,7 @@ export function EmptyHeadline({
           {[pair.base, pair.other].map((id, i) => (
             <li key={id} className="rounded-ctl bg-surface-2 px-4 py-3">
               <p className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
-                <RetailerDot id={id} side={i === 0 ? 0 : 1} />
+                <RetailerDot id={id} index={i} />
                 {pair.name(id)}
               </p>
               <p className="mt-1 text-xl font-semibold tabular-nums">
@@ -328,10 +303,10 @@ export function MatchedBasket({ pair, data }: { pair: Pair; data: Comparison }) 
   const e = s.equalCount;
   const seg = (n: number, bg: string) =>
     n > 0 ? <i className="block h-full" style={{ flex: `${n} 0 0`, background: bg }} /> : null;
-  const basket = (id: string, side: 0 | 1, m: MoneyValue, gap?: ReactNode) => (
+  const basket = (id: string, index: 0 | 1, m: MoneyValue, gap?: ReactNode) => (
     <div className="min-w-0 px-5 py-3.5">
       <p className="flex items-center gap-1.5 text-xs text-ink-2">
-        <RetailerDot id={id} side={side} />
+        <RetailerDot id={id} index={index} />
         {t('basketOf', { shop: pair.name(id) })}
       </p>
       <p className="mt-0.5 text-[22px] leading-tight font-semibold tracking-tight tabular-nums @md:text-[26px]">
@@ -365,9 +340,9 @@ export function MatchedBasket({ pair, data }: { pair: Pair; data: Comparison }) 
         aria-label={t('tally', { base, a, e, other, b })}
         className="mx-5 mt-2 mb-1 flex h-2.5 overflow-hidden rounded-full bg-line-2"
       >
-        {seg(a, retailerTone(pair.base, 0))}
+        {seg(a, retailerColor(pair.base, 0))}
         {seg(e, 'var(--color-line-3)')}
-        {seg(b, retailerTone(pair.other, 1))}
+        {seg(b, retailerColor(pair.other, 1))}
       </div>
       <p className="flex flex-wrap gap-x-4 gap-y-1 px-5 pb-4 text-[13px] text-ink-2">
         <span>{t.rich('cheaperAt', { n: a, shop: base, b: strong })}</span>
@@ -418,7 +393,7 @@ function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
                   key={f.retailer}
                   className="mt-2 flex items-center gap-2 border-t border-line-2 px-5 pt-3 pb-1 text-[13px] text-ink-2"
                 >
-                  <RetailerDot id={f.retailer} side={rows.indexOf(f) === 0 ? 0 : 1} />
+                  <RetailerDot id={f.retailer} index={rows.indexOf(f)} />
                   <span>
                     {tk('notAvailable', { shop: f.name })} {!fp.measured && <Known t={tr} v={fp.reason} />}
                   </span>

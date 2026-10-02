@@ -100,7 +100,9 @@ have variants at different prices.
      it fails to parse, under the run's own GCS prefix. The build PR states the retention
      (lifecycle rule) for those prefixes.
    - Images: URLs only, hotlinked from `img-product.sephora.me` (Images B). No image bytes are
-     fetched or rehosted.
+     fetched or rehosted. **Amended 2026-10-02 for the KSA capture only** (see "Amendment
+     2026-10-02" below): with `IMAGES=1` the KSA capture downloads the pictures into the private
+     capture bucket as evidence; the published product still hotlinks, nothing is rehosted.
 3. **Weekly AR pages and discovery, leaf-level** (amended).
    - AR PDPs plus a sitemap diff. New products join the sweep automatically.
    - The discovery night sweeps every **leaf** category with the same `products.getProducts`
@@ -187,6 +189,58 @@ have variants at different prices.
   turned out to work, so this was not needed.
 - **Full price + stock nightly:** needs a higher rate than the polite one. Not proposed.
 - **Status quo (on demand only):** gives no history unless someone asks for a refresh.
+
+## Amendment 2026-10-02: KSA capture keeps raw pages and pictures (task 01a0fc6d)
+
+The owner asked for the full KSA capture to keep everything (form response
+`01a0fc8f-64f0-771d-bb52-8f95cd40d96d` on form `01a0fc8c-aa31-7751-9043-65ca686635fe`,
+2026-10-02 12:23Z: "in google cloud park it everything") and, after first answering "No" to
+image downloads, corrected it by direct message at about 12:30Z: image downloads are needed for
+every other shop. This amends Decision 2 for runs with `COUNTRY=SA` and the capture options
+`RAW=1` and `IMAGES=1`; the recurring UAE sweep keeps the original rule (no raw HTML, no image
+bytes).
+
+- **What is stored.** Every fetched page as `raw/<lang>-<pid>.html.gz` with its sha256 in the
+  row, and every picture an EN page exposes as `images/<sha256>.<ext>`, once per URL per run,
+  under the run's own prefix in the private capture bucket `pi-capture-productintelligence-beeb3`
+  (me-central1). Pictures are evidence for matching and quality checks. They are **never served,
+  rehosted or linked from the product** (the web app keeps hotlinking the retailer's CDN, so no
+  CSP change) and are not copied anywhere else.
+- **Where a picture may come from.** Scraped content never chooses our request targets. A
+  picture URL is fetched only when it is `https`, on an exact hostname in `IMAGE_HOSTS` (default
+  `img-product.sephora.me`; no suffix match, no userinfo, no port) and allowed by that host's
+  robots.txt (fail-closed; `Crawl-delay` honoured as a pacing floor). Anything else is recorded
+  as `host_refused` or `robots_refused` and not requested, not even its robots.txt.
+- **Redirects.** The client does not follow redirects on its own. Each hop (at most 5) is a new
+  request gated before anything is asked of the target, its robots.txt included: a picture hop
+  must land on an allowed image host, a page, sitemap or tRPC hop on the storefront host
+  (`www.sephora.me`), a robots.txt hop on the host whose robots.txt was requested; all https,
+  exact host, no userinfo, no port. Scraped content never chooses a request target: a `302` to a
+  metadata or private address, an `http` downgrade or a lookalike host is recorded
+  `host_refused` and not requested, and a robots.txt that redirects off its host counts as
+  unreadable, so that host's pictures are refused rather than allowed. Seed and plan URLs are
+  gated the same way. Allowed hops are then checked against the target host's robots.txt. Rows
+  record `final_url` and the hop list (`redirects`).
+- **Byte caps.** Pictures are read up to 10 MB, robots.txt up to 512 KB, pages up to 32 MB,
+  sitemaps up to 50 MB (the sitemaps.org limit). Over the cap nothing is stored and the row says
+  `too_large`; an oversized robots.txt counts as unreadable (refused). A refused hop or a dropped
+  body makes the run `partial`, never `succeeded`.
+- **Pace.** Pictures go at `IMAGE_PACE` >= 1.0 s (ADR-0005 pacing, the CDN is the retailer's own
+  infrastructure), directly, never through a proxy. A 401/403 or a non-image 200 from the image
+  host ends the picture pass for the run; pages continue.
+- **SVG and other vector formats** are stored as bytes like any other picture and are never
+  served, so a script inside one cannot run anywhere. Content type decides the extension only.
+- **Cost (measured on the 2 Oct trial and pages runs).** A raw KSA page is about 347 KB gzipped
+  (1,590 pages = 551 MB); a picture is 77 to 90 KB (330 pictures = 25 MB). At KSA scale, about
+  6.5k products in two languages, one full run with `RAW=1` stores about 4.5 GB of pages and,
+  with `IMAGES=1`, about 3 GB of pictures. At the me-central1 standard-storage list price assumed
+  here, about $0.023 per GB-month, that is about $0.17 per full run per month kept; egress is
+  nil while the data stays in the region.
+- **Retention.** The capture bucket has **no lifecycle rule** today (checked 2 Oct 2026), so
+  everything is kept until the owner decides otherwise; the owner asked for the data to be
+  parked, so this ADR does not add one. The 14-day rule in the tool's README applies to the
+  recurring run bucket (#124), not to the capture bucket. Setting a retention for the capture
+  bucket is an owner decision recorded in the decision log when taken.
 
 ## Consequences
 - The blueprint's Cadence row, §6.4 and the crawling cost row now point here for `sephora_me`.

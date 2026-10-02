@@ -1,20 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { datasetHref, NAV_KEYS, navHref, navMatches, navState, TABBAR_KEYS } from './nav';
+import { aboutDataHref, datasetHref, NAV_KEYS, navHref, navMatches, navState, TABBAR_KEYS } from './nav';
 
 describe('nav routes', () => {
-  it('builds locale-prefixed, trailing-slash hrefs; the Dataset is an anchor on the Overview', () => {
+  it('builds locale-prefixed, trailing-slash hrefs; About the data is a section of the Dataset page', () => {
     expect(navHref('overview', 'en')).toBe('/en/');
     expect(navHref('explore', 'ar')).toBe('/ar/explore/');
     expect(navHref('assistant', 'en')).toBe('/en/assistant/');
-    expect(datasetHref('ar')).toBe('/ar/#dataset');
+    expect(datasetHref('ar')).toBe('/ar/dataset/');
+    expect(aboutDataHref('en')).toBe('/en/dataset/#about-data');
   });
 
-  it('marks the current page, with a product page under Products and the Dataset never current', () => {
+  it('marks the current page, with a product page under Products', () => {
     expect(navMatches('overview', '/en/')).toBe(true);
     expect(navMatches('overview', '/ar')).toBe(true);
     expect(navMatches('overview', '/en/explore/')).toBe(false);
     expect(navMatches('explore', '/en/product/')).toBe(true);
     expect(navMatches('launches', '/ar/launches/')).toBe(true);
+    expect(navMatches('dataset', '/en/dataset/')).toBe(true);
     expect(navMatches('dataset', '/en/')).toBe(false);
   });
 
@@ -30,7 +32,7 @@ describe('navState', () => {
   });
 
   it('Overview, Compare, Dataset and the assistant always show', () => {
-    const none = { priced: [0, null], promoMeasured: false, collectionDays: 1, oneOff: true };
+    const none = { priced: [0, null], promoMeasured: false, launchesReady: false };
     for (const k of ['overview', 'compare', 'dataset', 'assistant'] as const)
       expect(navState(k, none)).toBe('shown');
   });
@@ -47,12 +49,9 @@ describe('navState', () => {
     expect(navState('promotions', { promoMeasured: false })).toBe('hidden');
   });
 
-  it('Launches is "soon" until two collection days and no one-off import', () => {
-    expect(navState('launches', { collectionDays: 3, oneOff: false })).toBe('shown');
-    expect(navState('launches', { collectionDays: 1, oneOff: false })).toBe('soon');
-    expect(navState('launches', { collectionDays: 3, oneOff: true })).toBe('soon');
-    expect(navState('launches', { collectionDays: 1 })).toBe('soon');
-    expect(navState('launches', { oneOff: true })).toBe('soon');
-    expect(navState('launches', { oneOff: false })).toBe('shown');
+  it('Launches is "soon" while a shop is short of the collection days a launch needs, never hidden', () => {
+    expect(navState('launches', { launchesReady: true })).toBe('shown');
+    expect(navState('launches', { launchesReady: false })).toBe('soon');
+    expect(navState('launches', {})).toBe('shown');
   });
 });

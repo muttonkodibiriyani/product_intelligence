@@ -11,7 +11,6 @@ import {
   earlyExcluded,
   gapWidth,
   minus,
-  retailerTone,
   share,
   sign,
   verdict,
@@ -102,12 +101,6 @@ describe('money and bars', () => {
     expect(gapWidth('-10.9', 10.9)).toBe(50);
     expect(gapWidth('5.45', 10.9)).toBe(25);
     expect(gapWidth('0', 10.9)).toBe(0);
-  });
-  it('retailerTone names the two shops and falls back to the series by side', () => {
-    expect(retailerTone('ulta_ae', 1)).toContain('--color-ulta');
-    expect(retailerTone('sephora_ae', 0)).toContain('--color-sephora');
-    expect(retailerTone('shop_a', 0)).toContain('--color-series-a');
-    expect(retailerTone('shop_b', 1)).toContain('--color-series-b');
   });
   it('deepestCut picks the largest depth as sent', () => {
     expect(deepestCut([{ depthPct: '44.4' }, { depthPct: '50.0' }, { depthPct: 'x' }])).toBe('50.0');

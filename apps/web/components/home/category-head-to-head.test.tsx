@@ -8,6 +8,7 @@ import pagesAr from '@/messages/ar.json';
 import pagesEn from '@/messages/en.json';
 import widgetsAr from '@/messages/widgets.ar.json';
 import widgetsEn from '@/messages/widgets.en.json';
+import { retailerColor } from '../ui/retailer-dot';
 import type { PairState } from '../widgets/use-compare';
 import { CategoryHeadToHead } from './category-head-to-head';
 
@@ -46,18 +47,19 @@ describe('CategoryHeadToHead', () => {
     expect(fragrance.textContent).toContain('420.00');
     expect(fragrance.textContent).toContain('395.00');
     expect(fragrance.textContent).toContain('-6.0%');
-    // Shop B (other) is cheaper: the fill runs toward the start in Shop B's colour, and says so.
+    // Shop B (other) is cheaper: the fill runs toward the start in Shop B's colour (the same table
+    // its dot uses), and says so.
     const fill = fragrance.querySelector('.gapbar i')!;
     expect(fill.getAttribute('data-shop')).toBe('shop_b');
     expect(fill.getAttribute('data-at')).toBe('start');
-    expect(fill.getAttribute('style')).toContain('background: var(--color-series-b');
+    expect(fill.getAttribute('style')).toContain(`background: ${retailerColor('shop_b', 1)}`);
     expect(fragrance.textContent).toContain('Shop B cheaper');
     const lips = row('Lips');
     expect(lips.textContent).toContain('+7.4%');
     expect(lips.querySelector('.gapbar i')?.getAttribute('data-shop')).toBe('shop_a');
     expect(lips.querySelector('.gapbar i')?.getAttribute('data-at')).toBe('end');
     expect(lips.querySelector('.gapbar i')?.getAttribute('style')).toContain(
-      'background: var(--color-series-a',
+      `background: ${retailerColor('shop_a', 0)}`,
     );
     expect(lips.textContent).toContain('Shop A cheaper');
     // No value judgement: the fill is never the good or bad tone.
