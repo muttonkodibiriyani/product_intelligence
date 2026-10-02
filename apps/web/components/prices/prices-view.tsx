@@ -27,8 +27,10 @@ import {
   ladderRows,
   pct,
 } from '../widgets/model';
+import { useCategoryCompare } from '../widgets/use-category';
 import { useCompareData, useIndexData, useRetailers } from '../widgets/use-compare';
 import { useSummaries } from '../widgets/use-summaries';
+import { CategoryCompareCard } from './category-compare';
 
 const charts = () => import('../widgets/charts');
 const ChartSkeleton = () => <Skeleton kind="chart" />;
@@ -87,9 +89,9 @@ type Pair = NonNullable<ReturnType<typeof useRetailers>['pair']>;
 
 /**
  * Price analytics: one retailer's full catalogue at a time (distribution, ladder, brand and
- * category positioning), then the pair head to head on the matched products only, with the
- * comparable-pair count beside every head-to-head figure. The retailer, the brand count and the
- * grouping live in the URL.
+ * category positioning), then the pair by category across both full catalogues (the centrepiece),
+ * then the pair head to head on the exactly matched products only, with the comparable-pair count
+ * beside every head-to-head figure. The retailer, the brand count and the grouping live in the URL.
  */
 export function PricesView() {
   const t = useTranslations('prices');
@@ -153,16 +155,19 @@ export function PricesView() {
             )}
           </section>
           {pair ? (
-            <HeadToHead
-              pair={pair}
-              locale={locale}
-              groupBy={groupBy}
-              onGroupBy={(v) => set('groupBy', v === 'brand' ? null : v)}
-              top={top}
-            />
+            <>
+              <ByCategory pair={pair} locale={locale} />
+              <HeadToHead
+                pair={pair}
+                locale={locale}
+                groupBy={groupBy}
+                onGroupBy={(v) => set('groupBy', v === 'brand' ? null : v)}
+                top={top}
+              />
+            </>
           ) : (
-            <section aria-labelledby="head-to-head" className="space-y-4">
-              <SectionHead id="head-to-head" title={t('headToHead')} hint={t('onePair')} />
+            <section aria-labelledby="by-category" className="space-y-4">
+              <SectionHead id="by-category" title={t('byCategory')} hint={t('onePair')} />
             </section>
           )}
         </>
@@ -331,7 +336,22 @@ function Fact({ k, children }: { k: string; children: ReactNode }) {
   );
 }
 
-/** The pair on the matched set only; every card's question carries the pair count. */
+/** The centrepiece: the pair by shared category over both full catalogues. */
+function ByCategory({ pair, locale }: { pair: Pair; locale: string }) {
+  const t = useTranslations('prices');
+  const state = useCategoryCompare(pair);
+  const names = { base: pair.name(pair.base), other: pair.name(pair.other) };
+  return (
+    <section aria-labelledby="by-category" className="space-y-4">
+      <SectionHead id="by-category" title={t('byCategory')} hint={t('byCategoryHint', names)} />
+      <CardGrid>
+        <CategoryCompareCard state={state} pair={pair} locale={locale} />
+      </CardGrid>
+    </section>
+  );
+}
+
+/** The pair on the exactly matched set only; every card's meta line carries the pair count. */
 function HeadToHead({
   pair,
   locale,
@@ -356,8 +376,25 @@ function HeadToHead({
   const idx = useIndexData(pair);
   const names = { base: pair.name(pair.base), other: pair.name(pair.other) };
   const href = compareHref(locale, pair);
+  // The n every head-to-head card is on; without a summary there is nothing to put a count to.
+  const n = cmp.kind === 'ready' ? cmp.data.summary?.n : undefined;
+  const nPairs = n === undefined ? null : tw('nPairs', { n });
   const head = (
-    <SectionHead id="head-to-head" title={t('headToHead')} hint={t('headToHeadHint', names)}>
+    <SectionHead
+      id="head-to-head"
+      title={t('headToHead')}
+      hint={
+        <>
+          {t('headToHeadHint', names)}
+          {nPairs && (
+            <>
+              {' '}
+              <span className="font-medium tabular-nums">{nPairs}</span>
+            </>
+          )}
+        </>
+      }
+    >
       <Link href={href} className="btn text-sm focus-visible:outline-2">
         {t('openCompare')}
       </Link>
@@ -387,9 +424,6 @@ function HeadToHead({
       </section>
     );
   const data = cmp.data;
-  const n = data.summary?.n;
-  // The n every head-to-head card is on; without a summary there is nothing to put a count to.
-  const nPairs = n === undefined ? null : tw('nPairs', { n });
   const gaps = gapRows(data.rows, top);
   const cross = truncated
     ? null
@@ -424,7 +458,6 @@ function HeadToHead({
   return (
     <section aria-labelledby="head-to-head" className="space-y-4">
       {head}
-      {n !== undefined && <p className="text-sm">{t('pairsNote', { n, ...names })}</p>}
       <PairKpis data={data} pair={pair} locale={locale} href={href} />
       <CardGrid>
         {data.summary && gapHistBins(data.summary.gapHist).length > 0 && (
