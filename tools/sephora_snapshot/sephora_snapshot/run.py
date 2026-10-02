@@ -25,9 +25,11 @@ obeyed fail-closed, own pace IMAGE_PACE >= 1.0 s, never through a proxy; a block
 host ends the picture pass, pages continue).
 
 Redirects are not followed blindly: every hop is checked against the target host's robots.txt
-(fail-closed) and, for pictures, the host allowlist; rows record ``final_url`` and the hop list.
-Bodies are read with a byte cap (pictures 10 MB, robots.txt 512 KB, pages 32 MB); over the cap
-nothing is stored and the row says ``too_large``.
+(fail-closed) and a host allowlist checked before any request for it: pictures must stay on an
+allowed image host, pages, sitemaps and tRPC on the storefront host, robots.txt on its own host,
+all https. Rows record ``final_url`` and the hop list. Bodies are read with a byte cap (pictures
+10 MB, robots.txt 512 KB, pages 32 MB, sitemaps 50 MB); over the cap nothing is stored and the
+row says ``too_large``.
 """
 
 from __future__ import annotations
@@ -61,6 +63,9 @@ MAX_REDIRECTS = 5  # RFC 9309 asks for at least five on robots.txt; pages and pi
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_ROBOTS_BYTES = 512 * 1024
 MAX_PAGE_BYTES = 32 * 1024 * 1024
+MAX_SITEMAP_BYTES = 50 * 1024 * 1024  # sitemaps.org allows 50 MB uncompressed
+#: The only hosts a page, sitemap or tRPC request (or a redirect of one) may go to.
+PAGE_HOSTS: frozenset[str] = frozenset({urlsplit(extract.SITE).netloc.lower()})
 
 
 @dataclass
@@ -280,12 +285,23 @@ class Job:
             r.close()
         return Got(r.status_code, r.headers, b"" if too_large else b"".join(chunks), too_large)
 
-    def hop_refusal(self, target: str, kind: str) -> tuple[str, str] | None:
-        """Why a redirect target must not be fetched, or None when it may."""
-        if kind == "image":
-            why = images.host_refusal(target, self.image_hosts)
+    def hop_refusal(self, target: str, kind: str, origin: str) -> tuple[str, str] | None:
+        """Why a redirect target must not be fetched, or None when it may.
+
+        Decided before anything is requested for the target, its robots.txt included: scraped
+        content never chooses our request targets. Pictures must stay on an allowed image host,
+        pages, sitemaps and tRPC on the storefront host, and a robots.txt hop on the very host
+        whose robots.txt was asked for; all https, exact host, no userinfo, no port.
+        """
+        if kind == "robots":
+            why = images.host_refusal(target, {urlsplit(origin).netloc.lower()})
             if why is not None:
-                return "host_refused", f"redirect target {target}: {why}"
+                return "host_refused", f"robots.txt redirect target {target}: {why}"
+            return None  # a same-host robots.txt hop has no robots check of its own
+        allowed = self.image_hosts if kind == "image" else PAGE_HOSTS
+        why = images.host_refusal(target, allowed)
+        if why is not None:
+            return "host_refused", f"redirect target {target}: {why}"
         robots = self.robots_for(target, kind)
         if robots.status not in (200, 404, 410):
             return "robots_unavailable", f"redirect target {target}: robots.txt unreadable"
@@ -296,9 +312,10 @@ class Job:
     def fetch(self, url: str, hdrs: Mapping[str, str], kind: str, cap: int) -> Fetched:
         """A GET following at most MAX_REDIRECTS hops, each hop checked on its own terms.
 
-        A hop to another URL is a new request: for pictures the target must be an allowed image
-        host, and for everything but robots.txt itself the target host's robots.txt must allow
-        it (fail-closed). Transport errors propagate as ``httpx.HTTPError``.
+        A hop to another URL is a new request and is gated like one (``hop_refusal``): the
+        target host must be allowed for the request's kind and, for everything but robots.txt
+        itself, the target host's robots.txt must allow it (fail-closed). Transport errors
+        propagate as ``httpx.HTTPError``.
         """
         current: str = url
         hops: list[str] = []
@@ -316,11 +333,10 @@ class Job:
                 return Fetched(
                     None, target, hops, "too_many_redirects", f"more than {MAX_REDIRECTS} hops"
                 )
-            if kind != "robots":  # robots.txt hops are followed as RFC 9309 asks
-                refusal = self.hop_refusal(target, kind)
-                if refusal is not None:
-                    return Fetched(None, target, hops, *refusal)
-                self.pace_for(target, kind)
+            refusal = self.hop_refusal(target, kind, url)
+            if refusal is not None:
+                return Fetched(None, target, hops, *refusal)
+            self.pace_for(target, kind)
             current = target
 
     def pace_for(self, url: str, kind: str) -> None:
@@ -337,8 +353,14 @@ class Job:
         self.client.cookies.clear()
         t0 = time.monotonic()
         meta: dict[str, Any] = {"url": url, "locale": locale, "at": datetime.now(UTC).isoformat()}
+        why = images.host_refusal(url, PAGE_HOSTS)
+        if why is not None:  # a seed or plan URL off the storefront: never requested
+            self.count("host_refused")
+            self.emit("errors", {**meta, "state": "host_refused", "reason": why})
+            return None
         try:
-            fetched = self.fetch(url, headers(locale, kind), kind, MAX_PAGE_BYTES)
+            cap = MAX_SITEMAP_BYTES if kind == "xml" else MAX_PAGE_BYTES
+            fetched = self.fetch(url, headers(locale, kind), kind, cap)
         except httpx.HTTPError as exc:
             self.err_streak += 1
             self.count("transport_error")

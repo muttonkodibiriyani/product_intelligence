@@ -212,11 +212,19 @@ bytes).
   robots.txt (fail-closed; `Crawl-delay` honoured as a pacing floor). Anything else is recorded
   as `host_refused` or `robots_refused` and not requested, not even its robots.txt.
 - **Redirects.** The client does not follow redirects on its own. Each hop (at most 5) is a new
-  request checked on its own terms: the target host's robots.txt for every page and picture, and
-  the host allowlist for pictures. Rows record `final_url` and the hop list (`redirects`).
-- **Byte caps.** Pictures are read up to 10 MB, robots.txt up to 512 KB, pages up to 32 MB. Over
-  the cap nothing is stored and the row says `too_large`; an oversized robots.txt counts as
-  unreadable (refused).
+  request gated before anything is asked of the target, its robots.txt included: a picture hop
+  must land on an allowed image host, a page, sitemap or tRPC hop on the storefront host
+  (`www.sephora.me`), a robots.txt hop on the host whose robots.txt was requested; all https,
+  exact host, no userinfo, no port. Scraped content never chooses a request target: a `302` to a
+  metadata or private address, an `http` downgrade or a lookalike host is recorded
+  `host_refused` and not requested, and a robots.txt that redirects off its host counts as
+  unreadable, so that host's pictures are refused rather than allowed. Seed and plan URLs are
+  gated the same way. Allowed hops are then checked against the target host's robots.txt. Rows
+  record `final_url` and the hop list (`redirects`).
+- **Byte caps.** Pictures are read up to 10 MB, robots.txt up to 512 KB, pages up to 32 MB,
+  sitemaps up to 50 MB (the sitemaps.org limit). Over the cap nothing is stored and the row says
+  `too_large`; an oversized robots.txt counts as unreadable (refused). A refused hop or a dropped
+  body makes the run `partial`, never `succeeded`.
 - **Pace.** Pictures go at `IMAGE_PACE` >= 1.0 s (ADR-0005 pacing, the CDN is the retailer's own
   infrastructure), directly, never through a proxy. A 401/403 or a non-image 200 from the image
   host ends the picture pass for the run; pages continue.

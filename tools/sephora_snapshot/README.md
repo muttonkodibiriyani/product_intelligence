@@ -31,10 +31,16 @@ Env for `run.py`:
   a picture may be fetched from, default `img-product.sephora.me`; a URL that is not `https` on
   one of them is recorded `host_refused` and never requested). Pictures are always fetched
   directly, never through a proxy. Redirects are never followed blindly: each hop (at most 5) is
-  checked against the target host's robots.txt and, for pictures, the allowlist; every row
-  records `final_url` and, when there were hops, `redirects`. Bodies are read under a byte cap
-  (pictures 10 MB, robots.txt 512 KB, pages 32 MB); over it nothing is stored and the row says
-  `too_large`. See ADR-0009, amendment 2026-10-02.
+  gated before anything is requested for it, its robots.txt included. A picture hop must stay
+  on an allowed image host; a page, sitemap or tRPC hop on the storefront host
+  (`www.sephora.me`); a robots.txt hop on the very host whose robots.txt was asked for; all
+  `https`, exact host, no userinfo, no port. Anything else is `host_refused` (count
+  `hop_host_refused`), and a refused robots.txt hop leaves that host's robots unreadable, so its
+  pictures are refused too. A seed or plan URL off the storefront is `host_refused` without a
+  request. Allowed hops are then checked against the target host's robots.txt; every row records
+  `final_url` and, when there were hops, `redirects`. Bodies are read under a byte cap (pictures
+  10 MB, robots.txt 512 KB, pages 32 MB, sitemaps 50 MB as sitemaps.org allows); over it nothing
+  is stored and the row says `too_large`. See ADR-0009, amendment 2026-10-02.
 - or `AUTO=1` instead of `PREFIX`/`CUTOFF`/`PLAN` (setting any of them with `AUTO=1` makes no
   request: the run ends with outcome `refused` under its own new prefix and exits 1).
 

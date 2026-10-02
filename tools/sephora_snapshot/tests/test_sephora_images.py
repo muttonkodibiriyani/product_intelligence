@@ -607,3 +607,171 @@ def test_429_on_a_picture_backs_off_inside_the_cutoff(
     assert waits == [60, 120]
     assert j.images_on is False
     assert j.counts == {"image_http_429": 3, "images_stopped_rate_limited": 1}
+
+
+SITE = "https://www.sephora.me"
+TRPC = f"{SITE}/api/trpc/products.getProductAvailability?batch=1&input=x"  # plain query
+SITEMAP = extract.sitemap_urls("en-SA")[0]
+
+
+@pytest.mark.parametrize(
+    ("kind", "url", "target"),
+    [
+        (
+            "html",
+            f"{SITE}/sa-en/p/x/P1",
+            "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+        ),
+        ("html", f"{SITE}/sa-en/p/x/P1", "https://10.0.0.1/sa-en/p/x/P1"),
+        ("html", f"{SITE}/sa-en/p/x/P1", "http://www.sephora.me/sa-en/p/x/P1"),
+        ("html", f"{SITE}/sa-en/p/x/P1", "https://www.sephora.me.evil.example/sa-en/p/x/P1"),
+        ("html", f"{SITE}/sa-en/p/x/P1", "https://www.sephora.me:8443/sa-en/p/x/P1"),
+        ("html", f"{SITE}/sa-en/p/x/P1", "https://user@www.sephora.me/sa-en/p/x/P1"),
+        ("json", TRPC, "https://10.0.0.1/api/trpc/x"),
+        ("json", TRPC, "http://169.254.169.254/computeMetadata/v1/"),
+        ("xml", SITEMAP, "https://192.168.1.1/sitemap.xml"),
+        ("xml", SITEMAP, "http://www.sephora.me/sitemap/en-SA/catalog/productSlugsCO-0.xml"),
+    ],
+)
+def test_page_sitemap_and_trpc_hops_off_the_storefront_are_refused_before_any_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, url: str, target: str
+) -> None:
+    j = _job(tmp_path, monkeypatch)
+    calls: list[str] = []
+
+    def get(got_url: str, headers: dict[str, str]) -> _Resp:
+        calls.append(got_url)
+        if got_url == url:
+            return _Resp(302, b"", "text/html", location=target)
+        pytest.fail(f"unexpected request {got_url}")
+
+    _stub(monkeypatch, j, get)
+    assert j.get(url, "en-SA", kind) is None
+    assert calls == [url]  # not the target, not the target host's robots.txt, nothing else
+    j.flush("errors")
+    (row,) = _rows(tmp_path, "errors")
+    assert row["state"] == "host_refused"
+    assert row["final_url"] == target
+    assert row["redirects"] == [target]
+    assert target in row["reason"]
+    assert j.counts == {"redirects": 1, "hop_host_refused": 1}
+
+
+def test_a_seed_or_plan_url_off_the_storefront_is_never_requested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    j = _job(tmp_path, monkeypatch)
+    calls: list[str] = []
+
+    def get(url: str, headers: dict[str, str]) -> _Resp:
+        calls.append(url)
+        pytest.fail(f"unexpected request {url}")
+
+    _stub(monkeypatch, j, get)
+    for url in (
+        "https://evil.example/sa-en/p/x/P1",
+        "http://www.sephora.me/sa-en/p/x/P1",
+        "https://169.254.169.254/sa-en/p/x/P1",
+    ):
+        assert j.get(url, "en-SA", "html") is None
+    assert calls == []
+    j.flush("errors")
+    rows = _rows(tmp_path, "errors")
+    assert [r["state"] for r in rows] == ["host_refused"] * 3
+    assert "redirects" not in rows[0]
+    assert j.counts == {"host_refused": 3}
+
+
+def test_a_storefront_hop_is_still_allowed_after_the_host_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    j = _job(tmp_path, monkeypatch)
+    page = pdp_html(details("P1")).encode()
+    calls: list[str] = []
+
+    def get(url: str, headers: dict[str, str]) -> _Resp:
+        calls.append(url)
+        if url == f"{SITE}/robots.txt":
+            return _Resp(200, b"User-agent: *\nDisallow: /private/\n", "text/plain")
+        if url == f"{SITE}/sa-en/p/old/P1":
+            return _Resp(301, b"", "text/html", location=f"{SITE}/sa-en/p/new/P1")
+        if url == f"{SITE}/sa-en/p/new/P1":
+            return _Resp(200, page, "text/html")
+        pytest.fail(f"unexpected request {url}")
+
+    _stub(monkeypatch, j, get)
+    got = j.get(f"{SITE}/sa-en/p/old/P1", "en-SA", "html")
+    assert got is not None
+    assert got[2]["final_url"] == f"{SITE}/sa-en/p/new/P1"
+    assert calls == [f"{SITE}/sa-en/p/old/P1", f"{SITE}/robots.txt", f"{SITE}/sa-en/p/new/P1"]
+
+
+@pytest.mark.parametrize(
+    ("location", "allowed", "extra_calls"),
+    [
+        ("http://10.0.0.1/robots.txt", False, []),  # off host and http: nothing more is asked
+        ("https://10.0.0.1/robots.txt", False, []),
+        (f"http://{HOST}/robots.txt", False, []),  # same host but an http downgrade
+        ("https://other.example/robots.txt", False, []),
+        (f"https://{HOST}/robots-v2.txt", True, [f"https://{HOST}/robots-v2.txt"]),  # same host
+        ("/robots-v2.txt", True, [f"https://{HOST}/robots-v2.txt"]),  # relative, same host
+    ],
+)
+def test_robots_hops_stay_on_their_host_or_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+    allowed: bool,
+    extra_calls: list[str],
+) -> None:
+    j = _job(tmp_path, monkeypatch, IMAGES="1")
+    d = details("P1")
+    d["images"] = [{"disBaseLink": f"https://{HOST}/p.jpg"}]
+    calls: list[str] = []
+
+    def get(url: str, headers: dict[str, str]) -> _Resp:
+        calls.append(url)
+        if url == f"https://{HOST}/robots.txt":
+            return _Resp(301, b"", "text/html", location=location)
+        if url == f"https://{HOST}/robots-v2.txt":
+            return _Resp(200, b"User-agent: *\nDisallow: /private/\n", "text/plain")
+        if url == f"https://{HOST}/p.jpg":
+            return _Resp(200, b"\xff\xd8pic", "image/jpeg")
+        pytest.fail(f"unexpected request {url}")
+
+    _stub(monkeypatch, j, get)
+    j.pictures("P1", d)
+    for stream in ("images", "images_robots"):
+        j.flush(stream)
+    picture = [f"https://{HOST}/p.jpg"] if allowed else []
+    assert calls == [f"https://{HOST}/robots.txt", *extra_calls, *picture]
+    (robots_row,) = _rows(tmp_path, "images_robots")
+    (image_row,) = _rows(tmp_path, "images")
+    if allowed:
+        assert robots_row["status"] == 200
+        assert robots_row["rules"] == 1
+        assert image_row["state"] == "ok"
+        assert j.counts == {"redirects": 1, "image_ok": 1}
+    else:
+        assert robots_row["status"] is None  # unreadable: the host is not allow-all
+        assert image_row["state"] == "robots_refused"
+        assert j.counts == {"redirects": 1, "image_robots_refused": 1}
+
+
+def test_sitemaps_get_the_wider_cap_and_pages_keep_theirs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    j = _job(tmp_path, monkeypatch)
+    monkeypatch.setattr(run, "MAX_PAGE_BYTES", 100)
+    monkeypatch.setattr(run, "MAX_SITEMAP_BYTES", 1000)
+    body = b"<urlset>" + b" " * 500 + b"</urlset>"
+    _stub(monkeypatch, j, lambda url, headers: _Resp(200, body, "application/xml"))
+    got = j.get(SITEMAP, "en-SA", "xml")
+    assert got is not None
+    assert got[1] == body
+    assert j.get(f"{SITE}/sa-en/p/x/P1", "en-SA", "html") is None
+    j.flush("errors")
+    (row,) = _rows(tmp_path, "errors")
+    assert row["state"] == "too_large"
+    assert row["cap"] == 100
+    assert j.counts["too_large"] == 1
