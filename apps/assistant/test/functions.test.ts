@@ -331,6 +331,26 @@ describe("assistantChat request handling (reviewer D2)", () => {
     expect(answer).toMatchObject({ status: "unavailable", code: "invalid_question" });
     expect(meter.started).toEqual([]);
   });
+  it("passes the progress sink through to the flow", async () => {
+    const { flow } = realFlow();
+    const seen: unknown[] = [];
+    const answer = await handleChat(
+      request("viewer"),
+      flow,
+      (progress) => void seen.push(progress),
+    );
+    expect(answer.status).toBe("answered");
+    expect(seen[0]).toEqual({ type: "status", stage: "thinking" });
+  });
+
+  it("sends no progress to a refused caller", async () => {
+    const { flow } = realFlow();
+    const seen: unknown[] = [];
+    await expect(
+      handleChat(request("killswitch"), flow, (progress) => void seen.push(progress)),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    expect(seen).toEqual([]);
+  });
 });
 
 describe("src/index.ts", () => {
