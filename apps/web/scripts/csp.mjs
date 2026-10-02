@@ -8,7 +8,8 @@
 //
 // `npm run build` checks both exports: out/ (as built, flags off in CI) and out-assistant/ (the
 // assistant switched on), so one committed CSP is valid for today's deploy and for switch-on.
-// Host sources in script-src (the reCAPTCHA hosts) are kept as they are; only hashes change.
+// The only host sources script-src may carry are SCRIPT_HOSTS (reCAPTCHA Enterprise for App
+// Check). Anything else in the committed directive ('unsafe-inline', another host) fails --check.
 //
 // The build id is a hash of the sources (next.config.ts), so the same source gives the same
 // hashes on any machine, and CI's check after `next build` catches a stale list.
@@ -16,11 +17,15 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
+const SCRIPT_HOSTS = ['https://www.google.com/recaptcha/', 'https://www.gstatic.com/recaptcha/'];
+
 const args = process.argv.slice(2);
 const mode = args.find((a) => a.startsWith('--')) ?? '--check';
 const dirs = args.filter((a) => !a.startsWith('--'));
 if (dirs.length === 0) dirs.push('out');
-const CONFIG = join(import.meta.dirname, '..', '..', '..', 'infra', 'firebase.json');
+// CSP_CONFIG lets scripts/csp.test.ts point the check at a fixture; builds use the real file.
+const CONFIG =
+    process.env.CSP_CONFIG ?? join(import.meta.dirname, '..', '..', '..', 'infra', 'firebase.json');
 
 const hashes = new Set();
 let inline = 0;
@@ -40,11 +45,7 @@ const config = JSON.parse(readFileSync(CONFIG, 'utf8'));
 const csp = config.hosting.headers.flatMap((h) => h.headers).find((h) => h.key === 'Content-Security-Policy');
 if (!csp) throw new Error('no Content-Security-Policy header in infra/firebase.json');
 const have = csp.value.split(/;\s*/).find((d) => d.startsWith('script-src ')) ?? '';
-const hosts = have
-    .split(' ')
-    .slice(1)
-    .filter((s) => s !== "'self'" && !s.startsWith("'sha256-"));
-const want = ['script-src', "'self'", ...hosts, ...[...hashes].sort()].join(' ');
+const want = ['script-src', "'self'", ...SCRIPT_HOSTS, ...[...hashes].sort()].join(' ');
 
 if (have === want) {
     console.log(
