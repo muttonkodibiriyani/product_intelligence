@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Envelope, Schemas } from '@/lib/api/types';
-import golden from '@/../../docs/contracts/golden/pi-api/meta.json';
+import { golden as load } from '@/lib/api/golden';
 import { launchReadiness } from './readiness';
 
 type Meta = Envelope<Schemas['MetaView']>;
-const meta = golden as unknown as Meta;
+const meta = load('meta') as Meta;
 const withData = (patch: Partial<Schemas['MetaView']>, caveats: Meta['caveats'] = []): Meta => ({
   ...meta,
   caveats,

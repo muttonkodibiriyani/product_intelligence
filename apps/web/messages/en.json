@@ -478,7 +478,7 @@
   },
   "prices": {
     "title": "Price analytics",
-    "intro": "Each retailer's full catalogue on its own, the two compared by category across both full catalogues, then head to head on the exactly matched products only.",
+    "intro": "One retailer's full catalogue at a time, the two compared by category across both full catalogues, then the spread of price gaps on the exactly matched products only. Each chart leads with one line from its own data.",
     "perRetailer": "By retailer",
     "perRetailerHint": "Full catalogue of the retailer you pick.",
     "headToHead": "Exact matches only",

@@ -66,11 +66,11 @@ const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 const tipRow = (label: string, value: string) =>
-  `<div style="display:flex;gap:16px;justify-content:space-between"><span>${esc(label)}</span><b style="font-weight:600">${esc(value)}</b></div>`;
+  `<div class="tip-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
 
 const tipLine = (s: string) => `<div>${esc(s)}</div>`;
 
-const tipHead = (s: string) => `<div style="font-weight:600;margin-bottom:4px">${esc(s)}</div>`;
+const tipHead = (s: string) => `<div class="tip-head">${esc(s)}</div>`;
 
 /** Price-axis end labels grow inward: centred, ECharts shrinks a narrow grid to fit them, to nothing on a phone. */
 const edgeLabels = (rtl: boolean) =>
