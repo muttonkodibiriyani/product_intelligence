@@ -297,4 +297,4 @@ def test_microdata_scope_without_type_is_ignored() -> None:
         '<span itemprop="brand">Brand</span></div></body></html>'
     )
     readings = readings_from_generic(html, locale="en-AE")
-    assert any(r.key == "name" and r.value == "Lipstick" for r in readings)
+    assert any(r.key == "title" and r.value == "Lipstick" for r in readings)
