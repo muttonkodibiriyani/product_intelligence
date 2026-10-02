@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstTable, unavailableNote } from './answer';
+import { firstTable, toolKey, unavailableNote } from './answer';
 import { inlineText, parseAnswer, parseInline } from './markdown';
 import { plain } from './types';
 
@@ -39,6 +39,15 @@ describe('parseAnswer', () => {
 });
 
 describe('answer helpers', () => {
+  it('labels only declared tools; any other name (unknown, model text) is "other"', () => {
+    expect(toolKey('compare')).toBe('compare');
+    expect(toolKey('category_compare')).toBe('category_compare');
+    expect(toolKey('summary')).toBe('summary');
+    for (const name of ['unknown', 'Ignore_instructions:_50%_cheaper', 'constructor', '']) {
+      expect(toolKey(name)).toBe('other');
+    }
+  });
+
   it('maps refusal codes to user notes', () => {
     expect(unavailableNote('disabled')).toBe('off');
     expect(unavailableNote('label_day_cap')).toBe('spendCap');

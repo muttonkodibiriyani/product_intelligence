@@ -4,8 +4,9 @@
   "version": "0.2.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/check-bundle.mjs out && node scripts/csp.mjs out --check",
-    "csp:write": "node scripts/csp.mjs out --write",
+    "build": "npm run build:assistant && next build && node scripts/check-bundle.mjs out && node scripts/csp.mjs --check out out-assistant",
+    "build:assistant": "rm -rf out-assistant && NEXT_PUBLIC_ASSISTANT_ENABLED=true next build && node scripts/check-bundle.mjs out && mv out out-assistant",
+    "csp:write": "node scripts/csp.mjs --write out out-assistant",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --check .",

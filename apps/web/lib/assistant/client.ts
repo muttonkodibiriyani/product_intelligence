@@ -1,4 +1,3 @@
-import { RECAPTCHA_SITE } from '.';
 import type { ChatAnswer, ChatProgress } from './types';
 
 /** Where `assistantChat` runs (apps/assistant `REGION`). */
@@ -19,6 +18,36 @@ export interface AskOptions {
 }
 
 export type Ask = (request: ChatRequest, options?: AskOptions) => Promise<ChatAnswer>;
+
+/**
+ * The App Check site key, written next to the export at switch-on (runbook §10c) and fetched at
+ * runtime like /__/firebase/init.json. Built in, the key would change chunk names and with them
+ * the inline-script CSP hashes, so CI could not check the switch-on build. `/app` is next.config's
+ * basePath. A site key is public by design; this file holds nothing else.
+ */
+export const APP_CHECK_CONFIG_URL = '/app/assistant-app-check.json';
+
+/** reCAPTCHA Enterprise key ids are URL-safe base64-like tokens (40 characters today). */
+const SITE_KEY = /^[A-Za-z0-9_-]{20,100}$/;
+
+/** The site key from the config file's JSON, or null when it is missing or malformed. */
+export function pickSiteKey(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const key = (raw as Record<string, unknown>).recaptchaSiteKey;
+  return typeof key === 'string' && SITE_KEY.test(key) ? key : null;
+}
+
+export async function loadSiteKey(f: typeof fetch = (...a) => fetch(...a)): Promise<string | null> {
+  try {
+    const res = await f(APP_CHECK_CONFIG_URL, { credentials: 'omit', cache: 'no-store' });
+    return res.ok ? pickSiteKey(await res.json()) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** No usable App Check site key was served; shown as the generic error, and retried next send. */
+export class NoSiteKey extends Error {}
 
 /** Thrown for a response that is not the answer contract; shown as the generic error. */
 export class BadResponse extends Error {}
@@ -59,14 +88,16 @@ let client: Promise<Ask> | undefined;
  */
 export function assistantClient(): Promise<Ask> {
   return (client ??= (async () => {
-    const [{ getApp }, appCheck, functions] = await Promise.all([
+    const [siteKey, { getApp }, appCheck, functions] = await Promise.all([
+      loadSiteKey(),
       import('@firebase/app'),
       import('@firebase/app-check'),
       import('@firebase/functions'),
     ]);
+    if (siteKey === null) throw new NoSiteKey('no App Check site key');
     const app = getApp();
     appCheck.initializeAppCheck(app, {
-      provider: new appCheck.ReCaptchaEnterpriseProvider(RECAPTCHA_SITE),
+      provider: new appCheck.ReCaptchaEnterpriseProvider(siteKey),
       isTokenAutoRefreshEnabled: true,
     });
     const call = functions.httpsCallable<ChatRequest, unknown, unknown>(
