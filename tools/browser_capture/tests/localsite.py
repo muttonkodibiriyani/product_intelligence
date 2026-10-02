@@ -28,13 +28,19 @@ class Hit:
 class Site:
     server: ThreadingHTTPServer
     udp: socket.socket  # plays a STUN server; every datagram it receives is counted
+    turn: socket.socket  # plays a TURN server over TCP; every connection accepted is counted
     hits: list[Hit] = field(default_factory=list)
     udp_packets: list[int] = field(default_factory=list)
+    tcp_connections: list[int] = field(default_factory=list)  # bytes of each first read
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
     def udp_port(self) -> int:
         return int(self.udp.getsockname()[1])
+
+    @property
+    def turn_port(self) -> int:
+        return int(self.turn.getsockname()[1])
 
     @property
     def port(self) -> int:
@@ -55,6 +61,7 @@ class Site:
         self.server.shutdown()
         self.server.server_close()
         self.udp.close()
+        self.turn.close()
 
     def listen_udp(self) -> None:
         while True:
@@ -65,12 +72,29 @@ class Site:
             with self.lock:
                 self.udp_packets.append(len(data))
 
+    def listen_tcp(self) -> None:
+        while True:
+            try:
+                conn, _ = self.turn.accept()
+            except OSError:
+                return
+            with conn:
+                conn.settimeout(2)
+                try:
+                    data = conn.recv(2048)  # a TURN Allocate, if the browser got this far
+                except OSError:
+                    data = b""
+            with self.lock:
+                self.tcp_connections.append(len(data))
+
 
 def page_html(site: Site) -> str:
     """One page that tries every way out: a picture, a fetch GET and POST to the third party,
     a popup, a service worker, a shared worker, two WebSockets, a WebRTC connection with a
-    page-chosen STUN server, a cross-host iframe and a redirect hop. It also writes whether
-    ``SharedWorker`` exists into the DOM, so the rendered page shows the flag took effect."""
+    page-chosen STUN server and a TURN-over-TCP server, a cross-host iframe and a redirect hop.
+    It also writes into the DOM whether ``SharedWorker`` and the WebRTC constructors exist (in
+    the page and in an ``about:blank`` frame), so the rendered page shows the policy took
+    effect."""
     other = site.url(OTHER, "")
     store = site.url(STORE, "")
     return f"""<!doctype html><html><head><title>Local page</title></head><body>
@@ -89,12 +113,20 @@ try {{ new WebSocket("ws://{OTHER}:{site.port}/ws-other"); }} catch (e) {{}}
 try {{ new WebSocket("ws://{STORE}:{site.port}/ws-own"); }} catch (e) {{}}
 try {{ new SharedWorker("{store}/shared.js"); }} catch (e) {{}}
 try {{
-  const pc = new RTCPeerConnection({{iceServers: [{{urls: "stun:{OTHER}:{site.udp_port}"}}]}});
+  const pc = new RTCPeerConnection({{iceServers: [
+    {{urls: "stun:{OTHER}:{site.udp_port}"}},
+    {{urls: "turn:{OTHER}:{site.turn_port}?transport=tcp", username: "u", credential: "p"}},
+  ]}});
   pc.createDataChannel("d");
   pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {{}});
 }} catch (e) {{}}
+const fr = document.createElement("iframe"); document.body.appendChild(fr);
 const f = document.createElement("p"); f.id = "features";
-f.textContent = "SharedWorker:" + typeof SharedWorker;
+f.textContent = "SharedWorker:" + typeof SharedWorker
+  + " RTCPeerConnection:" + typeof RTCPeerConnection
+  + " webkitRTCPeerConnection:" + typeof webkitRTCPeerConnection
+  + " RTCDataChannel:" + typeof RTCDataChannel
+  + " iframeRTCPeerConnection:" + typeof fr.contentWindow.RTCPeerConnection;
 document.body.appendChild(f);
 const a = document.createElement("a"); a.href = "{store}/redirect-away"; a.id = "away";
 document.body.appendChild(a);
@@ -162,8 +194,12 @@ def serve() -> Site:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp.bind(("127.0.0.1", 0))
-    site = Site(server, udp)
+    turn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    turn.bind(("127.0.0.1", 0))
+    turn.listen()
+    site = Site(server, udp, turn)
     Handler.site = site
     threading.Thread(target=server.serve_forever, daemon=True).start()
     threading.Thread(target=site.listen_udp, daemon=True).start()
+    threading.Thread(target=site.listen_tcp, daemon=True).start()
     return site

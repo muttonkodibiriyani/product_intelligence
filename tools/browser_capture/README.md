@@ -53,7 +53,11 @@ context so pop-up windows are covered too:
   launch by `policy.SHUT_PATHS` (`--disable-features=SharedWorker`,
   `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`): no shared worker script is
   requested and no STUN datagram leaves. These are recorded in the manifest as `policy_args`,
-  apart from the process-model `launch_args`.
+  apart from the process-model `launch_args`. The UDP flag alone only moves ICE onto TCP, and a
+  TURN allocation over TCP would still reach a host the page chooses, so `policy.NO_WEBRTC` is
+  added as an init script to every frame before any page script runs: it deletes
+  `RTCPeerConnection`, `webkitRTCPeerConnection` and `RTCDataChannel`. No constructor, no
+  connection on any transport. The manifest records it as `init_script`.
 - **Pictures, media, fonts, beacons, pings, manifests, text tracks, event sources** and anything
   of unknown type never leave (`refused_type_<type>`).
 - **Scripts, stylesheets and data calls** (`xhr`, `fetch`) must be https. A data call that is not
@@ -124,9 +128,12 @@ retailer page is ever used in a fixture. The Playwright adapter (`pw.py`) is pro
 `tests/test_browser_pw_live.py` against a local site (`tests/localsite.py`: `localhost` is the
 storefront, `127.0.0.1` the third party) that serves a page with pictures, a cross-host frame,
 third-party GET and POST calls, two pop-ups, a service worker, a shared worker, two WebSockets
-and a WebRTC connection aimed at a local STUN listener. The test asserts
-that exactly the gate-allowed requests reach the server and zero UDP datagrams arrive, that
-off-storefront and robots-refused
+and a WebRTC connection aimed at a local STUN listener (UDP) and a local TURN listener (TCP).
+The test asserts that exactly the gate-allowed requests reach the server, that zero UDP
+datagrams and zero TCP connections arrive, and that the WebRTC constructors are undefined in the
+page and in an `about:blank` frame; a negative control runs the same page in a plain context
+(flags, no init script) and shows the TURN listener does get a TCP connection, so the
+assertion is live. It also checks that off-storefront and robots-refused
 redirects stop before the hop is requested, that an own-host redirect is paced and recorded, that
 a gzip document is kept decoded, and that a script navigation is flagged. It is marked `browser`:
 CI installs Chromium and refuses any skip; where Chromium cannot launch it skips itself. To run it

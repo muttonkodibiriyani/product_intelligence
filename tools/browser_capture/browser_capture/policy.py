@@ -53,6 +53,15 @@ SHUT_PATHS: Final = (
     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
 )
 
+# Run in every frame before any page script: WebRTC is removed outright. The UDP flag above only
+# moves ICE onto TCP, and a TURN allocation over TCP still goes to a host the page chooses,
+# unseen by any route handler. With no constructor there is no connection on any transport.
+NO_WEBRTC: Final = (
+    "delete window.RTCPeerConnection; "
+    "delete window.webkitRTCPeerConnection; "
+    "delete window.RTCDataChannel;"
+)
+
 
 def host_refusal(
     url: str, allowed: frozenset[str], *, schemes: frozenset[str] = HTTPS_ONLY

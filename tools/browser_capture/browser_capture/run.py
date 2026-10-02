@@ -249,6 +249,8 @@ class Job:
                 "proxy": None,
                 "launch_args": list(engine.launch_args),
                 "policy_args": list(engine.policy_args),
+                "init_script": engine.init_script,
+                "webrtc": "removed from every frame by the init script",
                 "fresh_browser_per_page": True,
                 "service_workers": "block",
                 "websockets": "refused",

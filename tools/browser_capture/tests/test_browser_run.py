@@ -272,6 +272,8 @@ def test_an_allowed_page_is_visited_once_with_its_evidence_stored(tmp_path: Path
         "proxy": None,
         "launch_args": [],
         "policy_args": [],
+        "init_script": "",
+        "webrtc": "removed from every frame by the init script",
         "fresh_browser_per_page": True,
         "service_workers": "block",
         "websockets": "refused",

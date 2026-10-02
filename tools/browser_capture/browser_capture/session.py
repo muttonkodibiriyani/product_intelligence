@@ -74,6 +74,7 @@ class Engine:
     headless: bool = True
     launch_args: tuple[str, ...] = ()  # process-model flags only, recorded verbatim
     policy_args: tuple[str, ...] = ()  # policy.SHUT_PATHS, the paths shut at launch
+    init_script: str = ""  # policy.NO_WEBRTC, run in every frame before page scripts
 
 
 class Session(Protocol):

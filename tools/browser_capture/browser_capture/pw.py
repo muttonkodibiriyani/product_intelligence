@@ -25,7 +25,7 @@ from urllib.parse import urljoin
 from playwright.sync_api import Browser, Page, Request, Route, WebSocketRoute, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 
-from browser_capture.policy import DOCUMENT, FRAME, MAIN, POPUP, SHUT_PATHS, Gate
+from browser_capture.policy import DOCUMENT, FRAME, MAIN, NO_WEBRTC, POPUP, SHUT_PATHS, Gate
 from browser_capture.session import Answer, Engine, Hop, TransportError, Visit
 
 ABORT = "blockedbyclient"
@@ -133,6 +133,7 @@ class PlaywrightSession:
                     viewport=(int(size["width"]), int(size["height"])),
                     launch_args=launch_args,
                     policy_args=SHUT_PATHS,
+                    init_script=NO_WEBRTC,
                 )
         except Exception:
             self._pw.stop()  # a driver left running keeps an event loop in this thread
@@ -172,6 +173,7 @@ class PlaywrightSession:
     ) -> Visit:
         with self._browser() as browser:  # fresh process, cookies and storage per page
             ctx = browser.new_context(service_workers="block")  # no worker ever registers
+            ctx.add_init_script(NO_WEBRTC)  # every frame, before page scripts: no WebRTC at all
             page = ctx.new_page()
             walk = _Walk(gate, page)
             ctx.route("**/*", walk.handle)  # the context, so pop-up windows are routed too

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import gzip
 import os
+import time
 from collections.abc import Iterator
 
 import pytest
@@ -98,13 +99,39 @@ def test_only_the_document_and_its_own_data_call_reach_the_server(
     assert g.counts["refused_third_party_write"] == 1  # fetch-post
     assert g.counts["refused_frame_document"] == 1
     assert g.hosts_seen.get(OTHER, 0) >= 2
-    assert "sw.js" not in {h.path for h in site.hits}
+    assert "/sw.js" not in {h.path for h in site.hits}
     # the shared worker never started (its script was never asked for, so its fetch never ran)
-    assert "shared.js" not in {h.path for h in site.hits}
+    assert "/shared.js" not in {h.path for h in site.hits}
     assert "/from-shared" not in {h.path for h in site.hits}
     assert "SharedWorker:undefined" in got.rendered
-    # WebRTC sent nothing to the page-chosen STUN server
+    # WebRTC does not exist in the page or in its about:blank frame, so nothing reached the
+    # page-chosen STUN server (UDP) or TURN server (TCP)
+    for name in ("RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"):
+        assert f" {name}:undefined" in got.rendered
+    assert "iframeRTCPeerConnection:undefined" in got.rendered
     assert site.udp_packets == []
+    assert site.tcp_connections == []
+
+
+def test_negative_control_without_the_init_script_webrtc_reaches_the_turn_server_over_tcp(
+    session: PlaywrightSession, site: Site
+) -> None:
+    """The same page in a plain context of the same browser, launch flags included but no init
+    script: ICE goes out over TCP to the page-chosen TURN server, which is exactly what the
+    listener and the assertion above are there to catch."""
+    browser = session._pw.chromium.launch(args=[*policy.SHUT_PATHS, *ARGS])
+    try:
+        page = browser.new_context().new_page()
+        page.goto(site.url(STORE, "/page"), wait_until="domcontentloaded")
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and not site.tcp_connections:
+            time.sleep(0.1)
+        features = page.inner_text("#features")
+    finally:
+        browser.close()
+    assert " RTCPeerConnection:function" in features
+    assert len(site.tcp_connections) >= 1  # the TURN Allocate arrived
+    assert site.udp_packets == []  # the launch flag alone does shut UDP; TCP is why the script
 
 
 def test_a_redirect_off_the_storefront_stops_before_the_hop_is_requested(
