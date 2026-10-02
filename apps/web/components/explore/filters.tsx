@@ -4,13 +4,17 @@ import { useTranslations } from 'next-intl';
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import type { Schemas } from '@/lib/api/types';
 import { isPrice, toggle, type ExploreState } from '@/lib/explore';
+import { RetailerDot } from '../ui/retailer-dot';
 
 type Facets = Schemas['ProductPage']['facets'];
 type Facet = Schemas['FacetCount'];
 
 const SHORT_LIST = 8;
 
-/** Facet filters. Counts are the API's, for the current filters. */
+/**
+ * The filter rail: shop, sold-at, brand, category and price. Every count is the API's facet count
+ * for the current filters; the sold-at options have no counts because the API has none for them.
+ */
 export function Filters({
   state,
   facets,
@@ -27,12 +31,13 @@ export function Filters({
   const t = useTranslations('explore');
   const pair = state.retailer.length === 2;
   return (
-    <div className="space-y-6 text-sm">
+    <div className="space-y-5 text-[13px]">
       <Group title={t('retailer')} hint={t('retailerHint')}>
         <Checks
           facet={facets?.retailer ?? []}
           selected={state.retailer}
           label={(k) => name(k)}
+          lead={(k, i) => <RetailerDot id={k} index={i} />}
           badge={(k) => {
             const i = state.retailer.indexOf(k);
             return pair && i >= 0 ? String(i + 1) : null;
@@ -40,6 +45,7 @@ export function Filters({
           onToggle={(k) => update({ retailer: toggle(state.retailer, k) })}
         />
       </Group>
+      <SoldAt value={state.matched} onChange={(matched) => update({ matched })} />
       <Group title={t('brand')}>
         <Checks
           facet={facets?.brand ?? []}
@@ -54,7 +60,6 @@ export function Filters({
           onToggle={(k) => update({ category: toggle(state.category, k) })}
         />
       </Group>
-      <Matched value={state.matched} onChange={(matched) => update({ matched })} />
       <PriceRange
         key={`${state.priceMin}-${state.priceMax}`}
         min={state.priceMin}
@@ -69,32 +74,35 @@ export function Filters({
 function Group({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   const id = useId();
   return (
-    <fieldset aria-describedby={hint ? id : undefined}>
-      <legend className="font-semibold">{title}</legend>
+    <fieldset aria-describedby={hint ? id : undefined} className="min-w-0">
+      <legend className="text-[11.5px] font-semibold tracking-[0.05em] text-ink-3 uppercase">{title}</legend>
       {hint && (
-        <p id={id} className="mt-1 text-xs text-ink-2">
+        <p id={id} className="mt-1 text-xs text-ink-3">
           {hint}
         </p>
       )}
-      <div className="mt-2">{children}</div>
+      <div className="mt-1.5">{children}</div>
     </fieldset>
   );
 }
 
 /**
- * Facet values by count, largest first. A selected value the current results no longer contain
- * stays listed (count 0) so it can still be unticked.
+ * Facet values by count, largest first, each with its count. A selected value the current
+ * results no longer contain stays listed (count 0) so it can still be unticked.
  */
 function Checks({
   facet,
   selected,
   label = (k) => k,
+  lead,
   badge,
   onToggle,
 }: {
   facet: Facet[];
   selected: string[];
   label?: (key: string) => string;
+  /** Something drawn before the label, e.g. the shop's dot. */
+  lead?: (key: string, index: number) => ReactNode;
   badge?: (key: string) => string | null;
   onToggle: (key: string) => void;
 }) {
@@ -108,18 +116,24 @@ function Checks({
   const shown = all ? rows : rows.filter((r, i) => i < SHORT_LIST || selected.includes(r.key));
   return (
     <>
-      <ul className="space-y-1">
-        {shown.map((f) => {
+      <ul className="space-y-0.5">
+        {shown.map((f, i) => {
+          const on = selected.includes(f.key);
           const b = badge?.(f.key);
           return (
             <li key={f.key}>
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-2">
+              <label
+                className={`flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-surface-2 ${
+                  on ? 'font-medium text-ink' : 'text-ink-2'
+                }`}
+              >
                 <input
                   type="checkbox"
-                  checked={selected.includes(f.key)}
+                  checked={on}
                   onChange={() => onToggle(f.key)}
-                  className="size-4 accent-accent"
+                  className="size-4 accent-ink"
                 />
+                {lead?.(f.key, i)}
                 <span className="min-w-0 flex-1 truncate" dir="auto">
                   {label(f.key)}
                 </span>
@@ -128,7 +142,7 @@ function Checks({
                     {b}
                   </span>
                 )}
-                <span className="text-xs text-ink-2 tabular-nums">{f.count}</span>
+                <span className="text-xs font-normal text-ink-3 tabular-nums">{f.count}</span>
               </label>
             </li>
           );
@@ -139,7 +153,7 @@ function Checks({
           type="button"
           aria-expanded={all}
           onClick={() => setAll((a) => !a)}
-          className="mt-1 px-1 text-xs text-accent hover:underline focus-visible:outline-2"
+          className="mt-1 px-1 text-xs text-ink-3 hover:text-ink hover:underline focus-visible:outline-2"
         >
           {all ? t('fewer_facets') : t('more_facets', { n: rows.length })}
         </button>
@@ -148,7 +162,8 @@ function Checks({
   );
 }
 
-function Matched({
+/** Sold at both shops (the API's `matched`), one shop only, or any. */
+function SoldAt({
   value,
   onChange,
 }: {
@@ -163,16 +178,21 @@ function Matched({
     ['no', t('matchedNo')],
   ] as const;
   return (
-    <Group title={t('matched')}>
-      <div className="space-y-1">
+    <Group title={t('matched')} hint={t('matchedHint')}>
+      <div className="space-y-0.5">
         {opts.map(([v, text]) => (
-          <label key={v} className="flex cursor-pointer items-center gap-2 px-1 py-0.5">
+          <label
+            key={v}
+            className={`flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-surface-2 ${
+              value === v ? 'font-medium text-ink' : 'text-ink-2'
+            }`}
+          >
             <input
               type="radio"
               name={name}
               checked={value === v}
               onChange={() => onChange(v)}
-              className="size-4 accent-accent"
+              className="size-4 accent-ink"
             />
             {text}
           </label>
@@ -207,7 +227,7 @@ function PriceRange({
   return (
     <form onSubmit={submit} noValidate>
       <Group title={t('price', { currency: currency || '–' })}>
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-1.5">
           {(
             [
               [ids.min, t('priceMin'), lo, setLo],
@@ -215,7 +235,7 @@ function PriceRange({
             ] as const
           ).map(([id, label, v, set]) => (
             <div key={id} className="flex min-w-0 flex-1 flex-col gap-1">
-              <label htmlFor={id} className="text-xs text-ink-2">
+              <label htmlFor={id} className="text-xs text-ink-3">
                 {label}
               </label>
               <input
@@ -227,11 +247,11 @@ function PriceRange({
                 aria-invalid={tried && bad}
                 aria-describedby={tried && bad ? ids.err : undefined}
                 onChange={(e) => set(e.target.value)}
-                className="w-full field px-2 tabular-nums focus-visible:outline-2"
+                className="w-full field px-2 py-1 text-[13px] tabular-nums focus-visible:outline-2"
               />
             </div>
           ))}
-          <button type="submit" className="btn focus-visible:outline-2">
+          <button type="submit" className="btn px-2.5 py-1 text-[13px] focus-visible:outline-2">
             {t('apply')}
           </button>
         </div>

@@ -161,20 +161,19 @@
     "filters": "Filters",
     "brand": "Brand",
     "category": "Category",
-    "retailer": "Retailer",
+    "retailer": "Shop",
     "retailerHint": "Pick two to see the price gap. The first you pick is the base.",
-    "matched": "Matched across retailers",
+    "matched": "Sold at",
     "matchedAny": "Any",
-    "matchedYes": "Matched only",
-    "matchedNo": "Unmatched only",
+    "matchedYes": "Both shops",
+    "matchedNo": "One shop only",
     "price": "Price ({currency})",
     "priceMin": "Min",
     "priceMax": "Max",
     "priceInvalid": "Use a number like 120 or 89.50.",
     "apply": "Apply",
     "clear": "Clear all filters",
-    "showFilters": "Filters ({count})",
-    "hideFilters": "Hide filters",
+    "showFilters": "Filters · {count}",
     "sort": "Sort",
     "sorts": {
       "name": "Name, A–Z",
@@ -199,9 +198,7 @@
     "empty": "No products match these filters.",
     "emptyHint": "Remove a filter or clear them all.",
     "colProduct": "Product",
-    "colMatch": "Match",
     "colGap": "Gap",
-    "notOffered": "Not sold",
     "gapHeader": "{other} vs {base}",
     "more_facets": "Show all {n}",
     "fewer_facets": "Show fewer",
@@ -221,7 +218,20 @@
     "view": "Show as",
     "viewGrid": "Grid",
     "viewList": "List",
-    "noImage": "No image"
+    "matchedHint": "Both shops: products matched to the same product at the other shop.",
+    "done": "Done",
+    "chips": {
+      "label": "Active filters",
+      "search": "Search: {value}",
+      "shop": "Shop: {value}",
+      "brand": "Brand: {value}",
+      "category": "Category: {value}",
+      "soldBoth": "Sold at both shops",
+      "soldOne": "Sold at one shop",
+      "priceMin": "Min {value}",
+      "priceMax": "Max {value}",
+      "remove": "Remove"
+    }
   },
   "gap": {
     "otherDearer": "{other} dearer",
@@ -240,6 +250,15 @@
       "size_mismatch": "Different sizes",
       "size_unknown": "Size unknown"
     }
+  },
+  "productCard": {
+    "notSold": "Not sold",
+    "was": "was",
+    "off": "−{pct}%",
+    "noImage": "No image",
+    "cheaper": "{shop} cheaper {pct}%",
+    "same": "Same price",
+    "sizesDiffer": "Sizes differ"
   },
   "match": {
     "class": {

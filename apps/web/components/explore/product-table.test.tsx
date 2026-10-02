@@ -24,13 +24,13 @@ const card = (over: Partial<Schemas['ProductCard']>): Schemas['ProductCard'] => 
 });
 const names: Record<string, string> = { ulta_ae: 'Ulta UAE', sephora_me: 'Sephora UAE' };
 
-function table(items: Schemas['ProductCard'][]) {
+function table(items: Schemas['ProductCard'][], pair: [string, string] | null = null) {
   render(
     <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
       <ProductTable
         items={items}
         retailers={['ulta_ae', 'sephora_me']}
-        pair={null}
+        pair={pair}
         name={(id) => names[id] ?? id}
         from=""
       />
@@ -60,5 +60,48 @@ describe('ProductTable prices', () => {
     const [ulta] = table([card({ prices: { ulta_ae: null, sephora_me: aed('125.00') } })]);
     expect(ulta!.textContent).toBe(en.product.noPrice);
     expect(screen.queryByText(en.price.underReview)).toBeNull();
+  });
+});
+
+describe('ProductTable with a pair', () => {
+  const gap = (pct: string, cheaper: 'base' | 'other' | 'equal'): Schemas['ProductCard']['gap'] => ({
+    base: 'ulta_ae',
+    other: 'sephora_me',
+    excludedReason: null,
+    gap: { amount: aed('5.00'), cheaper, pct },
+    sizeLabels: null,
+  });
+
+  it('the gap column: the signed amount and percentage, a bar scaled to the largest gap in the list', () => {
+    table(
+      [card({ gap: gap('25.0', 'base') }), card({ id: 'p2', gap: gap('-12.5', 'other') })],
+      ['ulta_ae', 'sephora_me'],
+    );
+    const [a, b] = screen.getAllByRole('row').slice(1);
+    expect(a!.textContent).toContain('+25.0%');
+    expect(a!.textContent).toContain('Sephora UAE dearer');
+    expect(b!.textContent).toContain('-12.5%');
+    expect(b!.textContent).toContain('Sephora UAE cheaper');
+    const bars = [a, b].map((r) => r!.querySelector('.gapbar > i') as HTMLElement);
+    expect(bars[0]!.dataset.side).toBe('good');
+    expect(bars[0]!.style.width).toBe('50%');
+    expect(bars[1]!.dataset.side).toBe('bad');
+    expect(bars[1]!.style.width).toBe('25%');
+  });
+
+  it('an uncounted pair says why instead of a number', () => {
+    table(
+      [card({ gap: { ...gap('0', 'equal')!, gap: null, excludedReason: 'match_unreviewed' } })],
+      ['ulta_ae', 'sephora_me'],
+    );
+    const row = screen.getAllByRole('row')[1]!;
+    expect(row.textContent).toContain(en.gap.notCounted);
+    expect(row.textContent).toContain(en.gap.excluded.match_unreviewed);
+    expect(row.querySelector('.gapbar')).toBeNull();
+  });
+
+  it('a shop that does not sell the product reads "Not sold", not "No price"', () => {
+    const [ulta] = table([card({ prices: { sephora_me: aed('125.00') } })]);
+    expect(ulta!.textContent).toBe(en.productCard.notSold);
   });
 });

@@ -163,18 +163,17 @@
     "category": "الفئة",
     "retailer": "المتجر",
     "retailerHint": "اختر متجرين لرؤية فرق السعر. المتجر الأول هو الأساس.",
-    "matched": "مطابَق بين المتاجر",
+    "matched": "يُباع في",
     "matchedAny": "الكل",
-    "matchedYes": "المطابَق فقط",
-    "matchedNo": "غير المطابَق فقط",
+    "matchedYes": "المتجران",
+    "matchedNo": "متجر واحد فقط",
     "price": "السعر ({currency})",
     "priceMin": "من",
     "priceMax": "إلى",
     "priceInvalid": "اكتب رقمًا مثل 120 أو 89.50.",
     "apply": "تطبيق",
     "clear": "مسح كل عوامل التصفية",
-    "showFilters": "عوامل التصفية ({count})",
-    "hideFilters": "إخفاء عوامل التصفية",
+    "showFilters": "عوامل التصفية · {count}",
     "sort": "الترتيب",
     "sorts": {
       "name": "الاسم، أ–ي",
@@ -199,9 +198,7 @@
     "empty": "لا منتجات تطابق عوامل التصفية هذه.",
     "emptyHint": "أزل أحد عوامل التصفية أو امسحها كلها.",
     "colProduct": "المنتج",
-    "colMatch": "المطابقة",
     "colGap": "الفرق",
-    "notOffered": "غير معروض",
     "gapHeader": "{other} مقابل {base}",
     "more_facets": "اعرض الكل ({n})",
     "fewer_facets": "اعرض أقل",
@@ -221,7 +218,20 @@
     "view": "طريقة العرض",
     "viewGrid": "شبكة",
     "viewList": "قائمة",
-    "noImage": "لا صورة"
+    "matchedHint": "المتجران: المنتجات المطابَقة للمنتج نفسه في المتجر الآخر.",
+    "done": "تم",
+    "chips": {
+      "label": "عوامل التصفية النشطة",
+      "search": "بحث: {value}",
+      "shop": "المتجر: {value}",
+      "brand": "العلامة: {value}",
+      "category": "الفئة: {value}",
+      "soldBoth": "يُباع في المتجرين",
+      "soldOne": "يُباع في متجر واحد",
+      "priceMin": "من {value}",
+      "priceMax": "إلى {value}",
+      "remove": "إزالة"
+    }
   },
   "gap": {
     "otherDearer": "{other} أغلى",
@@ -240,6 +250,15 @@
       "size_mismatch": "حجمان مختلفان",
       "size_unknown": "الحجم غير معروف"
     }
+  },
+  "productCard": {
+    "notSold": "غير معروض",
+    "was": "كان",
+    "off": "−{pct}%",
+    "noImage": "لا صورة",
+    "cheaper": "{shop} أرخص {pct}%",
+    "same": "السعر نفسه",
+    "sizesDiffer": "الحجمان مختلفان"
   },
   "match": {
     "class": {

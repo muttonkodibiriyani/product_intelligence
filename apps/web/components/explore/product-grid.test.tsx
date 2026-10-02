@@ -42,7 +42,7 @@ function grid(items: Schemas['ProductCard'][]) {
 }
 
 describe('ProductGrid', () => {
-  it('draws one card per product: name links to the product, a price per retailer it is offered at', () => {
+  it('draws one card per product: name links to the product, a line per shop, "Not sold" where it is not', () => {
     grid([card({}), card({ id: 'p2', name: 'Lip Kit', prices: { sephora_me: aed('90.00') } })]);
     const cards = screen.getAllByRole('listitem');
     expect(cards).toHaveLength(2);
@@ -52,7 +52,10 @@ describe('ProductGrid', () => {
     );
     expect(first.getByText('Ulta UAE')).toBeTruthy();
     expect(first.getByText(/120\.00/)).toBeTruthy();
-    expect(within(cards[1]!).queryByText('Ulta UAE')).toBeNull();
+    const second = within(cards[1]!);
+    expect(second.getByText('Ulta UAE')).toBeTruthy();
+    expect(second.getByText(en.productCard.notSold)).toBeTruthy();
+    expect(second.getByText(/90\.00/)).toBeTruthy();
   });
 
   it('shows "Price under review" for a price of 0.01 or less, never the number', () => {
@@ -77,9 +80,33 @@ describe('ProductGrid', () => {
     expect(screen.queryByText(en.price.underReview)).toBeNull();
   });
 
+  it('a shop that does not sell the product reads "Not sold" on its line', () => {
+    grid([card({ prices: { sephora_me: aed('90.00') } })]);
+    const ulta = screen.getByText('Ulta UAE').closest('div')!;
+    expect(within(ulta).getByText(en.productCard.notSold)).toBeTruthy();
+  });
+
+  it("with a pair, the chip on the picture names the cheaper shop and the API's percentage", () => {
+    grid([
+      card({
+        gap: {
+          base: 'ulta_ae',
+          other: 'sephora_me',
+          excludedReason: null,
+          gap: { amount: aed('5.00'), cheaper: 'base', pct: '4.2' },
+          sizeLabels: ['30 ml', '75 ml'],
+        },
+      }),
+    ]);
+    expect(screen.getByText('Ulta UAE cheaper 4.2%')).toBeTruthy();
+    // Each side's own size when the pair's sizes differ.
+    expect(screen.getByText('30 ml')).toBeTruthy();
+    expect(screen.getByText('75 ml')).toBeTruthy();
+  });
+
   it('a product without an image gets the named placeholder, not a broken image', () => {
     grid([card({ image: null })]);
-    expect(screen.getByRole('img', { name: en.explore.noImage })).toBeTruthy();
+    expect(screen.getByRole('img', { name: en.productCard.noImage })).toBeTruthy();
   });
 
   it('a failed image falls back to the placeholder', () => {
@@ -89,7 +116,7 @@ describe('ProductGrid', () => {
     expect(img.getAttribute('loading')).toBe('lazy');
     expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
     fireEvent.error(img);
-    expect(screen.getByRole('img', { name: en.explore.noImage })).toBeTruthy();
+    expect(screen.getByRole('img', { name: en.productCard.noImage })).toBeTruthy();
   });
 });
 
