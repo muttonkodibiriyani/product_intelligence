@@ -184,7 +184,8 @@ export function Chart({
     let ro: ResizeObserver | null = null;
     void load().then((echarts) => {
       if (gone || !el.current) return;
-      const c = echarts.init(el.current, null, { renderer: 'svg' });
+      // The height goes to ECharts, not a style attribute, so the page needs no inline style for it.
+      const c = echarts.init(el.current, null, { renderer: 'svg', height });
       chart.current = c;
       c.setOption(guarded(described(build(palette()), label)));
       c.on('click', (e) => {
@@ -209,7 +210,5 @@ export function Chart({
 
   // LTR box: an inherited rtl direction flips SVG text-anchor and misplaces axis labels. The
   // options mirror the layout for Arabic instead, and the tooltip sets its own direction.
-  return (
-    <div ref={el} dir="ltr" role="img" aria-label={label} data-chart className="w-full" style={{ height }} />
-  );
+  return <div ref={el} dir="ltr" role="img" aria-label={label} data-chart className="w-full" />;
 }

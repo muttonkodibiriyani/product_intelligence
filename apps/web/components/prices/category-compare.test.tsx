@@ -1,8 +1,8 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { THIN, categoryCompareBody, categoryCompareData } from '@/e2e/category-compare-fixture';
-import { BUCKETS, parseCategoryCompare, type Bucket, type CategoryCompare } from '@/lib/api/category-compare';
+import { BUCKETS, parseCategoryCompare, type CategoryCompare } from '@/lib/api/category-compare';
 import { ApiError } from '@/lib/api/client';
 import type { Envelope } from '@/lib/api/types';
 import pagesAr from '@/messages/ar.json';
@@ -11,15 +11,6 @@ import widgetsAr from '@/messages/widgets.ar.json';
 import widgetsEn from '@/messages/widgets.en.json';
 import { pairState } from '../widgets/model';
 import { CategoryCompareCard } from './category-compare';
-
-// The chart is ECharts; here it only records which buckets it was handed.
-const charted: Bucket[][] = [];
-vi.mock('../widgets/charts', () => ({
-  BucketGapWidget: ({ data }: { data: Bucket[] }) => {
-    charted.push(data);
-    return <div data-testid="bucket-chart" />;
-  },
-}));
 
 const en = { ...pagesEn, widgets: widgetsEn };
 const ar = { ...pagesAr, widgets: widgetsAr };
@@ -38,9 +29,14 @@ type Q = Parameters<typeof pairState<CategoryCompare>>[0];
 const ready = (env = envelope()): Q => ({ data: env, isError: false, error: null, refetch: () => {} });
 
 function show(state: ReturnType<typeof pairState<CategoryCompare>>, locale: 'en' | 'ar' = 'en') {
-  charted.length = 0;
   return render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <CategoryCompareCard state={state} pair={pair} locale={locale} />
     </NextIntlClientProvider>,
   );
@@ -168,7 +164,6 @@ describe('CategoryCompareCard', () => {
     expect(cells[3]!.querySelector('svg')).toBeNull();
     expect(text(cells[4])).toBe('–');
     expect(screen.getByText('Full catalogues · 9 shared categories · 30 Sept 2026')).toBeTruthy();
-    expect(await screen.findByTestId('bucket-chart')).toBeTruthy();
   });
 
   it('omits a null mean instead of showing 0', () => {
@@ -231,8 +226,6 @@ describe('CategoryCompareCard', () => {
     show(pairState(ready(env), (x) => x.buckets.length > 0));
     const lips = within(screen.getByRole('table')).getAllByRole('row')[5]!;
     expect(text(within(lips).getAllByRole('cell').at(-1))).toBe('Prices are in different currencies.');
-    await screen.findByTestId('bucket-chart');
-    expect(charted.at(-1)!.map((b) => b.key)).not.toContain('lips');
     expect(screen.getByText('Too few to compare: Concealer — Shop B n = 3.')).toBeTruthy();
   });
 
@@ -247,10 +240,8 @@ describe('CategoryCompareCard', () => {
     expect(screen.getByText(/وليس مقارنة بين المنتجات نفسها/)).toBeTruthy();
   });
 
-  it('leaves the too-few bucket out of the chart and lists it with its n', async () => {
+  it('lists the too-few bucket with its n', () => {
     show(pairState(ready(), (d) => d.buckets.length > 0));
-    await screen.findByTestId('bucket-chart');
-    expect(charted.at(-1)!.map((b) => b.key)).toEqual(BUCKETS.filter((k) => k !== 'concealer'));
     expect(screen.getByText('Too few to compare: Concealer — Shop B n = 3.')).toBeTruthy();
     expect(screen.getByText("'Other' holds 26.1% of Shop A's products.")).toBeTruthy();
     expect(screen.getByText('Not yet in a category: 2')).toBeTruthy();

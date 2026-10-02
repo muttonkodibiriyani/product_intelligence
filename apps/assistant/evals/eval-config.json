@@ -4,7 +4,7 @@
   "priceTableVersion": "2026-09-30-planning",
   "caps": { "labelMonthUsd": "1.50" },
   "limits": {
-    "maxInputTokens": 10000,
+    "maxInputTokens": 40000,
     "maxOutputTokens": 1500,
     "thinkingBudget": 0,
     "maxModelCallsPerQuestion": 4

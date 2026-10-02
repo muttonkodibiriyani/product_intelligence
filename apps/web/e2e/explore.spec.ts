@@ -91,6 +91,10 @@ for (const locale of ['en', 'ar'] as const) {
         source: 'افتح الصفحة',
         noSource: 'لا رابط للصفحة',
         filters: 'عوامل التصفية',
+        done: 'تم',
+        activeFilters: 'عوامل التصفية النشطة',
+        shopChip: 'المتجر: Shop A',
+        verdict: 'Shop B أغلى بنسبة 25.0%',
         noImage: 'لا صورة',
         underReview: 'السعر قيد المراجعة',
         results: 'النتائج',
@@ -116,6 +120,10 @@ for (const locale of ['en', 'ar'] as const) {
         source: 'Open page',
         noSource: 'No page link',
         filters: 'Filters',
+        done: 'Done',
+        activeFilters: 'Active filters',
+        shopChip: 'Shop: Shop A',
+        verdict: 'Shop B 25.0% dearer',
         noImage: 'No image',
         underReview: 'Price under review',
         results: 'Results',
@@ -127,14 +135,26 @@ for (const locale of ['en', 'ar'] as const) {
   const cards = (page: Page) => page.getByRole('list', { name: T.results }).getByRole('listitem');
   /** Switches to the dense list (a table), the view the column tests are about. */
   async function asList(page: Page) {
-    await page.getByRole('button', { name: T.list }).click();
+    // Exact: the phone menu button ("القائمة") would otherwise match the Arabic "قائمة".
+    await page.getByRole('button', { name: T.list, exact: true }).click();
     await expect(page.getByRole('table')).toBeVisible();
   }
 
-  /** Opens the filters on a narrow screen, where they start folded away. */
+  /** Opens the filters on a narrow screen, where they live in a bottom sheet. */
   async function filters(page: Page) {
     const toggle = page.getByRole('button', { name: new RegExp(`^${T.filters}`) });
-    if (await toggle.isVisible()) await toggle.click();
+    if (await toggle.isVisible()) {
+      await toggle.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+    }
+  }
+  /** Closes that sheet again (a no-op on a wide screen), so the list behind it can be used. */
+  async function doneWithFilters(page: Page) {
+    const done = page.getByRole('dialog').getByRole('button', { name: T.done });
+    if (await done.isVisible()) {
+      await done.click();
+      await expect(page.getByRole('dialog')).toBeHidden();
+    }
   }
 
   test.describe(`${locale} explorer`, () => {
@@ -150,7 +170,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(T.count16)).toBeVisible();
       // Cards first: one per product, the grid button pressed.
       await expect(cards(page)).toHaveCount(products.data.items.length);
-      await expect(page.getByRole('button', { name: T.grid })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.grid, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect(page.getByRole('link', { name: products.data.items[0].name })).toBeVisible();
       await noHorizontalScroll(page);
       // The list is one click away, and stays the choice after a reload.
@@ -160,9 +183,12 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('columnheader', { name: 'Shop A' })).toBeVisible();
       await noHorizontalScroll(page);
       await page.reload();
-      await expect(page.getByRole('button', { name: T.list })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.list, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect(rows).toHaveCount(1 + products.data.items.length);
-      await page.getByRole('button', { name: T.grid }).click();
+      await page.getByRole('button', { name: T.grid, exact: true }).click();
       await expect(cards(page)).toHaveCount(products.data.items.length);
 
       const first = productCalls(mock)[0]!;
@@ -188,14 +214,23 @@ for (const locale of ['en', 'ar'] as const) {
       });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/explore/`);
-      await asList(page);
       const sort = page.getByLabel(T.sort);
       await expect(sort.locator('option[value=gap]')).toBeDisabled();
+      await expect(page.getByRole('list', { name: T.activeFilters })).toHaveCount(0);
 
       await filters(page);
       await page.getByRole('checkbox', { name: /Shop A/ }).check();
       await page.getByRole('checkbox', { name: /Shop B/ }).check();
       await expect(page).toHaveURL(/retailer=shop_a&retailer=shop_b/);
+      await doneWithFilters(page);
+      // The picked shops are chips above the list; the card says how the other shop compares, from
+      // the API's gap: p05 is base 80 vs other 100, so Shop B is 25% dearer.
+      const chips = page.getByRole('list', { name: T.activeFilters });
+      await expect(chips.getByRole('button', { name: new RegExp(`^${T.shopChip}`) })).toBeVisible();
+      await expect(cards(page).filter({ hasText: 'Product p05' }).getByText(T.verdict)).toBeVisible();
+      await noHorizontalScroll(page);
+
+      await asList(page);
       await expect(page.getByRole('columnheader', { name: new RegExp(T.gap) })).toBeVisible();
       // p05: base 80, other 100 → +20.00, +25.0%
       await expect(page.getByRole('row', { name: /Product p05/ })).toContainText('+25.0%');

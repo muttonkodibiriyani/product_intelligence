@@ -16,7 +16,13 @@ const summary = (golden('summary') as { data: Summary }).data;
 function medianTile(data: Summary, locale: 'en' | 'ar' = 'en') {
   const m = locale === 'ar' ? ar : en;
   render(
-    <NextIntlClientProvider locale={locale} messages={m} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={m}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <KpiWidget rows={[{ retailer: 'shop_a', name: 'Shop A', data, caveats: [] }]} locale={locale} />
     </NextIntlClientProvider>,
   );
