@@ -1,8 +1,0 @@
-out/
-out-assistant/
-next-env.d.ts
-*.tsbuildinfo
-playwright-report/
-test-results/
-.next/
-node_modules/

@@ -1,5 +1,0 @@
-# Capture container only. No curl_cffi, no stealth packages. Proxying is plain httpx with
-# credentials read from Secret Manager at run time (owner cap 1.8 GB, blocked shops only).
-httpx==0.28.1
-defusedxml==0.7.1
-google-cloud-storage==2.19.0

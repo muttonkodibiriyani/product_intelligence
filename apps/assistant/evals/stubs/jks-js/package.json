@@ -1,8 +1,0 @@
-{
-  "name": "jks-js",
-  "version": "0.0.0-pi-stub",
-  "private": true,
-  "description": "In-repo stub for promptfoo's optional jks-js (GHSA-86w9-cpqp-85rv: node-forge <= 1.4.0, no fix). JKS keystores are unsupported here.",
-  "license": "MIT",
-  "main": "index.js"
-}

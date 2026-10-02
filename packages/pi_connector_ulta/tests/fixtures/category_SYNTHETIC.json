@@ -1,9 +1,0 @@
-{
-  "items": [
-    {"id": "P200", "url": "https://www.ulta.ae/en/product/serum/P200"},
-    {"id": "P100", "url": "https://www.ulta.ae/en/product/glow-balm/P100"},
-    {"id": "P100-DUP", "url": "https://www.ulta.ae/en/product/glow-balm/P100"},
-    {"id": "NOPE", "url": "https://outside.example/product/nope"},
-    "ignored"
-  ]
-}

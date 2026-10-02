@@ -1,7 +1,0 @@
-**
-!pyproject.toml
-!uv.lock
-!packages/**
-**/tests/**
-**/__pycache__/**
-**/.venv/**

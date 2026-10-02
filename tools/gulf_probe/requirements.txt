@@ -1,4 +1,0 @@
-# Probe container only (not a workspace dependency). No curl_cffi, no stealth packages (owner ruling).
-playwright==1.58.0
-httpx==0.28.1
-google-cloud-storage==2.19.0
