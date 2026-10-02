@@ -41,12 +41,28 @@ for (const [name, mk] of [['sample', () => T.sampleContract()], ['partial', () =
   const h = String(root.innerHTML);
   assert(h.length > 500, `${name} ${r}/${lang}: page rendered nothing`);
   assert(!bad(h), `${name} ${r}/${lang}: dataset string reached the DOM as markup near: ` + h.match(/.{0,80}(<zz|<b>x<\/b>).{0,40}/)?.[0]);
+  assert(!h.includes('${'), `${name} ${r}/${lang}: an uninterpolated \${...} reached the DOM near: ` + h.match(/.{0,80}\$\{.{0,40}/)?.[0]);
  }
 }
 
 // data-setf only touches whitelisted filter keys
 assert.deepStrictEqual([...T.SETF_KEYS].sort(), ['band', 'brand', 'cat', 'shade']);
 const click = d => handlers.click.forEach(f => f({ target: { closest: () => ({ dataset: d, closest: () => null, matches: () => false, tagName: 'BUTTON' }) }, preventDefault() {}, stopPropagation() {} }));
+// a selected promo campaign is outlined with the theme ink, never a literal ${...}
+{
+ // the sample dates its campaigns by the calendar in use, so load a full-length sample before building the one under test
+ T.useDS(T.hydrate(fullSample())); T.useDS(T.hydrate(T.sampleContract())); T.resetAll(); T.afterData();
+ const html = () => { root.innerHTML = ''; T.render(); return String(root.innerHTML) };
+ T.S.route = 'promotions'; T.S.lang = 'en';
+ const id = html().match(/data-act="pc:([^"]+)"/)?.[1];
+ assert(id, 'promotions renders a clickable campaign');
+ click({ act: 'pc:' + id });
+ const h = html();
+ assert(T.S.sel && T.S.sel.src === 'promocal', 'clicking a campaign selects it');
+ assert(!h.includes('${'), 'no uninterpolated ${...} with a campaign selected');
+ assert(/stroke="#[0-9A-Fa-f]{6}" stroke-width="1.5"/.test(h), 'the selected campaign has an outline');
+ T.resetAll();
+}
 T.resetAll();
 const before = Object.keys(T.S.f).sort().join();
 click({ setf: '__proto__:x|constructor:y|toString:z|brand:Dior' });
@@ -71,6 +87,30 @@ assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
  }
 }
 
+// a blocked retailer says so without promising a re-test; an imported snapshot is dated by its import, never by a capture
+{
+ const render = (j, lang) => { T.useDS(T.hydrate(j)); T.resetAll(); T.afterData(); T.S.lang = lang; T.S.route = 'coverage'; root.innerHTML = ''; T.render(); return String(root.innerHTML) };
+ const W = { en: ['automated collection blocked', 'snapshot imported 30 Sep 2026, capture date unknown · not in this view', /re-test/],
+  ar: ['الجمع الآلي محجوب', 'لقطة مستوردة في 30 سبتمبر 2026، وتاريخ جمعها غير معروف · ليست ضمن هذا العرض', /إعادة الاختبار/] };
+ for (const lang of ['en', 'ar']) {
+  const [blocked, snap, retest] = W[lang];
+  let h = render(T.fixtureContract('blocked'), lang);
+  assert(h.includes(blocked), `${lang}: a blocked retailer reads as blocked`);
+  assert(!retest.test(h), `${lang}: no re-test promise`);
+  const j = T.fixtureContract('blocked'), u = j.meta.retailers.find(r => r.id === 'u');
+  // importedAt is a market-local (Dubai) date, rendered as is
+  Object.assign(u, { status: 'snapshot', importedAt: '2026-09-30' });
+  h = render(j, lang);
+  assert(h.includes(snap), `${lang}: an imported snapshot reads as imported, with its import date`);
+  const none = lang === 'ar' ? 'وتاريخ جمعها غير معروف' : 'capture date unknown';
+  // a timestamp is not the contract (2026-09-30T21:15Z is 1 Oct in Dubai), nor is an impossible or missing date
+  for (const v of ['2026-09-30T21:15:00Z', '2026-09-31', 'not a date', undefined]) {
+   u.importedAt = v;
+   assert(!render(j, lang).includes(none), `${lang}: no import wording for importedAt=${v}`);
+  }
+ }
+}
+
 // images: only https on the offer's own retailer host, escaped; anything else falls back to the rendering
 {
  const j = T.fixtureContract('partial');
@@ -91,6 +131,29 @@ assert.deepStrictEqual([...T.S.f.brand], ['Dior']);
  const h = String(root.innerHTML);
  if (P(a.id)) assert(h.includes('class="pphoto"') && h.includes('referrerpolicy="no-referrer"') && h.includes('loading="lazy"') && !bad(h), 'product photo missing or unsafe');
 }
+
+// Ulta's offer image renders from its own host, and the photo note credits the host by exact name:
+// a Sephora image whose query mentions Ulta's host is still credited to Sephora.
+{
+ const j = T.fixtureContract('partial');
+ const u = j.products.find(q => q.offers?.u), s = j.products.find(q => q.offers?.s && q !== u);
+ assert(u && s, 'fixture: needs an Ulta product and another Sephora product');
+ for (const q of [u, s]) for (const o of Object.values(q.offers)) if (o) delete o.image;
+ delete u.image; delete s.image;
+ u.offers.u.image = 'https://media.alshaya.com/p/1.png';
+ s.offers.s.image = 'https://img-product.sephora.me/p/1.jpg?src=media.alshaya.com';
+ const DS = T.hydrate(j), by = Object.fromEntries(DS.products.map(p => [p.id, p]));
+ const P = id => by[String(id).replace(/[^\w.:-]/g, '_')];
+ assert.strictEqual(P(u.id).img, 'https://media.alshaya.com/p/1.png');
+ const note = id => { T.S.lang = 'en'; T.S.route = 'product'; T.S.param = P(id).id; T.S.gal = 0; root.innerHTML = ''; T.render();
+  const h = String(root.innerHTML); assert(h.includes('class="pphoto"') && !bad(h), `${id}: photo missing`);
+  return (/Image shown from ([^<]*?)'s site/.exec(h.replace(/&#39;|&#x27;/g, "'")) || [])[1] }
+ T.useDS(DS); T.resetAll(); T.afterData();
+ const nu = note(u.id), ns = note(s.id);
+ assert(nu && /ulta/i.test(nu), `Ulta photo credited to ${nu}`);
+ assert(ns && /sephora/i.test(ns), `Sephora photo credited to ${ns}`);
+}
+
 /* The sample's series share arrays with the generator and its dates follow the last dataset used,
    so the guard tests take a copy with one date per series day. */
 function fullSample() {

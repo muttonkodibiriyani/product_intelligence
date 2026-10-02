@@ -61,6 +61,22 @@ describe('ProductGrid', () => {
     expect(screen.queryByText(/0\.01|0\.00/)).toBeNull();
   });
 
+  it("the API's invalid_low flag on a null price reads as under review, not as no price", () => {
+    grid([
+      card({ prices: { ulta_ae: null, sephora_me: aed('125.00') }, priceFlags: { ulta_ae: 'invalid_low' } }),
+    ]);
+    const ulta = screen.getByText('Ulta UAE').closest('div')!;
+    expect(within(ulta).getByText(en.price.underReview)).toBeTruthy();
+    expect(screen.queryByText(en.product.noPrice)).toBeNull();
+    expect(screen.getByText(/125\.00/)).toBeTruthy();
+  });
+
+  it('a null price without the flag keeps "no price"', () => {
+    grid([card({ prices: { ulta_ae: null, sephora_me: aed('125.00') } })]);
+    expect(screen.getByText(en.product.noPrice)).toBeTruthy();
+    expect(screen.queryByText(en.price.underReview)).toBeNull();
+  });
+
   it('a product without an image gets the named placeholder, not a broken image', () => {
     grid([card({ image: null })]);
     expect(screen.getByRole('img', { name: en.explore.noImage })).toBeTruthy();

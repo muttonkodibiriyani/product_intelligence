@@ -1,6 +1,6 @@
 import { useTranslations } from 'next-intl';
 import type { Money as MoneyValue } from '@/lib/api/types';
-import { formatMoney, isValidMoney, priceState, type AppLocale } from '@/lib/money';
+import { formatMoney, isValidMoney, priceState, type AppLocale, type Priced } from '@/lib/money';
 
 /**
  * An API money value, formatted from its exact decimal string. A value that fails the contract's
@@ -28,7 +28,7 @@ export function Price({
   locale,
   fallback = null,
 }: {
-  of: { price?: MoneyValue | null };
+  of: { price?: MoneyValue | null; priceFlag?: Priced['priceFlag'] };
   locale: string;
   fallback?: React.ReactNode;
 }) {

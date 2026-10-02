@@ -6,6 +6,7 @@
     "brands": "Brands",
     "categories": "Categories",
     "median": "Median price",
+    "mean": "mean {price}",
     "promo": "On promotion",
     "promoOf": "of products",
     "freshness": "Data freshness",
@@ -37,7 +38,7 @@
     "mid": "Mid",
     "premium": "Premium",
     "median": "Median",
-    "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. Log scale.",
+    "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. The price axis grows by multiples, not fixed amounts (a log scale), so cheap and expensive categories fit on one chart.",
     "label": "Price ranges by category, {n} categories."
   },
   "promo": {
@@ -124,6 +125,14 @@
     "label": "Pairs won per retailer per category, {n} categories.",
     "more": "more pairs",
     "fewer": "fewer pairs"
+  },
+  "gapHist": {
+    "title": "Spread of price gaps",
+    "question": "How many matched pairs fall in each gap band; above zero means {other} is dearer.",
+    "below": "< {v}",
+    "atLeast": "≥ {v}",
+    "range": "{lo} to {hi}",
+    "label": "Matched pairs per price-gap band, {n} bands."
   },
   "groupGap": {
     "title": "Price gap by brand",
