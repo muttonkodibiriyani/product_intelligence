@@ -8,15 +8,24 @@
     "signOut": "Sign out",
     "signedInAs": "Signed in as {email}",
     "nav": {
+      "overview": "Overview",
       "explore": "Products",
       "compare": "Compare",
       "promotions": "Promotions",
       "launches": "Launches",
       "status": "Dataset",
       "prices": "Prices",
-      "assistant": "Ryzan AI"
+      "assistant": "Ryzan AI",
+      "assistantShort": "Ryzan",
+      "soon": "soon",
+      "all": "All pages",
+      "data": "Data"
     },
-    "mainNav": "Main"
+    "mainNav": "Main",
+    "menu": "Menu",
+    "closeMenu": "Close menu",
+    "asOf": "Data as of {date}",
+    "aboutData": "About the data"
   },
   "auth": {
     "loading": "Checking your session…",

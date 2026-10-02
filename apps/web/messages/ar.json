@@ -8,15 +8,24 @@
     "signOut": "تسجيل الخروج",
     "signedInAs": "مسجّل الدخول باسم {email}",
     "nav": {
+      "overview": "نظرة عامة",
       "explore": "المنتجات",
       "compare": "المقارنة",
       "promotions": "العروض",
       "launches": "الجديد",
       "status": "البيانات",
       "prices": "الأسعار",
-      "assistant": "مساعد ريزان"
+      "assistant": "مساعد ريزان",
+      "assistantShort": "ريزان",
+      "soon": "قريبًا",
+      "all": "كل الصفحات",
+      "data": "البيانات"
     },
-    "mainNav": "الرئيسية"
+    "mainNav": "الرئيسية",
+    "menu": "القائمة",
+    "closeMenu": "إغلاق القائمة",
+    "asOf": "البيانات حتى {date}",
+    "aboutData": "عن البيانات"
   },
   "auth": {
     "loading": "جارٍ التحقق من جلستك…",
