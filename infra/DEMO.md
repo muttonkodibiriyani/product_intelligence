@@ -17,12 +17,15 @@ Enabled APIs: firestore, firebasestorage, identitytoolkit, firebasehosting, fire
 ```sh
 # rules + hosting (from infra/, with the web build in infra/web-dist/)
 npx -y firebase-tools@14.27.0 deploy --project productintelligence-beeb3 --only firestore:rules,storage,hosting
-# publish a dataset (validate first with --dry-run). pi.dataset/v2 only, ONE source per file:
+# publish a dataset (validate first with --dry-run). pi.dataset/v2: ONE source per file
 #   -> datasets/<country>/<source>/ + demo_meta/v2_<country>_<source>; PI publishes sephora_me only.
-# Nothing is written outside datasets/<cc>/sephora_me/ (datasets/ae/beauty and datasets/uae hold
-# data PI doesn't own). Before upload the live latest.json is read and the publish HOLDs if a live
+# Nothing is written outside datasets/<cc>/sephora_me/ and (v1) datasets/uae/: datasets/ae/beauty
+# holds data PI doesn't own. Before upload the live latest.json is read and the publish HOLDs if a live
 # source is missing, loses offers, or another source's products changed. --drop-source <id> overrides
-# that for one source and needs the OWNER'S approval. v1 files are validated but no longer published.
+# that for one source (repeat the flag per source) and needs the OWNER'S approval.
+# pi.dataset/v1 (the legacy root dashboard): Sephora data only -> datasets/uae/ + demo_meta/current;
+# HELD if the live v1 carries any other source's data or Sephora's offers drop.
+# latest.json is replaced only if it is still the generation the guard read.
 uv run --script infra/scripts/publish_dataset.py --project productintelligence-beeb3 <file.json>
 # invite users: emails on stdin, one per line; add --no-email to create without sending
 uv run --script infra/scripts/invite_user.py --project productintelligence-beeb3 --role viewer < emails.txt
