@@ -20,6 +20,8 @@ export const NOT_ENOUGH_DATA_REASONS = [
   "not_in_scope",
   "currency_mismatch",
   "not_applicable",
+  // API 1.5.0: an imported retailer's was-prices are unverified, so its promotions are withheld.
+  "was_price_unverified",
 ] as const;
 export type NotEnoughDataReason = (typeof NOT_ENOUGH_DATA_REASONS)[number];
 
@@ -33,6 +35,16 @@ export const MAX_UPSTREAM_CAVEATS = 200;
 
 /** Machine-readable caveat codes; the API renders `en`/`ar` text per code. */
 const caveatCode = z.string().regex(/^[a-z][a-z0-9_]{0,40}$/);
+/**
+ * A caveat's parameters (`dict[str, str]` in the pi_metrics contract, e.g. `{retailer, count}`).
+ * They are sanitised like `data`: a digit-string count stays decimal text, so the answer can quote
+ * it; anything else is wrapped. More than MAX_CAVEAT_PARAMS is an invalid body.
+ */
+export const MAX_CAVEAT_PARAMS = 20;
+const caveatParams = z
+  .record(z.string(), z.string().max(200))
+  .refine((params) => Object.keys(params).length <= MAX_CAVEAT_PARAMS)
+  .default({});
 
 export const EnvelopeSchema = z
   .object({
@@ -46,7 +58,7 @@ export const EnvelopeSchema = z
     // pi_metrics v3 adds one size_labels_differ per distinct label pair, uncapped; the registry
     // lists the first MAX_CAVEATS. This bound only rejects an absurd body.
     caveats: z
-      .array(bilingual.extend({ code: caveatCode }))
+      .array(bilingual.extend({ code: caveatCode, params: caveatParams }))
       .max(MAX_UPSTREAM_CAVEATS)
       .default([]),
     meta: z.object({
