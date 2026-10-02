@@ -33,7 +33,13 @@ const withSummary = (d: Comparison) => ({ ...d, summary: d.summary! });
 
 function show(ui: React.ReactNode, locale: 'en' | 'ar' = 'en') {
   return render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       {ui}
     </NextIntlClientProvider>,
   );

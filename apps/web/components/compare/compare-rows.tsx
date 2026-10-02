@@ -24,7 +24,7 @@ const GOOD = { color: 'var(--color-good, #187a43)', background: 'var(--color-goo
 
 /** The product cell: a thumbnail (the API sends no image for a pair row yet, so a placeholder), name, brand. */
 function ProductCell({ r, locale, from }: { r: PairRow; locale: string; from: string }) {
-  const te = useTranslations('explore');
+  const te = useTranslations('productCard');
   return (
     <span className="flex items-start gap-3">
       <RowThumb url={null} label={te('noImage')} px={44} cls="size-11 shrink-0 rounded-ctl bg-surface-2" />
