@@ -1,10 +1,14 @@
 """Capture job: raw pages, their embedded JSON and their pictures, exactly as served.
 
 Ordinary access only (ADR-0005/0006): plain httpx with stock browser headers, one paced GET per
-URL, a fresh cookie jar per request, no retries, no impersonation and **no proxy of any kind**
-(pictures are never fetched through a proxy; this job cannot be configured with one). robots.txt
-is read once per host through the same client before the host's first request and obeyed
-fail-closed (see ``robots.py``); image hosts are treated exactly like page hosts.
+URL, a fresh cookie jar per request, no retries and no impersonation. By default nothing is
+proxied; the owner-capped residential proxy (ADR-0006 Amendments 2 and 4, ``proxy.py``) can be
+switched on for named page hosts only, never for pictures, and only against the shared byte
+ledger. robots.txt is read once per host through that host's own route before the host's first
+request and obeyed fail-closed (see ``robots.py``); image hosts are treated exactly like page
+hosts. Redirects are not followed blindly: every hop is checked against the target host's robots
+and stop state and fetched through the target host's own route (a proxied host redirecting to
+another host leaves the proxy).
 
 Stop rules apply per host, so one blocked host does not end the run for the others:
 - a challenge marker or 401/403 stops the host (``blocked``);
@@ -34,13 +38,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 
 from page_capture import blocks, proxy, robots
 from page_capture.plan import Item, Plan, parse_plan, shard
-from page_capture.store import Parts, Store
+from page_capture.store import Parts, Store, ledger_store
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -85,6 +89,7 @@ SKIPPED_CUTOFF, SKIPPED_HOST_STOPPED, DUPLICATE = (
     "duplicate",
 )
 PROXY_CAP = "proxy_cap"
+MAX_REDIRECTS = 5  # RFC 9309 asks for at least five on robots.txt; pages get the same
 
 
 class Stop(Exception):  # noqa: N818
@@ -132,6 +137,7 @@ class Config:
     proxy_hosts: tuple[str, ...] = ()
     proxy_secret: str = ""
     proxy_byte_cap: int = proxy.DEFAULT_BYTE_CAP
+    proxy_ledger: str = ""
 
 
 def config_from_env(env: Mapping[str, str]) -> Config:
@@ -158,6 +164,17 @@ def config_from_env(env: Mapping[str, str]) -> Config:
         raise ValueError("PROXY_HOSTS needs PROXY_SECRET (a Secret Manager version name)")
     if proxy_secret and not proxy_hosts:
         raise ValueError("PROXY_SECRET without PROXY_HOSTS: name the hosts the proxy is for")
+    proxy_ledger = env.get("PROXY_LEDGER", "").strip()
+    if proxy_hosts:
+        outside = sorted(set(proxy_hosts) - proxy.ALLOWED_HOSTS)
+        if outside:
+            raise ValueError(
+                f"PROXY_HOSTS outside the owner's scope (ADR-0006 Amendment 4): {outside}"
+            )
+        if not proxy_ledger:
+            raise ValueError("PROXY_HOSTS needs PROXY_LEDGER (the shared byte ledger URI)")
+        if count > 1:
+            raise ValueError("the proxy is refused for a sharded job (CLOUD_RUN_TASK_COUNT > 1)")
     proxy_cap = int(env.get("PROXY_BYTE_CAP", str(proxy.DEFAULT_BYTE_CAP)))
     if proxy_cap <= 0 or proxy_cap > proxy.DEFAULT_BYTE_CAP:
         raise ValueError(f"PROXY_BYTE_CAP must be within 1..{proxy.DEFAULT_BYTE_CAP} (owner cap)")
@@ -178,6 +195,7 @@ def config_from_env(env: Mapping[str, str]) -> Config:
         proxy_hosts=proxy_hosts,
         proxy_secret=proxy_secret,
         proxy_byte_cap=proxy_cap,
+        proxy_ledger=proxy_ledger,
     )
 
 
@@ -230,6 +248,7 @@ class Fetched:
     ms: int
     at: str
     reason: str = ""
+    hops: int = 0  # redirects followed before this answer
 
 
 class Job:
@@ -242,15 +261,27 @@ class Job:
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         sleep: Callable[[float], None] = time.sleep,
         proxy_client: HttpClient | None = None,
+        ledger_store_: proxy.LedgerStore | None = None,
     ) -> None:
         self.cfg = cfg
-        self.client: HttpClient = client or httpx.Client(follow_redirects=True, timeout=30.0)
+        # Redirects are handled in fetch(), hop by hop, so each target host gets its own
+        # robots check, pacing and route.
+        self.client: HttpClient = client or httpx.Client(follow_redirects=False, timeout=30.0)
         self.proxy_client: HttpClient | None = proxy_client
-        if cfg.proxy_hosts and self.proxy_client is None:
-            self.proxy_client = proxy.proxy_client(proxy.endpoint_from_secret(cfg.proxy_secret))
-        self.meter = proxy.Meter(cfg.proxy_byte_cap)
         self.store = store or Store(cfg.bucket, cfg.prefix)
         self.clock = clock
+        self.meter = proxy.Meter(cfg.proxy_byte_cap)
+        if cfg.proxy_hosts:
+            ledger = proxy.Ledger(
+                ledger_store_ or ledger_store(cfg.proxy_ledger),
+                cfg.prefix,
+                lambda: self.clock().isoformat(),
+            )
+            if ledger.remaining <= 0:
+                raise proxy.LedgerError("proxy ledger is exhausted; no proxied run may start")
+            self.meter = proxy.Meter(min(cfg.proxy_byte_cap, ledger.remaining), ledger=ledger)
+            if self.proxy_client is None:
+                self.proxy_client = proxy.proxy_client(proxy.endpoint_from_secret(cfg.proxy_secret))
         self.sleep = sleep
         self.started = clock()
         # A sharded run has one writer per task; names carry the task index so the
@@ -321,6 +352,8 @@ class Job:
                 "hosts": list(self.cfg.proxy_hosts),
                 "secret": self.cfg.proxy_secret,  # the resource name only, never the payload
                 "byte_cap": self.cfg.proxy_byte_cap,
+                "ledger": self.cfg.proxy_ledger,
+                "run_cap": self.meter.cap,  # min(byte_cap, ledger remaining at start)
             },
         }
         self.store.put(self.named("manifest.json"), json.dumps(doc).encode(), gz=False)
@@ -352,6 +385,10 @@ class Job:
             "counts": self.counts,
             "proxy_bytes": self.meter.used,
             "proxy_byte_cap": self.cfg.proxy_byte_cap,
+            "proxy_run_cap": self.meter.cap,
+            "proxy_ledger_remaining": (
+                self.meter.ledger.remaining if self.meter.ledger is not None else None
+            ),
         }
         self.store.put(self.named("status.json"), json.dumps(status).encode(), gz=False)
         self.progress()
@@ -366,13 +403,77 @@ class Job:
         host.last = time.monotonic()
 
     def fetch(self, url: str, hdrs: Mapping[str, str], kind: str, pace_s: float) -> Fetched:
-        """One paced GET on an unstopped host. Applies the stop rules; never retries."""
+        """One paced GET, following at most ``MAX_REDIRECTS`` hops, each on its own terms.
+
+        A hop to another host is treated like a new request to that host: its robots.txt is read
+        (fail-closed), its stop state is honoured, it is paced, and it goes through *its* route
+        (direct unless that host itself is in ``PROXY_HOSTS``). Never retries.
+        """
+        current, hops = url, 0
+        while True:
+            got = self.get_once(current, hdrs, kind, pace_s, hops)
+            if got.status is None or not 300 <= got.status < 400:
+                return got
+            location = got.reason  # get_once puts the Location header here for a 3xx
+            if not location:
+                return Fetched(
+                    HTTP_ERROR,
+                    got.status,
+                    current,
+                    got.content_type,
+                    b"",
+                    got.ms,
+                    got.at,
+                    "redirect without Location",
+                    hops,
+                )
+            target = urljoin(current, location)
+            hops += 1
+            self.count("redirects")
+            if hops > MAX_REDIRECTS:
+                return Fetched(
+                    HTTP_ERROR,
+                    got.status,
+                    target,
+                    "",
+                    b"",
+                    got.ms,
+                    got.at,
+                    f"more than {MAX_REDIRECTS} redirects",
+                    hops,
+                )
+            if kind != "robots":  # robots.txt hops are followed as RFC 9309 asks
+                refusal = self.redirect_refusal(target, kind, pace_s)
+                if refusal is not None:
+                    state, reason = refusal
+                    return Fetched(state, None, target, "", b"", 0, got.at, reason, hops)
+            current = target
+
+    def redirect_refusal(self, target: str, kind: str, pace_s: float) -> tuple[str, str] | None:
+        """Why a redirect target must not be fetched, or None when it may."""
+        host = self.host_for(target)
+        if host.stopped:
+            return SKIPPED_HOST_STOPPED, f"redirect to stopped host {host.host}: {host.stopped}"
+        verdict = self.robots_verdict(target, pace_s)
+        if verdict == robots.ALLOWED:
+            return None
+        state = ROBOTS_DISALLOWED if verdict == robots.DISALLOWED else ROBOTS_UNAVAILABLE
+        reason = host.robots.reason if host.robots else ""
+        return state, f"redirect target {target}: {reason}".rstrip(": ")
+
+    def get_once(
+        self, url: str, hdrs: Mapping[str, str], kind: str, pace_s: float, hops: int = 0
+    ) -> Fetched:
+        """One paced GET on an unstopped host. Applies the stop rules; never retries.
+
+        A 3xx answer is returned as-is with the ``Location`` header in ``reason``.
+        """
         host = self.host_for(url)
         at = self.clock().isoformat()
         client = self.client_for(host, kind)
         if client is None:
-            self.stop_host(host, f"proxy byte cap {self.cfg.proxy_byte_cap} reached", url)
-            return Fetched(PROXY_CAP, None, url, "", b"", 0, at, "proxy byte cap")
+            self.stop_host(host, f"proxy byte cap {self.meter.cap} reached", url)
+            return Fetched(PROXY_CAP, None, url, "", b"", 0, at, "proxy byte cap", hops)
         self.pace(host, pace_s)
         client.cookies.clear()
         t0 = time.monotonic()
@@ -384,7 +485,7 @@ class Job:
             reason = repr(exc)
             if host.err_streak >= TRANSPORT_ERROR_LIMIT:
                 self.stop_host(host, f"{TRANSPORT_ERROR_LIMIT} consecutive transport errors", url)
-            return Fetched(TRANSPORT_ERROR, None, url, "", b"", 0, at, reason)
+            return Fetched(TRANSPORT_ERROR, None, url, "", b"", 0, at, reason, hops)
         host.err_streak = 0
         if client is self.proxy_client:
             n = proxy.wire_bytes(r)
@@ -394,12 +495,19 @@ class Job:
         ms = int((time.monotonic() - t0) * 1000)
         content_type = r.headers.get("content-type", "")
         self.count(f"http_{r.status_code}")
+        if 300 <= r.status_code < 400:
+            location = r.headers.get("location", "")
+            return Fetched(
+                HTTP_ERROR, r.status_code, url, content_type, b"", ms, at, location, hops
+            )
         scan = r.status_code != 200 or kind in ("html", "json")
         verdict = blocks.detect(r.status_code, r.text if scan else "")
         if verdict is None:
             host.rl_streak = 0
             state = OK if 200 <= r.status_code < 300 else HTTP_ERROR
-            return Fetched(state, r.status_code, str(r.url), content_type, r.content, ms, at)
+            return Fetched(
+                state, r.status_code, str(r.url), content_type, r.content, ms, at, "", hops
+            )
         self.count(f"block_{verdict.kind}")
         self.parts.emit(
             "errors",
@@ -421,11 +529,27 @@ class Job:
                 print(json.dumps({"backoff_s": delay, "host": host.host}), flush=True)
                 self.sleep(delay)
             return Fetched(
-                RATE_LIMITED, r.status_code, str(r.url), content_type, r.content, ms, at, "http 429"
+                RATE_LIMITED,
+                r.status_code,
+                str(r.url),
+                content_type,
+                r.content,
+                ms,
+                at,
+                "http 429",
+                hops,
             )
         self.stop_host(host, f"{verdict.kind}: {verdict.reason}", url)
         return Fetched(
-            BLOCKED, r.status_code, str(r.url), content_type, r.content, ms, at, verdict.reason
+            BLOCKED,
+            r.status_code,
+            str(r.url),
+            content_type,
+            r.content,
+            ms,
+            at,
+            verdict.reason,
+            hops,
         )
 
     def client_for(self, host: HostState, kind: str) -> HttpClient | None:
@@ -525,6 +649,8 @@ class Job:
         }
         if got.reason:
             rec["reason"] = got.reason
+        if got.hops:
+            rec["redirects"] = got.hops
         self.count("pages_bytes", len(got.body))
         self.record_page(rec, host)
 
@@ -581,6 +707,8 @@ class Job:
         }
         if got.reason:
             rec["reason"] = got.reason
+        if got.hops:
+            rec["redirects"] = got.hops
         self.count("images_bytes", len(got.body))
         self.record_image(rec, host)
 

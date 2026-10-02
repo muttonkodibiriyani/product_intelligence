@@ -18,6 +18,20 @@ T0 = datetime(2026, 10, 2, 8, 0, tzinfo=UTC)
 ROBOTS = "User-agent: *\nAllow: /\n"
 PAGE = "<html><body>" + "x" * 70_000 + "</body></html>"
 VERSION = "projects/p/secrets/s/versions/1"  # a resource name, not a credential
+HOST = "www.nysaa.com"
+
+
+def _ledger(tmp_path: object, cap: int = proxy.DEFAULT_BYTE_CAP, used: int = 0) -> str:
+    path = f"{tmp_path}/ledger.json"
+    with open(path, "w") as fh:
+        json.dump({"provider": "test", "cap_bytes": cap, "used_bytes": used, "runs": {}}, fh)
+    return path
+
+
+def _ledger_doc(path: str) -> dict[str, object]:
+    with open(path) as fh:
+        doc: dict[str, object] = json.load(fh)
+    return doc
 
 
 class _Resp:
@@ -26,6 +40,7 @@ class _Resp:
         self._text = text
         self._ct = ct
         self._url = url
+        self.location = ""
         self.num_bytes_downloaded = 5_000  # compressed on the wire, smaller than the body
 
     @property
@@ -38,7 +53,7 @@ class _Resp:
 
     @property
     def headers(self) -> Mapping[str, str]:
-        return {"content-type": self._ct}
+        return {"content-type": self._ct, "location": self.location}
 
     @property
     def url(self) -> str:
@@ -54,9 +69,14 @@ class _Client:
     def __init__(self) -> None:
         self.calls: list[str] = []
         self.cookies = _Cookies()
+        self.redirects: dict[str, str] = {}
 
     def get(self, url: str, *, headers: Mapping[str, str] | None = None) -> _Resp:
         self.calls.append(url)
+        if url in self.redirects:
+            r = _Resp(302, "", "text/html", url)
+            r.location = self.redirects[url]
+            return r
         if url.endswith("/robots.txt"):
             return _Resp(200, ROBOTS, "text/plain", url)
         if "/img/" in url:
@@ -74,25 +94,37 @@ def _env(**extra: str) -> dict[str, str]:
     }
 
 
-def test_config_requires_hosts_and_secret_together() -> None:
+def _proxy_env(**extra: str) -> dict[str, str]:
+    base = {"PROXY_HOSTS": HOST, "PROXY_SECRET": VERSION, "PROXY_LEDGER": "gs://b/ledger.json"}
+    return _env(**{**base, **extra})
+
+
+def test_config_requires_hosts_secret_and_ledger_together() -> None:
     with pytest.raises(ValueError, match="needs PROXY_SECRET"):
-        run.config_from_env(_env(PROXY_HOSTS="www.nysaa.com"))
+        run.config_from_env(_env(PROXY_HOSTS=HOST))
     with pytest.raises(ValueError, match="without PROXY_HOSTS"):
         run.config_from_env(_env(PROXY_SECRET=VERSION))
+    with pytest.raises(ValueError, match="needs PROXY_LEDGER"):
+        run.config_from_env(_env(PROXY_HOSTS=HOST, PROXY_SECRET=VERSION))
     with pytest.raises(ValueError, match="owner cap"):
-        run.config_from_env(
-            _env(
-                PROXY_HOSTS="www.nysaa.com",
-                PROXY_SECRET=VERSION,
-                PROXY_BYTE_CAP=str(proxy.DEFAULT_BYTE_CAP + 1),
-            )
-        )
-    cfg = run.config_from_env(
-        _env(PROXY_HOSTS=" www.Nysaa.com, www.amazon.ae", PROXY_SECRET=VERSION)
-    )
+        run.config_from_env(_proxy_env(PROXY_BYTE_CAP=str(proxy.DEFAULT_BYTE_CAP + 1)))
+    cfg = run.config_from_env(_proxy_env(PROXY_HOSTS=" www.Nysaa.com, www.amazon.ae"))
     assert cfg.proxy_hosts == ("www.nysaa.com", "www.amazon.ae")
     assert cfg.proxy_byte_cap == proxy.DEFAULT_BYTE_CAP
+    assert cfg.proxy_ledger == "gs://b/ledger.json"
     assert run.config_from_env(_env()).proxy_hosts == ()
+
+
+def test_config_refuses_hosts_outside_scope_and_sharded_jobs() -> None:
+    with pytest.raises(ValueError, match="outside the owner's scope"):
+        run.config_from_env(_proxy_env(PROXY_HOSTS="www.ulta.ae"))
+    with pytest.raises(ValueError, match="outside the owner's scope"):
+        run.config_from_env(_proxy_env(PROXY_HOSTS=f"{HOST},shop.example"))
+    with pytest.raises(ValueError, match="sharded job"):
+        run.config_from_env(_proxy_env(CLOUD_RUN_TASK_INDEX="0", CLOUD_RUN_TASK_COUNT="2"))
+    # a sharded run without a proxy is fine
+    cfg = run.config_from_env(_env(CLOUD_RUN_TASK_INDEX="1", CLOUD_RUN_TASK_COUNT="2"))
+    assert cfg.task_count == 2
 
 
 def test_endpoint_parsing_and_repr_hide_the_credential() -> None:
@@ -141,11 +173,14 @@ def test_meter_and_wire_bytes() -> None:
     assert proxy.wire_bytes(r) == 3
 
 
-def _job(tmp_path: str, cap: int) -> tuple[run.Job, _Client, _Client]:
+def _job(
+    tmp_path: str, cap: int, ledger: str | None = None, prefix: str = "r"
+) -> tuple[run.Job, _Client, _Client]:
     cfg = run.config_from_env(
         {
-            **_env(PROXY_HOSTS="www.nysaa.com", PROXY_SECRET=VERSION),
+            **_proxy_env(PROXY_LEDGER=ledger or _ledger(tmp_path)),
             "BUCKET": f"file:{tmp_path}",
+            "PREFIX": prefix,
             "PROXY_BYTE_CAP": str(cap),
         }
     )
@@ -154,7 +189,7 @@ def _job(tmp_path: str, cap: int) -> tuple[run.Job, _Client, _Client]:
         cfg,
         client=direct,
         proxy_client=via,
-        store=Store(cfg.bucket, "r"),
+        store=Store(cfg.bucket, prefix),
         clock=lambda: T0,
         sleep=lambda _s: None,
     )
@@ -213,6 +248,8 @@ def test_cap_stops_the_proxied_host_and_nothing_else(tmp_path: object) -> None:
         "hosts": ["www.nysaa.com"],
         "secret": VERSION,
         "byte_cap": job.cfg.proxy_byte_cap,
+        "ledger": job.cfg.proxy_ledger,
+        "run_cap": job.cfg.proxy_byte_cap,
     }
 
 
@@ -280,3 +317,94 @@ def test_images_kind_fetches_pictures_only(tmp_path: object) -> None:
     assert client.calls == ["https://www.faces.ae/robots.txt", "https://www.faces.ae/img/1.jpg"]
     assert job.counts.get("pages_ok", 0) == 0
     assert job.counts["images_ok"] == 1
+
+
+def test_ledger_is_shared_across_runs_and_caps_the_next_one(tmp_path: object) -> None:
+    ledger = _ledger(tmp_path, cap=3 * (5_000 + proxy.REQUEST_ALLOWANCE), used=0)
+    first, _, via = _job(str(tmp_path), cap=proxy.DEFAULT_BYTE_CAP, ledger=ledger, prefix="run1")
+    first.one(Item("n-1", f"https://{HOST}/x/p/1", "en-AE", "html", {}))
+    assert len(via.calls) == 2  # robots + page, both charged to the ledger
+    doc = _ledger_doc(ledger)
+    assert doc["used_bytes"] == 2 * (5_000 + proxy.REQUEST_ALLOWANCE)
+    assert doc["runs"] == {"run1": 2 * (5_000 + proxy.REQUEST_ALLOWANCE)}
+    assert doc["updated"] == T0.isoformat()
+    # the second run only gets what is left, whatever its own PROXY_BYTE_CAP says
+    second, _, via2 = _job(str(tmp_path), cap=proxy.DEFAULT_BYTE_CAP, ledger=ledger, prefix="run2")
+    assert second.meter.cap == 5_000 + proxy.REQUEST_ALLOWANCE
+    second.one(Item("n-1", f"https://{HOST}/x/p/1", "en-AE", "html", {}))
+    second.one(Item("n-2", f"https://{HOST}/x/p/2", "en-AE", "html", {}))
+    assert via2.calls == [f"https://{HOST}/robots.txt"]  # robots spent the share; page refused
+    assert second.counts["pages_proxy_cap"] == 1
+    assert _ledger_doc(ledger)["used_bytes"] == 3 * (5_000 + proxy.REQUEST_ALLOWANCE)
+    second.finish()
+    status = json.loads((tmp_path / "run2" / "status.json").read_text())  # type: ignore[operator]
+    assert status["proxy_run_cap"] == 5_000 + proxy.REQUEST_ALLOWANCE
+    assert status["proxy_ledger_remaining"] == 0
+    # and a third run cannot start at all
+    with pytest.raises(proxy.LedgerError, match="exhausted"):
+        _job(str(tmp_path), cap=proxy.DEFAULT_BYTE_CAP, ledger=ledger, prefix="run3")
+
+
+def test_ledger_must_exist_and_be_well_formed(tmp_path: object) -> None:
+    with pytest.raises(proxy.LedgerError, match="does not exist"):
+        _job(str(tmp_path), cap=10, ledger=f"{tmp_path}/missing.json")
+    bad = f"{tmp_path}/bad.json"
+    for body, msg in (
+        ("not json", "not JSON"),
+        ('{"cap_bytes": "x", "used_bytes": 0}', "integer"),
+        ('{"cap_bytes": 10, "used_bytes": -1}', "integer"),
+        (json.dumps({"cap_bytes": proxy.DEFAULT_BYTE_CAP + 1, "used_bytes": 0}), "owner cap"),
+    ):
+        with open(bad, "w") as fh:
+            fh.write(body)
+        with pytest.raises(proxy.LedgerError, match=msg):
+            _job(str(tmp_path), cap=10, ledger=bad)
+
+
+class _RacyStore:
+    """A ledger store whose first save loses the race to another writer."""
+
+    def __init__(self, fail_saves: int) -> None:
+        self.doc = {"cap_bytes": 100_000, "used_bytes": 0, "runs": {}}
+        self.version = 0
+        self.fail_saves = fail_saves
+        self.saves = 0
+
+    def load(self) -> tuple[bytes, object] | None:
+        return json.dumps(self.doc).encode(), self.version
+
+    def save(self, data: bytes, token: object) -> bool:
+        self.saves += 1
+        if self.fail_saves:
+            self.fail_saves -= 1
+            self.doc["used_bytes"] = int(self.doc["used_bytes"]) + 7  # type: ignore[call-overload]
+            self.version += 1  # somebody else wrote first
+            return False
+        assert token == self.version
+        self.doc = json.loads(data)
+        self.version += 1
+        return True
+
+
+def test_ledger_retries_a_lost_race_from_the_other_writers_figures() -> None:
+    store = _RacyStore(fail_saves=1)
+    ledger = proxy.Ledger(store, "run", lambda: "now")
+    ledger.charge(10)
+    assert store.saves == 2
+    assert store.doc["used_bytes"] == 17  # the other writer's 7 plus our 10, not 10 twice
+    assert store.doc["runs"] == {"run": 10}
+    assert ledger.remaining == 100_000 - 17
+    hopeless = _RacyStore(fail_saves=proxy.SAVE_ATTEMPTS)
+    with pytest.raises(proxy.LedgerError, match="could not be saved"):
+        proxy.Ledger(hopeless, "run", lambda: "now").charge(1)
+
+
+def test_proxied_redirect_to_another_host_leaves_the_proxy(tmp_path: object) -> None:
+    job, direct, via = _job(str(tmp_path), cap=proxy.DEFAULT_BYTE_CAP)
+    target = "https://www.faces.ae/en/p/x.html"
+    via.redirects = {f"https://{HOST}/x/p/1": target}
+    job.one(Item("n-1", f"https://{HOST}/x/p/1", "en-AE", "html", {}))
+    assert via.calls == [f"https://{HOST}/robots.txt", f"https://{HOST}/x/p/1"]
+    assert direct.calls == ["https://www.faces.ae/robots.txt", target]
+    assert job.counts["pages_ok"] == 1
+    assert job.counts["redirects"] == 1

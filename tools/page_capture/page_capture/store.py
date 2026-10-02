@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import os
 from collections.abc import Callable
 from typing import Any
 
 GS = "gs://"
+PRECONDITION_FAILED = 412
 
 
 def split_gs_uri(uri: str) -> tuple[str, str]:
@@ -109,3 +111,69 @@ class Parts:
     def flush_all(self) -> None:
         for stream in list(self.buf):
             self.flush(stream)
+
+
+class FileLedgerStore:
+    """A local ledger file; the version token is a digest of the content last read."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def _read(self) -> tuple[bytes, str]:
+        with open(self.path, "rb") as fh:
+            data = fh.read()
+        return data, hashlib.sha256(data).hexdigest()
+
+    def load(self) -> tuple[bytes, object] | None:
+        if not os.path.exists(self.path):
+            return None
+        return self._read()
+
+    def save(self, data: bytes, token: object) -> bool:
+        if self._read()[1] != token:
+            return False
+        tmp = f"{self.path}.tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, self.path)
+        return True
+
+
+class GcsLedgerStore:
+    """A GCS object; the version token is its generation (``ifGenerationMatch`` on write)."""
+
+    def __init__(self, uri: str, client: Any = None) -> None:
+        self.bucket, self.name = split_gs_uri(uri)
+        self._client = client
+
+    def _blob(self) -> Any:
+        if self._client is None:
+            from google.cloud import storage  # noqa: PLC0415 - only in the cloud job
+
+            self._client = storage.Client()
+        return self._client.bucket(self.bucket).blob(self.name)
+
+    def load(self) -> tuple[bytes, object] | None:
+        blob = self._blob()
+        if not blob.exists():
+            return None
+        blob.reload()
+        generation = blob.generation
+        data: bytes = blob.download_as_bytes(if_generation_match=generation)
+        return data, generation
+
+    def save(self, data: bytes, token: object) -> bool:
+        try:
+            self._blob().upload_from_string(
+                data, content_type="application/json", if_generation_match=token
+            )
+        except Exception as exc:
+            # google.api_core.exceptions.PreconditionFailed carries HTTP 412: a lost race.
+            if getattr(exc, "code", None) == PRECONDITION_FAILED:
+                return False
+            raise
+        return True
+
+
+def ledger_store(uri: str) -> FileLedgerStore | GcsLedgerStore:
+    return GcsLedgerStore(uri) if uri.startswith(GS) else FileLedgerStore(uri)

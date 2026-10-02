@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from page_capture import robots, run
+from page_capture.plan import Item
 from page_capture.store import Store
 
 ROBOTS = "User-agent: *\nDisallow: /private/\nCrawl-delay: 2\n"
@@ -22,11 +23,19 @@ CUTOFF = T0 + timedelta(hours=1)
 
 
 class _Resp:
-    def __init__(self, status: int, text: str, ct: str = "text/html; charset=utf-8", url: str = ""):
+    def __init__(
+        self,
+        status: int,
+        text: str,
+        ct: str = "text/html; charset=utf-8",
+        url: str = "",
+        location: str = "",
+    ):
         self.status_code = status
         self._text = text
         self._ct = ct
         self._url = url
+        self._location = location
 
     @property
     def content(self) -> bytes:
@@ -38,7 +47,10 @@ class _Resp:
 
     @property
     def headers(self) -> Mapping[str, str]:
-        return {"content-type": self._ct}
+        h = {"content-type": self._ct}
+        if self._location:
+            h["location"] = self._location
+        return h
 
     @property
     def url(self) -> str:
@@ -508,3 +520,124 @@ def test_main_sigterm_and_error_paths(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "disk full" in status["stopped"]
     with pytest.raises(run.Stop):
         run._sigterm(15, None)
+
+
+def _redirect(to: str) -> _Resp:
+    return _Resp(302, "", "text/html", location=to)
+
+
+def test_redirect_to_a_host_whose_robots_forbids_is_not_fetched(tmp_path: Path) -> None:
+    """Reviewer's reproduction: a 302 to a host with ``Disallow: /`` must not be followed."""
+    src, dst = "https://a.example/p/1", "https://b.example/p/1"
+    client = _Client(
+        {
+            src: _redirect(dst),
+            "https://b.example/robots.txt": _Resp(
+                200, "User-agent: *\nDisallow: /\n", "text/plain"
+            ),
+            dst: _Resp(200, "<html>should never be seen</html>", url=dst),
+        }
+    )
+    job = _job(tmp_path, _cfg(tmp_path, _plan(tmp_path, [_item("1", src)])), client)
+    job.run()
+    job.finish()
+    urls = [u for u, _ in client.calls]
+    assert urls == ["https://a.example/robots.txt", src, "https://b.example/robots.txt"]
+    (rec,) = _records(tmp_path, "pages")
+    assert rec["state"] == run.ROBOTS_DISALLOWED
+    assert rec["final_url"] == dst
+    assert rec["redirects"] == 1
+    assert "redirect target" in rec["reason"]
+    assert job.counts["redirects"] == 1
+    assert job.counts["http_302"] == 1
+    assert "pages_ok" not in job.counts
+
+
+def test_redirect_to_unreadable_robots_or_stopped_host_is_refused(tmp_path: Path) -> None:
+    src1, src2 = "https://a.example/p/1", "https://a.example/p/2"
+    dst = "https://c.example/p/1"
+    client = _Client(
+        {
+            src1: _redirect(dst),
+            src2: _redirect(dst),
+            "https://c.example/robots.txt": _Resp(500, "boom", "text/plain"),
+            dst: _Resp(200, "<html>never</html>", url=dst),
+        }
+    )
+    job = _job(
+        tmp_path, _cfg(tmp_path, _plan(tmp_path, [_item("1", src1), _item("2", src2)])), client
+    )
+    job.run()
+    job.finish()
+    one, two = sorted(_records(tmp_path, "pages"), key=lambda r: str(r["id"]))
+    assert one["state"] == run.ROBOTS_UNAVAILABLE
+    assert two["state"] == run.ROBOTS_UNAVAILABLE  # robots read once; still refused
+    assert dst not in [u for u, _ in client.calls]
+    # a redirect to a host already stopped is skipped without a request
+    job.hosts["c.example"].stopped = "blocked: challenge"
+    job.one(Item("3", src1, "en-AE", "html", {}, (), {}))
+    rec = job.parts.buf["pages"][-1]
+    assert rec["state"] == run.SKIPPED_HOST_STOPPED
+    assert "stopped host c.example" in rec["reason"]
+
+
+def test_same_host_redirect_is_followed_and_robots_checked_on_the_new_path(tmp_path: Path) -> None:
+    src, dst, private = (
+        "https://a.example/p/1",
+        "https://a.example/p/1-final",
+        "https://a.example/private/x",
+    )
+    client = _Client(
+        {
+            src: _redirect("/p/1-final"),  # relative Location
+            dst: _Resp(200, "<html>final</html>", url=dst),
+            "https://a.example/p/2": _redirect(private),
+            private: _Resp(200, "<html>never</html>", url=private),
+        }
+    )
+    plan = _plan(tmp_path, [_item("1", src), _item("2", "https://a.example/p/2")])
+    job = _job(tmp_path, _cfg(tmp_path, plan), client)
+    job.run()
+    job.finish()
+    one, two = sorted(_records(tmp_path, "pages"), key=lambda r: str(r["id"]))
+    assert one["state"] == run.OK
+    assert one["final_url"] == dst
+    assert one["redirects"] == 1
+    assert two["state"] == run.ROBOTS_DISALLOWED  # ROBOTS has Disallow: /private/
+    assert private not in [u for u, _ in client.calls]
+
+
+def test_redirect_loop_and_missing_location_are_http_errors(tmp_path: Path) -> None:
+    loop_a, loop_b = "https://a.example/l/a", "https://a.example/l/b"
+    bare = "https://a.example/bare"
+    client = _Client({loop_a: _redirect(loop_b), loop_b: _redirect(loop_a), bare: _Resp(301, "")})
+    plan = _plan(tmp_path, [_item("1", loop_a), _item("2", bare)])
+    job = _job(tmp_path, _cfg(tmp_path, plan), client)
+    job.run()
+    job.finish()
+    one, two = sorted(_records(tmp_path, "pages"), key=lambda r: str(r["id"]))
+    assert one["state"] == run.HTTP_ERROR
+    assert one["redirects"] == run.MAX_REDIRECTS + 1
+    assert "redirects" in one["reason"]
+    assert two["state"] == run.HTTP_ERROR
+    assert two["reason"] == "redirect without Location"
+    assert two["status"] == 301
+
+
+def test_robots_txt_redirect_is_followed(tmp_path: Path) -> None:
+    client = _Client(
+        {
+            "https://a.example/robots.txt": _redirect("https://static.a.example/robots.txt"),
+            "https://static.a.example/robots.txt": _Resp(
+                200, "User-agent: *\nDisallow: /p/\n", "text/plain"
+            ),
+        }
+    )
+    job = _job(
+        tmp_path, _cfg(tmp_path, _plan(tmp_path, [_item("1", "https://a.example/p/1")])), client
+    )
+    job.run()
+    job.finish()
+    (rec,) = _records(tmp_path, "pages")
+    assert rec["state"] == run.ROBOTS_DISALLOWED
+    assert "https://a.example/p/1" not in [u for u, _ in client.calls]

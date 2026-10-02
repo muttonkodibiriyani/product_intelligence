@@ -3,8 +3,9 @@
 Cloud Run job (also runs locally) that fetches the URLs of a **plan**, keeps every body exactly as
 served, downloads the product pictures the plan names, and writes everything to GCS under the
 ADR-0006 raw-capture rules. Standalone: `httpx` + `google-cloud-storage` + `defusedxml`, no
-`pi_fetch`, no browser, no TLS impersonation, **no proxy** (the job has no proxy setting at all;
-pictures in particular are always fetched directly).
+`pi_fetch`, no browser, no TLS impersonation. Direct by default; the owner-capped residential
+proxy can be switched on for named page hosts only, under the rules in "Proxy rules" below.
+Pictures are always fetched directly.
 
 Ordinary-access rules the job enforces itself:
 
@@ -15,7 +16,14 @@ Ordinary-access rules the job enforces itself:
   HTML page → robots **unavailable** and every URL on that host is refused (`robots_unavailable`).
   `Crawl-delay` is honoured when it is larger than the pace.
 - One paced GET per URL (per host, uniform jitter up to 60 %), fresh cookie jar every request,
-  redirects followed, 30 s timeout, **no retries**.
+  30 s timeout, **no retries**.
+- Redirects are followed one hop at a time, at most 5. Every hop is a new request to its host:
+  the target host's `robots.txt` is read (fail-closed) and the target path checked, a stopped
+  host is not entered, the hop is paced on the target host, and it uses the target host's own
+  route (direct unless that host is itself in `PROXY_HOSTS`). A refused hop is recorded with the
+  target as `final_url` and the state `robots_disallowed`, `robots_unavailable` or
+  `skipped_host_stopped`; `redirects` carries the hop count. `robots.txt` redirects are followed
+  as RFC 9309 asks.
 - Stop rules per host (other hosts continue): challenge marker or 401/403 → `blocked`; 429 → back
   off 60 s, doubling to 900 s, two in a row → `rate_limited`; ten consecutive transport errors →
   stopped. Every remaining item on a stopped host is recorded `skipped_host_stopped`.
@@ -43,7 +51,8 @@ Ordinary-access rules the job enforces itself:
 | `CLOUD_RUN_TASK_INDEX` / `CLOUD_RUN_TASK_COUNT` | sharding: item *i* belongs to task *i mod count*; with more than one task every task writes its own names (`pages/part-t1-0000.jsonl.gz`, `progress.t1.json`, `manifest.t1.json`, …) so tasks never overwrite each other |
 | `PROXY_HOSTS` | comma list of page hosts fetched through the residential proxy; empty = no proxy |
 | `PROXY_SECRET` | Secret Manager version resource holding the proxy endpoint JSON; required with `PROXY_HOSTS` |
-| `PROXY_BYTE_CAP` | wire bytes the run may move through the proxy; default and ceiling 1 800 000 000 |
+| `PROXY_BYTE_CAP` | wire bytes this run may move through the proxy, if smaller than what the ledger has left; default and ceiling 1 800 000 000 |
+| `PROXY_LEDGER` | `gs://bucket/name.json` of the **shared** proxy ledger; required with `PROXY_HOSTS` |
 
 ## Proxy rules
 
@@ -51,16 +60,28 @@ The proxy is a paid, owner-capped resource (1.8 GB in total) and is used only fo
 has refused the direct route from both Europe and the Cloud Run region (recon evidence in the
 bucket). The rules the code enforces:
 
-- Only hosts named in `PROXY_HOSTS` go through the proxy. Robots.txt for those hosts is read
-  through the proxy too (same route, same answer the shop gives that route).
-- Pictures and every other host always go direct, whatever `PROXY_HOSTS` says.
+- Only hosts named in `PROXY_HOSTS` go through the proxy, and only hosts of the shops the owner
+  put in scope for task 01a0fc6d may be named (`proxy.ALLOWED_HOSTS`, ADR-0006 Amendment 4);
+  anything else is refused at start. Robots.txt for those hosts is read through the proxy too
+  (same route, same answer the shop gives that route).
+- Pictures and every other host always go direct, whatever `PROXY_HOSTS` says. A proxied host
+  that redirects to another host leaves the proxy: the hop uses the target host's route.
+- A sharded job (`CLOUD_RUN_TASK_COUNT` > 1) is refused the proxy.
+- The spend is kept in **one shared ledger** (`PROXY_LEDGER`), not per process. The ledger is a
+  JSON object `{"provider", "cap_bytes", "used_bytes", "runs": {"<prefix>": bytes}, "updated"}`
+  created by hand, once, with the balance already consumed (the ulta.ae snapshots) entered in
+  `used_bytes`. Every proxied response is added to it with a compare-and-swap on the object's
+  generation and retried from the other writer's figures on a lost race, so two runs can never
+  each spend the whole balance. A run's own cap is `min(PROXY_BYTE_CAP, cap_bytes - used_bytes)`
+  at start (`run_cap` in the manifest). No ledger, an unreadable ledger or an exhausted one means
+  the run refuses to start.
 - Credentials are read from Secret Manager at run time with the job's own service account.
   Nothing in git, the image, the manifest or the logs carries them: the manifest records the
   secret's *resource name* only, and `ProxyEndpoint`'s repr hides the username and password.
-- Every proxied response is charged to a meter at its compressed wire size plus 1 000 bytes of
-  request overhead. When the meter reaches `PROXY_BYTE_CAP` the proxied hosts stop with the
-  state `proxy_cap` and the run continues for everything else; `progress.json` and
-  `status.json` carry `proxy_bytes` so the spend is visible while the job runs.
+- Every proxied response is charged at its compressed wire size plus 1 000 bytes of request
+  overhead. When the run's cap is reached the proxied hosts stop with the state `proxy_cap` and
+  the run continues for everything else; `progress.json` and `status.json` carry `proxy_bytes`,
+  `status.json` also `proxy_run_cap` and `proxy_ledger_remaining`.
 - Stop rules are unchanged: the first 401/403 or challenge page on a proxied host stops that
   host. The proxy is a different exit address, not a way around a refusal.
 
