@@ -152,6 +152,9 @@ export async function openMenu(page: Page) {
  * (a page off the phone's five tabs) in the phone menu, which this opens.
  */
 export async function navLink(page: Page, name: string | RegExp): Promise<Locator> {
+  // The shell appears as soon as the session is in, a beat before sign-in's redirect lands; a
+  // menu opened before that would close on the route change.
+  await expect(page).not.toHaveURL(/\/sign-in\/?$/);
   const nav = mainNav(page);
   await expect(nav).toBeVisible();
   const direct = nav.getByRole('link', { name });

@@ -208,7 +208,7 @@ are **numbers**.
 | `caps.labelDayUsd.chat` | string | `0.40` |
 | `caps.questionsPerUserDay.viewer` | number | `10` |
 | `caps.questionsPerUserDay.admin` | number | `30` |
-| `limits.maxInputTokens` | number | `10000` |
+| `limits.maxInputTokens` | number | `40000` |
 | `limits.maxOutputTokens` | number | `1500` |
 | `limits.thinkingBudget` | number | `0` |
 | `limits.maxModelCallsPerQuestion` | number | `4` |
@@ -221,6 +221,16 @@ model calls and 1500 output tokens per question, and thinking off (`thinkingBudg
 questions a month, under the $5 budget alert (section 1b). The meter enforces `caps.monthUsd = 4.00` before
 every call, reserving each call's worst-case cost, across every label, CI included. The kill
 switch is the backstop. Raising any of them needs the owner's OK.
+
+`limits.maxInputTokens` is 40000, not 10000: the flow refuses a call whose prompt bound (UTF-8
+bytes of the system prompt, tool specs, history and tool results, plus 1000) exceeds it, and
+the system prompt and tool specs alone are about 18,000 bytes. At 10000 every question was
+refused as `prompt_too_large`. A typical multi-turn question peaks near 28,000
+(`apps/assistant/test/prompt-budget.test.ts`). Per-call reservation on `gemini-2.5-flash`:
+40000 × $0.30 + 1500 × $2.50 per 1M tokens = $0.01575, so up to $0.063 for a question that
+makes 4 calls at their ceilings. Against `caps.labelDayUsd.chat` 0.40 that is about 6
+worst-case questions a day; the meter settles each call at its actual cost, so typical
+questions use far less.
 
 The config stays in USD because the meter prices tokens from a USD list-price table
 (`apps/assistant/config/prices.json`). The owner reads the caps in AED, at the fixed peg of

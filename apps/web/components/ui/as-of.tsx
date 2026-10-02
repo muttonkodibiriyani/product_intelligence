@@ -19,13 +19,8 @@ export function AsOf({ children }: { children?: ReactNode }) {
   const cutoff = useMeta().data?.data?.cutoff;
   const date = children ?? (cutoff && t('asOf', { date: formatDate(cutoff, locale) }));
   return (
-    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-2">
-      {date && (
-        <>
-          <span>{date}</span>
-          <span aria-hidden="true">·</span>
-        </>
-      )}
+    <p className="text-xs text-ink-2">
+      {date && <>{date} · </>}
       <Link
         href={aboutDataHref(locale)}
         className="rounded-sm underline underline-offset-2 hover:text-ink focus-visible:outline-2"
