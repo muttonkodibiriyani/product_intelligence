@@ -94,7 +94,7 @@ for (const locale of ['en', 'ar'] as const) {
         done: 'تم',
         activeFilters: 'عوامل التصفية النشطة',
         shopChip: 'المتجر: Shop A',
-        verdict: 'Shop A أرخص 25.0%',
+        verdict: 'Shop B أغلى بنسبة 25.0%',
         noImage: 'لا صورة',
         underReview: 'السعر قيد المراجعة',
         results: 'النتائج',
@@ -123,7 +123,7 @@ for (const locale of ['en', 'ar'] as const) {
         done: 'Done',
         activeFilters: 'Active filters',
         shopChip: 'Shop: Shop A',
-        verdict: 'Shop A cheaper 25.0%',
+        verdict: 'Shop B 25.0% dearer',
         noImage: 'No image',
         underReview: 'Price under review',
         results: 'Results',
@@ -216,7 +216,8 @@ for (const locale of ['en', 'ar'] as const) {
       await page.getByRole('checkbox', { name: /Shop B/ }).check();
       await expect(page).toHaveURL(/retailer=shop_a&retailer=shop_b/);
       await doneWithFilters(page);
-      // The picked shops are chips above the list; the card says who is cheaper, from the API's gap.
+      // The picked shops are chips above the list; the card says how the other shop compares, from
+      // the API's gap: p05 is base 80 vs other 100, so Shop B is 25% dearer.
       const chips = page.getByRole('list', { name: T.activeFilters });
       await expect(chips.getByRole('button', { name: new RegExp(`^${T.shopChip}`) })).toBeVisible();
       await expect(cards(page).filter({ hasText: 'Product p05' }).getByText(T.verdict)).toBeVisible();

@@ -100,6 +100,7 @@ describe('useVerdictChip', () => {
     const chip = useVerdictChip((id) => ({ a: 'Shop A', b: 'Shop B' })[id] ?? id);
     const all = [
       chip({ kind: 'cheaper', retailer: 'b', pct: '12.5' }),
+      chip({ kind: 'dearer', retailer: 'b', pct: '12.5' }),
       chip({ kind: 'same' }),
       chip({ kind: 'sizes' }),
       chip({ kind: 'review' }),
@@ -126,6 +127,7 @@ describe('useVerdictChip', () => {
     const items = screen.getAllByRole('listitem');
     expect(items.map((li) => [li.dataset.tone, li.textContent])).toEqual([
       ['good', 'Shop B cheaper 12.5%'],
+      ['good', 'Shop B 12.5% dearer'],
       ['neutral', en.productCard.same],
       ['neutral', en.productCard.sizesDiffer],
       ['warn', en.price.underReview],

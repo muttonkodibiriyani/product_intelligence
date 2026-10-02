@@ -7,7 +7,11 @@ type Card = Pick<Schemas['ProductCard'], 'gap' | 'prices' | 'priceFlags'>;
  * What a product card says about a pair in one chip. Every value is the API's: the cheaper side
  * and the percentage come from `PairGap.gap`, the reason from `excludedReason`.
  *
- * - `cheaper`: one shop is cheaper by `pct` (the API's percentage, sign dropped).
+ * - `cheaper`: the other shop is cheaper by `pct` of the base shop's price (the API's percentage,
+ *   sign dropped).
+ * - `dearer`: the other shop is dearer by `pct` of the base shop's price. The API's percentage is
+ *   always a share of the base price, so it is only ever the other shop that is "x% cheaper" or
+ *   "x% dearer"; saying the base shop is cheaper by that number would overstate it.
  * - `same`: both shops charge the same.
  * - `sizes`: the shops sell different sizes, so the prices are not compared.
  * - `review`: a side's price is withheld as a placeholder (lib/money.ts `priceState`).
@@ -18,6 +22,7 @@ type Card = Pick<Schemas['ProductCard'], 'gap' | 'prices' | 'priceFlags'>;
  */
 export type Verdict =
   | { kind: 'cheaper'; retailer: string; pct: string }
+  | { kind: 'dearer'; retailer: string; pct: string }
   | { kind: 'same' }
   | { kind: 'sizes' }
   | { kind: 'review' }
@@ -35,8 +40,8 @@ export function verdictOf(card: Card): Verdict | null {
   if (g.gap) {
     if (g.gap.cheaper === 'equal') return { kind: 'same' };
     return {
-      kind: 'cheaper',
-      retailer: g.gap.cheaper === 'base' ? g.base : g.other,
+      kind: g.gap.cheaper === 'base' ? 'dearer' : 'cheaper',
+      retailer: g.other,
       pct: g.gap.pct.replace(/^-/, ''),
     };
   }

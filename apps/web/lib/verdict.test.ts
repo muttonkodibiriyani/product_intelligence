@@ -21,8 +21,16 @@ describe('verdictOf', () => {
     ).toBeNull();
   });
 
-  it("names the cheaper shop with the API's percentage, the sign dropped", () => {
-    expect(verdictOf({ gap: pair(), prices })).toEqual({ kind: 'cheaper', retailer: 'a', pct: '25.0' });
+  it("names the other shop as dearer or cheaper by the API's percentage of the base price, sign dropped", () => {
+    // base 80 vs other 100: the other shop is 25% dearer (not the base 25% cheaper; that is 20%).
+    expect(verdictOf({ gap: pair(), prices })).toEqual({ kind: 'dearer', retailer: 'b', pct: '25.0' });
+    // base 50 vs other 150: 200% dearer, where "base cheaper 200%" would be nonsense (it is 66.7%).
+    expect(
+      verdictOf({
+        gap: pair({ gap: { amount: aed('100.00'), cheaper: 'base', pct: '200.0' } }),
+        prices: { a: aed('50.00'), b: aed('150.00') },
+      }),
+    ).toEqual({ kind: 'dearer', retailer: 'b', pct: '200.0' });
     expect(
       verdictOf({ gap: pair({ gap: { amount: aed('-5.00'), cheaper: 'other', pct: '-4.2' } }), prices }),
     ).toEqual({ kind: 'cheaper', retailer: 'b', pct: '4.2' });

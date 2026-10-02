@@ -257,6 +257,7 @@
     "off": "−{pct}%",
     "noImage": "لا صورة",
     "cheaper": "{shop} أرخص {pct}%",
+    "dearer": "{shop} أغلى بنسبة {pct}%",
     "same": "السعر نفسه",
     "sizesDiffer": "الحجمان مختلفان"
   },

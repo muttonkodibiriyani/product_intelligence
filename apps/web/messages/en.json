@@ -257,6 +257,7 @@
     "off": "−{pct}%",
     "noImage": "No image",
     "cheaper": "{shop} cheaper {pct}%",
+    "dearer": "{shop} {pct}% dearer",
     "same": "Same price",
     "sizesDiffer": "Sizes differ"
   },

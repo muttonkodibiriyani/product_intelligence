@@ -169,6 +169,8 @@ export function useVerdictChip(name: (id: string) => string): (v: Verdict | null
     switch (v.kind) {
       case 'cheaper':
         return { tone: 'good', label: t('cheaper', { shop: name(v.retailer), pct: v.pct }) };
+      case 'dearer':
+        return { tone: 'good', label: t('dearer', { shop: name(v.retailer), pct: v.pct }) };
       case 'same':
         return { tone: 'neutral', label: t('same') };
       case 'sizes':

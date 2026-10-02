@@ -86,22 +86,38 @@ describe('ProductGrid', () => {
     expect(within(ulta).getByText(en.productCard.notSold)).toBeTruthy();
   });
 
-  it("with a pair, the chip on the picture names the cheaper shop and the API's percentage", () => {
-    grid([
+  it("with a pair, the chip on the picture says how the other shop compares, by the API's percentage", () => {
+    const pair = (a: string, b: string, cheaper: 'base' | 'other', pct: string, id: string) =>
       card({
+        id,
+        name: `Product ${id}`,
+        prices: { ulta_ae: aed(a), sephora_me: aed(b) },
         gap: {
           base: 'ulta_ae',
           other: 'sephora_me',
           excludedReason: null,
-          gap: { amount: aed('5.00'), cheaper: 'base', pct: '4.2' },
+          gap: { amount: aed((+b - +a).toFixed(2)), cheaper, pct },
           sizeLabels: ['30 ml', '75 ml'],
         },
-      }),
+      });
+    grid([
+      // The API's pct is a share of the base price, so with the base cheaper the other is "x% dearer":
+      // 50 vs 150 is 200% dearer (the base is 66.7% cheaper, not 200%); 80 vs 100 is 25% dearer (not 20%).
+      pair('50.00', '150.00', 'base', '200.0', 'p1'),
+      pair('80.00', '100.00', 'base', '25.0', 'p2'),
+      // The other way round the other shop is cheaper by that share: 150 vs 50, 100 vs 80.
+      pair('150.00', '50.00', 'other', '-66.7', 'p3'),
+      pair('100.00', '80.00', 'other', '-20.0', 'p4'),
     ]);
-    expect(screen.getByText('Ulta UAE cheaper 4.2%')).toBeTruthy();
+    const chipOf = (n: string) => within(screen.getByRole('link', { name: new RegExp(n) }).closest('li')!);
+    expect(chipOf('Product p1').getByText('Sephora UAE 200.0% dearer')).toBeTruthy();
+    expect(chipOf('Product p2').getByText('Sephora UAE 25.0% dearer')).toBeTruthy();
+    expect(chipOf('Product p3').getByText('Sephora UAE cheaper 66.7%')).toBeTruthy();
+    expect(chipOf('Product p4').getByText('Sephora UAE cheaper 20.0%')).toBeTruthy();
+    expect(screen.queryByText(/Ulta UAE cheaper/)).toBeNull();
     // Each side's own size when the pair's sizes differ.
-    expect(screen.getByText('30 ml')).toBeTruthy();
-    expect(screen.getByText('75 ml')).toBeTruthy();
+    expect(screen.getAllByText('30 ml')).toHaveLength(4);
+    expect(screen.getAllByText('75 ml')).toHaveLength(4);
   });
 
   it('a product without an image gets the named placeholder, not a broken image', () => {
