@@ -44,6 +44,21 @@
     --radius-ctl: 10px;
     --shadow-card: 0 1px 2px rgb(29 33 48 / 0.04), 0 2px 8px rgb(29 33 48 / 0.04);
     --shadow-pop: 0 12px 32px rgb(29 33 48 / 0.1), 0 2px 6px rgb(29 33 48 / 0.05);
+
+    /*
+     * Retailer and outcome tokens (PR 4; the same names and values PR 2 adds). Ulta is burnt
+     * orange, Sephora graphite: a dot, a bar or a thin rule, never a fill behind text. Good
+     * (green) is cheaper for the reader, bad (red) dearer.
+     */
+    --color-ink-3: #8a90a0;
+    --color-ulta: #d1541c;
+    --color-ulta-soft: #fcebe1;
+    --color-sephora: #1d2129;
+    --color-sephora-soft: #e9eaee;
+    --color-good: #187a43;
+    --color-good-soft: #e3f4ea;
+    --color-bad: #b3261e;
+    --color-bad-soft: #fbe9e7;
 }
 
 html {
@@ -151,5 +166,76 @@ html {
 @keyframes skeleton {
     to {
         background-position: 0 0;
+    }
+}
+
+/*
+ * A verdict on a product or a category: `verdict-good` when the reader pays less, `verdict-bad`
+ * when more, `verdict-warn` when the number needs a review, and plain `verdict` (grey) when there
+ * is nothing to say: same price, sizes differ, not sold at both.
+ */
+@utility verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+    border-radius: 999px;
+    padding: 0.0625rem 0.5rem;
+    font-size: 0.71875rem;
+    line-height: 1rem;
+    font-weight: 600;
+    background: var(--color-surface-2);
+    color: var(--color-ink-2);
+}
+
+@utility verdict-good {
+    background: var(--color-good-soft);
+    color: var(--color-good);
+}
+
+@utility verdict-bad {
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+}
+
+@utility verdict-warn {
+    background: var(--color-warn-bg);
+    color: var(--color-warn);
+}
+
+/*
+ * A gap bar centred on zero. The fill is an `<i data-side="good|bad" style="width: n%">`: good
+ * runs from the middle towards the start of the line, bad towards the end, so the bar mirrors
+ * with the reading direction. `n` is the gap as a share of the half width.
+ */
+@utility gapbar {
+    position: relative;
+    width: 90px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--color-line-2);
+    &::before {
+        content: '';
+        position: absolute;
+        top: -3px;
+        bottom: -3px;
+        inset-inline-start: 50%;
+        width: 1px;
+        background: var(--color-ink-3);
+    }
+    & > i {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        max-width: 50%;
+        border-radius: 3px;
+    }
+    & > i[data-side='good'] {
+        inset-inline-end: 50%;
+        background: var(--color-good);
+    }
+    & > i[data-side='bad'] {
+        inset-inline-start: 50%;
+        background: var(--color-bad);
     }
 }
