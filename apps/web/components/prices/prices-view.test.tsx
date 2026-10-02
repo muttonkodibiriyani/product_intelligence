@@ -36,7 +36,7 @@ const withheld: Envelope<Summary> = {
   },
 };
 
-const ctx = vi.hoisted(() => ({ search: '' }));
+const ctx = vi.hoisted(() => ({ search: '', compare: { kind: 'loading' } as unknown }));
 vi.mock('../auth-provider', () => ({ useAuth: () => ({ api: {} }) }));
 vi.mock('../use-meta', () => ({
   useMeta: () => ({ data: meta }),
@@ -49,7 +49,7 @@ vi.mock('@/lib/api/summary', async (orig) => ({
 }));
 vi.mock('../widgets/use-compare', async (orig) => ({
   ...(await orig<typeof import('../widgets/use-compare')>()),
-  useCompareData: () => ({ kind: 'loading' }),
+  useCompareData: () => ctx.compare,
 }));
 vi.mock('../widgets/use-category', () => ({ useCategoryCompare: () => ({ kind: 'loading' }) }));
 vi.mock('next/navigation', () => ({
@@ -62,7 +62,22 @@ vi.mock('../widgets/charts', () => {
   return { PriceHistWidget: Chart, LadderWidget: Chart, BrandPriceWidget: Chart, GapHistWidget: Chart };
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  ctx.compare = { kind: 'loading' };
+});
+
+/** /compare withheld for the pair: no rows, a reason. */
+const noPairs = {
+  kind: 'empty',
+  env: {
+    status: 'not_enough_data',
+    reason: 'cohort_too_small',
+    data: null,
+    caveats: [],
+    meta: { cutoff: meta.data!.cutoff },
+  },
+};
 
 function show(search: string, locale: 'en' | 'ar' = 'en') {
   ctx.search = search;
@@ -101,6 +116,18 @@ describe('PricesView: a retailer whose summary the API withheld', () => {
     );
     expect(screen.queryByText(/No price summary/)).toBeNull();
     expect(document.body.textContent).not.toMatch(/shop_[a-d]/);
+  });
+
+  it('head to head without comparable pairs says so with the API’s reason, in both languages', async () => {
+    ctx.compare = noPairs;
+    show('');
+    const line = (await screen.findByText(/No comparable pairs yet\./)).closest('p')!;
+    expect(line.textContent).toBe(`${en.prices.noPairs} ${en.reasons.cohort_too_small}`);
+    expect(document.querySelector('#p-gap-hist')).toBeNull();
+    cleanup();
+    show('', 'ar');
+    const ar_ = (await screen.findByText(new RegExp(ar.prices.noPairs))).closest('p')!;
+    expect(ar_.textContent).toBe(`${ar.prices.noPairs} ${ar.reasons.cohort_too_small}`);
   });
 
   it('says it in Arabic too', async () => {
