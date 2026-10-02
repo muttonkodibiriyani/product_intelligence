@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guarded } from './chart';
+import { described, guarded } from './chart';
 
 describe('guarded', () => {
   it('a formatter that throws on a mark without its fields shows no tooltip', () => {
@@ -13,5 +13,19 @@ describe('guarded', () => {
     expect(top({ data: {} })).toBe('');
     expect(own({ data: {} })).toBe('');
     expect(top({ data: { trail: ['MU', 'Lips'] } })).toBe('MU › Lips');
+  });
+});
+
+describe('described', () => {
+  it("puts the chart's own label in ECharts' aria description, keeping the rest of aria", () => {
+    const o = described(
+      { aria: { enabled: true }, series: [] },
+      'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقات.',
+    );
+    expect(o.aria).toEqual({
+      enabled: true,
+      label: { description: 'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقات.' },
+    });
+    expect(o.series).toEqual([]);
   });
 });
