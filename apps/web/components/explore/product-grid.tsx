@@ -1,101 +1,66 @@
 'use client';
 
-import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useSyncExternalStore } from 'react';
 import type { Schemas } from '@/lib/api/types';
-import { Price } from '../ui/money';
-import { GapView } from '../ui/pair';
-import { productHref, Size } from './product-table';
-import { RowThumb } from './row-thumb';
+import { verdictOf } from '@/lib/verdict';
+import { ProductCard, useVerdictChip, type PriceLine } from '../ui/product-card';
+import { productHref } from './product-table';
 
 type Card = Schemas['ProductCard'];
 export type View = 'grid' | 'list';
 
-/** Retailer badges take the chart series' tones, in column order, so a retailer reads the same everywhere. */
-const TONE = [
-  'bg-blush text-blush-ink',
-  'bg-sky text-sky-ink',
-  'bg-lav text-lav-ink',
-  'bg-mint text-mint-ink',
-];
+/**
+ * The price lines of a product card: one per shop in column order. A shop without the product
+ * reads "Not sold"; when the pair's sizes differ, each side shows its own size.
+ */
+export function priceLines(c: Card, retailers: readonly string[], name: (id: string) => string): PriceLine[] {
+  const sizes = c.gap?.sizeLabels;
+  return retailers.map((r) => ({
+    retailer: r,
+    label: name(r),
+    notSold: !(r in c.prices),
+    price: c.prices[r],
+    priceFlag: c.priceFlags?.[r],
+    size: sizes && c.gap ? (r === c.gap.base ? sizes[0] : r === c.gap.other ? sizes[1] : null) : null,
+  }));
+}
 
 /**
- * Products as image-first cards: the photo leads, then brand, name, size and a price per
- * retailer. The whole card opens the product; the list (`ProductTable`) is the dense view.
+ * Products as image-first cards: the photo leads, then brand, name, size and a price per shop,
+ * with the pair's verdict on the photo. The list (`ProductTable`) is the dense view.
  */
 export function ProductGrid({
   items,
   retailers,
-  pair,
   name,
   from,
 }: {
   items: Card[];
   retailers: string[];
-  pair: [string, string] | null;
+  pair?: [string, string] | null;
   name: (id: string) => string;
   from: string;
 }) {
   const t = useTranslations('explore');
-  const tp = useTranslations('product');
   const locale = useLocale();
+  const chip = useVerdictChip(name);
   return (
     <ul aria-label={t('results')} className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-      {items.map((c) => {
-        const offered = retailers.filter((r) => r in c.prices);
-        return (
-          <li
-            key={c.id}
-            className="group relative flex min-w-0 flex-col overflow-hidden panel transition-shadow hover:shadow-md focus-within:shadow-md"
-          >
-            <div className="aspect-square border-b border-line bg-white p-3">
-              <RowThumb url={c.image} label={t('noImage')} px={320} cls="size-full rounded-[6px]" />
-            </div>
-            <div className="flex flex-1 flex-col p-3">
-              <span className="truncate text-xs text-ink-2" dir="auto">
-                {c.brand}
-              </span>
-              <Link
-                href={productHref(locale, c.id, from)}
-                className="mt-0.5 line-clamp-2 text-sm font-medium text-ink after:absolute after:inset-0 group-hover:underline focus-visible:outline-2"
-                dir="auto"
-              >
-                {c.name}
-              </Link>
-              <span className="mt-1 truncate text-xs text-ink-2">
-                {c.size && <Size size={c.size} />}
-                {c.size && c.category.length > 0 && ' · '}
-                <span dir="auto">{c.category.at(-1)}</span>
-              </span>
-              {offered.length === 0 && <p className="mt-auto pt-3 text-sm text-ink-2">{t('notOffered')}</p>}
-              <dl className="mt-auto space-y-1 pt-3 text-sm empty:hidden">
-                {offered.map((r) => (
-                  <div key={r} className="flex items-center justify-between gap-2">
-                    <dt
-                      className={`truncate rounded-full px-2 py-0.5 text-xs ${TONE[retailers.indexOf(r) % TONE.length]}`}
-                    >
-                      {name(r)}
-                    </dt>
-                    <dd className="whitespace-nowrap font-medium tabular-nums">
-                      <Price
-                        of={{ price: c.prices[r], priceFlag: c.priceFlags?.[r] }}
-                        locale={locale}
-                        fallback={<span className="font-normal text-ink-2">{tp('noPrice')}</span>}
-                      />
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-              {pair && c.gap && (
-                <div className="mt-2 border-t border-line pt-2 text-xs">
-                  <GapView pair={c.gap} name={name} />
-                </div>
-              )}
-            </div>
-          </li>
-        );
-      })}
+      {items.map((c) => (
+        <li key={c.id} className="min-w-0">
+          <ProductCard
+            href={productHref(locale, c.id, from)}
+            image={c.image}
+            brand={c.brand}
+            name={c.name}
+            size={c.size}
+            category={c.category.at(-1)}
+            lines={priceLines(c, retailers, name)}
+            chip={chip(verdictOf(c))}
+          />
+        </li>
+      ))}
     </ul>
   );
 }
@@ -134,7 +99,7 @@ export function useView(): [View, (v: View) => void] {
   return [view, set];
 }
 
-/** Grid / List: two pressed-state buttons. */
+/** Grid / List: a segmented control of two pressed-state buttons. */
 export function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
   const t = useTranslations('explore');
   return (
@@ -149,7 +114,7 @@ export function ViewToggle({ view, onChange }: { view: View; onChange: (v: View)
           type="button"
           aria-pressed={view === v}
           onClick={() => onChange(v)}
-          className={`rounded-[5px] px-2.5 py-1 text-sm focus-visible:outline-2 ${
+          className={`rounded-[6px] px-2.5 py-0.5 text-[13px] focus-visible:outline-2 ${
             view === v ? 'bg-ink text-surface' : 'text-ink-2 hover:text-ink'
           }`}
         >

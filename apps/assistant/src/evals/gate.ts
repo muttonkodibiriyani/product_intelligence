@@ -4,6 +4,9 @@
  * are allowed 95 %, the rest must be 100 %. The first-pass verifier rate is reported.
  *
  * Run with Node's type stripping, no build step: `node src/evals/gate.ts evals/results.json`.
+ * For an operator-run eval against a real model, add `--counts-only`: per-suite counts and
+ * cost only, never a case description, error or grading reason (they can carry model text,
+ * and the injection suite's output is untrusted).
  * Only package imports here (no relative ones), so it runs without a TS loader.
  */
 import { readFileSync } from "node:fs";
@@ -23,6 +26,7 @@ export const THRESHOLDS: Readonly<Record<string, number>> = {
 
 const ResultSchema = z.object({
   success: z.boolean(),
+  cost: z.number().nonnegative().optional(),
   error: z.string().nullish(),
   testCase: z.object({
     description: z.string().optional(),
@@ -49,7 +53,11 @@ export interface GateReport {
   readonly lines: readonly string[];
 }
 
-export function gate(raw: unknown, thresholds = THRESHOLDS): GateReport {
+export function gate(
+  raw: unknown,
+  thresholds = THRESHOLDS,
+  { countsOnly = false }: { readonly countsOnly?: boolean } = {},
+): GateReport {
   const parsed = OutputSchema.safeParse(raw);
   if (!parsed.success) return { pass: false, lines: ["results file is not promptfoo output"] };
   const results = parsed.data.results.results;
@@ -59,12 +67,14 @@ export function gate(raw: unknown, thresholds = THRESHOLDS): GateReport {
   let pass = true;
   const suites = new Map<string, { passed: number; total: number }>();
   let firstPass = 0;
+  let cost = 0;
   for (const result of results) {
+    cost += result.cost ?? 0;
     const suite = result.testCase.metadata.suite;
     const entry = suites.get(suite) ?? { passed: 0, total: 0 };
     entry.total += 1;
     if (result.success) entry.passed += 1;
-    else {
+    else if (!countsOnly) {
       const why = result.error ?? result.gradingResult?.reason ?? "failed";
       lines.push(`FAIL [${suite}] ${result.testCase.description ?? "(no description)"}: ${why}`);
     }
@@ -93,14 +103,22 @@ export function gate(raw: unknown, thresholds = THRESHOLDS): GateReport {
     `first-pass verified: ${String(firstPass)}/${String(results.length)} ` +
       `(${((firstPass / results.length) * 100).toFixed(1)} %)`,
   );
+  if (countsOnly) {
+    lines.push(
+      `cost: $${cost.toFixed(6)} for ${String(results.length)} questions ` +
+        `($${(cost / results.length).toFixed(6)} per question)`,
+    );
+  }
   return { pass, lines };
 }
 
 /* v8 ignore start -- CLI entry point */
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const file = process.argv[2];
-  if (file === undefined) throw new Error("usage: node gate.ts <results.json>");
-  const report = gate(JSON.parse(readFileSync(file, "utf8")));
+  const args = process.argv.slice(2);
+  const countsOnly = args.includes("--counts-only");
+  const file = args.find((arg) => arg !== "--counts-only");
+  if (file === undefined) throw new Error("usage: node gate.ts [--counts-only] <results.json>");
+  const report = gate(JSON.parse(readFileSync(file, "utf8")), THRESHOLDS, { countsOnly });
   for (const line of report.lines) console.log(line);
   process.exitCode = report.pass ? 0 : 1;
 }

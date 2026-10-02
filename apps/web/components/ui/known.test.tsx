@@ -13,7 +13,13 @@ function Probe({ ns, k, v }: { ns: string; k?: string; v: string }) {
 
 const show = (ns: string, v: string, k?: string) =>
   render(
-    <NextIntlClientProvider locale="ar" messages={ar} onError={() => {}}>
+    <NextIntlClientProvider
+      locale="ar"
+      messages={ar}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <Probe ns={ns} k={k} v={v} />
     </NextIntlClientProvider>,
   ).container;
