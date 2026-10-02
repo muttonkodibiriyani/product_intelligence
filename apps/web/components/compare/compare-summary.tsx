@@ -2,11 +2,14 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import type { Schemas } from '@/lib/api/types';
+import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
+import { formatMoney, isValidMoney } from '@/lib/money';
 import { Card } from '../ui/card';
 import { Known } from '../ui/known';
 import { Money, Pct } from '../ui/money';
+import { minus, retailerTone, sign, verdict as whoWins } from './model';
+import { RetailerDot } from './pair-picker';
 
 type Comparison = Schemas['Comparison'];
 type Name = (id: string) => string;
@@ -15,142 +18,220 @@ const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-top tabular-nums';
 
 /**
- * The pair's headline numbers. They cover every counted product, not only the rows on screen;
- * the rows below are the evidence, each with its own gap.
+ * The answer first: one sentence saying who is cheaper on how many of the matched products, the
+ * basket in money, a tally bar, and three facts beside it. Every number is the API's summary
+ * (which covers every matched product, not only the rows listed below).
  */
-export function Summary({
+export function Verdict({
   data,
-  cohort,
   name,
 }: {
-  data: Comparison;
-  cohort: Schemas['Cohort'] | null;
+  data: Comparison & { summary: Schemas['CompareSummary'] };
   name: Name;
 }) {
-  const t = useTranslations('compare');
-  const ts = useTranslations('state');
+  const t = useTranslations('compare.verdict');
+  const tf = useTranslations('compare.facts');
   const locale = useLocale();
+  const lc = locale === 'ar' ? 'ar' : 'en';
   const s = data.summary;
-  const pair = { base: name(data.base), other: name(data.other) };
+  const base = name(data.base);
+  const other = name(data.other);
+  const n = formatCount(s.n, locale);
+  const v = whoWins(s, data.base, data.other);
+  const baseWins = s.cheaperCounts[data.base] ?? 0;
+  const otherWins = s.cheaperCounts[data.other] ?? 0;
+
+  const tail = (shop: string, k: number, equal: number) =>
+    k > 0 && equal > 0
+      ? t('tailBoth', { shop, k: formatCount(k, locale), n: formatCount(equal, locale), count: equal })
+      : k > 0
+        ? t('tailOther', { shop, k: formatCount(k, locale) })
+        : equal > 0
+          ? t('tailEqual', { n: formatCount(equal, locale), count: equal })
+          : t('tailNone');
+  const headline =
+    v.kind === 'allSame'
+      ? t('allSame', { n, count: s.n, base, other })
+      : v.kind === 'tie'
+        ? t('tie', { base, other, k: formatCount(v.k, locale), n, count: s.n }) + tail('', 0, v.equal)
+        : t('lead', {
+            shop: name(v.leader === 'base' ? data.base : data.other),
+            k: formatCount(v.k, locale),
+            n,
+            count: s.n,
+          }) + tail(name(v.leader === 'base' ? data.other : data.base), v.trailing, v.equal);
+
+  const diff = minus(s.basket.other, s.basket.base);
+  const money = (m: MoneyValue) => (isValidMoney(m) ? formatMoney(m, lc) : `${m.amount} ${m.currency}`);
+  const basket =
+    diff && diff.minor === 0
+      ? t('basketSame', { n, baseTotal: money(s.basket.base) })
+      : t('basket', {
+          n,
+          base,
+          other,
+          baseTotal: money(s.basket.base),
+          otherTotal: money(s.basket.other),
+          diff: diff
+            ? money({ ...diff, amount: diff.amount.replace(/^-/, ''), minor: Math.abs(diff.minor) })
+            : '–',
+        });
+
+  const gapSign = sign(s.medianGapPct);
+  const diffSign = diff ? (diff.minor > 0 ? 1 : diff.minor < 0 ? -1 : 0) : 0;
+  const pair = { base, other };
+  const parts = [
+    { id: data.base, side: 0 as const, n: baseWins, label: t('cheaperAt', { shop: base }) },
+    { id: null, side: null, n: s.equalCount, label: t('same') },
+    { id: data.other, side: 1 as const, n: otherWins, label: t('cheaperAt', { shop: other }) },
+  ];
+
   return (
-    <section aria-labelledby="summary-title">
-      <h2 id="summary-title" className="text-base font-semibold">
-        {t('summary', pair)}
-      </h2>
-      <p className="mt-1 text-sm text-ink-2">{t('convention', pair)}</p>
-      {!s ? (
-        // No summary is served below the cohort minimum (or while matches wait on review): the rows
-        // still follow, so this says the summary is missing, not the products.
-        <p className="mt-3 text-sm text-ink-2">{ts('summaryTooFew')}</p>
-      ) : (
-        <dl className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat label={t('compared')} value={formatCount(s.n, locale)}>
-            {cohort?.description && (
-              <span lang="en" dir="ltr">
-                {cohort.description}
-              </span>
+    <section aria-labelledby="verdict-title" className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+      <div className="panel px-5 py-4">
+        <h2 id="verdict-title" className="text-xl font-semibold tracking-tight text-balance sm:text-[22px]">
+          {headline}
+        </h2>
+        <p className="mt-2 text-sm text-ink-2">
+          {basket} {t('scope', { n, total: formatCount(data.total, locale) })}
+        </p>
+        <div
+          className="mt-4"
+          role="img"
+          aria-label={`${t('tally')}: ${parts.map((p) => `${p.label} ${formatCount(p.n, locale)}`).join(', ')}`}
+        >
+          <div className="flex h-2 overflow-hidden rounded-full bg-line-2">
+            {parts.map(
+              (p, i) =>
+                p.n > 0 && (
+                  <span
+                    key={i}
+                    className="h-full"
+                    style={{
+                      flex: `${p.n} 0 0`,
+                      background: p.id ? retailerTone(p.id, p.side) : 'var(--color-line-3)',
+                    }}
+                  />
+                ),
             )}
-          </Stat>
-          <Stat label={t('median')} value={<Pct v={s.medianGapPct} />}>
-            {t('mean')} <Pct v={s.meanGapPct} />
-          </Stat>
-          <Stat
-            label={t('cheaperAt')}
-            value={
-              <span className="flex flex-wrap gap-x-3">
-                {[data.base, data.other].map((r) => (
-                  <span key={r}>
-                    {name(r)} <b className="font-semibold">{formatCount(s.cheaperCounts[r] ?? 0, locale)}</b>
-                  </span>
-                ))}
-              </span>
-            }
-          >
-            {t('equalCount', { n: formatCount(s.equalCount, locale), count: s.equalCount })}
-          </Stat>
-          <Stat
-            label={t('basket', { n: formatCount(s.n, locale) })}
-            value={
-              <span className="flex flex-col">
-                <span>
-                  {pair.base} <Money m={s.basket.base} locale={locale} />
-                </span>
-                <span>
-                  {pair.other} <Money m={s.basket.other} locale={locale} />
-                </span>
-              </span>
-            }
-          />
-        </dl>
-      )}
+          </div>
+          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2" aria-hidden>
+            {parts.map((p, i) => (
+              <li key={i} className="inline-flex items-center gap-1.5 tabular-nums">
+                {p.id ? (
+                  <RetailerDot id={p.id} side={p.side} />
+                ) : (
+                  <span className="inline-block size-2.5 rounded-full bg-line-3" />
+                )}
+                {p.label} <b className="font-semibold text-ink">{formatCount(p.n, locale)}</b>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <dl className="panel grid grid-cols-1 divide-y divide-line-2 sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:grid-cols-1 lg:divide-x-0 lg:divide-y">
+        <Fact
+          label={tf('matched')}
+          value={n}
+          note={tf('matchedOf', { total: formatCount(data.total, locale) })}
+        />
+        <Fact
+          label={tf('gap')}
+          value={<Pct v={s.medianGapPct} />}
+          note={tf(gapSign > 0 ? 'gapAbove' : gapSign < 0 ? 'gapBelow' : 'gapSame', pair)}
+        />
+        <Fact
+          label={tf('basket')}
+          value={
+            diff ? (
+              <Money
+                m={{ ...diff, amount: diff.amount.replace(/^-/, ''), minor: Math.abs(diff.minor) }}
+                locale={locale}
+              />
+            ) : (
+              '–'
+            )
+          }
+          note={tf(diffSign > 0 ? 'basketAbove' : diffSign < 0 ? 'basketBelow' : 'basketSame', pair)}
+        />
+      </dl>
     </section>
   );
 }
 
-function Stat({ label, value, children }: { label: string; value: ReactNode; children?: ReactNode }) {
+function Fact({ label, value, note }: { label: string; value: ReactNode; note: ReactNode }) {
   return (
-    <div className="panel px-4 py-4">
-      <dt className="text-[13px] font-semibold text-ink-2">{label}</dt>
-      <dd className="mt-2 text-2xl font-bold tracking-tight tabular-nums">{value}</dd>
-      {children && <dd className="mt-1.5 text-[13px] text-ink-2">{children}</dd>}
+    <div className="px-5 py-3">
+      <dt className="text-xs text-ink-2">{label}</dt>
+      <dd className="mt-0.5 text-xl font-semibold tracking-tight tabular-nums">{value}</dd>
+      <dd className="text-xs text-ink-2">{note}</dd>
     </div>
   );
 }
 
-/** What each retailer brought: products seen, products counted, and products only it sells. */
-export function Sides({ data, name }: { data: Comparison; name: Name }) {
-  const t = useTranslations('compare');
+/** What each shop brought: how many of its products in this view are matched to the other. */
+export function Coverage({ data, name }: { data: Comparison; name: Name }) {
+  const t = useTranslations('compare.coverage');
   const th = useTranslations('home');
   const tr = useTranslations('reasons');
   const locale = useLocale();
-  const sides = [data.sides.base, data.sides.other];
+  const sides = [data.sides.base, data.sides.other] as const;
   return (
-    <Card id="sides" title={t('sides')} flush>
-      <div className="relative overflow-x-auto px-2">
-        <table className="w-full text-sm">
-          <thead className="border-b border-line">
-            <tr>
-              <th scope="col" className={`${TH} text-start`}>
-                {t('retailer')}
-              </th>
-              <th scope="col" className={`${TH} text-start`}>
-                {t('status')}
-              </th>
-              <th scope="col" className={`${TH} text-end`}>
-                {t('observed')}
-              </th>
-              <th scope="col" className={`${TH} text-end`}>
-                {t('counted')}
-              </th>
-              <th scope="col" className={`${TH} text-end`}>
-                {t('onlyHere')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sides.map((s, i) => (
-              <tr key={i} className="border-t border-line first:border-t-0">
-                <th scope="row" className={`${TD} min-w-32 text-start font-normal`}>
-                  {name(s.retailer)}
-                  <span className="ms-2 text-xs text-ink-2">{t(i === 0 ? 'base' : 'other')}</span>
-                </th>
-                <td className={`${TD} min-w-40`}>
-                  <Known t={th} k="status" v={s.status} />
+    <Card id="coverage" title={t('title')}>
+      <ul className="space-y-3 text-sm">
+        {sides.map((s, i) => {
+          const other = name(sides[1 - i]!.retailer);
+          const rest = Math.max(0, s.observed - s.counted);
+          return (
+            <li key={s.retailer} className="flex gap-3">
+              <span className="pt-1.5">
+                <RetailerDot id={s.retailer} side={i as 0 | 1} />
+              </span>
+              <div className="min-w-0">
+                <b className="font-semibold">{name(s.retailer)}</b>
+                {s.status !== 'supported' && (
+                  <span className="ms-2 pill bg-surface-2 text-xs text-ink-2">
+                    <Known t={th} k="status" v={s.status} />
+                  </span>
+                )}
+                <p className="text-ink-2">
+                  {t('line', {
+                    matched: formatCount(s.counted, locale),
+                    seen: formatCount(s.observed, locale),
+                    shop: name(s.retailer),
+                    other,
+                  })}{' '}
+                  {t('rest', { n: formatCount(rest, locale), count: rest, shop: name(s.retailer) })}
                   {s.reason && (
-                    <span className="block text-xs text-ink-2">
+                    <>
+                      {' '}
                       <Known t={tr} v={s.reason} />
-                    </span>
+                    </>
                   )}
-                </td>
-                <td className={`${TD} text-end`}>{formatCount(s.observed, locale)}</td>
-                <td className={`${TD} text-end`}>{formatCount(s.counted, locale)}</td>
-                <td className={`${TD} text-end`}>{formatCount(s.onlyHere, locale)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="px-5 pt-1 pb-2 text-xs text-ink-2">{t('sidesHint')}</p>
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+/** The rule a pair has to pass to be matched, and the API's own words for the set it counted. */
+export function About({ cohort }: { cohort: Schemas['Cohort'] | null }) {
+  const t = useTranslations('compare.about');
+  return (
+    <Card id="about-matched" title={t('title')}>
+      <p className="text-sm text-ink-2">{t('body')}</p>
+      {cohort?.description && (
+        <p className="mt-2 text-xs text-ink-2">
+          {t('cohort')}{' '}
+          <span lang="en" dir="ltr">
+            {cohort.description}
+          </span>
+        </p>
+      )}
     </Card>
   );
 }
