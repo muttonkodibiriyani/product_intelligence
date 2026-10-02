@@ -26,7 +26,13 @@ const names: Record<string, string> = { ulta_ae: 'Ulta UAE', sephora_me: 'Sephor
 
 function table(items: Schemas['ProductCard'][], pair: [string, string] | null = null) {
   render(
-    <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale="en"
+      messages={en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <ProductTable
         items={items}
         retailers={['ulta_ae', 'sephora_me']}

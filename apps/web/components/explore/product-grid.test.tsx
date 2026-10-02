@@ -29,7 +29,13 @@ const names: Record<string, string> = { ulta_ae: 'Ulta UAE', sephora_me: 'Sephor
 
 function grid(items: Schemas['ProductCard'][]) {
   return render(
-    <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale="en"
+      messages={en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       <ProductGrid
         items={items}
         retailers={['ulta_ae', 'sephora_me']}
@@ -148,7 +154,13 @@ describe('view choice', () => {
   it('the toggle marks the current view pressed', () => {
     let picked = '';
     render(
-      <NextIntlClientProvider locale="en" messages={en} onError={() => {}}>
+      <NextIntlClientProvider
+        locale="en"
+        messages={en}
+        onError={(e) => {
+          throw e;
+        }}
+      >
         <ViewToggle view="grid" onChange={(v) => (picked = v)} />
       </NextIntlClientProvider>,
     );

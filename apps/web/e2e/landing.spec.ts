@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, openNav, signIn, test } from './fixtures';
 import {
   IMG,
   IMG_BROKEN,
@@ -300,7 +300,7 @@ for (const locale of ['en', 'ar'] as const) {
     test('Dataset page: the nav opens it; About the data explains in plain words, once', async ({ page }) => {
       const mock = await mockBackend(page, { onApi: api(summaryNoPromo) });
       await signIn(page, locale);
-      await page.getByRole('navigation').getByRole('link', { name: T.navDataset }).click();
+      await openNav(page, T.navDataset);
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/dataset/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.dataset })).toBeVisible();
       await expect(page.getByRole('heading', { level: 2, name: T.about })).toBeVisible();

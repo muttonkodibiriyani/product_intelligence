@@ -54,7 +54,13 @@ const common = { currency: s.currency, locale };
 function pick(el: ReactElement, name: string, data?: unknown) {
   picks.length = 0;
   render(
-    <NextIntlClientProvider locale={locale} messages={en} onError={() => {}}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={{ ...en, widgets }}
+      onError={(e) => {
+        throw e;
+      }}
+    >
       {el}
     </NextIntlClientProvider>,
   );
@@ -198,7 +204,9 @@ describe('LadderWidget legend', () => {
       <NextIntlClientProvider
         locale={lc}
         messages={lc === 'ar' ? { ...ar, widgets: widgetsAr } : { ...en, widgets }}
-        onError={() => {}}
+        onError={(e) => {
+          throw e;
+        }}
       >
         <LadderWidget data={s.ladder!} {...common} locale={lc} />
       </NextIntlClientProvider>,

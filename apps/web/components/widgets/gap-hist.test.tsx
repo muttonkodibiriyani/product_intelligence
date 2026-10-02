@@ -37,7 +37,9 @@ function draw(data: Schemas['GapHistogram'], locale: 'en' | 'ar' = 'en') {
     <NextIntlClientProvider
       locale={locale}
       messages={locale === 'ar' ? { ...ar, widgets: widgetsAr } : { ...en, widgets }}
-      onError={() => {}}
+      onError={(e) => {
+        throw e;
+      }}
     >
       <GapHistWidget data={data} currency="AED" locale={locale} pair={pair} />
     </NextIntlClientProvider>,
