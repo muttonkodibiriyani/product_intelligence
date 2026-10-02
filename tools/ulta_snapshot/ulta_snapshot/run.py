@@ -1,6 +1,7 @@
-"""Fetch ulta.ae product pages through the owner-approved residential proxy (rung 5), fetch only.
+"""Fetch ulta.ae product pages through a residential proxy (rung 5), fetch only.
 
-ADR-0006 Amendment 2 and the coordinator's GO for the ~20-page test. Everything goes through
+Not approved: there is no owner OK to use the paid proxy, so this is not run
+unless the owner approves it as a separate, dated item. Everything goes through
 main's ``pi_fetch.Fetcher`` rung-5 route: the pinned stock WebKit, the proxy credentials read from
 Secret Manager at runtime inside this process (never printed), robots.txt obeyed on every request
 (pages and sub-requests), heavy assets and third-party hosts aborted, bytes metered against the

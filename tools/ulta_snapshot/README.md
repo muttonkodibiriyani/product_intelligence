@@ -1,7 +1,18 @@
 # ulta_snapshot
 
-Loader for one ulta.ae (UAE) snapshot, captured by the rung-5 runner under ADR-0006 Amendment 2.
+Loader for one ulta.ae (UAE) snapshot from the rung-5 runner (`run.py`, not approved; see below).
 It uses the same loader contract as `sephora_snapshot`.
+
+**Never loaded into prod `ulta_ae`.** The owner's `ulta_ae` rows are protected: no PI action may
+update, delete or degrade them. Before its first write the loader runs `guard()`, which refuses
+(exit 2, nothing written):
+- the prod database (`pi`, see `docs/runbooks/db-backup-restore.md`);
+- any database whose `ulta_ae` holds a row this loader did not write: a context, crawl run,
+  listing, content row or offer without its provenance, or an `ulta_ae:` brand alias it did not
+  add. Replaying its own snapshot is allowed.
+
+The fetch side (`run.py`, `docs/runbooks/ulta-proxy-test.md`) is not approved: there is no owner
+OK to use the paid proxy, and ulta.ae is blocked for PI.
 
 - Input: `pdp/part-NNNN.jsonl.gz` page records `{at, url, lang, status, engine, egress, proxy_bytes, html, captures}`.
 - Parser: the rendered DOM plus JSON-LD (`pi_connector_ulta.dom.parse_pdp_html`) is the primary path.

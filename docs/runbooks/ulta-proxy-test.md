@@ -1,9 +1,16 @@
 # Runbook: ulta.ae ~20-page proxy test (run by the owner in Google Cloud Shell)
 
 This fetches about 20 public ulta.ae product pages (English), one every 5-10 seconds, through the
-IPRoyal UAE residential proxy the owner approved (ADR-0006 Amendment 2). It fetches only: nothing
+IPRoyal UAE residential proxy. It fetches only: nothing
 is written to the database. It obeys robots.txt on every request, blocks heavy assets, and stops
 by itself at the first challenge, 401/403, proxy error, second 429 in a row, or the byte cap.
+
+**Not approved. There is no owner OK to use the paid proxy. Do not run anything in this
+runbook unless the owner approves it as a separate, dated item.** ulta.ae is blocked for PI.
+
+**Never loaded into prod `ulta_ae`.** The loader (`python -m ulta_snapshot.load`) refuses the
+prod database (`pi`) and any database whose `ulta_ae` holds a row it did not write: it exits 2
+and writes nothing.
 
 **You need:** Google Cloud Shell opened on project `productintelligence-beeb3`. You don't need a
 key file or a password: the job borrows your own Cloud Shell login (a token that expires within
@@ -40,7 +47,7 @@ docker run --rm -i --name ulta-test --user "$(id -u):$(id -g)" \
   -v "$OUT":/out \
   -e GOOGLE_OAUTH_ACCESS_TOKEN \
   -e PRIOR_GB="$PRIOR_GB" -e MAX_PAGES=20 -e CAPTURE_JSON=0 \
-  -e OWNER_APPROVAL_REF="ADR-0006 Amendment 2 (owner decision 2026-09-30: IPRoyal AE, ulta.ae only)" \
+  -e OWNER_APPROVAL_REF="<the dated owner approval; none exists>" \
   -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-test/$TS/"
@@ -140,6 +147,8 @@ offending field names, never a value. Fix the secret by adding a new version, th
 
 - Stock Playwright WebKit from the official image, pinned by tag and digest.
 - No stealth, no fingerprint changes, no challenge solving, no logins, no cart.
+- Never loaded into prod `ulta_ae`: the loader refuses the prod database and any `ulta_ae` row
+  it did not write (exit 2, nothing written).
 - The container runs as your own user, not root.
 - Your token is used only to read the proxy login. The job removes it from its environment
   before the browser starts, and it expires by itself within the hour. While the job runs it is
@@ -222,7 +231,7 @@ docker run --rm -i --name ulta-full --user "$(id -u):$(id -g)" \
   -e URL_SOURCE=sitemap -e START_INDEX=auto -e MAX_PAGES="$MAX_PAGES" \
   -e EST_BYTES_PER_PAGE="$EST_BYTES_PER_PAGE" \
   -e PRIOR_GB="$PRIOR_GB" -e CAPTURE_JSON=0 \
-  -e OWNER_APPROVAL_REF="ADR-0006 Amendment 2 (owner decision 2026-09-30: IPRoyal AE, ulta.ae only)" \
+  -e OWNER_APPROVAL_REF="<the dated owner approval; none exists>" \
   -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console-$TS.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-full/$TS/"
