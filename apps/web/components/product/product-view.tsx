@@ -15,7 +15,6 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import type { BackTo } from '../explore/product-table';
 import { Card } from '../ui/card';
-import { EnvNotes } from '../ui/env-notes';
 import { Size } from '../explore/product-table';
 import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
@@ -112,7 +111,6 @@ export function ProductView() {
     <article aria-labelledby="product-title" className="space-y-6">
       <div className="space-y-3">
         {backLink}
-        <EnvNotes env={env} />
         {d && (
           <header className="flex items-start gap-4">
             <RowThumb

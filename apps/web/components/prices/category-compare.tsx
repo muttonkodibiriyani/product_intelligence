@@ -9,7 +9,6 @@ import { formatCount, formatDate } from '@/lib/format';
 import { formatMoney, isValidPrice } from '@/lib/money';
 import { ErrorNotice } from '../error-notice';
 import { Card } from '../ui/card';
-import { CaveatNotes } from '../ui/env-notes';
 import { Known } from '../ui/known';
 import { Skeleton } from '../ui/skeleton';
 import { pct } from '../widgets/model';
@@ -60,7 +59,6 @@ export function CategoryCompareCard({
     return <Card {...common} meta={meta(state.env)} state="empty" reason={t('notAvailable')} />;
   return (
     <Card {...common} meta={meta(state.env)}>
-      <CaveatNotes caveats={state.env.caveats} className="mb-4" />
       <CategoryCompareBody data={state.data} pair={pair} locale={locale} />
     </Card>
   );
