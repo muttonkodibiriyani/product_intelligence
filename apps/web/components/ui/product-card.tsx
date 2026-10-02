@@ -57,7 +57,8 @@ export function ProductCard({
 }: {
   href: string;
   image?: string | null;
-  brand: string;
+  /** The brand; a list the API sends without one (promotions) has no brand line and no monogram. */
+  brand?: string | null;
   name: string;
   size?: Schemas['Size'] | null;
   /** The product's category, shown after the size. */
@@ -73,15 +74,17 @@ export function ProductCard({
         <RowThumb
           url={image}
           label={t('noImage')}
-          monogram={monogram(brand)}
+          monogram={brand ? monogram(brand) : undefined}
           px={320}
           cls="aspect-square w-full rounded-none p-3"
         />
       </div>
       <div className="flex flex-1 flex-col gap-0.5 p-3">
-        <span className="truncate text-[11px] tracking-[0.06em] text-ink-3 uppercase" dir="auto">
-          {brand}
-        </span>
+        {brand && (
+          <span className="truncate text-[11px] tracking-[0.06em] text-ink-3 uppercase" dir="auto">
+            {brand}
+          </span>
+        )}
         <Link
           href={href}
           dir="auto"

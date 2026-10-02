@@ -10,6 +10,7 @@ import {
   currentPages,
   hasPair,
   parseState,
+  toExportQuery,
   toQuery,
   toSearch,
   withValidSort,
@@ -112,7 +113,16 @@ export function Explorer() {
               </button>
               <ViewToggle view={view} onChange={setView} />
               {/* Keyed by the filters: a new list starts with a fresh export state. */}
-              {last && <ExportMenu key={search} state={state} total={total} n={formatCount(total, locale)} />}
+              {last && (
+                <ExportMenu
+                  key={search}
+                  path="/api/v1/export/products"
+                  query={(format) => toExportQuery(state, format)}
+                  fallback="pi-products"
+                  total={total}
+                  n={formatCount(total, locale)}
+                />
+              )}
             </div>
           </div>
 
