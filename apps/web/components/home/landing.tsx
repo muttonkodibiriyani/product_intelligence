@@ -104,7 +104,7 @@ export function Landing() {
       <PageHeader
         title={t('overview')}
         intro={t('intro')}
-        asOf={<AsOf rows={s.rows} />}
+        asOf={s.rows.length > 0 ? <AsOf rows={s.rows} /> : undefined}
         tools={
           <div role="tablist" aria-label={t('tabs')} className="flex gap-1 rounded-ctl bg-surface-2 p-1">
             {(['overview', 'compare'] as const).map((v) => (

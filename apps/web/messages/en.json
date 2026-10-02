@@ -8,6 +8,7 @@
     "signOut": "Sign out",
     "signedInAs": "Signed in as {email}",
     "nav": {
+      "overview": "Overview",
       "explore": "Products",
       "compare": "Compare",
       "promotions": "Promotions",
@@ -15,9 +16,15 @@
       "status": "Dataset",
       "prices": "Prices",
       "assistant": "Ryzan AI",
-      "soon": "soon"
+      "assistantShort": "Ryzan",
+      "soon": "soon",
+      "all": "All pages",
+      "data": "Data"
     },
     "mainNav": "Main",
+    "menu": "Menu",
+    "closeMenu": "Close menu",
+    "asOf": "Data as of {date}",
     "aboutData": "About the data"
   },
   "auth": {

@@ -146,7 +146,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('heading', { level: 2, name: T.headingA })).toHaveCount(0);
       await expect(page.getByRole('status').filter({ hasText: T.three })).toBeVisible();
       await expect(cards(page)).toHaveCount(3);
-      await expect(page.getByRole('button', { name: T.grid })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.grid, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       const first = cards(page).first();
       await expect(first.getByRole('link', { name: 'Product p05' })).toBeVisible();
       await expect(first).toContainText('−33.3%');
@@ -167,15 +170,19 @@ for (const locale of ['en', 'ar'] as const) {
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/promotions/`);
       await expect(cards(page)).toHaveCount(3);
-      await page.getByRole('button', { name: T.list }).click();
+      // Exact: the phone menu button ("القائمة") would otherwise match the Arabic "قائمة".
+      await page.getByRole('button', { name: T.list, exact: true }).click();
       const rows = page.getByRole('table').getByRole('row');
       await expect(rows).toHaveCount(1 + 3);
       await expect(page.getByRole('row', { name: /Product p05/ })).toContainText('−33.3%');
       await noHorizontalScroll(page);
       await page.reload();
-      await expect(page.getByRole('button', { name: T.list })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.list, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect(rows).toHaveCount(1 + 3);
-      await page.getByRole('button', { name: T.grid }).click();
+      await page.getByRole('button', { name: T.grid, exact: true }).click();
       await expect(cards(page)).toHaveCount(3);
       expect(mock.errors).toEqual([]);
     });

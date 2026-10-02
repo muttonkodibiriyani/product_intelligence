@@ -28,9 +28,11 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/en/promotions/',
   useSearchParams: () => new URLSearchParams(search),
 }));
+// The page top bar's as-of line asks /meta too; nothing has answered here.
 vi.mock('../use-meta', () => ({
   useRetailerName: () => (id: string) =>
     ({ shop_a: 'Shop A', shop_b: 'Shop B', shop_c: 'Shop C', shop_d: 'Shop D' })[id] ?? id,
+  useMeta: () => ({ data: undefined }),
 }));
 
 afterEach(cleanup);
