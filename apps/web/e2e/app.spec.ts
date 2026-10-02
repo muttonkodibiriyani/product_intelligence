@@ -1,16 +1,37 @@
 import {
+  allPagesNav,
   EMAIL,
   expect,
   golden,
+  mainNav,
   mockBackend,
   noHorizontalScroll,
+  openMenu,
   signIn,
+  signOut,
   test,
   withSummary,
 } from './fixtures';
+import { summaryNoPromo } from './summary-fixture';
+import type { Page } from '@playwright/test';
 
-const meta = golden('meta');
+const meta = golden('meta') as { data: { dates: string[] } };
 const ok = { onApi: withSummary((r) => r.fulfill({ json: meta })) };
+// One collection day: not enough for Launches.
+const oneDay = { ...meta, data: { ...meta.data, dates: meta.data.dates.slice(0, 1) } };
+
+/** Wide screens carry the sidebar; phones the tab bar and the menu. */
+const wide = (page: Page) => (page.viewportSize()?.width ?? 0) >= 1024;
+
+/** The full list of pages: the sidebar, or the phone menu once opened. */
+async function allPages(page: Page) {
+  if (wide(page)) return mainNav(page);
+  await openMenu(page);
+  return allPagesNav(page);
+}
+
+const linkTexts = async (nav: ReturnType<typeof mainNav>) =>
+  (await nav.getByRole('link').allTextContents()).map((t) => t.trim());
 
 for (const locale of ['en', 'ar'] as const) {
   const rtl = locale === 'ar';
@@ -24,6 +45,22 @@ for (const locale of ['en', 'ar'] as const) {
         noRole: 'لا توجد صلاحية بعد',
         generic: 'حدث خطأ من جهتنا. حاول مجددًا.',
         authDown: 'تعذّر تأكيد صلاحيتك الآن',
+        pages: [
+          'نظرة عامة',
+          'المنتجات',
+          'المقارنة',
+          'العروض',
+          'الجديد',
+          'الأسعار',
+          'عن البيانات',
+          'مساعد ريزان',
+        ],
+        tabs: ['نظرة عامة', 'المنتجات', 'المقارنة', 'العروض', 'ريزان'],
+        launches: 'الجديد',
+        promotions: 'العروض',
+        soon: 'قريبًا',
+        asOf: 'البيانات حتى ',
+        aboutData: 'عن البيانات',
       }
     : {
         title: 'Current dataset',
@@ -34,6 +71,22 @@ for (const locale of ['en', 'ar'] as const) {
         noRole: 'No access yet',
         generic: 'Something failed on our side. Try again.',
         authDown: "Couldn't confirm your access just now",
+        pages: [
+          'Overview',
+          'Products',
+          'Compare',
+          'Promotions',
+          'Launches',
+          'Prices',
+          'About the data',
+          'Ryzan AI',
+        ],
+        tabs: ['Overview', 'Products', 'Compare', 'Promotions', 'Ryzan'],
+        launches: 'Launches',
+        promotions: 'Promotions',
+        soon: 'soon',
+        asOf: 'Data as of ',
+        aboutData: 'About the data',
       };
 
   test.describe(locale, () => {
@@ -66,10 +119,70 @@ for (const locale of ['en', 'ar'] as const) {
       }
       expect(await context.cookies()).toEqual([]);
 
-      await page.getByRole('button', { name: T.signOut }).click();
+      await signOut(page);
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/sign-in/$`));
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
+    });
+
+    test('navigation: every page in order, the sidebar at the start edge or the tab bar below', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, ok);
+      await signIn(page, locale);
+      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      const nav = mainNav(page);
+      await expect(nav).toBeVisible();
+      await expect(nav.getByRole('link', { name: T.pages[0], exact: true })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      if (wide(page)) {
+        expect(await linkTexts(nav)).toEqual(T.pages);
+        // The sidebar sits before the content in reading order: left in English, right in Arabic.
+        const aside = (await page.locator('aside').boundingBox())!;
+        const main = (await page.locator('main').boundingBox())!;
+        expect(aside.width).toBe(216);
+        if (rtl) expect(aside.x).toBeGreaterThan(main.x + main.width - 1);
+        else expect(aside.x + aside.width).toBeLessThanOrEqual(main.x + 1);
+        expect(await page.getByRole('button', { name: /^(Menu|القائمة)$/ }).count()).toBe(0);
+      } else {
+        expect(await linkTexts(nav)).toEqual(T.tabs);
+        await openMenu(page);
+        expect(await linkTexts(allPagesNav(page))).toEqual(T.pages);
+        await page.keyboard.press('Escape');
+        await expect(allPagesNav(page)).toBeHidden();
+      }
+      await noHorizontalScroll(page);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('page top bar: the dataset cutoff and the link to the data', async ({ page }) => {
+      await mockBackend(page, ok);
+      await signIn(page, locale);
+      const main = page.locator('main');
+      await expect(main.getByText(new RegExp(`^${T.asOf}.*2026`))).toBeVisible();
+      await expect(main.getByRole('link', { name: T.aboutData })).toHaveAttribute(
+        'href',
+        new RegExp(`/app/${locale}/#dataset$`),
+      );
+    });
+
+    test('Launches says "soon" until the dataset has two collection days', async ({ page }) => {
+      await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: oneDay })) });
+      await signIn(page, locale);
+      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      const nav = await allPages(page);
+      await expect(nav.getByRole('link', { name: T.launches })).toContainText(T.soon);
+    });
+
+    test('Promotions leaves the navigation when no retailer measures discounts', async ({ page }) => {
+      await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: meta }), summaryNoPromo) });
+      await signIn(page, locale);
+      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      const nav = await allPages(page);
+      await expect(nav.getByRole('link', { name: T.pages[1], exact: true })).toBeVisible();
+      await expect(nav.getByRole('link', { name: T.promotions, exact: true })).toHaveCount(0);
     });
 
     test('wrong password: one message that names neither field', async ({ page }) => {
@@ -102,7 +215,7 @@ for (const locale of ['en', 'ar'] as const) {
       await signIn(page, locale);
       await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
       expect(n).toBe(2);
-      await expect(page.getByRole('button', { name: T.signOut })).toBeVisible();
+      await expect(mainNav(page)).toBeVisible();
       expect(mock.errors.filter((e) => !e.includes('503'))).toEqual([]);
     });
 
@@ -117,7 +230,7 @@ for (const locale of ['en', 'ar'] as const) {
       });
       await signIn(page, locale);
       await expect(page.locator('main').getByRole('alert')).toContainText(T.authDown, { timeout: 15_000 });
-      await expect(page.getByRole('button', { name: T.signOut })).toBeVisible();
+      await expect(mainNav(page)).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/$`));
     });
 

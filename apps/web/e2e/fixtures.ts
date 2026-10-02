@@ -136,6 +136,37 @@ export async function signIn(page: Page, locale: 'en' | 'ar', password = PASSWOR
   await page.locator('button[type=submit]').click();
 }
 
+/** The main navigation: the sidebar on wide screens, the bottom tab bar on phones. */
+export const mainNav = (page: Page) => page.getByRole('navigation', { name: /^(Main|الرئيسية)$/ });
+
+/** The phone menu's navigation, listing every page; opened by `openMenu`. */
+export const allPagesNav = (page: Page) => page.getByRole('navigation', { name: /^(All pages|كل الصفحات)$/ });
+
+export async function openMenu(page: Page) {
+  await page.getByRole('button', { name: /^(Menu|القائمة)$/ }).click();
+  await expect(allPagesNav(page)).toBeVisible();
+}
+
+/**
+ * Follows a nav link by name: from the sidebar or tab bar when it is there, otherwise (a page
+ * off the phone's five tabs) through the phone menu.
+ */
+export async function openNav(page: Page, name: string | RegExp) {
+  const nav = mainNav(page);
+  await expect(nav).toBeVisible();
+  const direct = nav.getByRole('link', { name });
+  if ((await direct.count()) > 0) return direct.click();
+  await openMenu(page);
+  await allPagesNav(page).getByRole('link', { name }).click();
+}
+
+/** Signs out from the sidebar foot, or from the phone menu where the foot lives on small screens. */
+export async function signOut(page: Page) {
+  const button = page.getByRole('button', { name: /^(Sign out|تسجيل الخروج)$/ });
+  if ((await button.count()) === 0) await openMenu(page);
+  await button.click();
+}
+
 export async function noHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

@@ -1,5 +1,14 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  noHorizontalScroll,
+  openNav,
+  signIn,
+  test,
+  type Mock,
+} from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -73,7 +82,7 @@ for (const locale of ['en', 'ar'] as const) {
     test('lists new products newest first, with the caveat on withheld ones', async ({ page }) => {
       const mock = await mockBackend(page, { onApi: api() });
       await signIn(page, locale);
-      await page.getByRole('navigation').getByRole('link', { name: T.nav }).click();
+      await openNav(page, T.nav);
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/launches/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
       // The caveat's wording is the API's; take it from the same golden the mock serves.
