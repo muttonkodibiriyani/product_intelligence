@@ -2,9 +2,13 @@
 
 import { useTranslations } from 'next-intl';
 import { toggle } from '@/lib/explore';
+import { retailerName } from '@/lib/retailers';
 import { useMeta } from '../use-meta';
 
-/** Retailers from /meta as checkboxes. None ticked means all of them. */
+/**
+ * Retailers from /meta as checkboxes, each by its shop name only. None ticked means all of them.
+ * How well a shop is collected is explained once, under "About the data" on the Dataset page.
+ */
 export function RetailerChecks({
   value,
   onChange,
@@ -13,7 +17,6 @@ export function RetailerChecks({
   onChange: (next: string[]) => void;
 }) {
   const t = useTranslations('retailerChecks');
-  const th = useTranslations('home');
   const retailers = useMeta().data?.data?.retailers ?? [];
   return (
     <fieldset className="min-w-0">
@@ -27,10 +30,7 @@ export function RetailerChecks({
               onChange={() => onChange(toggle(value, r.id))}
               className="focus-visible:outline-2"
             />
-            {r.name}
-            {r.status !== 'supported' && th.has(`status.${r.status}`) && (
-              <span className="text-xs text-ink-2">{th(`status.${r.status}`)}</span>
-            )}
+            {retailerName(r.id, r.name)}
           </label>
         ))}
       </div>

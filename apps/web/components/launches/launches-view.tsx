@@ -18,7 +18,6 @@ import { MAX_LIMIT } from '@/lib/url-state';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
-import { EnvNotes } from '../ui/env-notes';
 import { FilterChips } from '../ui/filter-chips';
 import { RetailerChecks } from '../ui/retailer-checks';
 import { PageHeader } from '../ui/page-header';
@@ -31,6 +30,7 @@ const TD = 'px-3 py-2.5 align-top';
 /** Products a retailer started listing, newest first. */
 export function LaunchesView() {
   const t = useTranslations('launches');
+  const ts = useTranslations('state');
   const locale = useLocale();
   const sp = useSearchParams();
   const router = useRouter();
@@ -60,7 +60,12 @@ export function LaunchesView() {
 
   return (
     <section aria-labelledby="launches-title" className="space-y-6">
-      <PageHeader id="launches-title" title={t('title')} intro={t('intro')} />
+      <PageHeader
+        id="launches-title"
+        title={t('title')}
+        intro={t('intro')}
+        asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
+      />
 
       <div className="flex flex-wrap items-start gap-x-8 gap-y-3 panel px-5 py-4">
         <RetailerChecks value={state.retailer} onChange={(retailer) => update({ retailer })} />
@@ -106,7 +111,12 @@ export function LaunchesView() {
         </Loading>
       ) : (
         <>
-          <EnvNotes env={env} />
+          {/* A catalogue the view does not apply to: one line, no empty table. */}
+          {env.status !== 'ok' && (
+            <p role="status" className="text-sm text-ink-2">
+              {t('unavailable')}
+            </p>
+          )}
           {data && env.status === 'ok' && (
             <section aria-labelledby="launch-items-title" id="rows">
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
