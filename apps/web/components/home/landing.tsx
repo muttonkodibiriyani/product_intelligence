@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import { formatCount, formatDate } from '@/lib/format';
+import { formatCount } from '@/lib/format';
 import type { Schemas } from '@/lib/api/types';
 import { DatasetStatus } from '../dataset-status';
+import { AsOf } from './as-of';
 import { ErrorNotice } from '../error-notice';
 import { Card, CardGrid } from '../ui/card';
 import { Known } from '../ui/known';
@@ -24,9 +25,7 @@ import {
   cheaperShares,
   compareHref,
   crossCells,
-  freshness,
   gapRows,
-  importedOn,
   ladderRows,
   pct,
   promotions,
@@ -154,23 +153,6 @@ export function Landing() {
  * The as-of line: the date the collected data is as of, and for an imported retailer its import
  * date (a one-off snapshot, never called a snapshot date). Nothing until the first row is in.
  */
-function AsOf({ rows }: { rows: readonly RetailerSummary[] }) {
-  const t = useTranslations('state');
-  const locale = useLocale();
-  if (rows.length === 0) return null;
-  const parts = rows.map((r) => {
-    const imported =
-      freshness(r.data.freshness) === 'snapshot' || importedOn(r.caveats, r.retailer)
-        ? (importedOn(r.caveats, r.retailer) ?? r.data.freshness.cutoff)
-        : null;
-    return imported
-      ? t('snapshotOneOff', { retailer: r.name, date: formatDate(imported, locale) })
-      : t('asOf', { date: formatDate(r.data.asOf, locale) });
-  });
-  // Collected retailers share one as-of date; it is said once.
-  return <>{[...new Set(parts)].join(' · ')}</>;
-}
-
 /** The per-retailer widgets, one card per retailer per chart; `id`s stay unsuffixed for the first. */
 function RetailerCharts({ rows, locale }: { rows: readonly RetailerSummary[]; locale: string }) {
   const tw = useTranslations('widgets');

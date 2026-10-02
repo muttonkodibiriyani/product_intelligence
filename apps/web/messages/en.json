@@ -80,8 +80,9 @@
     "promoUnavailable": "{retailer} discounts: not available yet",
     "notAvailable": "Not available yet",
     "snapshotOneOff": "{retailer}: one-off snapshot imported {date}",
-    "noMatches": "No matched products to compare yet.",
-    "asOf": "Data as of {date}"
+    "summaryTooFew": "Too few matched products for a summary yet.",
+    "asOf": "Data as of {date}",
+    "asOfRetailer": "{retailer}: data as of {date}"
   },
   "home": {
     "title": "Current dataset",
@@ -116,7 +117,7 @@
     },
     "about": {
       "title": "About the data",
-      "p1": "Prices are collected from each shop's own website on the dates shown. Every number on the site comes straight from that data; nothing is estimated or filled in.",
+      "p1": "Prices are collected from each shop on the dates shown. Every number on the site comes straight from that data; nothing is estimated or filled in.",
       "p2": "A shop that is only partly collected, or whose catalogue was imported as a one-off snapshot, is listed above with its status. Where a shop's regular prices can't be verified, its discounts are left out rather than shown wrong.",
       "p3": "A figure that would rest on too few products is left out, and the page says so in its place.",
       "notes": "Notes from the latest collection"
