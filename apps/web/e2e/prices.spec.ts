@@ -107,6 +107,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(names).toHaveText(T.names);
       // Nothing is too few at the live counts.
       await expect(card).not.toContainText(T.tooFew);
+      // Counts keep Latin digits in Arabic too (WebKit defaults ar to Arabic-Indic).
+      await expect(page.locator('#p-gaps')).toContainText(
+        locale === 'ar' ? 'n = 6 أزواج قابلة للمقارنة' : 'n = 6 comparable pairs',
+      );
 
       const byCategory = await page.locator('#by-category').boundingBox();
       const exact = page.getByRole('heading', { name: T.headToHead });

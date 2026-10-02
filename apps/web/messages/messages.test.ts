@@ -1,7 +1,9 @@
+import { createTranslator } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 import { API_ERROR_CODES } from '@/lib/api/types';
 import type { Schemas } from '@/lib/api/types';
 import { otherLocalePath } from '@/components/lang-switch';
+import { formats } from '@/i18n/formats';
 import ar from './ar.json';
 import en from './en.json';
 import wAr from './widgets.ar.json';
@@ -63,5 +65,22 @@ describe('language switch', () => {
     expect(otherLocalePath('/en/sign-in/', 'ar')).toBe('/ar/sign-in/');
     expect(otherLocalePath('/ar/', 'en')).toBe('/en/');
     expect(otherLocalePath('/en', 'ar')).toBe('/ar/');
+  });
+});
+
+describe('Arabic counts', () => {
+  it('keep Latin digits even where the engine defaults Arabic to Arabic-Indic (WebKit)', () => {
+    // ar-EG defaults to Arabic-Indic digits in every engine; the app's own locale is plain ar.
+    const messages = { ...ar, widgets: wAr };
+    const t = createTranslator({ locale: 'ar-EG', messages, formats, onError: () => {} });
+    const bad: string[] = [];
+    for (const key of keys(messages as Tree)) {
+      const src = key.split('.').reduce<string | Tree>((o, k) => (o as Tree)[k]!, messages as Tree) as string;
+      const args = Object.fromEntries([...src.matchAll(/\{(\w+)/g)].map(([, a]) => [a, 6]));
+      const out = (t as unknown as (k: string, a: object) => string)(key, args);
+      if (/[\u0660-\u0669]/.test(out)) bad.push(`${key}: ${out}`);
+    }
+    expect(bad).toEqual([]);
+    expect(t('widgets.nPairs', { n: 6 })).toBe('n = 6 أزواج قابلة للمقارنة');
   });
 });
