@@ -42,25 +42,29 @@ def rows(client: Client, query: str = "") -> dict[str, Any]:
     return {r["id"]: r for r in data(client, query)["rows"]}
 
 
-def test_an_unreviewed_exact_pair_has_a_gap_but_is_not_counted(client: Client) -> None:
+def test_a_default_read_never_carries_an_unreviewed_gap(client: Client) -> None:
+    """Reviewer on #220: the assistant's compare tool and the CSV read every row's gap."""
     p07 = rows(client)["p07"]
     assert (p07["counted"], p07["excludedReason"]) == (False, "match_unreviewed")
-    assert (
-        p07["gap"]
-        == {
-            "amount": {"amount": "0.00", "currency": "AED", "minor": 0},
-            "pct": "0",
-            "cheaper": "equal",
-        }
-        or p07["gap"]["cheaper"] == "equal"
-    )
+    assert p07["gap"] is None
+    assert p07["match"]["reviewState"] == "proposed"
+
+
+def test_rows_overlap_gives_an_unreviewed_exact_pair_its_gap_uncounted(client: Client) -> None:
+    p07 = rows(client, "&rows=overlap")["p07"]
+    assert (p07["counted"], p07["excludedReason"]) == (False, "match_unreviewed")
+    assert p07["gap"] == {
+        "amount": {"amount": "0.00", "currency": "AED", "minor": 0},
+        "pct": "0.0",
+        "cheaper": "equal",
+    }
 
 
 def test_no_gap_for_rejected_non_exact_or_unproven_rows(client: Client) -> None:
-    by_id = rows(client)
-    assert by_id["p09"]["excludedReason"] == "match_unreviewed"  # proposed, but family
+    assert rows(client)["p09"]["excludedReason"] == "match_unreviewed"  # proposed, but family
+    overlap = rows(client, "&rows=overlap")  # only rows with a gap
     for product in ("p08", "p09", "p10", "p11", "p12", "p13", "p14", "p16"):
-        assert by_id[product]["gap"] is None, product
+        assert product not in overlap, product
 
 
 def test_each_row_carries_its_retailers_edge(client: Client) -> None:
@@ -116,18 +120,18 @@ def test_sort_name_orders_by_name_then_id(client: Client) -> None:
 
 def test_unsorted_limit_still_ranks_counted_gaps_only(client: Client) -> None:
     """Before 1.17.0 a limited /compare ranked counted rows; an unreviewed gap never jumps in."""
-    doc = data(client, "&limit=7")
+    doc = data(client, "&rows=overlap&limit=7")
     # p07 shows its gap but ranks with the gapless rows, first of them by id.
     assert [r["id"] for r in doc["rows"]] == ["p05", "p01", "p03", "p06", "p04", "p02", "p07"]
 
 
-def test_the_export_carries_the_overlap_reading(client: Client) -> None:
+def test_the_export_carries_match_but_no_unreviewed_gap(client: Client) -> None:
     response = client.get(
         f"{API}/export/compare?retailers=shop_a,shop_b&format=jsonl", headers=bearer()
     )
     assert response.status_code == 200
     rows = {r["id"]: r for r in map(json.loads, response.text.splitlines()[1:])}
     assert rows["p07"]["counted"] is False
-    assert rows["p07"]["gap"]["pct"] == "0.0"
+    assert rows["p07"]["gap"] is None
     assert rows["p07"]["match"]["reviewState"] == "proposed"
     assert rows["p12"]["match"] is None

@@ -270,15 +270,7 @@
         ],
         "counted": false,
         "excludedReason": "match_unreviewed",
-        "gap": {
-          "amount": {
-            "amount": "0.00",
-            "currency": "AED",
-            "minor": 0
-          },
-          "cheaper": "equal",
-          "pct": "0.0"
-        },
+        "gap": null,
         "id": "p07",
         "match": {
           "confidence": "0.95",

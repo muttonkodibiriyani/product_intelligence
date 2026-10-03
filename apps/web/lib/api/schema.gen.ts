@@ -3034,9 +3034,9 @@ export interface operations {
                 id?: string[];
                 date?: string | null;
                 groupBy?: components["schemas"]["GroupBy"] | null;
-                /** @description API 1.17.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that are only unreviewed (counted=false, excludedReason match_unreviewed) and pass the rest of the ladder priced on both sides. total, limit and truncated apply to these rows; summary, groups, sides and cohort are unchanged (counted rows only). */
+                /** @description API 1.17.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that are only unreviewed (counted=false, excludedReason match_unreviewed) and pass the rest of the ladder priced on both sides; only this value gives such a pair its gap (all keeps it null). total, limit and truncated apply to these rows; summary, groups, sides and cohort are unchanged (counted rows only). */
                 rows?: components["schemas"]["CompareRows"];
-                /** @description API 1.17.0, applied before limit. name: by name, then id. gap: largest |gap.pct| first (an unreviewed row's gap included), rows without a gap last, then id. Unset: rows in dataset order, or with limit the largest counted |gap.pct| first. */
+                /** @description API 1.17.0, applied before limit. name: by name, then id. gap: largest |gap.pct| first (with rows=overlap an unreviewed row's gap included), rows without a gap last, then id. Unset: rows in dataset order, or with limit the largest counted |gap.pct| first. */
                 sort?: components["schemas"]["CompareSort"] | null;
             };
             header?: never;

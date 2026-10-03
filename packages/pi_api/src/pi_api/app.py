@@ -40,6 +40,7 @@ from pi_api.analytics import (
     AvailabilityQuery,
     CategoryCompareQuery,
     CompareQuery,
+    CompareRows,
     CompareRowsQuery,
     IndexQuery,
     LaunchesRowsQuery,
@@ -733,7 +734,8 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
             query.where(),
             on=query.on,
             group_by=query.group_by,
-            overlap=True,
+            matches=True,
+            overlap=query.rows is CompareRows.OVERLAP,
         )
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
@@ -992,7 +994,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
             query.where(),
             on=query.on,
             group_by=query.group_by,
-            overlap=True,
+            matches=True,
         )
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
