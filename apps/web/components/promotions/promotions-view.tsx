@@ -24,6 +24,7 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { ExportMenu } from '../explore/export-menu';
 import { useView, ViewToggle } from '../explore/product-grid';
+import { monogram, RowThumb } from '../explore/row-thumb';
 import { productHref } from '../explore/product-table';
 import { Card } from '../ui/card';
 import { FilterChips } from '../ui/filter-chips';
@@ -200,7 +201,12 @@ export function PromotionsView() {
 
 /** A promotion as the card's one price line: the price now and the regular price struck through. */
 function promoLine(i: Item, label: string): PriceLine {
-  return { retailer: i.retailer, label, price: i.price, was: i.regular };
+  return { retailer: i.retailer, label, price: i.price, was: i.regular, saved: i.saved ?? null };
+}
+
+/** One click from Promotions to the product's source evidence section. */
+function evidenceHref(locale: string, id: string, from: string): string {
+  return `${productHref(locale, id, from, 'promotions')}#evidence`;
 }
 
 type Rows = {
@@ -210,33 +216,43 @@ type Rows = {
 };
 
 /**
- * The discounted products as cards (`ProductCard`), the depth on the picture. The API's promotion
- * rows carry no image, brand or size, so the card shows its placeholder and no brand line until
- * the API sends them.
+ * The discounted products as image-first cards (`ProductCard`), ranked deepest first. New API 1.17
+ * visual fields are read defensively: an older response simply keeps the placeholder and omits the
+ * brand, category and saved amount rather than inventing them.
  */
 function Grid({ items, name, from }: Rows) {
   const t = useTranslations('promotions');
   const tc = useTranslations('productCard');
   const locale = useLocale();
   return (
-    <ul aria-label={t('results')} className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-      {items.map((i) => (
-        <li key={`${i.id}:${i.retailer}`} className="min-w-0">
+    <ol aria-label={t('results')} className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+      {items.map((i, index) => (
+        <li key={`${i.id}:${i.retailer}`} className="relative min-w-0">
+          <span
+            aria-label={t('rankLabel', { rank: index + 1 })}
+            className="absolute top-2 end-2 z-[2] rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink shadow-sm"
+          >
+            <bdi dir="ltr">#{formatCount(index + 1, locale)}</bdi>
+          </span>
           <ProductCard
-            href={productHref(locale, i.id, from, 'promotions')}
+            href={evidenceHref(locale, i.id, from)}
+            image={i.image ?? null}
+            brand={i.brand || null}
             name={i.name}
+            category={i.category || null}
             lines={[promoLine(i, name(i.retailer))]}
             chip={{ tone: 'good', label: <bdi dir="ltr">{tc('off', { pct: i.depthPct })}</bdi> }}
           />
         </li>
       ))}
-    </ul>
+    </ol>
   );
 }
 
 /** The dense view: product and shop, then the depth, the price now and the regular price. */
 function List({ items, name, from }: Rows) {
   const t = useTranslations('promotions');
+  const tc = useTranslations('productCard');
   const locale = useLocale();
   const th = 'th whitespace-nowrap';
   const td = 'px-3 py-2.5 align-top';
@@ -247,10 +263,16 @@ function List({ items, name, from }: Rows) {
         <thead className="border-b border-line">
           <tr>
             <th scope="col" className={`${th} text-start`}>
+              {t('rank')}
+            </th>
+            <th scope="col" className={`${th} text-start`}>
               {t('product')}
             </th>
             <th scope="col" className={`${th} text-end`}>
               {t('depth')}
+            </th>
+            <th scope="col" className={`${th} text-end`}>
+              {t('saved')}
             </th>
             <th scope="col" className={`${th} text-end`}>
               {t('price')}
@@ -266,22 +288,56 @@ function List({ items, name, from }: Rows) {
               key={`${i.id}:${i.retailer}`}
               className="border-t border-line-2 first:border-t-0 hover:bg-surface-2"
             >
+              <td className={`${td} text-start font-semibold text-ink-2`}>
+                <bdi dir="ltr">#{formatCount(idx + 1, locale)}</bdi>
+              </td>
               <th scope="row" className={`${td} min-w-44 text-start font-normal`}>
-                <Link
-                  href={productHref(locale, i.id, from, 'promotions')}
-                  className="font-medium text-ink hover:underline focus-visible:outline-2"
-                >
-                  <span dir="auto">{i.name}</span>
-                </Link>
-                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-2">
-                  <RetailerDot id={i.retailer} index={idx} />
-                  {name(i.retailer)}
-                </span>
+                <div className="flex min-w-56 items-start gap-3">
+                  <RowThumb
+                    url={i.image ?? null}
+                    label={tc('noImage')}
+                    monogram={i.brand ? monogram(i.brand) : undefined}
+                    cls="size-14 shrink-0 rounded-ctl bg-surface-2 p-1"
+                    px={56}
+                  />
+                  <span className="min-w-0">
+                    {i.brand && (
+                      <span
+                        className="block truncate text-[11px] tracking-[0.06em] text-ink-3 uppercase"
+                        dir="auto"
+                      >
+                        {i.brand}
+                      </span>
+                    )}
+                    <Link
+                      href={evidenceHref(locale, i.id, from)}
+                      className="font-medium text-ink hover:underline focus-visible:outline-2"
+                    >
+                      <span dir="auto">{i.name}</span>
+                    </Link>
+                    {i.category && (
+                      <span className="block truncate text-xs text-ink-3" dir="auto">
+                        {i.category}
+                      </span>
+                    )}
+                    <span className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-2">
+                      <RetailerDot id={i.retailer} index={idx} />
+                      {name(i.retailer)}
+                    </span>
+                  </span>
+                </div>
               </th>
               <td className={`${td} text-end`}>
                 <span className="verdict verdict-good">
                   <bdi dir="ltr">{`−${i.depthPct}%`}</bdi>
                 </span>
+              </td>
+              <td className={`${td} text-end font-medium tabular-nums`}>
+                {i.saved ? (
+                  <Price of={{ price: i.saved }} locale={locale} />
+                ) : (
+                  <span className="font-normal text-ink-3">{t('withheld')}</span>
+                )}
               </td>
               <td className={`${td} text-end font-medium tabular-nums`}>
                 <Price of={i} locale={locale} />

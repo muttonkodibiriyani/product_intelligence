@@ -60,6 +60,25 @@ function view(env: Env, query = '', locale: 'en' | 'ar' = 'en') {
 const EMPTY = { en: en.promotions.empty, ar: ar.promotions.empty };
 
 describe('PromotionsView', () => {
+  it('shows image-first ranked cards with brand, savings and a direct evidence anchor', async () => {
+    const image = 'https://img-product.sephora.me/p05.jpg';
+    const visual = {
+      ...measured,
+      data: {
+        ...measured.data!,
+        items: measured.data!.items.map((row, index) => (index === 0 ? { ...row, image } : row)),
+      },
+    };
+    view(visual, 'retailer=shop_a');
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts at Shop A' });
+
+    expect(document.querySelector(`img[src="${image}"]`)).toBeTruthy();
+    expect(screen.getAllByText('Fixture Beauty').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Discount rank 1').textContent).toContain('#1');
+    expect(document.body.textContent).toContain('Save');
+    expect(screen.getByRole('link', { name: 'Product p05' }).getAttribute('href')).toMatch(/#evidence$/);
+  });
+
   it('a measured answer: tiles, the heading from the user’s pick, the as-of date, the deepest first', async () => {
     view(measured, 'retailer=shop_a');
     await screen.findByRole('heading', { level: 2, name: 'Deepest discounts at Shop A' });

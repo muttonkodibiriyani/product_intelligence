@@ -22,6 +22,8 @@ export type PriceLine = {
   priceFlag?: Priced['priceFlag'];
   /** The regular price the shop showed before the discount, struck through (promotions). */
   was?: MoneyValue | null;
+  /** The exact amount saved, shown only when the API supplied it (promotions). */
+  saved?: MoneyValue | null;
   /** The discount depth as the API wrote it ("37.5"), shown as −37.5%. */
   off?: string | null;
   /** The shop does not sell this product: the line reads "Not sold". */
@@ -181,6 +183,11 @@ function LinePrice({ line }: { line: PriceLine }) {
           <span className="sr-only">{t('was')} </span>
           <Money m={line.was} locale={locale} />
         </s>
+      )}
+      {line.saved && (
+        <span className="text-xs font-semibold text-ink-2">
+          {t('save')} <Money m={line.saved} locale={locale} />
+        </span>
       )}
       {line.off && (
         <span className="verdict verdict-good">
