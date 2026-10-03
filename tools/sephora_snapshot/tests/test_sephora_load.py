@@ -186,10 +186,12 @@ def test_price_without_currency_is_unknown_not_aed(db: str, tmp_path: Path) -> N
         ("P701", "$undefined", (Decimal("99.95"), None, "full", "AED", None)),
         ("P702", "$83:props:offers", (None, None, None, None, "unknown")),
         ("P703", "on sale", (None, None, None, None, "unknown")),
+        ("P704", {"value": 80}, (None, None, None, None, "unknown")),
+        ("P705", [80], (None, None, None, None, "unknown")),
     ],
 )
 def test_a_reduced_price_left_as_a_reference_makes_the_price_unknown(
-    db: str, tmp_path: Path, pid: str, sale: str, expected: tuple[Any, ...]
+    db: str, tmp_path: Path, pid: str, sale: Any, expected: tuple[Any, ...]
 ) -> None:
     d = details(pid)
     d["currency"] = "AED"

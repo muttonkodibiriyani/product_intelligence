@@ -375,7 +375,7 @@ class Loader:
             fs: dict[str, str] = {}
             price = sale if promo else regular
             currency = d.get("currency")
-            if raw_sale not in {None, "$undefined"} and sale is None:
+            if raw_sale is not None and raw_sale != "$undefined" and sale is None:
                 # an RSC reference ("$83:props:offers") or other unreadable reduced price: the
                 # variant may be on sale, so c_price is not known to be the price paid
                 price = regular = sale = None
