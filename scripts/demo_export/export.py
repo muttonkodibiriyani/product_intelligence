@@ -214,19 +214,27 @@ current_runs AS (
 -- running run counts once --finish closes it as partial.
 -- Contexts with no succeeded run yet fall back to the latest observation per listing across
 -- all of their runs.
+-- History mode (--history) passes one market day as [day_start, day_end): every succeeded or
+-- partial run then counts, and only its observations on that day are read (never carried
+-- forward). With no day (the default), the rules above apply unchanged.
 eligible_runs AS (
-  SELECT id FROM current_runs
+  SELECT id FROM current_runs WHERE %(day_start)s::timestamptz IS NULL
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
   JOIN current_runs c ON c.source_context_id = r.source_context_id
-  WHERE r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
+  WHERE %(day_start)s::timestamptz IS NULL
+    AND r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
-  WHERE NOT EXISTS (
+  WHERE %(day_start)s::timestamptz IS NULL AND NOT EXISTS (
     SELECT 1 FROM current_runs c WHERE c.source_context_id = r.source_context_id
   )
+  UNION ALL
+  SELECT r.id
+  FROM scoped_runs r
+  WHERE %(day_start)s::timestamptz IS NOT NULL AND r.status IN ('succeeded', 'partial')
 ),
 -- One source may split an offer across rows: a page read carries price and rating with
 -- availability 'not_observed'; a stock read carries availability with price unknown
@@ -259,6 +267,10 @@ obs AS (
   JOIN source_context sc ON sc.id = o.source_context_id
   LEFT JOIN evidence e ON e.id = o.evidence_id
   WHERE (o.currency = 'AED' OR o.currency IS NULL) AND sc.country = 'AE'
+    AND (
+      %(day_start)s::timestamptz IS NULL
+      OR (o.observed_at >= %(day_start)s::timestamptz AND o.observed_at < %(day_end)s::timestamptz)
+    )
 ),
 latest_any AS (
   SELECT DISTINCT ON (source_listing_id) *
@@ -704,13 +716,21 @@ def review_state_for_ui(value: str) -> str:
         raise ValueError(f"unsupported non-rejected review state {value!r}") from error
 
 
+def latest_params(
+    sources: Sequence[str], day: tuple[datetime, datetime] | None = None
+) -> dict[str, Any]:
+    """``LATEST_LISTINGS_SQL`` parameters; ``day`` is one market day ``[start, end)`` (history)."""
+    start, end = day if day is not None else (None, None)
+    return {"sources": list(sources), "day_start": start, "day_end": end}
+
+
 def load_rows(
     database_url: str, sources: Sequence[str] = DEFAULT_SOURCES
 ) -> tuple[list[ListingRow], list[MatchRow]]:
     with psycopg.connect(psycopg_database_url(database_url), row_factory=dict_row) as connection:
         connection.read_only = True
         with connection.cursor() as cursor:
-            cursor.execute(LATEST_LISTINGS_SQL, {"sources": list(sources)})
+            cursor.execute(LATEST_LISTINGS_SQL, latest_params(sources))
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
@@ -1077,6 +1097,14 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         help="also write the v2 snapshot upgraded to pi.dataset/v3, with offer listingCount",
     )
+    result.add_argument(
+        "--history",
+        action="store_true",
+        help=(
+            "v2/v3 carry every crawl day (Dubai market days) instead of one; days a retailer was "
+            "not completely collected go into notObserved windows (history.py)"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
@@ -1099,6 +1127,12 @@ def check_args(args: argparse.Namespace) -> None:
         )
     if not args.sources:
         raise SystemExit("--sources must name at least one source")
+    if args.history and args.output_v2 is None and args.output_v3 is None:
+        raise SystemExit("--history needs --output-v2 or --output-v3 (v1 has one date)")
+    if args.history and args.ulta_early_fixture is not None:
+        raise SystemExit(
+            "--history does not take --ulta-early-fixture (recon samples have no days)"
+        )
     if "ulta_ae" in args.sources and not args.ulta_unblocked:
         raise SystemExit("--sources ulta_ae needs --ulta-unblocked: Ulta is blocked by ruling")
     notes = (args.ulta_blocked_note, args.ulta_blocked_note_ar)
@@ -1146,22 +1180,52 @@ def main() -> None:
             to_v3,
         )
 
-        v2 = build_dataset_v2(
-            rows,
-            matches,
-            generated_at=generated_at,
-            ulta=UltaContext(
-                blocked_since=parse_utc(args.ulta_blocked_since), blocked=not args.ulta_unblocked
-            ),
-            ulta_note=dataset["meta"]["retailers"][0]["note"],
-            ulta_early=early,
-            scope=args.scope,
-            producer_commit=args.producer_commit,
+        v2_ulta = UltaContext(
+            blocked_since=parse_utc(args.ulta_blocked_since), blocked=not args.ulta_unblocked
         )
+        v2_rows = rows
+        if args.history:
+            from scripts.demo_export.history import (  # noqa: PLC0415
+                Coverage,
+                build_history_v2,
+                latest_rows,
+                load_history,
+            )
+
+            spans, days, matches = load_history(args.database_url, args.sources)
+            cover = Coverage.of(spans)
+            v2 = build_history_v2(
+                days,
+                cover,
+                matches,
+                generated_at=generated_at,
+                ulta=v2_ulta,
+                ulta_note=dataset["meta"]["retailers"][0]["note"],
+                scope=args.scope,
+                producer_commit=args.producer_commit,
+            )
+            v2_rows = latest_rows(days)
+            complete = {s: sorted(d.isoformat() for d in v) for s, v in cover.complete.items()}
+            print(
+                f"history: dates={[d.isoformat() for d in v2.meta.dates]} "
+                f"history={v2.meta.capabilities.history} complete={complete} "
+                f"notObserved={len(v2.not_observed)}"
+            )
+        else:
+            v2 = build_dataset_v2(
+                rows,
+                matches,
+                generated_at=generated_at,
+                ulta=v2_ulta,
+                ulta_note=dataset["meta"]["retailers"][0]["note"],
+                ulta_early=early,
+                scope=args.scope,
+                producer_commit=args.producer_commit,
+            )
         body = dump_dataset(v2)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            v3 = to_v3(v2, rows, matches)
+            v3 = to_v3(v2, v2_rows, matches)
             body_v3 = dump_dataset(v3)
             load_any(body_v3)  # the same strict load, as v3
             v3_groups = v3_bytes_by_group(v3, len(body_v3))
@@ -1176,15 +1240,15 @@ def main() -> None:
         print(
             f"wrote v2 {len(v2.products)} products to {args.output_v2} "
             f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)} "
-            f"category_listings={category_notes(rows)}"
+            f"category_listings={category_notes(v2_rows)}"
         )
         review = price_review(v2)
         print(
             f"listing rows priced <= {PRICE_FLOOR} AED (shown only when the group has no valid "
-            f"price; pi_api withholds them as priceFlag=invalid_low): {invalid_prices(rows)}"
+            f"price; pi_api withholds them as priceFlag=invalid_low): {invalid_prices(v2_rows)}"
         )
         print(
-            f"v2 listing rows={len(rows)}; prices to check by hand (never changed): "
+            f"v2 listing rows={len(v2_rows)}; prices to check by hand (never changed): "
             f"below={len(review['below'])} {review['below'][:20]} "
             f"above={len(review['above'])} {review['above'][:20]}"
         )
