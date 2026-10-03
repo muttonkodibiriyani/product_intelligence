@@ -15,6 +15,7 @@ account: they stay on the owner's machine and are never published, attached or c
      #/explorer thumbnails come from the allowed image hosts only
   P2 /app/{en,ar}/ landing, compare, promotions, launches: 200, every /api/v1 call < 400, no alert
   P3 /app/en/explore/?retailer=<rid> per retailer: rows > 0, >= 1 thumbnail loaded, 0 CSP blocks
+     (every retailer in IMAGE_HOSTS; --retailer narrows it for a deploy that predates one)
   P4 the first Ulta product: gallery images load, all from media.alshaya.com, 0 CSP blocks
   P5 no rendered price of AED 0.00 / 0.01 (Latin or Arabic-Indic digits) on the P3/P4 pages
   P6 --category-page, the /prices page (EN + AR): 200, every /api/v1 call < 400, no alert, and
@@ -37,7 +38,7 @@ import argparse
 import json
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -51,7 +52,11 @@ APP_PAGES = [
     for loc in ("en", "ar")
     for view in ("", "compare/", "promotions/", "launches/")
 ]
-IMAGE_HOSTS = {"sephora_me": "img-product.sephora.me", "ulta_ae": "media.alshaya.com"}
+IMAGE_HOSTS = {
+    "sephora_me": "img-product.sephora.me",
+    "ulta_ae": "media.alshaya.com",
+    "faces_ae": "www.faces.ae",
+}
 VIEWPORTS = {"desktop": {"width": 1440, "height": 900}, "mobile": {"width": 390, "height": 844}}
 BROWSERS = ("firefox", "webkit")
 TIMEOUT = 20_000
@@ -251,9 +256,10 @@ def p1_root(page: Page, rep: Report, out: Callable[[str], Path]) -> None:
     page.evaluate("() => localStorage.setItem('pi.lang', 'en')")
 
 
-def p3_to_p5(page: Page, rep: Report, out: Callable[[str], Path]) -> None:
+def p3_to_p5(page: Page, rep: Report, out: Callable[[str], Path], retailers: Sequence[str]) -> None:
     after = rep.phase == "after"
-    for rid, host in IMAGE_HOSTS.items():
+    for rid in retailers:
+        host = IMAGE_HOSTS[rid]
         status, w = visit(page, f"{BASE}/app/en/explore/?retailer={rid}", out(f"explore-{rid}"))
         rows = page.locator("tbody tr").count()
         imgs = page.eval_on_selector_all(f'img[src^="https://{host}/"]', IMAGES_JS)
@@ -320,7 +326,7 @@ def run(args: argparse.Namespace) -> Report:
             )
             for path in APP_PAGES:
                 rep.check(f"P2 {path}", app_page(page, path, out(path)))
-            p3_to_p5(page, rep, out)
+            p3_to_p5(page, rep, out, args.retailer or list(IMAGE_HOSTS))
             for loc in ("en", "ar"):
                 cat = (
                     args.category_page.replace("/app/en/", f"/app/{loc}/")
@@ -354,6 +360,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--category-page",
         help="the /app/en/ path of the category page (required for --phase after)",
+    )
+    p.add_argument(
+        "--retailer",
+        action="append",
+        choices=sorted(IMAGE_HOSTS),
+        default=None,
+        help="P3-P5 only these retailers (repeatable; default: all of IMAGE_HOSTS)",
     )
     args = p.parse_args(argv)
     if args.phase == "after" and not args.category_page:
