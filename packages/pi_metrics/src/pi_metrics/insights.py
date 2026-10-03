@@ -40,7 +40,7 @@ from pi_core import AvailabilityState
 from pi_dataset import ContractModel, DatasetV3, MoneyValue, ProductV3
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
-from pi_metrics.compare import GroupBy, PairRow, compare
+from pi_metrics.compare import GroupBy, PairRow, compare, pair_block
 from pi_metrics.model import (
     EVERY_PROFILE,
     MIN_COHORT,
@@ -244,7 +244,9 @@ def _sizes(ds: DatasetV3, counted: list[PairRow], base: str) -> tuple[tuple[Size
 def _pricing(ds: DatasetV3, base: str, other: str, on: date | None) -> PairInsights:
     result = compare(ds, base, other, ProductFilter(), on=on, group_by=GroupBy.BRAND)
     rows = result.data.rows
-    counted = [r for r in rows if r.counted and r.gap is not None]
+    # A blocked side or a currency mismatch counts no pair at all, as compare's own groups.
+    blocked = pair_block(ds, base, other) is not None
+    counted = [] if blocked else [r for r in rows if r.counted and r.gap is not None]
     brands, quiet_brands = _brands(counted)
     sizes, quiet_sizes = _sizes(ds, counted, base)
     return PairInsights(

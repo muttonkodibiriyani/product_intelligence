@@ -18,11 +18,30 @@ const item = (id: string, retailer: string, depthPct: string): Item => ({
   retailer,
   price: aed('80.00'),
   regular: aed('120.00'),
+  saved: aed('40.00'),
+  brand: 'Brand',
+  category: 'skincare',
   depthPct,
 });
 
-const sephora: Promo = { retailer: 'sephora_me', n: 4790, onPromo: 881, share: '18.4', reason: null };
-const ulta: Promo = { retailer: 'ulta_ae', n: 7316, onPromo: 0, share: null, reason: 'was_price_unverified' };
+const sephora: Promo = {
+  retailer: 'sephora_me',
+  n: 4790,
+  onPromo: 881,
+  share: '18.4',
+  reason: null,
+  bands: [],
+  groups: [],
+};
+const ulta: Promo = {
+  retailer: 'ulta_ae',
+  n: 7316,
+  onPromo: 0,
+  share: null,
+  reason: 'was_price_unverified',
+  bands: [],
+  groups: [],
+};
 const items = [
   item('p1', 'sephora_me', '50.0'),
   item('p2', 'sephora_me', '44.0'),
@@ -117,6 +136,8 @@ describe('ShopTiles', () => {
       onPromo: 458,
       share: null,
       reason: 'retailer_partial',
+      bands: [],
+      groups: [],
     };
     tiles([partial], [item('u1', 'ulta_ae', '62.5')]);
     const tile = screen.getByRole('listitem');
@@ -130,7 +151,20 @@ describe('ShopTiles', () => {
   });
 
   it('a partly covered shop with no price pair seen stays "not measured"', () => {
-    tiles([{ retailer: 'sephora_me', n: 0, onPromo: 0, share: null, reason: 'retailer_partial' }], []);
+    tiles(
+      [
+        {
+          retailer: 'sephora_me',
+          n: 0,
+          onPromo: 0,
+          share: null,
+          reason: 'retailer_partial',
+          bands: [],
+          groups: [],
+        },
+      ],
+      [],
+    );
     expect(screen.getByText(en.promotions.notMeasuredShop)).toBeTruthy();
   });
 
@@ -141,6 +175,8 @@ describe('ShopTiles', () => {
       onPromo: 458,
       share: null,
       reason: 'retailer_partial',
+      bands: [],
+      groups: [],
     };
     tiles([partial], [], 'ar');
     expect(screen.getByRole('listitem').textContent).toContain(ar.promotions.shareWithheld);

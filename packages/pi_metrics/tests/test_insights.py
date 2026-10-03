@@ -207,3 +207,44 @@ def test_brand_stockouts_are_counts_whole_brand_first() -> None:
 def test_stockouts_without_the_stock_capability_say_so() -> None:
     m = insights(with_capabilities(metrics_dataset(), stock=False), A, B)
     assert {s.reason for s in m.data.stockouts} == {Reason.CAPABILITY_OFF, Reason.RETAILER_BLOCKED}
+
+
+def test_a_blocked_side_counts_no_pair() -> None:
+    """Six approved A-D pairs with D blocked: no counted pair, no cohort, nothing withheld."""
+    rows = [
+        product(
+            f"d{n}",
+            {A: offer(A, ["100.00"] * 3), D: offer(D, ["90.00"] * 3)},
+            [edge(A, D, ReviewState.APPROVED)],
+            brand="Undercut",
+        )
+        for n in range(6)
+    ]
+    m = insights(_with(rows), A, D)
+    p = m.data.pricing
+    assert (p.status, p.reason) == (Status.NOT_ENOUGH_DATA, Reason.RETAILER_BLOCKED)
+    assert (p.n, p.suppressed_brands, p.suppressed_sizes) == (0, 0, 0)
+    assert (p.brands, p.sizes) == ((), ())
+    assert m.cohort is not None
+    assert m.cohort.n == 0
+
+
+def test_only_observed_stock_states_are_counted() -> None:
+    """Unknown, blocked, removed and unobserved (null) listings are in neither count."""
+    unseen = (AvailabilityState.UNKNOWN, AvailabilityState.BLOCKED, AvailabilityState.REMOVED, None)
+    rows = [
+        *(_stocked(f"w{n}", "Whole", OUT) for n in range(5)),
+        *(_stocked(f"x{n}", "Whole", s) for n, s in enumerate(unseen)),
+    ]
+    a = next(s for s in insights(_with(rows), A, B).data.stockouts if s.retailer == A)
+    assert [(r.brand, r.out_of_stock, r.observed) for r in a.brands] == [("Whole", 5, 5)]
+
+
+def test_a_larger_size_at_the_same_unit_price_is_not_cheaper() -> None:
+    """30 ml at 60.00 and 50 ml at 100.00 are both 2.00/ml: a 0 % step counts as not cheaper."""
+    steps: list[Product] = []
+    for n in range(5):
+        steps += _sizes(f"flat{n}", "Flat", f"Flat {n}", {"30": "60.00", "50": "100.00"})
+    a = next(lad for lad in insights(_with(steps), A, B).data.ladders if lad.retailer == A)
+    assert (a.steps, a.not_cheaper) == (5, 5)
+    assert {s.unit_change_pct for s in a.exceptions} == {Decimal(0)}
