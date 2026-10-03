@@ -106,10 +106,16 @@ def test_three_pairs_accuracy_first() -> None:
         ("s-P1-60-ml", "u-1-100-ml", "family", "proposed"),
         ("f-9-100-ml", "s-P2-50-ml", "family", "proposed"),
         ("s-P2-50-ml", "u-1-100-ml", "family", "proposed"),
+        # the same line across a hard rule: related (substitute), never exact or family
+        ("f-7-30-ml", "u-3-30-ml", "substitute", "proposed"),  # a mini vs the full size
+        ("f-9-100-ml", "u-2-50-ml", "substitute", "proposed"),  # EDT vs EDP
+        ("s-P1-100-ml", "u-2-50-ml", "substitute", "proposed"),
+        ("s-P1-60-ml", "u-2-50-ml", "substitute", "proposed"),
+        ("s-P2-50-ml", "u-2-50-ml", "substitute", "proposed"),
     }
-    tokens = {t for e in m.edges for t in (e.a.token, e.b.token)}
-    assert "u-2-50-ml" not in tokens  # EDT never pairs with an EDP
-    assert "f-7-30-ml" not in tokens  # a mini never pairs with the full size
+    for e in m.edges:
+        if "u-2-50-ml" in (e.a.token, e.b.token) or "f-7-30-ml" in (e.a.token, e.b.token):
+            assert e.match_class is MatchClass.SUBSTITUTE
     assert all(e.decided_by is None for e in m.edges)
 
 
@@ -267,7 +273,13 @@ def test_decisions_cannot_break_hard_rules_or_name_unknown_listings() -> None:
 def test_hard_conflicts() -> None:
     a = prepare(rec(U, "u", "Rouge 999 Lipstick", shade="999 Red", gtin="0012345678905"))
     b = prepare(rec(S, "s", "Rouge 999 Lipstick Mini", shade="080 Red", gtin="4006381333931"))
-    assert hard_conflicts(a, b) == ("gtin_differs", "kind_differs", "shade_differs")
+    # b's name says 999 but its shade 080: the name's number is not b's shade, so it counts
+    assert hard_conflicts(a, b) == (
+        "gtin_differs",
+        "kind_differs",
+        "number_differs",
+        "shade_differs",
+    )
     c = prepare(rec(U, "u", "Rouge", shade="Red", brand="Chanel"))
     d = prepare(rec(S, "s", "Rouge", shade="Pink"))
     assert hard_conflicts(c, d) == ("brand_differs", "shade_differs")

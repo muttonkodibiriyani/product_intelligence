@@ -45,7 +45,8 @@ const snapshot = row(
 const shopA = row('shop_a', 'Shop A', full);
 const shopB = row('shop_b', 'Shop B', { ...full, products: 4700, brands: 118, promoSharePct: '12.0' });
 
-const shares = (list: ShopPromo[]) => new Map(list.map((s) => [s.retailer, s]));
+const shares = (list: Omit<ShopPromo, 'bands' | 'groups'>[]) =>
+  new Map(list.map((s) => [s.retailer, { ...s, bands: [], groups: [] }]));
 const ready = (id: string, name: string, total: number, perDay: ShopLaunches['perDay']): ShopLaunches => ({
   shop: { id, name, kind: 'collected', days: 3, date: '2026-10-01', ready: true },
   end: '2026-10-01',
