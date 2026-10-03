@@ -7,6 +7,7 @@ describe('retailerName', () => {
     expect(retailerName('ulta_ae', 'Ulta Beauty UAE')).toBe('Ulta');
     expect(retailerName('sephora_me')).toBe('Sephora');
     expect(retailerName('sephora_me', null)).toBe('Sephora');
+    expect(retailerName('faces_ae', 'Faces UAE')).toBe('Faces');
   });
 
   it('takes the /meta name for any other id, and the id only without one', () => {
