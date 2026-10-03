@@ -19,6 +19,7 @@ import { Size } from '../explore/product-table';
 import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
 import { Price } from '../ui/money';
+import { MatchReviewLabel } from '../ui/product-card';
 import { GapView, MatchLabel } from '../ui/pair';
 import { Loading, Skeleton } from '../ui/skeleton';
 import { useMeta, useRetailerName } from '../use-meta';
@@ -132,6 +133,7 @@ export function ProductView() {
               <h1 id="product-title" className="mt-1 text-[28px] leading-tight font-bold tracking-tight">
                 <bdi>{d.card.name}</bdi>
               </h1>
+              <MatchReviewLabel review={d.card.matchReview} className="mt-2" />
               <dl className="mt-3 flex flex-wrap gap-2 text-sm">
                 {d.card.size && (
                   <Fact k={t('size')}>
