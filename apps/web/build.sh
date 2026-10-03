@@ -43,7 +43,7 @@ build_hosted(){
   local jh ch
   jh=$(sha256sum "$TMP" | cut -c1-10); ch=$(sha256sum src/styles.css | cut -c1-10)
   cp "$TMP" "dist/app.$jh.js"; cp src/styles.css "dist/styles.$ch.css"
-  local csp="default-src 'self'; img-src 'self' data: https://img-product.sephora.me https://media.alshaya.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com; base-uri 'none'; form-action 'none'"
+  local csp="default-src 'self'; img-src 'self' data: https://img-product.sephora.me https://media.alshaya.com https://www.faces.ae; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com; base-uri 'none'; form-action 'none'"
   page '<meta name="pi-mode" content="hosted">
 <meta name="robots" content="noindex">
 ' "$csp" "/styles.$ch.css" "<script src=\"/app.$jh.js\"></script>" > dist/index.html
