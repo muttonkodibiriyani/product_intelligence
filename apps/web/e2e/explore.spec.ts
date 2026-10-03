@@ -79,6 +79,8 @@ for (const locale of ['en', 'ar'] as const) {
         more: /اعرض \d+ أخرى/,
         restarted: 'تحدّثت البيانات أثناء التصفح',
         empty: 'لا منتجات تطابق عوامل التصفية هذه.',
+        emptyMatched: 'لم يُؤكَّد بعد أن أيّ منتج هنا هو المنتج نفسه في متجر آخر.',
+        emptyMatchedLink: 'قارن حسب الفئة',
         gap: 'الفرق',
         swap: 'بدّل الأساس',
         sort: 'الترتيب',
@@ -108,6 +110,8 @@ for (const locale of ['en', 'ar'] as const) {
         more: /Show \d+ more/,
         restarted: 'The data was updated while you browsed',
         empty: 'No products match these filters.',
+        emptyMatched: 'No product here is confirmed as the same item at another shop yet.',
+        emptyMatchedLink: 'Compare by category',
         gap: 'Gap',
         swap: 'Swap base',
         sort: 'Sort',
@@ -412,6 +416,30 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(T.empty)).toBeVisible();
       await expect(page.getByRole('table')).toHaveCount(0);
       await expect(page.getByRole('list', { name: T.results })).toHaveCount(0);
+    });
+
+    test('sold at both shops with no published pair: says why and links to the category prices', async ({
+      page,
+    }) => {
+      await mockBackend(page, { onApi: api({ products: () => emptyPage }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/explore/?matched=true`);
+      await expect(page.getByText(T.emptyMatched)).toBeVisible();
+      await expect(page.getByText(T.empty)).toHaveCount(0);
+      const link = page.getByRole('link', { name: T.emptyMatchedLink });
+      await expect(link).toHaveAttribute('href', new RegExp(`/app/${locale}/prices/?$`));
+      await link.click();
+      await expect(page).toHaveURL(new RegExp(`/app/${locale}/prices/`));
+    });
+
+    test('sold at both shops plus a brand, nothing listed: the generic "no products match"', async ({
+      page,
+    }) => {
+      await mockBackend(page, { onApi: api({ products: () => emptyPage }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/explore/?matched=true&brand=Sample+Labs`);
+      await expect(page.getByText(T.empty)).toBeVisible();
+      await expect(page.getByText(T.emptyMatched)).toHaveCount(0);
     });
 
     test('product page: offers with evidence, gaps, history; back keeps the filters', async ({ page }) => {
