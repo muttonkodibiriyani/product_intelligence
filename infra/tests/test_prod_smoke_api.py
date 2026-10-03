@@ -161,7 +161,12 @@ class FakeProd:
                 "contexts": [{"id": r, "retailer": r} for r in self.cards],
             }
         if path == "/coverage":
-            return {"retailers": [{"id": r, "productCount": smoke.EXPECTED[r]} for r in self.cards]}
+            return {
+                "retailers": [
+                    {"id": r, "productCount": smoke.EXPECTED.get(r, len(cs))}
+                    for r, cs in self.cards.items()
+                ]
+            }
         if path == "/products":
             rows = (
                 self.cards[q["retailer"]]
@@ -236,6 +241,79 @@ def test_withheld_not_dropped_passes(tmp_path: Path, capsys: pytest.CaptureFixtu
     out = capsys.readouterr().out
     assert "PROD API SMOKE PASS" in out
     assert json.loads((tmp_path / "check.json").read_text())["verdict"] == "PASS"
+
+
+def with_faces(n: int = 30) -> FakeProd:
+    """After a deploy that starts serving Faces: a third retailer on top of the baseline's two."""
+    fake = FakeProd()
+    fake.cards["faces_ae"] = [fake._card(f"f{i}", "faces_ae", "45.00") for i in range(n)]
+    return fake
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_named_added_retailer_passes_on_top_of_an_unchanged_baseline(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    args = ("--expect-api", "1.7.0", "--added-retailer", "faces_ae")
+    assert run(with_faces(), tmp_path, "check", *args) == 0
+    lines = json.loads((tmp_path / "check.json").read_text())["lines"]
+    assert any("S2 faces_ae serves 30 products" in line for line in lines)
+    assert any("S3 faces_ae: 30 images, all on www.faces.ae" in line for line in lines)
+    assert any("S3 faces_ae evidence on www.faces.ae" in line for line in lines)
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_new_retailer_that_is_not_named_fails(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    assert run(with_faces(), tmp_path, "check", "--expect-api", "1.7.0") == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert any(p.startswith("S1 retailers") for p in problems)
+    assert any(p.startswith("S2 /coverage") for p in problems)
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_named_added_retailer_must_serve_and_must_be_new(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    args = ("--expect-api", "1.7.0", "--added-retailer", "faces_ae")
+    assert run(FakeProd(), tmp_path, "check", *args) == 1  # named, but not served
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert "S2 faces_ae serves 0 products (> 0)" in problems
+    assert (
+        run(FakeProd(), tmp_path, "check", "--expect-api", "1.7.0", "--added-retailer", "ulta_ae")
+        == 1
+    )  # already in the baseline
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert "S2 ulta_ae is new (not in the baseline)" in problems
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_baseline_change_still_fails_alongside_an_added_retailer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    baseline(tmp_path)
+    monkeypatch.setattr(smoke, "EXPECTED", {**smoke.EXPECTED, "sephora_me": 249})  # /coverage
+    args = ("--expect-api", "1.7.0", "--added-retailer", "faces_ae", "--counts-only")
+    assert run(with_faces(), tmp_path, "check", *args) == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert [p for p in problems if p.startswith("S2")] == [
+        "S2 /coverage {'sephora_me': 249, 'ulta_ae': 120} == baseline "
+        "{'sephora_me': 250, 'ulta_ae': 120}"
+    ]
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_a_served_retailer_without_a_pinned_image_host_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    baseline(tmp_path)
+    fake = with_faces()
+    monkeypatch.setattr(
+        smoke, "IMAGE_HOSTS", {k: v for k, v in smoke.IMAGE_HOSTS.items() if k != "faces_ae"}
+    )
+    assert (
+        run(fake, tmp_path, "check", "--expect-api", "1.7.0", "--added-retailer", "faces_ae") == 1
+    )
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert "S3 faces_ae: served but has no pinned image host" in problems
 
 
 @pytest.mark.usefixtures("owner_token")
