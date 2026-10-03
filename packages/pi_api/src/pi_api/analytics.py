@@ -84,6 +84,17 @@ class CategoryCompareQuery(ScopeQuery):
         return base, other
 
 
+class InsightsQuery(ScopeQuery):
+    """``/insights``: whole catalogues, so no brand, category or product filter."""
+
+    retailers: RetailerPair
+    on: date | None = Field(default=None, alias="date")
+
+    def pair(self) -> tuple[str, str]:
+        base, other = self.retailers.split(",")
+        return base, other
+
+
 class CompareQuery(PairQuery):
     id: Values = ()
     on: date | None = Field(default=None, alias="date")
