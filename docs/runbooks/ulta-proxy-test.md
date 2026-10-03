@@ -24,11 +24,15 @@ is ever printed or saved to the result files.
 
 ## Copy-paste block
 
-Before you paste, fill in `COMMIT` (EDIT 1) and check `PRIOR_GB` (EDIT 2). If `COMMIT` is not
-filled in, the block stops without doing anything. The token is set only inside the block and is
+Before you paste, fill in `OWNER_ITEM` (EDIT 0: the id of the new owner item approving this
+re-run; ADR-0006 Am.2 alone is not enough), `COMMIT` (EDIT 1) and check `PRIOR_GB` (EDIT 2). If
+`OWNER_ITEM` or `COMMIT` is not filled in, the block stops without doing anything; the job also
+refuses an empty or ADR `OWNER_APPROVAL_REF`. The token is set only inside the block and is
 gone when it ends.
 
 ```bash
+# ==== EDIT 0: the id of the NEW owner item approving this re-run (none = do not run) ====
+OWNER_ITEM=PASTE_OWNER_ITEM_HERE
 # ==== EDIT 1: the commit to run (the coordinator sends you this) ====
 COMMIT=PASTE_COMMIT_HERE
 # ==== EDIT 2: GB already used, from the IPRoyal dashboard, ROUNDED UP ====
@@ -38,6 +42,7 @@ PRIOR_GB=0.00002
 # ==== nothing below needs editing; it stops at the first failed step ====
 (
 set -e
+case "$OWNER_ITEM" in ""|PASTE_OWNER_ITEM_HERE) echo "EDIT 0 first: a new owner item is required"; exit 1;; esac
 test "$COMMIT" != PASTE_COMMIT_HERE || { echo "EDIT 1 first: set COMMIT"; exit 1; }
 cd ~ && rm -rf pi-ulta-test && git clone -q https://github.com/muttonkodibiriyani/product_intelligence.git pi-ulta-test
 cd ~/pi-ulta-test && git checkout -q "$COMMIT" && git log --oneline -1
@@ -48,7 +53,7 @@ docker run --rm -i --name ulta-test --user "$(id -u):$(id -g)" \
   -v "$OUT":/out \
   -e GOOGLE_OAUTH_ACCESS_TOKEN \
   -e PRIOR_GB="$PRIOR_GB" -e MAX_PAGES=20 -e CAPTURE_JSON=0 \
-  -e OWNER_APPROVAL_REF="ADR-0006 Am.2" \
+  -e OWNER_APPROVAL_REF="$OWNER_ITEM" \
   -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-test/$TS/"
@@ -208,6 +213,8 @@ Every upload holds the whole folder so far. The loader keys on the snapshot id i
 `snapshot.json`, so a part that is already loaded is never loaded twice.
 
 ```bash
+# ==== EDIT 0: the id of the NEW owner item approving this run (none = do not run) ====
+OWNER_ITEM=PASTE_OWNER_ITEM_HERE
 # ==== EDIT 1: commit (from the coordinator) ====
 COMMIT=PASTE_COMMIT_HERE
 # ==== EDIT 2: GB already used, from the IPRoyal dashboard NOW, ROUNDED UP ====
@@ -219,6 +226,7 @@ EST_BYTES_PER_PAGE=
 # ==== nothing below needs editing ====
 (
 set -e
+case "$OWNER_ITEM" in ""|PASTE_OWNER_ITEM_HERE) echo "EDIT 0 first: a new owner item is required"; exit 1;; esac
 test "$COMMIT" != PASTE_COMMIT_HERE || { echo "EDIT 1 first: set COMMIT"; exit 1; }
 test "$PRIOR_GB" != PASTE_GB_HERE || { echo "EDIT 2 first: set PRIOR_GB"; exit 1; }
 cd ~ && rm -rf pi-ulta-test && git clone -q https://github.com/muttonkodibiriyani/product_intelligence.git pi-ulta-test
@@ -232,7 +240,7 @@ docker run --rm -i --name ulta-full --user "$(id -u):$(id -g)" \
   -e URL_SOURCE=sitemap -e START_INDEX=auto -e MAX_PAGES="$MAX_PAGES" \
   -e EST_BYTES_PER_PAGE="$EST_BYTES_PER_PAGE" \
   -e PRIOR_GB="$PRIOR_GB" -e CAPTURE_JSON=0 \
-  -e OWNER_APPROVAL_REF="ADR-0006 Am.2" \
+  -e OWNER_APPROVAL_REF="$OWNER_ITEM" \
   -e SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4 \
   pi-ulta-fetch 2>&1 | tee "$OUT/console-$TS.log"
 gsutil -m -q cp -r "$OUT" "gs://pi-sephora-e631eaba/ulta-full/$TS/"
