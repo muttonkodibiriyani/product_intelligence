@@ -7,7 +7,11 @@ import { EmptyResults } from './empty-results';
 
 afterEach(cleanup);
 
-const mount = (env: Parameters<typeof EmptyResults>[0]['env'], locale: 'en' | 'ar' = 'en') =>
+const mount = (
+  env: Parameters<typeof EmptyResults>[0]['env'],
+  locale: 'en' | 'ar' = 'en',
+  matchedOnly = false,
+) =>
   render(
     <NextIntlClientProvider
       locale={locale}
@@ -16,7 +20,7 @@ const mount = (env: Parameters<typeof EmptyResults>[0]['env'], locale: 'en' | 'a
         throw e;
       }}
     >
-      <EmptyResults env={env} />
+      <EmptyResults env={env} matchedOnly={matchedOnly} />
     </NextIntlClientProvider>,
   );
 
@@ -40,6 +44,32 @@ describe('EmptyResults', () => {
     cleanup();
     mount({ status: 'not_enough_data', reason: null });
     expect(screen.getByRole('status').textContent).toBe(en.state.notAvailable);
+  });
+
+  it('sold at both shops with nothing listed: no pair published yet, and a way to the category prices', () => {
+    mount({ status: 'ok', reason: null }, 'en', true);
+    expect(screen.getByText(en.explore.emptyMatched)).toBeTruthy();
+    expect(screen.getByText(en.explore.emptyMatchedHint)).toBeTruthy();
+    expect(screen.getByRole('link', { name: en.explore.emptyMatchedLink }).getAttribute('href')).toMatch(
+      /\/en\/prices\/?$/,
+    );
+    expect(screen.queryByText(en.explore.empty)).toBeNull();
+    // No shop is named: the pair depends on the data, not on this copy.
+    expect(document.body.textContent).not.toMatch(/Ulta|Sephora|Faces/);
+  });
+
+  it('sold at both shops, data not available: the reason still wins over "no pair"', () => {
+    mount({ status: 'not_enough_data', reason: 'capability_off' }, 'en', true);
+    expect(screen.getByText(en.reasons.capability_off)).toBeTruthy();
+    expect(screen.queryByText(en.explore.emptyMatched)).toBeNull();
+  });
+
+  it('sold at both shops in Arabic', () => {
+    mount({ status: 'ok', reason: null }, 'ar', true);
+    expect(screen.getByText(ar.explore.emptyMatched)).toBeTruthy();
+    expect(screen.getByRole('link', { name: ar.explore.emptyMatchedLink }).getAttribute('href')).toMatch(
+      /\/ar\/prices\/?$/,
+    );
   });
 
   it('in Arabic', () => {
