@@ -109,7 +109,13 @@ class Loaded:
 
     @property
     def unverified(self) -> frozenset[str]:
-        """Context ids whose was-prices are unverified: promotions there are withheld."""
+        """Context ids whose was-prices are withheld as unverified: promotions there are withheld
+        (``pi_api.dq.WAS_PRICE_WITHHELD``; none since API 1.13.0)."""
+        return frozenset(c for shop in self.imported if shop.withheld for c in shop.contexts)
+
+    @property
+    def imported_contexts(self) -> frozenset[str]:
+        """Context ids of imported retailers: served as a dated snapshot, never the default."""
         return frozenset(c for shop in self.imported for c in shop.contexts)
 
     @cached_property
