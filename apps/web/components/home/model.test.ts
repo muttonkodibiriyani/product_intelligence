@@ -7,10 +7,13 @@ import {
   abs,
   bucketCheaper,
   categoryRead,
+  deepestBand,
   deepestCut,
+  depthBands,
   earlyExcluded,
   gapWidth,
   minus,
+  peakDay,
   share,
   sign,
   verdict,
@@ -122,5 +125,40 @@ describe('earlyExcluded', () => {
     expect(earlyExcluded([cav('')])).toBeNull();
     expect(earlyExcluded([cav('many')])).toBeNull();
     expect(earlyExcluded([cav('12')])?.count).toBe(12);
+  });
+});
+
+describe('depth bands and launch days', () => {
+  const depth = {
+    bands: ['10-20', '20-30', '50+'],
+    cells: [
+      [4, 1, 0],
+      [2, 3, 0],
+      [0, 0, 0],
+    ],
+  };
+  it('depthBands sums each band over the categories, in the API order, with the total', () => {
+    expect(depthBands(depth)).toEqual({
+      bands: [
+        { band: '10-20', n: 6 },
+        { band: '20-30', n: 4 },
+        { band: '50+', n: 0 },
+      ],
+      total: 10,
+    });
+    expect(depthBands({ bands: ['10-20'], cells: [] })).toEqual({
+      bands: [{ band: '10-20', n: 0 }],
+      total: 0,
+    });
+  });
+  it('deepestBand is the fullest band, or null when nothing is counted', () => {
+    expect(deepestBand(depth)).toEqual({ band: '10-20', n: 6 });
+    expect(deepestBand({ bands: ['10-20'], cells: [[0]] })).toBeNull();
+  });
+  it('peakDay is the busiest day, the first on a tie, or null with no launch', () => {
+    const d = (date: string, n: number) => ({ date, n });
+    expect(peakDay([d('2026-09-01', 0), d('2026-09-02', 3), d('2026-09-03', 3)])).toEqual(d('2026-09-02', 3));
+    expect(peakDay([d('2026-09-01', 0)])).toBeNull();
+    expect(peakDay([])).toBeNull();
   });
 });

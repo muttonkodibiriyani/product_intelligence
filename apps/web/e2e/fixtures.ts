@@ -182,6 +182,37 @@ export async function noHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+/**
+ * Nothing in the cards `selector` matches runs past its card: no horizontal scroll inside the
+ * card, and every visible descendant (a tooltip bubble aside, which hangs out on purpose) sits
+ * within the card's own box. Names the offender so a failure says what overflowed where.
+ */
+export async function noCardOverflow(page: Page, selector: string) {
+  const bad = await page.evaluate((sel) => {
+    const out: string[] = [];
+    for (const card of document.querySelectorAll<HTMLElement>(sel)) {
+      const name = card.dataset.tile ?? card.id ?? sel;
+      const c = card.getBoundingClientRect();
+      if (card.scrollWidth > card.clientWidth)
+        out.push(`${name}: scrollWidth ${card.scrollWidth} > clientWidth ${card.clientWidth}`);
+      for (const el of card.querySelectorAll<HTMLElement>('*')) {
+        if (el.closest('[role=tooltip]')) continue;
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'absolute') continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (r.right > c.right + 0.5 || r.left < c.left - 0.5)
+          out.push(
+            `${name}: <${el.tagName.toLowerCase()}> "${(el.textContent ?? '').trim().slice(0, 40)}" ` +
+              `spans ${Math.round(r.left)}–${Math.round(r.right)}, card ${Math.round(c.left)}–${Math.round(c.right)}`,
+          );
+      }
+    }
+    return out;
+  }, selector);
+  expect(bad).toEqual([]);
+}
+
 /** Answers /summary with the landing fixture and everything else with `onApi`. */
 export function withSummary(onApi: (r: Route) => Promise<void> | void, body: unknown = summaryBody) {
   return (r: Route) =>

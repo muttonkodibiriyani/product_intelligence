@@ -3,11 +3,8 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import type { CategoryCompare } from '@/lib/api/category-compare';
 import { formatCount, loc } from '@/lib/format';
-import { navHref } from '@/lib/nav';
 import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
-import { DatasetStatus } from '../dataset-status';
 import { ErrorNotice } from '../error-notice';
 import { Card } from '../ui/card';
 import { Known } from '../ui/known';
@@ -15,24 +12,28 @@ import { Money, Pct } from '../ui/money';
 import { AboutDataLink, PageHeader } from '../ui/page-header';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { Loading, Skeleton } from '../ui/skeleton';
-import { KpiBand, type RetailerSummary } from '../widgets/kpis';
+import { Tip } from '../ui/tip';
+import type { RetailerSummary } from '../widgets/kpis';
 import { TopDiscountsWidget } from '../widgets/top-discounts';
 import { useCategoryCompare } from '../widgets/use-category';
 import { useCompareData, useRetailers, type PairState } from '../widgets/use-compare';
 import { useSummaries } from '../widgets/use-summaries';
-import { compareHref, exploreHref, promotions, promotionsHref } from '../widgets/model';
+import { compareHref, promotions, promotionsHref } from '../widgets/model';
 import { AsOf } from './as-of';
+import { Band } from './band';
 import { CategoryHeadToHead } from './category-head-to-head';
-import { categoryRead, earlyExcluded, verdict, type CategoryRead } from './model';
+import { Insights } from './insights';
+import { earlyExcluded, verdict } from './model';
+import { useLaunchCounts, usePromoShares } from './use-overview-data';
 
 type Pair = NonNullable<ReturnType<typeof useRetailers>['pair']>;
 type Comparison = Schemas['Comparison'];
 
 /**
- * The Overview: one sentence on who is cheaper, the band of four numbers, where each shop is
- * cheaper by category, the matched basket head to head, and the deepest discounts. Every number
- * comes from the API with the list it was counted from one click away. The top bar's as-of line
- * names each shop's date (an imported shop its import date) once the first /summary is in.
+ * The Overview: the band of tiles (each shop's catalogue, promotions, launches), one line on the
+ * matched products, where each shop is cheaper by category, the matched basket, the charts that
+ * dig into the data, and the deepest discounts. Every number comes from the API with the list it
+ * was counted from one click away; the method notes live in tooltips and on the Dataset page.
  */
 export function Landing() {
   const t = useTranslations('home.landing');
@@ -42,107 +43,93 @@ export function Landing() {
     <div className="space-y-6">
       <PageHeader
         title={t('overview')}
-        intro={t('intro')}
         asOf={s.rows.length > 0 ? <AsOf rows={s.rows} /> : undefined}
+        tools={<AboutDataLink className="text-xs" />}
       />
       {error ? (
         <ErrorNotice error={error} />
       ) : loading ? (
         <Loading kind="chart">{t('loading')}</Loading>
       ) : (
-        <Overview s={s} pair={pair} />
+        <Overview s={s} ids={ids} pair={pair} />
       )}
     </div>
   );
 }
 
-function Overview({ s, pair }: { s: ReturnType<typeof useSummaries>; pair: Pair | null }) {
+function Overview({
+  s,
+  ids,
+  pair,
+}: {
+  s: ReturnType<typeof useSummaries>;
+  ids: readonly string[];
+  pair: Pair | null;
+}) {
   const t = useTranslations('home.landing');
   const tc = useTranslations('card');
-  const locale = useLocale();
   // The pair's matched set and category medians; neither is asked for without a second retailer.
   const cmp = useCompareData(pair);
   const cat = useCategoryCompare(pair);
+  const promo = usePromoShares();
+  const launches = useLaunchCounts(ids);
 
   if (s.error && s.rows.length === 0) return <ErrorNotice error={s.error.error} onRetry={s.error.retry} />;
   if (s.loading && s.rows.length === 0) return <Loading kind="chart">{tc('loading')}</Loading>;
-  // Nothing to report on (every retailer withheld or thin): the dataset below says why.
+  // Nothing to report on (every retailer withheld or thin): one line, and the Dataset page says why.
   if (s.rows.length === 0)
     return (
-      <div className="space-y-6">
-        <p className="text-sm text-ink-2">
-          {t('noRetailers')} <AboutDataLink />
-        </p>
-        <Dataset />
-      </div>
+      <p className="text-sm text-ink-2">
+        {t('noRetailers')} <AboutDataLink />
+      </p>
     );
 
-  const read = pair && cat.kind === 'ready' ? categoryRead(cat.data.buckets, pair.base, pair.other) : null;
   const matched = cmp.kind === 'ready' && cmp.data.summary !== null && cmp.data.summary.n > 0;
   return (
     <div className="space-y-6">
-      {pair && <Headline pair={pair} cmp={cmp} read={read} cat={cat} />}
       <section id="kpi-band" aria-labelledby="kpi-band-title">
         <h2 id="kpi-band-title" className="sr-only">
           {t('numbers')}
         </h2>
-        <KpiBand rows={s.rows} locale={locale} pair={pair} categories={read} />
+        <Band rows={s.rows} promo={promo} launches={launches.shops} />
       </section>
+      {pair && <Headline pair={pair} cmp={cmp} />}
       {pair && (
         <div className="grid grid-cols-12 items-start gap-5">
           <CategoryHeadToHead state={cat} pair={pair} span={matched ? 8 : 12} />
           {matched && <MatchedBasket pair={pair} data={cmp.data} />}
         </div>
       )}
+      <Insights rows={s.rows} pair={pair} cat={cat} launches={launches} />
       <TopDiscounts rows={s.rows} />
-      <Dataset />
     </div>
   );
 }
 
 /**
- * The one-line answer, from /compare's own counts: who is cheaper on how many of the matched
- * products, what the same basket costs at each shop, and how many of the products either shop
- * sells that is (`total` counts every product offered at either shop, matched or not). It is an
- * "early read" only when the API's own early_excluded caveat says items were left out, never by
- * default. Without a matched product yet it says so, with what is ready and the category read.
+ * One line on the matched products, from /compare's own counts: who is cheaper on how many of
+ * them, with the basket and the scope in the card beside the category table. It is an "early
+ * read" only when the API's early_excluded caveat says items were left out. Without a matched
+ * product yet: a quiet chip saying so, with the definition in its tooltip, and the link to compare.
  */
-export function Headline({
-  pair,
-  cmp,
-  read,
-  cat,
-}: {
-  pair: Pair;
-  cmp: PairState<Comparison>;
-  read: CategoryRead | null;
-  cat: PairState<CategoryCompare>;
-}) {
+export function Headline({ pair, cmp }: { pair: Pair; cmp: PairState<Comparison> }) {
   const t = useTranslations('home.landing.headline');
   const tc = useTranslations('card');
   const locale = useLocale();
   if (cmp.kind === 'loading')
     return (
-      <div className="panel px-5 py-4" aria-busy>
-        <Skeleton kind="lines" rows={2} />
-        <p role="status" className="mt-2 text-sm text-ink-2">
+      <div className="px-1" aria-busy>
+        <Skeleton kind="lines" rows={1} />
+        <span role="status" className="sr-only">
           {tc('loading')}
-        </p>
+        </span>
       </div>
     );
   if (cmp.kind === 'error') return <ErrorNotice error={cmp.error} onRetry={cmp.retry} />;
   const data = cmp.kind === 'ready' ? cmp.data : null;
   const s = data?.summary ?? null;
   if (!data || !s || s.n === 0)
-    return (
-      <EmptyHeadline
-        pair={pair}
-        data={data}
-        reason={cmp.kind === 'empty' ? cmp.env?.reason : null}
-        read={read}
-        cat={cat}
-      />
-    );
+    return <NoMatch pair={pair} data={data} reason={cmp.kind === 'empty' ? cmp.env?.reason : null} />;
 
   const base = pair.name(pair.base);
   const other = pair.name(pair.other);
@@ -162,9 +149,13 @@ export function Headline({
             ? t('tailEqual', { equal: v.equal })
             : '';
   return (
-    <section className="panel px-5 py-4" aria-labelledby="headline-title">
-      <h2 id="headline-title" className="text-lg leading-snug font-semibold tracking-tight">
-        {early && <span className="text-ink-2">{t('early')} </span>}
+    <section className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1" aria-labelledby="headline-title">
+      {early && (
+        <Tip text={loc(early.caveat, locale)}>
+          <span className="pill bg-butter text-butter-ink">{t('early')}</span>
+        </Tip>
+      )}
+      <h2 id="headline-title" className="text-base leading-snug font-semibold tracking-tight">
         {v.kind === 'allSame'
           ? t('allSame', { n: v.n, base, other })
           : v.kind === 'tie'
@@ -177,114 +168,79 @@ export function Headline({
               })}
         {tail && ` ${tail}`}
       </h2>
-      <p className="mt-1.5 text-sm text-ink-2">
-        {t.rich('basket', {
-          n: s.n,
-          base,
-          other,
-          baseAmount: () => <Money m={s.basket.base} locale={locale} />,
-          otherAmount: () => <Money m={s.basket.other} locale={locale} />,
-          pct: () => <Pct v={s.medianGapPct} />,
-          b: strong,
-        })}
-        {` ${t('scope', { n: s.n, total: data.total })}`}
-        {early && ` ${loc(early.caveat, locale)}`}{' '}
-        <Link
-          href={compareHref(locale, pair)}
-          className="font-medium text-ink underline underline-offset-2 focus-visible:outline-2"
-        >
-          {t('see', { n: s.n })}
-        </Link>
-      </p>
+      <Tip text={t('scope', { n: s.n, total: data.total })}>
+        <span className="pill bg-surface-2 text-ink-2 tabular-nums">
+          {t('of', { n: s.n, total: data.total })}
+        </span>
+      </Tip>
+      <Link
+        href={compareHref(locale, pair)}
+        className="text-sm font-medium text-ink underline underline-offset-2 focus-visible:outline-2"
+      >
+        {t('see', { n: s.n })}
+      </Link>
     </section>
   );
 }
 
 /**
- * No matched product yet: one sentence, what each side has ready (the API's own observed counts
- * and how many products either shop sells), the category read when the medians are served, and
- * the two places to go. A count the API did not send (no summary) is left out, never shown as 0.
+ * No matched product yet: one quiet line. The chip says so (the definition and the API's reason
+ * are in its tooltip), the counts the API did send sit beside it as chips, and the link opens
+ * the comparison. A count the API did not send is left out, never shown as 0.
  */
-export function EmptyHeadline({
+export function NoMatch({
   pair,
   data,
   reason,
-  read,
-  cat,
 }: {
   pair: Pair;
   data: Comparison | null;
   reason?: string | null;
-  read: CategoryRead | null;
-  cat: PairState<CategoryCompare>;
 }) {
-  const t = useTranslations('home.landing.empty');
-  const th = useTranslations('home.landing');
+  const t = useTranslations('home.landing.match');
   const tr = useTranslations('reasons');
   const locale = useLocale();
-  const base = pair.name(pair.base);
-  const other = pair.name(pair.other);
   const sides = data ? [data.sides.base, data.sides.other] : null;
-  const category =
-    read && read.compared > 0
-      ? read.base === read.other
-        ? read.base > 0
-          ? t('categoryTie', { k: read.base, n: read.compared, base, other })
-          : t('categorySame', { n: read.compared, base, other })
-        : t('categoryRead', {
-            shop: read.base > read.other ? base : other,
-            k: Math.max(read.base, read.other),
-            n: read.compared,
-          })
-      : cat.kind === 'loading'
-        ? null
-        : t('categoryNone');
   return (
-    <section className="panel px-5 py-4" aria-labelledby="headline-title">
-      <h2 id="headline-title" className="text-lg leading-snug font-semibold tracking-tight">
-        {t('title', { base, other })}
-      </h2>
-      <p className="mt-1.5 text-sm text-ink-2">
-        {t('why')} {reason && <Known t={tr} v={reason} />} {category}
-      </p>
-      {sides && (
-        <ul className="mt-4 grid gap-3 sm:grid-cols-3">
-          {[pair.base, pair.other].map((id, i) => (
-            <li key={id} className="rounded-ctl bg-surface-2 px-4 py-3">
-              <p className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
-                <RetailerDot id={id} index={i} />
-                {pair.name(id)}
-              </p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">
-                {formatCount(sides[i]!.observed, locale)}
-              </p>
-              <p className="text-xs text-ink-2">
-                {t('observed', { n: sides[i]!.observed })}
-                {sides[i]!.reason && (
-                  <>
-                    {' · '}
-                    <Known t={tr} v={sides[i]!.reason!} />
-                  </>
-                )}
-              </p>
-            </li>
-          ))}
-          <li className="rounded-ctl bg-surface-2 px-4 py-3">
-            <p className="text-xs font-medium text-ink-2">{t('eitherShop')}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">{formatCount(data!.total, locale)}</p>
-            {data!.summary && <p className="text-xs text-ink-2">{t('confirmed', { n: data!.summary.n })}</p>}
-          </li>
-        </ul>
+    <p id="no-match" className="flex flex-wrap items-center gap-2 px-1 text-xs text-ink-2">
+      <Tip
+        text={
+          <>
+            {t('why')}
+            {reason && (
+              <>
+                {' '}
+                <Known t={tr} v={reason} />
+              </>
+            )}
+          </>
+        }
+      >
+        <span className="pill bg-surface-2 font-medium text-ink">
+          {data?.summary ? t('none', { n: data.summary.n }) : t('noneYet')}
+        </span>
+      </Tip>
+      {sides &&
+        [pair.base, pair.other].map((id, i) => (
+          <Tip key={id} text={t('observed', { shop: pair.name(id), n: sides[i]!.observed })}>
+            <span className="pill bg-surface-2 tabular-nums">
+              <RetailerDot id={id} index={i} />
+              {formatCount(sides[i]!.observed, locale)}
+            </span>
+          </Tip>
+        ))}
+      {data && (
+        <Tip text={t('either', { n: data.total })}>
+          <span className="pill bg-surface-2 tabular-nums">{t('total', { n: data.total })}</span>
+        </Tip>
       )}
-      <p className="mt-4 flex flex-wrap gap-2">
-        <Link href={navHref('prices', locale)} className="btn btn-primary text-sm focus-visible:outline-2">
-          {th('openPrices')}
-        </Link>
-        <Link href={exploreHref(locale, {})} className="btn text-sm focus-visible:outline-2">
-          {t('browse')}
-        </Link>
-      </p>
-    </section>
+      <Link
+        href={compareHref(locale, pair)}
+        className="font-medium text-ink underline underline-offset-2 focus-visible:outline-2"
+      >
+        {t('open')}
+      </Link>
+    </p>
   );
 }
 
@@ -358,7 +314,7 @@ const strong = (c: ReactNode) => <b className="font-semibold text-ink">{c}</b>;
 
 /**
  * The deepest discounts, one card per retailer whose was-prices are verified (/summary measures
- * them or says why not); a retailer whose discounts are not available yet gets one line at the foot.
+ * them or says why not); a retailer whose discounts are not measured gets one chip at the foot.
  */
 function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
   const tt = useTranslations('widgets.top');
@@ -378,7 +334,6 @@ function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
             key={r.retailer}
             id={`w-top${i === 0 ? '' : `-${r.retailer}`}`}
             title={many ? tt('titleAt', { shop: r.name }) : tt('title')}
-            question={tt('question')}
             flush
             tools={
               <Link href={promotionsHref(locale, {})} className="btn text-sm focus-visible:outline-2">
@@ -394,22 +349,15 @@ function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
                   className="mt-2 flex items-center gap-2 border-t border-line-2 px-5 pt-3 pb-1 text-[13px] text-ink-2"
                 >
                   <RetailerDot id={f.retailer} index={rows.indexOf(f)} />
-                  <span>
-                    {tk('notAvailable', { shop: f.name })} {!fp.measured && <Known t={tr} v={fp.reason} />}
-                  </span>
+                  <span>{f.name}</span>
+                  <Tip text={!fp.measured ? <Known t={tr} v={fp.reason} /> : null}>
+                    <span className="pill bg-surface-2">{tk('none')}</span>
+                  </Tip>
                 </p>
               ))}
           </Card>
         ) : null,
       )}
     </>
-  );
-}
-
-function Dataset() {
-  return (
-    <section id="dataset" className="panel scroll-mt-6 px-5 py-4">
-      <DatasetStatus nested />
-    </section>
   );
 }

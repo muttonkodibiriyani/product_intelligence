@@ -1,6 +1,15 @@
 import type { Page, Route } from '@playwright/test';
 import { categoryCompareBody, THIN } from './category-compare-fixture';
-import { expect, golden, mockBackend, noHorizontalScroll, openNav, signIn, test } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  noCardOverflow,
+  noHorizontalScroll,
+  openNav,
+  signIn,
+  test,
+} from './fixtures';
 import {
   IMG,
   IMG_BROKEN,
@@ -44,11 +53,62 @@ const shopB = asShop(summaryBody, 'shop_b', { products: 4700, priced: 4680, prom
 const compare = golden('compare') as { data: { summary: unknown; rows: unknown[] } };
 /** /compare with no matched product yet: the API's candidate and observed counts, no summary. */
 const compareEmpty = { ...compare, data: { ...compare.data, summary: null, rows: [] } };
+const index = golden('index');
+
+type Json = Record<string, unknown>;
+/** /promotions as the Promotions page reads it: each shop's share with the counts behind it. */
+const promotionsGolden = golden('promotions') as Json & { data: Json };
+const promotions = {
+  ...promotionsGolden,
+  status: 'ok',
+  reason: null,
+  caveats: [],
+  data: {
+    ...promotionsGolden.data,
+    retailers: [
+      { retailer: 'shop_a', n: 4790, onPromo: 881, share: '18.4', reason: null },
+      { retailer: 'shop_b', n: 4680, onPromo: 562, share: '12.0', reason: null },
+    ],
+  },
+};
+/** /promotions when no shop's was-prices are collected: a reason per shop, never a share. */
+const promotionsNone = {
+  ...promotionsGolden,
+  status: 'not_enough_data',
+  reason: 'field_not_collected',
+  caveats: [],
+  data: {
+    items: [],
+    total: 0,
+    truncated: false,
+    retailers: ['shop_a', 'shop_b'].map((retailer) => ({
+      retailer,
+      n: 0,
+      onPromo: 0,
+      share: null,
+      reason: 'field_not_collected',
+    })),
+  },
+};
+/** /launches per shop over the Launches page's 30-day window: two at Shop A, one at Shop B. */
+const launchesGolden = golden('launches') as Json;
+const launchItems: Record<string, { firstSeen: string; id: string; name: string; retailer: string }[]> = {
+  shop_a: [
+    { firstSeen: '2026-09-27', id: 'p12', name: 'Product p12', retailer: 'shop_a' },
+    { firstSeen: '2026-09-20', id: 'p09', name: 'Product p09', retailer: 'shop_a' },
+  ],
+  shop_b: [{ firstSeen: '2026-09-29', id: 'p14', name: 'Product p14', retailer: 'shop_b' }],
+};
+const launchesFor = (retailer: string | null) => {
+  const items = launchItems[retailer ?? ''] ?? [];
+  return { ...launchesGolden, caveats: [], data: { items, total: items.length, truncated: false } };
+};
 
 /**
- * The Overview's four requests: /meta, one /summary per retailer, and the pair's /compare and
- * /category-compare. `summary` answers by the retailer asked for; `categories: false` is a
- * backend without the category route, which the page treats as not available.
+ * The Overview's requests: /meta, one /summary per retailer, the pair's /compare, /category-compare
+ * and /index, /promotions and one /launches per shop. `summary` answers by the retailer asked
+ * for; `categories: false` is a backend without the category route, which the page treats as not
+ * available.
  */
 const api =
   (
@@ -57,7 +117,8 @@ const api =
       meta = goldenMeta,
       cmp = compare,
       categories = true,
-    }: { meta?: Meta; cmp?: unknown; categories?: boolean } = {},
+      promo = promotions,
+    }: { meta?: Meta; cmp?: unknown; categories?: boolean; promo?: unknown } = {},
   ) =>
   async (r: Route) => {
     const url = new URL(r.request().url());
@@ -70,9 +131,25 @@ const api =
     if (p === '/api/v1/compare') return r.fulfill({ json: cmp });
     if (p === '/api/v1/category-compare' && categories)
       return r.fulfill({ json: categoryCompareBody('shop_a', 'shop_b', THIN) });
+    if (p === '/api/v1/index') return r.fulfill({ json: index });
+    if (p === '/api/v1/promotions') return r.fulfill({ json: promo });
+    if (p === '/api/v1/launches') return r.fulfill({ json: launchesFor(url.searchParams.get('retailer')) });
     return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
   };
 const byShop = (a: unknown, b: unknown) => (retailer: string | null) => (retailer === 'shop_b' ? b : a);
+
+/** The band's tiles wrap cleanly at every width the owner looks at, phone to desktop, EN and AR. */
+const WIDTHS = [390, 768, 1024, 1440] as const;
+async function bandFits(page: Page) {
+  const { width, height } = page.viewportSize()!;
+  for (const w of WIDTHS) {
+    await page.setViewportSize({ width: w, height });
+    await page.waitForTimeout(150);
+    await noCardOverflow(page, '#kpi-band [data-tile]');
+    await noHorizontalScroll(page);
+  }
+  await page.setViewportSize({ width, height });
+}
 
 for (const locale of ['en', 'ar'] as const) {
   const ar = locale === 'ar';
@@ -82,24 +159,25 @@ for (const locale of ['en', 'ar'] as const) {
         early: 'قراءة مبكرة:',
         earlyNote: 'عناصر العينة المبكرة غير المحتسبة: 1.',
         lead: 'Shop A أرخص في 3 من 6 منتجات مطابَقة. Shop B أرخص في 2، و1 بالسعر نفسه.',
+        of: '6 من 15',
         scope: 'أي 6 من 15 منتجًا يبيعها أحد المتجرين؛ ولا يمكن مقارنة الباقي بعد.',
         see: 'اعرض المنتجات الـ6',
-        emptyTitle: 'لا توجد منتجات مطابَقة بين Shop A وShop B بعد.',
-        categoryRead: 'بحسب الأسعار الوسيطة للفئات، Shop B أرخص في 5 من 8 فئات مقارَنة.',
+        noneYet: 'لا منتجات مطابَقة بعد',
+        total: '15 إجمالًا',
+        openCompare: 'افتح المقارنة',
+        categoryLead: 'Shop B أرخص في 5 من 8 فئات',
         categoryNone: 'مقارنة الفئات غير متاحة بعد.',
-        observed: 'منتجًا مرصودًا',
-        eitherShop: 'منتجات يبيعها أحد المتجرين',
-        openPrices: 'قارن حسب الفئة',
-        browse: 'تصفح كل المنتجات',
-        products: 'المنتجات المتتبَّعة',
-        more: 'Shop A يعرض 112 منتجًا أكثر',
-        byCategory: 'السعر الوسيط حسب الفئة',
-        catCheaper: 'من 8 فئات أرخص لدى Shop B',
+        products: 'المنتجات',
+        brands: 'العلامات',
         median: 'السعر الوسيط',
         none: 'غير مُقاس',
         promo: 'ضمن العروض',
-        deepest: /أعمق تخفيض 50.{0,4}، لدى Shop A/,
-        collected: /جُمعت بيانات Shop A في /,
+        depth: 'عمق التخفيض',
+        launches: 'المنتجات الجديدة',
+        days: '30 يومًا',
+        sparkA: 'Shop A: منتجان جديدان، لكل يوم',
+        fresh: 'حديثة',
+        asOf: /^حتى /,
         categories: 'أين يكون كل متجر أرخص',
         tooFew: 'عدد قليل جدًا (n = 3)',
         same: 'متساويان',
@@ -124,24 +202,25 @@ for (const locale of ['en', 'ar'] as const) {
         early: 'Early read:',
         earlyNote: '1 early sample item is not counted.',
         lead: 'Shop A is cheaper on 3 of the 6 matched products. Shop B is cheaper on 2; 1 costs the same.',
+        of: '6 of 15',
         scope: 'That is 6 of the 15 products either shop sells; the rest cannot be compared yet.',
         see: 'See the 6 products',
-        emptyTitle: 'No products are matched between Shop A and Shop B yet.',
-        categoryRead: 'By category medians, Shop B is cheaper in 5 of the 8 compared categories.',
+        noneYet: 'No matched products yet',
+        total: '15 in total',
+        openCompare: 'Open compare',
+        categoryLead: 'Shop B cheaper in 5 of 8 categories',
         categoryNone: 'Category comparison is not available yet.',
-        observed: 'products seen',
-        eitherShop: 'Products either shop sells',
-        openPrices: 'Compare by category',
-        browse: 'Browse all products',
-        products: 'Products tracked',
-        more: 'Shop A lists 112 more products',
-        byCategory: 'Median price by category',
-        catCheaper: 'of 8 categories cheaper at Shop B',
+        products: 'Products',
+        brands: 'Brands',
         median: 'Median price',
         none: 'Not measured',
         promo: 'On promotion',
-        deepest: /Deepest cut 50% off, at Shop A/,
-        collected: /Shop A collected /,
+        depth: 'Discount depth',
+        launches: 'Launches',
+        days: '30 days',
+        sparkA: 'Shop A: 2 launches, per day',
+        fresh: 'Fresh',
+        asOf: /^as of /,
         categories: 'Where each shop is cheaper',
         tooFew: 'too few (n = 3)',
         same: 'same',
@@ -162,48 +241,83 @@ for (const locale of ['en', 'ar'] as const) {
         creditUlta: 'Product images: Ulta Beauty, served from media.alshaya.com.',
       };
   const h2 = (page: Page, name: string) => page.getByRole('heading', { level: 2, name, exact: true });
-  const tile = (page: Page, k: string) =>
-    page.locator('#kpi-band dl > div').filter({ has: page.getByText(k, { exact: true }) });
+  const tile = (page: Page, id: string) => page.locator(`#kpi-band [data-tile="${id}"]`);
+  const tips = (page: Page, id: string) => tile(page, id).locator('[role=tooltip]');
 
   test.describe(locale, () => {
-    test('two shops: one sentence, four numbers, where each is cheaper, the basket, the discounts', async ({
+    test('two shops: the band, one line, where each is cheaper, the basket, the charts, the discounts', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api(byShop(shopA, shopB), { meta: twoShops }) });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      // One page: no Overview/Compare tabs any more.
+      // One page: no Overview/Compare tabs any more; About the data is one link in the header.
       await expect(page.getByRole('tab')).toHaveCount(0);
+      await expect(page.locator('main').getByRole('link', { name: T.about })).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/dataset/#about-data$`),
+      );
+
+      // The band: a tile per shop, then promotions and launches. Each shop's /summary counts, the
+      // freshness as a chip with its date in the tooltip, the tile linking to the shop's list.
+      await expect(page.locator('#kpi-band [data-tile]')).toHaveCount(4);
+      const a = tile(page, 'shop:shop_a');
+      await expect(a).toContainText('4,812');
+      await expect(a).toContainText('236');
+      await expect(a).toContainText('61');
+      await expect(a).toContainText('139.00');
+      await expect(a).toContainText('18.4%');
+      await expect(a.getByText(T.fresh, { exact: true })).toBeVisible();
+      await expect(tips(page, 'shop:shop_a').filter({ hasText: T.asOf })).toHaveCount(1);
+      await expect(a.getByRole('link', { name: 'Shop A' })).toHaveAttribute(
+        'href',
+        /\/explore\/\?.*retailer=shop_a/,
+      );
+      await expect(tile(page, 'shop:shop_b')).toContainText('4,700');
+      await expect(tile(page, 'shop:shop_b')).toContainText('12%');
+      // Promotions: the Promotions page's share per shop, its counts in the tooltip, and the depth strip.
+      const promo = tile(page, 'promotions');
+      await expect(promo.getByRole('link', { name: T.promo })).toHaveAttribute('href', /\/promotions\/$/);
+      await expect(promo).toContainText('18.4%');
+      await expect(promo).toContainText('12%');
+      await expect(tips(page, 'promotions').filter({ hasText: '881' })).toHaveCount(1);
+      await expect(promo.getByText(T.depth, { exact: true })).toBeVisible();
+      await expect(promo.locator('[role=img] i[data-band]').first()).toBeVisible();
+      // Launches: /launches per shop over the 30-day window, as a count and a sparkline per day.
+      const launches = tile(page, 'launches');
+      await expect(launches.getByRole('link', { name: T.launches })).toHaveAttribute('href', /\/launches\/$/);
+      await expect(launches).toContainText(T.days);
+      await expect(launches.locator(`[role=img][aria-label="${T.sparkA}"] i`)).toHaveCount(30);
+      await expect(launches.locator('dd').filter({ hasText: /^2$/ })).toHaveCount(1);
+      await expect(launches.locator('dd').filter({ hasText: /^1$/ })).toHaveCount(1);
+      // No prose in the band: not one paragraph longer than a label.
+      for (const text of await page.locator('#kpi-band p').allTextContents())
+        expect(text.trim().split(/\s+/).length).toBeLessThanOrEqual(6);
 
       // The headline from /compare's own counts: 3 + 2 + 1 of 6, of the 15 products either shop
-      // sells; "early" only because the golden /compare carries an early_excluded caveat (count 1).
+      // sells, the scope as a chip with its tooltip; "early" is a pill (the golden /compare carries
+      // an early_excluded caveat), with the caveat as its tooltip, never a paragraph.
       const headline = page.locator('#headline-title');
-      await expect(headline).toHaveText(`${T.early} ${T.lead}`);
+      await expect(headline).toHaveText(T.lead);
       const sentence = page.locator('section', { has: headline });
-      await expect(sentence).toContainText(T.scope);
-      await expect(sentence).toContainText(T.earlyNote);
+      await expect(sentence.getByText(T.early, { exact: true })).toBeVisible();
+      await expect(sentence.getByText(T.of, { exact: true })).toBeVisible();
+      await expect(sentence.locator('[role=tooltip]').filter({ hasText: T.scope })).toHaveCount(1);
+      await expect(sentence.locator('[role=tooltip]').filter({ hasText: T.earlyNote })).toHaveCount(1);
+      await expect(sentence.locator('p')).toHaveCount(0);
       await expect(sentence).not.toContainText(/candidate|مرشح/);
       await expect(page.getByRole('link', { name: T.see, exact: true })).toHaveAttribute(
         'href',
         /\/compare\/\?retailers=shop_a(,|%2C)shop_b$/,
       );
 
-      // The band: one hero per card, both shops under it, and who leads from the two values shown.
-      await expect(page.locator('#kpi-band dl > div')).toHaveCount(4);
-      await expect(tile(page, T.products)).toContainText('9,512');
-      await expect(tile(page, T.products)).toContainText(T.more);
-      await expect(tile(page, T.byCategory)).toContainText('5');
-      await expect(tile(page, T.byCategory)).toContainText(T.catCheaper);
-      await expect(tile(page, T.median)).toHaveCount(0);
-      await expect(tile(page, T.promo)).toContainText('18.4');
-      await expect(tile(page, T.promo)).toContainText('12');
-      await expect(tile(page, T.promo)).toContainText(T.deepest);
-      await expect(page.locator('#kpi-band')).toContainText(T.collected);
-
-      // Where each shop is cheaper: nine category rows, HTML only, with the API's gap on each.
+      // Where each shop is cheaper: the finding as the title, nine category rows ranked by gap,
+      // HTML only, with the API's gap on each; the method in the About tip, not under the table.
       const cats = page.locator('#w-categories');
-      await expect(h2(page, T.categories)).toBeVisible();
+      await expect(h2(page, T.categoryLead)).toBeVisible();
+      await expect(cats).toContainText(T.categories);
       await expect(cats.getByRole('rowheader')).toHaveCount(9);
+      await expect(cats.getByRole('rowheader').first()).toHaveText(ar ? 'الجسم' : 'Body');
       // The gap bar is in the cheaper shop's colour and names it; never a green/red verdict.
       await expect(cats.locator('.gapbar i[data-shop=shop_b]')).toHaveCount(5);
       await expect(cats.locator('.gapbar i[data-shop=shop_a]')).toHaveCount(2);
@@ -211,6 +325,8 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(cats.locator('[data-side], .text-good, .text-bad')).toHaveCount(0);
       await expect(cats.getByText(T.tooFew, { exact: true })).toBeVisible();
       await expect(cats.getByText(T.same, { exact: true })).toBeVisible();
+      await expect(cats.locator('[role=tooltip]')).toHaveCount(1);
+      await expect(cats.locator('table ~ p, tfoot')).toHaveCount(0);
 
       // The matched basket: both totals and the tally of who is cheaper how often.
       const basket = page.locator('#w-basket');
@@ -218,6 +334,26 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(basket.getByRole('img')).toHaveAttribute('aria-label', T.tally);
       await expect(basket).toContainText('580.75');
       await expect(basket).toContainText('600.00');
+
+      // The insights: the pair's gaps by category (widest gap in the title), the index over time,
+      // launches per day, then each shop's price bands, ladder, brands, share and discount depth.
+      await expect(page.locator('#i-gaps')).toContainText('-10.9%');
+      await expect(page.locator('#i-index')).toContainText('103.3');
+      await expect(page.locator('#i-launches')).toContainText('30');
+      for (const id of [
+        'i-hist-0',
+        'i-ladder-0',
+        'i-brands-0',
+        'i-share-0',
+        'i-depth-0',
+        'i-hist-1',
+        'i-depth-1',
+      ])
+        await expect(page.locator(`#${id} [data-chart]`)).toHaveCount(1);
+      expect(await page.locator('main [data-chart]').count()).toBeGreaterThanOrEqual(13);
+      // Each insight is one headline and a chart: no explanatory paragraph under any of them.
+      for (const id of ['i-gaps', 'i-index', 'i-launches', 'i-hist-0'])
+        await expect(page.locator(`#${id} p`)).toHaveCount(1);
 
       // The deepest discounts, one card per shop, each row linking to its product.
       const top = page.locator('#w-top');
@@ -229,73 +365,86 @@ for (const locale of ['en', 'ar'] as const) {
       );
       await expect(page.locator('#w-top-shop_b')).toBeVisible();
 
-      // No chart on the Overview; the dataset panel closes the page.
-      await expect(page.locator('main [data-chart]')).toHaveCount(0);
-      await expect(h2(page, T.dataset)).toBeVisible();
-      await noHorizontalScroll(page);
+      // The dataset block lives on its own page now: not on the Overview.
+      await expect(h2(page, T.dataset)).toHaveCount(0);
+      await expect(page.locator('#dataset')).toHaveCount(0);
+      await expect(page.locator('main [role=note]')).toHaveCount(0);
+      await bandFits(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });
 
-    test('no matched product yet: it says so, what each side has ready, and the category read', async ({
+    test('no matched product yet: one quiet line of chips, the category read and the charts stay', async ({
       page,
     }) => {
       const mock = await mockBackend(page, {
         onApi: api(byShop(shopA, shopB), { meta: twoShops, cmp: compareEmpty }),
       });
       await signIn(page, locale);
-      await expect(page.locator('#headline-title')).toHaveText(T.emptyTitle);
-      const headline = page.locator('section', { has: page.locator('#headline-title') });
-      await expect(headline).toContainText(T.categoryRead);
-      // Readiness from /compare's own sides: what each shop has observed, and the products either
-      // shop sells; with no summary there is no confirmed count, so none is shown (never "0").
-      const tiles = headline.getByRole('listitem');
-      await expect(tiles).toHaveCount(3);
-      await expect(tiles.nth(0)).toContainText('14');
-      await expect(tiles.nth(0)).toContainText(T.observed);
-      await expect(tiles.nth(1)).toContainText('12');
-      await expect(tiles.nth(2)).toHaveText(`${T.eitherShop}15`);
-      await expect(headline.getByRole('link', { name: T.openPrices, exact: true })).toHaveAttribute(
+      // Not a headline: a chip saying so, each side's observed count and the total as chips
+      // (from /compare's own sides; with no summary there is no confirmed count, never "0"),
+      // and the link to compare. The definition sits in the chip's tooltip.
+      const line = page.locator('#no-match');
+      await expect(line).toBeVisible();
+      await expect(page.locator('#headline-title')).toHaveCount(0);
+      await expect(line.getByText(T.noneYet, { exact: true })).toBeVisible();
+      await expect(line.getByText('14', { exact: true })).toBeVisible();
+      await expect(line.getByText('12', { exact: true })).toBeVisible();
+      await expect(line.getByText(T.total, { exact: true })).toBeVisible();
+      await expect(line).not.toContainText(/\b0\b|candidate|مرشح/);
+      await expect(line.locator('[role=tooltip]')).toHaveCount(4);
+      await expect(line.getByRole('link', { name: T.openCompare, exact: true })).toHaveAttribute(
         'href',
-        /\/prices\/$/,
+        /\/compare\/\?retailers=shop_a(,|%2C)shop_b$/,
       );
-      await expect(headline.getByRole('link', { name: T.browse, exact: true })).toHaveAttribute(
-        'href',
-        /\/explore\/$/,
-      );
-      // No basket without a matched product; the category table and the band stay.
+      // No basket without a matched product; the category table, the band and the charts stay.
       await expect(page.locator('#w-basket')).toHaveCount(0);
-      await expect(h2(page, T.categories)).toBeVisible();
-      await expect(page.locator('#kpi-band dl > div')).toHaveCount(4);
-      await expect(h2(page, T.dataset)).toBeVisible();
-      await noHorizontalScroll(page);
+      await expect(h2(page, T.categoryLead)).toBeVisible();
+      await expect(page.locator('#w-categories').getByRole('rowheader')).toHaveCount(9);
+      await expect(page.locator('#kpi-band [data-tile]')).toHaveCount(4);
+      await expect(page.locator('#i-gaps [data-chart]')).toHaveCount(1);
+      await expect(page.locator('#i-hist-0 [data-chart]')).toHaveCount(1);
+      await expect(h2(page, T.dataset)).toHaveCount(0);
+      await bandFits(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });
 
-    test('prices withheld, no category route: the median reads as not measured, never as zero', async ({
+    test('prices withheld, no category route: not measured as chips, never as zero, and no chart of it', async ({
       page,
     }) => {
       const withheld = (id: string) => asShop(summaryPricesWithheld as unknown as Summary, id);
       const mock = await mockBackend(page, {
-        onApi: api(byShop(withheld('shop_a'), withheld('shop_b')), { meta: twoShops, categories: false }),
+        onApi: api(byShop(withheld('shop_a'), withheld('shop_b')), {
+          meta: twoShops,
+          categories: false,
+          promo: promotionsNone,
+        }),
       });
       await signIn(page, locale);
       await expect(page.locator('#headline-title')).toContainText(T.lead);
-      // Without the category comparison the second card is the median, and nothing is measured.
-      const median = tile(page, T.median);
-      await expect(median.locator('dd').first()).toHaveText(T.none);
-      await expect(tile(page, T.byCategory)).toHaveCount(0);
-      await expect(tile(page, T.promo).locator('dd').first()).toHaveText(T.none);
+      // Each shop's median and promotion share, and the promotions tile's rows: one chip each
+      // with the reason in its tooltip; the counts /summary did send stay.
+      const a = tile(page, 'shop:shop_a');
+      await expect(a).toContainText('4,812');
+      await expect(a.getByText(T.none, { exact: true })).toHaveCount(2);
+      await expect(tile(page, 'promotions').getByText(T.none, { exact: true })).toHaveCount(2);
       await expect(page.locator('#kpi-band')).not.toContainText('%');
+      await expect(page.locator('#kpi-band')).not.toContainText(/\b0\b/);
+      await expect(tile(page, 'promotions').getByText(T.depth, { exact: true })).toHaveCount(0);
       await expect(page.locator('#w-categories')).toContainText(T.categoryNone);
       await expect(page.locator('#w-top')).toHaveCount(0);
-      await expect(page.locator('main [data-chart]')).toHaveCount(0);
-      await noHorizontalScroll(page);
+      // Nothing is charted from a withheld section: only the index and the launches draw.
+      await expect(page.locator('#i-gaps')).toHaveCount(0);
+      await expect(
+        page.locator('[id^=i-hist-], [id^=i-ladder-], [id^=i-brands-], [id^=i-share-], [id^=i-depth-]'),
+      ).toHaveCount(0);
+      await expect(page.locator('#i-index [data-chart]')).toHaveCount(1);
+      await expect(page.locator('#i-launches [data-chart]')).toHaveCount(1);
+      await bandFits(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors.filter((e) => !/404/.test(e))).toEqual([]);
     });
-
     test('product images: lazy, no referrer, the retailer host only, a placeholder otherwise', async ({
       page,
     }) => {
@@ -419,8 +568,7 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });
-
-    test('a blocked retailer: one plain line with the link to the data, and the dataset; no note box, sentence, tiles or charts', async ({
+    test('a blocked retailer: one plain line with the link to the data; no note box, band, line or charts', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBlocked) });
@@ -433,9 +581,9 @@ for (const locale of ['en', 'ar'] as const) {
       );
       await expect(page.locator('main')).not.toContainText(T.blocked);
       await expect(page.locator('main [role=note]')).toHaveCount(0);
-      await expect(h2(page, T.dataset)).toBeVisible();
-      await expect(page.locator('#headline-title')).toHaveCount(0);
-      await expect(page.getByText(T.products, { exact: true })).toHaveCount(0);
+      await expect(h2(page, T.dataset)).toHaveCount(0);
+      await expect(page.locator('#kpi-band')).toHaveCount(0);
+      await expect(page.locator('#headline-title, #no-match')).toHaveCount(0);
       await expect(page.locator('main [data-chart]')).toHaveCount(0);
       expect(mock.external).toEqual([]);
     });

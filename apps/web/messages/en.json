@@ -133,7 +133,6 @@
     "landing": {
       "overview": "Overview",
       "openPrices": "Compare by category",
-      "intro": "Each shop's own catalogue, and the two head to head on matched products.",
       "loading": "Loading the overview…",
       "noRetailers": "No collected retailer to report on.",
       "numbers": "Headline numbers",
@@ -145,22 +144,50 @@
         "tailEqual": "The other {equal, plural, one {# costs} other {# cost}} the same.",
         "tie": "{base} and {other} are each cheaper on {k} of the {n, plural, one {# matched product} other {# matched products}}.",
         "allSame": "All {n, plural, one {# matched product costs} other {# matched products cost}} the same at {base} and {other}.",
-        "basket": "The same {n, plural, one {#-product} other {#-product}} basket costs <b><baseAmount></baseAmount></b> at {base} and <b><otherAmount></otherAmount></b> at {other}, a <pct></pct> median gap.",
         "scope": "That is {n} of the {total, plural, one {# product} other {# products}} either shop sells; the rest cannot be compared yet.",
-        "see": "See the {n, plural, one {# product} other {# products}}"
+        "see": "See the {n, plural, one {# product} other {# products}}",
+        "of": "{n} of {total}"
       },
-      "empty": {
-        "title": "No products are matched between {base} and {other} yet.",
+      "match": {
         "why": "A matched product is one reviewed and confirmed as the same item at both shops; the head-to-head needs at least one.",
-        "categoryRead": "By category medians, {shop} is cheaper in {k} of the {n, plural, one {# compared category} other {# compared categories}}.",
-        "categoryTie": "By category medians, {base} and {other} are each cheaper in {k} of the {n, plural, one {# compared category} other {# compared categories}}.",
-        "categorySame": "By category medians, {base} and {other} are the same in all {n, plural, one {# compared category} other {# compared categories}}.",
-        "categoryNone": "The category comparison is not available yet.",
-        "observed": "{n, plural, one {product seen} other {products seen}}",
-        "eitherShop": "Products either shop sells",
-        "confirmed": "{n, plural, one {# confirmed as a match} other {# confirmed as matches}}",
-        "browse": "Browse all products"
+        "none": "{n, plural, =0 {No matched products yet} one {# matched product} other {# matched products}}",
+        "noneYet": "No matched products yet",
+        "observed": "{shop}: {n, plural, one {# product seen} other {# products seen}}",
+        "total": "{n} in total",
+        "either": "{n, plural, one {# product} other {# products}} either shop sells",
+        "open": "Open compare"
       }
+    },
+    "band": {
+      "products": "Products",
+      "brands": "Brands",
+      "categories": "Categories",
+      "median": "Median price",
+      "promo": "On promotion",
+      "promoOf": "{onPromo} of {n, plural, one {# product} other {# products}} on promotion",
+      "depth": "Discount depth",
+      "depthOf": "{band}: {n, plural, one {# product} other {# products}}",
+      "depthStrip": "{shop}: {n, plural, one {# discounted product} other {# discounted products}} by discount depth",
+      "launches": "Launches",
+      "days": "{n} days",
+      "notYet": "Not yet",
+      "spark": "{shop}: {n, plural, one {# launch} other {# launches}}, per day"
+    },
+    "insights": {
+      "title": "Insights",
+      "gaps": "Widest gap: {category}, {other} <pct></pct> vs {base}",
+      "index": "{other} vs {base}: index {latest}, from {first} on {date}",
+      "launches": "{n, plural, one {# launch} other {# launches}} in {days} days, peak {peak} on {date}",
+      "noLaunches": "No launches in {days} days",
+      "launchesKind": "Launches per day",
+      "launchesLabel": "Launches per day over {n} days.",
+      "hist": "{share} of {shop} products cost {lo} to {hi}",
+      "ladder": "{shop}: {lowCat} lowest at {low}, {highCat} highest at {high}",
+      "ladderOne": "{shop}: {cat} median {median}",
+      "brands": "{shop}: {high} dearest at {highPrice}, {low} cheapest at {lowPrice}",
+      "brandsOne": "{shop}: {brand} median {median}",
+      "share": "Top {k} brands are {share} of {shop} products",
+      "depth": "{shop}: most of {n, plural, one {# discounted product} other {# discounted products}} are {band}"
     }
   },
   "explore": {

@@ -1,6 +1,6 @@
 import type { Route } from '@playwright/test';
 import { categoryCompareBody, THIN } from './category-compare-fixture';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
+import { expect, golden, mockBackend, noCardOverflow, noHorizontalScroll, signIn, test } from './fixtures';
 import { summaryBody } from './summary-fixture';
 
 /*
@@ -85,6 +85,22 @@ productMixed.caveats = [C.was, C.snap];
 const history = golden('history');
 const compare = golden('compare');
 const categories = categoryCompareBody('shop_a', 'shop_b', THIN);
+const index = golden('index');
+const launches = golden('launches');
+/** /promotions: the imported retailer's share is withheld with the was-price reason, never 0. */
+const promotionsGolden = golden('promotions') as { data: Record<string, unknown> };
+const promotions = {
+  ...promotionsGolden,
+  status: 'not_enough_data',
+  reason: 'was_price_unverified',
+  caveats: [C.was],
+  data: {
+    items: [],
+    total: 0,
+    truncated: false,
+    retailers: [{ retailer: 'ulta_ae', n: 0, onPromo: 0, share: null, reason: 'was_price_unverified' }],
+  },
+};
 
 const api =
   (summary: unknown, product: unknown = productMixed) =>
@@ -94,6 +110,9 @@ const api =
     if (p === '/api/v1/meta') return r.fulfill({ json: meta });
     if (p === '/api/v1/compare') return r.fulfill({ json: compare });
     if (p === '/api/v1/category-compare') return r.fulfill({ json: categories });
+    if (p === '/api/v1/index') return r.fulfill({ json: index });
+    if (p === '/api/v1/promotions') return r.fulfill({ json: promotions });
+    if (p === '/api/v1/launches') return r.fulfill({ json: launches });
     if (/^\/api\/v1\/products\/[^/]+\/history$/.test(p)) return r.fulfill({ json: history });
     if (/^\/api\/v1\/products\/[^/]+$/.test(p)) return r.fulfill({ json: product });
     return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
@@ -114,9 +133,10 @@ for (const locale of ['en', 'ar'] as const) {
         captured: /^رُصد /,
         collected: '(للمتاجر التي نجمع بياناتها)',
         promo: 'ضمن العروض',
+        none: 'غير مُقاس',
+        fresh: 'حديثة',
         age: /عمرها|جُمعت اليوم|حتى /,
         subtitle: /Ulta: لقطة لمرة واحدة مستوردة في /,
-        withheld: 'تخفيضات Ulta: غير متاحة بعد.',
         withheldWhy: 'أسعار ما قبل الخصم لدى هذا المتجر غير موثّقة، لذا لا تُقاس عروضه.',
         row: /^لقطة مستوردة في .+، وتاريخ جمعها غير معروف$/,
         top: 'أكبر التخفيضات',
@@ -134,9 +154,10 @@ for (const locale of ['en', 'ar'] as const) {
         captured: /^Captured /,
         collected: '(collected retailers)',
         promo: 'On promotion',
+        none: 'Not measured',
+        fresh: 'Fresh',
         age: /days? old|collected today|as of /,
         subtitle: /Ulta: one-off snapshot imported /,
-        withheld: 'Ulta discounts: not available yet.',
         withheldWhy: "This retailer's was-prices are unverified, so its promotions are not measured.",
         row: /^snapshot imported .+, capture date unknown$/,
         top: 'Top discounts',
@@ -148,37 +169,52 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api(summarySnapshot) });
       await signIn(page, locale);
 
-      const kpis = page.locator('#kpi-band dl');
-      const tile = (k: string) =>
-        kpis.locator(':scope > div').filter({ has: page.getByText(k, { exact: true }) });
-      // Freshness: a neutral snapshot hero and pill and the import date, with no "as of" and no age.
-      const fresh = tile(T.freshness);
-      await expect(fresh.getByText(T.snapshot, { exact: true }).first()).toBeVisible();
-      await expect(fresh.getByText(T.imported)).toBeVisible();
-      await expect(fresh).not.toContainText(T.age);
-      // The count says what it may include; the promotion card carries the reason, never a figure.
-      await expect(tile(T.products)).toContainText(T.parents);
-      await expect(tile(T.promo)).toContainText(T.withheld);
-      await expect(tile(T.promo)).toContainText(T.withheldWhy);
+      // The imported shop's tile: a neutral Snapshot chip with the import date in its tooltip, no
+      // "as of" and no age; the count flagged as possibly including parent listings; its
+      // promotion share one "Not measured" chip whose tooltip carries the reason, never a figure.
+      const kpis = page.locator('#kpi-band');
+      const ulta = kpis.locator('[data-tile="shop:ulta_ae"]');
+      const tips = ulta.locator('[role=tooltip]');
+      await expect(ulta.getByText(T.snapshot, { exact: true })).toBeVisible();
+      await expect(tips.filter({ hasText: T.imported })).toHaveCount(1);
+      await expect(ulta).not.toContainText(T.age);
+      await expect(tips.filter({ hasText: T.parents })).toHaveCount(1);
+      await expect(ulta.getByText(T.none, { exact: true })).toBeVisible();
+      await expect(tips.filter({ hasText: T.withheldWhy })).toHaveCount(1);
+      // The promotions tile says the same of Ulta, once, and draws no depth strip for it; the
+      // launches tile reads Ulta as a snapshot (one collection: nothing to compare against).
+      const promo = kpis.locator('[data-tile=promotions]');
+      // Every /summary here is the snapshot body, so all four active shops read as not measured.
+      await expect(promo.locator('dd').filter({ has: page.getByText(T.none, { exact: true }) })).toHaveCount(
+        4,
+      );
+      await expect(promo.locator('[role=img]')).toHaveCount(0);
+      await expect(kpis.locator('[data-tile=launches]').getByText(T.snapshot, { exact: true })).toBeVisible();
       await expect(kpis).not.toContainText('%');
-      await expect(page.locator('main p').filter({ hasText: T.subtitle })).toBeVisible();
+      await expect(page.locator('main').getByText(T.subtitle)).toBeVisible();
+      // Chips wrap inside their tiles at this width: nothing runs past a card's edge.
+      await noCardOverflow(page, '#kpi-band [data-tile]');
 
       // No caveat note boxes on the Overview (owner decision, #171): the tiles carry the states and
-      // the dataset panel the detail; the raw was-price caveat is never pasted onto the page.
+      // the Dataset page the detail; the raw was-price caveat is never pasted onto the page.
       await expect(page.getByText(ar ? C.was.ar : C.was.en)).toHaveCount(0);
-      await expect(page.locator('main [role=note]:not(#dataset [role=note])')).toHaveCount(0);
+      await expect(page.locator('main [role=note]')).toHaveCount(0);
+      await expect(page.locator('#dataset')).toHaveCount(0);
+      await noHorizontalScroll(page);
 
-      // The dataset panel names the shop, never /meta's long name or the id; the imported retailer
-      // has an import date, the others keep "since".
+      // The Dataset page names the shop, never /meta's long name or the id; the imported retailer
+      // has an import date, the others keep "since"; with an imported retailer present, the
+      // dataset cutoff says whose it is.
+      await page.goto(`/app/${locale}/dataset/`);
       const row = page.locator('#dataset tr').filter({ hasText: 'Ulta' });
       await expect(row.locator('th')).toHaveText('Ulta');
       await expect(row.locator('td').nth(1)).toHaveText(T.row);
       await expect(
         page.locator('#dataset tr').filter({ hasText: 'Shop A' }).locator('td').nth(1),
       ).not.toHaveText(T.row);
-      // With an imported retailer present, the dataset cutoff says whose it is.
       await expect(page.locator('#dataset dl').first()).toContainText(T.collected);
       await noHorizontalScroll(page);
+      await page.goBack();
 
       // Promotion widgets stay off: no discounts card, and no tabs to a view that would show one.
       for (const name of [T.top, T.depth])
@@ -226,11 +262,13 @@ for (const locale of ['en', 'ar'] as const) {
     test('a collected retailer is unchanged: aged freshness, no snapshot wording', async ({ page }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBody) });
       await signIn(page, locale);
-      const kpis = page.locator('#kpi-band dl');
-      await expect(kpis.getByText(T.promo, { exact: true })).toBeVisible();
-      await expect(kpis).toContainText(T.age);
-      await expect(kpis.getByText(T.snapshot, { exact: true })).toHaveCount(0);
-      await expect(kpis).not.toContainText(T.parents);
+      const a = page.locator('#kpi-band [data-tile="shop:shop_a"]');
+      await expect(a.getByText(T.promo, { exact: true })).toBeVisible();
+      await expect(a).toContainText('18.4%');
+      await expect(a.getByText(T.fresh, { exact: true })).toBeVisible();
+      await expect(a.locator('[role=tooltip]').filter({ hasText: T.age })).toHaveCount(1);
+      await expect(a.getByText(T.snapshot, { exact: true })).toHaveCount(0);
+      await expect(a).not.toContainText(T.parents);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
     });

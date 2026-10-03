@@ -141,3 +141,32 @@ export function deepestCut(top: readonly { depthPct: string }[]): string | null 
   }
   return best;
 }
+
+/**
+ * Discounted products per depth band, summed over the categories /summary counted, in the API's
+ * band order; `total` is the sum. The bands are the API's own labels ("10-20", "50+").
+ */
+export function depthBands(d: { bands: readonly string[]; cells: readonly (readonly number[])[] }): {
+  bands: { band: string; n: number }[];
+  total: number;
+} {
+  const bands = d.bands.map((band, ci) => ({
+    band,
+    n: d.cells.reduce((s, row) => s + (Number.isFinite(row[ci]) ? row[ci]! : 0), 0),
+  }));
+  return { bands, total: bands.reduce((s, b) => s + b.n, 0) };
+}
+
+/** The band holding the most discounted products; null when none is counted. */
+export function deepestBand(d: { bands: readonly string[]; cells: readonly (readonly number[])[] }) {
+  const { bands, total } = depthBands(d);
+  if (total === 0) return null;
+  return bands.reduce((a, b) => (b.n > a.n ? b : a));
+}
+
+/** The day with the most launches in a window; null when there were none. */
+export function peakDay(days: readonly { date: string; n: number }[]): { date: string; n: number } | null {
+  let best: { date: string; n: number } | null = null;
+  for (const d of days) if (d.n > 0 && (best === null || d.n > best.n)) best = d;
+  return best;
+}
