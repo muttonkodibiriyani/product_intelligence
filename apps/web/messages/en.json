@@ -332,6 +332,14 @@
     "blocked": "Blocked",
     "unknown": "Unknown"
   },
+  "channel": {
+    "online": "Online",
+    "marketplace": "Marketplace",
+    "delivery": "Delivery app",
+    "pickup": "Pickup",
+    "dine_in_evidenced": "Dine-in",
+    "offline_audit": "In-store audit"
+  },
   "product": {
     "missingId": "No product was given. Open a product from the list.",
     "loading": "Loading product…",
@@ -377,7 +385,34 @@
     "backCompare": "Back to comparison",
     "backPromotions": "Back to promotions",
     "backLaunches": "Back to launches",
-    "noImage": "No image"
+    "noImage": "No image",
+    "groupPrice": "Price",
+    "groupListing": "Listing",
+    "lastSeen": "Last seen",
+    "sheetCaption": "Each retailer’s offer for this product, side by side",
+    "channel": "Sold via",
+    "productId": "Product ID",
+    "pairSizes": "Sizes: {base} and {other}",
+    "state": {
+      "notPublished": "Not published",
+      "notMeasured": "Not measured",
+      "none": "None"
+    },
+    "why": {
+      "noPrice": "No price on the listing on this date.",
+      "noRegular": "The listing shows no regular price.",
+      "wasPriceUnverified": "This retailer’s was-prices are unverified.",
+      "priceUnderReview": "The price is under review.",
+      "needsPrice": "No price to work it out from.",
+      "needsRegular": "No regular price to compare with.",
+      "atRegular": "Sold at the regular price.",
+      "notCollected": "Not collected for this retailer.",
+      "noRating": "The listing shows no rating.",
+      "noSize": "The listing shows no size.",
+      "noShadeRange": "The listing has no shade range.",
+      "noShades": "The listing shows no shade count.",
+      "noSku": "The listing shows no SKU."
+    }
   },
   "compare": {
     "title": "Compare",
