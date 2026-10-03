@@ -37,7 +37,7 @@ for (const locale of ['en', 'ar'] as const) {
   const rtl = locale === 'ar';
   const T = rtl
     ? {
-        title: 'مجموعة البيانات الحالية',
+        title: 'نظرة عامة',
         retailers: 'المتاجر',
         signIn: 'تسجيل الدخول',
         signOut: 'تسجيل الخروج',
@@ -63,7 +63,7 @@ for (const locale of ['en', 'ar'] as const) {
         aboutData: 'عن البيانات',
       }
     : {
-        title: 'Current dataset',
+        title: 'Overview',
         retailers: 'Retailers',
         signIn: 'Sign in',
         signOut: 'Sign out',
@@ -98,7 +98,8 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, ok);
       await signIn(page, locale);
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/$`));
-      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      // The Overview's own heading: the page is in (the dataset block now lives on /dataset/ only).
+      await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { name: T.retailers })).toBeVisible();
       await expect(page.getByRole('rowheader', { name: 'Shop C' })).toBeVisible();
       await noHorizontalScroll(page);
@@ -121,7 +122,7 @@ for (const locale of ['en', 'ar'] as const) {
     }) => {
       const mock = await mockBackend(page, ok);
       await signIn(page, locale);
-      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
       const nav = mainNav(page);
       await expect(nav).toBeVisible();
       await expect(nav.getByRole('link', { name: T.pages[0], exact: true })).toHaveAttribute(
@@ -148,12 +149,12 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors).toEqual([]);
     });
 
-    test('page top bar: the dataset cutoff and the link to the data', async ({ page }) => {
+    test('page top bar: the dataset cutoff; the link to the data in the footer', async ({ page }) => {
       await mockBackend(page, ok);
       await signIn(page, locale);
       const main = page.locator('main');
       await expect(main.getByText(new RegExp(`^${T.asOf}.*2026`))).toBeVisible();
-      await expect(main.getByRole('link', { name: T.aboutData })).toHaveAttribute(
+      await expect(page.locator('footer').getByRole('link', { name: T.aboutData })).toHaveAttribute(
         'href',
         new RegExp(`/app/${locale}/dataset/#about-data$`),
       );
@@ -162,7 +163,7 @@ for (const locale of ['en', 'ar'] as const) {
     test('Launches says "soon" until the dataset has two collection days', async ({ page }) => {
       await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: oneDay })) });
       await signIn(page, locale);
-      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
       const nav = await allPages(page);
       await expect(nav.getByRole('link', { name: T.launches })).toContainText(T.soon);
     });
@@ -170,7 +171,7 @@ for (const locale of ['en', 'ar'] as const) {
     test('Promotions leaves the navigation when no retailer measures discounts', async ({ page }) => {
       await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: meta }), summaryNoPromo) });
       await signIn(page, locale);
-      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
       const nav = await allPages(page);
       await expect(nav.getByRole('link', { name: T.pages[1], exact: true })).toBeVisible();
       await expect(nav.getByRole('link', { name: T.promotions, exact: true })).toHaveCount(0);
@@ -204,7 +205,7 @@ for (const locale of ['en', 'ar'] as const) {
         ),
       });
       await signIn(page, locale);
-      await expect(page.getByRole('heading', { name: T.title })).toBeVisible();
+      await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
       expect(n).toBe(2);
       await expect(mainNav(page)).toBeVisible();
       expect(mock.errors.filter((e) => !e.includes('503'))).toEqual([]);

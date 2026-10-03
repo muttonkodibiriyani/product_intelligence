@@ -44,7 +44,6 @@ export function Landing() {
       <PageHeader
         title={t('overview')}
         asOf={s.rows.length > 0 ? <AsOf rows={s.rows} /> : undefined}
-        tools={<AboutDataLink className="text-xs" />}
       />
       {error ? (
         <ErrorNotice error={error} />

@@ -251,9 +251,11 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api(byShop(shopA, shopB), { meta: twoShops }) });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
-      // One page: no Overview/Compare tabs any more; About the data is one link in the header.
+      // One page: no Overview/Compare tabs any more; About the data is not on the Overview itself,
+      // only the page footer's one link to the Dataset page.
       await expect(page.getByRole('tab')).toHaveCount(0);
-      await expect(page.locator('main').getByRole('link', { name: T.about })).toHaveAttribute(
+      await expect(page.locator('main').getByRole('link', { name: T.about })).toHaveCount(0);
+      await expect(page.locator('footer').getByRole('link', { name: T.about })).toHaveAttribute(
         'href',
         new RegExp(`/${locale}/dataset/#about-data$`),
       );
@@ -546,8 +548,8 @@ for (const locale of ['en', 'ar'] as const) {
     test('Dataset page: the nav opens it; About the data explains in plain words, once', async ({ page }) => {
       const mock = await mockBackend(page, { onApi: api(byShop(shopA, shopB)) });
       await signIn(page, locale);
-      // The top bar's link to the data, before the nav is used.
-      await expect(page.getByRole('link', { name: T.about }).first()).toHaveAttribute(
+      // The footer's link to the data, before the nav is used.
+      await expect(page.locator('footer').getByRole('link', { name: T.about })).toHaveAttribute(
         'href',
         new RegExp(`/${locale}/dataset/#about-data$`),
       );

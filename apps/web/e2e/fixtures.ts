@@ -193,7 +193,8 @@ export async function noCardOverflow(page: Page, selector: string) {
     for (const card of document.querySelectorAll<HTMLElement>(sel)) {
       const name = card.dataset.tile ?? card.id ?? sel;
       const c = card.getBoundingClientRect();
-      if (card.scrollWidth > card.clientWidth)
+      // Both are rounded integers of a fractional box: a 1px difference is rounding, not overflow.
+      if (card.scrollWidth > card.clientWidth + 1)
         out.push(`${name}: scrollWidth ${card.scrollWidth} > clientWidth ${card.clientWidth}`);
       for (const el of card.querySelectorAll<HTMLElement>('*')) {
         if (el.closest('[role=tooltip]')) continue;
