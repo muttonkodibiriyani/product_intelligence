@@ -29,7 +29,12 @@ const NEW_IN_S6 = new Set([
   "price_per_unit",
 ]);
 
-const VERSION_BUMPS: Readonly<Record<string, string>> = { get_product: "3", compare: "4" };
+const VERSION_BUMPS: Readonly<Record<string, string>> = {
+  get_product: "3",
+  compare: "4",
+  // Cards without their match list, page max 15 (MAX_RESULT_CHARS).
+  search_products: "3",
+};
 
 describe("tool definitions", () => {
   it("has eighteen uniquely named, viewer-level, read-only tools", () => {
