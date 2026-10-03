@@ -189,4 +189,29 @@ describe('ProgressChips', () => {
     chips(true);
     expect(screen.getByText('Verifying numbers').getAttribute('aria-current')).toBeNull();
   });
+
+  it.each([
+    ['en', 'not_found', 'Product details: no product with that id'],
+    ['en', 'upstream_unavailable', 'Product details: data service unavailable'],
+    ['en', 'invalid_input', 'Product details: request not accepted'],
+    ['en', 'rate_limited', 'Product details: busy, try again shortly'],
+    ['en', undefined, 'Product details: unavailable'],
+    ['en', 'something_new', 'Product details: unavailable'],
+    ['ar', 'not_found', 'تفاصيل المنتج: لا يوجد منتج بهذا المعرّف'],
+  ] as const)('says why a tool failed (%s, %s)', (locale, code, text) => {
+    render(
+      <NextIntlClientProvider locale={locale} messages={locale === 'ar' ? ar : en}>
+        <ProgressChips
+          done
+          steps={[{ type: 'tool', name: 'get_product', status: 'error', ...(code ? { code } : {}) }]}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByRole('listitem').textContent).toBe(text);
+  });
+
+  it('labels the per-unit tool in both languages', () => {
+    expect(en.assistant.tools.price_per_unit).toBe('Price per ml or g');
+    expect(ar.assistant.tools.price_per_unit).toBeTruthy();
+  });
 });

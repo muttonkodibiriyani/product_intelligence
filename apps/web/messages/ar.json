@@ -661,10 +661,21 @@
       "retrying": "يعيد التحقق من الإجابة",
       "tool": "يقرأ {tool}",
       "toolEmpty": "{tool}: البيانات غير كافية",
-      "toolError": "{tool}: غير متاح"
+      "toolErrors": {
+        "unavailable": "{tool}: غير متاح",
+        "notFound": "{tool}: لا يوجد منتج بهذا المعرّف",
+        "invalid": "{tool}: لم يُقبل الطلب",
+        "forbidden": "{tool}: غير متاح لدورك",
+        "signIn": "{tool}: سجّل الدخول مجدداً",
+        "busy": "{tool}: مشغول، حاول بعد قليل",
+        "refreshed": "{tool}: تم تحديث البيانات",
+        "tooLarge": "{tool}: النتيجة كبيرة جداً",
+        "service": "{tool}: خدمة البيانات غير متاحة"
+      }
     },
     "tools": {
       "search_products": "البحث عن المنتجات",
+      "price_per_unit": "السعر لكل مل أو غ",
       "get_product": "تفاصيل المنتج",
       "compare": "مقارنة الأسعار",
       "category_compare": "أسعار الفئات",

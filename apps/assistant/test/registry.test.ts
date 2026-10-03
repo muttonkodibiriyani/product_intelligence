@@ -281,7 +281,9 @@ describe("ToolRegistry", () => {
       [401, "unauthenticated"],
       [403, "forbidden"],
       [422, "invalid_input"],
-      [404, "not_found"],
+      // A list tool's 404 is a missing route (the doubled /api/v1 path on 2026-10-03), not a
+      // missing id: it must not read as "nothing has this id".
+      [404, "upstream_unavailable"],
       [409, "stale_cursor"],
       [429, "rate_limited"],
       [503, "upstream_unavailable"],
@@ -291,6 +293,14 @@ describe("ToolRegistry", () => {
       await expect(
         registry(failing(status)).run("coverage_status", {}, VIEWER, "t"),
       ).resolves.toMatchObject({ code });
+    }
+    for (const [tool, input] of [
+      ["get_product", { id: "p01" }],
+      ["price_history", { id: "p01" }],
+    ] as const) {
+      await expect(registry(failing(404)).run(tool, input, VIEWER, "t")).resolves.toMatchObject({
+        code: "not_found",
+      });
     }
     const bad = new FakeApi(() => ({ status: "ok", meta: META }));
     await expect(registry(bad).run("coverage_status", {}, VIEWER, "t")).resolves.toMatchObject({

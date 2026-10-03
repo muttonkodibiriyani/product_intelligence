@@ -860,7 +860,7 @@ All of these must hold before Vertex is enabled or the chat callable is deployed
    one user holds `role: killswitch` (single-account check, §9.4 step 3).
 3. `assistant_config/current` is written by an admin, and it passes `AssistantConfigSchema`:
    - `promptVersion` **must equal `PROMPT_VERSION`** in `src/flows/prompt.ts`, currently
-     `chat-2026-10-01.3`. If it does not, every question is refused with
+     `chat-2026-10-03.1`. If it does not, every question is refused with
      `prompt_version_mismatch`. Each prompt change bumps the version, and the config must be
      updated in the same release.
    - `priceTableVersion` must equal the deployed price table.

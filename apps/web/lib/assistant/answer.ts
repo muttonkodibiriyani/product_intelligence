@@ -25,6 +25,7 @@ export function unavailableNote(code: string | undefined): UnavailableNote {
 
 export const TOOL_NAMES = [
   'search_products',
+  'price_per_unit',
   'get_product',
   'compare',
   'category_compare',
@@ -51,6 +52,36 @@ export const isToolName = (name: string): name is ToolName =>
 /** The label key for a tool name; `summary` is the page's own sample source (/api/v1/summary). */
 export const toolKey = (name: string): ToolName | 'summary' | 'other' =>
   isToolName(name) || name === 'summary' ? name : 'other';
+
+/**
+ * The chip copy for a failed tool call, by the registry's error code: a missing product is not
+ * an outage, and an outage is not the user's fault. Unknown or absent codes keep the generic
+ * "unavailable".
+ */
+export const toolErrorKey = (code: string | undefined): string => {
+  switch (code) {
+    case 'not_found':
+      return 'notFound';
+    case 'invalid_input':
+    case 'unknown_tool':
+      return 'invalid';
+    case 'forbidden':
+      return 'forbidden';
+    case 'unauthenticated':
+      return 'signIn';
+    case 'rate_limited':
+      return 'busy';
+    case 'stale_cursor':
+      return 'refreshed';
+    case 'output_too_large':
+      return 'tooLarge';
+    case 'upstream_unavailable':
+    case 'upstream_invalid':
+      return 'service';
+    default:
+      return 'unavailable';
+  }
+};
 
 /** Progress chips: one per stage or tool call, in arrival order. */
 export const progressKey = (p: ChatProgress, i: number): string =>
