@@ -109,4 +109,41 @@ describe('ShopTiles', () => {
     expect(u!.textContent).toContain(ar.reasons.was_price_unverified);
     expect(within(u!).getByRole('link', { name: 'المنتجات' })).toBeTruthy();
   });
+
+  it('a partly covered shop with discounts seen: the count as the hero, never a share, and why', () => {
+    const partial: Promo = {
+      retailer: 'ulta_ae',
+      n: 7234,
+      onPromo: 458,
+      share: null,
+      reason: 'retailer_partial',
+    };
+    tiles([partial], [item('u1', 'ulta_ae', '62.5')]);
+    const tile = screen.getByRole('listitem');
+    expect(within(tile).getByText('458')).toBeTruthy();
+    expect(within(tile).getByText(/discounted products seen/)).toBeTruthy();
+    expect(within(tile).getByText(/62\.5%/)).toBeTruthy();
+    expect(tile.textContent).toContain(en.promotions.shareWithheld);
+    expect(tile.textContent).toContain(en.reasons.retailer_partial);
+    expect(within(tile).queryByText(/^\d+(\.\d+)?%$/, { selector: 'bdi' })).toBeNull();
+    expect(within(tile).queryByText(en.promotions.notMeasuredShop)).toBeNull();
+  });
+
+  it('a partly covered shop with no price pair seen stays "not measured"', () => {
+    tiles([{ retailer: 'sephora_me', n: 0, onPromo: 0, share: null, reason: 'retailer_partial' }], []);
+    expect(screen.getByText(en.promotions.notMeasuredShop)).toBeTruthy();
+  });
+
+  it('the partly covered tile in Arabic', () => {
+    const partial: Promo = {
+      retailer: 'ulta_ae',
+      n: 7234,
+      onPromo: 458,
+      share: null,
+      reason: 'retailer_partial',
+    };
+    tiles([partial], [], 'ar');
+    expect(screen.getByRole('listitem').textContent).toContain(ar.promotions.shareWithheld);
+    expect(screen.getByRole('listitem').textContent).toContain(ar.reasons.retailer_partial);
+  });
 });
