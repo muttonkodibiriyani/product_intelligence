@@ -27,6 +27,7 @@ from pi_metrics.compare import Comparison
 from pi_metrics.coverage import Coverage
 from pi_metrics.index import PriceIndex
 from pi_metrics.launches import Launches
+from pi_metrics.pair_pricing import PriceSuggestions
 from pi_metrics.promotions import Promotions
 from pi_metrics.reviews import ReviewsSummary
 
@@ -65,6 +66,11 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
         {},
     ),
     "compare-blocked": ("/compare?retailers=shop_a,shop_d", Envelope[Comparison], {}),
+    "price-suggestions": (
+        "/price-suggestions?subject=shop_a&rival=shop_b&limit=8",
+        Envelope[PriceSuggestions],
+        {},
+    ),
     "index": ("/index?retailers=shop_a,shop_b", Envelope[PriceIndex], {}),
     "promotions": ("/promotions?minPct=10", Envelope[Promotions], {}),
     "assortment-gaps": (

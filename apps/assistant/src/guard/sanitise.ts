@@ -54,6 +54,14 @@ export const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
   "presentAt",
   "groupBy",
   "endpoint",
+  // PriceSuggestions (API 1.14.0): retailer ids and closed pi_metrics enums.
+  "subject",
+  "rival",
+  "context",
+  "aim",
+  "outcome",
+  "basis",
+  "code",
 ]);
 
 /**

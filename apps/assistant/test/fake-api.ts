@@ -117,6 +117,7 @@ export const MINIMAL: Readonly<Record<string, unknown>> = {
   price_history: { id: "p1" },
   compare: PAIR,
   category_compare: PAIR,
+  price_suggestions: { subject: "north", rival: "south" },
   index_trend: PAIR,
   assortment_gaps: { missingAt: "south", presentAt: "north" },
 };
