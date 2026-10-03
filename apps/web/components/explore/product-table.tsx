@@ -12,7 +12,7 @@ import { monogram, RowThumb } from './row-thumb';
 type Card = Schemas['ProductCard'];
 
 /** Where the product page's Back goes; the explorer when not set. */
-export type BackTo = 'compare' | 'promotions' | 'launches';
+export type BackTo = 'compare' | 'overlap' | 'promotions' | 'launches';
 
 /** The URL of a product page; `from` carries the list's query so Back restores it. */
 export function productHref(locale: string, id: string, from = '', back?: BackTo): string {

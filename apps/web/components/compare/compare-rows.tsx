@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useId, useState, type ReactNode } from 'react';
 import type { Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
-import { productHref } from '../explore/product-table';
+import { productHref, type BackTo } from '../explore/product-table';
 import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
 import { Money, Price } from '../ui/money';
@@ -15,22 +15,37 @@ import { RetailerDot } from './pair-picker';
 
 type Comparison = Schemas['Comparison'];
 type PairRow = Schemas['PairRow'];
-type Matched = PairRow & { gap: Schemas['Gap'] };
+export type Matched = PairRow & { gap: Schemas['Gap'] };
 type Name = (id: string) => string;
 
 const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-top';
 const GOOD = { color: 'var(--color-good, #187a43)', background: 'var(--color-good-soft, #e3f4ea)' };
 
-/** The product cell: a thumbnail (the API sends no image for a pair row yet, so a placeholder), name, brand. */
-function ProductCell({ r, locale, from }: { r: PairRow; locale: string; from: string }) {
+/**
+ * The product cell: a thumbnail (the API sends no image for a pair row yet, so a placeholder),
+ * name, brand, and whatever the page adds under them.
+ */
+export function ProductCell({
+  r,
+  locale,
+  from,
+  back = 'compare',
+  children,
+}: {
+  r: PairRow;
+  locale: string;
+  from: string;
+  back?: BackTo;
+  children?: ReactNode;
+}) {
   const te = useTranslations('productCard');
   return (
     <span className="flex items-start gap-3">
       <RowThumb url={null} label={te('noImage')} px={44} cls="size-11 shrink-0 rounded-ctl bg-surface-2" />
       <span className="min-w-0">
         <Link
-          href={productHref(locale, r.id, from, 'compare')}
+          href={productHref(locale, r.id, from, back)}
           className="font-medium text-ink hover:underline focus-visible:outline-2"
         >
           <span dir="auto">{r.name}</span>
@@ -38,6 +53,7 @@ function ProductCell({ r, locale, from }: { r: PairRow; locale: string; from: st
         <span className="block text-xs text-ink-2" dir="auto">
           {r.brand}
         </span>
+        {children}
       </span>
     </span>
   );
@@ -64,7 +80,7 @@ export function ShownOfTotal({ shown, total }: { shown: number; total: number })
  * from the other shop's side: 80 vs 100 is +25%, and the base is 20% cheaper, not 25%. Rather than
  * re-derive a number the API did not send, the pill names the other shop both ways.
  */
-function CheaperPill({ r, data, name }: { r: Matched; data: Comparison; name: Name }) {
+export function CheaperPill({ r, data, name }: { r: Matched; data: Pick<Comparison, 'other'>; name: Name }) {
   const t = useTranslations('compare.matched');
   const locale = useLocale();
   if (r.gap.cheaper === 'equal')
@@ -80,7 +96,7 @@ function CheaperPill({ r, data, name }: { r: Matched; data: Comparison; name: Na
 }
 
 /** The signed difference (other − base, as the API sends it) with a bar centred on zero. */
-function Difference({ r, share, locale }: { r: Matched; share: number; locale: string }) {
+export function Difference({ r, share, locale }: { r: Matched; share: number; locale: string }) {
   const negative = r.gap.pct.startsWith('-');
   return (
     <span className="inline-flex items-center gap-2">

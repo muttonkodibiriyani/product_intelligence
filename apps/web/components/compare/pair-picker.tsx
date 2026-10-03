@@ -28,12 +28,15 @@ export function PairPicker({
   state,
   update,
   fixed,
+  grouping = true,
   tools,
 }: {
   state: CompareState;
   update: (next: Partial<CompareState>) => void;
   /** The only pair the dataset has: shown, not picked. */
   fixed: boolean;
+  /** The group-by select; a page that lists rows without groups leaves it out. */
+  grouping?: boolean;
   tools?: ReactNode;
 }) {
   const t = useTranslations('compare');
@@ -97,19 +100,23 @@ export function PairPicker({
         </svg>
       </button>
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ms-auto">
-        <label htmlFor={`${id}-group`} className="text-xs font-medium text-ink-2">
-          {t('groupBy')}
-        </label>
-        <select
-          id={`${id}-group`}
-          value={state.groupBy ?? ''}
-          onChange={(e) => update({ groupBy: (e.target.value || null) as GroupBy | null })}
-          className="min-w-0 field py-1.5 focus-visible:outline-2"
-        >
-          <option value="">{t('groupNone')}</option>
-          <option value="brand">{t('groupBrand')}</option>
-          <option value="category">{t('groupCategory')}</option>
-        </select>
+        {grouping && (
+          <>
+            <label htmlFor={`${id}-group`} className="text-xs font-medium text-ink-2">
+              {t('groupBy')}
+            </label>
+            <select
+              id={`${id}-group`}
+              value={state.groupBy ?? ''}
+              onChange={(e) => update({ groupBy: (e.target.value || null) as GroupBy | null })}
+              className="min-w-0 field py-1.5 focus-visible:outline-2"
+            >
+              <option value="">{t('groupNone')}</option>
+              <option value="brand">{t('groupBrand')}</option>
+              <option value="category">{t('groupCategory')}</option>
+            </select>
+          </>
+        )}
         {tools}
       </div>
     </div>

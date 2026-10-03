@@ -74,3 +74,21 @@ export function pick(s: CompareState, side: 'base' | 'other', id: string): Compa
   if (id && id === s[flip]) return { ...s, [side]: id, [flip]: s[side] };
   return { ...s, [side]: id };
 }
+
+/** The most rows the API lists at once; the Overlap page asks for all of them, biggest gap first. */
+export const OVERLAP_LIMIT = 500;
+
+/**
+ * Every product sold at both shops with a price at each, reviewed or not: `rows=overlap` is the
+ * only query that sends an unreviewed pair's gap. The summary stays reviewed-only either way.
+ */
+export function toOverlapQuery(s: Pick<CompareState, 'base' | 'other' | 'brand' | 'category'>): CompareQuery {
+  return {
+    retailers: `${s.base},${s.other}`,
+    ...(s.brand.length ? { brand: s.brand } : {}),
+    ...(s.category.length ? { category: s.category } : {}),
+    rows: 'overlap',
+    sort: 'gap',
+    limit: OVERLAP_LIMIT,
+  };
+}
