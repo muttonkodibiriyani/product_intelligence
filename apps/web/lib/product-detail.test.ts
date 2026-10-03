@@ -92,6 +92,14 @@ describe('whyMissing', () => {
       reason: 'notCollected',
     });
     expect(whyMissing('size', sparse, [], { sizes: false })?.state).toBe('notMeasured');
+    expect(whyMissing('shades', sparse, [], { shades: false })).toEqual({
+      state: 'notMeasured',
+      reason: 'notCollected',
+    });
+    // A published 0 is still the retailer's answer, collected or not.
+    expect(whyMissing('shades', { ...full, shadeCount: 0 }, [], { shades: false })?.reason).toBe(
+      'noShadeRange',
+    );
   });
 });
 

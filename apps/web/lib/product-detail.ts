@@ -66,7 +66,10 @@ export function whyMissing(
     case 'shades':
       // A count the retailer published, 0 included; 0 means the listing has no shade range.
       if (o.shadeCount === 0) return { state: 'none', reason: 'noShadeRange' };
-      return o.shadeCount !== null ? null : { state: 'notPublished', reason: 'noShades' };
+      if (o.shadeCount !== null) return null;
+      return caps?.shades === false
+        ? { state: 'notMeasured', reason: 'notCollected' }
+        : { state: 'notPublished', reason: 'noShades' };
     case 'sku':
       return o.sku ? null : { state: 'notPublished', reason: 'noSku' };
   }
