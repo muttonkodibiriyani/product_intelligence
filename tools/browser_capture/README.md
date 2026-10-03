@@ -141,7 +141,7 @@ inside the job image:
 
 ```sh
 docker run --rm --network host --ipc=host --init -v "$PWD/tools:/work:ro" \
-  -e PYTHONPATH=/work/page_capture:/work/browser_capture \
+  -e PYTHONPATH=/work/page_capture:/work/browser_capture:/work/browser_capture/tests \
   -e CHROMIUM_ARGS='--no-sandbox --disable-dev-shm-usage --single-process --no-zygote' \
   pi-browser-capture:dev sh -c "pip install -q pytest && cd /work/browser_capture && \
   python -m pytest tests/test_browser_pw_live.py -q"

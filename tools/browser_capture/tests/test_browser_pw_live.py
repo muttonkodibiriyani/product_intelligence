@@ -14,13 +14,13 @@ import os
 import time
 from collections.abc import Iterator
 
+import localsite
 import pytest
+from localsite import OTHER, STORE, Handler, Site
 
 from browser_capture import policy
 from browser_capture.pw import PlaywrightSession
 from browser_capture.session import TransportError, Visit
-from tests import localsite
-from tests.localsite import OTHER, STORE, Handler, Site
 
 pytestmark = pytest.mark.browser
 
