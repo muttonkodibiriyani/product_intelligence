@@ -473,7 +473,7 @@ describe("search_products v3 (size cap)", () => {
       nextCursor: "c",
     });
 
-  it("fits a full worst-case page under MAX_RESULT_CHARS and drops each card's matches", async () => {
+  it("fits a full worst-case page under MAX_RESULT_CHARS and slims each card's matches", async () => {
     const api = new FakeApi(() => page(MAX_LIMIT));
     const result = (await registry(api).run(
       "search_products",
@@ -486,8 +486,37 @@ describe("search_products v3 (size cap)", () => {
     const items = (result.data as { items: Record<string, unknown>[] }).items;
     expect(items).toHaveLength(MAX_LIMIT);
     expect(items[0]).not.toHaveProperty("matches");
+    expect(items[0]?.unconfirmedMatch).toBe(false);
     expect(items[0]).toHaveProperty("gap");
     expect(items[0]).toHaveProperty("prices");
+  });
+
+  it.each([
+    ["exact and approved or locked", [{ reviewState: "locked" }, {}], 2, false],
+    ["one proposed edge", [{}, { reviewState: "proposed" }], 2, true],
+    ["one rejected edge", [{ reviewState: "rejected" }], 2, true],
+    ["an approved family edge", [{ matchClass: "family" }], 2, true],
+    ["an approved size_normalized edge", [{ matchClass: "size_normalized" }], 2, true],
+    ["several retailers priced with no edge", [], 2, true],
+    ["one retailer priced with no edge", [], 1, false],
+  ])("flags unconfirmedMatch for %s", async (_label, edges, priced, expected) => {
+    const item = {
+      ...card(0),
+      prices: Object.fromEntries(RETAILERS.slice(0, priced).map((r) => [r, aed("10.00")])),
+      matches: edges.map((edge) => ({
+        a: "north",
+        b: "south",
+        confidence: null,
+        matchClass: "exact",
+        reviewState: "approved",
+        ...edge,
+      })),
+    };
+    const api = new FakeApi(() => okEnvelope({ items: [item], total: 1, nextCursor: null }));
+    const result = (await registry(api).run("search_products", {}, VIEWER, "t")) as ToolEnvelope;
+    const [out] = (result.data as { items: Record<string, unknown>[] }).items;
+    expect(out?.unconfirmedMatch).toBe(expected);
+    expect(out).not.toHaveProperty("matches");
   });
 
   it("caps limit at 15 and defaults to 10", () => {

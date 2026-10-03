@@ -82,13 +82,33 @@ const noIdsWithFilters = (value: {
 }) => !(value.ids && (value.brand || value.category));
 const NO_IDS_WITH_FILTERS = { message: "use either ids or brand/category filters, not both" };
 
-function withoutMatches(data: unknown): unknown {
+/** The match states the metrics layer counts in a gap (pi_metrics compare.COUNTED_STATES). */
+const CONFIRMED_STATES: ReadonlySet<unknown> = new Set(["approved", "locked"]);
+
+function confirmedEdge(edge: unknown): boolean {
+  if (typeof edge !== "object" || edge === null) return false;
+  const { matchClass, reviewState } = edge as Record<string, unknown>;
+  return matchClass === "exact" && CONFIRMED_STATES.has(reviewState);
+}
+
+/**
+ * Replaces each card's match list with `unconfirmedMatch`: true when any edge in the product
+ * group is not exact and approved/locked, or when several retailers are priced with no edge. The
+ * card's per-retailer prices are then not a like-for-like comparison.
+ */
+function slimCards(data: unknown): unknown {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return data;
   const record = data as Record<string, unknown>;
   if (!Array.isArray(record.items)) return data;
   const items = record.items.map((item: unknown) => {
     if (typeof item !== "object" || item === null || Array.isArray(item)) return item;
-    return Object.fromEntries(Object.entries(item).filter(([key]) => key !== "matches"));
+    const { matches, ...card } = item as Record<string, unknown>;
+    const edges: unknown[] = Array.isArray(matches) ? matches : [];
+    const prices = card.prices;
+    const priced = typeof prices === "object" && prices !== null ? Object.keys(prices).length : 0;
+    const unconfirmedMatch =
+      edges.some((edge) => !confirmedEdge(edge)) || (edges.length === 0 && priced > 1);
+    return { ...card, unconfirmedMatch };
   });
   return { ...record, items };
 }
@@ -100,7 +120,9 @@ export const searchProducts = defineTool({
     "Find products by text (English or Arabic), brand, category, retailer ids, match state and " +
     "price range (decimal text in the dataset currency). Returns product cards with the latest " +
     "price at each retailer and, with exactly two retailers, the gap (the first is the base). " +
-    "Use it to find product ids for get_product (match details), compare or reviews_summary.",
+    "If unconfirmedMatch is true, never compare its retailers' prices (not a confirmed same " +
+    "product). Use it to find product ids for get_product (match details), compare or " +
+    "reviews_summary.",
   minRole: "viewer",
   input: z
     .object({
@@ -115,8 +137,9 @@ export const searchProducts = defineTool({
     })
     .strict(),
   request: (input) => get("/products", input),
-  // Each card's match list is dropped (get_product has it) so a full page fits the size cap.
-  view: (data) => ({ data: withoutMatches(data) }),
+  // Each card's match list becomes one flag (get_product has the list) so a full page fits the
+  // size cap.
+  view: (data) => ({ data: slimCards(data) }),
 });
 
 /** Products scanned per price_per_unit call (the API's page maximum). */
