@@ -958,6 +958,10 @@ def offer_content(  # noqa: PLR0913 - the offer plus the three lookups it may ne
             u for i in content.images if (u := evidence_url(i, ctx.retailer, images)) is not None
         )
     image_state = _state(ContentField.IMAGES in captured, bool(urls))
+    if content is not None and content.images and not urls:
+        # The page has a gallery, but no URL is on a host the API serves: that is not a
+        # gallery the retailer withheld, so it reads not captured (Reviewer, #199).
+        image_state = ContentState.NOT_CAPTURED
     source = ImageSource.PAGE if urls else None
     if not urls and gallery is not None and offer.sku is not None:
         found = gallery(ctx.retailer, offer.sku)

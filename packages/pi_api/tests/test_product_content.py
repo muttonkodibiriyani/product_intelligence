@@ -20,7 +20,7 @@ API = "/api/v1"
 HOSTS = {"shop_a": frozenset({"media.example"}), "shop_b": frozenset({"img.example"})}
 GTIN = "4006381333931"
 ALL = ["description", "ingredients", "images", "shade", "gtin"]
-OLD_V3 = Path(__file__).parent / "data" / "v3-main-66bc083.json"
+OLD_V3 = Path(__file__).parent / "fixtures" / "v3-main-66bc083.json"
 
 
 def base() -> dict[str, Any]:
@@ -118,6 +118,18 @@ def test_a_sparse_offer_tells_not_published_from_not_captured(tmp_path: Path) ->
     }
     assert content["description"]["text"] is None
     assert content["images"] == {"state": "not_published", "source": None, "items": []}
+
+
+def test_a_gallery_with_no_url_on_an_allowed_host_reads_not_captured(tmp_path: Path) -> None:
+    doc = full_doc()
+    offer(doc, "p01", "shop_b")["content"] = {
+        "captured": ["images"],
+        "images": ["https://evil.example/p01-1.jpg", "https://cdn.other.example/p01-2.jpg"],
+    }
+    content = contents(client_for(tmp_path, doc))["shop_b"]
+    # The page had a gallery the API can't serve: not withheld by the retailer, so never
+    # not_published.
+    assert content["images"] == {"state": "not_captured", "source": None, "items": []}
 
 
 def test_a_v3_snapshot_from_before_content_still_serves_not_captured(tmp_path: Path) -> None:
