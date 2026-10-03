@@ -67,7 +67,7 @@ export function forPair<T extends { retailer: string }>(
 }
 
 /** The first API version that serves GET /api/v1/insights (#231). */
-export const INSIGHTS_API = '1.17.0';
+export const INSIGHTS_API = '1.18.0';
 
 /** Is a dotted API version at least `min`? Numeric per part, so 1.17.0 > 1.9.9. */
 export function apiAtLeast(version: string, min: string): boolean {

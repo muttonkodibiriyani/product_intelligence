@@ -28,6 +28,7 @@ import {
 import { navHref } from '@/lib/nav';
 import { PairPicker } from '../compare/pair-picker';
 import { useAuth } from '../auth-provider';
+import { ApiError } from '@/lib/api/client';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
 import { Card, CardGrid } from '../ui/card';
@@ -80,7 +81,7 @@ export function InsightsView() {
     setPending({ at: search, state: target });
     router.push(pathname + toCompareSearch(target), { scroll: false });
   };
-  // An API older than 1.17.0 has no /insights: say so, and ask it nothing.
+  // An API older than INSIGHTS_API has no /insights: say so, and ask it nothing.
   const served = insightsServed(meta.data);
   const ready = hasComparePair(state) && served === true;
   const retailers = `${state.base},${state.other}`;
@@ -105,6 +106,9 @@ export function InsightsView() {
     enabled: !!api && ready,
   });
 
+  // A 404 from /insights means the route is not deployed whatever /meta says: the same honest
+  // "not available yet", never an error card.
+  const missing = q.error instanceof ApiError && q.error.status === 404;
   const env = q.data;
   return (
     <section aria-labelledby="insights-title" className="space-y-5">
@@ -114,7 +118,7 @@ export function InsightsView() {
         intro={t('intro')}
         asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
       />
-      {served && <PairPicker state={state} update={update} fixed={fixed} grouping={false} />}
+      {served && !missing && <PairPicker state={state} update={update} fixed={fixed} grouping={false} />}
       {served === false ? (
         <div role="note" className="panel px-5 py-6 text-sm text-ink-2">
           {t('unavailable', { need: INSIGHTS_API, have: meta.data!.meta.apiVersion })}
@@ -127,6 +131,10 @@ export function InsightsView() {
             {t('loading')}
           </Loading>
         )
+      ) : missing ? (
+        <div role="note" className="panel px-5 py-6 text-sm text-ink-2">
+          {t('unavailableRoute')}
+        </div>
       ) : !ready ? (
         <div className="panel px-5 py-6 text-sm text-ink-2">{t('pickPair')}</div>
       ) : q.isError ? (

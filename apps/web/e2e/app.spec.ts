@@ -7,6 +7,7 @@ import {
   mockBackend,
   noHorizontalScroll,
   openMenu,
+  servingMeta,
   signIn,
   signOut,
   test,
@@ -15,7 +16,8 @@ import {
 import { summaryNoPromo } from './summary-fixture';
 import type { Page } from '@playwright/test';
 
-const meta = golden('meta') as { data: { dates: string[] } };
+// From an API that serves every page, so the full nav (Insights included) is listed.
+const meta = servingMeta(golden('meta') as { data: { dates: string[] } });
 const ok = { onApi: withSummary((r) => r.fulfill({ json: meta })) };
 // One collection day: not enough for Launches.
 const oneDay = { ...meta, data: { ...meta.data, dates: meta.data.dates.slice(0, 1) } };

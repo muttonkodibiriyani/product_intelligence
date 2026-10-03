@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/client';
 import { golden } from '@/lib/api/golden';
 import type { Envelope, Schemas } from '@/lib/api/types';
 import type { Insights } from '@/lib/insights';
@@ -104,14 +105,16 @@ const rich: Env = {
 let answers: Record<string, unknown> = {};
 let search = '';
 let status: Record<string, string> = { shop_a: 'supported', shop_b: 'partial' };
-let apiVersion = '1.17.0';
+let apiVersion = '1.18.0';
 const asked: string[] = [];
 vi.mock('../auth-provider', () => ({
   useAuth: () => ({
     api: {
       get: async (path: string) => {
         asked.push(path);
-        return answers[path];
+        const a = answers[path];
+        if (a instanceof Error) throw a;
+        return a;
       },
     },
   }),
@@ -278,12 +281,27 @@ describe('InsightsView', () => {
     asked.length = 0;
     view(rich);
     await screen.findByText(
-      'Insights is not available yet: it needs data service version 1.17.0 or later, and this site runs 1.16.0. Nothing is shown until the service is updated.',
+      'Insights is not available yet: it needs data service version 1.18.0 or later, and this site runs 1.16.0. Nothing is shown until the service is updated.',
     );
     expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0);
     expect(screen.queryByRole('combobox')).toBeNull();
     await new Promise((r) => setTimeout(r, 50));
     expect(asked).toEqual([]);
-    apiVersion = '1.17.0';
+    apiVersion = '1.18.0';
+  });
+
+  it('/insights answers 404 (route not deployed): the honest "not available yet", never an error card', async () => {
+    view(rich, 'en', { '/api/v1/insights': new ApiError('not_found', 404) });
+    await screen.findByText(
+      'Insights is not available yet: the data service does not serve it. Nothing is shown until the service is updated.',
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0);
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('any other /insights failure still shows the error card', async () => {
+    view(rich, 'en', { '/api/v1/insights': new ApiError('internal_error', 500) });
+    expect(await screen.findByRole('alert')).toBeTruthy();
   });
 });

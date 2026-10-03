@@ -6,9 +6,13 @@ pi-api image goes to the existing Artifact Registry repo and Cloud Run service (
 Hosting is the existing site. **Run it only after both PRs are merged to main** and the
 Coordinator marks `<MAIN_SHA>` releasable.
 
-Order matters: **API first, then Hosting.** The page calls `/api/v1/insights`; a Hosting release
-before the API answers would show the error card on every visit (no wrong numbers, but broken).
-The rest of the site does not depend on this order: the old pages call nothing new.
+Order: **API first, then Hosting.** The page reads `meta.apiVersion` from `/api/v1/meta`. On an
+API older than the one that serves Insights, the nav does not list Insights. The page itself shows
+only "Insights is not available yet", with no card and no number, and sends no request to
+`/insights`, `/compare` or `/assortment-gaps`. If `/meta` reports 1.18.0 but `/insights` answers
+404 (the route is not deployed), the page shows the same honest "not available yet", never an
+error card. So a Hosting-first release is safe but empty. The
+rest of the site does not depend on this order: the old pages call nothing new.
 
 ```sh
 PROJECT=productintelligence-beeb3
@@ -31,7 +35,7 @@ git fetch origin && git checkout --detach "$MAIN_SHA"
    Anything other than #231, #234 and their rebases ships too. Send the list to the Coordinator
    and go on only once the owner accepts it.
 3. **Contract.** `grep -o '"apiVersion": "[^"]*"' docs/contracts/golden/pi-api/insights.json`
-   prints `1.17.0` (or later, if a later PR bumped it). `apps/web/lib/api/schema.gen.ts` is
+   prints `1.18.0` (or later, if a later PR bumped it). `apps/web/lib/api/schema.gen.ts` is
    generated from the same commit (CI `check:api` proved it).
 
 ## 2. API: image-only redeploy of pi-api
@@ -52,7 +56,7 @@ Never pass `--set-env-vars` here (it would replace the evidence and image host m
 
 - Unauthenticated `curl -si https://$PROJECT.web.app/api/v1/insights?retailers=sephora_me,ulta_ae`
   → `401`, `Cache-Control: private, no-store`.
-- Signed in, the same URL → `200`, `meta.apiVersion` `1.17.0`, `meta.endpoint` `insights`.
+- Signed in, the same URL → `200`, `meta.apiVersion` `1.18.0`, `meta.endpoint` `insights`.
   `data.pricing.status` is `not_enough_data` with `matches_unreviewed` until reviewed exact edges
   are in the published dataset; that is the expected state, not a failure.
 - Signed in, `GET /api/v1/meta` still `200` (the rest of the API is unchanged).

@@ -1,9 +1,18 @@
 import type { Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, openNav, signIn, test } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  noHorizontalScroll,
+  openNav,
+  servingMeta,
+  signIn,
+  test,
+} from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-const meta = golden('meta') as Json;
+const meta = servingMeta(golden('meta') as Json);
 const compare = golden('compare') as Json;
 const gaps = golden('assortment-gaps') as Json;
 const base = golden('insights') as Json;
@@ -26,6 +35,13 @@ const meta116 = { ...meta, meta: { ...meta.meta, apiVersion: '1.16.0' } };
 async function api116(route: Route) {
   const p = new URL(route.request().url()).pathname;
   if (p === '/api/v1/meta') return route.fulfill({ json: meta116 });
+  return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+}
+
+// API with the new version on /meta, but /insights not deployed (404): honest, never an error card.
+async function apiNoRoute(route: Route) {
+  const p = new URL(route.request().url()).pathname;
+  if (p === '/api/v1/meta') return route.fulfill({ json: meta });
   return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
 }
 
@@ -58,6 +74,7 @@ for (const locale of ['en', 'ar'] as const) {
           stock: 'Balmain في Shop B: 113 قائمة مرصودة نافدة من المخزون من بين 113 قائمة مرصودة في آخر رصد.',
           promo: 'افتح العروض',
           unavailable: /الرؤى غير متاحة بعد/,
+          noRoute: 'الرؤى غير متاحة بعد: خدمة البيانات لا تقدّمها. لن يُعرض شيء حتى تُحدَّث الخدمة.',
         }
       : {
           nav: 'Insights',
@@ -74,6 +91,8 @@ for (const locale of ['en', 'ar'] as const) {
             'Balmain at Shop B: 113 observed out-of-stock listings among 113 observed listings in the latest crawl.',
           promo: 'Open Promotions',
           unavailable: /^Insights is not available yet/,
+          noRoute:
+            'Insights is not available yet: the data service does not serve it. Nothing is shown until the service is updated.',
         };
 
   test.describe(`${locale} insights`, () => {
@@ -122,6 +141,19 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
       const paths = mock.api.map((r) => new URL(r.url).pathname);
       expect(paths.filter((p) => /\/(insights|compare|assortment-gaps)$/.test(p))).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('/insights answers 404: the honest "not available yet", no error card, no card', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, { onApi: apiNoRoute });
+      await signIn(page, locale);
+      await page.goto(`/app/${locale}/insights/`);
+      await expect(page.getByText(T.noRoute)).toBeVisible();
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
+      await expect(page.getByRole('combobox')).toHaveCount(0);
       expect(mock.errors).toEqual([]);
     });
   });
