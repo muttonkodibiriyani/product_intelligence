@@ -156,9 +156,7 @@ def test_csv_compare_flattens_money_and_keeps_signed_numbers(client: Client) -> 
     assert uncounted
     assert "gap" not in table[0]
     assert all(r["gap.amount.currency"] == "AED" for r in counted)
-    assert all(r["excludedReason"] for r in uncounted)
-    # an uncounted row keeps a gap only as /compare's overlap reading (API 1.17.0)
-    assert all(r["gap.pct"] == "" for r in uncounted if r["excludedReason"] != "match_unreviewed")
+    assert all(r["gap.pct"] == "" and r["excludedReason"] for r in uncounted)
     assert any(r["gap.pct"].startswith("-") for r in counted)
     assert not any(r["gap.pct"].startswith("'") for r in counted)
 
