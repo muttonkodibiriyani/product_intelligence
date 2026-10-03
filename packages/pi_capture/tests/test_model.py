@@ -68,7 +68,15 @@ def test_values_round_trip_exactly(value: JsonValue) -> None:
     assert decode_value(encode_value(value)) == value
 
 
-@given(readings(), st.datetimes(timezones=st.timezones()))
+@given(
+    readings(),
+    # Hypothesis takes naive bounds and attaches the drawn zone itself.
+    st.datetimes(
+        min_value=datetime(2000, 1, 1),  # noqa: DTZ001
+        max_value=datetime(2100, 1, 1),  # noqa: DTZ001
+        timezones=st.timezones(),
+    ),
+)
 def test_capture_round_trip(
     make_capture: Callable[..., ProductCapture], reading: Reading, when: datetime
 ) -> None:
@@ -271,3 +279,10 @@ def test_capture_from_json_defaults_capture_state(
     del data["readings"]
     assert capture_from_json(data).capture_state == "ok"
     assert isinstance(capture_from_json(data), ProductCapture)
+
+
+def test_a_capture_time_that_cannot_be_held_in_utc_is_refused(
+    make_capture: Callable[..., ProductCapture],
+) -> None:
+    with pytest.raises(ReadingError, match="outside the range"):
+        make_capture(retrieved_at=datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=5))))
