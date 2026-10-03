@@ -71,6 +71,37 @@ describe('PromotionsView', () => {
     expect(screen.queryByRole('note')).toBeNull();
   });
 
+  it('an API 1.16 answer without 1.17 visual fields still renders only its measured facts', async () => {
+    const legacy = {
+      ...measured,
+      data: {
+        ...measured.data!,
+        items: measured.data!.items.map((row) => {
+          const item: Partial<Item> = { ...row };
+          delete item.brand;
+          delete item.category;
+          delete item.saved;
+          delete item.image;
+          return item;
+        }),
+        retailers: measured.data!.retailers.map((row) => {
+          const retailer: Partial<Schemas['RetailerPromo']> = { ...row };
+          delete retailer.bands;
+          delete retailer.groups;
+          return retailer;
+        }),
+      },
+    } as unknown as Env;
+
+    view(legacy, 'retailer=shop_a');
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts at Shop A' });
+    expect(screen.getByText('Product p05')).toBeTruthy();
+    expect(screen.getAllByText('−33.3%').length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain('Fixture Beauty');
+    expect(document.body.textContent).not.toContain('undefined');
+    expect(document.body.textContent).not.toContain('NaN');
+  });
+
   it('the heading names no shop when the user picked none, even if every row is one shop’s', async () => {
     view(measured);
     await screen.findByRole('heading', { level: 2, name: 'Deepest discounts' });
