@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
@@ -604,6 +604,15 @@ class _Emitter:
         self, key: str, raw: str, path: str, note: str, *, currency: str | None = None
     ) -> None:
         self._emit(Reading(key, get(key).level, "parse_failed", raw, None, path, note, currency))
+
+    def not_shown(self, key: str, note: str) -> None:
+        """Record that the page is known not to carry ``key`` (unless something already read it)."""
+        self._emit(Reading(key, get(key).level, "not_shown", None, None, None, note))
+
+    def extend(self, readings: Iterable[Reading]) -> None:
+        """Take readings from another extractor; a key already read here keeps its reading."""
+        for r in readings:
+            self._emit(r)
 
     def _emit(self, reading: Reading) -> None:
         if reading.key in self._keys:
