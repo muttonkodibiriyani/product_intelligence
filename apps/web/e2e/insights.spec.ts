@@ -119,9 +119,8 @@ for (const locale of ['en', 'ar'] as const) {
       await mockBackend(page, { onApi: api });
       await signIn(page, locale);
       await page.goto(`/app/${locale}/insights/`);
-      const card = page
-        .locator('main section')
-        .filter({ has: page.getByRole('heading', { name: T.cards[3] }) });
+      // The card is the heading's nearest section (the page itself is a section too).
+      const card = page.getByRole('heading', { name: T.cards[3] }).locator('xpath=ancestor::section[1]');
       await expect(card.getByRole('link', { name: T.promo })).toHaveAttribute(
         'href',
         new RegExp(`/${locale}/promotions/$`),
@@ -136,6 +135,7 @@ for (const locale of ['en', 'ar'] as const) {
       await signIn(page, locale);
       await expect(page.getByRole('navigation').first()).toBeVisible();
       await expect(page.getByRole('link', { name: T.nav, exact: true })).toHaveCount(0);
+      mock.api.length = 0; // the Overview's own calls (it asks /compare) are not Insights'
       await page.goto(`/app/${locale}/insights/`);
       await expect(page.getByText(T.unavailable)).toBeVisible();
       await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
@@ -151,7 +151,8 @@ for (const locale of ['en', 'ar'] as const) {
       await signIn(page, locale);
       await page.goto(`/app/${locale}/insights/`);
       await expect(page.getByText(T.noRoute)).toBeVisible();
-      await expect(page.getByRole('alert')).toHaveCount(0);
+      // Inside main: Next's route announcer is a role=alert outside it.
+      await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);
       await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
       await expect(page.getByRole('combobox')).toHaveCount(0);
       expect(mock.errors).toEqual([]);
