@@ -299,6 +299,14 @@
     "blocked": "محجوب",
     "unknown": "غير معروف"
   },
+  "channel": {
+    "online": "عبر الإنترنت",
+    "marketplace": "سوق إلكتروني",
+    "delivery": "تطبيق توصيل",
+    "pickup": "استلام من المتجر",
+    "dine_in_evidenced": "داخل المتجر",
+    "offline_audit": "تدقيق في المتجر"
+  },
   "product": {
     "missingId": "لم يُحدَّد منتج. افتح منتجًا من القائمة.",
     "loading": "جارٍ تحميل المنتج…",
@@ -344,7 +352,34 @@
     "backCompare": "العودة إلى المقارنة",
     "backPromotions": "العودة إلى العروض",
     "backLaunches": "العودة إلى المنتجات الجديدة",
-    "noImage": "لا صورة"
+    "noImage": "لا صورة",
+    "groupPrice": "السعر",
+    "groupListing": "بيانات العرض",
+    "lastSeen": "آخر رصد",
+    "sheetCaption": "عرض كل متجر لهذا المنتج، جنبًا إلى جنب",
+    "channel": "يُباع عبر",
+    "productId": "معرّف المنتج",
+    "pairSizes": "الحجمان: {base} و{other}",
+    "state": {
+      "notPublished": "غير منشور",
+      "notMeasured": "غير مُقاس",
+      "none": "لا يوجد"
+    },
+    "why": {
+      "noPrice": "لا سعر في صفحة المنتج في هذا التاريخ.",
+      "noRegular": "لا تعرض الصفحة سعرًا عاديًا.",
+      "wasPriceUnverified": "أسعار ما قبل الخصم لدى هذا المتجر غير موثّقة.",
+      "priceUnderReview": "سعر هذا العرض قيد المراجعة.",
+      "needsPrice": "لا سعر يُحسب منه.",
+      "needsRegular": "لا سعر عادي للمقارنة به.",
+      "atRegular": "يُباع بالسعر العادي.",
+      "notCollected": "غير مُجمَّع لهذا المتجر.",
+      "noRating": "لا تعرض الصفحة تقييمًا.",
+      "noSize": "لا تعرض الصفحة حجمًا.",
+      "noShadeRange": "لا توجد درجات لونية لهذا المنتج.",
+      "noShades": "لا تعرض الصفحة عدد الدرجات.",
+      "noSku": "لا تعرض الصفحة رمز المنتج."
+    }
   },
   "compare": {
     "title": "المقارنة",
