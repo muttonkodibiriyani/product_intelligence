@@ -112,6 +112,14 @@ FLANKER_WORDS = frozenset(
     }
 )  # fmt: skip
 #: The retailers' own labels: their products are never another retailer's.
+#: Words of the form patterns: dropped from a name only to compare the line under two forms.
+FORM_WORDS = frozenset(
+    {
+        "after", "aftershave", "antiperspirant", "bath", "body", "butter", "candle", "cream",
+        "deo", "deodorant", "dry", "fragrance", "gel", "hair", "lotion", "milk", "mist",
+        "moisture", "oil", "perfume", "shave", "shower", "soap", "spray", "wash",
+    }
+)  # fmt: skip
 OWN_BRANDS = frozenset({"sephora collection", "sephora favorites", "faces", "ulta beauty"})
 #: A sized item joined to another by "x" or "+" ("100ml x 50ml", "50ml + 100ml") is a set.
 _BUNDLE_RE = re.compile(r"\d\s*(?:ml|g)\s*(?:x|\+)\s*\S", re.IGNORECASE)
@@ -450,6 +458,13 @@ def name_tokens(name: str, brand_key: str = "") -> frozenset[str]:
         and token not in brand_words
         and not re.fullmatch(r"\d+(\.\d+)?", token)
     )
+
+
+def line_numbers(name: str, shade_code: str | None = None) -> frozenset[str]:
+    """Bare numbers that name a line (N°5, 212, The Only One 2), not sizes, SPF or the shade."""
+    text = re.sub(r"(?i)\bspf\s*\d+", " ", _SIZE_RE.sub(" ", name))
+    found = {n.replace(",", ".") for n in _NUMBER_RE.findall(fold(text))}
+    return frozenset(found - {shade_code} if shade_code else found)
 
 
 def valid_gtin(gtin: str | None) -> str | None:

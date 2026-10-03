@@ -22,6 +22,7 @@ from difflib import SequenceMatcher
 from pi_match.model import BrandOverlap, Bucket, MatchPair, ProductRecord, UnitPrice
 from pi_match.normalise import (
     FLANKER_WORDS,
+    FORM_WORDS,
     OWN_BRANDS,
     Concentration,
     Form,
@@ -34,6 +35,7 @@ from pi_match.normalise import (
     is_listed,
     is_set_url,
     item_kind,
+    line_numbers,
     name_tokens,
     normalise_brand,
     parse_shade,
@@ -46,6 +48,8 @@ _SLUG_LUMPED = frozenset({Concentration.PARFUM, Concentration.EDP})
 EXACT_MIN = Decimal("0.85")
 PROBABLE_MIN = Decimal("0.70")
 CANDIDATE_MIN = Decimal("0.50")
+#: A same-brand pair a hard rule keeps apart is "related" (a substitute) at this name score.
+RELATED_MIN = Decimal("0.85")
 _SCORE_Q = Decimal("0.0001")
 _BUCKET_RANK = {Bucket.EXACT: 0, Bucket.PROBABLE: 1, Bucket.CANDIDATE: 2}
 
@@ -66,6 +70,10 @@ class Prepared:
     #: Evidence that disagrees with itself (the name says EDT, the URL says EDP; the name says
     #: 50 ml, the size field 100 ml). Such a listing is never exact until a human looks.
     flags: tuple[str, ...] = ()
+    #: The concentration was read from the URL slug, the name has none.
+    concentration_from_url: bool = False
+    #: Line numbers in the name (``line_numbers``).
+    numbers: frozenset[str] = frozenset()
 
 
 def prepare(record: ProductRecord) -> Prepared:
@@ -99,6 +107,7 @@ def prepare(record: ProductRecord) -> Prepared:
         and any(not size.same_as(s) for s in find_sizes(record.name))
     ):
         flags.append("name_size_conflict")
+    shade = parse_shade(record.shade)
     kind = item_kind(record.name)
     if kind is ItemKind.REGULAR:
         kind = ItemKind.SET if is_set_url(record.url) else item_kind(slug)
@@ -107,12 +116,14 @@ def prepare(record: ProductRecord) -> Prepared:
         brand_key=brand_key,
         tokens=name_tokens(record.name, brand_key),
         size=size,
-        shade=parse_shade(record.shade),
+        shade=shade,
         concentration=conc if conc is not None else slug_conc,
         kind=kind,
         gtin=valid_gtin(record.gtin),
         form=shape if shape is not None else slug_shape,
         flags=tuple(flags),
+        concentration_from_url=conc is None and slug_conc is not None,
+        numbers=line_numbers(record.name, None if shade is None else shade.code),
     )
 
 
@@ -148,9 +159,26 @@ def markers(tokens: frozenset[str]) -> frozenset[str]:
     return frozenset(t for t in tokens if t in FLANKER_WORDS or t.startswith("spf"))
 
 
-def _rule_conflicts(left: Prepared, right: Prepared) -> tuple[str, ...]:
-    """Hard-rule conflicts: a different item kind, form, flanker or SPF, or two known
-    concentrations that differ."""
+def concentration_relation(left: Prepared, right: Prepared) -> str:
+    """ "same", "differs", or "unknown": missing on a side, or EDP read from a URL slug (which
+    files parfums under eau de parfum) against a stated Parfum."""
+    lc, rc = left.concentration, right.concentration
+    if lc is None or rc is None:
+        return "unknown"
+    if lc is rc:
+        return "same"
+    from_url = left.concentration_from_url or right.concentration_from_url
+    return "unknown" if from_url and {lc, rc} <= _SLUG_LUMPED else "differs"
+
+
+def numbers_clash(left: Prepared, right: Prepared) -> bool:
+    """Both names carry line numbers and they differ (N°5 vs N°19): different products."""
+    return bool(left.numbers and right.numbers and left.numbers != right.numbers)
+
+
+def rule_conflicts(left: Prepared, right: Prepared) -> tuple[str, ...]:
+    """Hard-rule conflicts: a different item kind, form, flanker or SPF, line number on one side
+    only, or two known concentrations that differ."""
     conflicts: list[str] = []
     if left.kind is not right.kind:
         conflicts.append("kind_differs")
@@ -158,11 +186,9 @@ def _rule_conflicts(left: Prepared, right: Prepared) -> tuple[str, ...]:
         conflicts.append("form_differs")
     if markers(left.tokens) != markers(right.tokens):
         conflicts.append("flanker_differs")
-    if (
-        left.concentration is not None
-        and right.concentration is not None
-        and left.concentration is not right.concentration
-    ):
+    if left.numbers != right.numbers:
+        conflicts.append("number_differs")
+    if concentration_relation(left, right) == "differs":
         conflicts.append("concentration_differs")
     return tuple(conflicts)
 
@@ -183,7 +209,7 @@ def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[
     concentration, size and shade agree. A conflict keeps the pair as ``candidate`` with
     ``gtin_conflict`` so a reviewer sees it, rather than trusting either signal.
     """
-    if left.brand_key in OWN_BRANDS or right.brand_key in OWN_BRANDS:
+    if left.brand_key in OWN_BRANDS or right.brand_key in OWN_BRANDS or numbers_clash(left, right):
         return None
     reasons: list[str] = [f"brand={left.brand_key}"]
     gtin_equal = False
@@ -192,7 +218,7 @@ def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[
             return None
         gtin_equal = True
     score = name_score(left.tokens, right.tokens)
-    conflicts = list(_rule_conflicts(left, right))
+    conflicts = list(rule_conflicts(left, right))
     if not gtin_equal and (conflicts or score < CANDIDATE_MIN):
         return None
     reasons.append(f"name={score}")
@@ -200,7 +226,9 @@ def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[
         reasons.append(f"kind={left.kind.value}")
     if left.concentration is not None and left.concentration is right.concentration:
         reasons.append(f"concentration={left.concentration.value}")
-    one_side = (left.concentration is None) != (right.concentration is None)
+    one_side = concentration_relation(left, right) == "unknown" and (
+        left.concentration is not None or right.concentration is not None
+    )
     if one_side:
         reasons.append("concentration_unknown_one_side")
     size = _size_relation(left.size, right.size)
@@ -224,6 +252,33 @@ def score_pair(left: Prepared, right: Prepared) -> tuple[Bucket, Decimal, tuple[
         # itself needs a human: neither is ever exact.
         bucket = Bucket.PROBABLE
     return bucket, score, tuple(reasons)
+
+
+def _core(tokens: frozenset[str]) -> frozenset[str]:
+    return frozenset(t for t in tokens if t not in FORM_WORDS) - markers(tokens)
+
+
+def related_pair(left: Prepared, right: Prepared) -> tuple[Decimal, tuple[str, ...]] | None:
+    """Score and reasons when only a rule keeps a strong same-brand pair apart, else None.
+
+    The same line in another form, flanker, item kind or concentration (Libre EDP vs Libre Le
+    Parfum, a set vs its single) is a substitute: listed side by side, never price-compared.
+    """
+    if left.brand_key in OWN_BRANDS or right.brand_key in OWN_BRANDS or numbers_clash(left, right):
+        return None
+    if left.gtin is not None and right.gtin is not None:
+        return None  # equal GTINs are score_pair's; unequal ones are different products
+    lm, rm = markers(left.tokens), markers(right.tokens)
+    if not (lm <= rm or rm <= lm):
+        return None  # sibling flankers (Eau Tendre vs Eau Vive) are other scents, not stand-ins
+    conflicts = rule_conflicts(left, right)
+    # The words that make them different products (Intense, Body Mist) do not count against
+    # the line; what is left must still be the same name.
+    lc, rc = _core(left.tokens), _core(right.tokens)
+    score = name_score(lc, rc) if lc and rc else Decimal(0)
+    if not conflicts or score < RELATED_MIN:
+        return None
+    return score, (f"brand={left.brand_key}", f"name={score}", "related_only", *conflicts)
 
 
 def unit_price(item: Prepared) -> UnitPrice | None:
