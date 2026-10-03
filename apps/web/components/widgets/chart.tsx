@@ -204,9 +204,9 @@ export function Chart({
       chart.current?.dispose();
       chart.current = null;
     };
-    // Rebuilt from scratch when the data changes: the charts are small.
+    // Rebuilt from scratch when the data or its label changes: the charts are small.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, label]);
 
   // LTR box: an inherited rtl direction flips SVG text-anchor and misplaces axis labels. The
   // options mirror the layout for Arabic instead, and the tooltip sets its own direction.
