@@ -46,7 +46,7 @@ exporter prints the written bytes by group (`prices`, `attributes`,
 `description+ingredients`, summing to the total) and refuses, writing nothing, above the budget.
 There is no override flag.
 
-v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
+By default v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
 value captured on any other day is published as `null`, never carried forward (contract rule 6),
 and `meta.fields.price` / `regular` / `stock` say `partial`. Stock has its own capture time (the
 newest row that observed a stock state, carried as `stock_*` like `price_*`), separate from the
@@ -54,6 +54,20 @@ price capture. An offer's evidence is its price
 capture when the price is published, else its stock observation. Ulta's `blocked` status and window
 come from the owner's statement (`--ulta-blocked-since` and the notes), not from whether Ulta rows
 exist; pass `--ulta-unblocked` once Ulta is collected again.
+
+`--history` (with `--output-v2` or `--output-v3`; not with `--ulta-early-fixture`) builds a
+multi-date v2 instead (`history.py`). It reads every succeeded or partial en-AE run per retailer,
+files each observation under its Dubai market day (`Asia/Dubai`, so 21:30Z is the next day, never
+the UTC date) and lists in `meta.dates` every day that has rows. Each day's offer values come from
+that day's observations only; a day without an observation is `null`, never carried forward, and
+no date is added that has no rows. A day is *complete* for a retailer only when every one of its
+contexts had a `succeeded` run that started and ended on that market day on a context marked
+`coverage_status = supported`; every other date gets a `notObserved` window ("not collected" or
+"incomplete"), so a product missing on a partial or blocked day is neither a removal nor a launch.
+A retailer with a complete day is `supported` from its first complete day (`since`); one without
+keeps its snapshot status. `capabilities.history` is true only with at least 2 dates. Product ids,
+names and pairing come from each listing's latest row through the snapshot's own grouping, so ids
+match the single-day export. Without `--history` the output is unchanged.
 
 For the pilot, ulta.ae is blocked (owner decision, 2026-09-30): the Ulta status line is
 `--ulta-blocked-note` / `--ulta-blocked-note-ar`, defaulting to "ulta.ae: blocked by site security
