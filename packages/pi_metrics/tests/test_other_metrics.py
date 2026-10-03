@@ -17,7 +17,7 @@ from metrics_fixture import (
     with_fields,
 )
 from pi_core import AvailabilityState
-from pi_dataset import Dataset, FieldStatus
+from pi_dataset import Dataset, FieldStatus, RetailerStatus
 from pi_metrics import (
     EVERYTHING,
     GapLabel,
@@ -102,6 +102,45 @@ def test_promo_bands_and_groups_count_every_promotion_before_the_depth_filter(ds
             ("brand", "Sample Labs", 3, 1, None),
             ("category", "skincare", 6, 3, Decimal(50)),
         ]
+
+
+def test_promo_group_shares_stay_withheld_for_partial_and_small_cohorts(ds: Dataset) -> None:
+    retailers = tuple(
+        r.model_copy(update={"status": RetailerStatus.PARTIAL}) if r.id == A else r
+        for r in ds.meta.retailers
+    )
+    partial = promotions(rebuild(ds, retailers=retailers), (A,), EVERYTHING).data.retailers[0]
+    assert partial.reason is Reason.RETAILER_PARTIAL
+    assert partial.groups
+    # The category has n=6, so this catches a missing context-level `measured` guard.
+    assert all(group.share is None for group in partial.groups)
+
+    small = promotions(ds, (A,), ProductFilter(ids=("p05",))).data.retailers[0]
+    assert small.reason is Reason.COHORT_TOO_SMALL
+    assert small.groups
+    assert all(group.share is None for group in small.groups)
+
+
+def test_promo_groups_are_capped_at_eight_per_kind(ds: Dataset) -> None:
+    template = next(product for product in ds.products if product.id == "p05")
+    extras = tuple(
+        template.model_copy(
+            update={
+                "id": f"promo-group-{n:02d}",
+                "brand": f"Brand {n:02d}",
+                "category": (f"category-{n:02d}",),
+            }
+        )
+        for n in range(10)
+    )
+    wide = Dataset.model_validate(
+        ds.model_copy(update={"products": (*ds.products, *extras)}).model_dump()
+    )
+    groups = promotions(wide, (A,), EVERYTHING).data.retailers[0].groups
+    brands = [group.key for group in groups if group.kind == "brand"]
+    categories = [group.key for group in groups if group.kind == "category"]
+    assert brands == ["Fixture Beauty", *(f"Brand {n:02d}" for n in range(7))]
+    assert categories == ["skincare", *(f"category-{n:02d}" for n in range(7))]
 
 
 @pytest.mark.parametrize(
