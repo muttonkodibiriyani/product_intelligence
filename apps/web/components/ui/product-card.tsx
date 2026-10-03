@@ -22,6 +22,8 @@ export type PriceLine = {
   priceFlag?: Priced['priceFlag'];
   /** The regular price the shop showed before the discount, struck through (promotions). */
   was?: MoneyValue | null;
+  /** The exact amount saved, shown only when the API supplied it (promotions). */
+  saved?: MoneyValue | null;
   /** The discount depth as the API wrote it ("37.5"), shown as −37.5%. */
   off?: string | null;
   /** The shop does not sell this product: the line reads "Not sold". */
@@ -49,6 +51,7 @@ const TONE: Record<ChipTone, string> = {
 export function ProductCard({
   href,
   image,
+  imageRetailer,
   brand,
   name,
   size,
@@ -59,6 +62,8 @@ export function ProductCard({
 }: {
   href: string;
   image?: string | null;
+  /** A single-retailer card must bind its image to that retailer's exact allowlisted host. */
+  imageRetailer?: string;
   /** The brand; a list the API sends without one (promotions) has no brand line and no monogram. */
   brand?: string | null;
   name: string;
@@ -79,6 +84,7 @@ export function ProductCard({
           url={image}
           label={t('noImage')}
           monogram={brand ? monogram(brand) : undefined}
+          retailer={imageRetailer}
           px={320}
           cls="aspect-square w-full rounded-none p-3"
         />
@@ -181,6 +187,11 @@ function LinePrice({ line }: { line: PriceLine }) {
           <span className="sr-only">{t('was')} </span>
           <Money m={line.was} locale={locale} />
         </s>
+      )}
+      {line.saved && (
+        <span className="text-xs font-semibold text-ink-2">
+          {t('save')} <Money m={line.saved} locale={locale} />
+        </span>
       )}
       {line.off && (
         <span className="verdict verdict-good">
