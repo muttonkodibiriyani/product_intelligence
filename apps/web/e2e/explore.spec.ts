@@ -79,6 +79,7 @@ for (const locale of ['en', 'ar'] as const) {
         more: /اعرض \d+ أخرى/,
         restarted: 'تحدّثت البيانات أثناء التصفح',
         empty: 'لا منتجات تطابق عوامل التصفية هذه.',
+        unreviewed: 'مطابقة غير مُراجَعة',
         gap: 'الفرق',
         swap: 'بدّل الأساس',
         sort: 'الترتيب',
@@ -108,6 +109,7 @@ for (const locale of ['en', 'ar'] as const) {
         more: /Show \d+ more/,
         restarted: 'The data was updated while you browsed',
         empty: 'No products match these filters.',
+        unreviewed: 'Unreviewed match',
         gap: 'Gap',
         swap: 'Swap base',
         sort: 'Sort',
@@ -352,6 +354,7 @@ for (const locale of ['en', 'ar'] as const) {
     for (const [host, url] of [
       ['img-product.sephora.me', IMG],
       ['media.alshaya.com', IMG_ULTA],
+      ['www.faces.ae', 'https://www.faces.ae/media/catalog/product/cache/1/image/f1.jpg'],
     ] as const)
       test(`product page: the ${host} image beside the name; a failing one is a placeholder`, async ({
         page,
@@ -405,6 +408,32 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.locator('main')).not.toContainText(/(^|[^\d])0\.0[01]([^\d]|$)/);
     });
 
+    test('an unreviewed match is labelled on its card and its row, with the reason on focus', async ({
+      page,
+    }) => {
+      // The golden predates API 1.16.0: one product gets an unreviewed match, one a reviewed one.
+      const items = (products.data.items as Json[]).map((c, i) => ({
+        ...c,
+        matchReview: i === 0 ? 'unreviewed' : i === 1 ? 'reviewed' : null,
+      }));
+      const page1 = { ...products, data: { ...products.data, items } };
+      await mockBackend(page, { onApi: api({ products: () => page1 }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/explore/`);
+      const [first, second] = [cards(page).nth(0), cards(page).nth(1)];
+      await expect(first.getByText(T.unreviewed)).toBeVisible();
+      await expect(second.getByText(T.unreviewed)).toHaveCount(0);
+      await expect(page.getByText(T.unreviewed)).toHaveCount(1);
+      // Keyboard: the label is reachable and shows its explanation.
+      const trigger = first.locator('[aria-describedby]', { hasText: T.unreviewed });
+      await trigger.focus();
+      await expect(first.getByRole('tooltip')).toBeVisible();
+      await noHorizontalScroll(page);
+      await asList(page);
+      await expect(page.getByRole('row').nth(1).getByText(T.unreviewed)).toBeVisible();
+      await expect(page.getByText(T.unreviewed)).toHaveCount(1);
+    });
+
     test('no results: says so plainly', async ({ page }) => {
       await mockBackend(page, { onApi: api({ products: () => emptyPage }) });
       await signedIn(page, locale);
@@ -412,6 +441,17 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(T.empty)).toBeVisible();
       await expect(page.getByRole('table')).toHaveCount(0);
       await expect(page.getByRole('list', { name: T.results })).toHaveCount(0);
+    });
+
+    test('product page: an unreviewed match is labelled under the name', async ({ page }) => {
+      const p = clone(product);
+      p.data.card.matchReview = 'unreviewed';
+      await mockBackend(page, { onApi: api({ product: p }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/product/?id=${p.data.card.id}`);
+      await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
+      await expect(page.getByText(T.unreviewed)).toHaveCount(1);
+      await expect(page.getByText(T.unreviewed)).toBeVisible();
     });
 
     test('product page: offers with evidence, gaps, history; back keeps the filters', async ({ page }) => {
