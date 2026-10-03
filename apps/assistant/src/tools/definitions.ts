@@ -475,6 +475,13 @@ export const categoryCompare = defineTool({
   },
 });
 
+/**
+ * Row cap for price_suggestions. A row carries both sides, the match and the rationale (about
+ * 900 characters sanitised), so 20 rows already exceed MAX_RESULT_CHARS; 10 leave room for long
+ * product names. Suggestions come first, so the cut keeps them.
+ */
+export const SUGGESTION_ROWS = 10;
+
 export const priceSuggestions = defineTool({
   name: "price_suggestions",
   version: "1",
@@ -496,7 +503,7 @@ export const priceSuggestions = defineTool({
       aim: z.enum(["beat", "match"]).default("beat"),
       maxChangePct: money.optional(),
       minChangePct: money.optional(),
-      limit: rowLimit,
+      limit: z.number().int().min(1).max(SUGGESTION_ROWS).default(SUGGESTION_ROWS),
     })
     .strict()
     // One refinement, so the contract test can still reach the object shape.

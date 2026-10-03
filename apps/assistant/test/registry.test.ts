@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { verifyAnswerNumbers } from "../src/guard/verifier.js";
-import { TOOLS } from "../src/tools/definitions.js";
+import { readFileSync } from "node:fs";
+
+import { SUGGESTION_ROWS, TOOLS } from "../src/tools/definitions.js";
 import { MAX_RESULT_CHARS, ToolRegistry, type ToolEnvelope } from "../src/tools/registry.js";
 import { type AnyToolDef, callerRole, defineTool } from "../src/tools/types.js";
 import { z } from "zod";
@@ -506,7 +508,7 @@ describe("price_suggestions (API 1.13.0)", () => {
         id: ["p03", "p09"],
         aim: ["beat"],
         maxChangePct: ["8"],
-        limit: ["25"],
+        limit: ["10"],
       },
     });
     expect(result.status).toBe("ok");
@@ -529,5 +531,30 @@ describe("price_suggestions (API 1.13.0)", () => {
     expect(tool?.input.safeParse({ ...pair, maxChangePct: 10 }).success).toBe(false);
     expect(tool?.input.safeParse({ ...pair, aim: "raise" }).success).toBe(false);
     expect(tool?.input.safeParse({ ...pair, aim: "match" }).success).toBe(true);
+  });
+
+  it("keeps a full page of golden rows with long names under MAX_RESULT_CHARS", async () => {
+    const golden = JSON.parse(
+      readFileSync(
+        new URL("../../../docs/contracts/golden/pi-api/price-suggestions.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { data: { rows: Record<string, unknown>[] } };
+    const rows = golden.data.rows;
+    golden.data.rows = Array.from({ length: SUGGESTION_ROWS }, (_, i) => ({
+      ...rows[i % rows.length],
+      id: `p${String(i)}`,
+      name: "N".repeat(120),
+      brand: "B".repeat(60),
+    }));
+    const api = new FakeApi(() => golden);
+    const result = (await registry(api).run(
+      "price_suggestions",
+      { subject: "north", rival: "south" },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(result.status).toBe("ok");
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
   });
 });
