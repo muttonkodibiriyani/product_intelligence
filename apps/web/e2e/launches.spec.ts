@@ -190,6 +190,8 @@ for (const locale of ['en', 'ar'] as const) {
       await signIn(page, locale);
       const link = await navLink(page, T.nav);
       await expect(link).not.toContainText(T.soon);
+      // The Overview asks /launches per shop for its band; the page's own call comes after these.
+      const before = calls(mock).length;
       await link.click();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/launches/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
@@ -206,7 +208,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(rows.first().locator('time')).toHaveAttribute('datetime', '2026-09-29');
       await expect(rows.last()).toContainText('Product p09');
       // 30 days back from the cutoff day (30 Sep), that day included.
-      const first = calls(mock)[0]!;
+      const first = calls(mock)[before]!;
       expect([...first.searchParams.keys()].sort()).toEqual(['limit', 'since']);
       expect(first.searchParams.get('since')).toBe('2026-09-01');
       expect(first.searchParams.get('limit')).toBe('100');
