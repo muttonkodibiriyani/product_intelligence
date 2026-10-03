@@ -10,7 +10,7 @@ import widgetsAr from '@/messages/widgets.ar.json';
 import widgetsEn from '@/messages/widgets.en.json';
 import { retailerColor } from '../ui/retailer-dot';
 import type { PairState } from '../widgets/use-compare';
-import { CategoryHeadToHead } from './category-head-to-head';
+import { CategoryHeadToHead, rankBuckets } from './category-head-to-head';
 
 const en = { ...pagesEn, widgets: widgetsEn };
 const ar = { ...pagesAr, widgets: widgetsAr };
@@ -20,7 +20,7 @@ const pair = {
   name: (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id,
 };
 
-const ready = (): PairState<CategoryCompare> => {
+const ready = (): Extract<PairState<CategoryCompare>, { kind: 'ready' }> => {
   const body = categoryCompareBody('shop_a', 'shop_b', THIN);
   const env = { ...body, data: parseCategoryCompare(body.data) } as unknown as Envelope<CategoryCompare>;
   return { kind: 'ready', data: env.data!, env };
@@ -39,43 +39,50 @@ function show(state: PairState<CategoryCompare>, locale: 'en' | 'ar' = 'en') {
 afterEach(cleanup);
 
 describe('CategoryHeadToHead', () => {
-  it('one row per bucket, the medians as sent, the gap bar toward the cheaper side', () => {
+  it('the title is the finding, from the API’s own cheaper verdicts; the method is a tooltip', () => {
+    show(ready());
+    // Shop B is cheaper in 5 of the 8 compared buckets (concealer is too few, eyes the same).
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Shop B cheaper in 5 of 8 categories' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Where each shop is cheaper')).toBeTruthy();
+    const tip = screen.getByRole('tooltip').textContent!;
+    expect(tip).toMatch(/^Bars are product counts/);
+    expect(tip).toContain('A side needs at least 5 priced products');
+    expect(tip).toContain('Not yet in a category: 301 products.');
+    expect(tip).toContain('Prices in AED.');
+    // No foot paragraph of prose under the table.
+    expect(document.querySelectorAll('section p')).toHaveLength(1); // the meta line only
+    expect(screen.getByRole('link', { name: 'Open prices' }).getAttribute('href')).toMatch(/\/prices\/?$/);
+  });
+
+  it('one row per bucket, widest gap first, the medians and counts as sent, the gap bar toward the cheaper side', () => {
     const { row } = show(ready());
-    expect(screen.getByRole('heading', { level: 2, name: 'Where each shop is cheaper' })).toBeTruthy();
-    expect(screen.getAllByRole('rowheader')).toHaveLength(9);
+    const heads = screen.getAllByRole('rowheader').map((h) => h.textContent);
+    expect(heads).toHaveLength(9);
+    // Body carries the widest gap, so it leads; too few (Concealer) sits last.
+    expect(heads[0]).toBe('Body');
+    expect(heads[8]).toBe('Concealer');
     const fragrance = row('Fragrance');
     expect(fragrance.textContent).toContain('420.00');
     expect(fragrance.textContent).toContain('395.00');
     expect(fragrance.textContent).toContain('-6.0%');
+    expect(fragrance.textContent).toContain('n = 2,586');
     // Shop B (other) is cheaper: the fill runs toward the start in Shop B's colour (the same table
-    // its dot uses), and says so.
+    // its dot uses); the chip names it for screen readers.
     const fill = fragrance.querySelector('.gapbar i')!;
     expect(fill.getAttribute('data-shop')).toBe('shop_b');
     expect(fill.getAttribute('data-at')).toBe('start');
     expect(fill.getAttribute('style')).toContain(`background: ${retailerColor('shop_b', 1)}`);
-    expect(fragrance.textContent).toContain('Shop B cheaper');
+    expect(within(fragrance).getByText('Shop B cheaper')).toBeTruthy();
     const lips = row('Lips');
     expect(lips.textContent).toContain('+7.4%');
     expect(lips.querySelector('.gapbar i')?.getAttribute('data-shop')).toBe('shop_a');
     expect(lips.querySelector('.gapbar i')?.getAttribute('data-at')).toBe('end');
-    expect(lips.querySelector('.gapbar i')?.getAttribute('style')).toContain(
-      `background: ${retailerColor('shop_a', 0)}`,
-    );
-    expect(lips.textContent).toContain('Shop A cheaper');
     // No value judgement: the fill is never the good or bad tone.
     expect(document.querySelector('[data-side], .text-good, .text-bad')).toBeNull();
     // Body has the widest gap on the table (concealer is too few), so its fill takes the whole half.
     expect(row('Body').querySelector('.gapbar i')?.getAttribute('style')).toContain('width: 50%');
-  });
-
-  it('the foot names the minimum and the unmapped count in the right number, in both languages', () => {
-    show(ready());
-    expect(screen.getByText(/A side needs at least 5 priced products/)).toBeTruthy();
-    expect(screen.getByText(/Not yet in a category: 301 products\./)).toBeTruthy();
-    cleanup();
-    show(ready(), 'ar');
-    expect(screen.getByText(/يحتاج كل طرف إلى 5 منتجات مسعّرة على الأقل/)).toBeTruthy();
-    expect(screen.getByText(/لم تُصنَّف بعد: 301 منتج\./)).toBeTruthy();
   });
 
   it('a bucket the API calls the same is "same", not a tiny gap', () => {
@@ -95,7 +102,7 @@ describe('CategoryHeadToHead', () => {
   });
 
   it('a side the API left out is "not available", never a count of 0 or too few (n = 0)', () => {
-    const r = ready() as Extract<PairState<CategoryCompare>, { kind: 'ready' }>;
+    const r = ready();
     const buckets = r.data.buckets.map((b) =>
       b.key === 'cheek'
         ? { ...b, sides: { shop_a: b.sides.shop_a! }, status: 'too_few' as const, gapPct: null }
@@ -105,30 +112,56 @@ describe('CategoryHeadToHead', () => {
     const cheek = row('Cheek');
     expect(cheek.textContent).toContain('not available');
     expect(cheek.textContent).not.toContain('n = 0');
-    expect(cheek.textContent).not.toMatch(/Shop B\s*0/);
-    expect(cheek.querySelectorAll('td:nth-child(2) i')).toHaveLength(1);
+    expect(cheek.textContent).not.toMatch(/Shop B\s*n/);
     expect(cheek.textContent).not.toContain('%');
   });
 
-  it('counts sit behind the bars for screen readers, both shops named', () => {
-    const { row } = show(ready());
-    const fragrance = row('Fragrance');
-    expect(within(fragrance).getByText('Shop A', { exact: false })).toBeTruthy();
-    expect(fragrance.textContent).toMatch(/Shop A\s*\d/);
+  it('a tie and an all-same read say so in the title', () => {
+    const r = ready();
+    // The 8 ok buckets split 4/4 (concealer stays too few).
+    let k = 0;
+    const tie = r.data.buckets.map((b) =>
+      b.status === 'ok'
+        ? { ...b, cheaper: k++ < 4 ? 'shop_a' : 'shop_b', gapPct: k <= 4 ? '5.0' : '-5.0' }
+        : b,
+    );
+    show({ ...r, data: { ...r.data, buckets: tie } });
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
+      'Shop A and Shop B each cheaper in 4 of 8 categories',
+    );
+    cleanup();
+    const same = r.data.buckets.map((b) =>
+      b.status === 'ok' ? { ...b, cheaper: 'same', gapPct: '0.0' } : b,
+    );
+    show({ ...r, data: { ...r.data, buckets: same } });
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Same median in all 8 categories');
   });
 
-  it('empty and error states say so without a number', () => {
+  it('empty and error states say so without a number, under the plain title', () => {
     show({ kind: 'empty', env: null });
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Where each shop is cheaper');
     expect(screen.getByRole('note').textContent).toContain('Category comparison is not available yet.');
+    expect(screen.queryByRole('tooltip')).toBeNull();
     cleanup();
     show({ kind: 'error', error: new Error('x'), retry: () => {} });
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByRole('button', { name: /retry|try again/i })).toBeTruthy();
   });
 
-  it('in Arabic', () => {
+  it('in Arabic, with Latin digits', () => {
     const { row } = show(ready(), 'ar');
-    expect(screen.getByRole('heading', { level: 2, name: 'أين يكون كل متجر أرخص' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Shop B أرخص في 5 من 8 فئات' })).toBeTruthy();
     expect(row('العطور').textContent).toContain('395.00');
+    expect(screen.getByRole('tooltip').textContent).toContain('يحتاج كل طرف إلى 5 منتجات مسعّرة على الأقل');
+    expect(document.body.textContent).not.toMatch(/[٠-٩]/);
+  });
+});
+
+describe('rankBuckets', () => {
+  it('widest gap first, rows without a gap after in the API’s order', () => {
+    const keys = rankBuckets(ready().data.buckets).map((b) => `${b.key}:${b.gapPct ?? '-'}`);
+    const gaps = keys.filter((k) => !k.endsWith(':-')).map((k) => Math.abs(Number(k.split(':')[1])));
+    expect(gaps).toEqual([...gaps].sort((a, b) => b - a));
+    expect(keys[keys.length - 1]).toBe('concealer:-');
   });
 });

@@ -92,6 +92,11 @@ const HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,6
 export function loadChatEnv(env: Env): ChatEnv {
   deployProject(env);
   const apiBaseUrl = required(env, ENV.apiBaseUrl, /^https:\/\/[^\s/?#]+(?:\/[^\s?#]*)?$/);
+  // The tools add /api/v1 themselves. A base that already ends in it doubled the path and every
+  // tool got a 404 (2026-10-03); the client now tolerates it, but the deploy setting is wrong.
+  if (/\/api\/v1\/*$/i.test(new URL(apiBaseUrl).pathname)) {
+    throw new DeployConfigError(`${ENV.apiBaseUrl} must not end in /api/v1 (the tools add it)`);
+  }
   const vertexLocation = required(env, ENV.vertexLocation, /^[a-z]+(?:-[a-z]+)*\d*$/);
   // Exact hosts, comma-separated (no wildcards, schemes or paths); same list as pi_api's.
   const evidenceHosts = required(env, ENV.evidenceHosts, /^\S+$/).split(",");

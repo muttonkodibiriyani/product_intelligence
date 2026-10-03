@@ -68,6 +68,7 @@ for (const locale of ['en', 'ar'] as const) {
           brands: 'تموضع أسعار العلامات التجارية',
           top5: 'أكبر 5',
           gapHist: 'توزيع فروق الأسعار',
+          gapLabel: 'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقات.',
           nPairs: 'n = 6 أزواج قابلة للمقارنة',
           // Arabic percentages carry LRM marks (50‎%‎); the retailer names stay as the API sent them.
           gapTakeaway:
@@ -97,6 +98,7 @@ for (const locale of ['en', 'ar'] as const) {
           brands: 'Brand price positioning',
           top5: 'Top 5',
           gapHist: 'Spread of price gaps',
+          gapLabel: 'Matched pairs per price-gap band, 11 bands.',
           nPairs: 'n = 6 comparable pairs',
           gapTakeaway:
             'Shop B is dearer on 50% of 6 matched pairs and cheaper on 33.3%; 16.7% sit in the band around zero.',
@@ -235,9 +237,12 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(card).toContainText(T.nPairs);
       // Golden compare: of the 6 pairs, 3 sit in bands above zero, 2 below, 1 in the band astride it.
       await expect(card.locator('[data-takeaway]')).toHaveText(T.gapTakeaway);
-      // ECharts' aria module replaces the label with its own data description once it renders.
+      // ECharts' aria module would replace the label with its own English data description; the
+      // chart's translated label stays, once the chart has drawn too.
       const chart = card.locator('[data-chart]');
       await expect(chart).toHaveAttribute('role', 'img');
+      await expect(chart.locator('svg')).toHaveCount(1);
+      await expect(chart).toHaveAttribute('aria-label', T.gapLabel);
       // One y-axis label per served band: 11 (zero bands included), each in the visible text.
       const bands = chart.locator('svg text').filter({ hasText: '%' });
       await expect(bands).toHaveCount(11);

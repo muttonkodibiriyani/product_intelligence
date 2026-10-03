@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
+import { icons } from '@/lib/favicon';
 import '../globals.css';
 
-export const metadata = { title: 'Product Intelligence', robots: { index: false, follow: false } };
+export const metadata = { title: 'Product Intelligence', robots: { index: false, follow: false }, icons };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

@@ -403,7 +403,12 @@ export function BrandShareWidget({
   locale,
   height,
   onPick,
-}: Props<Measured<'brandPrice'>> & { priced: number }) {
+  quiet = false,
+}: Props<Measured<'brandPrice'>> & {
+  priced: number;
+  /** Without the widget's own headline: the card above it already states the finding. */
+  quiet?: boolean;
+}) {
   const t = useTranslations('widgets.share');
   const tw = useTranslations('widgets');
   const drill = useDrill(onPick);
@@ -413,7 +418,7 @@ export function BrandShareWidget({
   const last = rows[rows.length - 1];
   return (
     <>
-      {last && (
+      {last && !quiet && (
         <p className="mb-2 text-sm">
           {t.rich('headline', {
             k: rows.length,
