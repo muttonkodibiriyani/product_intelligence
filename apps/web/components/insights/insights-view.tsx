@@ -14,6 +14,8 @@ import {
   BRANDS_SHOWN,
   deepestUndercut,
   forPair,
+  INSIGHTS_API,
+  insightsServed,
   gapScale,
   POLICY_ORDER,
   policyColumns,
@@ -78,7 +80,9 @@ export function InsightsView() {
     setPending({ at: search, state: target });
     router.push(pathname + toCompareSearch(target), { scroll: false });
   };
-  const ready = hasComparePair(state);
+  // An API older than 1.17.0 has no /insights: say so, and ask it nothing.
+  const served = insightsServed(meta.data);
+  const ready = hasComparePair(state) && served === true;
   const retailers = `${state.base},${state.other}`;
 
   const q = useQuery({
@@ -110,8 +114,20 @@ export function InsightsView() {
         intro={t('intro')}
         asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
       />
-      <PairPicker state={state} update={update} fixed={fixed} grouping={false} />
-      {!ready ? (
+      {served && <PairPicker state={state} update={update} fixed={fixed} grouping={false} />}
+      {served === false ? (
+        <div role="note" className="panel px-5 py-6 text-sm text-ink-2">
+          {t('unavailable', { need: INSIGHTS_API, have: meta.data!.meta.apiVersion })}
+        </div>
+      ) : served === undefined ? (
+        meta.isError ? (
+          <ErrorNotice error={meta.error} onRetry={() => void meta.refetch()} />
+        ) : (
+          <Loading kind="table" rows={6}>
+            {t('loading')}
+          </Loading>
+        )
+      ) : !ready ? (
         <div className="panel px-5 py-6 text-sm text-ink-2">{t('pickPair')}</div>
       ) : q.isError ? (
         <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />

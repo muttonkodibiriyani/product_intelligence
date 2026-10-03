@@ -65,3 +65,25 @@ export function forPair<T extends { retailer: string }>(
 ): T[] {
   return [base, other].flatMap((id) => rows.filter((r) => r.retailer === id));
 }
+
+/** The first API version that serves GET /api/v1/insights (#231). */
+export const INSIGHTS_API = '1.17.0';
+
+/** Is a dotted API version at least `min`? Numeric per part, so 1.17.0 > 1.9.9. */
+export function apiAtLeast(version: string, min: string): boolean {
+  const a = version.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const d = (a[i] ?? 0) - (b[i] ?? 0);
+    if (Number.isNaN(d)) return false;
+    if (d !== 0) return d > 0;
+  }
+  return true;
+}
+
+/**
+ * Does the live API serve Insights? Read from /meta's apiVersion, which every response carries, so
+ * the page never has to call a route an older API lacks. Undefined until /meta has answered.
+ */
+export const insightsServed = (meta: { meta: { apiVersion: string } } | undefined): boolean | undefined =>
+  meta ? apiAtLeast(meta.meta.apiVersion, INSIGHTS_API) : undefined;

@@ -20,6 +20,15 @@ const insights = {
   },
 };
 
+// The live API before #231: every response says 1.16.0, and /insights does not exist.
+const meta116 = { ...meta, meta: { ...meta.meta, apiVersion: '1.16.0' } };
+
+async function api116(route: Route) {
+  const p = new URL(route.request().url()).pathname;
+  if (p === '/api/v1/meta') return route.fulfill({ json: meta116 });
+  return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+}
+
 async function api(route: Route) {
   const p = new URL(route.request().url()).pathname;
   const json = {
@@ -48,6 +57,7 @@ for (const locale of ['en', 'ar'] as const) {
           ],
           stock: 'Balmain في Shop B: 113 قائمة مرصودة نافدة من المخزون من بين 113 قائمة مرصودة في آخر رصد.',
           promo: 'افتح العروض',
+          unavailable: /الرؤى غير متاحة بعد/,
         }
       : {
           nav: 'Insights',
@@ -63,6 +73,7 @@ for (const locale of ['en', 'ar'] as const) {
           stock:
             'Balmain at Shop B: 113 observed out-of-stock listings among 113 observed listings in the latest crawl.',
           promo: 'Open Promotions',
+          unavailable: /^Insights is not available yet/,
         };
 
   test.describe(`${locale} insights`, () => {
@@ -97,6 +108,21 @@ for (const locale of ['en', 'ar'] as const) {
         new RegExp(`/${locale}/promotions/$`),
       );
       await expect(card).not.toContainText(/\d/);
+    });
+
+    test('an API without /insights (1.16.0): no nav entry; the page says so and requests nothing', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, { onApi: api116 });
+      await signIn(page, locale);
+      await expect(page.getByRole('navigation').first()).toBeVisible();
+      await expect(page.getByRole('link', { name: T.nav, exact: true })).toHaveCount(0);
+      await page.goto(`/app/${locale}/insights/`);
+      await expect(page.getByText(T.unavailable)).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
+      const paths = mock.api.map((r) => new URL(r.url).pathname);
+      expect(paths.filter((p) => /\/(insights|compare|assortment-gaps)$/.test(p))).toEqual([]);
+      expect(mock.errors).toEqual([]);
     });
   });
 }

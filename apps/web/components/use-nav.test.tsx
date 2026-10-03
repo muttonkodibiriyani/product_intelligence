@@ -81,6 +81,17 @@ describe('useNav', () => {
       error: null,
     };
     const listed = keys();
-    expect(listed).toEqual(['overview', 'compare', 'insights', 'launches', 'dataset', 'assistant']);
+    expect(listed).toEqual(['overview', 'compare', 'launches', 'dataset', 'assistant']);
+  });
+
+  it('lists Insights only when /meta comes from an API that serves it (1.17.0+)', () => {
+    ctx.summaries = { rows: [], loading: true, error: null };
+    const meta = golden('meta') as Envelope<Schemas['MetaView']>;
+    ctx.meta = { data: { ...meta, meta: { ...meta.meta, apiVersion: '1.16.0' } } };
+    expect(keys()).not.toContain('insights');
+    cleanup();
+    ctx.meta = { data: { ...meta, meta: { ...meta.meta, apiVersion: '1.17.0' } } };
+    expect(keys()).toContain('insights');
+    ctx.meta = { data: undefined };
   });
 });

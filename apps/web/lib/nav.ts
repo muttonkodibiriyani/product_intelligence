@@ -66,13 +66,16 @@ export interface NavSignals {
    * from /meta); false while any shop is short of them.
    */
   launchesReady?: boolean;
+  /** /meta's apiVersion serves /api/v1/insights (`lib/insights.ts`); undefined until /meta answers. */
+  insightsServed?: boolean;
 }
 
 export type NavState = 'shown' | 'hidden' | 'soon';
 
 /**
- * Overview, Compare, Insights, Dataset and the assistant always show (each carries its own empty
- * state).
+ * Overview, Compare, Dataset and the assistant always show (Compare carries its own empty state).
+ * Insights shows only once /meta says the API serves it: an older API has no /insights route, so
+ * the page stays out of the nav (not "soon") until then, and while /meta is unknown.
  * Products and Prices need a retailer with priced products; Promotions a retailer whose discounts
  * are measured. Launches stays reachable but reads "soon" until every retailer has the collection
  * days a launch needs. While a signal is unknown (still loading, or the request failed) the page
@@ -85,6 +88,8 @@ export function navState(key: NavKey, s: NavSignals): NavState {
       return s.priced === undefined || s.priced.some((n) => (n ?? 0) > 0) ? 'shown' : 'hidden';
     case 'promotions':
       return s.promoMeasured === false ? 'hidden' : 'shown';
+    case 'insights':
+      return s.insightsServed === true ? 'shown' : 'hidden';
     case 'launches':
       return s.launchesReady === false ? 'soon' : 'shown';
     default:

@@ -27,8 +27,14 @@ describe('nav routes', () => {
 });
 
 describe('navState', () => {
-  it('shows every page while nothing is known yet', () => {
-    for (const k of NAV_KEYS) expect(navState(k, {})).toBe('shown');
+  it('shows every page but Insights while nothing is known yet', () => {
+    for (const k of NAV_KEYS) expect(navState(k, {})).toBe(k === 'insights' ? 'hidden' : 'shown');
+  });
+
+  it('Insights shows only once /meta says the API serves it', () => {
+    expect(navState('insights', { insightsServed: true })).toBe('shown');
+    expect(navState('insights', { insightsServed: false })).toBe('hidden');
+    expect(navState('insights', {})).toBe('hidden');
   });
 
   it('Overview, Compare, Dataset and the assistant always show', () => {

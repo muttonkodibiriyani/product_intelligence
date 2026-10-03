@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   allObservedOut,
+  apiAtLeast,
+  insightsServed,
   barPct,
   deepestUndercut,
   forPair,
@@ -70,5 +72,19 @@ describe('insights helpers', () => {
   it('keeps only the pair, in pair order, whatever order the API sent', () => {
     const rows = [{ retailer: 'c' }, { retailer: 'b' }, { retailer: 'a' }];
     expect(forPair(rows, 'a', 'b').map((r) => r.retailer)).toEqual(['a', 'b']);
+  });
+
+  it('compares API versions per number, not as text', () => {
+    expect(apiAtLeast('1.17.0', '1.17.0')).toBe(true);
+    expect(apiAtLeast('1.16.0', '1.17.0')).toBe(false);
+    expect(apiAtLeast('1.9.9', '1.17.0')).toBe(false);
+    expect(apiAtLeast('2.0', '1.17.0')).toBe(true);
+    expect(apiAtLeast('garbage', '1.17.0')).toBe(false);
+  });
+
+  it('Insights is served from API 1.17.0; unknown until /meta answers', () => {
+    expect(insightsServed({ meta: { apiVersion: '1.16.0' } })).toBe(false);
+    expect(insightsServed({ meta: { apiVersion: '1.17.0' } })).toBe(true);
+    expect(insightsServed(undefined)).toBeUndefined();
   });
 });

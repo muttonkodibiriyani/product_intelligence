@@ -104,8 +104,17 @@ const rich: Env = {
 let answers: Record<string, unknown> = {};
 let search = '';
 let status: Record<string, string> = { shop_a: 'supported', shop_b: 'partial' };
+let apiVersion = '1.17.0';
+const asked: string[] = [];
 vi.mock('../auth-provider', () => ({
-  useAuth: () => ({ api: { get: async (path: string) => answers[path] } }),
+  useAuth: () => ({
+    api: {
+      get: async (path: string) => {
+        asked.push(path);
+        return answers[path];
+      },
+    },
+  }),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -116,6 +125,7 @@ vi.mock('../use-meta', () => ({
   useRetailerName: () => (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id,
   useMeta: () => ({
     data: {
+      meta: { apiVersion },
       data: {
         retailers: Object.entries(status).map(([id, s]) => ({ id, name: id, status: s })),
       },
@@ -261,5 +271,19 @@ describe('InsightsView', () => {
       ),
     ).toBeTruthy();
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(6);
+  });
+
+  it('API 1.16.0 (no /insights): says so and asks the API nothing, no card, no number', async () => {
+    apiVersion = '1.16.0';
+    asked.length = 0;
+    view(rich);
+    await screen.findByText(
+      'Insights is not available yet: it needs data service version 1.17.0 or later, and this site runs 1.16.0. Nothing is shown until the service is updated.',
+    );
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0);
+    expect(screen.queryByRole('combobox')).toBeNull();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(asked).toEqual([]);
+    apiVersion = '1.17.0';
   });
 });

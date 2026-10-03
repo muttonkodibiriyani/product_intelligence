@@ -791,6 +791,7 @@
     "intro": "What the latest data supports deciding, one card per decision. Each number opens the products it was counted from.",
     "pickPair": "Pick two shops to see what the data says about them.",
     "loading": "Loading the insights…",
+    "unavailable": "Insights is not available yet: it needs data service version {need} or later, and this site runs {have}. Nothing is shown until the service is updated.",
     "soWhat": "So what:",
     "evidence": "See the evidence",
     "unreviewed": "{n, plural, one {# unreviewed match} other {# unreviewed matches}}: not counted",
