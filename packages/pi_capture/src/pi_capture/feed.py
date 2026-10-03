@@ -99,6 +99,8 @@ class FeedResult:
     filled: Counter[str] = field(default_factory=Counter)
     #: availability values seen in markup that are not in ``AVAILABILITY_MAP``
     unmapped_availability: Counter[str] = field(default_factory=Counter)
+    #: rows whose regular price was observed but not written, by reason
+    regular_price_dropped: Counter[str] = field(default_factory=Counter)
 
     def report(self) -> dict[str, Any]:
         reasons = Counter(e["reason"] for e in self.excluded)
@@ -108,6 +110,7 @@ class FeedResult:
             "excluded_by_reason": dict(sorted(reasons.items())),
             "filled": {c: self.filled.get(c, 0) for c in COLUMNS},
             "unmapped_availability": dict(sorted(self.unmapped_availability.items())),
+            "regular_price_dropped": dict(sorted(self.regular_price_dropped.items())),
         }
 
 
@@ -159,9 +162,15 @@ def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[s
 
 
 def _price_columns(
-    by_key: Mapping[str, tuple[Reading, ...]], currency: str
+    by_key: Mapping[str, tuple[Reading, ...]], currency: str, dropped: list[str]
 ) -> dict[str, str] | str:
-    """The price columns, or the reason the row must be left out."""
+    """The price columns, or the reason the row must be left out.
+
+    A regular price is written (with the current price as the promotional one) only when it is
+    strictly above the current price. offline_import stores any row with both columns as a
+    promotion, so an equal or lower "was" price would invent one. Such cases are kept out and
+    named in ``dropped`` instead.
+    """
     current = _observed(by_key, "price_minor")
     regular = _observed(by_key, "regular_price_minor")
     for reading in (current, regular):
@@ -173,18 +182,25 @@ def _price_columns(
     if now is not None:
         out["price_current"] = now
     if was is not None and now is not None:
-        out["price_regular"] = was
-        out["price_promo"] = now
+        if Decimal(was) > Decimal(now):
+            out["price_regular"] = was
+            out["price_promo"] = now
+        elif Decimal(was) == Decimal(now):
+            dropped.append("regular price equals current price")
+        else:
+            dropped.append("regular price below current price")
     return out
 
 
-def _row(capture: ProductCapture, shop: Shop, unmapped: Counter[str]) -> dict[str, str] | str:
+def _row(
+    capture: ProductCapture, shop: Shop, unmapped: Counter[str], dropped: list[str]
+) -> dict[str, str] | str:
     by_key = capture.by_key()
     sku = _observed(by_key, "retailer_sku")
     key = _text(sku.value) if sku else None
     if key is None:
         return "no retailer_sku on the page"
-    prices = _price_columns(by_key, shop.currency)
+    prices = _price_columns(by_key, shop.currency, dropped)
     if isinstance(prices, str):
         return prices
     row: dict[str, str] = {"listing_key": key, "sku": key}
@@ -235,7 +251,8 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
                 {"url": capture.url, "reason": f"capture {capture.capture_state}"}
             )
             continue
-        row = _row(capture, shop, result.unmapped_availability)
+        dropped: list[str] = []
+        row = _row(capture, shop, result.unmapped_availability, dropped)
         if isinstance(row, str):
             result.excluded.append({"url": capture.url, "reason": row})
             continue
@@ -243,6 +260,7 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
             result.excluded.append({"url": capture.url, "reason": "duplicate retailer_sku"})
             continue
         seen.add(row["listing_key"])
+        result.regular_price_dropped.update(dropped)
         result.rows.append(row)
         result.filled.update(row.keys())
     return result

@@ -100,6 +100,42 @@ def test_a_reduced_price_fills_regular_and_promo(make_capture: CaptureFactory) -
     )
 
 
+@pytest.mark.parametrize(
+    ("regular", "reason"),
+    [
+        (8000, "regular price equals current price"),
+        (7000, "regular price below current price"),
+    ],
+)
+def test_a_regular_price_not_above_the_current_one_is_not_a_promotion(
+    make_capture: CaptureFactory, regular: int, reason: str
+) -> None:
+    capture = page(
+        make_capture,
+        r("price_minor", 8000, currency="AED"),
+        r("regular_price_minor", regular, currency="AED"),
+    )
+    result = build_feed([capture], SHOP)
+    (row,) = result.rows
+    assert row["price_current"] == "80.00"
+    assert not {"price_regular", "price_promo"} & row.keys()
+    assert result.report()["regular_price_dropped"] == {reason: 1}
+
+
+def test_a_dropped_regular_price_on_a_duplicate_page_is_not_counted(
+    make_capture: CaptureFactory,
+) -> None:
+    first = page(make_capture, r("price_minor", 8000, currency="AED"))
+    again = page(
+        make_capture,
+        r("price_minor", 8000, currency="AED"),
+        r("regular_price_minor", 8000, currency="AED"),
+    )
+    result = build_feed([first, again], SHOP)
+    assert len(result.rows) == 1
+    assert result.report()["regular_price_dropped"] == {}
+
+
 def test_no_observed_price_leaves_the_columns_out_and_the_importer_says_not_published(
     tmp_path: Path, make_capture: CaptureFactory
 ) -> None:
