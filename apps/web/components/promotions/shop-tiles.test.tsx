@@ -42,12 +42,21 @@ const ulta: Promo = {
   bands: [],
   groups: [],
 };
+const faces: Promo = {
+  retailer: 'faces_ae',
+  n: 940,
+  onPromo: 73,
+  share: null,
+  reason: 'retailer_blocked',
+  bands: [],
+  groups: [],
+};
 const items = [
   item('p1', 'sephora_me', '50.0'),
   item('p2', 'sephora_me', '44.0'),
   item('p3', 'other', '60.0'),
 ];
-const name = (id: string) => ({ sephora_me: 'Sephora', ulta_ae: 'Ulta' })[id] ?? id;
+const name = (id: string) => ({ sephora_me: 'Sephora', ulta_ae: 'Ulta', faces_ae: 'Faces' })[id] ?? id;
 
 function tiles(retailers: Promo[], list: Item[] = items, locale: 'en' | 'ar' = 'en') {
   return render(
@@ -117,6 +126,36 @@ describe('ShopTiles', () => {
     expect(tile.textContent).not.toContain('7,316');
     expect(tile.textContent).not.toContain('not available');
   });
+
+  it.each([
+    ['en', en.promotions.withheld, en.promotions.notMeasuredShop, en.reasons],
+    ['ar', ar.promotions.withheld, ar.promotions.notMeasuredShop, ar.reasons],
+  ] as const)(
+    '%s: blocked and unverified shops expose no count, share or deepest discount as zero',
+    (locale, withheld, notMeasured, reasons) => {
+      tiles(
+        [sephora, { ...ulta, onPromo: 143 }, faces],
+        [...items, item('u1', 'ulta_ae', '65.0'), item('f1', 'faces_ae', '70.0')],
+        locale,
+      );
+
+      const table = screen.getByRole('table');
+      for (const [shop, reason] of [
+        ['Ulta', reasons.was_price_unverified],
+        ['Faces', reasons.retailer_blocked],
+      ] as const) {
+        const row = within(table).getByRole('row', { name: new RegExp(shop) });
+        expect(within(row).getAllByText(withheld)).toHaveLength(3);
+        expect(row.textContent).not.toMatch(/\d/);
+
+        const tile = screen
+          .getAllByRole('listitem')
+          .find((candidate) => candidate.textContent?.includes(shop));
+        expect(tile?.textContent).toContain(notMeasured);
+        expect(tile?.textContent).toContain(reason);
+      }
+    },
+  );
 
   it('a reason the app does not know is shown as the API sent it', () => {
     tiles([{ ...ulta, reason: 'new_reason' as Promo['reason'] }]);
