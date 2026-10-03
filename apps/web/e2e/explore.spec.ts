@@ -489,9 +489,11 @@ for (const locale of ['en', 'ar'] as const) {
 test('S2: an unknown retailer status renders as sent, not as a key path', async ({ page }) => {
   const m = clone(meta);
   m.data.retailers[0].status = 'paused';
-  // The landing's dataset table lists the retailers; /summary gets its own fixture.
+  // The Dataset page's table lists the retailers (the Overview no longer does); /summary gets its own fixture.
   await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: m })) });
   await signIn(page, 'ar');
+  await expect(page).not.toHaveURL(/\/sign-in\/?$/);
+  await page.goto('/app/ar/dataset/');
   await expect(page.getByRole('cell', { name: 'paused', exact: true })).toBeVisible();
   await expect(page.getByText('status.paused')).toHaveCount(0);
 });

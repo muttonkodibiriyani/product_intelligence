@@ -2,6 +2,7 @@
 per-retailer coverage. Capture everything raw first; parse later; say what was not found."""
 
 from pi_capture.coverage import AttributeCoverage, CoverageReport, RetailerCoverage, coverage
+from pi_capture.faces import FacesFacts, faces_facts, readings_from_faces
 from pi_capture.generic import (
     GenericFacts,
     find_json_objects,
@@ -66,6 +67,7 @@ __all__ = [
     "BaseType",
     "CaptureState",
     "CoverageReport",
+    "FacesFacts",
     "GenericFacts",
     "JsonValue",
     "ProductCapture",
@@ -82,6 +84,7 @@ __all__ = [
     "capture_to_json",
     "coverage",
     "dumps",
+    "faces_facts",
     "find_json_objects",
     "for_group",
     "for_level",
@@ -98,6 +101,7 @@ __all__ = [
     "parse_jsonld",
     "reading_from_json",
     "reading_to_json",
+    "readings_from_faces",
     "readings_from_generic",
     "rsc_chunks",
     "rsc_text",

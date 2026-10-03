@@ -44,18 +44,13 @@ describe('PageHeader', () => {
     expect(screen.getByRole('button', { name: 'Reset' })).toBeTruthy();
   });
 
-  it('links to About the data on the Dataset page from every page, in the page’s language; no date before /meta answers', () => {
+  it('carries no About-the-data link (the footer has the one link) and no date before /meta answers', () => {
     wrap(<PageHeader title="Compare" />);
-    // next/link drops the trailing slash outside the app's router config; the static build keeps it.
-    expect(screen.getByRole('link', { name: 'About the data' }).getAttribute('href')).toMatch(
-      /^\/en\/dataset\/?#about-data$/,
-    );
+    expect(screen.queryByRole('link', { name: 'About the data' })).toBeNull();
     expect(screen.queryByText(/Data as of/)).toBeNull();
     cleanup();
     wrap(<PageHeader title="المقارنة" />, 'ar');
-    expect(screen.getByRole('link', { name: 'عن البيانات' }).getAttribute('href')).toMatch(
-      /^\/ar\/dataset\/?#about-data$/,
-    );
+    expect(screen.queryByRole('link', { name: 'عن البيانات' })).toBeNull();
   });
 
   it('draws no intro box without an intro', () => {

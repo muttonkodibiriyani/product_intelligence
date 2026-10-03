@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { NAV_SECTION_BREAK } from '@/lib/nav';
 import { useAuth } from './auth-provider';
 import { LangSwitch } from './lang-switch';
-import { BrandMark, NavIcon } from './nav-icon';
+import { Logo } from './logo';
+import { NavIcon } from './nav-icon';
 import { useNav, type NavItem } from './use-nav';
 
 /** One nav link: icon, label, and a "soon" badge for a page the data cannot fill yet. */
@@ -98,20 +99,10 @@ export function NavFoot() {
 /** The desktop sidebar: brand, the main navigation, and the foot. Sits at the start edge, so on the right in Arabic. */
 export function AppSidebar() {
   const t = useTranslations('app');
-  const locale = useLocale();
   const items = useNav();
   return (
     <aside className="sticky top-0 hidden h-screen flex-col gap-4 border-e border-line bg-surface px-3 pt-4 pb-3 lg:flex">
-      <Link
-        href={`/${locale}/`}
-        className="flex items-center gap-2.5 rounded-ctl px-1.5 whitespace-nowrap text-ink focus-visible:outline-2"
-      >
-        <BrandMark />
-        <span className="leading-tight">
-          <b className="block text-[14px] font-bold">{t('name')}</b>
-          <span className="block text-[11px] text-ink-2">{t('tagline')}</span>
-        </span>
-      </Link>
+      <Logo className="px-1.5" />
       <nav aria-label={t('mainNav')} className="min-h-0 flex-1 overflow-y-auto">
         <NavList items={items} />
       </nav>
