@@ -16,9 +16,11 @@ from pydantic import Field
 from pi_api.catalog import (
     MAX_LIMIT,
     DecimalText,
+    EvidenceHosts,
     InvalidQueryError,
     ScopeQuery,
     Values,
+    card_image,
     decode_cursor,
     encode_cursor,
     filters_digest,
@@ -236,6 +238,27 @@ def capped_promotions(metric: Metric[Promotions], limit: int | None) -> Metric[P
         update={"items": tuple(items[:limit]), "truncated": len(items) > limit}
     )
     return metric.model_copy(update={"data": data})
+
+
+def promotion_images(
+    ds: DatasetV3, metric: Metric[Promotions], images: EvidenceHosts
+) -> Metric[Promotions]:
+    """Each listed item's card image (``card_image``, the shop's own offer); call after the cap."""
+    products = {p.id: p for p in ds.products}
+    items = tuple(
+        item.model_copy(
+            update={
+                "image": card_image(
+                    ds,
+                    products[item.id],
+                    [(item.retailer, products[item.id].offers[item.retailer])],
+                    images,
+                )
+            }
+        )
+        for item in metric.data.items
+    )
+    return metric.model_copy(update={"data": metric.data.model_copy(update={"items": items})})
 
 
 def capped_suggestions(

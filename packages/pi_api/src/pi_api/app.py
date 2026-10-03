@@ -55,6 +55,7 @@ from pi_api.analytics import (
     capped_promotions,
     capped_suggestions,
     matches,
+    promotion_images,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
 from pi_api.catalog import (
@@ -674,7 +675,7 @@ def build_api(
         loaded = source.select(query.market, query.scope)
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
-    _metric_routes(api, source)
+    _metric_routes(api, source, images)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -719,7 +720,7 @@ def _catalogue_routes(
         )
 
 
-def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
+def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
     """S3: one route per ``pi_metrics`` call (design §6); every number comes from there."""
 
     @api.get(f"{PREFIX}/compare", response_model=Envelope[Comparison])
@@ -777,8 +778,9 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         query: Annotated[PromotionsRowsQuery, Query()], _: Viewer
     ) -> Envelope[Promotions]:
         loaded = source.select(query.market, query.scope)
+        ds = read_at(loaded, query.on)
         metric = promotions(
-            read_at(loaded, query.on),
+            ds,
             query.retailer,
             query.where(),
             query.min_depth(),
@@ -787,7 +789,8 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         )
         if query.on is None:
             metric = stale_first(loaded, metric, query.retailer)
-        return respond(loaded, "promotions", query, capped_promotions(metric, query.limit))
+        capped = capped_promotions(metric, query.limit)
+        return respond(loaded, "promotions", query, promotion_images(ds, capped, images))
 
     @api.get(
         f"{PREFIX}/price-suggestions",

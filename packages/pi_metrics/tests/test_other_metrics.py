@@ -30,6 +30,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.model import CaveatCode, Reason, Status
+from pi_metrics.promotions import band
 from pi_metrics.view import UnknownInput
 
 
@@ -77,6 +78,55 @@ def test_promo_needs_the_capability_and_the_field(ds: Dataset) -> None:
     missing = promotions(with_fields(ds, regular=FieldStatus.NOT_COLLECTED), (A,), EVERYTHING)
     assert missing.reason is Reason.FIELD_NOT_COLLECTED
     assert missing.data.retailers == ()
+
+
+def test_promo_items_carry_brand_category_and_the_exact_amount_saved(ds: Dataset) -> None:
+    items = promotions(ds, (A,), EVERYTHING).data.items
+    first = items[0].model_dump(mode="json")
+    assert (first["brand"], first["category"], first["image"]) == (
+        "Fixture Beauty",
+        "skincare",
+        None,
+    )
+    assert first["saved"] == {"amount": "40.00", "minor": 4000, "currency": "AED"}
+    assert [i.saved.minor for i in items] == [i.regular.minor - i.price.minor for i in items]
+
+
+def test_promo_bands_and_groups_count_every_promotion_before_the_depth_filter(ds: Dataset) -> None:
+    for min_pct in (None, Decimal(30)):
+        row = promotions(ds, (A,), EVERYTHING, min_pct=min_pct).data.retailers[0]
+        assert row.bands == (0, 1, 1, 1, 0, 0)
+        groups = [(g.kind, g.key, g.n, g.on_promo, g.share) for g in row.groups]
+        assert groups == [
+            ("brand", "Fixture Beauty", 3, 2, None),  # n < MIN_COHORT: no share
+            ("brand", "Sample Labs", 3, 1, None),
+            ("category", "skincare", 6, 3, Decimal(50)),
+        ]
+
+
+@pytest.mark.parametrize(
+    ("pct", "index"),
+    [("0", 0), ("9.99", 0), ("10", 1), ("29.9", 2), ("30", 3), ("49.99", 4), ("50", 5), ("95", 5)],
+)
+def test_promo_depth_bands_are_half_open(pct: str, index: int) -> None:
+    assert band(Decimal(pct)) == index
+
+
+def test_promo_unverified_lists_nothing_and_outranks_partial(ds: Dataset) -> None:
+    result = promotions(ds, (A, B), EVERYTHING, unverified=frozenset({A}))
+    rows = {r.retailer: r for r in result.data.retailers}
+    assert rows[A].reason is Reason.WAS_PRICE_UNVERIFIED
+    assert (rows[A].bands, rows[A].groups, result.data.items, result.data.total) == ((), (), (), 0)
+    assert rows[B].share == Decimal(0)
+    partial = promotions(ds, (C,), EVERYTHING, unverified=frozenset({C}))
+    assert partial.data.retailers[0].reason is Reason.WAS_PRICE_UNVERIFIED
+
+
+def test_promo_partial_and_small_cohorts_still_list_their_items(ds: Dataset) -> None:
+    thin = promotions(ds, (A,), ProductFilter(ids=("p05",)))
+    assert thin.data.retailers[0].reason is Reason.COHORT_TOO_SMALL
+    assert [i.id for i in thin.data.items] == ["p05"]
+    assert thin.data.retailers[0].bands == (0, 0, 0, 1, 0, 0)
 
 
 # assortment

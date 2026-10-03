@@ -18,11 +18,30 @@ const item = (id: string, retailer: string, depthPct: string): Item => ({
   retailer,
   price: aed('80.00'),
   regular: aed('120.00'),
+  saved: aed('40.00'),
+  brand: 'Brand',
+  category: 'skincare',
   depthPct,
 });
 
-const sephora: Promo = { retailer: 'sephora_me', n: 4790, onPromo: 881, share: '18.4', reason: null };
-const ulta: Promo = { retailer: 'ulta_ae', n: 7316, onPromo: 0, share: null, reason: 'was_price_unverified' };
+const sephora: Promo = {
+  retailer: 'sephora_me',
+  n: 4790,
+  onPromo: 881,
+  share: '18.4',
+  reason: null,
+  bands: [],
+  groups: [],
+};
+const ulta: Promo = {
+  retailer: 'ulta_ae',
+  n: 7316,
+  onPromo: 0,
+  share: null,
+  reason: 'was_price_unverified',
+  bands: [],
+  groups: [],
+};
 const items = [
   item('p1', 'sephora_me', '50.0'),
   item('p2', 'sephora_me', '44.0'),
