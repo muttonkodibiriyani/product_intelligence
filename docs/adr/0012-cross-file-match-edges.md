@@ -59,10 +59,13 @@ size, shade, concentration and kind. That makes careful calibration and review m
 5. **Incremental, deterministic, idempotent.** A run reads the three published source files
    read-only, plus the previous match file. Only listings that are new, or whose fingerprint
    changed (brand, name, size, shade, concentration, kind, GTIN), are re-scored, against their
-   brand block in the other retailers. Unchanged pairs keep their edge byte for byte. Listings no
-   longer present keep their edges, but these are dormant because compose ignores an edge with a
-   missing side. The same inputs give byte-identical output, and a second run with the same
-   inputs changes nothing. The run time is a recorded input, never read from a clock.
+   brand block in the other retailers. Every scored candidate pair (not only the assigned edges)
+   is kept with both fingerprints, and the one-to-one assignment re-runs over the whole set, so an
+   incremental run equals a full re-run on the same inputs. Human decisions on a listing that is no
+   longer present are kept. Machine proposals for it are dropped, and they come back identically
+   if the listing returns. The same inputs give byte-identical output, and a second run with the
+   same inputs changes nothing. The run time is a recorded input, never read from a clock. A
+   change of `algo_version` re-scores every pair that has no human decision.
 6. **Composition applies the file.** `PI_API_MATCHES=<path>` assigns a match file to a scope. It
    is optional, and without it everything behaves exactly as in ADR-0010. After `compose`, every
    non-rejected edge whose two listings are both in the view joins their products into one
