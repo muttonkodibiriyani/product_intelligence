@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -41,7 +40,7 @@ def edge(
     x: Listing,
     y: Listing,
     cls: MatchClass = MatchClass.EXACT,
-    state: ReviewState = ReviewState.PROPOSED,
+    state: ReviewState = ReviewState.APPROVED,
     confidence: str = "0.95",
 ) -> Edge:
     a, b = sorted((x, y))
@@ -99,10 +98,6 @@ ROUTES = (
     f"/api/v1/price-suggestions?subject={SEPHORA}&rival={ULTA}",
     f"/api/v1/price-suggestions?subject={FACES}&rival={SEPHORA}",
 )
-#: What a proposed merge may change: which products are grouped, never a counted number.
-GROUPING = re.compile(
-    r"^\$\.(reason|detail|data\.(rows|total|reasons)|data\.sides\.[a-z_]+\.onlyHere)(\b|\[)"
-)
 ASSIGNED = {SEPHORA: BEAUTY, ULTA: BEAUTY, FACES: FACES_PATH}
 #: Fixture products renamed to exporter tokens, so their listings are keyed.
 TOKENS = {
@@ -159,7 +154,7 @@ def test_three_listings_with_an_edge_each_way_become_one_product(tmp_path: Path)
         (FACES, SEPHORA), (FACES, ULTA), (SEPHORA, ULTA)
     ]  # fmt: skip
     assert {(m.stage, m.review_state, m.decided_by) for m in merged.matches} == {
-        (STAGE, ReviewState.PROPOSED, None)
+        (STAGE, ReviewState.APPROVED, "human")
     }
     assert [m.confidence for m in merged.matches] == ["0.95", "0.9", "0.95"]
     # the rest of the view is as it was
@@ -169,13 +164,42 @@ def test_three_listings_with_an_edge_each_way_become_one_product(tmp_path: Path)
 
 
 def test_nothing_is_transitive_an_edge_that_breaks_the_clique_is_skipped(tmp_path: Path) -> None:
-    # s12-u14 (approved) goes first; f2-s12 would put f2 with u14, which have no edge
-    approved = edge(S12, U14, state=ReviewState.APPROVED, confidence="0.5")
-    got = apply(view(tmp_path), match_file((edge(F2, S12, confidence="0.99"), approved)))
+    # s12-u14 (locked) goes first; f2-s12 would put f2 with u14, which have no edge
+    locked = edge(S12, U14, state=ReviewState.LOCKED, confidence="0.5")
+    got = apply(view(tmp_path), match_file((edge(F2, S12, confidence="0.99"), locked)))
     assert dict(got.counts) == {"edge_not_clique": 1, "merged": 1}
     assert dict(got.aliases) == {"u-14-50-ml": "s-12-50-ml"}
     (m,) = by_id(got.dataset)["s-12-50-ml"].matches
-    assert (m.review_state, m.decided_by) == (ReviewState.APPROVED, "human")
+    assert (m.review_state, m.decided_by) == (ReviewState.LOCKED, "human")
+
+
+def test_a_proposed_exact_edge_never_merges(tmp_path: Path) -> None:
+    ds = view(tmp_path)
+    proposed = ReviewState.PROPOSED
+    file = match_file(
+        tuple(edge(x, y, state=proposed) for x, y in ((S12, U14), (F2, S12), (F2, U14)))
+    )
+    got = apply(ds, file)
+    assert got.dataset == ds
+    assert (dict(got.aliases), got.split, dict(got.counts)) == ({}, (), {"unreviewed": 3})
+    # one unreviewed side of a would-be clique stops the merge
+    got = apply(ds, match_file((edge(S12, U14), edge(F2, S12), edge(F2, U14, state=proposed))))
+    assert dict(got.counts) == {"edge_not_clique": 1, "merged": 1, "unreviewed": 1}
+    assert "f-2-50-ml" in by_id(got.dataset)
+
+
+def test_an_unreviewed_in_file_pair_is_no_evidence_for_a_merge(tmp_path: Path) -> None:
+    ds = view(tmp_path)
+    # p07 groups s07 and u07 on a proposed in-file edge: not enough to bring in a third listing
+    got = apply(ds, match_file((edge(F1, S07), edge(F1, U07))))
+    assert dict(got.counts) == {"edge_not_clique": 2}
+    assert dict(got.aliases) == {}
+    # the file's state wins over the in-file one: a proposed file edge for p01 makes it unreviewed
+    file = match_file((edge(F1, S01), edge(F1, U01), edge(S01, U01, state=ReviewState.PROPOSED)))
+    got = apply(ds, file)
+    assert dict(got.counts) == {"edge_not_clique": 2, "unreviewed": 1}
+    (m,) = by_id(got.dataset)["m-s-01-50-ml-u-01-50-ml"].matches
+    assert m.review_state is ReviewState.PROPOSED
 
 
 def test_a_product_has_one_listing_per_retailer(tmp_path: Path) -> None:
@@ -306,24 +330,20 @@ def test_a_match_file_of_another_vertical_keeps_the_previous_view(tmp_path: Path
     assert after is before
 
 
-def test_proposed_merges_change_grouping_never_a_counted_number(tmp_path: Path) -> None:
-    """Golden: three listings joined on proposed edges. Every route answers as without the file,
-    except for which products are grouped (ADR-0012 §6: counted metrics need approved edges)."""
+def test_a_file_of_proposed_edges_changes_no_answer(tmp_path: Path) -> None:
+    """Golden: three listings with proposed exact edges each way. Every route answers exactly as
+    without the file: nothing is grouped, matched or counted on unreviewed edges."""
     setup(tmp_path)
     s, u, f = (SEPHORA, "p12"), (ULTA, "p14"), (FACES, "faces-2")
-    write(tmp_path, match_file((edge(s, u), edge(f, s), edge(f, u))))
+    proposed = ReviewState.PROPOSED
+    write(
+        tmp_path, match_file(tuple(edge(x, y, state=proposed) for x, y in ((s, u), (f, s), (f, u))))
+    )
     plain, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED)
     merged, _ = make_client(tmp_path, paths=(), assigned=ASSIGNED, matches=MATCHES)
-    changed: set[str] = set()
     for route in ROUTES:
         a, b = (generationless(answer(c, route)) for c in (plain, merged))
-        diff = list(differences(a, b))
-        assert [d for d in diff if not GROUPING.match(d)] == [], route
-        changed.update(diff)
-    assert changed  # the merge is visible
-    a, b = (answer(c, ROUTES[0])["data"]["sides"] for c in (plain, merged))
-    for side in a:
-        assert a[side]["counted"] == b[side]["counted"]
+        assert list(differences(a, b)) == [], route
 
 
 def env(**extra: str) -> dict[str, str]:

@@ -8,17 +8,17 @@ only read, and so are the source files: the served view changes, never a file.
   product per retailer, with the ids the exporter gives the listing tokens (``pi_api.ids``
   resolves the old ``m-`` id to them). An in-file pair the file has an exact edge for takes the
   file's state.
-* **Only exact edges merge.** Non-rejected exact edges whose two listings are both in the view
-  are taken in priority order (locked, approved, proposed, then confidence, then ids). An edge
-  joins two products only when every two listings of the result, one per retailer, have their
-  own exact edge (the clique rule: nothing is transitive), and no retailer is in both.
-  Otherwise it is skipped and counted (``edge_not_clique``, ``edge_conflict``). Family and
-  substitute edges never merge: products are per size.
+* **Only human-accepted exact edges merge.** Exact edges in ``COUNTED_STATES`` (approved,
+  locked) whose two listings are both in the view are taken in priority order (locked, approved,
+  then confidence, then ids). An edge joins two products only when every two listings of the
+  result, one per retailer, have their own accepted exact edge (the clique rule: nothing is
+  transitive; an in-file product joins only if its own pair is accepted), and no retailer is in
+  both. Otherwise it is skipped and counted
+  (``edge_not_clique``, ``edge_conflict``). A ``proposed`` exact edge never merges (counted as
+  ``unreviewed``): a product grouped on unreviewed evidence is the pattern the matched switch was
+  paused for. Family and substitute edges never merge: products are per size.
 * The merged product takes its fields and id from the member with the smallest retailer id
   (ADR-0010's precedence). The other members' ids are returned as aliases of it.
-
-Merging on a ``proposed`` edge marks the offers matched but leaves counted metrics as they were:
-those count only ``approved`` and ``locked`` edges (``COUNTED_STATES``).
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ from pi_dataset import DatasetV3, ProductV3
 from pi_dataset.models import DecidedBy, MatchEdge
 from pi_match.listings import listing_tokens
 from pi_match.matchfile import Edge, MatchFile, Verdict
+from pi_metrics.model import COUNTED_STATES
 
 #: ``MatchEdge.stage`` of an edge taken from a match file.
 STAGE = "pi.matches/v1"
@@ -56,8 +57,9 @@ class Applied:
     aliases: Mapping[str, str]
     #: In-file products split because the file rejects a pair they grouped.
     split: tuple[str, ...]
-    #: ``merged`` (edges that joined products), ``edge_not_clique``, ``edge_conflict`` and
-    #: ``absent`` (an edge with a listing outside the view).
+    #: ``merged`` (edges that joined products), ``edge_not_clique``, ``edge_conflict``,
+    #: ``absent`` (an edge with a listing outside the view) and ``unreviewed`` (a proposed exact
+    #: edge, which never merges).
     counts: Mapping[str, int]
 
 
@@ -98,7 +100,7 @@ def apply(ds: DatasetV3, file: MatchFile) -> Applied:
         dataset=dataset,
         aliases=MappingProxyType(aliases),
         split=tuple(split),
-        counts=MappingProxyType(dict(sorted(counts.items()))),
+        counts=MappingProxyType({k: n for k, n in sorted(counts.items()) if n}),
     )
 
 
@@ -130,16 +132,19 @@ def _groups(
 
 
 def _merge(groups: list[Group], exact: Mapping[Pair, Edge], rejected: set[Pair]) -> Counter[str]:
-    """Joins groups along ``exact`` edges in priority order, keeping every group a clique."""
-    evidence = set(exact) | {
+    """Joins groups along accepted ``exact`` edges in priority order. Every pair of the result
+    must be accepted exact evidence, including the pairs an in-file product already groups."""
+    accepted = {q: e for q, e in exact.items() if e.review_state in COUNTED_STATES}
+    evidence = set(accepted) | {
         q
         for products, keys in groups
         for q in _pairs(keys)
-        if q not in rejected and _in_file_exact(products[0], q)
+        if q not in rejected and q not in exact and _in_file_exact(products[0], q)
     }
     at: dict[Key, int] = {(r, t): i for i, (_, keys) in enumerate(groups) for r, t in keys.items()}
     counts: Counter[str] = Counter()
-    for edge in sorted(exact.values(), key=_priority):
+    counts["unreviewed"] = len(exact) - len(accepted)
+    for edge in sorted(accepted.values(), key=_priority):
         a, b = edge.pair()
         if a not in at or b not in at:
             counts["absent"] += 1
@@ -150,7 +155,7 @@ def _merge(groups: list[Group], exact: Mapping[Pair, Edge], rejected: set[Pair])
         left, right = groups[ga][1], groups[gb][1]
         if left.keys() & right.keys():
             counts["edge_conflict"] += 1
-        elif not all(q in evidence for q in _cross(left, right)):
+        elif not all(q in evidence for q in _pairs({**left, **right})):
             counts["edge_not_clique"] += 1
         else:
             counts["merged"] += 1
@@ -165,18 +170,12 @@ def _pairs(keys: Mapping[str, str]) -> Iterable[Pair]:
     yield from combinations(sorted(keys.items()), 2)
 
 
-def _cross(left: Mapping[str, str], right: Mapping[str, str]) -> Iterable[Pair]:
-    for x in left.items():
-        for y in right.items():
-            yield (x, y) if x < y else (y, x)
-
-
 def _in_file_exact(product: ProductV3, pair: Pair) -> bool:
     (ra, _), (rb, _) = pair
     return any(
         (m.a, m.b) == (ra, rb)
         and m.match_class is MatchClass.EXACT
-        and m.review_state is not ReviewState.REJECTED
+        and m.review_state in COUNTED_STATES
         for m in product.matches
     )
 
