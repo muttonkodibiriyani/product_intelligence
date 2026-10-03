@@ -133,6 +133,7 @@ files = [
   "tools/browser_capture",
   "tools/capture_read",
   "tools/offline_import",
+  "infra/scripts/db_url_guard.py",
   "infra/scripts/invite_user.py",
   "infra/scripts/pg_backup.py",
   "infra/scripts/prod_smoke_api.py",
