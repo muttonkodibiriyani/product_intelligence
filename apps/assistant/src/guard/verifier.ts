@@ -16,12 +16,13 @@
  *   the shown number of decimal places. Nothing else counts: no rounding to tens, no unit
  *   conversion, no arithmetic on sources.
  * - Always allowed, exactly: 5 (rating scale) and 100 (index base).
- * - The length of a list a tool returned counts as a source ("7 products" when the rows list
- *   has 7 entries): the count is a fact of the result, not arithmetic on a metric.
+ * - The length of a tool's row list (its declared `listKey`, e.g. `rows`) counts as a source
+ *   ("7 products" when the rows list has 7 entries). Only that list: other arrays (a category
+ *   path, a pair of retailers) are not counts of anything the user asked about.
  * - The closing "Source:" line (the prompt asks for it, with the filters used) may also quote
- *   the echoed tool inputs (`citation.filters`, e.g. "limit 10", "priceMax 50"). Only that
- *   line: a filter value anywhere else is still unsupported, so a number the model chose
- *   cannot launder itself into the answer body.
+ *   the echoed tool inputs (`citation.filters`, e.g. "limit 10", "priceMax 50"), but only when
+ *   it is the last non-empty line. A filter value anywhere else is still unsupported, so a
+ *   number the model chose cannot launder itself into the answer body.
  * - Version fields (`apiVersion`, `metricVersion`, …) are never sources, and of the citation
  *   only `cohort.n` counts: "2.5" as a version must not allow "2.5 AED".
  * - Stripped before matching, and only these:
@@ -188,7 +189,6 @@ export function collectToolNumbers(outputs: readonly unknown[]): Decimal[] {
     } else if (typeof value === "number") {
       if (Number.isSafeInteger(value)) found.push(abs({ units: BigInt(value), scale: 0 }));
     } else if (Array.isArray(value)) {
-      found.push({ units: BigInt(value.length), scale: 0 });
       value.forEach(visit);
     } else if (typeof value === "object" && value !== null && !("untrusted" in value)) {
       for (const [key, child] of Object.entries(value)) {
@@ -198,6 +198,24 @@ export function collectToolNumbers(outputs: readonly unknown[]): Decimal[] {
     }
   };
   outputs.forEach(visit);
+  return found;
+}
+
+/** Which key holds a tool's row list; undefined for tools without one. */
+export type ListKeyOf = (tool: string) => string | undefined;
+
+/** The length of each output's row list (`data[listKey]`), named by `citation.tool`. */
+export function collectListLengths(outputs: readonly unknown[], listKeyOf: ListKeyOf): Decimal[] {
+  const found: Decimal[] = [];
+  for (const output of outputs) {
+    if (typeof output !== "object" || output === null) continue;
+    const { citation, data } = output as { citation?: { tool?: unknown }; data?: unknown };
+    const tool = citation?.tool;
+    const key = typeof tool === "string" ? listKeyOf(tool) : undefined;
+    if (key === undefined || typeof data !== "object" || data === null) continue;
+    const rows = (data as Record<string, unknown>)[key];
+    if (Array.isArray(rows)) found.push({ units: BigInt(rows.length), scale: 0 });
+  }
   return found;
 }
 
@@ -247,18 +265,26 @@ export function collectFilterNumbers(outputs: readonly unknown[]): Decimal[] {
 /** The closing source line: "Source:" in English or "المصدر:" in Arabic, bold or not. */
 const SOURCE_LINE = /^\s*(?:[*_]{1,2})?(?:source|sources|المصدر|المصادر)(?:[*_]{1,2})?\s*[:：]/i;
 
-export function verifyAnswerNumbers(answer: string, toolOutputs: readonly unknown[]): VerifyResult {
-  const allowed = [...collectToolNumbers(toolOutputs), ...ALWAYS_ALLOWED.map(parseDecimal)];
+export function verifyAnswerNumbers(
+  answer: string,
+  toolOutputs: readonly unknown[],
+  listKeyOf: ListKeyOf = () => undefined,
+): VerifyResult {
+  const allowed = [
+    ...collectToolNumbers(toolOutputs),
+    ...collectListLengths(toolOutputs, listKeyOf),
+    ...ALWAYS_ALLOWED.map(parseDecimal),
+  ];
   const times = collectToolTimes(toolOutputs);
   const supported = (sources: readonly Decimal[]) => (text: string) => {
     const shown = parseDecimal(text);
     return sources.some((source) => isDisplayOf(shown, source));
   };
   const lines = answer.split("\n");
-  let sourceAt = -1;
-  lines.forEach((line, index) => {
-    if (SOURCE_LINE.test(line)) sourceAt = index;
-  });
+  // Only the last non-empty line, and only if it is the Source line.
+  let last = lines.length - 1;
+  while (last >= 0 && (lines[last] ?? "").trim() === "") last -= 1;
+  const sourceAt = last >= 0 && SOURCE_LINE.test(lines[last] ?? "") ? last : -1;
   const body = sourceAt < 0 ? answer : lines.filter((_, index) => index !== sourceAt).join("\n");
   const unsupported = extractNumbers(body, times).filter((text) => !supported(allowed)(text));
   if (sourceAt >= 0) {

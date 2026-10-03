@@ -216,6 +216,11 @@ export class ToolRegistry {
     return this.tools.has(name);
   }
 
+  /** The key of a tool's row list (`listKey`), if it returns one. */
+  listKey(name: string): string | undefined {
+    return this.tools.get(name)?.listKey;
+  }
+
   /** Tools this caller may see; the model is never offered a tool it cannot call. */
   available(caller: CallerContext): AnyToolDef[] {
     return [...this.tools.values()].filter((tool) => rank(caller.role) >= rank(tool.minRole));

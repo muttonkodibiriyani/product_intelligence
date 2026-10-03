@@ -5,6 +5,13 @@
  * units are used: L, cl, kg and mg convert to ml or g by exact powers of ten. A product with no
  * size, a non-metric unit (oz, fl oz, pieces) or no price is excluded and counted, never
  * estimated.
+ *
+ * The card's `size` is one offer's measure, so it is applied only where it provably holds:
+ * - a product priced at one retailer; or
+ * - a product priced at exactly the two retailers of its `gap` pair, with a counted gap (no
+ *   excluded reason), which pi_metrics gives only to a reviewed exact same-size match.
+ * Any other multi-retailer product is excluded as `sizeUnproven` (offers can differ in size).
+ * Rows carry their currency and are ranked within one measure and one currency, never across.
  */
 import { DECIMAL_TEXT, type Decimal, parseDecimal } from "../guard/decimal.js";
 import type { ToolView } from "./types.js";
@@ -47,6 +54,7 @@ interface Row {
   readonly brand: unknown;
   readonly retailer: string;
   readonly price: string;
+  readonly currency: string;
   readonly size: { readonly value: string; readonly unit: string };
   readonly perUnit: string;
   readonly per: Measure;
@@ -66,12 +74,46 @@ function compareDecimalText(a: string, b: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+interface Offer {
+  readonly retailer: string;
+  readonly price: Decimal;
+  readonly text: string;
+  readonly currency: string;
+}
+
+function offers(card: Record<string, unknown>): Offer[] {
+  return Object.entries((card.prices ?? {}) as Record<string, unknown>).flatMap(
+    ([retailer, money]) => {
+      const { amount, currency } = (money ?? {}) as { amount?: unknown; currency?: unknown };
+      const price = positive(amount);
+      return price === null || typeof currency !== "string"
+        ? []
+        : [{ retailer, price, text: amount as string, currency }];
+    },
+  );
+}
+
+/** True if the card's one size provably applies to every priced offer (see the header). */
+function sizeHolds(card: Record<string, unknown>, priced: readonly Offer[]): boolean {
+  if (priced.length === 1) return true;
+  if (priced.length !== 2) return false;
+  const pair = card.gap as
+    { base?: unknown; other?: unknown; gap?: unknown; excludedReason?: unknown } | null | undefined;
+  if (!pair || pair.gap == null || pair.excludedReason != null) return false;
+  const retailers = new Set(priced.map((offer) => offer.retailer));
+  return (
+    pair.base !== pair.other &&
+    retailers.has(String(pair.base)) &&
+    retailers.has(String(pair.other))
+  );
+}
+
 /** The view over a /products page (`items`, `total`). */
 export function unitPriceView(data: unknown, input: UnitPriceInput): ToolView {
   if (typeof data !== "object" || data === null || !("items" in data)) return { data };
   const { items, total } = data as { items: unknown; total: unknown };
   if (!Array.isArray(items)) return { data };
-  const excluded = { noSize: 0, unitNotMetric: 0, otherMeasure: 0, noPrice: 0 };
+  const excluded = { noSize: 0, unitNotMetric: 0, otherMeasure: 0, noPrice: 0, sizeUnproven: 0 };
   const rows: Row[] = [];
   for (const card of items as Record<string, unknown>[]) {
     const size = card.size as { value?: unknown; unit?: unknown } | null | undefined;
@@ -89,24 +131,23 @@ export function unitPriceView(data: unknown, input: UnitPriceInput): ToolView {
       excluded.otherMeasure += 1;
       continue;
     }
-    const amount = multiply(value, parseDecimal(unit.factor));
-    const prices = Object.entries((card.prices ?? {}) as Record<string, unknown>).flatMap(
-      ([retailer, money]) => {
-        const text = (money as { amount?: unknown } | null)?.amount;
-        const price = positive(text);
-        return price === null ? [] : [{ retailer, price, text: text as string }];
-      },
-    );
-    if (prices.length === 0) {
+    const priced = offers(card);
+    if (priced.length === 0) {
       excluded.noPrice += 1;
       continue;
     }
-    for (const { retailer, price, text } of prices) {
+    if (!sizeHolds(card, priced)) {
+      excluded.sizeUnproven += 1;
+      continue;
+    }
+    const amount = multiply(value, parseDecimal(unit.factor));
+    for (const { retailer, price, text, currency } of priced) {
       rows.push({
         id: String(card.id),
         brand: card.brand,
         retailer,
         price: text,
+        currency,
         size: { value: size.value as string, unit: size.unit },
         perUnit: divide(price, amount, UNIT_PRICE_SCALE),
         per: unit.per,
@@ -114,22 +155,26 @@ export function unitPriceView(data: unknown, input: UnitPriceInput): ToolView {
     }
   }
   const sign = input.order === "asc" ? 1 : -1;
-  // Per ml and per g are never ranked against each other: ml rows first, then g rows.
+  // Ranked within one measure and one currency: ml before g, then by currency code.
   rows.sort(
     (a, b) =>
       b.per.localeCompare(a.per) ||
+      a.currency.localeCompare(b.currency) ||
       sign * compareDecimalText(a.perUnit, b.perUnit) ||
       a.id.localeCompare(b.id) ||
       a.retailer.localeCompare(b.retailer),
   );
   const shown = rows.slice(0, input.rows);
+  const matching = typeof total === "number" ? total : null;
   return {
     data: {
       rows: shown,
       total: rows.length,
       truncated: shown.length < rows.length,
       scanned: items.length,
-      matching: typeof total === "number" ? total : null,
+      matching,
+      // True when only the first `scanned` of `matching` products (by name) were checked.
+      partial: matching !== null && matching > items.length,
       excluded,
     },
   };

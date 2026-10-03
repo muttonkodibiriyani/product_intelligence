@@ -110,9 +110,11 @@ export const pricePerUnit = defineTool({
   version: "1",
   description:
     "Price per 1 ml or 1 g ('cheapest per ml', 'best value'): listed price divided by the " +
-    "published size (L, cl, kg, mg converted exactly). Filters as search_products; ranks up to " +
-    "100 matching products. If matching > scanned, say the ranking covers the first scanned " +
-    "products. `excluded` counts products left out (no size, other unit, no price).",
+    "published size (L, cl, kg, mg converted exactly). Filters as search_products. Rows are " +
+    "ranked within one measure and one currency; always state the currency. If partial is " +
+    "true, say 'checked the first <scanned> of <matching> products'. `excluded` counts " +
+    "products left out by reason (no size, other unit, no price, sizeUnproven: sold at " +
+    "several retailers without a proven same size).",
   minRole: "viewer",
   input: z
     .object({

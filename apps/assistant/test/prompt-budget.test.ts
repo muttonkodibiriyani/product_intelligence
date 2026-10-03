@@ -142,7 +142,7 @@ describe("prompt budget at the runbook seed limits", () => {
       const { answer, bounds } = await ask(role, locale, [{ text: "Hello.", toolCalls: [] }]);
       expect(answer.status).toBe("answered");
       expect(bounds).toHaveLength(1);
-      // Measured: 19453 (en) and 19546 (ar) bytes with 18 tools; 20400 left for history and
+      // Measured: 19580 (en) and 19673 (ar) bytes with 18 tools; 20300 left for history and
       // tool results.
       expect(bounds[0]).toBeLessThanOrEqual(maxInputTokens / 2);
     },
@@ -155,7 +155,7 @@ describe("prompt budget at the runbook seed limits", () => {
       expect(answer.status).toBe("answered");
       expect(answer.toolCalls.map((record) => record.status)).toEqual(Array(5).fill("ok"));
       expect(bounds).toHaveLength(maxModelCallsPerQuestion);
-      // Measured peak: 28585 (viewer, en) to 29315 (admin, ar) bytes, about 10700 headroom.
+      // Measured peak: 28712 (viewer, en) to 29442 (admin, ar) bytes, about 10500 headroom.
       const peak = Math.max(...bounds);
       expect(peak).toBe(bounds.at(-1));
       expect(maxInputTokens - peak).toBeGreaterThanOrEqual(10_000);
