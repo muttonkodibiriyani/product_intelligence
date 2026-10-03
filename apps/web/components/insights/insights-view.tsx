@@ -26,6 +26,7 @@ import {
   type Stockouts,
 } from '@/lib/insights';
 import { navHref } from '@/lib/nav';
+import { listedItems } from '@/lib/promotions';
 import { PairPicker } from '../compare/pair-picker';
 import { useAuth } from '../auth-provider';
 import { ApiError } from '@/lib/api/client';
@@ -91,10 +92,13 @@ export function InsightsView() {
     queryFn: ({ signal }) => api!.get('/api/v1/insights', { query: { retailers }, signal }),
     enabled: !!api && ready,
   });
+  const evidence = q.data?.data;
+  const pricingReady = evidence?.pricing.status === 'ok' && evidence.pricing.n > 0;
   const summary = useQuery({
     queryKey: ['compare', 'insights', retailers],
     queryFn: ({ signal }) => api!.get('/api/v1/compare', { query: { retailers, limit: 100 }, signal }),
-    enabled: !!api && ready,
+    // No reviewed exact pairs means /compare can add only another withheld card. Do not ask for it.
+    enabled: !!api && ready && pricingReady,
   });
   const gaps = useQuery({
     queryKey: ['assortment-gaps', 'insights', retailers],
@@ -103,7 +107,17 @@ export function InsightsView() {
         query: { presentAt: state.other, missingAt: state.base },
         signal,
       }),
-    enabled: !!api && ready,
+    enabled: !!api && ready && !!evidence,
+  });
+  const promotions = useQuery({
+    queryKey: ['promotions', 'insights', retailers],
+    queryFn: ({ signal }) =>
+      api!.get('/api/v1/promotions', {
+        query: { retailer: [state.base, state.other], limit: 8 },
+        signal,
+      }),
+    // First render the evidence aggregate; the compact promotion proof is a secondary request.
+    enabled: !!api && ready && !!evidence,
   });
 
   // A 404 from /insights means the route is not deployed whatever /meta says: the same honest
@@ -144,7 +158,16 @@ export function InsightsView() {
           {t('loading')}
         </Loading>
       ) : (
-        <Cards env={env} summary={summary.data} gaps={gaps.data} base={state.base} other={state.other} />
+        <Cards
+          env={env}
+          summary={summary.data}
+          gaps={gaps.data}
+          gapsPending={gaps.isPending}
+          promotions={promotions.data}
+          promotionsPending={promotions.isPending}
+          base={state.base}
+          other={state.other}
+        />
       )}
     </section>
   );
@@ -156,30 +179,87 @@ function Cards({
   env,
   summary,
   gaps,
+  gapsPending,
+  promotions,
+  promotionsPending,
   base,
   other,
 }: Pair & {
   env: Envelope<Insights>;
   summary: Envelope<Schemas['Comparison']> | undefined;
   gaps: Envelope<Schemas['AssortmentGaps']> | undefined;
+  gapsPending: boolean;
+  promotions: Envelope<Schemas['Promotions']> | undefined;
+  promotionsPending: boolean;
 }) {
   const t = useTranslations('insights');
   const data = env.data;
   const pair = { base, other };
   if (!data) return <ReasonCard title={t('title')} reason={env.reason} />;
+  const stocks = forPair(data.stockouts, base, other);
+  const ladders = forPair(data.ladders, base, other);
+  const promoItems = promotions?.data ? listedItems(promotions.data).items : [];
+  const hasSizes = data.pricing.status === 'ok' && data.pricing.sizes.length > 0;
+  const hasPolicy = data.pricing.status === 'ok' && data.pricing.brands.length > 0;
+  const hasSpace = !!gaps?.data && gaps.status === 'ok' && gaps.data.total > 0;
+  const hasPromos = promoItems.length > 0;
+  const hasStock = stocks.some((row) => row.brands.length > 0);
+  const hasTraps = ladders.some((row) => row.reason === null && row.steps > 0);
+  const readyCount = [hasSizes, hasPolicy, hasSpace, hasPromos, hasStock, hasTraps].filter(Boolean).length;
+  const pending = gapsPending || promotionsPending;
   return (
     <div className="space-y-5">
-      <Positioning env={summary} pricing={data.pricing} {...pair} />
+      <Readiness ready={readyCount} pending={pending} unreviewed={data.pricing.unreviewed} />
+      {data.pricing.status === 'ok' && data.pricing.n > 0 && (
+        <Positioning env={summary} pricing={data.pricing} {...pair} />
+      )}
       <CardGrid>
-        <SizeCard pricing={data.pricing} {...pair} />
-        <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />
-        <WhiteSpaceCard env={gaps} />
-        <PromoCard />
-        <StockCard rows={forPair(data.stockouts, base, other)} cutoff={env.meta.cutoff} />
-        <TrapCard ladders={forPair(data.ladders, base, other)} held={data.heldOutPct} />
+        {hasPromos && <PromoCard items={promoItems} base={base} other={other} />}
+        {hasStock && <StockCard rows={stocks} cutoff={env.meta.cutoff} />}
+        {hasTraps && <TrapCard ladders={ladders} held={data.heldOutPct} />}
+        {hasSizes && <SizeCard pricing={data.pricing} {...pair} />}
+        {hasPolicy && <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />}
+        {hasSpace && <WhiteSpaceCard env={gaps} />}
       </CardGrid>
-      <More ladders={forPair(data.ladders, base, other)} share={data.policySharePct} held={data.heldOutPct} />
+      <Deferred
+        pricing={data.pricing}
+        gaps={gaps}
+        gapsPending={gapsPending}
+        promotions={promotions}
+        promotionsPending={promotionsPending}
+        stocks={stocks}
+        ladders={ladders}
+      />
+      <More ladders={ladders} share={data.policySharePct} held={data.heldOutPct} />
     </div>
+  );
+}
+
+/** Lead with what the snapshot can answer; the unavailable analyses are one explanation below. */
+function Readiness({ ready, pending, unreviewed }: { ready: number; pending: boolean; unreviewed: number }) {
+  const t = useTranslations('insights.readiness');
+  const locale = useLocale();
+  return (
+    <section aria-labelledby="readiness-title" className="panel overflow-hidden">
+      <div className="bg-gradient-to-br from-accent/[0.10] via-surface to-series-b/[0.08] px-5 py-5 sm:px-6">
+        <p className="text-[11px] font-semibold tracking-[0.12em] text-accent uppercase">{t('eyebrow')}</p>
+        <h2 id="readiness-title" className="mt-1 text-xl font-bold tracking-tight">
+          {t('title', { n: ready, count: formatCount(ready, locale) })}
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm text-ink-2">{t('body')}</p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-surface px-2.5 py-1 font-medium shadow-sm">
+            {t('ready', { n: ready, count: formatCount(ready, locale) })}
+          </span>
+          {unreviewed > 0 && (
+            <span className="rounded-full bg-butter px-2.5 py-1 font-medium text-butter-ink">
+              {t('unreviewed', { n: unreviewed, count: formatCount(unreviewed, locale) })}
+            </span>
+          )}
+          {pending && <span className="rounded-full bg-surface-2 px-2.5 py-1 text-ink-2">{t('checking')}</span>}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -471,12 +551,56 @@ function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | un
   );
 }
 
-/** 4. Promotions are measured on their own page; this card points there and repeats no number. */
-function PromoCard() {
+/** 4. The deepest observed discounts for the pair, from API 1.18's promotion rows. */
+function PromoCard({ items, base, other }: Pair & { items: Schemas['PromoItem'][] }) {
   const t = useTranslations('insights.promo');
   const locale = useLocale();
+  const name = useRetailerName();
+  const shown = items.filter((item) => item.retailer === base || item.retailer === other).slice(0, 4);
+  const deepest = shown[0]!;
   return (
-    <Card title={t('title')} span={6} question={t('headline')}>
+    <Card
+      title={t('title')}
+      span={6}
+      question={t('headline', {
+        product: deepest.name,
+        shop: name(deepest.retailer),
+        pct: deepest.depthPct,
+      })}
+      meta={t('meta', { n: shown.length, count: formatCount(shown.length, locale) })}
+    >
+      <ol className="divide-y divide-line text-sm">
+        {shown.map((item, index) => (
+          <li key={`${item.id}:${item.retailer}`} className="flex items-center gap-3 py-2 first:pt-0">
+            <span className="w-5 shrink-0 text-xs font-semibold text-ink-3 tabular-nums">
+              <bdi dir="ltr">#{formatCount(index + 1, locale)}</bdi>
+            </span>
+            <span className="min-w-0 flex-1">
+              <Link
+                href={`${productHref(locale, item.id)}#evidence`}
+                className="block truncate font-medium underline-offset-2 hover:underline focus-visible:outline-2"
+                dir="auto"
+              >
+                {item.name}
+              </Link>
+              <span className="flex items-center gap-1.5 text-xs text-ink-2">
+                <RetailerDot id={item.retailer} index={index} />
+                <span dir="auto">{name(item.retailer)}</span>
+              </span>
+            </span>
+            <span className="text-end">
+              <span className="verdict verdict-good block">
+                <bdi dir="ltr">−{item.depthPct}%</bdi>
+              </span>
+              {item.saved && (
+                <span className="mt-0.5 block text-xs text-ink-2">
+                  {t('saved')} <Money m={item.saved} locale={locale} />
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
       <Foot action={t('action')} href={navHref('promotions', locale)} label={t('open')} />
     </Card>
   );
@@ -666,6 +790,74 @@ function TrapCard({ ladders, held }: { ladders: Ladder[]; held: string }) {
       </div>
       <Foot action={t('action')} />
     </Card>
+  );
+}
+
+/** Withheld analyses live in one disclosure instead of occupying most of the page as dead cards. */
+function Deferred({
+  pricing,
+  gaps,
+  gapsPending,
+  promotions,
+  promotionsPending,
+  stocks,
+  ladders,
+}: {
+  pricing: Insights['pricing'];
+  gaps: Envelope<Schemas['AssortmentGaps']> | undefined;
+  gapsPending: boolean;
+  promotions: Envelope<Schemas['Promotions']> | undefined;
+  promotionsPending: boolean;
+  stocks: Stockouts[];
+  ladders: Ladder[];
+}) {
+  const t = useTranslations('insights');
+  const tr = useTranslations('reasons');
+  const promoItems = promotions?.data ? listedItems(promotions.data).items : [];
+  const rows = [
+    pricing.status !== 'ok' || pricing.sizes.length === 0
+      ? { title: t('size.title'), reason: pricing.reason ?? 'cohort_too_small' }
+      : null,
+    pricing.status !== 'ok' || pricing.brands.length === 0
+      ? { title: t('policy.title'), reason: pricing.reason ?? 'cohort_too_small' }
+      : null,
+    !gapsPending && (!gaps?.data || gaps.status !== 'ok' || gaps.data.total === 0)
+      ? { title: t('space.title'), reason: gaps?.reason ?? 'cohort_too_small' }
+      : null,
+    !promotionsPending && promoItems.length === 0
+      ? { title: t('promo.title'), reason: promotions?.reason ?? 'field_not_collected' }
+      : null,
+    stocks.every((row) => row.brands.length === 0)
+      ? {
+          title: t('stock.title'),
+          reason: stocks.find((row) => row.reason)?.reason ?? 'cohort_too_small',
+        }
+      : null,
+    !ladders.some((row) => row.reason === null && row.steps > 0)
+      ? {
+          title: t('traps.title'),
+          reason: ladders.find((row) => row.reason)?.reason ?? 'cohort_too_small',
+        }
+      : null,
+  ].filter((row): row is { title: string; reason: string } => row !== null);
+  if (rows.length === 0) return null;
+  return (
+    <details className="panel px-5 py-4 text-sm">
+      <summary className="cursor-pointer font-semibold focus-visible:outline-2">
+        {t('readiness.deferred', { n: rows.length })}
+      </summary>
+      <p className="mt-2 text-ink-2">{t('readiness.deferredBody')}</p>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+        {rows.map((row) => (
+          <li key={row.title} className="rounded-ctl bg-surface-2 px-3 py-2">
+            <b className="me-1.5 font-medium text-ink">{row.title}</b>
+            <span className="text-ink-2">
+              <Known t={tr} v={row.reason} />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
