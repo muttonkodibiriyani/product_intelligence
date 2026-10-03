@@ -38,59 +38,57 @@ git fetch origin && git checkout --detach "$MAIN_SHA"
    prints `1.18.0` (or later, if a later PR bumped it). `apps/web/lib/api/schema.gen.ts` is
    generated from the same commit (CI `check:api` proved it).
 
-## 2. API: image-only redeploy of pi-api
+## 2. API: deploy-api.sh, STOP, Reviewer, then traffic-api.sh
 
-Follow `docs/runbooks/pi-api-deploy.md` §5 (build and push, tag `$MAIN_SHA`) and the
-**image-only** form of §6:
+Use only the approved scripts, `deploy-api.sh` and `traffic-api.sh`. They live outside the repo with
+the release operator. Make no manual `gcloud run deploy` and no `--set-env-vars`.
 
-```sh
-gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
-  --format='value(status.latestReadyRevisionName)'          # note as <PREV_REVISION>
-gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
-  --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST"
-```
+1. **Deploy without traffic.**
 
-Never pass `--set-env-vars` here (it would replace the evidence and image host maps).
+   ```sh
+   deploy-api.sh <API_SHA> 1.18.0 <PREV_REVISION>
+   ```
 
-**Verify** (pi-api-deploy §8, plus):
+   - `<API_SHA>` is the #231 squash commit on `origin/main`. `<PREV_REVISION>` is the revision now
+     serving 100 % (`pi-api-00012-8dg` at the time of writing; the script STOPs if it is not).
+   - The script checks, and STOPs on any failure:
+     - the commit is on `origin/main` and CI is 7/7 at the exact tree;
+     - `/` has at least 5 GB free;
+     - the built image reports `API_VERSION` 1.18.0.
+   - It then builds the image, pushes it once and deploys with `--no-traffic`.
+   - It prints `NEWREV` and `DIGEST`. **STOP here.**
+2. **Reviewer.** Send `NEWREV`, `DIGEST` and the script output to the Reviewer, and wait for
+   their explicit go on that exact revision and digest.
+3. **Move traffic only after that go:**
+
+   ```sh
+   traffic-api.sh <NEWREV> <DIGEST> <PREV_REVISION>
+   ```
+
+**Verify** (owner-run, signed in as a viewer):
 
 - Unauthenticated `curl -si https://$PROJECT.web.app/api/v1/insights?retailers=sephora_me,ulta_ae`
   → `401`, `Cache-Control: private, no-store`.
 - Signed in, the same URL → `200`, `meta.apiVersion` `1.18.0`, `meta.endpoint` `insights`.
   `data.pricing.status` is `not_enough_data` with `matches_unreviewed` until reviewed exact edges
   are in the published dataset; that is the expected state, not a failure.
-- Signed in, `GET /api/v1/meta` still `200` (the rest of the API is unchanged).
+- Signed in, `GET /api/v1/meta` → `200` with `apiVersion` `1.18.0`.
 
-**Roll back:** `gcloud run services update-traffic pi-api --project=$PROJECT --region=$REGION --to-revisions=<PREV_REVISION>=100`.
+**Roll back:** `traffic-api.sh`'s own rollback line, which moves traffic back to `<PREV_REVISION>`.
 
-## 3. Hosting: the web export
+## 3. Hosting: the reviewed Hosting runbook v4 only
 
-Exactly as `apps/web/README.md` § Deploy, Linux, Node 22, **no** `NEXT_PUBLIC_*` set.
+Hosting ships **only** through the Reviewer-approved Hosting runbook **v4** (Part B), run by the
+owner as that runbook says. It pins:
 
-1. **Record the live release** (for rollback), as in `assistant-enablement.md` §10c step 1; note
-   `<LIVE_VERSION>`.
-2. **Build and gate:**
+- `WEB_SHA` = the #234 squash commit, gated to the tree of the Reviewer-approved #234 head;
+- `LIVE_WEB_SHA` and `ROLLBACK_VERSION`;
+- **G5** re-anchored to `API_SHA` = the #231 squash commit served by pi-api 1.18.0, so Hosting
+  cannot start until §2 has moved traffic.
 
-   ```sh
-   node --version                         # v22.x
-   env | grep NEXT_PUBLIC_                # must print nothing
-   apps/web/build.sh verify
-   (cd apps/web && npm ci && npm run build)
-   # must end: csp: N inline script hashes (... in out, out-assistant) match infra/firebase.json
-   ls apps/web/out/en/insights/index.html apps/web/out/ar/insights/index.html
-   ```
-
-   Do **not** run `csp:write` on the deploy checkout: the hashes are committed with #234 (and
-   re-written on its final rebase). A mismatch means the checkout is not `$MAIN_SHA`: stop.
-3. **Which export.** Deploy `out/` (assistant off) unless the assistant is live; if it is, follow
-   `assistant-enablement.md` §10c step 5 with `out-assistant/` and the site key file instead.
-
-   ```sh
-   rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist && cp -r apps/web/out infra/web-dist/app
-   (cd infra && npx -y firebase-tools@14.27.0 deploy --only hosting --project $PROJECT)
-   ```
-
-   Re-run step 1: it must print a version other than `<LIVE_VERSION>`.
+This file adds no Hosting command and does not replace any of v4's gates: build, CSP, the
+`out/` vs `out-assistant/` choice, deploy and the recorded release version all follow v4. Run v4
+only after §2's traffic move.
 
 ## 4. Smoke (EN and AR, as a viewer)
 
@@ -108,12 +106,13 @@ Open `https://$PROJECT.web.app/app/en/insights/`, then `/app/ar/insights/`:
   filtered to that brand and shop.
 - Promotions card: no digits, its link opens `/app/<locale>/promotions/`.
 - Arabic: right-to-left layout, Latin digits, no horizontal scroll on a phone width.
-- Then the existing dashboard smoke: `infra/scripts/smoke_demo.py` as in its docstring.
+- Then the existing dashboard smoke: `infra/scripts/smoke_demo.py` as in its docstring. All smokes are owner-run.
 
 ## 5. Roll back
 
-- **Page:** in the Hosting console, roll back to `<LIVE_VERSION>` (instant; the API change is
-  harmless without the page).
-- **API:** §2 roll back. Roll back Hosting first if both go, so no live page calls a missing route.
+- **Page:** Hosting runbook v4's rollback to its `ROLLBACK_VERSION`. The API change is harmless
+  without the page.
+- **API:** §2's roll back. If both go, roll back Hosting first. The page also handles an older
+  API (Insights hidden, page says "not available yet"), so either order is safe.
 - Record the deploy (commit, env, result, rollback path) in the deploy record and tell the
   Coordinator.
