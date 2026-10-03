@@ -1,4 +1,4 @@
-import type { Route } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import {
   expect,
   golden,
@@ -39,6 +39,17 @@ async function api116(route: Route) {
 }
 
 // API with the new version on /meta, but /insights not deployed (404): honest, never an error card.
+/**
+ * Signed in and settled before a full reload. The shell shows once the session is stored; a reload
+ * earlier lands on sign-in on Firefox and WebKit. Network idle means the Overview's own calls
+ * (it asks /compare) have all been made, so a cleared log holds only what the next page asks.
+ */
+async function signedIn(page: Page, locale: 'en' | 'ar') {
+  await signIn(page, locale);
+  await expect(page.getByRole('navigation').first()).toBeVisible();
+  await page.waitForLoadState('networkidle');
+}
+
 async function apiNoRoute(route: Route) {
   const p = new URL(route.request().url()).pathname;
   if (p === '/api/v1/meta') return route.fulfill({ json: meta });
@@ -117,10 +128,13 @@ for (const locale of ['en', 'ar'] as const) {
 
     test('the promotions card links to Promotions and repeats no number', async ({ page }) => {
       await mockBackend(page, { onApi: api });
-      await signIn(page, locale);
+      await signedIn(page, locale);
       await page.goto(`/app/${locale}/insights/`);
-      // The card is the heading's nearest section (the page itself is a section too).
-      const card = page.getByRole('heading', { name: T.cards[3] }).locator('xpath=ancestor::section[1]');
+      // The card: the one section whose own heading is this card's (the page section holds all six).
+      const card = page
+        .locator('main section section')
+        .filter({ has: page.getByRole('heading', { level: 2, name: T.cards[3] }) });
+      await expect(card).toHaveCount(1);
       await expect(card.getByRole('link', { name: T.promo })).toHaveAttribute(
         'href',
         new RegExp(`/${locale}/promotions/$`),
@@ -132,10 +146,9 @@ for (const locale of ['en', 'ar'] as const) {
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api116 });
-      await signIn(page, locale);
-      await expect(page.getByRole('navigation').first()).toBeVisible();
+      await signedIn(page, locale);
       await expect(page.getByRole('link', { name: T.nav, exact: true })).toHaveCount(0);
-      mock.api.length = 0; // the Overview's own calls (it asks /compare) are not Insights'
+      mock.api.length = 0; // from here on, only what the Insights page asks
       await page.goto(`/app/${locale}/insights/`);
       await expect(page.getByText(T.unavailable)).toBeVisible();
       await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
@@ -148,9 +161,12 @@ for (const locale of ['en', 'ar'] as const) {
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: apiNoRoute });
-      await signIn(page, locale);
+      await signedIn(page, locale);
+      mock.api.length = 0;
       await page.goto(`/app/${locale}/insights/`);
       await expect(page.getByText(T.noRoute)).toBeVisible();
+      // A true 404: the page did ask /insights, and that is what it answered.
+      expect(mock.api.map((r) => new URL(r.url).pathname)).toContain('/api/v1/insights');
       // Inside main: Next's route announcer is a role=alert outside it.
       await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);
       await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
