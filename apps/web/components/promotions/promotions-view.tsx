@@ -9,6 +9,7 @@ import type { Schemas } from '@/lib/api/types';
 import { formatCount, formatDate } from '@/lib/format';
 import {
   MIN_PCTS,
+  listedItems,
   notMeasured,
   parsePromotions,
   pickedShop,
@@ -76,11 +77,12 @@ export function PromotionsView() {
   });
   const env = q.data;
   const data = env?.data ?? null;
-  const items = data?.items ?? [];
+  const listed = data ? listedItems(data) : null;
+  const items = listed?.items ?? [];
   const shop = pickedShop(state);
   const why = env ? notMeasured(env, shop) : null;
-  const total = data?.total ?? 0;
-  const n = formatCount(total, locale);
+  const total = listed?.total ?? null;
+  const n = formatCount(total ?? 0, locale);
   const title = shop ? t('itemsAt', { shop: name(shop) }) : t('items');
   const asOf = env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) });
 
@@ -105,9 +107,11 @@ export function PromotionsView() {
             meta={
               why ? undefined : (
                 <span role="status">
-                  {data?.truncated
-                    ? t('shownOfTotal', { shown: formatCount(items.length, locale), total: n })
-                    : t('count', { total, n })}
+                  {total === null
+                    ? t('shownOnly', { shown: formatCount(items.length, locale) })
+                    : data?.truncated
+                      ? t('shownOfTotal', { shown: formatCount(items.length, locale), total: n })
+                      : t('count', { total, n })}
                 </span>
               )
             }
@@ -138,8 +142,8 @@ export function PromotionsView() {
                     path="/api/v1/export/promotions"
                     query={(format) => toPromotionsExportQuery(state, format)}
                     fallback="pi-promotions"
-                    total={total}
-                    n={n}
+                    total={data?.total ?? 0}
+                    n={formatCount(data?.total ?? 0, locale)}
                   />
                 </>
               )
