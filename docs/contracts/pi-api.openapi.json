@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.12.0",
+            "default": "1.13.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -1070,6 +1070,7 @@
           "channel_differs",
           "size_labels_differ_total",
           "was_price_unverified",
+          "was_price_stated",
           "snapshot_import_date",
           "parent_listings_included",
           "stale_source",
@@ -5977,7 +5978,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.12.0"
+    "version": "1.13.0"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -111,7 +111,7 @@ class SummaryCache:
     def get(self, loaded: Loaded, retailer: str | None) -> Metric[Summary]:
         ds = loaded.current
         ctx = (
-            default_context(ds, loaded.unverified)
+            default_context(ds, loaded.imported_contexts)
             if retailer is None
             else view.context(ds, retailer)
         ).id
@@ -163,7 +163,7 @@ def summary_view(
     time_zone = ds.market_of(view.context(ds, ctx).retailer).time_zone
     as_of = (
         metric.as_of
-        if ctx in loaded.unverified
+        if ctx in loaded.imported_contexts
         else collected_day(loaded.imported, metric.as_of, cutoff, time_zone)
     )
     fields = dict(metric.data) | {"as_of": as_of}
