@@ -3,7 +3,10 @@ stand in for them and exercise the same differences (re-encoding, margin, crop, 
 
 import io
 import random
+from collections.abc import Sequence
 
+import numpy as np
+from numpy.typing import NDArray
 from PIL import Image, ImageDraw
 
 
@@ -54,3 +57,21 @@ def transparent(image: Image.Image) -> Image.Image:
     white = image.convert("L").point(lambda v: 0 if v == 255 else 255)
     rgba.putalpha(white)
     return rgba
+
+
+class GridEmbedder:
+    """A deterministic stand-in for SigLIP: mean colour of a 4x4 grid (48 dims)."""
+
+    model_id = "test/grid@1"
+
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+
+    def embed(self, images: Sequence[Image.Image]) -> NDArray[np.float32]:
+        self.calls.append(len(images))
+        rows = [
+            np.asarray(i.convert("RGB").resize((4, 4), Image.Resampling.BOX), np.float32).ravel()
+            - 128.0
+            for i in images
+        ]
+        return np.stack(rows).astype(np.float32)
