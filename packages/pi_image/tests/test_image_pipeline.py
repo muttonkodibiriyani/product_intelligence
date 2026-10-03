@@ -8,7 +8,7 @@ from pi_image.embed import EmbeddingCache
 from pi_image.fetch import Fetched, ImageCache, ImageFetcher
 from pi_image.hashing import dhash, from_hex, normalise, phash
 from pi_image.model import FetchStatus, ImageRef, ImageStatus
-from pi_image.pipeline import analyse, embeddings, interleaved, prefetch
+from pi_image.pipeline import analyse, by_host, embeddings, prefetch
 
 S = "https://img-product.sephora.me/"
 F = "https://www.faces.ae/"
@@ -113,10 +113,14 @@ def test_embeddings_cover_ok_listings_only_and_are_cached(tmp_path: Path) -> Non
     assert all(np.array_equal(again[u], vectors[u]) for u in urls)
 
 
-def test_interleaved_round_robin_by_host() -> None:
-    urls = [f"{S}1", f"{S}2", f"{S}3", f"{F}1", f"{A}1", f"{S}1"]
-    assert interleaved(urls) == [f"{S}1", f"{A}1", f"{F}1", f"{S}2", f"{S}3"]
-    assert interleaved([]) == []
+def test_grouped_by_host() -> None:
+    urls = [f"{S}2", f"{S}1", f"{F}1", f"{A}1", f"{S}1"]
+    assert by_host(urls) == {
+        "img-product.sephora.me": [f"{S}1", f"{S}2"],
+        "media.alshaya.com": [f"{A}1"],
+        "www.faces.ae": [f"{F}1"],
+    }
+    assert by_host([]) == {}
 
 
 def test_prefetch_counts_and_skips_markers(tmp_path: Path) -> None:
@@ -133,4 +137,11 @@ def test_prefetch_counts_and_skips_markers(tmp_path: Path) -> None:
         "not_fetched": 1,
         "ok": 1,
     }
-    assert seen == [(1, 2), (2, 2)]
+    assert sorted(seen) == [(1, 2), (2, 2)]
+
+
+def test_prefetch_runs_hosts_side_by_side(tmp_path: Path) -> None:
+    fetcher = seed_cache(tmp_path, {})
+    refs = [ref("s", str(i), f"{h}{i}.png") for h in (S, F, A) for i in range(5)]
+    assert prefetch(refs, fetcher) == {"not_fetched": 15}
+    assert prefetch([], fetcher) == {}

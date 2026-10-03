@@ -1,7 +1,10 @@
 """Listing images end to end: fetch (or read the cache), decode, hash, flag placeholders, embed."""
 
 import hashlib
+import threading
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
@@ -165,14 +168,12 @@ def _loader(fetcher: ImageFetcher, url: str) -> Callable[[], Image.Image]:
     return load
 
 
-def interleaved(urls: Iterable[str]) -> list[str]:
-    """Unique URLs ordered round-robin across hosts, so each host keeps its own 1 req/s pace
-    while the run as a whole does not wait on one host at a time."""
-    by_host: dict[str, list[str]] = {}
+def by_host(urls: Iterable[str]) -> dict[str, list[str]]:
+    """Unique URLs grouped by host, each group sorted."""
+    groups: dict[str, list[str]] = {}
     for url in sorted(set(urls)):
-        by_host.setdefault(urlsplit(url).hostname or "", []).append(url)
-    queues = [by_host[h] for h in sorted(by_host)]
-    return [q[i] for i in range(max(map(len, queues), default=0)) for q in queues if i < len(q)]
+        groups.setdefault(urlsplit(url).hostname or "", []).append(url)
+    return dict(sorted(groups.items()))
 
 
 def prefetch(
@@ -180,12 +181,26 @@ def prefetch(
     fetcher: ImageFetcher,
     progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
-    """Fetch every distinct image URL once (host-interleaved); counts by fetch status."""
-    urls = interleaved(r.image_url for r in refs if r.image_url and not url_marker(r.image_url))
-    counts: dict[str, int] = {}
-    for index, url in enumerate(urls, start=1):
-        status = fetcher.fetch(url).status.value
-        counts[status] = counts.get(status, 0) + 1
-        if progress is not None:
-            progress(index, len(urls))
+    """Fetch every distinct image URL once; counts by fetch status.
+
+    One sequential worker per host: each host still gets at most one request per second (the
+    fetcher's ``HostPacer`` is shared and thread-safe), but one slow host never holds up another.
+    """
+    groups = by_host(r.image_url for r in refs if r.image_url and not url_marker(r.image_url))
+    total = sum(map(len, groups.values()))
+    counts: Counter[str] = Counter()
+    lock = threading.Lock()
+
+    def work(urls: list[str]) -> None:
+        for url in urls:
+            status = fetcher.fetch(url).status.value
+            with lock:
+                counts[status] += 1
+                done = counts.total()
+            if progress is not None:
+                progress(done, total)
+
+    with ThreadPoolExecutor(max_workers=max(1, len(groups))) as pool:
+        for future in [pool.submit(work, urls) for urls in groups.values()]:
+            future.result()
     return dict(sorted(counts.items()))
