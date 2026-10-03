@@ -95,6 +95,13 @@ class ListingRow:
     stock_run_id: int | None = None
     #: The retailer's main image URL from the latest content; only v2 reads it (allowlisted there).
     image: str | None = None
+    #: v3 ``Offer.content`` only (2026-10-03), all from the latest content row and the variant:
+    #: the barcode as stored (checked in v2), the page's description and ingredients, and the
+    #: gallery URLs in the page's order (allowlisted in v2).
+    gtin: str | None = None
+    description: str | None = None
+    ingredients: str | None = None
+    images: tuple[str, ...] = ()
 
     @property
     def price_capture(self) -> tuple[datetime, int]:
@@ -319,6 +326,9 @@ SELECT
   v.size_value,
   v.size_unit,
   lc.labels ->> 'size' AS size_label,
+  COALESCE(v.gtin, lc.labels ->> 'gtin') AS gtin,
+  lc.description,
+  lc.ingredients,
   latest.price_current AS price,
   latest.price_regular_stated AS regular,
   latest.price_type,
@@ -352,7 +362,23 @@ SELECT
       CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
       COALESCE(img ->> 'url', img ->> 'download_url')
     LIMIT 1
-  ) AS image
+  ) AS image,
+  -- The gallery: every element of the same two shapes (role 'main' or 'alt'; roles holding
+  -- 'image'), swatches left out, in position order. v2 keeps only the source's own hosts.
+  ARRAY(
+    SELECT COALESCE(img ->> 'url', img ->> 'download_url')
+    FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
+    ) img
+    WHERE COALESCE(img ->> 'url', img ->> 'download_url') IS NOT NULL
+      AND (
+        img ->> 'role' IN ('main', 'alt')
+        OR (jsonb_typeof(img -> 'roles') = 'array' AND img -> 'roles' ? 'image')
+      )
+    ORDER BY
+      CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
+      COALESCE(img ->> 'url', img ->> 'download_url')
+  ) AS images
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id
@@ -361,7 +387,7 @@ LEFT JOIN product_family pf ON pf.id = v.family_id
 LEFT JOIN brand b ON b.id = pf.brand_id
 LEFT JOIN taxonomy t ON t.id = pf.category_universal_id
 LEFT JOIN LATERAL (
-  SELECT content.labels
+  SELECT content.labels, content.description, content.ingredients
   FROM listing_content content
   WHERE content.listing_id = sl.id
   ORDER BY content.observed_at DESC
@@ -688,6 +714,8 @@ def load_rows(
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
+    for row in listing_dicts:
+        row["images"] = tuple(row.get("images") or ())
     return (
         in_sources([ListingRow(**row) for row in listing_dicts], sources),
         [MatchRow(**row) for row in match_dicts],
@@ -933,6 +961,61 @@ def build_dataset(
     return dataset
 
 
+#: The largest v3 file this exporter writes: pi_api's measured memory budget for one dataset
+#: (docs/runbooks/pi-api-deploy.md, "Memory 1Gi": <= 50 MB JSON). No override (Reviewer,
+#: 2026-10-03): a snapshot over it waits for the content to move to its own file.
+V3_MAX_BYTES = 50_000_000
+
+
+def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:
+    """The written v3 bytes split three ways, exactly: ``prices`` (everything but
+    ``Offer.content``), ``attributes`` (content without description and ingredients) and
+    ``description+ingredients``. Measured by re-serialising with those parts emptied."""
+    from pi_dataset import dump_dataset  # noqa: PLC0415
+
+    def without(drop_all: bool) -> int:
+        products = tuple(
+            p.model_copy(
+                update={
+                    "offers": {
+                        cid: o.model_copy(
+                            update={
+                                "content": None
+                                if drop_all or o.content is None
+                                else o.content.model_copy(
+                                    update={"description": None, "ingredients": None}
+                                )
+                            }
+                        )
+                        for cid, o in p.offers.items()
+                    }
+                }
+            )
+            for p in v3.products
+        )
+        return len(dump_dataset(v3.model_copy(update={"products": products})))
+
+    prices, mid = without(True), without(False)
+    return {
+        "prices": prices,
+        "attributes": mid - prices,
+        "description+ingredients": total - mid,
+    }
+
+
+def format_groups(groups: Mapping[str, int]) -> str:
+    return " ".join(f"{name}={size}" for name, size in groups.items())
+
+
+def check_v3_size(total: int, groups: Mapping[str, int]) -> None:
+    """Refuse (no file written) a v3 body over ``V3_MAX_BYTES``."""
+    if total > V3_MAX_BYTES:
+        raise SystemExit(
+            f"refusing to write v3: {total} bytes is over the {V3_MAX_BYTES}-byte pi_api budget "
+            f"({format_groups(groups)}); nothing was written"
+        )
+
+
 def write_json(path: Path, dataset: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -1078,8 +1161,11 @@ def main() -> None:
         body = dump_dataset(v2)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            body_v3 = dump_dataset(to_v3(v2, rows, matches))
+            v3 = to_v3(v2, rows, matches)
+            body_v3 = dump_dataset(v3)
             load_any(body_v3)  # the same strict load, as v3
+            v3_groups = v3_bytes_by_group(v3, len(body_v3))
+            check_v3_size(len(body_v3), v3_groups)
     write_json(args.output, dataset)
     print(
         f"wrote {len(dataset['products'])} products to {args.output} "
@@ -1106,7 +1192,8 @@ def main() -> None:
         write_bytes(args.output_v3, body_v3)
         print(
             f"wrote v3 {len(v2.products)} products to {args.output_v3} "
-            f"sha256={sha256(args.output_v3)}"
+            f"sha256={sha256(args.output_v3)} bytes={len(body_v3)} of {V3_MAX_BYTES} "
+            f"by group: {format_groups(v3_groups)}"
         )
 
 

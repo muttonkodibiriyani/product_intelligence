@@ -201,7 +201,7 @@ are **numbers**.
 |---|---|---|
 | `enabled` | boolean | `false` |
 | `model` | string | `gemini-2.5-flash` |
-| `promptVersion` | string | `chat-2026-10-01.3` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` on the deployed commit; re-checked in the section 10 version pre-check) |
+| `promptVersion` | string | `chat-2026-10-03.1` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` on the deployed commit; re-checked in the section 10 version pre-check) |
 | `priceTableVersion` | string | `2026-09-30-planning` (must equal `version` in `apps/assistant/config/prices.json`) |
 | `caps.monthUsd` | string | `4.00` |
 | `caps.labelMonthUsd.ci` | string | `1.50` |
@@ -517,11 +517,20 @@ secret.
 ```sh
 git fetch origin && git checkout --detach <CHAT_SHA>
 # In apps/assistant/.env.productintelligence-beeb3, fill in the three PI_* lines:
-#   PI_API_BASE_URL=https://productintelligence-beeb3.web.app/api/v1
+#   PI_API_BASE_URL=https://productintelligence-beeb3.web.app   (origin only: no /api/v1)
 #   PI_VERTEX_LOCATION=<VERTEX_LOCATION>
 #   PI_EVIDENCE_HOSTS=<EVIDENCE_HOSTS>   (see below)
 # Keep the KILL_SWITCH_* lines from section 5 as they are.
 git status --short apps/assistant   # must NOT list the .env file
+```
+
+`PI_API_BASE_URL` is the site origin only. The tools add `/api/v1` to every path themselves
+(`API_PREFIX` in `apps/assistant/src/tools/definitions.ts`), so a base ending in `/api/v1` sends
+`/api/v1/api/v1/...` to pi-api, and every tool call returns 404. Before the deploy, check:
+
+```sh
+grep -x 'PI_API_BASE_URL=https://productintelligence-beeb3\.web\.app' \
+  apps/assistant/.env.productintelligence-beeb3   # must print the line
 ```
 
 `<EVIDENCE_HOSTS>` is the same host list as the live `pi-api` service's

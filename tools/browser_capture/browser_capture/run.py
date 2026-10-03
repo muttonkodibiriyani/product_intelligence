@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
-from browser_capture.policy import ENFORCE_HOSTS, RECORD, Gate, host_refusal
+from browser_capture.policy import ENFORCE_HOSTS, RECORD, Gate, host_refusal, webrtc_state
 from browser_capture.session import Answer, Session, TransportError, Visit
 from page_capture import blocks, robots
 from page_capture.plan import Item, Plan, parse_plan, shard
@@ -250,7 +250,7 @@ class Job:
                 "launch_args": list(engine.launch_args),
                 "policy_args": list(engine.policy_args),
                 "init_script": engine.init_script,
-                "webrtc": "removed from every frame by the init script",
+                "webrtc": webrtc_state(engine.init_script),
                 "fresh_browser_per_page": True,
                 "service_workers": "block",
                 "websockets": "refused",

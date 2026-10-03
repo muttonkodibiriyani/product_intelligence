@@ -188,6 +188,18 @@
       "title": "Channel",
       "type": "string"
     },
+    "ContentField": {
+      "description": "An ``Offer.content`` field a source can carry (2026-10-03, additive).",
+      "enum": [
+        "description",
+        "ingredients",
+        "images",
+        "shade",
+        "gtin"
+      ],
+      "title": "ContentField",
+      "type": "string"
+    },
     "Context": {
       "additionalProperties": false,
       "description": "One priced place an item is sold: retailer, channel and optionally a location (§2).",
@@ -720,6 +732,82 @@
       "title": "NotObservedV3",
       "type": "object"
     },
+    "OfferContent": {
+      "additionalProperties": false,
+      "description": "What the retailer's page says about the offer, beyond price and stock.\n\n``captured`` lists the fields the offer's source carries anywhere in this snapshot. A null\n(or empty) field that is listed is one the retailer did not publish for this offer; a field\nthat is not listed is not captured from that source at all. ``content`` itself absent (every\nsnapshot before 2026-10-03) means nothing is stated.",
+      "properties": {
+        "captured": {
+          "items": {
+            "$ref": "#/$defs/ContentField"
+          },
+          "title": "Captured",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "family": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Family"
+        },
+        "images": {
+          "default": [],
+          "items": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Images",
+          "type": "array"
+        },
+        "ingredients": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ingredients"
+        },
+        "variants": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OfferVariant"
+          },
+          "title": "Variants",
+          "type": "array"
+        }
+      },
+      "required": [
+        "captured"
+      ],
+      "title": "OfferContent",
+      "type": "object"
+    },
     "OfferV3": {
       "additionalProperties": false,
       "properties": {
@@ -731,6 +819,17 @@
           },
           "title": "Attributes",
           "type": "object"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OfferContent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "currency": {
           "title": "Currency",
@@ -838,6 +937,47 @@
         "evidence"
       ],
       "title": "OfferV3",
+      "type": "object"
+    },
+    "OfferVariant": {
+      "additionalProperties": false,
+      "description": "One retailer listing the producer grouped into the offer: same retailer, same product\nfamily, same size (so its siblings differ by shade).",
+      "properties": {
+        "gtin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gtin"
+        },
+        "shade": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Shade"
+        },
+        "sku": {
+          "pattern": "\\S",
+          "title": "Sku",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sku",
+        "shade",
+        "gtin"
+      ],
+      "title": "OfferVariant",
       "type": "object"
     },
     "Producer": {

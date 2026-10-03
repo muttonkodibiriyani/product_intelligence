@@ -64,6 +64,9 @@
           "channel": {
             "$ref": "#/components/schemas/Channel"
           },
+          "content": {
+            "$ref": "#/components/schemas/OfferContentView"
+          },
           "context": {
             "title": "Context",
             "type": "string"
@@ -216,7 +219,8 @@
           "channel",
           "location",
           "sizeLabel",
-          "sizeSystem"
+          "sizeSystem",
+          "content"
         ],
         "title": "AdminOfferView",
         "type": "object"
@@ -254,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.11.0",
+            "default": "1.12.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -1369,6 +1373,16 @@
         ],
         "title": "Comparison",
         "type": "object"
+      },
+      "ContentState": {
+        "description": "API 1.12.0: why a content field has the value it has.",
+        "enum": [
+          "observed",
+          "not_published",
+          "not_captured"
+        ],
+        "title": "ContentState",
+        "type": "string"
       },
       "Context": {
         "additionalProperties": false,
@@ -2965,6 +2979,32 @@
         "title": "GroupBy",
         "type": "string"
       },
+      "GtinContent": {
+        "additionalProperties": false,
+        "properties": {
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          }
+        },
+        "required": [
+          "state",
+          "barcode"
+        ],
+        "title": "GtinContent",
+        "type": "object"
+      },
       "History": {
         "additionalProperties": false,
         "properties": {
@@ -3036,6 +3076,61 @@
           "availability"
         ],
         "title": "HistoryPoint",
+        "type": "object"
+      },
+      "ImageLink": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string",
+            "x-pi-source-text": true
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "ImageLink",
+        "type": "object"
+      },
+      "ImageSource": {
+        "enum": [
+          "page",
+          "catalogue"
+        ],
+        "title": "ImageSource",
+        "type": "string"
+      },
+      "ImagesContent": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageLink"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          }
+        },
+        "required": [
+          "state",
+          "items",
+          "source"
+        ],
+        "title": "ImagesContent",
         "type": "object"
       },
       "IndexPoint": {
@@ -3534,6 +3629,40 @@
         "title": "MoneyValue",
         "type": "object"
       },
+      "OfferContentView": {
+        "additionalProperties": false,
+        "description": "API 1.12.0: what the retailer's page says beyond price and stock. Every field has an\nexplicit state; nothing missing is served as an empty value.",
+        "properties": {
+          "description": {
+            "$ref": "#/components/schemas/TextContent"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImagesContent"
+          },
+          "ingredients": {
+            "$ref": "#/components/schemas/TextContent"
+          },
+          "sizes": {
+            "items": {
+              "$ref": "#/components/schemas/SizeSibling"
+            },
+            "title": "Sizes",
+            "type": "array"
+          },
+          "variants": {
+            "$ref": "#/components/schemas/VariantsContent"
+          }
+        },
+        "required": [
+          "description",
+          "ingredients",
+          "images",
+          "variants",
+          "sizes"
+        ],
+        "title": "OfferContentView",
+        "type": "object"
+      },
       "OfferView": {
         "additionalProperties": false,
         "properties": {
@@ -3549,6 +3678,9 @@
           },
           "channel": {
             "$ref": "#/components/schemas/Channel"
+          },
+          "content": {
+            "$ref": "#/components/schemas/OfferContentView"
           },
           "context": {
             "title": "Context",
@@ -3702,7 +3834,8 @@
           "channel",
           "location",
           "sizeLabel",
-          "sizeSystem"
+          "sizeSystem",
+          "content"
         ],
         "title": "OfferView",
         "type": "object"
@@ -5165,6 +5298,45 @@
         "title": "Size",
         "type": "object"
       },
+      "SizeSibling": {
+        "additionalProperties": false,
+        "description": "Another product with an offer in the same context and the same retailer product family:\nthe same item in another size.",
+        "properties": {
+          "productId": {
+            "title": "Productid",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Size"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeLabel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizelabel"
+          }
+        },
+        "required": [
+          "productId",
+          "size",
+          "sizeLabel"
+        ],
+        "title": "SizeSibling",
+        "type": "object"
+      },
       "SkuReference": {
         "additionalProperties": false,
         "properties": {
@@ -5536,6 +5708,32 @@
         "title": "SummaryView",
         "type": "object"
       },
+      "TextContent": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "state",
+          "text"
+        ],
+        "title": "TextContent",
+        "type": "object"
+      },
       "TopDiscount": {
         "additionalProperties": false,
         "properties": {
@@ -5637,6 +5835,51 @@
         "title": "UnmappedPath",
         "type": "object"
       },
+      "VariantView": {
+        "additionalProperties": false,
+        "description": "One listing grouped into the offer: same retailer, product family and size.",
+        "properties": {
+          "gtin": {
+            "$ref": "#/components/schemas/GtinContent"
+          },
+          "shade": {
+            "$ref": "#/components/schemas/TextContent"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string",
+            "x-pi-source-text": true
+          }
+        },
+        "required": [
+          "sku",
+          "shade",
+          "gtin"
+        ],
+        "title": "VariantView",
+        "type": "object"
+      },
+      "VariantsContent": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VariantView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          }
+        },
+        "required": [
+          "state",
+          "items"
+        ],
+        "title": "VariantsContent",
+        "type": "object"
+      },
       "Withheld": {
         "additionalProperties": false,
         "properties": {
@@ -5734,7 +5977,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.11.0"
+    "version": "1.12.0"
   },
   "openapi": "3.1.0",
   "paths": {

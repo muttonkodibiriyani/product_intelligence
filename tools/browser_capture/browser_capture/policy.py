@@ -61,6 +61,19 @@ NO_WEBRTC: Final = (
     "delete window.webkitRTCPeerConnection; "
     "delete window.RTCDataChannel;"
 )
+_WEBRTC_CONSTRUCTORS: Final = ("RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel")
+
+
+def webrtc_state(init_script: str) -> str:
+    """What the manifest says about WebRTC, derived from the init script actually installed.
+
+    Only a script that deletes all three constructors earns the "removed" statement; anything
+    else is recorded as left in place, naming the constructors the script does not delete.
+    """
+    kept = [c for c in _WEBRTC_CONSTRUCTORS if f"delete window.{c};" not in init_script]
+    if not kept:
+        return "removed from every frame by the init script"
+    return "left in place: init script does not delete " + ", ".join(kept)
 
 
 def host_refusal(
