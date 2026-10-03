@@ -157,11 +157,45 @@ export function depthBands(d: { bands: readonly string[]; cells: readonly (reado
   return { bands, total: bands.reduce((s, b) => s + b.n, 0) };
 }
 
-/** The band holding the most discounted products; null when none is counted. */
-export function deepestBand(d: { bands: readonly string[]; cells: readonly (readonly number[])[] }) {
+/**
+ * Which discount band leads, and how strongly: 'most' when it holds more than half the discounted
+ * products, 'largest' when it holds the most but not half, 'tie' when two or more bands share the
+ * top count (no band is named then). Null when nothing is counted.
+ */
+export type LeadingBand =
+  { kind: 'most' | 'largest'; band: string; n: number; total: number } | { kind: 'tie'; total: number };
+
+export function leadingBand(d: {
+  bands: readonly string[];
+  cells: readonly (readonly number[])[];
+}): LeadingBand | null {
   const { bands, total } = depthBands(d);
   if (total === 0) return null;
-  return bands.reduce((a, b) => (b.n > a.n ? b : a));
+  const top = Math.max(...bands.map((b) => b.n));
+  const leaders = bands.filter((b) => b.n === top);
+  if (leaders.length > 1) return { kind: 'tie', total };
+  const { band, n } = leaders[0]!;
+  return { kind: n * 2 > total ? 'most' : 'largest', band, n, total };
+}
+
+/**
+ * Launches per day summed across the shops whose dates are complete. A shop the API cut
+ * (`perDay` null), still loading, or without two collection days is not in the sum, so
+ * `partial` says the total covers only `covered`, by name, never all shops.
+ */
+export function launchTotals<S extends { name: string; perDay: readonly { date: string; n: number }[] }>(
+  shops: number,
+  series: readonly S[],
+): { total: number; peak: { date: string; n: number } | null; covered: string[]; partial: boolean } {
+  const byDay = new Map<string, number>();
+  for (const s of series) for (const d of s.perDay) byDay.set(d.date, (byDay.get(d.date) ?? 0) + d.n);
+  const days = [...byDay].map(([date, n]) => ({ date, n }));
+  return {
+    total: days.reduce((a, d) => a + d.n, 0),
+    peak: peakDay(days),
+    covered: series.map((s) => s.name),
+    partial: series.length < shops,
+  };
 }
 
 /** The day with the most launches in a window; null when there were none. */

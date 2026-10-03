@@ -187,7 +187,11 @@
       "brands": "{shop}: {high} dearest at {highPrice}, {low} cheapest at {lowPrice}",
       "brandsOne": "{shop}: {brand} median {median}",
       "share": "Top {k} brands are {share} of {shop} products",
-      "depth": "{shop}: most of {n, plural, one {# discounted product} other {# discounted products}} are {band}"
+      "depth": "{shop}: most of {n, plural, one {# discounted product} other {# discounted products}} are {band}",
+      "launchesOf": "{shops} only: {n, plural, one {# launch} other {# launches}} in {days} days, peak {peak} on {date}",
+      "noLaunchesOf": "{shops} only: no launches in {days} days",
+      "depthLargest": "{shop}: {band} is the largest band, {k} of {n, plural, one {# discounted product} other {# discounted products}}",
+      "depthTie": "{shop}: {n, plural, one {# discounted product} other {# discounted products}} by discount band"
     }
   },
   "explore": {

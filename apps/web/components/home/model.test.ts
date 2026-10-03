@@ -7,10 +7,11 @@ import {
   abs,
   bucketCheaper,
   categoryRead,
-  deepestBand,
   deepestCut,
   depthBands,
   earlyExcluded,
+  launchTotals,
+  leadingBand,
   gapWidth,
   minus,
   peakDay,
@@ -151,9 +152,57 @@ describe('depth bands and launch days', () => {
       total: 0,
     });
   });
-  it('deepestBand is the fullest band, or null when nothing is counted', () => {
-    expect(deepestBand(depth)).toEqual({ band: '10-20', n: 6 });
-    expect(deepestBand({ bands: ['10-20'], cells: [[0]] })).toBeNull();
+  it('leadingBand says "most" only past half, "largest" for a plurality, and names no band on a tie', () => {
+    // 6 of 10: more than half.
+    expect(leadingBand(depth)).toEqual({ kind: 'most', band: '10-20', n: 6, total: 10 });
+    // Exactly half is not "most".
+    expect(leadingBand({ bands: ['a', 'b', 'c'], cells: [[2, 1, 1]] })).toEqual({
+      kind: 'largest',
+      band: 'a',
+      n: 2,
+      total: 4,
+    });
+    // A plurality: 3 of 7 leads, but is not most.
+    expect(
+      leadingBand({
+        bands: ['a', 'b', 'c'],
+        cells: [
+          [1, 3, 1],
+          [1, 0, 1],
+        ],
+      }),
+    ).toEqual({
+      kind: 'largest',
+      band: 'b',
+      n: 3,
+      total: 7,
+    });
+    // A tie at the top, here between the last two bands: no band is named, first or otherwise.
+    expect(leadingBand({ bands: ['a', 'b', 'c'], cells: [[1, 2, 2]] })).toEqual({ kind: 'tie', total: 5 });
+    expect(leadingBand({ bands: ['10-20'], cells: [[0]] })).toBeNull();
+  });
+  it('leadingBand on the golden /summary depth (1 + 1 + 1 of 3) is a tie, never "most of 3"', () => {
+    const s = golden('summary') as { data: { promoDepth: { bands: string[]; cells: number[][] } } };
+    expect(leadingBand(s.data.promoDepth)).toEqual({ kind: 'tie', total: 3 });
+  });
+  it('launchTotals sums only the shops with complete dates, and says when that is not all of them', () => {
+    const d = (date: string, n: number) => ({ date, n });
+    const a = { name: 'Shop A', perDay: [d('2026-09-29', 2), d('2026-09-30', 0)] };
+    const b = { name: 'Shop B', perDay: [d('2026-09-29', 1), d('2026-09-30', 4)] };
+    expect(launchTotals(2, [a, b])).toEqual({
+      total: 7,
+      peak: d('2026-09-30', 4),
+      covered: ['Shop A', 'Shop B'],
+      partial: false,
+    });
+    // Shop B's list was truncated (perDay null), so it is not in the series: the total is Shop A's
+    // alone and says so.
+    expect(launchTotals(2, [a])).toEqual({
+      total: 2,
+      peak: d('2026-09-29', 2),
+      covered: ['Shop A'],
+      partial: true,
+    });
   });
   it('peakDay is the busiest day, the first on a tie, or null with no launch', () => {
     const d = (date: string, n: number) => ({ date, n });

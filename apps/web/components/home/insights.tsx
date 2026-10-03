@@ -14,7 +14,7 @@ import { BRANDS_TOP, SHARE_TOP } from '../widgets/constants';
 import type { RetailerSummary } from '../widgets/kpis';
 import { amount, brandShare, pct, promotions, trendPoints } from '../widgets/model';
 import { useIndexData, type PairState } from '../widgets/use-compare';
-import { deepestBand, depthBands, peakDay, widestGap } from './model';
+import { launchTotals, leadingBand, widestGap } from './model';
 import type { useLaunchCounts } from './use-overview-data';
 
 const charts = () => import('../widgets/charts');
@@ -85,16 +85,8 @@ export function Insights({
       index: rows.findIndex((r) => r.retailer === l.shop.id),
       perDay: l.perDay!,
     }));
-  const launched = series.flatMap((s) => s.perDay);
-  const peak = peakDay(
-    launched.reduce<{ date: string; n: number }[]>((acc, d) => {
-      const hit = acc.find((x) => x.date === d.date);
-      if (hit) hit.n += d.n;
-      else acc.push({ ...d });
-      return acc;
-    }, []),
-  );
-  const launchTotal = series.reduce((s, x) => s + x.perDay.reduce((a, d) => a + d.n, 0), 0);
+  const launched = launchTotals(launches.shops.length, series);
+  const covered = new Intl.ListFormat(locale, { type: 'conjunction' }).format(launched.covered);
   const trend = index.kind === 'ready' ? trendPoints(index.data) : null;
   const buckets =
     cat.kind === 'ready' ? cat.data.buckets.filter((b) => b.status === 'ok' && b.gapPct !== null) : [];
@@ -157,14 +149,18 @@ export function Insights({
             id="i-launches"
             span={12}
             title={
-              peak
-                ? t('launches', {
-                    n: launchTotal,
+              launched.peak
+                ? t(launched.partial ? 'launchesOf' : 'launches', {
+                    shops: covered,
+                    n: launched.total,
                     days: series[0]!.perDay.length,
-                    date: formatDate(peak.date, locale),
-                    peak: peak.n,
+                    date: formatDate(launched.peak.date, locale),
+                    peak: launched.peak.n,
                   })
-                : t('noLaunches', { days: series[0]!.perDay.length })
+                : t(launched.partial ? 'noLaunchesOf' : 'noLaunches', {
+                    shops: covered,
+                    days: series[0]!.perDay.length,
+                  })
             }
             meta={<Kind>{t('launchesKind')}</Kind>}
           >
@@ -205,7 +201,7 @@ function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
   const shares = brandShare(d.brandPrice, d.priced).slice(0, SHARE_TOP);
   const topShare = shares[shares.length - 1];
   const promo = promotions(d);
-  const band = promo.measured ? deepestBand(promo.depth) : null;
+  const band = promo.measured ? leadingBand(promo.depth) : null;
   const shop = row.name;
   return (
     <>
@@ -278,11 +274,16 @@ function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
         <Card
           id={id('depth')}
           span={12}
-          title={t('depth', {
-            shop,
-            n: depthBands(promo.depth).total,
-            band: tw('promo.off', { band: band.band }),
-          })}
+          title={
+            band.kind === 'tie'
+              ? t('depthTie', { shop, n: band.total })
+              : t(band.kind === 'most' ? 'depth' : 'depthLargest', {
+                  shop,
+                  n: band.total,
+                  k: band.n,
+                  band: tw('promo.off', { band: band.band }),
+                })
+          }
           meta={<Kind>{tw('promo.title')}</Kind>}
         >
           <PromoDepthWidget data={promo.depth} {...p} />

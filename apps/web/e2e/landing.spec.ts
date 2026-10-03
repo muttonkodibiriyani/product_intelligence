@@ -99,9 +99,9 @@ const launchItems: Record<string, { firstSeen: string; id: string; name: string;
   ],
   shop_b: [{ firstSeen: '2026-09-29', id: 'p14', name: 'Product p14', retailer: 'shop_b' }],
 };
-const launchesFor = (retailer: string | null) => {
+const launchesFor = (retailer: string | null, truncated = false) => {
   const items = launchItems[retailer ?? ''] ?? [];
-  return { ...launchesGolden, caveats: [], data: { items, total: items.length, truncated: false } };
+  return { ...launchesGolden, caveats: [], data: { items, total: items.length, truncated } };
 };
 
 /**
@@ -118,7 +118,8 @@ const api =
       cmp = compare,
       categories = true,
       promo = promotions,
-    }: { meta?: Meta; cmp?: unknown; categories?: boolean; promo?: unknown } = {},
+      cut,
+    }: { meta?: Meta; cmp?: unknown; categories?: boolean; promo?: unknown; cut?: string } = {},
   ) =>
   async (r: Route) => {
     const url = new URL(r.request().url());
@@ -133,7 +134,10 @@ const api =
       return r.fulfill({ json: categoryCompareBody('shop_a', 'shop_b', THIN) });
     if (p === '/api/v1/index') return r.fulfill({ json: index });
     if (p === '/api/v1/promotions') return r.fulfill({ json: promo });
-    if (p === '/api/v1/launches') return r.fulfill({ json: launchesFor(url.searchParams.get('retailer')) });
+    if (p === '/api/v1/launches') {
+      const retailer = url.searchParams.get('retailer');
+      return r.fulfill({ json: launchesFor(retailer, retailer === cut) });
+    }
     return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
   };
 const byShop = (a: unknown, b: unknown) => (retailer: string | null) => (retailer === 'shop_b' ? b : a);
@@ -373,6 +377,25 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.locator('main [role=note]')).toHaveCount(0);
       await bandFits(page);
       expect(mock.external).toEqual([]);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('a shop whose launches list the API cut: its count stays, the per-day total names only the shops it covers', async ({
+      page,
+    }) => {
+      const mock = await mockBackend(page, {
+        onApi: api(byShop(shopA, shopB), { meta: twoShops, cut: 'shop_b' }),
+      });
+      await signIn(page, locale);
+      // The band keeps Shop B's served count (1), but with no per-day sparkline for it.
+      const launches = tile(page, 'launches');
+      await expect(launches.locator('dd').filter({ hasText: /^1$/ })).toHaveCount(1);
+      await expect(launches.locator(`[role=img][aria-label="${T.sparkA}"] i`)).toHaveCount(30);
+      // The per-day chart's title is Shop A's alone, by name, not a cross-shop total of 3.
+      const title = page.locator('#i-launches h2');
+      await expect(title).toHaveText(
+        ar ? /^Shop A فقط: منتجان جديدان / : /^Shop A only: 2 launches in 30 days/,
+      );
       expect(mock.errors).toEqual([]);
     });
 

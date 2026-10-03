@@ -187,7 +187,11 @@
       "brands": "{shop}: {high} الأغلى بـ{highPrice}، {low} الأرخص بـ{lowPrice}",
       "brandsOne": "{shop}: وسيط {brand} {median}",
       "share": "أكبر {k, number, latn} علامات تشكّل {share} من منتجات {shop}",
-      "depth": "{shop}: معظم {n, plural, zero {لا منتجات مخفّضة} one {المنتج المخفّض الواحد} two {المنتجين المخفّضين} few {المنتجات المخفّضة الـ{n, number, latn}} many {المنتجات المخفّضة الـ{n, number, latn}} other {المنتجات المخفّضة الـ{n, number, latn}}} {band}"
+      "depth": "{shop}: معظم {n, plural, zero {لا منتجات مخفّضة} one {المنتج المخفّض الواحد} two {المنتجين المخفّضين} few {المنتجات المخفّضة الـ{n, number, latn}} many {المنتجات المخفّضة الـ{n, number, latn}} other {المنتجات المخفّضة الـ{n, number, latn}}} {band}",
+      "launchesOf": "{shops} فقط: {n, plural, zero {لا منتجات جديدة} one {منتج جديد واحد} two {منتجان جديدان} few {{n, number, latn} منتجات جديدة} many {{n, number, latn} منتجًا جديدًا} other {{n, number, latn} منتج جديد}} في {days, plural, few {{days, number, latn} أيام} other {{days, number, latn} يومًا}}، الذروة {peak, number, latn} في {date}",
+      "noLaunchesOf": "{shops} فقط: لا منتجات جديدة في {days, plural, few {{days, number, latn} أيام} other {{days, number, latn} يومًا}}",
+      "depthLargest": "{shop}: {band} الشريحة الأكبر، {k, number, latn} من {n, plural, zero {لا منتجات مخفّضة} one {منتج مخفّض واحد} two {منتجين مخفّضين} few {{n, number, latn} منتجات مخفّضة} many {{n, number, latn} منتجًا مخفّضًا} other {{n, number, latn} منتج مخفّض}}",
+      "depthTie": "{shop}: {n, plural, zero {لا منتجات مخفّضة} one {منتج مخفّض واحد} two {منتجان مخفّضان} few {{n, number, latn} منتجات مخفّضة} many {{n, number, latn} منتجًا مخفّضًا} other {{n, number, latn} منتج مخفّض}} حسب شريحة الخصم"
     }
   },
   "explore": {
