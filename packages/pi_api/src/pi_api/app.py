@@ -59,6 +59,7 @@ from pi_api.catalog import (
     AdminProductDetail,
     CoverageQuery,
     EvidenceHosts,
+    Gallery,
     History,
     HistoryQuery,
     InvalidQueryError,
@@ -594,6 +595,21 @@ def build_api(
         page = product_page(loaded.current, loaded.generation, query, images)
         return respond(loaded, "products", query, stale_first(loaded, page, query.retailer))
 
+    def gallery(prices: Loaded) -> Gallery | None:
+        """The retailer catalogue's gallery for a sku, when a catalogue is configured and has
+        it; never an error (the page gallery's state stands instead)."""
+        if catalogues is None:
+            return None
+
+        def look(retailer: str, sku: str) -> tuple[str, ...] | None:
+            try:
+                found = catalogue_detail(catalogues.select(retailer, prices), sku, images)
+            except (NotFoundError, DataUnavailableError, AmbiguousDatasetError):
+                return None
+            return tuple(i.url for i in found.images if i.url is not None) or None
+
+        return look
+
     @api.get(f"{PREFIX}/products/{{product_id}}", response_model=ProductEnvelope[ProductDetail])
     def get_product(
         product_id: ProductId,
@@ -603,7 +619,14 @@ def build_api(
         loaded = source.select(query.market, query.scope)
         found, resolved_from = find(loaded, product_id)
         product = as_of(loaded, found)
-        detail = product_detail(loaded.current, product, hosts, images)
+        detail = product_detail(
+            loaded.current,
+            product,
+            hosts,
+            images,
+            families=loaded.families,
+            gallery=gallery(loaded),
+        )
         detail = stale_first(loaded, detail, product.offers)
         return resolved(respond(loaded, "product", query, detail), resolved_from)
 
@@ -619,7 +642,14 @@ def build_api(
         loaded = source.select(query.market, query.scope)
         found, resolved_from = find(loaded, product_id)
         product = as_of(loaded, found)
-        detail = admin_product_detail(loaded.current, product, hosts, images)
+        detail = admin_product_detail(
+            loaded.current,
+            product,
+            hosts,
+            images,
+            families=loaded.families,
+            gallery=gallery(loaded),
+        )
         detail = stale_first(loaded, detail, product.offers)
         return resolved(respond(loaded, "admin_product", query, detail), resolved_from)
 

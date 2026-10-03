@@ -37,9 +37,10 @@ from zoneinfo import ZoneInfo
 
 from pydantic import HttpUrl
 
-from pi_core import AvailabilityState, MatchClass, ReviewState
+from pi_core import AvailabilityState, MatchClass, ReviewState, is_valid_gtin
 from pi_dataset import (
     Capabilities,
+    ContentField,
     Dataset,
     DatasetV3,
     DecidedBy,
@@ -51,6 +52,8 @@ from pi_dataset import (
     MoneyValue,
     NotObserved,
     Offer,
+    OfferContent,
+    OfferVariant,
     Producer,
     Product,
     Rating,
@@ -513,11 +516,11 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     )
 
 
-def listing_counts(
+def offer_rows(
     rows: Sequence[ListingRow], matches: Sequence[MatchRow]
-) -> dict[tuple[str, str], int]:
-    """Listing rows per collected offer, by (product id, retailer id): the grouping and pairing
-    ``build_dataset_v2`` uses, so every collected offer has its count."""
+) -> dict[tuple[str, str], Sequence[ListingRow]]:
+    """The listing rows of each collected offer, by (product id, retailer id): the grouping and
+    pairing ``build_dataset_v2`` uses, so every collected offer has its rows."""
     groups = group_rows(rows)
     pairs, unpaired = pair_groups(groups, matches)
     owned: list[tuple[tuple[GroupKey, ...], str]] = [
@@ -525,25 +528,102 @@ def listing_counts(
     ]
     owned += [((key,), key.stable_token) for key in unpaired]
     return {
-        (product_id(token), RETAILERS[key.retailer][0]): len(groups[key])
+        (product_id(token), RETAILERS[key.retailer][0]): groups[key]
         for keys, token in owned
         for key in keys
     }
 
 
+def listing_counts(
+    rows: Sequence[ListingRow], matches: Sequence[MatchRow]
+) -> dict[tuple[str, str], int]:
+    """Listing rows per collected offer, by (product id, retailer id)."""
+    return {key: len(group) for key, group in offer_rows(rows, matches).items()}
+
+
+def _text(value: str | None) -> str | None:
+    """Edge-trimmed text; blank is absent, never an empty value."""
+    text = value.strip() if value is not None else ""
+    return text or None
+
+
+def _gtin(value: str | None) -> str | None:
+    """The stored barcode when it is a valid GTIN; an invalid one is dropped (as offline_import)."""
+    return value if value is not None and is_valid_gtin(value) else None
+
+
+def _gallery(row: ListingRow) -> tuple[HttpUrl, ...]:
+    """The row's gallery on the retailer's own hosts, page order, each URL once."""
+    urls = (image(url, RETAILERS[row.retailer][0]) for url in row.images)
+    return tuple(dict.fromkeys(url for url in urls if url is not None))
+
+
+def captured_fields(rows: Sequence[ListingRow]) -> dict[str, tuple[ContentField, ...]]:
+    """Per retailer id, the content fields any of its exported rows carries. A field no row of a
+    retailer has is *not captured* from it; one that some rows have is *not published* where a
+    row lacks it (Reviewer, 2026-10-03)."""
+    has: dict[str, set[ContentField]] = {rid: set() for rid, _ in RETAILERS.values()}
+    for row in rows:
+        fields = has[RETAILERS[row.retailer][0]]
+        fields.update(
+            field
+            for field, value in (
+                (ContentField.DESCRIPTION, _text(row.description)),
+                (ContentField.INGREDIENTS, _text(row.ingredients)),
+                (ContentField.IMAGES, _gallery(row)),
+                (ContentField.SHADE, _text(row.shade)),
+                (ContentField.GTIN, _gtin(row.gtin)),
+            )
+            if value
+        )
+    return {rid: tuple(f for f in ContentField if f in fields) for rid, fields in has.items()}
+
+
+def content(rows: Sequence[ListingRow], captured: tuple[ContentField, ...]) -> OfferContent:
+    """One offer's page content. Description, ingredients and gallery are the representative
+    row's (the listing the offer's price is from); description and ingredients fall back to the
+    first other row, by sku, that has them. Variants are every row of the offer, by sku."""
+    rep = choose_representative(rows)
+    ordered = [rep, *sorted((r for r in rows if r is not rep), key=_sku)]
+    return OfferContent(
+        captured=captured,
+        description=next((t for r in ordered if (t := _text(r.description))), None),
+        ingredients=next((t for r in ordered if (t := _text(r.ingredients))), None),
+        images=_gallery(rep),
+        variants=tuple(
+            OfferVariant(sku=_sku(r), shade=_text(r.shade), gtin=_gtin(r.gtin))
+            for r in sorted(rows, key=_sku)
+        ),
+        family=rep.family_id,
+    )
+
+
+def _sku(row: ListingRow) -> str:
+    return row.source_sku or row.source_listing_key
+
+
 def to_v3(v2: Dataset, rows: Sequence[ListingRow], matches: Sequence[MatchRow]) -> DatasetV3:
-    """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount``; an early
-    (recon) offer's stays ``null``. The caller validates the dump with ``load_any``."""
+    """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount`` and
+    ``content``; an early (recon) offer's stay ``null``. The caller validates the dump with
+    ``load_any``."""
     profile = committed_profile("beauty", 1)
     if profile is None:  # pragma: no cover - the profile is committed with pi_dataset
         raise ValueError("beauty@1 is not a committed profile")
-    counts = listing_counts(rows, matches)
+    grouped = offer_rows(rows, matches)
+    captured = captured_fields(rows)
     v3 = upgrade(v2, profile)
     products = tuple(
         p.model_copy(
             update={
                 "offers": {
-                    cid: o if o.early else o.model_copy(update={"listing_count": counts[p.id, cid]})
+                    cid: o
+                    if o.early
+                    else o.model_copy(
+                        update={
+                            "listing_count": len(grouped[p.id, cid]),
+                            "content": content(grouped[p.id, cid], captured[cid]),
+                        }
+                    )
                     for cid, o in p.offers.items()
                 }
             }
