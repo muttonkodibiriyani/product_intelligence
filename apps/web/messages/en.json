@@ -574,6 +574,8 @@
     "onPromoCount": "{total, plural, =0 {No product carries a lower price than its regular price.} one {{n} product carries a lower price than its regular price.} other {{n} products carry a lower price than their regular price.}}",
     "deepest": "Deepest cut: <b>−{pct}%</b>.",
     "noShare": "No data for this shop.",
+    "discountedSeen": "{total, plural, one {discounted product seen} other {discounted products seen}}",
+    "shareWithheld": "Share on promotion not shown:",
     "notMeasuredShop": "Discounts not measured",
     "notMeasuredAt": "Discounts at {shop} aren’t measured.",
     "notMeasuredFilters": "Discounts aren’t measured for these filters.",

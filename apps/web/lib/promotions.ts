@@ -88,12 +88,24 @@ export function pickedShop(s: Pick<PromotionsState, 'retailer'>): string | null 
   return s.retailer.length === 1 ? s.retailer[0]! : null;
 }
 
-type Share = Pick<Schemas['RetailerPromo'], 'retailer' | 'share' | 'reason'>;
+type Share = Pick<Schemas['RetailerPromo'], 'retailer' | 'share' | 'reason' | 'n'>;
 
 /**
- * Why promotions are not measured for what is on screen, or null when at least one shown shop has
- * a share: the picked shop's own reason, else the envelope's, else the first shop's. An empty
- * list of discounts is only "no discounts" when something was measured.
+ * Reasons that withhold only a shop's share, not its discounts: a partly covered shop or a small
+ * cohort still has observed prices below observed regular prices, and those items are facts.
+ * Every other reason (unverified was-prices, the field or capability off) withholds the items too.
+ */
+const SHARE_ONLY: ReadonlySet<string> = new Set(['retailer_partial', 'cohort_too_small']);
+
+/** Whether a shop's discounted items can be listed: it has a share, or only its share is withheld. */
+export function listable(r: Share): boolean {
+  return r.share !== null || (r.n > 0 && r.reason !== null && SHARE_ONLY.has(r.reason));
+}
+
+/**
+ * Why the discounts on screen are not measured, or null when at least one shown shop's discounts
+ * can be listed: the picked shop's own reason, else the envelope's, else the first shop's. An
+ * empty list of discounts is only "no discounts" when something was measured.
  */
 export function notMeasured(
   env: { reason?: Schemas['Reason'] | null; data: { retailers: readonly Share[] } | null },
@@ -101,7 +113,7 @@ export function notMeasured(
 ): string | null {
   const shares = env.data?.retailers ?? [];
   const picked = shop ? shares.find((r) => r.retailer === shop) : undefined;
-  if (picked) return picked.share === null ? (picked.reason ?? env.reason ?? 'field_not_collected') : null;
-  if (shares.some((r) => r.share !== null)) return null;
+  if (picked) return listable(picked) ? null : (picked.reason ?? env.reason ?? 'field_not_collected');
+  if (shares.some(listable)) return null;
   return env.reason ?? shares.find((r) => r.reason)?.reason ?? 'field_not_collected';
 }

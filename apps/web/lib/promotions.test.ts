@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deepestCut,
   EMPTY_PROMOTIONS,
+  listable,
   notMeasured,
   parsePromotions,
   pickedShop,
@@ -79,9 +80,9 @@ describe('shop tiles from the API’s rows', () => {
   });
 
   it('tells "not measured" from "no discounts": a reason only when nothing shown has a share', () => {
-    const a = { retailer: 'shop_a', share: '50.0', reason: null } as const;
-    const c = { retailer: 'shop_c', share: null, reason: 'retailer_partial' } as const;
-    const d = { retailer: 'shop_d', share: null, reason: 'was_price_unverified' } as const;
+    const a = { retailer: 'shop_a', n: 10, share: '50.0', reason: null } as const;
+    const c = { retailer: 'shop_c', n: 0, share: null, reason: 'retailer_partial' } as const;
+    const d = { retailer: 'shop_d', n: 9, share: null, reason: 'was_price_unverified' } as const;
     // Something measured: an empty list is a real "no discounts".
     expect(notMeasured({ reason: 'retailer_partial', data: { retailers: [a, c] } }, null)).toBeNull();
     // The picked shop decides for itself.
@@ -92,5 +93,30 @@ describe('shop tiles from the API’s rows', () => {
     expect(notMeasured({ reason: null, data: { retailers: [c, d] } }, null)).toBe('retailer_partial');
     expect(notMeasured({ reason: null, data: null }, null)).toBe('field_not_collected');
     expect(notMeasured({ reason: null, data: null }, 'shop_a')).toBe('field_not_collected');
+  });
+
+  it('lists a shop whose share alone is withheld: partly covered or a small cohort, with prices seen', () => {
+    const partial = { retailer: 'ulta_ae', n: 7234, share: null, reason: 'retailer_partial' } as const;
+    const small = { retailer: 'faces_ae', n: 3, share: null, reason: 'cohort_too_small' } as const;
+    const unseen = { retailer: 'sephora_me', n: 0, share: null, reason: 'retailer_partial' } as const;
+    const unverified = { retailer: 'shop_d', n: 9, share: null, reason: 'was_price_unverified' } as const;
+    expect(listable(partial)).toBe(true);
+    expect(listable(small)).toBe(true);
+    // No offer had both prices: nothing was measured, so an empty list is not "no discounts".
+    expect(listable(unseen)).toBe(false);
+    expect(listable(unverified)).toBe(false);
+    // Every live shop partly covered: the list shows; the picked unmeasured shop still says why.
+    expect(
+      notMeasured({ reason: 'retailer_partial', data: { retailers: [partial, unseen] } }, null),
+    ).toBeNull();
+    expect(
+      notMeasured({ reason: 'retailer_partial', data: { retailers: [partial, unseen] } }, 'ulta_ae'),
+    ).toBeNull();
+    expect(
+      notMeasured({ reason: 'retailer_partial', data: { retailers: [partial, unseen] } }, 'sephora_me'),
+    ).toBe('retailer_partial');
+    expect(notMeasured({ reason: null, data: { retailers: [unverified] } }, null)).toBe(
+      'was_price_unverified',
+    );
   });
 });

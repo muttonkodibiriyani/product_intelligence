@@ -574,6 +574,8 @@
     "onPromoCount": "{total, plural, =0 {لا منتج يحمل} one {منتج واحد يحمل} two {منتجان يحملان} few {{n} منتجات تحمل} many {{n} منتجًا تحمل} other {{n} منتج تحمل}} سعرًا أقل من سعره المعتاد.",
     "deepest": "أكبر خصم: <b>−{pct}%</b>.",
     "noShare": "لا بيانات لهذا المتجر.",
+    "discountedSeen": "{total, plural, zero {منتج مخفّض} one {منتج مخفّض} two {منتجان مخفّضان} few {منتجات مخفّضة} many {منتجًا مخفّضًا} other {منتج مخفّض}} رُصدت",
+    "shareWithheld": "نسبة المنتجات المخفّضة غير معروضة:",
     "notMeasuredShop": "الخصومات غير مقيسة",
     "notMeasuredAt": "خصومات {shop} غير مقيسة.",
     "notMeasuredFilters": "الخصومات غير مقيسة لعوامل التصفية هذه.",

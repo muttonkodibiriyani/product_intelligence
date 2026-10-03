@@ -97,6 +97,36 @@ describe('PromotionsView', () => {
     },
   );
 
+  it('every shop partly covered (the live state): the discounts seen are listed, the shares are not', async () => {
+    const rows = measured.data!.items;
+    const partly = rows.map((i) => i.retailer).filter((r, k, all) => all.indexOf(r) === k);
+    view({
+      ...measured,
+      status: 'not_enough_data',
+      reason: 'retailer_partial',
+      data: {
+        ...measured.data!,
+        retailers: [
+          ...partly.map((retailer) => ({
+            retailer,
+            n: 50,
+            onPromo: 3,
+            share: null,
+            reason: 'retailer_partial' as const,
+          })),
+          { retailer: 'shop_z', n: 0, onPromo: 0, share: null, reason: 'retailer_partial' as const },
+        ],
+      },
+    });
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts' });
+    expect(screen.queryByText(en.promotions.notMeasuredFilters)).toBeNull();
+    expect(screen.getByText(`${rows.length} products`, { selector: '[role="status"]' })).toBeTruthy();
+    // The list's tools are back: the minimum discount picker.
+    expect(screen.getByLabelText(en.promotions.minPct)).toBeTruthy();
+    // The shop with no price pair seen still says its discounts are not measured.
+    expect(screen.getByText(en.promotions.notMeasuredShop)).toBeTruthy();
+  });
+
   it('names the picked shop in the not-measured line, and keeps the shop chip so the pick can be undone', async () => {
     view(withheld('capability_off'), 'retailer=shop_b');
     expect(await screen.findByText('Discounts at Shop B aren’t measured.')).toBeTruthy();

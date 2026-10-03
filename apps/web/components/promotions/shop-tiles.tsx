@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
-import { deepestCut, shareWidth } from '@/lib/promotions';
+import { deepestCut, listable, shareWidth } from '@/lib/promotions';
 import { Known } from '../ui/known';
 import { RetailerDot, retailerTone } from '../ui/retailer-dot';
 
@@ -13,7 +13,9 @@ import { RetailerDot, retailerTone } from '../ui/retailer-dot';
  * as the hero number, how many that is, the deepest cut in the list below, and a bar of the
  * share in the shop's colour. A shop whose discounts the API cannot measure (`reason` set,
  * `share` null) gets one plain state line in the same spot and the API's reason under it, with a
- * link to its current prices; never a caveat box, never a stubbed number, never 0%.
+ * link to its current prices; never a caveat box, never a stubbed number, never 0%. A shop whose
+ * share alone is withheld (partly covered, small cohort) shows the discounts it was observed with
+ * as a count, never as a share, and says why the share is not shown.
  */
 export function ShopTiles({
   retailers,
@@ -59,6 +61,32 @@ function Tile({
       <span dir="auto">{label}</span>
     </span>
   );
+
+  if (r.share === null && listable(r)) {
+    return (
+      <div className="px-5 pt-4 pb-5">
+        <p className="text-[13px] text-ink-2">{who}</p>
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5">
+          <bdi dir="ltr" className="text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
+            {formatCount(r.onPromo, locale)}
+          </bdi>
+          <span className="text-sm text-ink-2">{t('discountedSeen', { total: r.onPromo })}</span>
+        </p>
+        <p className="mt-2 text-sm text-ink-2 tabular-nums">
+          {cut !== null &&
+            t.rich('deepest', {
+              pct: cut,
+              b: (chunks) => (
+                <b className="font-semibold text-ink">
+                  <bdi dir="ltr">{chunks}</bdi>
+                </b>
+              ),
+            })}{' '}
+          {t('shareWithheld')} {r.reason && <Known t={tr} v={r.reason} />}
+        </p>
+      </div>
+    );
+  }
 
   if (r.share === null) {
     return (
