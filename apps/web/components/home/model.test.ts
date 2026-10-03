@@ -8,9 +8,13 @@ import {
   bucketCheaper,
   categoryRead,
   deepestCut,
+  depthBands,
   earlyExcluded,
+  launchTotals,
+  leadingBand,
   gapWidth,
   minus,
+  peakDay,
   share,
   sign,
   verdict,
@@ -122,5 +126,88 @@ describe('earlyExcluded', () => {
     expect(earlyExcluded([cav('')])).toBeNull();
     expect(earlyExcluded([cav('many')])).toBeNull();
     expect(earlyExcluded([cav('12')])?.count).toBe(12);
+  });
+});
+
+describe('depth bands and launch days', () => {
+  const depth = {
+    bands: ['10-20', '20-30', '50+'],
+    cells: [
+      [4, 1, 0],
+      [2, 3, 0],
+      [0, 0, 0],
+    ],
+  };
+  it('depthBands sums each band over the categories, in the API order, with the total', () => {
+    expect(depthBands(depth)).toEqual({
+      bands: [
+        { band: '10-20', n: 6 },
+        { band: '20-30', n: 4 },
+        { band: '50+', n: 0 },
+      ],
+      total: 10,
+    });
+    expect(depthBands({ bands: ['10-20'], cells: [] })).toEqual({
+      bands: [{ band: '10-20', n: 0 }],
+      total: 0,
+    });
+  });
+  it('leadingBand says "most" only past half, "largest" for a plurality, and names no band on a tie', () => {
+    // 6 of 10: more than half.
+    expect(leadingBand(depth)).toEqual({ kind: 'most', band: '10-20', n: 6, total: 10 });
+    // Exactly half is not "most".
+    expect(leadingBand({ bands: ['a', 'b', 'c'], cells: [[2, 1, 1]] })).toEqual({
+      kind: 'largest',
+      band: 'a',
+      n: 2,
+      total: 4,
+    });
+    // A plurality: 3 of 7 leads, but is not most.
+    expect(
+      leadingBand({
+        bands: ['a', 'b', 'c'],
+        cells: [
+          [1, 3, 1],
+          [1, 0, 1],
+        ],
+      }),
+    ).toEqual({
+      kind: 'largest',
+      band: 'b',
+      n: 3,
+      total: 7,
+    });
+    // A tie at the top, here between the last two bands: no band is named, first or otherwise.
+    expect(leadingBand({ bands: ['a', 'b', 'c'], cells: [[1, 2, 2]] })).toEqual({ kind: 'tie', total: 5 });
+    expect(leadingBand({ bands: ['10-20'], cells: [[0]] })).toBeNull();
+  });
+  it('leadingBand on the golden /summary depth (1 + 1 + 1 of 3) is a tie, never "most of 3"', () => {
+    const s = golden('summary') as { data: { promoDepth: { bands: string[]; cells: number[][] } } };
+    expect(leadingBand(s.data.promoDepth)).toEqual({ kind: 'tie', total: 3 });
+  });
+  it('launchTotals sums only the shops with complete dates, and says when that is not all of them', () => {
+    const d = (date: string, n: number) => ({ date, n });
+    const a = { name: 'Shop A', perDay: [d('2026-09-29', 2), d('2026-09-30', 0)] };
+    const b = { name: 'Shop B', perDay: [d('2026-09-29', 1), d('2026-09-30', 4)] };
+    expect(launchTotals(2, [a, b])).toEqual({
+      total: 7,
+      peak: d('2026-09-30', 4),
+      covered: ['Shop A', 'Shop B'],
+      partial: false,
+    });
+    // Shop B's list was truncated (perDay null), so it is not in the series: the total is Shop A's
+    // alone and says so.
+    expect(launchTotals(2, [a])).toEqual({
+      total: 2,
+      peak: d('2026-09-29', 2),
+      covered: ['Shop A'],
+      partial: true,
+    });
+  });
+  it('peakDay is the busiest day, the first on a tie, or null with no launch', () => {
+    const d = (date: string, n: number) => ({ date, n });
+    expect(peakDay([d('2026-09-01', 0), d('2026-09-02', 3), d('2026-09-03', 3)])).toEqual(d('2026-09-02', 3));
+    expect(peakDay([d('2026-09-01', 0)])).toBeNull();
+    expect(peakDay([])).toBeNull();
   });
 });

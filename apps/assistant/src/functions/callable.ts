@@ -92,6 +92,10 @@ export async function handleChat(
   }
   // The flow parses strictly (unknown keys such as `history` are refused there).
   const answer = await flow.answer(data as ChatInput, caller, idToken, onProgress);
-  log?.(answerLogEntry(answer, caller.role));
+  try {
+    log?.(answerLogEntry(answer, caller.role));
+  } catch {
+    // Logging is diagnostics only: a failed write never costs the caller their answer.
+  }
   return answer;
 }

@@ -1,14 +1,13 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AppSidebar, NavFoot, NavList } from './app-sidebar';
 import { AppTabbar } from './app-tabbar';
 import { useAuth } from './auth-provider';
 import { LangSwitch } from './lang-switch';
-import { BrandMark } from './nav-icon';
+import { Logo } from './logo';
 import { AboutDataLink } from './ui/page-header';
 import { useNav } from './use-nav';
 
@@ -25,23 +24,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   return <Plain>{children}</Plain>;
 }
 
-function Brand({ compact = false }: { compact?: boolean }) {
-  const t = useTranslations('app');
-  const locale = useLocale();
-  return (
-    <Link
-      href={`/${locale}/`}
-      className="flex items-center gap-2.5 rounded-ctl whitespace-nowrap text-ink focus-visible:outline-2"
-    >
-      <BrandMark />
-      <span className="leading-tight">
-        <b className="block text-[14px] font-bold">{t('name')}</b>
-        {!compact && <span className="block text-[11px] text-ink-2">{t('tagline')}</span>}
-      </span>
-    </Link>
-  );
-}
-
 function Plain({ children }: { children: ReactNode }) {
   const t = useTranslations('app');
   const { state, auth } = useAuth();
@@ -49,7 +31,7 @@ function Plain({ children }: { children: ReactNode }) {
     <>
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex min-h-14 max-w-screen-2xl items-center gap-3 px-4 sm:px-7">
-          <Brand />
+          <Logo />
           <div className="ms-auto flex items-center gap-1">
             <LangSwitch />
             {state.kind === 'signed_in' && (
@@ -118,7 +100,7 @@ function PhoneBar() {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-surface lg:hidden">
       <div className="flex min-h-13 items-center gap-2 px-4 sm:px-7">
-        <Brand compact />
+        <Logo compact />
         <div className="ms-auto flex items-center gap-1">
           <LangSwitch />
           <button
