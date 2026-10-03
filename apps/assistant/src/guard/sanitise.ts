@@ -88,6 +88,10 @@ export const SOURCE_TEXT_KEYS: ReadonlySet<string> = new Set([
   "roles",
   "selections",
   "selectionLabels",
+  // OfferContentView (API 1.12.0): description/ingredients/shade text and a variant's GTIN.
+  // A 13-digit barcode must not pass as a verifiable number.
+  "text",
+  "barcode",
 ]);
 
 /** Always removed (see the module comment). */
