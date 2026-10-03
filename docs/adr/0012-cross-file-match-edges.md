@@ -67,30 +67,58 @@ size, shade, concentration and kind. That makes careful calibration and review m
    same inputs changes nothing. The run time is a recorded input, never read from a clock. A
    change of `algo_version` re-scores every pair that has no human decision.
 6. **Composition applies the file.** `PI_API_MATCHES=<path>` assigns a match file to a scope. It
-   is optional, and without it everything behaves exactly as in ADR-0010. After `compose`, every
-   non-rejected edge whose two listings are both in the view joins their products into one
-   product. Merges add edges in a deterministic priority order (locked, approved, proposed, then
-   confidence, then ids). An edge that would put two offers of one retailer in one product is
-   skipped and logged (`edge_conflict`). The merged product takes its fields and its id from the
-   member with the smallest retailer id, as in ADR-0010 field precedence, and the other members'
-   ids resolve to it through `pi_api.ids`. When an in-file edge and the match file name the same
-   listing pair, the match file's state wins, because it carries the review. A file whose scope or
-   vertical differs from the view is refused, and the previous view stays live (ADR-0010 §5).
+   is optional, and without it everything behaves exactly as in ADR-0010.
+   - **Only exact edges merge.** After `compose`, a non-rejected `exact` edge whose two listings
+     are both in the view may join their products into one product. `family` edges never merge
+     anything, because products are per size. They stay in the match file for assortment views.
+   - **Clique rule.** A merged product holds a set of listings only when every two of them from
+     different retailers have their own non-rejected exact edge. Edges u–s and s–f without u–f
+     never put u, s and f in one product (§2, no transitivity). Edges are taken in a deterministic
+     priority order (locked, approved, proposed, then confidence, then ids). An edge joins two
+     groups only if the result is still a clique with at most one listing per retailer. Otherwise
+     it is skipped and logged (`edge_not_clique` or `edge_conflict`), and that pair reads
+     `no_match` in the view.
+   - **The match file overrides in-file pairs.** When the match file and an in-file edge name the
+     same listing pair, the match file's state wins, because it carries the review. If the match
+     file rejects a pair that an in-file `m-` product groups, the in-file edge is dropped and the
+     product is split into one product per retailer, with the one-offer ids the exporter would
+     give (the listing tokens). The old `m-` id resolves through `pi_api.ids`, as after any split.
+   - **Proposed merges never move counted numbers.** A merge on a `proposed` edge changes
+     grouping and `matched=true` (ruling A, shown as "Unreviewed match"). Counted metrics
+     (`COUNTED_STATES`: approved and locked) are unchanged. A golden test pins compare, index,
+     coverage and price-suggestion outputs with and without a match file that holds only
+     proposed edges.
+   - The merged product takes its fields and its id from the member with the smallest retailer
+     id, as in ADR-0010's field precedence, and the other members' ids resolve to it through
+     `pi_api.ids`. A file whose scope or vertical differs from the view is refused, and the
+     previous view stays live (ADR-0010 §5).
 7. **Ulta stays read-only.** Ulta listings are read from the protected file and nothing is written
    to it. The match file is PI-owned and holds no Ulta prices or content beyond listing tokens and
    fingerprints. `--drop-source ulta_ae` is never used, and the protected file's generation is
    checked before and after every publish.
 8. **Precision gate in CI.** A gold set (`packages/pi_match/gold/`) holds labelled listing pairs
-   covering every pair of retailers and each category, double-labelled from saved evidence, with
-   disagreements adjudicated. CI re-scores it on every change to `pi_match`. Precision of `exact`
-   (and its Wilson lower bound) per category, and overall, may not fall below the pinned baseline.
-   A category is auto-accept eligible only at a lower bound of ≥98% with at least 30 labelled
-   pairs. The set is reported as `single_labelled` until a second labeller has passed, and it does
-   not claim ≥600 pairs until it has them.
-9. **Publishing.** Matching runs whenever a source file is re-published. Its output is published
-   create-only to `datasets/ae/matches/<ts>.json` and then `latest.json`, through the same
-   guarded publisher. This needs no new cloud resource: the run is local or in CI, so there is no
-   added cost. Pointing production at the file (`PI_API_MATCHES`) is a deploy, and the owner runs it.
+   for every pair of retailers and each category, stratified by score band. Labels come from
+   saved evidence. A first labeller and an independent second labeller label each pair, and
+   disagreements are adjudicated.
+   - **Where the positives come from.** Gold positives are sampled from the matcher's own exact
+     outputs, so they measure the precision of what it emits. A held-out part (at least a third,
+     chosen by hash) is never used to tune rules, aliases or thresholds. The gate reports the
+     held-out precision separately.
+   - **The gate.** CI re-scores the gold set on every change to `pi_match`. Exact precision and
+     its Wilson 95% lower bound, per category and overall, may not fall below the pinned
+     baseline. The baseline is lowered only with the Reviewer's written approval.
+   - **Auto-accept.** A category is auto-accept eligible only when its Wilson lower bound is at
+     least 98%. With no errors, that needs at least 189 labelled exact pairs in that category,
+     and more for each error. A human labeller (the owner or an analyst they name) must have
+     confirmed the labels first: agent labels alone never enable auto-accept.
+   - The set is reported as `single_labelled` until the second labeller has passed, and it does
+     not claim 600 or more pairs until it has them.
+9. **Publishing.** Matching runs whenever a source file is re-published, and it runs locally, by
+   the operator. The output is published create-only to `datasets/ae/matches/<ts>.json` and then
+   `latest.json`, through the same guarded publisher. CI does not publish: that would need a
+   storage credential in CI, which is not approved. No new cloud resource is needed, so there is
+   no added cost. Pointing production at the file (`PI_API_MATCHES`) is a deploy, and the owner
+   runs it.
 
 ## Consequences
 - New Faces, Sephora or Ulta products are matched on the next publish without rebuilding any
