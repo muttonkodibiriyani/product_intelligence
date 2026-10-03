@@ -113,7 +113,8 @@ class Side(ContractModel):
     observed: int
     #: Rows counted in the comparison (the same for both sides).
     counted: int
-    #: Products offered here and not at the other retailer.
+    #: Of the ``observed`` products, those with no offer at the other retailer (an early or
+    #: unpriced offer there is still an offer: the product is sold at both).
     only_here: int
 
 
@@ -362,11 +363,12 @@ def _side(  # noqa: PLR0913 -- one side of the pair plus the shared rows and pro
     i: int,
 ) -> Side:
     status = view.status(ds, retailer)
-    observed = sum(
-        1
+    # Seen and only-here count one population, so only-here is never larger than seen.
+    seen = [
+        p
         for p in offered
         if (o := view.collected(p, retailer)) is not None and view.price_on(o, i) is not None
-    )
+    ]
     return Side(
         retailer=retailer,
         status=status,
@@ -374,9 +376,9 @@ def _side(  # noqa: PLR0913 -- one side of the pair plus the shared rows and pro
             RetailerStatus.BLOCKED: Reason.RETAILER_BLOCKED,
             RetailerStatus.PARTIAL: Reason.RETAILER_PARTIAL,
         }.get(status),
-        observed=observed,
+        observed=len(seen),
         counted=sum(r.counted for r in rows),
-        only_here=sum(1 for p in offered if retailer in p.offers and other not in p.offers),
+        only_here=sum(1 for p in seen if other not in p.offers),
     )
 
 

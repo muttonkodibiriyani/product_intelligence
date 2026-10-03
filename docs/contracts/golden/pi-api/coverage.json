@@ -157,14 +157,14 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.11.0",
+    "apiVersion": "1.12.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "coverage",
     "filters": {},
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.4",
+    "metricVersion": "2026-10-02.1",
     "scope": "fixture"
   },
   "reason": null,

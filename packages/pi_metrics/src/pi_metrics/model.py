@@ -20,7 +20,7 @@ from pi_core import ReviewState
 from pi_dataset import ContractModel, Product, ProductV3
 
 #: Changes whenever a metric definition changes; recorded in docs/decision-log.md (design §7).
-METRIC_VERSION = "2026-10-01.4"
+METRIC_VERSION = "2026-10-02.1"
 #: Summary statistics need at least this many members (design §7.4).
 MIN_COHORT = 5
 #: Edge states a counted pair may have (design §7.2): approved (human or auto-accept) or locked.

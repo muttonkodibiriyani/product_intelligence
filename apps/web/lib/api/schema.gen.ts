@@ -477,7 +477,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.11.0
+             * @default 1.12.0
              */
             apiVersion: string;
             /** Currency */
@@ -499,7 +499,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-01.4
+             * @default 2026-10-02.1
              */
             metricVersion: string;
             /** Scope */
