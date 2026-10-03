@@ -80,6 +80,10 @@ class Decision(PairModel):
 
     verdict: Verdict
     match_class: MatchClass = MatchClass.EXACT
+    #: The listings as the reviewer saw them, stamped by the run that first reads the decision.
+    #: When either changes, an approval stops being an edge and goes back to review.
+    fingerprint_a: str | None = None
+    fingerprint_b: str | None = None
 
 
 class Edge(PairModel):
@@ -112,12 +116,15 @@ class ReviewReason(StrEnum):
     GTIN_CONFLICT = "gtin_conflict"  # equal GTINs, but a rule disagrees
     LOW = "low_score"
     NOT_CLIQUE = "edge_not_clique"  # joining would group listings without their own exact edges
+    DECISION_STALE = "decision_stale"  # a listing changed since a human approved the pair
+    DECISION_BREAKS_RULE = "decision_breaks_rule"  # an approved pair now breaks a hard rule
 
 
 class ReviewItem(PairModel):
     reason: ReviewReason
-    bucket: Bucket
-    score: Decimal
+    #: None only for a human-approved pair that is no longer scored (its brands now differ).
+    bucket: Bucket | None
+    score: Decimal | None
     reasons: tuple[str, ...]
 
 

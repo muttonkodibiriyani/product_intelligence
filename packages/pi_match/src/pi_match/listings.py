@@ -43,7 +43,8 @@ def _offers(product: Mapping[str, Any], retailer_of: Mapping[str, str]) -> dict[
 def _slots(products: Sequence[Mapping[str, Any]], retailer_of: Mapping[str, str]) -> dict[str, str]:
     """retailer -> its token slot, learned from one-offer products (``f-...`` -> ``f``).
 
-    A retailer whose one-offer ids disagree on the slot gets none.
+    A retailer whose one-offer ids disagree on the slot gets none, and so does a slot letter
+    that two retailers share: it cannot say which retailer a token belongs to.
     """
     seen: dict[str, set[str]] = defaultdict(set)
     for product in products:
@@ -51,7 +52,9 @@ def _slots(products: Sequence[Mapping[str, Any]], retailer_of: Mapping[str, str]
         pid = product["id"]
         if len(offers) == 1 and len(pid) > 2 and pid[1] == "-" and not pid.startswith("m-"):
             seen[next(iter(offers))].add(pid[0])
-    return {r: next(iter(s)) for r, s in seen.items() if len(s) == 1}
+    single = {r: next(iter(s)) for r, s in seen.items() if len(s) == 1}
+    claims = Counter(single.values())
+    return {r: slot for r, slot in single.items() if claims[slot] == 1}
 
 
 def split_pair_id(pid: str, slots: Mapping[str, str]) -> dict[str, str] | None:
@@ -107,7 +110,9 @@ def listings(data: Mapping[str, Any], retailer: str) -> tuple[tuple[ProductRecor
         if len(offers) == 1:
             token: str | None = product["id"]
         else:
-            token = (split_pair_id(product["id"], slots) or {}).get(retailer)
+            split = split_pair_id(product["id"], slots)
+            # The split must name exactly the retailers that offer the product, else no token.
+            token = split.get(retailer) if split is not None and set(split) == set(offers) else None
         if token is None:
             unkeyed += 1
             continue

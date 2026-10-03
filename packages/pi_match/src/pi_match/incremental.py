@@ -10,9 +10,13 @@ returns the next match file. Pure: the same inputs give an equal file.
    assignment below re-runs over all of them, so an incremental run equals a full one.
 2. **Decisions** are human and persist. ``reject`` is a hard negative: the pair never becomes an
    edge or a review item again. ``approve`` and ``lock`` make an edge with ``decided_by=human``.
-   An exact approval that breaks a hard rule (:func:`hard_conflicts`) is refused.
+   An exact approval that breaks a hard rule (:func:`hard_conflicts`) is refused. A decision
+   records the listings' fingerprints; every run re-checks it, and an approval whose listing has
+   changed, or which now breaks a hard rule, is not an edge but a review item until a human
+   decides again.
 3. **Edges, accuracy first.** One exact edge per listing and other retailer, best first (bucket,
-   score, then ids). It is ``proposed`` unless the category is in ``auto_accept``. A size or shade
+   score, then ids). Machine edges are ``proposed``: ``auto_accept`` is refused until the
+   gold-set gate of ADR-0012 §8 exists. A size or shade
    difference under a strong name is a ``family`` edge, which is not one-to-one. Everything else
    goes to the review queue, never an edge. Nothing is transitive: an edge names one pair.
 """
@@ -165,9 +169,15 @@ def _pairs_to_score(prepared: Mapping[Key, Prepared], dirty: set[Key]) -> list[P
 
 
 def _merge_decisions(
-    old: Iterable[Decision], new: Iterable[Decision], prepared: Mapping[Key, Prepared]
+    old: Iterable[Decision],
+    new: Iterable[Decision],
+    prepared: Mapping[Key, Prepared],
+    fps: Mapping[Key, str],
 ) -> dict[Pair, Decision]:
-    """Old decisions, then new ones (a later decision on a pair replaces the earlier one)."""
+    """Old decisions, then new ones (a later decision on a pair replaces the earlier one).
+
+    A new decision is stamped with the listings' current fingerprints unless it carries its own.
+    """
     merged = {d.pair(): d for d in old}
     for d in new:
         a, b = d.pair()
@@ -180,8 +190,30 @@ def _merge_decisions(
             if conflicts:
                 msg = f"exact {d.verdict.value} of {d.pair()} breaks hard rules: {conflicts}"
                 raise DecisionError(msg)
-        merged[d.pair()] = d
+        stamped = d
+        if d.fingerprint_a is None and d.fingerprint_b is None:
+            stamped = d.model_copy(update={"fingerprint_a": fps[a], "fingerprint_b": fps[b]})
+        merged[d.pair()] = stamped
     return merged
+
+
+def _decision_problem(
+    d: Decision, prepared: Mapping[Key, Prepared], fps: Mapping[Key, str]
+) -> ReviewReason | None:
+    """Why a persisted approval is not an edge in this run, else None.
+
+    Re-checked every run: the listings under a token can change after a human saw them.
+    """
+    a, b = d.pair()
+    if a not in prepared or b not in prepared:
+        return ReviewReason.DECISION_STALE  # a listing is gone: no edge until it returns
+    if (d.fingerprint_a, d.fingerprint_b) != (fps[a], fps[b]):
+        return ReviewReason.DECISION_STALE
+    if d.match_class is MatchClass.EXACT and hard_conflicts(prepared[a], prepared[b]):
+        return ReviewReason.DECISION_BREAKS_RULE
+    if d.match_class is MatchClass.FAMILY and _family_blocked(prepared, a, b):
+        return ReviewReason.DECISION_BREAKS_RULE
+    return None
 
 
 def _category(prepared: Mapping[Key, Prepared], a: Key, b: Key) -> str | None:
@@ -192,10 +224,11 @@ def _category(prepared: Mapping[Key, Prepared], a: Key, b: Key) -> str | None:
     return pa.record.category
 
 
-def _assign(  # noqa: PLR0912 -- the class ladder of ADR-0012 §3, one branch per rung
+def _assign(  # noqa: PLR0912, PLR0913 -- the class ladder of ADR-0012 §3, one branch per rung
     candidates: Sequence[Candidate],
     decisions: Mapping[Pair, Decision],
     prepared: Mapping[Key, Prepared],
+    fps: Mapping[Key, str],
     *,
     algo_version: str,
     auto_accept: frozenset[str],
@@ -210,6 +243,20 @@ def _assign(  # noqa: PLR0912 -- the class ladder of ADR-0012 §3, one branch pe
             continue
         a, b = pair
         c = by_pair.get(pair)
+        problem = _decision_problem(d, prepared, fps)
+        if problem is not None:
+            # The pair stays out of the machine ladder below: a human must look again.
+            review.append(
+                ReviewItem(
+                    a=_ref(a),
+                    b=_ref(b),
+                    reason=problem,
+                    bucket=None if c is None else c.bucket,
+                    score=None if c is None else c.score,
+                    reasons=("human_decision",) if c is None else c.reasons,
+                )
+            )
+            continue
         edges.append(
             Edge(
                 a=_ref(a),
@@ -285,8 +332,8 @@ def _assign(  # noqa: PLR0912 -- the class ladder of ADR-0012 §3, one branch pe
             a=e.a,
             b=e.b,
             reason=ReviewReason.NOT_CLIQUE,
-            bucket=by_pair[e.pair()].bucket,
-            score=by_pair[e.pair()].score,
+            bucket=None if (c := by_pair.get(e.pair())) is None else c.bucket,
+            score=None if c is None else c.score,
             reasons=e.reasons,
         )
         for e in dropped
@@ -355,6 +402,11 @@ def run(  # noqa: PLR0913 -- the inputs of ADR-0012 §5, the knobs keyword-only
     unkeyed: Mapping[str, int] | None = None,
 ) -> MatchFile:
     """The next match file. See the module docstring for the rules."""
+    if auto_accept:
+        # ADR-0012 §8: a category is auto-accepted only once the gold-set gate shows its precision
+        # lower bound >= 98%. Until that gate exists (PR4) every exact edge stays proposed.
+        msg = "auto_accept needs the ADR-0012 §8 gold-set gate, which does not exist yet"
+        raise ValueError(msg)
     if previous is not None and (previous.scope, previous.vertical) != (scope, vertical):
         msg = f"previous file is {previous.scope}/{previous.vertical}, not {scope}/{vertical}"
         raise ValueError(msg)
@@ -377,10 +429,10 @@ def run(  # noqa: PLR0913 -- the inputs of ADR-0012 §5, the knobs keyword-only
         [*kept, *_score(prepared, _pairs_to_score(prepared, dirty))],
         key=lambda c: (c.a.key(), c.b.key()),
     )
-    merged = _merge_decisions(previous.decisions if previous else (), decisions, prepared)
+    merged = _merge_decisions(previous.decisions if previous else (), decisions, prepared, fps)
     accept = frozenset(auto_accept)
     edges, review = _assign(
-        candidates, merged, prepared, algo_version=algo_version, auto_accept=accept
+        candidates, merged, prepared, fps, algo_version=algo_version, auto_accept=accept
     )
     by_retailer: dict[str, dict[str, str]] = defaultdict(dict)
     for (retailer, token), f in sorted(fps.items()):

@@ -11,6 +11,7 @@ from pi_core.enums import MatchClass, ReviewState
 from pi_match.incremental import (
     ALGO_VERSION,
     DecisionError,
+    _assign,
     _cliques,
     dump,
     fingerprint,
@@ -113,13 +114,23 @@ def test_three_pairs_accuracy_first() -> None:
 
 
 def test_auto_accept_only_for_calibrated_categories() -> None:
-    m = go(BASE, auto_accept=["fragrance"])
-    exact = [e for e in m.edges if e.match_class is MatchClass.EXACT]
+    # run() refuses auto-acceptance until the gold-set gate (ADR-0012 §8) exists
+    with pytest.raises(ValueError, match="gold-set gate"):
+        go(BASE, auto_accept=["fragrance"])
+    m = go(BASE)
+    assert all(e.review_state is ReviewState.PROPOSED for e in m.edges)
+    assert m.auto_accept == ()
+    # the assignment rung itself: only exact edges of an accepted category, never family
+    prepared = {(r.source, r.source_key): prepare(r) for v in BASE.values() for r in v}
+    fps = {k: fingerprint(p) for k, p in prepared.items()}
+    edges, _ = _assign(
+        m.candidates, {}, prepared, fps, algo_version=ALGO_VERSION,
+        auto_accept=frozenset({"fragrance"}),
+    )  # fmt: skip
+    exact = [e for e in edges if e.match_class is MatchClass.EXACT]
     assert {(e.review_state, e.decided_by) for e in exact} == {(ReviewState.APPROVED, "auto")}
-    family = [e for e in m.edges if e.match_class is MatchClass.FAMILY]
+    family = [e for e in edges if e.match_class is MatchClass.FAMILY]
     assert {e.review_state for e in family} == {ReviewState.PROPOSED}
-    assert m.auto_accept == ("fragrance",)
-    assert all(e.review_state is ReviewState.PROPOSED for e in go(BASE).edges)
 
 
 def test_rerun_is_byte_identical_and_reuses_candidates() -> None:
@@ -185,7 +196,57 @@ def test_human_decisions_persist_and_lock() -> None:
         assert (fam.match_class, fam.review_state) == (MatchClass.FAMILY, ReviewState.APPROVED)
     # a human decision on a listing no longer present is kept
     gone = {r: [x for x in v if x.source_key != "u-1-100-ml"] for r, v in BASE.items()}
-    assert lock in go(gone, m).decisions
+    kept = go(gone, m)
+    assert {(d.pair(), d.verdict) for d in kept.decisions} >= {(lock.pair(), lock.verdict)}
+    assert (lock.a.token, lock.b.token) not in {(e.a.token, e.b.token) for e in kept.edges}
+
+
+def test_approval_goes_back_to_review_when_a_listing_changes() -> None:
+    """Reviewer probe: an approved EDP edge must not survive the Ulta side becoming EDT."""
+    lock = dec((S, "s-P1-100-ml"), (U, "u-1-100-ml"), Verdict.LOCK)
+    m = go(BASE, decisions=(lock,))
+    stamped = m.decisions[0]
+    assert stamped.fingerprint_a is not None
+    assert stamped.fingerprint_b is not None
+    assert ("s-P1-100-ml", "u-1-100-ml", "exact", "locked") in edge_set(m)
+    changed = {
+        **BASE,
+        U: [rec(U, "u-1-100-ml", "Sauvage Eau de Toilette", size="100 ml"), *BASE[U][1:]],
+    }
+    for algo in (ALGO_VERSION, "pi_match.incremental/9"):
+        later = go(changed, m, algo_version=algo)
+        assert ("s-P1-100-ml", "u-1-100-ml") not in {(e.a.token, e.b.token) for e in later.edges}
+        queued = {(r.a.token, r.b.token): r for r in later.review}
+        assert queued[("s-P1-100-ml", "u-1-100-ml")].reason is ReviewReason.DECISION_STALE
+        assert later.decisions == m.decisions  # the decision itself is history: kept, not edited
+    # changing it back restores the edge; a fresh human decision is stamped anew
+    assert ("s-P1-100-ml", "u-1-100-ml", "exact", "locked") in edge_set(go(BASE, later))
+    edt = go(
+        changed, later, decisions=(dec((S, "s-P1-100-ml"), (U, "u-1-100-ml"), Verdict.REJECT),)
+    )
+    assert all(r.reason is not ReviewReason.DECISION_STALE for r in edt.review)
+
+
+def test_persisted_approval_that_breaks_a_rule_is_not_an_edge() -> None:
+    """A stored decision is re-checked against the hard rules on every run."""
+    m = go(BASE)
+    fp = {(r, t): f for r, toks in m.listings.items() for t, f in toks.items()}
+
+    def stored(a: tuple[str, str], b: tuple[str, str], cls: MatchClass) -> Decision:
+        x, y = sorted((a, b))
+        return dec(x, y, Verdict.APPROVE, match_class=cls,
+                   fingerprint_a=fp[x], fingerprint_b=fp[y])  # fmt: skip
+
+    bad = (
+        stored((S, "s-P2-50-ml"), (U, "u-2-50-ml"), MatchClass.EXACT),  # EDP vs EDT
+        stored((F, "f-9-100-ml"), (U, "u-2-50-ml"), MatchClass.FAMILY),  # family needs EDP==EDP
+    )
+    later = go(BASE, m.model_copy(update={"decisions": bad}))
+    pairs = {(e.a.token, e.b.token) for e in later.edges}
+    queued = {(r.a.token, r.b.token): r.reason for r in later.review}
+    for d in bad:
+        assert (d.a.token, d.b.token) not in pairs
+        assert queued[(d.a.token, d.b.token)] is ReviewReason.DECISION_BREAKS_RULE
 
 
 def test_decisions_cannot_break_hard_rules_or_name_unknown_listings() -> None:
@@ -331,6 +392,29 @@ def test_listings_v2_tokens_pairs_and_unkeyed() -> None:
     }
     with pytest.raises(ListingError, match="twice"):
         listings(dup, U)
+
+
+def test_listings_never_guess_a_retailer() -> None:
+    three = {"meta": {"retailers": [{"id": U}, {"id": S}, {"id": F}]}}
+    # a split must name exactly the retailers offering the product
+    wrong = [
+        product("u-1", {U: offer()}),
+        product("s-1", {S: offer()}),
+        product("f-1", {F: offer()}),
+        product("m-u-2-s-3", {U: offer(), F: offer()}),
+    ]
+    assert listings({**three, "products": wrong}, U) == (
+        listings({**three, "products": wrong[:1]}, U)[0],
+        1,
+    )
+    # a slot letter two retailers share says nothing about which one a token belongs to
+    shared = [
+        product("u-1", {U: offer()}),
+        product("u-9", {S: offer()}),
+        product("m-u-2-u-3", {U: offer(), S: offer()}),
+    ]
+    assert [r.source_key for r in listings({**three, "products": shared}, U)[0]] == ["u-1"]
+    assert listings({**three, "products": shared}, U)[1] == 1
 
 
 def test_listings_v3_contexts() -> None:
