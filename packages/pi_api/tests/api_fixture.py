@@ -133,8 +133,11 @@ def make_client(
     clock: Callable[[], datetime] = lambda: CLOCK,
     assigned: Mapping[str, str] | None = None,
     catalogues: CatalogueSource | None = None,
+    matches: str | None = None,
 ) -> tuple[Client, SnapshotSource]:
-    source = SnapshotSource(LocalStore(root), paths, refresh_seconds=3600, assigned=assigned or {})
+    source = SnapshotSource(
+        LocalStore(root), paths, refresh_seconds=3600, assigned=assigned or {}, matches=matches
+    )
     if load:
         source.load_all()
     verifier = TokenVerifier(PROJECT, certs or FakeCerts(), now=lambda: NOW)
