@@ -16,8 +16,11 @@
   "data": {
     "items": [
       {
+        "brand": "Fixture Beauty",
+        "category": "skincare",
         "depthPct": "33.3",
         "id": "p05",
+        "image": null,
         "name": "Product p05",
         "price": {
           "amount": "80.00",
@@ -29,11 +32,19 @@
           "currency": "AED",
           "minor": 12000
         },
-        "retailer": "shop_a"
+        "retailer": "shop_a",
+        "saved": {
+          "amount": "40.00",
+          "currency": "AED",
+          "minor": 4000
+        }
       },
       {
+        "brand": "Sample Labs",
+        "category": "skincare",
         "depthPct": "20.4",
         "id": "p04",
+        "image": null,
         "name": "Product p04",
         "price": {
           "amount": "95.50",
@@ -45,11 +56,19 @@
           "currency": "AED",
           "minor": 12000
         },
-        "retailer": "shop_a"
+        "retailer": "shop_a",
+        "saved": {
+          "amount": "24.50",
+          "currency": "AED",
+          "minor": 2450
+        }
       },
       {
+        "brand": "Fixture Beauty",
+        "category": "skincare",
         "depthPct": "10.0",
         "id": "p01",
+        "image": null,
         "name": "Product p01",
         "price": {
           "amount": "90.00",
@@ -61,11 +80,47 @@
           "currency": "AED",
           "minor": 10000
         },
-        "retailer": "shop_a"
+        "retailer": "shop_a",
+        "saved": {
+          "amount": "10.00",
+          "currency": "AED",
+          "minor": 1000
+        }
       }
     ],
     "retailers": [
       {
+        "bands": [
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        "groups": [
+          {
+            "key": "Fixture Beauty",
+            "kind": "brand",
+            "n": 3,
+            "onPromo": 2,
+            "share": null
+          },
+          {
+            "key": "Sample Labs",
+            "kind": "brand",
+            "n": 3,
+            "onPromo": 1,
+            "share": null
+          },
+          {
+            "key": "skincare",
+            "kind": "category",
+            "n": 6,
+            "onPromo": 3,
+            "share": "50.0"
+          }
+        ],
         "n": 6,
         "onPromo": 3,
         "reason": null,
@@ -73,6 +128,15 @@
         "share": "50.0"
       },
       {
+        "bands": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "groups": [],
         "n": 6,
         "onPromo": 0,
         "reason": null,
@@ -80,6 +144,15 @@
         "share": "0.0"
       },
       {
+        "bands": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "groups": [],
         "n": 0,
         "onPromo": 0,
         "reason": "retailer_partial",
@@ -87,6 +160,8 @@
         "share": null
       },
       {
+        "bands": [],
+        "groups": [],
         "n": 0,
         "onPromo": 0,
         "reason": "retailer_blocked",
@@ -102,7 +177,7 @@
     "en": "A selected retailer is only partly collected."
   },
   "meta": {
-    "apiVersion": "1.16.0",
+    "apiVersion": "1.17.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "promotions",
@@ -111,7 +186,7 @@
     },
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-03.1",
+    "metricVersion": "2026-10-03.2",
     "scope": "fixture"
   },
   "reason": "retailer_partial",
