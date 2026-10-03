@@ -1,0 +1,2301 @@
+{
+  "schema": "pi.dataset/v3",
+  "meta": {
+    "kind": "snapshot",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "generatedAt": "2026-09-30T01:00:00Z",
+    "scope": "fixture",
+    "vertical": "beauty",
+    "markets": [
+      {
+        "country": "AE",
+        "currency": "AED",
+        "timeZone": "Asia/Dubai",
+        "locales": [
+          "en"
+        ]
+      }
+    ],
+    "retailers": [
+      {
+        "id": "shop_a",
+        "name": "Shop A",
+        "country": "AE",
+        "status": "supported",
+        "since": "2026-09-01",
+        "note": null,
+        "logo": null,
+        "earlyExamples": false
+      },
+      {
+        "id": "shop_b",
+        "name": "Shop B",
+        "country": "AE",
+        "status": "supported",
+        "since": "2026-09-01",
+        "note": null,
+        "logo": null,
+        "earlyExamples": false
+      },
+      {
+        "id": "shop_c",
+        "name": "Shop C",
+        "country": "AE",
+        "status": "partial",
+        "since": "2026-09-01",
+        "note": {
+          "en": "Makeup only."
+        },
+        "logo": null,
+        "earlyExamples": false
+      },
+      {
+        "id": "shop_d",
+        "name": "Shop D",
+        "country": "AE",
+        "status": "blocked",
+        "since": null,
+        "note": null,
+        "logo": null,
+        "earlyExamples": false
+      }
+    ],
+    "dates": [
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30"
+    ],
+    "matchStage": "reviewed",
+    "capabilities": {
+      "history": true,
+      "promotions": true,
+      "campaigns": false,
+      "stock": true,
+      "sizes": true,
+      "shades": false,
+      "coverage": true,
+      "images": false,
+      "ratings": true
+    },
+    "fields": {
+      "price": "ok",
+      "regular": "ok",
+      "stock": "ok",
+      "rating": "ok"
+    },
+    "producer": {
+      "name": "pi_metrics.fixtures",
+      "version": "1",
+      "commit": null
+    },
+    "test": false,
+    "profile": {
+      "name": "beauty",
+      "version": 1,
+      "sizeLabelsComparable": false,
+      "sizeSystemRequired": false
+    },
+    "attributeSet": [
+      {
+        "key": "finish",
+        "level": "product",
+        "type": "text",
+        "values": null,
+        "label": {
+          "en": "Finish",
+          "ar": "اللمسة النهائية"
+        },
+        "facet": true,
+        "block": "summary",
+        "capability": true
+      },
+      {
+        "key": "concentration",
+        "level": "product",
+        "type": "text",
+        "values": null,
+        "label": {
+          "en": "Concentration",
+          "ar": "التركيز"
+        },
+        "facet": true,
+        "block": "summary",
+        "capability": true
+      },
+      {
+        "key": "shadeFamilies",
+        "level": "product",
+        "type": "text_list",
+        "values": null,
+        "label": {
+          "en": "Shade families",
+          "ar": "عائلات الدرجات"
+        },
+        "facet": true,
+        "block": "swatches",
+        "capability": true
+      }
+    ],
+    "contexts": [
+      {
+        "id": "shop_a",
+        "retailer": "shop_a",
+        "channel": "online",
+        "location": null,
+        "label": {
+          "en": "Shop A"
+        }
+      },
+      {
+        "id": "shop_b",
+        "retailer": "shop_b",
+        "channel": "online",
+        "location": null,
+        "label": {
+          "en": "Shop B"
+        }
+      },
+      {
+        "id": "shop_c",
+        "retailer": "shop_c",
+        "channel": "online",
+        "location": null,
+        "label": {
+          "en": "Shop C"
+        }
+      },
+      {
+        "id": "shop_d",
+        "retailer": "shop_d",
+        "channel": "online",
+        "location": null,
+        "label": {
+          "en": "Shop D"
+        }
+      }
+    ]
+  },
+  "products": [
+    {
+      "id": "p01",
+      "brand": "Fixture Beauty",
+      "name": "Product p01",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "90.00",
+                "minor": 9000,
+                "currency": "AED"
+              },
+              {
+                "amount": "90.00",
+                "minor": 9000,
+                "currency": "AED"
+              },
+              {
+                "amount": "90.00",
+                "minor": 9000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p02",
+      "brand": "Sample Labs",
+      "name": "Product p02",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "out_of_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p03",
+      "brand": "Fixture Beauty",
+      "name": "Product p03",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "110.00",
+                "minor": 11000,
+                "currency": "AED"
+              },
+              {
+                "amount": "110.00",
+                "minor": 11000,
+                "currency": "AED"
+              },
+              {
+                "amount": "110.00",
+                "minor": 11000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "110.00",
+                "minor": 11000,
+                "currency": "AED"
+              },
+              {
+                "amount": "110.00",
+                "minor": 11000,
+                "currency": "AED"
+              },
+              {
+                "amount": "110.00",
+                "minor": 11000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "low_stock",
+              "low_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "locked",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p04",
+      "brand": "Sample Labs",
+      "name": "Product p04",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "95.50",
+                "minor": 9550,
+                "currency": "AED"
+              },
+              {
+                "amount": "95.50",
+                "minor": 9550,
+                "currency": "AED"
+              },
+              {
+                "amount": "95.50",
+                "minor": 9550,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              },
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              },
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p05",
+      "brand": "Fixture Beauty",
+      "name": "Product p05",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              },
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              },
+              {
+                "amount": "80.00",
+                "minor": 8000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              },
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              },
+              {
+                "amount": "120.00",
+                "minor": 12000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "out_of_stock",
+              "out_of_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "locked",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p06",
+      "brand": "Sample Labs",
+      "name": "Product p06",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "105.25",
+                "minor": 10525,
+                "currency": "AED"
+              },
+              {
+                "amount": "105.25",
+                "minor": 10525,
+                "currency": "AED"
+              },
+              {
+                "amount": "105.25",
+                "minor": 10525,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "105.25",
+                "minor": 10525,
+                "currency": "AED"
+              },
+              {
+                "amount": "105.25",
+                "minor": 10525,
+                "currency": "AED"
+              },
+              {
+                "amount": "105.25",
+                "minor": 10525,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "removed"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "regular": [
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              },
+              {
+                "amount": "100.00",
+                "minor": 10000,
+                "currency": "AED"
+              }
+            ],
+            "availability": [
+              "in_stock",
+              "in_stock",
+              "in_stock"
+            ]
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p07",
+      "brand": "Fixture Beauty",
+      "name": "Product p07",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "proposed",
+          "decidedBy": null,
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p08",
+      "brand": "Fixture Beauty",
+      "name": "Product p08",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "rejected",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p09",
+      "brand": "Fixture Beauty",
+      "name": "Product p09",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "family",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p10",
+      "brand": "Fixture Beauty",
+      "name": "Product p10",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "30",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p11",
+      "brand": "Fixture Beauty",
+      "name": "Product p11",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "70.00",
+                "minor": 7000,
+                "currency": "AED"
+              },
+              {
+                "amount": "70.00",
+                "minor": 7000,
+                "currency": "AED"
+              },
+              {
+                "amount": "70.00",
+                "minor": 7000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "77.00",
+                "minor": 7700,
+                "currency": "AED"
+              },
+              {
+                "amount": "77.00",
+                "minor": 7700,
+                "currency": "AED"
+              },
+              null
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p12",
+      "brand": "Fixture Beauty",
+      "name": "Product p12",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "3.00",
+            "scale": "10",
+            "count": 4
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p13",
+      "brand": "Fixture Beauty",
+      "name": "Product p13",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": true,
+          "series": {
+            "price": [
+              null,
+              null,
+              {
+                "amount": "55.00",
+                "minor": 5500,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_b",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p14",
+      "brand": "Fixture Beauty",
+      "name": "Product p14",
+      "category": [
+        "makeup"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              null,
+              {
+                "amount": "60.00",
+                "minor": 6000,
+                "currency": "AED"
+              },
+              {
+                "amount": "60.00",
+                "minor": 6000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p15",
+      "brand": "Fixture Beauty",
+      "name": "Product p15",
+      "category": [
+        "makeup"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_c": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              null,
+              {
+                "amount": "65.00",
+                "minor": 6500,
+                "currency": "AED"
+              },
+              {
+                "amount": "65.00",
+                "minor": 6500,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_c",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    },
+    {
+      "id": "p16",
+      "brand": "Fixture Beauty",
+      "name": "Product p16",
+      "category": [
+        "skincare",
+        "serum"
+      ],
+      "unit": "ml",
+      "offers": {
+        "shop_a": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_a",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_b": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_b",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        },
+        "shop_c": {
+          "currency": "AED",
+          "sku": null,
+          "url": null,
+          "size": {
+            "value": "50",
+            "unit": "ml",
+            "label": null,
+            "system": null
+          },
+          "shadeCount": 0,
+          "rating": {
+            "average": "4.20",
+            "scale": "5",
+            "count": 10
+          },
+          "early": false,
+          "series": {
+            "price": [
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              },
+              {
+                "amount": "50.00",
+                "minor": 5000,
+                "currency": "AED"
+              }
+            ],
+            "regular": null,
+            "availability": null
+          },
+          "evidence": {
+            "capturedAt": "2026-09-30T00:00:00Z",
+            "source": "fixture:shop_c",
+            "runId": null,
+            "itemKey": null,
+            "itemKeyKind": null
+          },
+          "image": null,
+          "attributes": {},
+          "listingCount": null
+        }
+      },
+      "matches": [
+        {
+          "a": "shop_a",
+          "b": "shop_c",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        },
+        {
+          "a": "shop_b",
+          "b": "shop_c",
+          "matchClass": "exact",
+          "reviewState": "approved",
+          "decidedBy": "human",
+          "confidence": "0.95",
+          "method": "fixture",
+          "stage": "reviewed"
+        }
+      ],
+      "shades": [],
+      "attributes": {},
+      "image": null
+    }
+  ],
+  "notObserved": [
+    {
+      "retailer": "shop_c",
+      "start": "2026-09-28",
+      "end": "2026-09-30",
+      "categories": [
+        "skincare"
+      ],
+      "why": {
+        "en": "Skincare not collected."
+      },
+      "context": null
+    },
+    {
+      "retailer": "shop_d",
+      "start": "2026-09-28",
+      "end": "2026-09-30",
+      "categories": null,
+      "why": {
+        "en": "Blocked."
+      },
+      "context": null
+    }
+  ]
+}

@@ -440,6 +440,7 @@ export interface components {
         AdminOfferView: {
             availability: components["schemas"]["AvailabilityState"] | null;
             channel: components["schemas"]["Channel"];
+            content: components["schemas"]["OfferContentView"];
             /** Context */
             context: string;
             /** Early */
@@ -477,7 +478,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.11.0
+             * @default 1.13.0
              */
             apiVersion: string;
             /** Currency */
@@ -802,7 +803,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included" | "stale_source" | "invalid_price_excluded" | "unmapped_category" | "breadcrumb_missing";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "was_price_stated" | "snapshot_import_date" | "parent_listings_included" | "stale_source" | "invalid_price_excluded" | "unmapped_category" | "breadcrumb_missing";
         /** CaveatView */
         CaveatView: {
             /** Ar */
@@ -898,6 +899,12 @@ export interface components {
              */
             truncated: boolean;
         };
+        /**
+         * ContentState
+         * @description API 1.12.0: why a content field has the value it has.
+         * @enum {string}
+         */
+        ContentState: "observed" | "not_published" | "not_captured";
         /**
          * Context
          * @description One priced place an item is sold: retailer, channel and optionally a location (§2).
@@ -1321,6 +1328,12 @@ export interface components {
          * @enum {string}
          */
         GroupBy: "category" | "brand";
+        /** GtinContent */
+        GtinContent: {
+            /** Barcode */
+            barcode: string | null;
+            state: components["schemas"]["ContentState"];
+        };
         /** History */
         History: {
             /** Id */
@@ -1340,6 +1353,23 @@ export interface components {
             date: string;
             price: components["schemas"]["MoneyValue"] | null;
             regular: components["schemas"]["MoneyValue"] | null;
+        };
+        /** ImageLink */
+        ImageLink: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * ImageSource
+         * @enum {string}
+         */
+        ImageSource: "page" | "catalogue";
+        /** ImagesContent */
+        ImagesContent: {
+            /** Items */
+            items: components["schemas"]["ImageLink"][];
+            source: components["schemas"]["ImageSource"] | null;
+            state: components["schemas"]["ContentState"];
         };
         /** IndexPoint */
         IndexPoint: {
@@ -1512,10 +1542,24 @@ export interface components {
             /** Minor */
             minor: number;
         };
+        /**
+         * OfferContentView
+         * @description API 1.12.0: what the retailer's page says beyond price and stock. Every field has an
+         *     explicit state; nothing missing is served as an empty value.
+         */
+        OfferContentView: {
+            description: components["schemas"]["TextContent"];
+            images: components["schemas"]["ImagesContent"];
+            ingredients: components["schemas"]["TextContent"];
+            /** Sizes */
+            sizes: components["schemas"]["SizeSibling"][];
+            variants: components["schemas"]["VariantsContent"];
+        };
         /** OfferView */
         OfferView: {
             availability: components["schemas"]["AvailabilityState"] | null;
             channel: components["schemas"]["Channel"];
+            content: components["schemas"]["OfferContentView"];
             /** Context */
             context: string;
             /** Early */
@@ -1970,6 +2014,18 @@ export interface components {
             /** Value */
             value: string;
         };
+        /**
+         * SizeSibling
+         * @description Another product with an offer in the same context and the same retailer product family:
+         *     the same item in another size.
+         */
+        SizeSibling: {
+            /** Productid */
+            productId: string;
+            size: components["schemas"]["Size"] | null;
+            /** Sizelabel */
+            sizeLabel: string | null;
+        };
         /** SkuReference */
         SkuReference: {
             /**
@@ -2068,6 +2124,12 @@ export interface components {
             /** Withheld */
             withheld: components["schemas"]["Withheld"][];
         };
+        /** TextContent */
+        TextContent: {
+            state: components["schemas"]["ContentState"];
+            /** Text */
+            text: string | null;
+        };
         /** TopDiscount */
         TopDiscount: {
             /** Brand */
@@ -2102,6 +2164,22 @@ export interface components {
             reason: components["schemas"]["Unmapped"];
             /** Retailer */
             retailer: string;
+        };
+        /**
+         * VariantView
+         * @description One listing grouped into the offer: same retailer, product family and size.
+         */
+        VariantView: {
+            gtin: components["schemas"]["GtinContent"];
+            shade: components["schemas"]["TextContent"];
+            /** Sku */
+            sku: string;
+        };
+        /** VariantsContent */
+        VariantsContent: {
+            /** Items */
+            items: components["schemas"]["VariantView"][];
+            state: components["schemas"]["ContentState"];
         };
         /** Withheld */
         Withheld: {

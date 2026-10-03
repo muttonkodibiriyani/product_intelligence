@@ -7,6 +7,7 @@ import { AppShell } from '@/components/app-shell';
 import { AuthProvider } from '@/components/auth-provider';
 import { formats } from '@/i18n/formats';
 import { dirOf, isLocale, locales } from '@/i18n/routing';
+import { icons } from '@/lib/favicon';
 import { loadMessages } from '@/messages/load';
 import '../globals.css';
 
@@ -20,7 +21,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: 'app' });
-  return { title: t('name'), robots: { index: false, follow: false } };
+  return { title: t('name'), robots: { index: false, follow: false }, icons };
 }
 
 export default async function LocaleLayout({

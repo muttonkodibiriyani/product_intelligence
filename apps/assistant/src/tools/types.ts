@@ -1,7 +1,8 @@
 /**
  * Tool contract (design §4). Each tool is a thin, read-only client of one service-layer
  * endpoint: a strict input schema and a pure mapping from input to request. Metrics are never
- * computed here (coordinator ruling: one implementation, pi_metrics).
+ * computed here (coordinator ruling: one implementation, pi_metrics); the one exception is the
+ * per-unit price, an exact division of two served values (see `unit-price.ts`).
  */
 import type { z } from "zod";
 
@@ -47,9 +48,18 @@ export interface ToolDef<I extends z.ZodTypeAny> {
    * adds `shown` and a `truncated` caveat so the answer can say "top N of total".
    */
   readonly listKey?: string;
+  /**
+   * The request names one product id in its path, so a 404 means "no such id". For every other
+   * tool a 404 means the route itself is missing: the data service is unreachable as configured.
+   */
+  readonly byId?: boolean;
   request(input: z.output<I>): ApiRequest;
-  /** Picks this tool's part of the response (a pure projection; nothing is computed). */
-  view?(data: unknown): ToolView;
+  /**
+   * Picks this tool's part of the response: a pure projection, except price_per_unit, which
+   * divides a served price by its served pack size with exact decimals (coordinator ruling,
+   * 2026-10-03).
+   */
+  view?(data: unknown, input: z.output<I>): ToolView;
 }
 
 /** Erased form for the registry; each tool keeps its own precise input type. */
@@ -60,9 +70,10 @@ export interface AnyToolDef {
   readonly minRole: Role;
   readonly input: z.ZodTypeAny;
   readonly listKey?: string;
+  readonly byId?: boolean;
   /** Only ever called with the output of `input.safeParse`. */
   request(input: never): ApiRequest;
-  view?(data: unknown): ToolView;
+  view?(data: unknown, input: never): ToolView;
 }
 
 export function defineTool<I extends z.ZodTypeAny>(def: ToolDef<I>): ToolDef<I> {

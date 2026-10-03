@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import type { ApiRequest } from "../api/client.js";
 import { defineTool, type ToolView } from "./types.js";
+import { unitPriceView } from "./unit-price.js";
 
 /** Page size for search_products (the API allows up to 100; tool results are capped by size). */
 export const MAX_LIMIT = 25;
@@ -101,6 +102,36 @@ export const searchProducts = defineTool({
   request: (input) => get("/products", input),
 });
 
+/** Products scanned per price_per_unit call (the API's page maximum). */
+export const UNIT_PRICE_SCAN = 100;
+
+export const pricePerUnit = defineTool({
+  name: "price_per_unit",
+  version: "1",
+  description:
+    "Price per 1 ml or 1 g ('cheapest per ml', 'best value'): listed price divided by the " +
+    "published size (L, cl, kg, mg converted exactly). Filters as search_products. Rows are " +
+    "ranked within one measure and one currency; always state the currency. If partial is " +
+    "true, say 'checked the first <scanned> of <matching> products'. `excluded` counts " +
+    "products left out by reason (no size, other unit, no price, sizeUnproven: sold at " +
+    "several retailers without a proven same size).",
+  minRole: "viewer",
+  input: z
+    .object({
+      q: text.optional(),
+      ...filters,
+      retailer: retailerList.optional(),
+      per: z.enum(["ml", "g"]).optional(),
+      order: z.enum(["asc", "desc"]).default("asc"),
+      rows: z.number().int().min(1).max(MAX_ROWS).default(10),
+    })
+    .strict(),
+  listKey: "rows",
+  request: ({ q, brand, category, retailer }) =>
+    get("/products", { q, brand, category, retailer, sort: "name", limit: UNIT_PRICE_SCAN }),
+  view: (data, input) => unitPriceView(data, input),
+});
+
 export const getProduct = defineTool({
   name: "get_product",
   version: "3",
@@ -114,6 +145,7 @@ export const getProduct = defineTool({
     "withheld as invalid (see the invalid_price_excluded caveat); say so, never call it 0 or free.",
   minRole: "viewer",
   input: z.object({ id: productId }).strict(),
+  byId: true,
   request: ({ id }) => get(`/products/${encodeURIComponent(id)}`),
 });
 
@@ -286,6 +318,7 @@ export const priceHistory = defineTool({
     .refine((value) => !value.from || !value.to || value.from <= value.to, {
       message: "from must not be after to",
     }),
+  byId: true,
   request: ({ id, ...rest }) => get(`/products/${encodeURIComponent(id)}/history`, rest),
 });
 
@@ -444,6 +477,7 @@ export const categoryCompare = defineTool({
 
 export const TOOLS = [
   searchProducts,
+  pricePerUnit,
   getProduct,
   compare,
   indexTrend,

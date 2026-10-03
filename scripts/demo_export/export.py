@@ -95,6 +95,13 @@ class ListingRow:
     stock_run_id: int | None = None
     #: The retailer's main image URL from the latest content; only v2 reads it (allowlisted there).
     image: str | None = None
+    #: v3 ``Offer.content`` only (2026-10-03), all from the latest content row and the variant:
+    #: the barcode as stored (checked in v2), the page's description and ingredients, and the
+    #: gallery URLs in the page's order (allowlisted in v2).
+    gtin: str | None = None
+    description: str | None = None
+    ingredients: str | None = None
+    images: tuple[str, ...] = ()
 
     @property
     def price_capture(self) -> tuple[datetime, int]:
@@ -207,19 +214,27 @@ current_runs AS (
 -- running run counts once --finish closes it as partial.
 -- Contexts with no succeeded run yet fall back to the latest observation per listing across
 -- all of their runs.
+-- History mode (--history) passes one market day as [day_start, day_end): every succeeded or
+-- partial run then counts, and only its observations on that day are read (never carried
+-- forward). With no day (the default), the rules above apply unchanged.
 eligible_runs AS (
-  SELECT id FROM current_runs
+  SELECT id FROM current_runs WHERE %(day_start)s::timestamptz IS NULL
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
   JOIN current_runs c ON c.source_context_id = r.source_context_id
-  WHERE r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
+  WHERE %(day_start)s::timestamptz IS NULL
+    AND r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
-  WHERE NOT EXISTS (
+  WHERE %(day_start)s::timestamptz IS NULL AND NOT EXISTS (
     SELECT 1 FROM current_runs c WHERE c.source_context_id = r.source_context_id
   )
+  UNION ALL
+  SELECT r.id
+  FROM scoped_runs r
+  WHERE %(day_start)s::timestamptz IS NOT NULL AND r.status IN ('succeeded', 'partial')
 ),
 -- One source may split an offer across rows: a page read carries price and rating with
 -- availability 'not_observed'; a stock read carries availability with price unknown
@@ -252,6 +267,10 @@ obs AS (
   JOIN source_context sc ON sc.id = o.source_context_id
   LEFT JOIN evidence e ON e.id = o.evidence_id
   WHERE (o.currency = 'AED' OR o.currency IS NULL) AND sc.country = 'AE'
+    AND (
+      %(day_start)s::timestamptz IS NULL
+      OR (o.observed_at >= %(day_start)s::timestamptz AND o.observed_at < %(day_end)s::timestamptz)
+    )
 ),
 latest_any AS (
   SELECT DISTINCT ON (source_listing_id) *
@@ -319,6 +338,9 @@ SELECT
   v.size_value,
   v.size_unit,
   lc.labels ->> 'size' AS size_label,
+  COALESCE(v.gtin, lc.labels ->> 'gtin') AS gtin,
+  lc.description,
+  lc.ingredients,
   latest.price_current AS price,
   latest.price_regular_stated AS regular,
   latest.price_type,
@@ -352,7 +374,23 @@ SELECT
       CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
       COALESCE(img ->> 'url', img ->> 'download_url')
     LIMIT 1
-  ) AS image
+  ) AS image,
+  -- The gallery: every element of the same two shapes (role 'main' or 'alt'; roles holding
+  -- 'image'), swatches left out, in position order. v2 keeps only the source's own hosts.
+  ARRAY(
+    SELECT COALESCE(img ->> 'url', img ->> 'download_url')
+    FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
+    ) img
+    WHERE COALESCE(img ->> 'url', img ->> 'download_url') IS NOT NULL
+      AND (
+        img ->> 'role' IN ('main', 'alt')
+        OR (jsonb_typeof(img -> 'roles') = 'array' AND img -> 'roles' ? 'image')
+      )
+    ORDER BY
+      CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
+      COALESCE(img ->> 'url', img ->> 'download_url')
+  ) AS images
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id
@@ -361,7 +399,7 @@ LEFT JOIN product_family pf ON pf.id = v.family_id
 LEFT JOIN brand b ON b.id = pf.brand_id
 LEFT JOIN taxonomy t ON t.id = pf.category_universal_id
 LEFT JOIN LATERAL (
-  SELECT content.labels
+  SELECT content.labels, content.description, content.ingredients
   FROM listing_content content
   WHERE content.listing_id = sl.id
   ORDER BY content.observed_at DESC
@@ -678,16 +716,26 @@ def review_state_for_ui(value: str) -> str:
         raise ValueError(f"unsupported non-rejected review state {value!r}") from error
 
 
+def latest_params(
+    sources: Sequence[str], day: tuple[datetime, datetime] | None = None
+) -> dict[str, Any]:
+    """``LATEST_LISTINGS_SQL`` parameters; ``day`` is one market day ``[start, end)`` (history)."""
+    start, end = day if day is not None else (None, None)
+    return {"sources": list(sources), "day_start": start, "day_end": end}
+
+
 def load_rows(
     database_url: str, sources: Sequence[str] = DEFAULT_SOURCES
 ) -> tuple[list[ListingRow], list[MatchRow]]:
     with psycopg.connect(psycopg_database_url(database_url), row_factory=dict_row) as connection:
         connection.read_only = True
         with connection.cursor() as cursor:
-            cursor.execute(LATEST_LISTINGS_SQL, {"sources": list(sources)})
+            cursor.execute(LATEST_LISTINGS_SQL, latest_params(sources))
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
+    for row in listing_dicts:
+        row["images"] = tuple(row.get("images") or ())
     return (
         in_sources([ListingRow(**row) for row in listing_dicts], sources),
         [MatchRow(**row) for row in match_dicts],
@@ -933,6 +981,61 @@ def build_dataset(
     return dataset
 
 
+#: The largest v3 file this exporter writes: pi_api's measured memory budget for one dataset
+#: (docs/runbooks/pi-api-deploy.md, "Memory 1Gi": <= 50 MB JSON). No override (Reviewer,
+#: 2026-10-03): a snapshot over it waits for the content to move to its own file.
+V3_MAX_BYTES = 50_000_000
+
+
+def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:
+    """The written v3 bytes split three ways, exactly: ``prices`` (everything but
+    ``Offer.content``), ``attributes`` (content without description and ingredients) and
+    ``description+ingredients``. Measured by re-serialising with those parts emptied."""
+    from pi_dataset import dump_dataset  # noqa: PLC0415
+
+    def without(drop_all: bool) -> int:
+        products = tuple(
+            p.model_copy(
+                update={
+                    "offers": {
+                        cid: o.model_copy(
+                            update={
+                                "content": None
+                                if drop_all or o.content is None
+                                else o.content.model_copy(
+                                    update={"description": None, "ingredients": None}
+                                )
+                            }
+                        )
+                        for cid, o in p.offers.items()
+                    }
+                }
+            )
+            for p in v3.products
+        )
+        return len(dump_dataset(v3.model_copy(update={"products": products})))
+
+    prices, mid = without(True), without(False)
+    return {
+        "prices": prices,
+        "attributes": mid - prices,
+        "description+ingredients": total - mid,
+    }
+
+
+def format_groups(groups: Mapping[str, int]) -> str:
+    return " ".join(f"{name}={size}" for name, size in groups.items())
+
+
+def check_v3_size(total: int, groups: Mapping[str, int]) -> None:
+    """Refuse (no file written) a v3 body over ``V3_MAX_BYTES``."""
+    if total > V3_MAX_BYTES:
+        raise SystemExit(
+            f"refusing to write v3: {total} bytes is over the {V3_MAX_BYTES}-byte pi_api budget "
+            f"({format_groups(groups)}); nothing was written"
+        )
+
+
 def write_json(path: Path, dataset: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -994,6 +1097,14 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         help="also write the v2 snapshot upgraded to pi.dataset/v3, with offer listingCount",
     )
+    result.add_argument(
+        "--history",
+        action="store_true",
+        help=(
+            "v2/v3 carry every crawl day (Dubai market days) instead of one; days a retailer was "
+            "not completely collected go into notObserved windows (history.py)"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
@@ -1016,6 +1127,12 @@ def check_args(args: argparse.Namespace) -> None:
         )
     if not args.sources:
         raise SystemExit("--sources must name at least one source")
+    if args.history and args.output_v2 is None and args.output_v3 is None:
+        raise SystemExit("--history needs --output-v2 or --output-v3 (v1 has one date)")
+    if args.history and args.ulta_early_fixture is not None:
+        raise SystemExit(
+            "--history does not take --ulta-early-fixture (recon samples have no days)"
+        )
     if "ulta_ae" in args.sources and not args.ulta_unblocked:
         raise SystemExit("--sources ulta_ae needs --ulta-unblocked: Ulta is blocked by ruling")
     notes = (args.ulta_blocked_note, args.ulta_blocked_note_ar)
@@ -1063,23 +1180,56 @@ def main() -> None:
             to_v3,
         )
 
-        v2 = build_dataset_v2(
-            rows,
-            matches,
-            generated_at=generated_at,
-            ulta=UltaContext(
-                blocked_since=parse_utc(args.ulta_blocked_since), blocked=not args.ulta_unblocked
-            ),
-            ulta_note=dataset["meta"]["retailers"][0]["note"],
-            ulta_early=early,
-            scope=args.scope,
-            producer_commit=args.producer_commit,
+        v2_ulta = UltaContext(
+            blocked_since=parse_utc(args.ulta_blocked_since), blocked=not args.ulta_unblocked
         )
+        v2_rows = rows
+        if args.history:
+            from scripts.demo_export.history import (  # noqa: PLC0415
+                Coverage,
+                build_history_v2,
+                latest_rows,
+                load_history,
+            )
+
+            spans, days, matches = load_history(args.database_url, args.sources)
+            cover = Coverage.of(spans)
+            v2 = build_history_v2(
+                days,
+                cover,
+                matches,
+                generated_at=generated_at,
+                ulta=v2_ulta,
+                ulta_note=dataset["meta"]["retailers"][0]["note"],
+                scope=args.scope,
+                producer_commit=args.producer_commit,
+            )
+            v2_rows = latest_rows(days)
+            complete = {s: sorted(d.isoformat() for d in v) for s, v in cover.complete.items()}
+            print(
+                f"history: dates={[d.isoformat() for d in v2.meta.dates]} "
+                f"history={v2.meta.capabilities.history} complete={complete} "
+                f"notObserved={len(v2.not_observed)}"
+            )
+        else:
+            v2 = build_dataset_v2(
+                rows,
+                matches,
+                generated_at=generated_at,
+                ulta=v2_ulta,
+                ulta_note=dataset["meta"]["retailers"][0]["note"],
+                ulta_early=early,
+                scope=args.scope,
+                producer_commit=args.producer_commit,
+            )
         body = dump_dataset(v2)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            body_v3 = dump_dataset(to_v3(v2, rows, matches))
+            v3 = to_v3(v2, v2_rows, matches)
+            body_v3 = dump_dataset(v3)
             load_any(body_v3)  # the same strict load, as v3
+            v3_groups = v3_bytes_by_group(v3, len(body_v3))
+            check_v3_size(len(body_v3), v3_groups)
     write_json(args.output, dataset)
     print(
         f"wrote {len(dataset['products'])} products to {args.output} "
@@ -1090,15 +1240,15 @@ def main() -> None:
         print(
             f"wrote v2 {len(v2.products)} products to {args.output_v2} "
             f"sha256={sha256(args.output_v2)} cutoff={utc_text(v2.meta.cutoff)} "
-            f"category_listings={category_notes(rows)}"
+            f"category_listings={category_notes(v2_rows)}"
         )
         review = price_review(v2)
         print(
             f"listing rows priced <= {PRICE_FLOOR} AED (shown only when the group has no valid "
-            f"price; pi_api withholds them as priceFlag=invalid_low): {invalid_prices(rows)}"
+            f"price; pi_api withholds them as priceFlag=invalid_low): {invalid_prices(v2_rows)}"
         )
         print(
-            f"v2 listing rows={len(rows)}; prices to check by hand (never changed): "
+            f"v2 listing rows={len(v2_rows)}; prices to check by hand (never changed): "
             f"below={len(review['below'])} {review['below'][:20]} "
             f"above={len(review['above'])} {review['above'][:20]}"
         )
@@ -1106,7 +1256,8 @@ def main() -> None:
         write_bytes(args.output_v3, body_v3)
         print(
             f"wrote v3 {len(v2.products)} products to {args.output_v3} "
-            f"sha256={sha256(args.output_v3)}"
+            f"sha256={sha256(args.output_v3)} bytes={len(body_v3)} of {V3_MAX_BYTES} "
+            f"by group: {format_groups(v3_groups)}"
         )
 
 
