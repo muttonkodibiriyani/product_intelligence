@@ -28,7 +28,15 @@ from collections.abc import Iterable, Mapping, Sequence
 from itertools import combinations
 
 from pi_core.enums import MatchClass, ReviewState
-from pi_match.match import EXACT_MIN, Prepared, prepare, score_pair
+from pi_match.match import (
+    EXACT_MIN,
+    Prepared,
+    concentration_relation,
+    prepare,
+    related_pair,
+    rule_conflicts,
+    score_pair,
+)
 from pi_match.matchfile import (
     SCHEMA,
     Candidate,
@@ -44,7 +52,7 @@ from pi_match.model import Bucket, ProductRecord
 
 #: Bump on any change to scoring, rules or assignment: every pair without a human decision is
 #: re-scored, and the gold-set gate re-runs.
-ALGO_VERSION = "pi_match.incremental/1"
+ALGO_VERSION = "pi_match.incremental/2"
 
 Key = tuple[str, str]  # (retailer, token)
 Pair = tuple[Key, Key]
@@ -67,6 +75,10 @@ def fingerprint(item: Prepared) -> str:
         None if item.concentration is None else item.concentration.value,
         item.kind.value,
         item.gtin,
+        None if item.form is None else item.form.value,
+        list(item.flags),
+        item.concentration_from_url,
+        sorted(item.numbers),
     ]
     raw = json.dumps(features, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -79,14 +91,7 @@ def hard_conflicts(left: Prepared, right: Prepared) -> tuple[str, ...]:
         out.append("brand_differs")
     if left.gtin is not None and right.gtin is not None and left.gtin != right.gtin:
         out.append("gtin_differs")
-    if left.kind is not right.kind:
-        out.append("kind_differs")
-    if (
-        left.concentration is not None
-        and right.concentration is not None
-        and left.concentration is not right.concentration
-    ):
-        out.append("concentration_differs")
+    out.extend(rule_conflicts(left, right))
     if left.size is not None and right.size is not None and not left.size.same_as(right.size):
         out.append("size_differs")
     if _shades_differ(left, right):
@@ -137,7 +142,10 @@ def _score(prepared: Mapping[Key, Prepared], pairs: Iterable[Pair]) -> list[Cand
     for a, b in pairs:
         result = score_pair(prepared[a], prepared[b])  # always a < b: the score's orientation
         if result is None:
-            continue
+            related = related_pair(prepared[a], prepared[b])
+            if related is None:
+                continue
+            result = (Bucket.CANDIDATE, *related)
         bucket, score, reasons = result
         out.append(
             Candidate(
@@ -300,20 +308,15 @@ def _assign(  # noqa: PLR0912, PLR0913 -- the class ladder of ADR-0012 §3, one 
                 )
         elif "gtin_conflict" in c.reasons:
             reason = ReviewReason.GTIN_CONFLICT
+        elif "related_only" in c.reasons:
+            edges.append(_machine_edge(c, MatchClass.SUBSTITUTE, algo_version))
+        elif _unsized_family(c, prepared):
+            # A listing without a size (or an unobserved shade) is the line, not one variant:
+            # it links to the line's variants, never as exact (Coordinator ruling (b)).
+            edges.append(_machine_edge(c, MatchClass.FAMILY, algo_version))
         elif "family_only" in c.reasons:
             if c.score >= EXACT_MIN and not _family_blocked(prepared, a, b):
-                edges.append(
-                    Edge(
-                        a=c.a,
-                        b=c.b,
-                        match_class=MatchClass.FAMILY,
-                        review_state=ReviewState.PROPOSED,
-                        decided_by=None,
-                        confidence=c.score,
-                        method=algo_version,
-                        reasons=c.reasons,
-                    )
-                )
+                edges.append(_machine_edge(c, MatchClass.FAMILY, algo_version))
             else:
                 reason = ReviewReason.FAMILY_WEAK
         elif c.bucket is Bucket.PROBABLE:
@@ -383,9 +386,42 @@ def _cliques(edges: Sequence[Edge]) -> tuple[list[Edge], list[Edge]]:
     return kept, dropped
 
 
+def _machine_edge(c: Candidate, match_class: MatchClass, algo_version: str) -> Edge:
+    """A proposed edge from a candidate: a human approves it, the machine never does."""
+    return Edge(
+        a=c.a,
+        b=c.b,
+        match_class=match_class,
+        review_state=ReviewState.PROPOSED,
+        decided_by=None,
+        confidence=c.score,
+        method=algo_version,
+        reasons=c.reasons,
+    )
+
+
+def _unsized_family(c: Candidate, prepared: Mapping[Key, Prepared]) -> bool:
+    """A strong, unflagged pair whose only gap is a size or shade that one side does not state."""
+    a, b = c.pair()
+    unknown = "size_unknown" in c.reasons or "shade_unknown" in c.reasons
+    flagged = any(r.startswith("name_") and r.endswith("_conflict") for r in c.reasons)
+    return (
+        unknown
+        and not flagged
+        and c.score >= EXACT_MIN
+        and "concentration_unknown_one_side" not in c.reasons
+        and not _family_blocked(prepared, a, b)
+    )
+
+
 def _family_blocked(prepared: Mapping[Key, Prepared], a: Key, b: Key) -> bool:
-    """A family edge still needs kind and a known concentration to agree."""
-    conflicts = set(hard_conflicts(prepared[a], prepared[b]))
+    """A family edge still needs kind, form and concentration to agree (known on both sides or
+    on neither)."""
+    left, right = prepared[a], prepared[b]
+    known = left.concentration is not None or right.concentration is not None
+    if known and concentration_relation(left, right) == "unknown":
+        return True  # "Bloom" vs "Bloom Parfum": the line is not known to agree
+    conflicts = set(hard_conflicts(left, right))
     return bool(conflicts - {"size_differs", "shade_differs"})
 
 
