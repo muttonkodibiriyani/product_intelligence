@@ -163,8 +163,9 @@ class Meter:
     cap: int = DEFAULT_BYTE_CAP
     used: int = 0
     ledger: Ledger | None = None
-    #: Set when the ledger could not be re-read; the meter then reports exhausted (fail closed).
-    ledger_fault: str | None = None
+    #: The most recent ledger read fault, kept after recovery so the run's record shows that the
+    #: proxy was paused at some point; ``None`` means the ledger never failed to read.
+    last_ledger_fault: str | None = None
 
     def charge(self, response_bytes: int) -> None:
         n = response_bytes + REQUEST_ALLOWANCE
@@ -186,7 +187,7 @@ class Meter:
         try:
             self.ledger.reload()
         except LedgerError as exc:
-            self.ledger_fault = str(exc)
+            self.last_ledger_fault = str(exc)
             return True
         return self.ledger.remaining <= 0
 
@@ -216,7 +217,13 @@ class Ledger:
         self.reload()
 
     def reload(self) -> None:
-        got = self.store.load()
+        try:
+            got = self.store.load()
+        except Exception as exc:
+            # A bucket outage, a lost connection or a permission error is not a reason to keep
+            # spending: it becomes a LedgerError so Meter.exhausted reports True (fail closed)
+            # and status.json names the fault instead of the job dying mid-run.
+            raise LedgerError(f"proxy ledger could not be read: {exc!r}") from exc
         if got is None:
             raise LedgerError("proxy ledger does not exist; create it with the known balance")
         data, token = got
@@ -243,7 +250,11 @@ class Ledger:
             runs = self.doc.setdefault("runs", {})
             runs[self.run_id] = int(runs.get(self.run_id, 0)) + n
             self.doc["updated"] = self.clock()
-            if self.store.save(json.dumps(self.doc, indent=1).encode(), self.token):
+            try:
+                saved = self.store.save(json.dumps(self.doc, indent=1).encode(), self.token)
+            except Exception as exc:
+                raise LedgerError(f"proxy ledger could not be saved: {exc!r}") from exc
+            if saved:
                 self.reload()
                 return
             self.reload()  # lost the race: start from the other writer's figures

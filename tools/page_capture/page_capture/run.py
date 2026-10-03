@@ -389,7 +389,7 @@ class Job:
             "proxy_ledger_remaining": (
                 self.meter.ledger.remaining if self.meter.ledger is not None else None
             ),
-            "proxy_ledger_fault": self.meter.ledger_fault,
+            "proxy_last_ledger_fault": self.meter.last_ledger_fault,
         }
         self.store.put(self.named("status.json"), json.dumps(status).encode(), gz=False)
         self.progress()
