@@ -292,6 +292,39 @@ def test_thousands_separator_in_a_size_is_not_a_decimal_point() -> None:
     assert size("0.5 kg")["size_value"].value == Decimal("0.5")
 
 
+def test_a_leading_zero_group_is_a_decimal_comma_not_a_thousand() -> None:
+    def size(label: str) -> dict[str, Reading]:
+        html = FACES_AR_HTML.replace("(100 ML)", f"({label})")
+        return _by_key(readings_from_faces(html, locale="ar-AE"))
+
+    for label, expected, unit in (("0,750 l", "0.75", "l"), ("0,500 kg", "0.5", "kg")):
+        r = size(label)
+        assert r["size_value"].value == Decimal(expected), label
+        assert r["size_value"].note is None, label
+        assert r["size_unit"].value == unit, label
+    # ...and a thousands group still needs a non-zero lead
+    assert size("1,750 ml")["size_value"].value == Decimal("1750")
+
+
+def test_a_thousands_shaped_comma_with_litres_or_kilograms_is_ambiguous() -> None:
+    def size(label: str) -> dict[str, Reading]:
+        html = FACES_AR_HTML.replace("(100 ML)", f"({label})")
+        return _by_key(readings_from_faces(html, locale="ar-AE"))
+
+    for label, unit in (("1,500 l", "l"), ("1,500 kg", "kg"), ("2,000 L", "l")):
+        r = size(label)
+        assert r["size_value"].state == "parse_failed", label
+        assert r["size_value"].value is None, label
+        assert r["size_value"].raw_text == label
+        assert "ambiguous" in str(r["size_value"].note), label
+        assert r["size_unit"].state == "observed", label
+        assert r["size_unit"].value == unit, label
+    # millilitres, grams and counts are never sold in fractions this way: a thousand stands
+    assert size("1,500 ml")["size_value"].value == Decimal("1500")
+    assert size("1,500 g")["size_value"].value == Decimal("1500")
+    assert size("1,000 pcs")["size_value"].value == Decimal("1000")
+
+
 _MAIN_STRIKE = (
     '<span class="strike-through list"><span class="value" content="260.00">AED 260</span></span>'
 )
@@ -337,6 +370,20 @@ def test_a_struck_price_with_no_sale_price_beside_it_is_parse_failed() -> None:
     assert r["regular_price_minor"].state == "parse_failed"
     assert r["regular_price_minor"].raw_text == "260.00 AED"
     assert r["regular_price_minor"].note == "struck price with no readable sale price beside it"
+
+
+def test_when_the_main_price_block_exists_there_is_no_page_wide_sale_fallback() -> None:
+    # the product's own block has an unreadable sale price; a priced tile sits elsewhere
+    html = FACES_HTML.replace('<span class="value" content="215.00">', '<span class="value">')
+    html = html.replace("</body>", _UPSELL_TILE + "</body>")
+    r = _by_key(readings_from_faces(html, locale="en-AE"))
+    values = [x.value for x in r.values()]
+    assert 75000 not in values
+    assert 99900 not in values
+    if "price_minor" in r:
+        assert r["price_minor"].source_path != "span.value[content]"
+        assert r["price_minor"].note is None
+    assert r["regular_price_minor"].state == "parse_failed"
 
 
 _RATING = '"aggregateRating":{"@type":"AggregateRating","ratingValue":"4.5","reviewCount":"12"},'
