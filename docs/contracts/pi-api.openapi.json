@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.14.0",
+            "default": "1.16.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -3525,6 +3525,15 @@
         "title": "MatchPage",
         "type": "object"
       },
+      "MatchReview": {
+        "description": "Whether a matched card's exact edge was reviewed (approved/locked) or is proposed.",
+        "enum": [
+          "reviewed",
+          "unreviewed"
+        ],
+        "title": "MatchReview",
+        "type": "string"
+      },
       "MatchRow": {
         "additionalProperties": false,
         "properties": {
@@ -4445,6 +4454,16 @@
               }
             ],
             "title": "Image"
+          },
+          "matchReview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "matches": {
             "items": {
@@ -6457,7 +6476,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.14.0"
+    "version": "1.16.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8812,6 +8831,7 @@
             }
           },
           {
+            "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
             "in": "query",
             "name": "matched",
             "required": false,
@@ -8824,6 +8844,7 @@
                   "type": "null"
                 }
               ],
+              "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
               "title": "Matched"
             }
           },
@@ -10434,6 +10455,7 @@
             }
           },
           {
+            "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
             "in": "query",
             "name": "matched",
             "required": false,
@@ -10446,6 +10468,7 @@
                   "type": "null"
                 }
               ],
+              "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
               "title": "Matched"
             }
           },

@@ -498,7 +498,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.14.0
+             * @default 1.16.0
              */
             apiVersion: string;
             /** Currency */
@@ -1534,6 +1534,12 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * MatchReview
+         * @description Whether a matched card's exact edge was reviewed (approved/locked) or is proposed.
+         * @enum {string}
+         */
+        MatchReview: "reviewed" | "unreviewed";
         /** MatchRow */
         MatchRow: {
             /** A */
@@ -1811,6 +1817,7 @@ export interface components {
             id: string;
             /** Image */
             image?: string | null;
+            matchReview?: components["schemas"]["MatchReview"] | null;
             /** Matches */
             matches: components["schemas"]["CardMatch"][];
             /** Name */
@@ -3607,6 +3614,7 @@ export interface operations {
                 category?: string[];
                 /** @description Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context. */
                 retailer?: string[];
+                /** @description API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only. */
                 matched?: boolean | null;
                 priceMin?: string | null;
                 priceMax?: string | null;
@@ -4328,6 +4336,7 @@ export interface operations {
                 category?: string[];
                 /** @description Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context. */
                 retailer?: string[];
+                /** @description API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only. */
                 matched?: boolean | null;
                 priceMin?: string | null;
                 priceMax?: string | null;
