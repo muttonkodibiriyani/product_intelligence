@@ -28,7 +28,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from itertools import combinations
 
 from pi_core.enums import MatchClass, ReviewState
-from pi_match.match import EXACT_MIN, Prepared, prepare, score_pair
+from pi_match.match import EXACT_MIN, Prepared, markers, prepare, score_pair
 from pi_match.matchfile import (
     SCHEMA,
     Candidate,
@@ -44,7 +44,7 @@ from pi_match.model import Bucket, ProductRecord
 
 #: Bump on any change to scoring, rules or assignment: every pair without a human decision is
 #: re-scored, and the gold-set gate re-runs.
-ALGO_VERSION = "pi_match.incremental/1"
+ALGO_VERSION = "pi_match.incremental/2"
 
 Key = tuple[str, str]  # (retailer, token)
 Pair = tuple[Key, Key]
@@ -67,6 +67,8 @@ def fingerprint(item: Prepared) -> str:
         None if item.concentration is None else item.concentration.value,
         item.kind.value,
         item.gtin,
+        None if item.form is None else item.form.value,
+        list(item.flags),
     ]
     raw = json.dumps(features, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -81,6 +83,10 @@ def hard_conflicts(left: Prepared, right: Prepared) -> tuple[str, ...]:
         out.append("gtin_differs")
     if left.kind is not right.kind:
         out.append("kind_differs")
+    if left.form is not None and right.form is not None and left.form is not right.form:
+        out.append("form_differs")
+    if markers(left.tokens) != markers(right.tokens):
+        out.append("flanker_differs")
     if (
         left.concentration is not None
         and right.concentration is not None
@@ -384,8 +390,12 @@ def _cliques(edges: Sequence[Edge]) -> tuple[list[Edge], list[Edge]]:
 
 
 def _family_blocked(prepared: Mapping[Key, Prepared], a: Key, b: Key) -> bool:
-    """A family edge still needs kind and a known concentration to agree."""
-    conflicts = set(hard_conflicts(prepared[a], prepared[b]))
+    """A family edge still needs kind, form and concentration to agree (known on both sides or
+    on neither)."""
+    left, right = prepared[a], prepared[b]
+    if (left.concentration is None) != (right.concentration is None):
+        return True  # "Bloom" vs "Bloom Parfum": the line is not known to agree
+    conflicts = set(hard_conflicts(left, right))
     return bool(conflicts - {"size_differs", "shade_differs"})
 
 
