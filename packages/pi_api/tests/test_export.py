@@ -156,7 +156,9 @@ def test_csv_compare_flattens_money_and_keeps_signed_numbers(client: Client) -> 
     assert uncounted
     assert "gap" not in table[0]
     assert all(r["gap.amount.currency"] == "AED" for r in counted)
-    assert all(r["gap.pct"] == "" and r["excludedReason"] for r in uncounted)
+    assert all(r["excludedReason"] for r in uncounted)
+    # an uncounted row keeps a gap only as /compare's overlap reading (API 1.17.0)
+    assert all(r["gap.pct"] == "" for r in uncounted if r["excludedReason"] != "match_unreviewed")
     assert any(r["gap.pct"].startswith("-") for r in counted)
     assert not any(r["gap.pct"].startswith("'") for r in counted)
 
@@ -226,7 +228,7 @@ def test_each_export_writes_one_audit_entry_without_row_content(
         "format": "jsonl",
         "filters": {"retailers": f"{A},{B}"},
         "rows": 15,
-        "apiVersion": "1.16.0",
+        "apiVersion": "1.17.0",
     }
     text = caplog.text
     assert "Product p01" not in text

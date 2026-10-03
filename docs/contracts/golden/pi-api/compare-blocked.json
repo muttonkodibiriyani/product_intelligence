@@ -26,6 +26,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p01",
+        "match": null,
         "name": "Product p01",
         "otherPrice": null
       },
@@ -44,6 +45,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p02",
+        "match": null,
         "name": "Product p02",
         "otherPrice": null
       },
@@ -62,6 +64,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p03",
+        "match": null,
         "name": "Product p03",
         "otherPrice": null
       },
@@ -80,6 +83,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p04",
+        "match": null,
         "name": "Product p04",
         "otherPrice": null
       },
@@ -98,6 +102,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p05",
+        "match": null,
         "name": "Product p05",
         "otherPrice": null
       },
@@ -116,6 +121,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p06",
+        "match": null,
         "name": "Product p06",
         "otherPrice": null
       },
@@ -134,6 +140,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p07",
+        "match": null,
         "name": "Product p07",
         "otherPrice": null
       },
@@ -152,6 +159,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p08",
+        "match": null,
         "name": "Product p08",
         "otherPrice": null
       },
@@ -170,6 +178,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p09",
+        "match": null,
         "name": "Product p09",
         "otherPrice": null
       },
@@ -188,6 +197,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p10",
+        "match": null,
         "name": "Product p10",
         "otherPrice": null
       },
@@ -206,6 +216,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p11",
+        "match": null,
         "name": "Product p11",
         "otherPrice": null
       },
@@ -224,6 +235,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p12",
+        "match": null,
         "name": "Product p12",
         "otherPrice": null
       },
@@ -242,6 +254,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p13",
+        "match": null,
         "name": "Product p13",
         "otherPrice": null
       },
@@ -260,6 +273,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p16",
+        "match": null,
         "name": "Product p16",
         "otherPrice": null
       }
@@ -291,12 +305,13 @@
     "en": "A selected retailer could not be collected."
   },
   "meta": {
-    "apiVersion": "1.16.0",
+    "apiVersion": "1.17.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",
     "filters": {
-      "retailers": "shop_a,shop_d"
+      "retailers": "shop_a,shop_d",
+      "rows": "all"
     },
     "generation": "1790000000000000000",
     "market": "AE",

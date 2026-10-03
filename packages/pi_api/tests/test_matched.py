@@ -78,7 +78,7 @@ def test_no_counted_metric_moves(client: Client) -> None:
     rows = {r["id"]: r for r in get(client, "/compare?retailers=shop_a,shop_b")["rows"]}
     assert rows[PROPOSED]["excludedReason"] == "match_unreviewed"
     assert rows[PROPOSED]["counted"] is False
-    assert rows[PROPOSED]["gap"] is None
+    assert rows[PROPOSED]["gap"] is not None  # shown as overlap (API 1.17.0), never counted
     counted = sorted(i for i, r in rows.items() if r["counted"])
     assert counted == ["p01", "p02", "p03", "p04", "p05", "p06"]
     shops = {r["id"]: r["matchedCount"] for r in get(client, "/coverage")["retailers"]}
