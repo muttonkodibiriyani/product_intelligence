@@ -16,7 +16,7 @@ recorded as ``not_shown`` so the gap is explicit rather than silent.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
@@ -47,7 +47,8 @@ _VOID = frozenset(
 )
 _WS = re.compile(r"\s+")
 _DIGITS = re.compile(r"\d+")
-_SIZE = re.compile(r"^(?P<num>\d+(?:[.,]\d+)?)\s*(?P<unit>[^\d\s].*?)$")
+_SIZE = re.compile(r"^(?P<num>\d{1,3}(?:,\d{3})+|\d+(?:[.,]\d+)?)\s*(?P<unit>[^\d\s].*?)$")
+_THOUSANDS = re.compile(r"^\d{1,3}(?:,\d{3})+$")  # 1,000 is a thousand, not one
 _SIZE_UNITS = {
     "ml": "ml",
     "g": "g",
@@ -357,8 +358,14 @@ def _map_size(em: _Emitter, els: list[_El], item: Mapping[str, Any] | None) -> N
         em.failed("size_value", label, path, "no leading number")
         em.failed("size_unit", label, path, "no unit after a number")
         return
+    num = m.group("num")
+    note: str | None = None
+    if _THOUSANDS.match(num):
+        num, note = num.replace(",", ""), "comma read as a thousands separator"
+    else:
+        num = num.replace(",", ".")
     try:
-        value = Decimal(m.group("num").replace(",", "."))
+        value = Decimal(num)
     except InvalidOperation:  # pragma: no cover - regex guarantees a number
         em.failed("size_value", label, path, "not a number")
         return
@@ -367,7 +374,7 @@ def _map_size(em: _Emitter, els: list[_El], item: Mapping[str, Any] | None) -> N
         em.failed("size_unit", label, path, f"unit {m.group('unit')!r} outside ml|g|l|kg|count")
         em.failed("size_value", label, path, "unit not normalised, value kept with the label")
         return
-    em.observed("size_value", label, value, path)
+    em.observed("size_value", label, value, path, note)
     em.observed("size_unit", label, unit, path)
 
 
@@ -380,26 +387,31 @@ def _currency(els: list[_El], item: Mapping[str, Any] | None) -> str | None:
     return None
 
 
+_REGULAR_PATH = ".js-main-price span.strike-through span.value[content]"
+
+
 def _map_prices(em: _Emitter, els: list[_El], currency: str | None) -> None:
     values = _all(els, "value", tag="span")
-    sale = next(
-        (v for v in values if v.under("js-main-price") and not v.under("strike-through")), None
-    )
-    if sale is None:
+    main = [v for v in values if v.under("js-main-price")]  # the product's own price block
+    sale = next((v for v in main if not v.under("strike-through") and v.attrs.get("content")), None)
+    sale_note: str | None = None
+    if sale is None and not main:
         sale = next(
-            (v for v in values if "content" in v.attrs and not v.under("strike-through")), None
+            (v for v in values if v.attrs.get("content") and not v.under("strike-through")), None
         )
-    if sale is not None and sale.attrs.get("content"):
-        _emit_price(em, "price_minor", sale.attrs["content"], currency, "span.value[content]")
-    struck = next((v for v in values if v.under("strike-through") and v.attrs.get("content")), None)
-    if struck is not None:
+        sale_note = "no js-main-price block; first priced value on the page"
+    sale_minor: int | None = None
+    if sale is not None:
         _emit_price(
-            em,
-            "regular_price_minor",
-            struck.attrs["content"],
-            currency,
-            "span.strike-through span.value[content]",
+            em, "price_minor", sale.attrs["content"], currency, "span.value[content]", sale_note
         )
+        sale_minor, _reason, _note = _minor_units(sale.attrs["content"], currency)
+    # a struck price counts only inside the product's own price block, and only above the sale
+    # price: a struck tile elsewhere on the page is another product's, and regular <= sale is
+    # not a regular price
+    struck = next((v for v in main if v.under("strike-through") and v.attrs.get("content")), None)
+    if struck is not None:
+        _map_regular(em, struck.attrs["content"], currency, sale_minor)
     vat = next(
         (
             e
@@ -411,7 +423,41 @@ def _map_prices(em: _Emitter, els: list[_El], currency: str | None) -> None:
         None,
     )
     if vat is not None and (m := _VAT.search(vat.text)):
-        em.observed("vat_statement", vat.text, m.group(0).strip(), f"{vat.tag}.vat-text")
+        em.observed("vat_statement", vat.text, m.group(0).strip(), _el_path(vat))
+
+
+def _map_regular(em: _Emitter, amount: str, currency: str | None, sale_minor: int | None) -> None:
+    minor, _reason, _note = _minor_units(amount, currency)
+    if minor is None:
+        _emit_price(em, "regular_price_minor", amount, currency, _REGULAR_PATH)  # parse_failed
+        return
+    raw = f"{amount} {currency}" if currency else amount
+    code = currency.strip().upper() if currency and len(currency.strip()) == 3 else None
+    if sale_minor is None:
+        em.failed(
+            "regular_price_minor",
+            raw,
+            _REGULAR_PATH,
+            "struck price with no readable sale price beside it",
+            currency=code,
+        )
+        return
+    if minor <= sale_minor:
+        em.failed(
+            "regular_price_minor",
+            raw,
+            _REGULAR_PATH,
+            f"struck price not above the sale price ({sale_minor} minor units); "
+            "not a regular price",
+            currency=code,
+        )
+        return
+    _emit_price(em, "regular_price_minor", amount, currency, _REGULAR_PATH)
+
+
+def _el_path(el: _El) -> str:
+    """``tag.class.class`` of the element itself, so the recorded path is where the text was."""
+    return el.tag + "".join(f".{c}" for c in sorted(el.classes))
 
 
 def _map_offer_extras(em: _Emitter, els: list[_El], currency: str | None) -> None:
@@ -506,7 +552,7 @@ def _map_content(em: _Emitter, els: list[_El]) -> None:
         em.observed("spf", m.group(0), int(m.group(1)), "span.js-name|#collapseDescription")
 
 
-def _faces_readings(html: str) -> Iterator[Reading]:
+def _faces_readings(html: str) -> _Emitter:
     els = _scan(html)
     item = _view_item(html)
     em = _Emitter()
@@ -519,10 +565,17 @@ def _faces_readings(html: str) -> Iterator[Reading]:
     _map_prices(em, els, currency)
     _map_offer_extras(em, els, currency)
     _map_content(em, els)
-    em.not_shown("rating_value", "Bazaarvoice ratings render client-side; not in the HTML")
-    em.not_shown("rating_count", "Bazaarvoice ratings render client-side; not in the HTML")
-    em.not_shown("related_products", "Constructor recommendations render client-side")
-    yield from em.readings
+    return em
+
+
+# Blocks the Faces page renders client-side. They are recorded as ``not_shown`` only after the
+# generic readers have had their turn: a page that does carry the value (say JSON-LD
+# aggregateRating) must not come out as a false absence.
+_CLIENT_SIDE: tuple[tuple[str, str], ...] = (
+    ("rating_value", "Bazaarvoice ratings render client-side; not in the HTML"),
+    ("rating_count", "Bazaarvoice ratings render client-side; not in the HTML"),
+    ("related_products", "Constructor recommendations render client-side"),
+)
 
 
 _FACES_KEYS = frozenset(
@@ -564,10 +617,10 @@ LOOKED_FOR: frozenset[str] = _FACES_KEYS | GENERIC_LOOKED_FOR
 
 
 def readings_from_faces(html: str, *, locale: str, url: str | None = None) -> list[Reading]:
-    """Faces-specific readings first, then the generic extractors fill every key still unread."""
-    readings = list(_faces_readings(html))
-    seen = {r.key for r in readings}
-    for r in readings_from_generic(html, locale=locale, url=url):
-        if r.key not in seen:
-            readings.append(r)
-    return readings
+    """Faces-specific readings first, then the generic extractors fill every key still unread,
+    then the client-side blocks are marked ``not_shown`` if nothing read them."""
+    em = _faces_readings(html)
+    em.extend(readings_from_generic(html, locale=locale, url=url))
+    for key, note in _CLIENT_SIDE:
+        em.not_shown(key, note)
+    return em.readings

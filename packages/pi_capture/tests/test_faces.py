@@ -15,7 +15,7 @@ window.dataLayer = window.dataLayer || [];
 dataLayer.push({"event":"page_view","page":"pdp"});
 dataLayer.push({"event":"view_item","ecommerce":{"currency":"AED","value":215,"items":[
  {"item_id":"PM_GLOW_Tinted_Balm","item_name":"Tinted Balm","affiliation":"Shop",
-  "currency":"AED","item_brand":"Glow","item_variant":"3145891717549","quantity":1,
+  "currency":"AED","item_brand":"Glow","item_variant":"2000000000015","quantity":1,
   "item_gender":"WOMEN","item_in_stock":true,"price":215,"item_category":"Makeup",
   "item_category2":"Lips","item_category3":"Lip Balm","item_category4":"","item_category5":"",
   "discount":0,"item_size":"3g","item_color":"754_tender_peach"}]}});
@@ -48,7 +48,7 @@ FACES_HTML = f"""<!doctype html>
   itemprop="position" content="2" /></li>
 </ol>
 <div class="js-product-details product-detail" data-pid="006617133769"
-  data-ready-to-order="true" data-ean="3145891717549">
+  data-ready-to-order="true" data-ean="2000000000015">
  <div class="js-availability-container d-none" data-ready-to-order="true"
   data-available="true"></div>
  <div class="product-brand text-uppercase"> <a href="/en/brands/glow">Glow HTML</a> </div>
@@ -148,8 +148,8 @@ def test_identity_comes_from_the_datalayer_and_data_attributes() -> None:
     assert r["style_id"].source_path == "dataLayer.view_item.items[0].item_id"
     assert r["style_id_source"].value == "captured"
     assert r["retailer_sku"].value == "006617133769"
-    assert r["gtin"].value == "03145891717549"
-    assert r["gtin"].raw_text == "3145891717549"
+    assert r["gtin"].value == "02000000000015"
+    assert r["gtin"].raw_text == "2000000000015"
     assert r["gtin"].source_path == "div.js-product-details[data-ean]"
     # dataLayer wins over the JSON-LD and over the rendered brand/name
     assert r["brand"].value == "Glow"
@@ -185,9 +185,13 @@ def test_prices_instalments_points_badges_and_vat() -> None:
     assert r["price_minor"].value == 21500
     assert r["price_minor"].raw_text == "215.00 AED"
     assert r["regular_price_minor"].value == 26000
-    assert r["regular_price_minor"].source_path == "span.strike-through span.value[content]"
+    assert r["regular_price_minor"].source_path == (
+        ".js-main-price span.strike-through span.value[content]"
+    )
+    assert r["price_minor"].note is None  # read from the js-main-price block itself
     assert r["vat_statement"].value == "Incl. 5% VAT"
     assert r["vat_statement"].raw_text == "(Incl. 5% VAT)"
+    assert r["vat_statement"].source_path == "span.ff-caption-sm"  # where the text really was
     assert r["installment_provider"].value == ["tabby", "tamara"]
     assert r["installment_amount_minor"].value == 5375
     assert r["installment_amount_minor"].note == "currency=AED; 4.0 instalments"
@@ -242,7 +246,9 @@ def test_arabic_page_without_swatches_or_datalayer_size() -> None:
     assert r["size_value"].value == Decimal("100")
     assert r["size_unit"].value == "ml"
     assert r["price_minor"].value == 51500  # currency from the dataLayer
+    assert r["price_minor"].note == "no js-main-price block; first priced value on the page"
     assert str(r["vat_statement"].value).startswith("شامل")
+    assert r["vat_statement"].source_path == "small"
     assert r["loyalty_points"].value == 490
     assert r["gift_with_purchase"].value == "هدايا مجانية"
     assert "installment_provider" not in r
@@ -267,6 +273,87 @@ def test_size_edge_cases() -> None:
     assert arabic["size_value"].value == Decimal("50")
     pieces = size("2 pcs")
     assert pieces["size_unit"].value == "count"
+
+
+def test_thousands_separator_in_a_size_is_not_a_decimal_point() -> None:
+    def size(label: str) -> dict[str, Reading]:
+        html = FACES_AR_HTML.replace("(100 ML)", f"({label})")
+        return _by_key(readings_from_faces(html, locale="ar-AE"))
+
+    thousand = size("1,000 ml")
+    assert thousand["size_value"].value == Decimal("1000")
+    assert thousand["size_value"].note == "comma read as a thousands separator"
+    assert thousand["size_unit"].value == "ml"
+    assert size("10,000 pcs")["size_value"].value == Decimal("10000")
+    # a comma followed by anything but exactly three digits is still a decimal comma
+    assert size("1,5 ml")["size_value"].value == Decimal("1.5")
+    assert size("1,5 ml")["size_value"].note is None
+    assert size("2,25 l")["size_value"].value == Decimal("2.25")
+    assert size("0.5 kg")["size_value"].value == Decimal("0.5")
+
+
+_MAIN_STRIKE = (
+    '<span class="strike-through list"><span class="value" content="260.00">AED 260</span></span>'
+)
+_UPSELL_TILE = (
+    '<div class="product-tile"><span class="price"><span class="strike-through list">'
+    '<span class="value" content="999.00">AED 999</span></span>'
+    '<span class="sales"><span class="value" content="750.00">AED 750</span></span></span></div>'
+)
+
+
+def test_a_struck_price_outside_the_main_price_block_is_not_this_products_regular_price() -> None:
+    # the product itself has no strike-through; an upsell tile elsewhere on the page does
+    html = FACES_HTML.replace(_MAIN_STRIKE, "").replace("</body>", _UPSELL_TILE + "</body>")
+    r = _by_key(readings_from_faces(html, locale="en-AE"))
+    assert r["price_minor"].value == 21500
+    assert "regular_price_minor" not in r
+    # and when the product does have one, the tile does not override it
+    html = FACES_HTML.replace("</body>", _UPSELL_TILE + "</body>")
+    r = _by_key(readings_from_faces(html, locale="en-AE"))
+    assert r["regular_price_minor"].value == 26000
+
+
+def test_a_struck_price_not_above_the_sale_price_is_parse_failed() -> None:
+    for struck in ("200.00", "215.00"):
+        html = FACES_HTML.replace('content="260.00">AED 260', f'content="{struck}">AED {struck}')
+        r = _by_key(readings_from_faces(html, locale="en-AE"))
+        assert r["price_minor"].value == 21500
+        assert r["regular_price_minor"].state == "parse_failed"
+        assert r["regular_price_minor"].value is None
+        assert r["regular_price_minor"].raw_text == f"{struck} AED"
+        assert r["regular_price_minor"].currency == "AED"
+        assert "not above the sale price (21500 minor units)" in str(r["regular_price_minor"].note)
+    # one minor unit above the sale price is a regular price again
+    html = FACES_HTML.replace('content="260.00">AED 260', 'content="215.01">AED 215.01')
+    r = _by_key(readings_from_faces(html, locale="en-AE"))
+    assert r["regular_price_minor"].value == 21501
+
+
+def test_a_struck_price_with_no_sale_price_beside_it_is_parse_failed() -> None:
+    html = FACES_HTML.replace('<span class="value" content="215.00">', '<span class="value">')
+    r = _by_key(readings_from_faces(html, locale="en-AE"))
+    assert "price_minor" not in r or r["price_minor"].source_path != "span.value[content]"
+    assert r["regular_price_minor"].state == "parse_failed"
+    assert r["regular_price_minor"].raw_text == "260.00 AED"
+    assert r["regular_price_minor"].note == "struck price with no readable sale price beside it"
+
+
+_RATING = '"aggregateRating":{"@type":"AggregateRating","ratingValue":"4.5","reviewCount":"12"},'
+
+
+def test_a_rating_the_page_does_carry_is_read_and_not_marked_not_shown() -> None:
+    # the page's own Product JSON-LD carries a rating this time
+    html = FACES_HTML.replace('"offers":{"@type":"Offer"', _RATING + '"offers":{"@type":"Offer"')
+    assert html != FACES_HTML
+    r = _by_key(readings_from_faces(html, locale="en-AE"))
+    assert r["rating_value"].state == "observed"
+    assert r["rating_value"].value == Decimal("4.5")
+    assert r["rating_count"].state == "observed"
+    assert r["rating_count"].value == 12
+    assert r["related_products"].state == "not_shown"  # still nothing on the page for this one
+    # exactly one reading per key, so the not_shown marker was never emitted for the two read
+    assert [x.key for x in readings_from_faces(html, locale="en-AE")].count("rating_value") == 1
 
 
 def test_unknown_gender_is_parse_failed_and_variant_barcode_is_used() -> None:
@@ -328,7 +415,7 @@ def test_rendered_fallbacks_when_the_datalayer_is_missing() -> None:
     assert r["title"].value == "Tinted Balm HTML"
     assert r["title"].source_path == "span.js-name"
     assert "style_id" not in r
-    assert r["gtin"].value == "03145891717549"
+    assert r["gtin"].value == "02000000000015"
     assert "category_l1..l4" not in r
     assert r["shade_name"].value == "754 Tender Peach"
     assert "size_label" not in r
