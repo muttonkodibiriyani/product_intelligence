@@ -54,7 +54,7 @@ export const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
   "presentAt",
   "groupBy",
   "endpoint",
-  // PriceSuggestions (API 1.13.0): retailer ids and closed pi_metrics enums.
+  // PriceSuggestions (API 1.14.0): retailer ids and closed pi_metrics enums.
   "subject",
   "rival",
   "context",
@@ -96,7 +96,7 @@ export const SOURCE_TEXT_KEYS: ReadonlySet<string> = new Set([
   "roles",
   "selections",
   "selectionLabels",
-  // OfferContentView (API 1.13.0): description/ingredients/shade text and a variant's GTIN.
+  // OfferContentView (API 1.12.0): description/ingredients/shade text and a variant's GTIN.
   // A 13-digit barcode must not pass as a verifiable number.
   "text",
   "barcode",

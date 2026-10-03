@@ -435,7 +435,7 @@ describe("category_compare (API 1.8.0)", () => {
   });
 });
 
-describe("price_suggestions (API 1.13.0)", () => {
+describe("price_suggestions (API 1.14.0)", () => {
   const aed = (amount: string) => ({ amount, currency: "AED", minor: Number(amount) * 100 });
   const sideOf = (context: string, price: string, basis = "observed") => ({
     context,

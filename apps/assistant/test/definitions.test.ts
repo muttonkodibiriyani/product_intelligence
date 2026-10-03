@@ -27,7 +27,7 @@ const NEW_IN_S6 = new Set([
   "category_compare",
   // Derived from /products sizes (2026-10-03).
   "price_per_unit",
-  // API 1.13.0 (pair price suggestions).
+  // API 1.14.0 (pair price suggestions).
   "price_suggestions",
 ]);
 

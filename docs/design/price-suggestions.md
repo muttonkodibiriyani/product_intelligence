@@ -180,7 +180,7 @@ wired:
 * **KPI-26..30: TODO.** The requirements register is not in this public repository, so these KPIs
   are cited by ID only. The coordinator maps them; no register wording is copied here.
 
-## 9. Pair suggestions: beat or match one rival (API 1.13.0)
+## 9. Pair suggestions: beat or match one rival (API 1.14.0)
 
 Task 01a1005d adds a second, separate rule, `pi_metrics.pair_pricing`, served by
 `GET /api/v1/price-suggestions?subject=&rival=` and the assistant tool `price_suggestions`. It

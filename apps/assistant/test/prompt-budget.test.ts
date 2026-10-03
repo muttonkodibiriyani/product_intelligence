@@ -146,7 +146,7 @@ describe("prompt budget at the runbook seed limits", () => {
       expect(answer.status).toBe("answered");
       expect(bounds).toHaveLength(1);
       // Measured: 19580 (en) and 19673 (ar) bytes with 18 tools; 20893 (en) and 20986 (ar)
-      // with 19 (price_suggestions, API 1.13.0). The cap was raised from half the limit (20000)
+      // with 19 (price_suggestions, API 1.14.0). The cap was raised from half the limit (20000)
       // to 21000 by ruling (2026-10-03); existing tool descriptions were not trimmed.
       expect(bounds[0]).toBeLessThanOrEqual(EMPTY_CONVERSATION_CAP);
     },

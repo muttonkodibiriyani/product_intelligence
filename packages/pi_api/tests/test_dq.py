@@ -404,7 +404,7 @@ def test_an_imported_subject_is_served_as_its_snapshot(tmp_path: Path) -> None:
     assert all(r["rival"]["basis"] == "observed" for r in priced if r["rival"]["price"])
     assert any(r["outcome"] == "suggested" for r in rows.values())
     assert "snapshot_import_date" in codes(body)
-    assert "was_price_unverified" in codes(body)
+    assert "was_price_stated" in codes(body)  # stated was-prices are served (#203)
 
 
 def test_an_imported_rival_is_never_fresh(tmp_path: Path) -> None:
