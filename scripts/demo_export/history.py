@@ -14,8 +14,11 @@ which an exported retailer was observed, and each offer's series has one value p
   retailer is not complete is inside a ``notObserved`` window for it: not collected at all, or
   only partly (an incremental refresh, a blocked or cut-short pass). The metric layer then never
   reads a product missing that day as a removal or a launch (``pi_metrics.view.complete_run``).
-- **Since.** A retailer is ``supported`` from its first complete date (``since``); with none it
-  keeps the status the snapshot rules give it, and backs no absence claim.
+- **Since.** A retailer whose latest date is complete is ``supported`` from its first complete
+  date (``since``). Status is dataset-wide and read at the latest date, so a retailer whose
+  latest date is not complete keeps the status the snapshot rules give it, and backs no absence
+  claim. A blocked retailer keeps the owner's statement and window; every other date of it that
+  is not complete gets a window too.
 - **History** is true only with at least two dates.
 
 Identity (product ids, names, pairing) comes from each listing's latest row, through the same
@@ -248,10 +251,15 @@ def history_offer(
 
 
 def windows(
-    retailer: Retailer, shop: str, dates: Sequence[date], cover: Coverage
+    retailer: Retailer,
+    shop: str,
+    dates: Sequence[date],
+    cover: Coverage,
+    covered: frozenset[date] = frozenset(),
 ) -> list[NotObserved]:
     """``notObserved`` windows over each run of consecutive dates on which ``shop`` was not
-    completely observed; one window per reason (not collected, or only partly)."""
+    completely observed; one window per reason (not collected, or only partly). Dates in
+    ``covered`` already have a window (a blocked retailer's) and get no second one."""
     observed = cover.observed.get(shop, frozenset())
     complete = cover.complete.get(shop, frozenset())
     out: list[NotObserved] = []
@@ -260,7 +268,7 @@ def windows(
     for day in [*dates, None]:
         reason = (
             None
-            if day is None or day in complete
+            if day is None or day in complete or day in covered
             else PARTIAL_WHY
             if day in observed
             else NOT_COLLECTED_WHY
@@ -353,14 +361,29 @@ def build_history_v2(  # noqa: PLR0913 - mirrors build_dataset_v2 plus the cover
     for listed in base.meta.retailers:
         shop = slot_of[listed.id]
         if listed.status is RetailerStatus.BLOCKED:
-            retailers.append(listed)  # the owner's statement and its window stand
+            # The owner's statement and its window stand; any other date not completely
+            # observed gets its own window, so no date of a blocked retailer is left open.
+            retailers.append(listed)
+            covered = frozenset(
+                d
+                for w in base.not_observed
+                if w.retailer == listed.id and w.categories is None
+                for d in dates
+                if w.start <= d <= w.end
+            )
+            not_observed += windows(listed, shop, dates, cover, covered)
             continue
         complete = sorted(cover.complete.get(shop, frozenset()) & set(dates))
-        shop_info = (
-            listed.model_copy(update={"status": RetailerStatus.SUPPORTED, "since": complete[0]})
-            if complete
-            else listed
-        )
+        # Status is dataset-wide and metrics read it at the latest date (promotions gates on it
+        # at as_of), so only a complete latest day makes the retailer supported; without one, a
+        # snapshot status of supported (read off the rows) is lowered to partial.
+        if dates[-1] in complete:
+            update = {"status": RetailerStatus.SUPPORTED, "since": complete[0]}
+        elif listed.status is RetailerStatus.SUPPORTED:
+            update = {"status": RetailerStatus.PARTIAL, "since": None}
+        else:
+            update = {}
+        shop_info = listed.model_copy(update=update) if update else listed
         retailers.append(shop_info)
         not_observed += windows(shop_info, shop, dates, cover)
 

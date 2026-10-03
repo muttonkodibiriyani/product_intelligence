@@ -64,8 +64,10 @@ no date is added that has no rows. A day is *complete* for a retailer only when 
 contexts had a `succeeded` run that started and ended on that market day on a context marked
 `coverage_status = supported`; every other date gets a `notObserved` window ("not collected" or
 "incomplete"), so a product missing on a partial or blocked day is neither a removal nor a launch.
-A retailer with a complete day is `supported` from its first complete day (`since`); one without
-keeps its snapshot status. `capabilities.history` is true only with at least 2 dates. Product ids,
+A retailer whose latest date is complete is `supported` from its first complete day (`since`);
+otherwise it keeps its snapshot status, because the status is read at the latest date. A blocked
+retailer keeps the owner's statement and window, and every other date of it that is not complete
+gets a window too. `capabilities.history` is true only with at least 2 dates. Product ids,
 names and pairing come from each listing's latest row through the snapshot's own grouping, so ids
 match the single-day export. Without `--history` the output is unchanged.
 

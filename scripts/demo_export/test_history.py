@@ -228,3 +228,35 @@ def test_the_default_query_reads_no_day_window() -> None:
     }
     start, end = day_bounds(D2)
     assert latest_params(["sephora_me"], (start, end))["day_start"] == start
+
+
+def test_a_complete_day_then_a_partial_latest_day_is_not_supported() -> None:
+    # Status is read at the latest date: a partial latest day must keep retailer_partial.
+    ds = build(
+        {D1: [seen(D1, 1)], D2: [seen(D2, 1)]},
+        [span(D1), span(D2, status="partial", run=2)],
+    )
+    sephora = next(r for r in ds.meta.retailers if r.id == SEPHORA)
+    assert (sephora.status, sephora.since) == (RetailerStatus.PARTIAL, None)
+    (window,) = [w for w in ds.not_observed if w.retailer == SEPHORA]
+    assert (window.start, window.end) == (D2, D2)
+
+
+def test_two_complete_days_are_supported_from_the_first() -> None:
+    ds = build({D1: [seen(D1, 1)], D2: [seen(D2, 1)]}, [span(D1), span(D2, run=2)])
+    sephora = next(r for r in ds.meta.retailers if r.id == SEPHORA)
+    assert (sephora.status, sephora.since) == (RetailerStatus.SUPPORTED, D1)
+    assert [w for w in ds.not_observed if w.retailer == SEPHORA] == []
+
+
+def test_every_date_of_a_blocked_retailer_is_inside_one_window() -> None:
+    # Blocked since 20:55Z on 30 Sep, which is 1 Oct (D2) in Dubai: the owner's window starts
+    # at D2, and D1, when Ulta was not collected either, needs its own window.
+    days = {d: [seen(d, 1)] for d in (D1, D2, D3)}
+    ds = build(days, [span(D1), span(D2, run=2), span(D3, run=3)])
+    ulta = next(r for r in ds.meta.retailers if r.id == ULTA)
+    assert ulta.status is RetailerStatus.BLOCKED
+    ulta_windows = [w for w in ds.not_observed if w.retailer == ULTA]
+    for day in ds.meta.dates:
+        assert sum(w.start <= day <= w.end for w in ulta_windows) == 1, day
+    assert [(w.start, w.end) for w in ulta_windows] == [(D2, D3), (D1, D1)]
