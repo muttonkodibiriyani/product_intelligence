@@ -6,7 +6,7 @@
  * and never counted, metered or treated as a viewer.
  */
 import type { ChatAnswer, ChatFlow, ChatInput, ProgressSink } from "../flows/chat.js";
-import { type CallerContext, callerRole } from "../tools/types.js";
+import { type CallerContext, type Role, callerRole } from "../tools/types.js";
 
 /** The parts of a verified callable request this handler reads (`CallableRequest` fits). */
 export interface CallableRequestLike {
@@ -49,10 +49,41 @@ export function callerFrom(request: CallableRequestLike): {
   return { caller: { uid: auth.uid, role }, idToken: auth.rawToken };
 }
 
+/** One structured log line per answered request; see `answerLogEntry`. */
+export type AnswerLog = (entry: Readonly<Record<string, unknown>>) => void;
+
+/**
+ * What the callable logs about an answer: codes and counts only. The question, answer text,
+ * tool names and arguments (model text), uid and thread are never logged. Without this line a
+ * refusal such as `config_invalid` left no trace in the logs.
+ */
+export function answerLogEntry(answer: ChatAnswer, role: Role): Record<string, unknown> {
+  const tools = { ok: 0, not_enough_data: 0, error: 0 };
+  const toolErrors = new Set<string>();
+  for (const record of answer.toolCalls) {
+    tools[record.status] += 1;
+    if (record.status === "error" && record.code !== undefined) toolErrors.add(record.code);
+  }
+  return {
+    event: "assistant_answer",
+    severity: answer.status === "unavailable" ? "WARNING" : "INFO",
+    status: answer.status,
+    code: answer.code ?? null,
+    role,
+    model: answer.model,
+    promptVersion: answer.promptVersion,
+    modelCalls: answer.modelCalls,
+    tools,
+    toolErrors: [...toolErrors].sort(),
+    costUsd: answer.costUsd,
+  };
+}
+
 export async function handleChat(
   request: CallableRequestLike,
   flow: Pick<ChatFlow, "answer">,
   onProgress?: ProgressSink,
+  log?: AnswerLog,
 ): Promise<ChatAnswer> {
   const { caller, idToken } = callerFrom(request);
   const data = request.data;
@@ -60,5 +91,7 @@ export async function handleChat(
     throw new CallableRefusal("invalid-argument");
   }
   // The flow parses strictly (unknown keys such as `history` are refused there).
-  return flow.answer(data as ChatInput, caller, idToken, onProgress);
+  const answer = await flow.answer(data as ChatInput, caller, idToken, onProgress);
+  log?.(answerLogEntry(answer, caller.role));
+  return answer;
 }
