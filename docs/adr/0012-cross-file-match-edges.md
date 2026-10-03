@@ -12,9 +12,10 @@
   pairs, hard constraints never overridden, and `proposed` (not an accepted exact) when unsure.
 
 ## Context
-Each retailer is now its own file: `ulta_ae` comes read-only from the owner's combined file
-`datasets/ae/beauty/latest.json`, and `sephora_me` and `faces_ae` come from PI's per-source
-files. Today an edge lives inside one file's product, so ADR-0010 only counts a pair when one file
+Each retailer is now assigned its own file slice: `ulta_ae` and, today, `sephora_me` are served
+read-only from the owner's combined file `datasets/ae/beauty/latest.json`, and `faces_ae` from PI's
+per-source file `datasets/ae/faces_ae/latest.json` (PI's own `datasets/ae/sephora_me/latest.json`
+can replace the Sephora slice). Today an edge lives inside one file's product, so ADR-0010 only counts a pair when one file
 holds both offers. Faces (1457 products) can therefore never be matched, and Ulta and Sephora are
 matched only through a combined Ulta+Sephora file that has to be rebuilt and redeployed for every
 change. Neither works when new products arrive on every publish.
