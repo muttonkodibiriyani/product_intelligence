@@ -1,0 +1,308 @@
+"""Turn pi_capture readings into an ``offline_import`` JSON feed and its column mapping.
+
+One row per captured page, keyed by the page's ``retailer_sku``. Only ``observed`` readings fill a
+column; every other state leaves the column out, so ``offline_import`` records the gap (a missing
+price is ``not_published``, never 0). Nothing is guessed:
+
+- A page with no ``retailer_sku``, a duplicate key, or a price in a currency other than the feed's
+  is left out of the feed and listed in ``excluded`` with its reason. Leaving a row out is absence,
+  which the importer never reads as removal; a wrong-currency price is never relabelled.
+- ``observed_at`` is the page's capture time, never the time the feed was built.
+- Availability is only what the page itself stated in its structured product data, and only when
+  the shop's settings trust that statement. Otherwise the column is absent (``not_observed``).
+"""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import Any
+
+from pi_capture.model import JsonValue, ProductCapture, Reading
+from pi_core.money import CURRENCY_EXPONENTS
+
+__all__ = [
+    "AVAILABILITY_MAP",
+    "COLUMNS",
+    "SHOPS",
+    "FeedResult",
+    "Shop",
+    "build_feed",
+    "mapping_for",
+]
+
+#: The feed's column names; each is also the ``offline_import`` field it maps to.
+COLUMNS: tuple[str, ...] = (
+    "listing_key",
+    "sku",
+    "gtin",
+    "url",
+    "name",
+    "brand",
+    "category_path",
+    "size",
+    "shade",
+    "price_current",
+    "price_regular",
+    "price_promo",
+    "availability",
+    "image_url",
+    "observed_at",
+)
+
+#: schema.org availability (the last path segment) to the importer's states. A value outside this
+#: map is never written: the importer would reject the row, and guessing a state is worse.
+AVAILABILITY_MAP: dict[str, str] = {
+    "instock": "in_stock",
+    "limitedavailability": "low_stock",
+    "outofstock": "out_of_stock",
+    "soldout": "out_of_stock",
+}
+
+
+@dataclass(frozen=True)
+class Shop:
+    """One shop in one country: its own ``source.name`` and market settings."""
+
+    source: str
+    base_url: str
+    country: str
+    locale: str
+    currency: str
+    time_zone: str
+    notes: str
+    #: Use the availability the page states in its structured data.
+    markup_availability: bool = False
+
+
+SHOPS: dict[str, Shop] = {
+    "faces_ae": Shop(
+        source="faces_ae",
+        base_url="https://www.faces.ae",
+        country="AE",
+        locale="en-AE",
+        currency="AED",
+        time_zone="Asia/Dubai",
+        notes="Faces UAE (Chalhoub), product pages captured by pi_capture (task 01a0fc6d)",
+    ),
+}
+
+
+@dataclass
+class FeedResult:
+    rows: list[dict[str, str]] = field(default_factory=list)
+    excluded: list[dict[str, str]] = field(default_factory=list)
+    #: per column: how many rows carry a value
+    filled: Counter[str] = field(default_factory=Counter)
+    #: availability values seen in markup that are not in ``AVAILABILITY_MAP``
+    unmapped_availability: Counter[str] = field(default_factory=Counter)
+
+    def report(self) -> dict[str, Any]:
+        reasons = Counter(e["reason"] for e in self.excluded)
+        return {
+            "rows": len(self.rows),
+            "excluded": len(self.excluded),
+            "excluded_by_reason": dict(sorted(reasons.items())),
+            "filled": {c: self.filled.get(c, 0) for c in COLUMNS},
+            "unmapped_availability": dict(sorted(self.unmapped_availability.items())),
+        }
+
+
+def _observed(by_key: Mapping[str, tuple[Reading, ...]], key: str) -> Reading | None:
+    return next((r for r in by_key.get(key, ()) if r.state == "observed"), None)
+
+
+def _text(value: JsonValue) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, (int, Decimal)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _major(minor: JsonValue, currency: str) -> str | None:
+    """``51500`` minor units of AED -> ``"515.00"``; non-integers and non-positives -> None."""
+    if not isinstance(minor, int) or isinstance(minor, bool) or minor <= 0:
+        return None
+    exponent = CURRENCY_EXPONENTS[currency]
+    return str(Decimal(minor).scaleb(-exponent).quantize(Decimal(1).scaleb(-exponent)))
+
+
+def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[str]) -> str | None:
+    """The single availability the structured data states; two different ones -> None."""
+    found: set[str] = set()
+
+    def walk(node: JsonValue) -> None:
+        if isinstance(node, dict):
+            value = node.get("availability")
+            if isinstance(value, str) and value.strip():
+                found.add(value.strip().rstrip("/").rsplit("/", 1)[-1].lower())
+            for child in node.values():
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    for reading in by_key.get("structured_data", ()):
+        if reading.state == "observed":
+            walk(reading.value)
+    if len(found) != 1:
+        return None
+    (token,) = found
+    if token not in AVAILABILITY_MAP:
+        unmapped[token] += 1
+        return None
+    return token
+
+
+def _price_columns(
+    by_key: Mapping[str, tuple[Reading, ...]], currency: str
+) -> dict[str, str] | str:
+    """The price columns, or the reason the row must be left out."""
+    current = _observed(by_key, "price_minor")
+    regular = _observed(by_key, "regular_price_minor")
+    for reading in (current, regular):
+        if reading is not None and reading.currency != currency:
+            return f"price in {reading.currency or 'no currency'}, feed is {currency}"
+    out: dict[str, str] = {}
+    now = _major(current.value, currency) if current else None
+    was = _major(regular.value, currency) if regular else None
+    if now is not None:
+        out["price_current"] = now
+    if was is not None and now is not None:
+        out["price_regular"] = was
+        out["price_promo"] = now
+    return out
+
+
+def _row(capture: ProductCapture, shop: Shop, unmapped: Counter[str]) -> dict[str, str] | str:
+    by_key = capture.by_key()
+    sku = _observed(by_key, "retailer_sku")
+    key = _text(sku.value) if sku else None
+    if key is None:
+        return "no retailer_sku on the page"
+    prices = _price_columns(by_key, shop.currency)
+    if isinstance(prices, str):
+        return prices
+    row: dict[str, str] = {"listing_key": key, "sku": key}
+    canonical = _observed(by_key, "canonical_url")
+    row["url"] = (_text(canonical.value) if canonical else None) or capture.url
+    for column, reading_key in (
+        ("gtin", "gtin"),
+        ("name", "title"),
+        ("brand", "brand"),
+        ("shade", "shade_name"),
+    ):
+        reading = _observed(by_key, reading_key)
+        if reading is not None and (value := _text(reading.value)) is not None:
+            row[column] = value
+    category = _observed(by_key, "category_l1..l4")
+    if category is not None and isinstance(category.value, list):
+        parts = [p for p in (_text(v) for v in category.value) if p]
+        if parts:
+            row["category_path"] = " > ".join(parts)
+    size = _observed(by_key, "size_label")
+    if size is not None and (label := _text(size.value)) is not None:
+        row["size"] = label
+    images = _observed(by_key, "image_urls")
+    first = (
+        _text(images.value[0])
+        if images is not None and isinstance(images.value, list) and images.value
+        else None
+    )
+    if first is not None:
+        row["image_url"] = first
+    if shop.markup_availability and (state := _availability(by_key, unmapped)) is not None:
+        row["availability"] = state
+    row |= prices
+    row["observed_at"] = capture.retrieved_at.isoformat()
+    return row
+
+
+def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
+    """Feed rows for one shop and country, in capture order; the first page per key wins."""
+    result = FeedResult()
+    seen: set[str] = set()
+    for capture in captures:
+        if capture.locale != shop.locale:
+            result.excluded.append({"url": capture.url, "reason": f"locale {capture.locale}"})
+            continue
+        if capture.capture_state != "ok":
+            result.excluded.append(
+                {"url": capture.url, "reason": f"capture {capture.capture_state}"}
+            )
+            continue
+        row = _row(capture, shop, result.unmapped_availability)
+        if isinstance(row, str):
+            result.excluded.append({"url": capture.url, "reason": row})
+            continue
+        if row["listing_key"] in seen:
+            result.excluded.append({"url": capture.url, "reason": "duplicate retailer_sku"})
+            continue
+        seen.add(row["listing_key"])
+        result.rows.append(row)
+        result.filled.update(row.keys())
+    return result
+
+
+def mapping_for(shop: Shop) -> dict[str, Any]:
+    """The ``offline_import`` mapping for a feed built by :func:`build_feed`."""
+    mapping: dict[str, Any] = {
+        "source": {
+            "name": shop.source,
+            "kind": "web",
+            "base_url": shop.base_url,
+            "notes": shop.notes,
+        },
+        "country": shop.country,
+        "locale": shop.locale,
+        "currency": shop.currency,
+        "time_zone": shop.time_zone,
+        "complete_catalogue": False,
+        "format": "json",
+        "json_items_path": "items",
+        "columns": {c: c for c in COLUMNS},
+    }
+    if shop.markup_availability:
+        mapping["availability_map"] = dict(AVAILABILITY_MAP)
+    else:
+        del mapping["columns"]["availability"]
+    return mapping
+
+
+def dump_feed(result: FeedResult, shop: Shop) -> str:
+    """The feed file: ``{"shop": …, "items": [...]}``, keys sorted, UTF-8 kept readable."""
+    return json.dumps(
+        {"shop": shop.source, "items": result.rows}, ensure_ascii=False, sort_keys=True, indent=1
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """``python -m pi_capture.feed <shop> <readings.jsonl> <out_dir>``: feed, mapping, report."""
+    import argparse  # noqa: PLC0415 - CLI only
+    from pathlib import Path  # noqa: PLC0415 - CLI only
+
+    from pi_capture.model import loads  # noqa: PLC0415 - CLI only
+
+    parser = argparse.ArgumentParser(prog="python -m pi_capture.feed")
+    parser.add_argument("shop", choices=sorted(SHOPS))
+    parser.add_argument("readings", type=Path)
+    parser.add_argument("out_dir", type=Path)
+    args = parser.parse_args(argv)
+    shop = SHOPS[args.shop]
+    with args.readings.open(encoding="utf-8") as fh:
+        result = build_feed((loads(line) for line in fh if line.strip()), shop)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    (args.out_dir / f"{shop.source}.feed.json").write_text(dump_feed(result, shop), "utf-8")
+    (args.out_dir / f"{shop.source}.mapping.json").write_text(
+        json.dumps(mapping_for(shop), indent=1, sort_keys=True), "utf-8"
+    )
+    report = result.report() | {"excluded_rows": result.excluded}
+    (args.out_dir / f"{shop.source}.feed-report.json").write_text(
+        json.dumps(report, indent=1, ensure_ascii=False), "utf-8"
+    )
+    print(json.dumps(result.report()))
+    return 0
