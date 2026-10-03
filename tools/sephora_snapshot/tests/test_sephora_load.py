@@ -13,7 +13,7 @@ from typing import Any
 import psycopg
 import pytest
 from alembic import command
-from sephora_snapshot.load import MARKETS, Loader, market_from_args
+from sephora_snapshot.load import MARKETS, BundleCountryError, Loader, market_from_args
 from sephora_synth import details, pdp_rec, trpc_rec, write_part
 from sqlalchemy.engine import make_url
 
@@ -356,7 +356,7 @@ def test_a_saudi_load_is_its_own_source_and_never_touches_uae_listings(
     """The same variant id on both storefronts: two listings, two contexts, UAE rows unchanged."""
     ae = _folder(tmp_path / "ae", {"stopped": "cutoff"})
     write_part(ae, "pdp_en", [pdp_rec("P700", "en")])
-    sa = _folder(tmp_path / "sa", {"stopped": "cutoff"})
+    sa = _folder(tmp_path / "sa", {"stopped": "cutoff", "country": "SA"})
     write_part(sa, "pdp_en", [pdp_rec("P700", "en", _sar("P700"))])
     with psycopg.connect(db) as conn:
         _load(conn, ae)
@@ -389,7 +389,7 @@ def test_a_saudi_load_is_its_own_source_and_never_touches_uae_listings(
 
 
 def test_a_price_in_another_currency_is_unknown_in_a_saudi_load(db: str, tmp_path: Path) -> None:
-    root = _folder(tmp_path / "sa-aed", {"stopped": "cutoff"})
+    root = _folder(tmp_path / "sa-aed", {"stopped": "cutoff", "country": "SA"})
     write_part(root, "pdp_en", [pdp_rec("P710", "en")])  # an AED page
     with psycopg.connect(db) as conn:
         assert _load_sa(conn, root)["price_currency_mismatch"] == 1
@@ -405,7 +405,7 @@ def test_a_saudi_load_never_writes_a_uae_brand_row(db: str, tmp_path: Path) -> N
     """A brand the UAE load created is not the Saudi source's row: counted, never rewritten."""
     ae = _folder(tmp_path / "bae", {"stopped": "cutoff"})
     write_part(ae, "pdp_en", [pdp_rec("P720", "en", details("P720", brand="Gulf Brand"))])
-    sa = _folder(tmp_path / "bsa", {"stopped": "cutoff"})
+    sa = _folder(tmp_path / "bsa", {"stopped": "cutoff", "country": "SA"})
     write_part(sa, "pdp_en", [pdp_rec("P720", "en", _sar("P720", brand="Gulf Brand"))])
     write_part(sa, "pdp_ar", [pdp_rec("P720", "ar", _sar("P720", brand="Gulf Brand"))])
     with psycopg.connect(db) as conn:
@@ -419,7 +419,7 @@ def test_a_saudi_load_never_writes_a_uae_brand_row(db: str, tmp_path: Path) -> N
 
 
 def test_a_saudi_only_brand_carries_the_saudi_alias(db: str, tmp_path: Path) -> None:
-    root = _folder(tmp_path / "bsolo", {"stopped": "cutoff"})
+    root = _folder(tmp_path / "bsolo", {"stopped": "cutoff", "country": "SA"})
     write_part(root, "pdp_en", [pdp_rec("P730", "en", _sar("P730", brand="Riyadh Brand"))])
     with psycopg.connect(db) as conn:
         stats = _load_sa(conn, root)
@@ -440,3 +440,35 @@ def test_country_flag(args: list[str], source: str) -> None:
 def test_an_unknown_country_is_refused(args: list[str]) -> None:
     with pytest.raises(SystemExit):
         market_from_args(args)
+
+
+def _sources(conn: psycopg.Connection[Any]) -> int:
+    row = conn.execute("SELECT count(*) FROM source").fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+@pytest.mark.parametrize(
+    ("recorded", "market"),
+    [({"country": "SA"}, "AE"), ({"country": "AE"}, "SA"), ({}, "SA")],
+)
+def test_a_bundle_from_another_storefront_is_refused_before_any_write(
+    db: str, tmp_path: Path, recorded: dict[str, str], market: str
+) -> None:
+    root = _folder(
+        tmp_path / f"mismatch-{market}-{len(recorded)}", {"stopped": "cutoff", **recorded}
+    )
+    write_part(root, "pdp_en", [pdp_rec("P740", "en", _sar("P740"))])
+    with psycopg.connect(db) as conn:
+        before = _sources(conn)
+        with pytest.raises(BundleCountryError, match="nothing was written"):
+            Loader(conn, root, f"gs://test-bucket/{root.name}", MARKETS[market])
+        assert _sources(conn) == before
+        conn.rollback()
+
+
+def test_a_bundle_without_a_recorded_country_still_loads_as_uae(db: str, tmp_path: Path) -> None:
+    root = _folder(tmp_path / "legacy-ae", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec("P750", "en")])
+    with psycopg.connect(db) as conn:
+        assert _load(conn, root)["pdp_en"] == 1

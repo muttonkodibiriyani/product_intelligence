@@ -38,6 +38,10 @@ RETENTION = timedelta(days=90)
 METHOD_RUNG = {"site_api": 0, "plain_http": 1}
 
 
+class BundleCountryError(ValueError):
+    """The snapshot folder records a different country than the one being loaded."""
+
+
 @dataclass(frozen=True)
 class Market:
     """One Sephora storefront: its own pi_db source, context country, time zone and currency."""
@@ -135,6 +139,16 @@ class Loader:
             if (root / "progress.json").exists()
             else {}
         )
+        # Before any write: a bundle loads only into its own storefront's source. Sephora uses the
+        # same variant ids on both storefronts, so a Saudi bundle loaded as AE would re-date UAE
+        # listings and write Saudi stock as UAE availability. Bundles from before the country was
+        # recorded are UAE ones.
+        recorded = self.progress.get("country", "AE")
+        if recorded != market.country:
+            raise BundleCountryError(
+                f"{root} was captured for country {recorded!r}, but the load is for "
+                f"{market.country!r} (--country {market.country}); nothing was written"
+            )
         self.source_id = self._source()
         self.ctx = {lang: self._context(lang) for lang in ("en", "ar")}
         self._runs: dict[str, int] = {}  # crawl_run per lang, created on first row
