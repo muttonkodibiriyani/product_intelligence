@@ -172,9 +172,12 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(cards(page)).toHaveCount(3);
       // Exact: the phone menu button ("القائمة") would otherwise match the Arabic "قائمة".
       await page.getByRole('button', { name: T.list, exact: true }).click();
-      const rows = page.getByRole('table').getByRole('row');
+      // Retailer intelligence adds a comparison table above the products. The list's caption gives
+      // it a stable accessible name in both locales, so keep this assertion scoped to that table.
+      const table = page.getByRole('table', { name: T.results, exact: true });
+      const rows = table.getByRole('row');
       await expect(rows).toHaveCount(1 + 3);
-      await expect(page.getByRole('row', { name: /Product p05/ })).toContainText('−33.3%');
+      await expect(table.getByRole('row', { name: /Product p05/ })).toContainText('−33.3%');
       await noHorizontalScroll(page);
       await page.reload();
       await expect(page.getByRole('button', { name: T.list, exact: true })).toHaveAttribute(
