@@ -247,11 +247,12 @@ class SpyMeter extends Meter {
   }
 }
 
-function realFlow() {
+function realFlow(config: Record<string, unknown> = {}) {
   const store = new MemoryUsageStore({
     ...CONFIG,
     promptVersion: PROMPT_VERSION,
     limits: RUNBOOK_LIMITS,
+    ...config,
   });
   const meter = new SpyMeter(store, prices());
   const api = new FakeApi(() => okEnvelope({}));
@@ -342,6 +343,101 @@ describe("assistantChat request handling (reviewer D2)", () => {
     );
     expect(answer.status).toBe("answered");
     expect(seen[0]).toEqual({ type: "status", stage: "thinking" });
+  });
+
+  it("logs a config_invalid refusal as a code, never reaching the model (2026-10-03)", async () => {
+    // The live doc held limits above the schema maxima; the refusal left no log line.
+    const limits = {
+      maxInputTokens: 700_000,
+      maxOutputTokens: 1_500_000,
+      thinkingBudget: 0,
+      maxModelCallsPerQuestion: 14,
+    };
+    const { flow, generate } = realFlow({ limits });
+    const entries: Record<string, unknown>[] = [];
+    const answer = await handleChat(request("viewer"), flow, undefined, (entry) => {
+      entries.push({ ...entry });
+    });
+    expect(answer).toMatchObject({ status: "unavailable", code: "config_invalid" });
+    expect(generate).not.toHaveBeenCalled();
+    expect(entries).toEqual([
+      {
+        event: "assistant_answer",
+        severity: "WARNING",
+        status: "unavailable",
+        code: "config_invalid",
+        role: "viewer",
+        model: null,
+        promptVersion: PROMPT_VERSION,
+        modelCalls: 0,
+        tools: { ok: 0, not_enough_data: 0, error: 0 },
+        toolErrors: [],
+        costUsd: answer.costUsd,
+      },
+    ]);
+  });
+
+  it("logs codes and counts only: no question, answer, tool name, argument, uid or token", async () => {
+    const { flow, generate } = realFlow();
+    generate
+      .mockResolvedValueOnce({
+        text: "",
+        toolCalls: [
+          { id: "a", name: "search_products", args: { q: "private-query-words" } },
+          { id: "b", name: "private-tool-name", args: { x: "private-arg" } },
+        ],
+        usage: { input: 10, cachedInput: 0, output: 5, thinking: 0 },
+      })
+      .mockResolvedValueOnce({
+        text: "private-answer-words",
+        toolCalls: [],
+        usage: { input: 10, cachedInput: 0, output: 5, thinking: 0 },
+      });
+    const entries: Record<string, unknown>[] = [];
+    const data = { question: "private-question-words", locale: "en", threadId: "private-thread" };
+    const answer = await handleChat(request("admin", data), flow, undefined, (entry) => {
+      entries.push({ ...entry });
+    });
+    expect(entries).toHaveLength(1);
+    const entry = entries[0] ?? {};
+    expect(entry).toMatchObject({
+      event: "assistant_answer",
+      severity: "INFO",
+      status: answer.status,
+      role: "admin",
+      model: CONFIG.model,
+      modelCalls: 2,
+      tools: { ok: 1, not_enough_data: 0, error: 1 },
+      toolErrors: ["unknown_tool"],
+    });
+    expect(Object.keys(entry).sort()).toEqual(
+      [
+        "code",
+        "costUsd",
+        "event",
+        "model",
+        "modelCalls",
+        "promptVersion",
+        "role",
+        "severity",
+        "status",
+        "toolErrors",
+        "tools",
+      ].sort(),
+    );
+    const text = JSON.stringify(entry);
+    for (const secret of ["private", "u1", "id-token-1", "search_products"]) {
+      expect(text).not.toContain(secret);
+    }
+  });
+
+  it("logs nothing for a refused caller", async () => {
+    const { flow } = realFlow();
+    const entries: unknown[] = [];
+    await expect(
+      handleChat(request("killswitch"), flow, undefined, (entry) => void entries.push(entry)),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    expect(entries).toEqual([]);
   });
 
   it("sends no progress to a refused caller", async () => {
