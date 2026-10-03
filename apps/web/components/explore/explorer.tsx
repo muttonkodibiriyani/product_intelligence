@@ -149,7 +149,7 @@ export function Explorer() {
                 {t('loading')}
               </Loading>
             ) : items.length === 0 ? (
-              first && <EmptyResults env={first} matchedOnly={state.matched === 'yes'} />
+              first && <EmptyResults env={first} state={state} />
             ) : (
               <>
                 {(() => {

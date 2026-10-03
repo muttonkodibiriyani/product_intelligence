@@ -432,6 +432,16 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/prices/`));
     });
 
+    test('sold at both shops plus a brand, nothing listed: the generic "no products match"', async ({
+      page,
+    }) => {
+      await mockBackend(page, { onApi: api({ products: () => emptyPage }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/explore/?matched=true&brand=Sample+Labs`);
+      await expect(page.getByText(T.empty)).toBeVisible();
+      await expect(page.getByText(T.emptyMatched)).toHaveCount(0);
+    });
+
     test('product page: offers with evidence, gaps, history; back keeps the filters', async ({ page }) => {
       const p = clone(product);
       p.data.offers[0].evidence.url = 'https://shop-a.example/p01';

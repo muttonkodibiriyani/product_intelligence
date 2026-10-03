@@ -3,23 +3,25 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { Envelope } from '@/lib/api/types';
+import { activeFilterCount, type ExploreState } from '@/lib/explore';
 import { navHref } from '@/lib/nav';
 import { Known } from '../ui/known';
 
 /**
  * What stands in for the list when it has nothing: "no products match" only when the API answered
  * `ok`; any other status is the data not being available, with the API's reason, never "no
- * products". Under "sold at both shops" the empty list means no pair is published for these
- * products, so it says that and points to the by-category prices, which need no matching.
+ * products". When "sold at both shops" is the only filter, the empty list means no pair is
+ * published, so it says that and points to the by-category prices, which need no matching. With
+ * any other filter on, that filter may be what empties the list, so the generic message stands.
  */
 export function EmptyResults({
   env,
-  matchedOnly = false,
+  state,
 }: {
   env: Pick<Envelope<unknown>, 'status' | 'reason'>;
-  /** The "sold at both shops" filter is on. */
-  matchedOnly?: boolean;
+  state: ExploreState;
 }) {
+  const matchedOnly = state.matched === 'yes' && activeFilterCount(state) === 1;
   const t = useTranslations('explore');
   const ts = useTranslations('state');
   const tr = useTranslations('reasons');
