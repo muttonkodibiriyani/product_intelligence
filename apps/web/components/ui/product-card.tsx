@@ -10,6 +10,7 @@ import { monogram, RowThumb } from '../explore/row-thumb';
 import { Known } from './known';
 import { Money } from './money';
 import { RetailerDot } from './retailer-dot';
+import { Tip } from './tip';
 
 /** One shop's line on a card: its name, then its price (or why there is none). */
 export type PriceLine = {
@@ -54,6 +55,7 @@ export function ProductCard({
   category,
   lines,
   chip,
+  matchReview,
 }: {
   href: string;
   image?: string | null;
@@ -65,6 +67,8 @@ export function ProductCard({
   category?: string | null;
   lines: readonly PriceLine[];
   chip?: Chip | null;
+  /** The card's match as the API sent it; "unreviewed" shows a label under the size. */
+  matchReview?: Schemas['MatchReview'] | null;
 }) {
   const t = useTranslations('productCard');
   return (
@@ -99,6 +103,8 @@ export function ProductCard({
             {category && <span dir="auto">{category}</span>}
           </span>
         )}
+        {/* Above the card's full-size link, so the label's explanation opens on hover and focus. */}
+        <MatchReviewLabel review={matchReview} className="relative z-[1] mt-1" />
         <dl className="mt-auto grid gap-1 pt-2 text-[13px]">
           {lines.map((l, i) => (
             <div key={l.retailer} className="flex items-center gap-1.5">
@@ -119,6 +125,29 @@ export function ProductCard({
         </dl>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Unreviewed match" on a product the API counts as sold at both shops through an exact match no
+ * reviewer has confirmed yet (ruling A); its explanation is a tooltip. Nothing for a reviewed match
+ * or an unmatched product.
+ */
+export function MatchReviewLabel({
+  review,
+  className = '',
+}: {
+  review: Schemas['MatchReview'] | null | undefined;
+  className?: string;
+}) {
+  const t = useTranslations('productCard');
+  if (review !== 'unreviewed') return null;
+  return (
+    <Tip text={t('unreviewedMatchHint')} className={`w-fit ${className}`}>
+      <span className="inline-block rounded-[4px] bg-butter px-1.5 py-px text-[11px] font-medium text-warn">
+        {t('unreviewedMatch')}
+      </span>
+    </Tip>
   );
 }
 

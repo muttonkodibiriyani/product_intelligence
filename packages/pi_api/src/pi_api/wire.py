@@ -11,7 +11,7 @@ from pydantic import Field
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.15.0"
+API_VERSION = "1.16.0"
 
 
 class Localized(ContractModel):

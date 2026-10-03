@@ -172,6 +172,11 @@ describe('widget model', () => {
     expect(imageSrc('https://x.media.alshaya.com/a.jpg')).toBeNull();
     expect(imageSrc('https://u:p@media.alshaya.com/a.jpg')).toBeNull();
     expect(imageSrc('https://media.alshaya.com/a.jpg', 'other')).toBeNull();
+    const faces = 'https://www.faces.ae/media/catalog/product/f/1.jpg';
+    expect(imageHost(faces, 'faces_ae')).toBe('www.faces.ae');
+    expect(imageSrc(faces, 'ulta_ae')).toBeNull();
+    expect(imageSrc('https://faces.ae/media/1.jpg', 'faces_ae')).toBeNull();
+    expect(imageSrc('https://www.faces.ae.evil.example/1.jpg')).toBeNull();
   });
 
   it('never guesses freshness', () => {
