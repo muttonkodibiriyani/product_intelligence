@@ -373,7 +373,7 @@ def test_two_runs_started_together_cannot_overspend_the_ledger(tmp_path: object)
     b.finish()
     status = json.loads((tmp_path / "b" / "status.json").read_text())  # type: ignore[operator]
     assert status["proxy_ledger_remaining"] == 0
-    assert status["proxy_ledger_fault"] is None
+    assert status["proxy_last_ledger_fault"] is None
 
 
 def test_meter_fails_closed_when_the_ledger_cannot_be_reread(tmp_path: object) -> None:
@@ -385,7 +385,63 @@ def test_meter_fails_closed_when_the_ledger_cannot_be_reread(tmp_path: object) -
     pathlib.Path(path).write_text("{not json")
     states.append(meter.exhausted)
     assert states == [False, True]
-    assert meter.ledger_fault == "proxy ledger is not JSON"
+    assert meter.last_ledger_fault == "proxy ledger is not JSON"
+
+
+class _FaultyStore:
+    """A store whose transport fails: load or save raises what a GCS client would."""
+
+    def __init__(self, doc: dict[str, object], *, load_fault: Exception | None = None) -> None:
+        self.data = json.dumps(doc).encode()
+        self.load_fault = load_fault
+        self.save_fault: Exception | None = None
+
+    def load(self) -> tuple[bytes, object] | None:
+        if self.load_fault is not None:
+            raise self.load_fault
+        return self.data, 1
+
+    def save(self, data: bytes, token: object) -> bool:
+        if self.save_fault is not None:
+            raise self.save_fault
+        self.data = data
+        return True
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        ConnectionResetError(104, "Connection reset by peer"),
+        TimeoutError("read timed out"),
+        PermissionError(13, "forbidden"),
+        RuntimeError("503 Service Unavailable"),
+    ],
+)
+def test_meter_fails_closed_when_the_ledger_transport_fails(fault: Exception) -> None:
+    store = _FaultyStore({"cap_bytes": 1_000_000, "used_bytes": 0})
+    meter = proxy.Meter(cap=1_000_000, ledger=proxy.Ledger(store, "r", _clock))
+    states = [meter.exhausted]
+    store.load_fault = fault
+    states.append(meter.exhausted)
+    fault_seen = meter.last_ledger_fault
+    # once the bucket answers again the run may continue; the fault is a state, not a verdict
+    store.load_fault = None
+    states.append(meter.exhausted)
+    assert states == [False, True, False]
+    # the record of the pause stays with the run after recovery, under a name that says so
+    assert meter.last_ledger_fault == fault_seen
+    assert fault_seen is not None
+    assert fault_seen.startswith("proxy ledger could not be read: ")
+    assert repr(fault) in fault_seen
+
+
+def test_ledger_reports_a_save_transport_fault_as_a_ledger_error() -> None:
+    store = _FaultyStore({"cap_bytes": 1_000_000, "used_bytes": 0})
+    ledger = proxy.Ledger(store, "r", _clock)
+    store.save_fault = ConnectionResetError(104, "Connection reset by peer")
+    with pytest.raises(proxy.LedgerError, match=r"could not be saved: ConnectionReset") as info:
+        ledger.charge(10)
+    assert isinstance(info.value.__cause__, ConnectionResetError)
 
 
 def test_ledger_rejects_bool_counts_and_malformed_runs(tmp_path: object) -> None:

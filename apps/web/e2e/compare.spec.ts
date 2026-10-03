@@ -137,11 +137,13 @@ for (const locale of ['en', 'ar'] as const) {
     }) => {
       const mock = await mockBackend(page, { onApi: api() });
       await signIn(page, locale);
+      // The Overview asks /compare once for its headline; the Compare page itself asks nothing until a pair is picked.
+      await expect.poll(() => compareCalls(mock).length).toBe(1);
       await page.getByRole('navigation').getByRole('link', { name: T.nav }).click();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/compare/$`));
       await expect(page.getByRole('heading', { level: 1, name: T.title })).toBeVisible();
       await expect(page.getByText(T.pick)).toBeVisible();
-      expect(compareCalls(mock)).toEqual([]);
+      expect(compareCalls(mock)).toHaveLength(1);
 
       await page.getByLabel(T.base).selectOption('shop_a');
       await page.getByLabel(T.other).selectOption('shop_b');

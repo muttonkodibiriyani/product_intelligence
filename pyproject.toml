@@ -5,7 +5,7 @@ description = "Competitive product and price intelligence platform (workspace ro
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-profiles", "pi-metrics", "pi-api"]
+dependencies = ["pi-capture", "pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-profiles", "pi-metrics", "pi-api"]
 
 [tool.uv]
 package = false
@@ -14,6 +14,7 @@ package = false
 members = ["packages/*"]
 
 [tool.uv.sources]
+pi-capture = { workspace = true }
 pi-connector-ulta = { workspace = true }
 pi-core = { workspace = true }
 pi-dataset = { workspace = true }
@@ -70,6 +71,7 @@ strict = true
 warn_unreachable = true
 plugins = ["pydantic.mypy"]
 mypy_path = [
+  "packages/pi_capture/src",
   "packages/pi_core/src",
   "packages/pi_connector_ulta/src",
   "packages/pi_dataset/src",
@@ -97,6 +99,9 @@ mypy_path = [
 ]
 files = [
   "apps/assistant/pytests",
+  "packages/pi_capture/scripts",
+  "packages/pi_capture/src",
+  "packages/pi_capture/tests",
   "packages/pi_core/src",
   "packages/pi_core/tests",
   "packages/pi_connector_ulta/src",
@@ -173,8 +178,9 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = [
-  "pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe", "pi_match",
-  "pi_metrics", "offline_import", "pi_api", "pi_profiles", "page_capture", "browser_capture",
+  "pi_capture", "pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe",
+  "pi_match", "pi_metrics", "offline_import", "pi_api", "pi_profiles", "page_capture",
+  "browser_capture",
 ]
 # network entry points that run only inside their job images
 omit = ["*/gulf_probe/run.py", "*/browser_capture/pw.py"]
