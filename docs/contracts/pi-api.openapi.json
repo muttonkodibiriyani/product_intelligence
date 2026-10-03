@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.17.0",
+            "default": "1.18.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -4197,6 +4197,17 @@
             "title": "Id",
             "type": "string"
           },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
           "match": {
             "anyOf": [
               {
@@ -6548,7 +6559,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.17.0"
+    "version": "1.18.0"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -56,6 +56,7 @@ from pi_api.analytics import (
     capped_promotions,
     capped_suggestions,
     matches,
+    with_images,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
 from pi_api.catalog import (
@@ -675,7 +676,7 @@ def build_api(
         loaded = source.select(query.market, query.scope)
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
-    _metric_routes(api, source)
+    _metric_routes(api, source, images)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -720,15 +721,16 @@ def _catalogue_routes(
         )
 
 
-def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
+def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
     """S3: one route per ``pi_metrics`` call (design §6); every number comes from there."""
 
     @api.get(f"{PREFIX}/compare", response_model=Envelope[Comparison])
     def get_compare(query: Annotated[CompareRowsQuery, Query()], _: Viewer) -> Envelope[Comparison]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
+        ds = read_at(loaded, query.on)
         metric = compare(
-            read_at(loaded, query.on),
+            ds,
             base,
             other,
             query.where(),
@@ -739,7 +741,9 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         )
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
-        rows = capped_comparison(metric, query.limit, query.rows, query.sort)
+        rows = with_images(
+            ds, capped_comparison(metric, query.limit, query.rows, query.sort), images
+        )
         return respond(loaded, "compare", query, rows)
 
     @api.get(
@@ -987,8 +991,9 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     def export_compare(query: Annotated[CompareExport, Query()], who: Viewer) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
+        ds = read_at(loaded, query.on)
         metric = compare(
-            read_at(loaded, query.on),
+            ds,
             base,
             other,
             query.where(),
@@ -998,6 +1003,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         )
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
+        metric = with_images(ds, metric, images)
         return _download(
             loaded,
             view=view.COMPARE,

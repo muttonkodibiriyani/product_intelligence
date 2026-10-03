@@ -135,15 +135,15 @@ def _pre_v3(output: Any) -> Any:
     """The output without fields added since v2, so it can equal the pre-v3 golden.
 
     ``coverage`` rows gained ``contexts`` in ADR-0008 step 4, and compare summaries ``gapHist``
-    and summaries ``meanPrice`` (additive, API 1.7.1), and compare rows ``match`` (additive, API
-    1.17.0); every other field is unchanged.
+    and summaries ``meanPrice`` (additive, API 1.7.1), and compare rows ``match`` and ``image``
+    (additive, API 1.17.0/1.18.0); every other field is unchanged.
     """
     retailers = output.get("data", {}).get("retailers") if isinstance(output, dict) else None
     if isinstance(retailers, list):
         for row in retailers:
             if isinstance(row, dict):
                 row.pop("contexts", None)
-    return _without(output, frozenset({"gapHist", "meanPrice", "match"}))
+    return _without(output, frozenset({"gapHist", "meanPrice", "match", "image"}))
 
 
 def _without(value: Any, keys: frozenset[str]) -> Any:

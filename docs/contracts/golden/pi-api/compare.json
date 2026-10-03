@@ -58,6 +58,7 @@
           "pct": "11.1"
         },
         "id": "p01",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -95,6 +96,7 @@
           "pct": "0.0"
         },
         "id": "p02",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -132,6 +134,7 @@
           "pct": "-9.1"
         },
         "id": "p03",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -169,6 +172,7 @@
           "pct": "4.7"
         },
         "id": "p04",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -206,6 +210,7 @@
           "pct": "25.0"
         },
         "id": "p05",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -243,6 +248,7 @@
           "pct": "-5.0"
         },
         "id": "p06",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -272,6 +278,7 @@
         "excludedReason": "match_unreviewed",
         "gap": null,
         "id": "p07",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": null,
@@ -301,6 +308,7 @@
         "excludedReason": "match_rejected",
         "gap": null,
         "id": "p08",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -330,6 +338,7 @@
         "excludedReason": "match_not_exact",
         "gap": null,
         "id": "p09",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -359,6 +368,7 @@
         "excludedReason": "size_mismatch",
         "gap": null,
         "id": "p10",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -388,6 +398,7 @@
         "excludedReason": "unpriced",
         "gap": null,
         "id": "p11",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -413,6 +424,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p12",
+        "image": null,
         "match": null,
         "name": "Product p12",
         "otherPrice": null
@@ -432,6 +444,7 @@
         "excludedReason": "early",
         "gap": null,
         "id": "p13",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -456,6 +469,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p14",
+        "image": null,
         "match": null,
         "name": "Product p14",
         "otherPrice": {
@@ -479,6 +493,7 @@
         "excludedReason": "no_match",
         "gap": null,
         "id": "p16",
+        "image": null,
         "match": null,
         "name": "Product p16",
         "otherPrice": {
@@ -560,7 +575,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.17.0",
+    "apiVersion": "1.18.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",

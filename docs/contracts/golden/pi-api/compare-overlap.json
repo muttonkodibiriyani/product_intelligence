@@ -43,6 +43,7 @@
           "pct": "25.0"
         },
         "id": "p05",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -80,6 +81,7 @@
           "pct": "11.1"
         },
         "id": "p01",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -117,6 +119,7 @@
           "pct": "-9.1"
         },
         "id": "p03",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -154,6 +157,7 @@
           "pct": "-5.0"
         },
         "id": "p06",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -191,6 +195,7 @@
           "pct": "4.7"
         },
         "id": "p04",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -228,6 +233,7 @@
           "pct": "0.0"
         },
         "id": "p02",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": "human",
@@ -265,6 +271,7 @@
           "pct": "0.0"
         },
         "id": "p07",
+        "image": null,
         "match": {
           "confidence": "0.95",
           "decidedBy": null,
@@ -352,7 +359,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.17.0",
+    "apiVersion": "1.18.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",

@@ -95,6 +95,9 @@ class PairRow(ContractModel):
     excluded_reason: Excluded | None
     #: ``/compare`` and its export (API 1.17.0, ``matches=True``): the retailers' edge, else null.
     match: RowMatch | None = None
+    #: ``/compare`` and its export (API 1.18.0): the product's card image over the pair's two
+    #: contexts (``pi_api.catalog.card_image``: an allowlisted https URL), else null.
+    image: str | None = None
 
 
 class Basket(ContractModel):

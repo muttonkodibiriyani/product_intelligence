@@ -6,7 +6,7 @@ are defined in code (`apps/assistant/src/tools/definitions.ts`) and never genera
 `apps/assistant/test/endpoint-map.test.ts` fails when a new `/api/v1` operation has neither a
 tool nor an exclusion below, or when this page misses a tool or an operation.
 
-Contract: `docs/contracts/pi-api.openapi.json` (API 1.17.0). All operations are GET.
+Contract: `docs/contracts/pi-api.openapi.json` (API 1.18.0). All operations are GET.
 
 ## Tools
 
