@@ -20,6 +20,7 @@ from pi_metrics.compare import (
 from pi_metrics.coverage import Coverage, coverage
 from pi_metrics.gated import Gated, ModelId, gated
 from pi_metrics.index import INDEX_DEFINITION, PriceIndex, price_index
+from pi_metrics.insights import Insights, insights
 from pi_metrics.launches import Launches, launches
 from pi_metrics.model import (
     COUNTED_STATES,
@@ -74,6 +75,7 @@ __all__ = [
     "Gated",
     "GroupBy",
     "Guardrails",
+    "Insights",
     "Launches",
     "Metric",
     "ModelId",
@@ -95,6 +97,7 @@ __all__ = [
     "coverage",
     "gap",
     "gated",
+    "insights",
     "launches",
     "pair_row",
     "price_index",
