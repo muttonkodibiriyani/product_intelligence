@@ -18,6 +18,9 @@
   },
   "overrides": {
     "basic-ftp": "^6.2.1",
-    "jks-js": "$jks-js"
+    "jks-js": "$jks-js",
+    "nunjucks": {
+      "chokidar": "^4.0.3"
+    }
   }
 }
