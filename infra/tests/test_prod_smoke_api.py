@@ -106,6 +106,8 @@ class FakeProd:
             low = i < 2
             self.cards["ulta_ae"].append(self._card(f"u{i}", "ulta_ae", "0.01" if low else "30.00"))
         self.caveat = {"ulta_ae": 2}
+        self.matched = 0  # products served with a matched pair (proposed or counted)
+        self.matched_count: dict[str, int] = {}  # /coverage matchedCount (counted edges only)
 
     def _card(self, pid: str, ctx: str, price: str) -> dict[str, Any]:
         host = smoke.IMAGE_HOSTS[ctx]
@@ -163,10 +165,16 @@ class FakeProd:
         if path == "/coverage":
             return {
                 "retailers": [
-                    {"id": r, "productCount": smoke.EXPECTED.get(r, len(cs))}
+                    {
+                        "id": r,
+                        "productCount": smoke.EXPECTED.get(r, len(cs)),
+                        "matchedCount": self.matched_count.get(r, 0),
+                    }
                     for r, cs in self.cards.items()
                 ]
             }
+        if path == "/products" and q.get("matched") == "true":
+            return {"items": [], "nextCursor": None, "total": self.matched}
         if path == "/products":
             rows = (
                 self.cards[q["retailer"]]
@@ -524,3 +532,76 @@ def test_a_detail_regular_at_the_floor_fails(tmp_path: Path) -> None:
     assert run(fake, tmp_path, "check", "--expect-api", "1.7.0") == 1
     problems = json.loads((tmp_path / "check.json").read_text())["problems"]
     assert problems == ["S4(iv) /products/u1: no regular <= 0.01"]
+
+
+def matched_switch(n: int = 255) -> FakeProd:
+    """After serving a file with proposed exact pairs: matched=true sees them, matchedCount not."""
+    fake = FakeProd()
+    fake.matched = n
+    return fake
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_save_records_matched_counts(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    saved = json.loads((tmp_path / "baseline.json").read_text())
+    assert saved["matched"] == {"sephora_me": 0, "ulta_ae": 0}
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_expect_matched_passes_when_the_total_matches_and_matched_count_holds(
+    tmp_path: Path,
+) -> None:
+    baseline(tmp_path)
+    args = ("--expect-api", "1.7.0", "--expect-matched", "255", "--counts-only")
+    assert run(matched_switch(), tmp_path, "check", *args) == 0
+    lines = json.loads((tmp_path / "check.json").read_text())["lines"]
+    assert "ok     S2 /products?matched=true total 255 == 255" in lines
+    assert any("ok     S2 /coverage matchedCount" in line for line in lines)
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_expect_matched_fails_on_a_wrong_total(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    args = ("--expect-api", "1.7.0", "--expect-matched", "255", "--counts-only")
+    assert run(FakeProd(), tmp_path, "check", *args) == 1  # still serves no matched pairs
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert problems == ["S2 /products?matched=true total 0 == 255"]
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_expect_matched_fails_when_matched_count_moves(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    fake = matched_switch()
+    fake.matched_count = {"sephora_me": 255, "ulta_ae": 255}  # proposed edges must not count
+    args = ("--expect-api", "1.7.0", "--expect-matched", "255", "--counts-only")
+    assert run(fake, tmp_path, "check", *args) == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert problems == [
+        "S2 /coverage matchedCount {'sephora_me': 255, 'ulta_ae': 255} == baseline "
+        "{'sephora_me': 0, 'ulta_ae': 0}"
+    ]
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_an_older_baseline_without_matched_counts_is_a_review_not_a_pass(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    path = tmp_path / "baseline.json"
+    saved = json.loads(path.read_text())
+    del saved["matched"]
+    path.write_text(json.dumps(saved))
+    args = ("--expect-api", "1.7.0", "--expect-matched", "255", "--counts-only")
+    assert run(matched_switch(), tmp_path, "check", *args) == 0
+    report = json.loads((tmp_path / "check.json").read_text())
+    assert report["verdict"] == "REVIEW"
+    assert report["reviews"] == [
+        "S2 matchedCount not recorded: the baseline was saved by an older script"
+    ]
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_without_expect_matched_nothing_about_matches_is_checked(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    assert run(matched_switch(), tmp_path, "check", "--expect-api", "1.7.0", "--counts-only") == 0
+    lines = json.loads((tmp_path / "check.json").read_text())["lines"]
+    assert not any("matched" in line for line in lines)
