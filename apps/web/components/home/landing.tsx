@@ -41,10 +41,7 @@ export function Landing() {
   const s = useSummaries(ids);
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t('overview')}
-        asOf={s.rows.length > 0 ? <AsOf rows={s.rows} /> : undefined}
-      />
+      <PageHeader title={t('overview')} asOf={s.rows.length > 0 ? <AsOf rows={s.rows} /> : undefined} />
       {error ? (
         <ErrorNotice error={error} />
       ) : loading ? (
