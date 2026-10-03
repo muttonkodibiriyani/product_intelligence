@@ -334,3 +334,85 @@ def test_a_sephora_only_brand_gets_its_arabic_name_once(db: str, tmp_path: Path)
         assert first[0][1] == "Solo Brand"
         assert _en_then_ar(conn, tmp_path / "2", "P930", d) == 1
         assert conn.execute(query).fetchall() == first
+
+
+def _coverage(conn: psycopg.Connection[Any], locale: str) -> str:
+    row = conn.execute(
+        "SELECT coverage_status::text FROM source_context sc JOIN source s ON s.id = sc.source_id"
+        " WHERE s.name = 'sephora_me' AND sc.country = 'AE' AND sc.locale = %s"
+        " AND sc.valid_to IS NULL",
+        (locale,),
+    ).fetchone()
+    assert row is not None
+    return str(row[0])
+
+
+def _reset_coverage(conn: psycopg.Connection[Any]) -> None:
+    """The module shares one database, so each coverage test starts from 'partial'."""
+    conn.execute(
+        "UPDATE source_context SET coverage_status = 'partial' WHERE source_id ="
+        " (SELECT id FROM source WHERE name = 'sephora_me')"
+    )
+    conn.commit()
+
+
+def test_a_complete_full_run_makes_its_context_supported(db: str, tmp_path: Path) -> None:
+    name = f"cov-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name)
+    with psycopg.connect(db) as conn:
+        _load(conn, root, finish=False)  # creates the contexts
+        _reset_coverage(conn)
+        Loader(conn, root, f"gs://test-bucket/{name}").finish()
+        assert _runs(conn, name) == {"en": "succeeded"}
+        assert _coverage(conn, "en-AE") == "supported"
+        assert _coverage(conn, "ar-AE") == "partial"  # no AR run in this folder
+
+
+def test_a_complete_full_run_with_arabic_pages_supports_both_contexts(
+    db: str, tmp_path: Path
+) -> None:
+    name = f"cov-ar-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name, counts={"seed_ar": 1, "pdp_ar_ok": 1})
+    write_part(root, "pdp_ar", [pdp_rec("P100", "ar")])
+    with psycopg.connect(db) as conn:
+        _load(conn, root, finish=False)
+        _reset_coverage(conn)
+        Loader(conn, root, f"gs://test-bucket/{name}").finish()
+        assert _runs(conn, name) == {"en": "succeeded", "ar": "succeeded"}
+        assert (_coverage(conn, "en-AE"), _coverage(conn, "ar-AE")) == ("supported", "supported")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"counts": {"block_challenge": 1}, "stopped": "challenge: marker at x"},  # blocked
+        {"counts": {"seed_en": 3}},  # part of the sitemap never fetched
+        {"stopped": "cutoff"},  # cut short
+        {"limit": 50},  # a sample, not the whole sitemap
+    ],
+)
+def test_a_run_short_of_the_full_sitemap_leaves_coverage_partial(
+    db: str, tmp_path: Path, changes: dict[str, Any]
+) -> None:
+    name = f"cov-short-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name, **changes)
+    with psycopg.connect(db) as conn:
+        _load(conn, root, finish=False)
+        _reset_coverage(conn)
+        Loader(conn, root, f"gs://test-bucket/{name}").finish()
+        assert _runs(conn, name) == {"en": "partial"}
+        assert _coverage(conn, "en-AE") == "partial"
+
+
+def test_a_partial_run_after_a_complete_one_keeps_supported_and_is_itself_partial(
+    db: str, tmp_path: Path
+) -> None:
+    full, short = f"cov-a-{uuid.uuid4().hex[:8]}", f"cov-b-{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(db) as conn:
+        _load(conn, _full_folder(tmp_path / full), finish=False)
+        _reset_coverage(conn)
+        _load(conn, tmp_path / full)
+        assert _coverage(conn, "en-AE") == "supported"
+        _load(conn, _full_folder(tmp_path / short, stopped="cutoff"))
+        assert _runs(conn, short) == {"en": "partial"}
+        assert _coverage(conn, "en-AE") == "supported"
