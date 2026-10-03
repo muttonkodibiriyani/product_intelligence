@@ -20,7 +20,9 @@ Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), Docker, and for the
 
 ```bash
 make install     # uv sync
+make test-db     # throwaway tmpfs PostgreSQL for DB tests on 127.0.0.1:55433 (TEST_DB_PORT=…)
 make check       # ruff + mypy --strict + pytest with coverage — same as CI
+make test-db-down
 
 cp .env.example .env   # optional: override ports/credentials (git-ignored)
 make up          # PostgreSQL 16 + pgvector on 127.0.0.1:55432 (waits until healthy)
