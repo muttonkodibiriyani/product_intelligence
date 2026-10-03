@@ -32,8 +32,19 @@ invalid v2 document fails the whole export. `--scope` (default `beauty`) names t
 `--output-v3 PATH` (opt-in; `--output-v2` stays the default published file) also writes that v2
 snapshot upgraded to `pi.dataset/v3` under `beauty@1`, with each collected offer's
 `listingCount`: the listing rows grouped into it (one family, one pack size; an early recon offer
-states none). It is re-read with the strict `load_any` before anything is written. Publishing v3
-instead of v2 is the owner's call at re-export.
+states none) and its `content`: the representative listing's description, ingredients and
+gallery (description and ingredients fall back to the first other listing, by sku, that has
+them), and every grouped listing as a variant with its shade and GTIN. A barcode that fails the
+GS1 check digit is dropped. `captured` is, per retailer, the fields any of its exported listings
+carries, so a missing field reads *not published* for a retailer that has it elsewhere and *not
+captured* for one that never has it. It is re-read with the strict `load_any` before anything is
+written. Publishing v3 instead of v2 is the owner's call at re-export.
+
+The v3 body has a 50 MB budget (`V3_MAX_BYTES` = 50,000,000 serialized bytes; `pi_api` holds the
+parsed snapshot in memory, measured in `packages/pi_api/tests/test_content_memory.py`). The
+exporter prints the written bytes by group (`prices`, `attributes`,
+`description+ingredients`, summing to the total) and refuses, writing nothing, above the budget.
+There is no override flag.
 
 v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
 value captured on any other day is published as `null`, never carried forward (contract rule 6),
