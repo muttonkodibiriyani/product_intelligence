@@ -3,6 +3,7 @@ import {
   deepestCut,
   EMPTY_PROMOTIONS,
   listable,
+  listedItems,
   notMeasured,
   parsePromotions,
   pickedShop,
@@ -118,5 +119,20 @@ describe('shop tiles from the API’s rows', () => {
     expect(notMeasured({ reason: null, data: { retailers: [unverified] } }, null)).toBe(
       'was_price_unverified',
     );
+  });
+
+  it('lists only listable shops’ rows; the total is unknown when a capped list lost rows', () => {
+    const partial = { retailer: 'shop_a', n: 50, share: null, reason: 'retailer_partial' as const };
+    const blocked = { retailer: 'shop_b', n: 40, share: null, reason: 'retailer_blocked' as const };
+    const [a1, b1, a2] = [{ retailer: 'shop_a' }, { retailer: 'shop_b' }, { retailer: 'shop_a' }];
+    const rows = [a1, b1, a2];
+    const base = { retailers: [partial, blocked], items: rows, total: 3, truncated: false };
+    expect(listedItems(base)).toEqual({ items: [a1, a2], total: 2 });
+    expect(listedItems({ ...base, total: 90, truncated: true })).toEqual({
+      items: [a1, a2],
+      total: null,
+    });
+    const all = { ...base, retailers: [partial], items: [a1], total: 90, truncated: true };
+    expect(listedItems(all)).toEqual({ items: [a1], total: 90 });
   });
 });

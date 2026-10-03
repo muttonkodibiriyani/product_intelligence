@@ -103,6 +103,23 @@ export function listable(r: Share): boolean {
 }
 
 /**
+ * The items of shops whose discounts can be listed: a blocked or unverified shop's rows stay
+ * out even when another selected shop is listable. `total` is null when the API capped the list
+ * and rows were dropped, since the filtered total is then unknown.
+ */
+export function listedItems<I extends { retailer: string }>(data: {
+  retailers: readonly Share[];
+  items: readonly I[];
+  total: number;
+  truncated: boolean;
+}): { items: I[]; total: number | null } {
+  const ok = new Set(data.retailers.filter(listable).map((r) => r.retailer));
+  const items = data.items.filter((i) => ok.has(i.retailer));
+  if (items.length === data.items.length) return { items, total: data.total };
+  return { items, total: data.truncated ? null : items.length };
+}
+
+/**
  * Why the discounts on screen are not measured, or null when at least one shown shop's discounts
  * can be listed: the picked shop's own reason, else the envelope's, else the first shop's. An
  * empty list of discounts is only "no discounts" when something was measured.

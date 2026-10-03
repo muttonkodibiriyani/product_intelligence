@@ -9,6 +9,7 @@ import en from '@/messages/en.json';
 import { PromotionsView } from './promotions-view';
 
 type Env = Envelope<Schemas['Promotions']>;
+type Item = Schemas['PromoItem'];
 const measured = golden('promotions') as Env;
 /** What pi_metrics answers when promotions cannot be measured at all: no shops, no items, a reason. */
 const withheld = (reason: Schemas['Reason']): Env => ({
@@ -125,6 +126,27 @@ describe('PromotionsView', () => {
     expect(screen.getByLabelText(en.promotions.minPct)).toBeTruthy();
     // The shop with no price pair seen still says its discounts are not measured.
     expect(screen.getByText(en.promotions.notMeasuredShop)).toBeTruthy();
+  });
+
+  it('a partly covered shop next to a blocked one: only the partly covered shop’s discounts are listed', async () => {
+    const [a, b, c] = measured.data!.items as [Item, Item, Item];
+    view({
+      ...measured,
+      status: 'not_enough_data',
+      reason: 'retailer_partial',
+      data: {
+        ...measured.data!,
+        items: [a, b, { ...c, retailer: 'shop_b' }],
+        retailers: [
+          { retailer: 'shop_a', n: 50, onPromo: 2, share: null, reason: 'retailer_partial' as const },
+          { retailer: 'shop_b', n: 40, onPromo: 1, share: null, reason: 'retailer_blocked' as const },
+        ],
+      },
+    });
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts' });
+    expect(screen.getByText('2 products', { selector: '[role="status"]' })).toBeTruthy();
+    expect(screen.queryByText(c.name)).toBeNull();
+    expect(screen.getByText(a.name)).toBeTruthy();
   });
 
   it('names the picked shop in the not-measured line, and keeps the shop chip so the pick can be undone', async () => {
