@@ -351,8 +351,10 @@ function Offers({
         <caption className="sr-only">{t('sheetCaption')}</caption>
         <colgroup>
           <col className="w-28 sm:w-44" />
+          {/* Chromium honours a col's min-width in a fixed table (Firefox and WebKit don't): on a
+              390px phone, 112 + 2 × 112 fits; 2 × 128 overflowed by 28px. */}
           {cols.map(({ offer: o }) => (
-            <col key={o.context} className="min-w-32" />
+            <col key={o.context} className="min-w-28 sm:min-w-32" />
           ))}
         </colgroup>
         <thead className="border-b border-line">
