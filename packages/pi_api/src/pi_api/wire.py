@@ -128,6 +128,10 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
         ),
         ar="أسعار ما قبل الخصم لدى {retailer} غير موثّقة: لا تُعرض خصوماته وعروضه ولا تُقاس.",
     ),
+    CaveatCode.WAS_PRICE_STATED: Localized(
+        en="{retailer}'s discounts use the was-prices it states itself; PI has not checked them.",
+        ar="خصومات {retailer} محسوبة من أسعار ما قبل الخصم التي يذكرها بنفسه، ولم يتحقق منها PI.",
+    ),
     CaveatCode.SNAPSHOT_IMPORT_DATE: Localized(
         en="{retailer}: snapshot imported {date}, capture date unknown.",
         ar="{retailer}: لقطة بيانات مستوردة بتاريخ {date}، وتاريخ جمعها غير معروف.",

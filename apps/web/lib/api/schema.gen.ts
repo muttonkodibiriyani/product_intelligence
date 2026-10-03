@@ -823,7 +823,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included" | "stale_source" | "invalid_price_excluded" | "unmapped_category" | "breadcrumb_missing";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "was_price_stated" | "snapshot_import_date" | "parent_listings_included" | "stale_source" | "invalid_price_excluded" | "unmapped_category" | "breadcrumb_missing";
         /** CaveatView */
         CaveatView: {
             /** Ar */

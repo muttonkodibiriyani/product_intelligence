@@ -1070,6 +1070,7 @@
           "channel_differs",
           "size_labels_differ_total",
           "was_price_unverified",
+          "was_price_stated",
           "snapshot_import_date",
           "parent_listings_included",
           "stale_source",
