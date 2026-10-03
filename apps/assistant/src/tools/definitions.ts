@@ -475,6 +475,41 @@ export const categoryCompare = defineTool({
   },
 });
 
+export const priceSuggestions = defineTool({
+  name: "price_suggestions",
+  version: "1",
+  description:
+    "Rule-based (not ML) cuts so subject beats or matches rival on exact reviewed same-size " +
+    "pairs. Each row has outcome (suggested, already_competitive, below_min_change, " +
+    "no_allowed_price) or reason; quote as given, never claim sales effects. Basis " +
+    "imported_snapshot: say 'price from the <observedOn> import'. Cite [[product:<id>]]. If " +
+    "truncated, say 'top {shown} of {total}'.",
+  minRole: "viewer",
+  listKey: "rows",
+  input: z
+    .object({
+      subject: retailerId,
+      rival: retailerId,
+      ids: z.array(productId).min(1).max(MAX_LIST).optional(),
+      ...filters,
+      date: isoDate.optional(),
+      aim: z.enum(["beat", "match"]).default("beat"),
+      maxChangePct: money.optional(),
+      minChangePct: money.optional(),
+      limit: rowLimit,
+    })
+    .strict()
+    // One refinement, so the contract test can still reach the object shape.
+    .superRefine((value, ctx) => {
+      if (value.subject === value.rival) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "two different retailers" });
+      }
+      if (!noIdsWithFilters(value))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, ...NO_IDS_WITH_FILTERS });
+    }),
+  request: ({ ids, ...rest }) => get("/price-suggestions", { ...rest, id: ids }),
+});
+
 export const TOOLS = [
   searchProducts,
   pricePerUnit,
@@ -494,4 +529,5 @@ export const TOOLS = [
   categoryMix,
   assortmentBreadth,
   categoryCompare,
+  priceSuggestions,
 ] as const;

@@ -313,6 +313,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/price-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Price Suggestions
+         * @description Rule-based, not ML: where the subject context could cut a price to beat (aim=beat, strictly below) or match (aim=match, at or below) the rival, over exact approved or locked pairs of the same size in one currency. Down only: a subject already there is already_competitive and its gap (rival - subject) is data, never advice to raise. A cut is at most maxChangePct, at least minChangePct, to an allowed ending. Every row without an outcome carries one reason. Each side's price is its last collected price; a side older than staleDays is stale_observation, except a subject served from a one-off import (basis imported_snapshot, observedOn = the import date). No demand, volume, revenue or margin figure: none is collected. Rows: suggested first, largest overprice first; then the rest, then id.
+         */
+        get: operations["get_price_suggestions_api_v1_price_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/products": {
         parameters: {
             query?: never;
@@ -478,7 +498,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.12.0
+             * @default 1.13.0
              */
             apiVersion: string;
             /** Currency */
@@ -500,7 +520,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-01.4
+             * @default 2026-10-03.1
              */
             metricVersion: string;
             /** Scope */
@@ -959,6 +979,12 @@ export interface components {
          * @enum {string}
          */
         DecidedBy: "human" | "auto";
+        /**
+         * Ending
+         * @description Allowed price endings. ``x9`` is a whole amount ending in 9 (49.00, 129.00).
+         * @enum {string}
+         */
+        Ending: ".00" | ".50" | "x9.00";
         /** EnumValue */
         EnumValue: {
             /** Id */
@@ -1117,6 +1143,20 @@ export interface components {
             caveats: components["schemas"]["CaveatView"][];
             cohort?: components["schemas"]["Cohort"] | null;
             data: components["schemas"]["PriceIndex"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** Envelope[PriceSuggestions] */
+        Envelope_PriceSuggestions_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["PriceSuggestions"] | null;
             detail?: components["schemas"]["Localized"] | null;
             meta: components["schemas"]["ApiMeta"];
             reason?: components["schemas"]["Reason"] | null;
@@ -1334,6 +1374,28 @@ export interface components {
             barcode: string | null;
             state: components["schemas"]["ContentState"];
         };
+        /** Guardrails */
+        Guardrails: {
+            /**
+             * Endings
+             * @default [
+             *       ".00",
+             *       ".50",
+             *       "x9.00"
+             *     ]
+             */
+            endings: components["schemas"]["Ending"][];
+            /**
+             * Maxchangepct
+             * @default 10
+             */
+            maxChangePct: string;
+            /**
+             * Minchangepct
+             * @default 1
+             */
+            minChangePct: string;
+        };
         /** History */
         History: {
             /** Id */
@@ -1543,6 +1605,12 @@ export interface components {
             minor: number;
         };
         /**
+         * NoSuggestion
+         * @description Why a row has no outcome. Every such row carries exactly one.
+         * @enum {string}
+         */
+        NoSuggestion: "not_offered" | "early" | "no_match" | "match_rejected" | "match_unreviewed" | "match_not_exact" | "unpriced" | "currency_mismatch" | "size_mismatch" | "size_unknown" | "stale_observation" | "not_observed" | "retailer_blocked" | "retailer_partial";
+        /**
          * OfferContentView
          * @description API 1.12.0: what the retailer's page says beyond price and stock. Every field has an
          *     explicit state; nothing missing is served as an empty value.
@@ -1586,6 +1654,11 @@ export interface components {
             sku: string | null;
         };
         /**
+         * PairAim
+         * @enum {string}
+         */
+        PairAim: "beat" | "match";
+        /**
          * PairGap
          * @description One context pair's gap on the latest date, or why it isn't counted (design §7.2).
          */
@@ -1602,6 +1675,34 @@ export interface components {
                 string
             ] | null;
         };
+        /** PairMatch */
+        PairMatch: {
+            /** Confidence */
+            confidence: string | null;
+            matchClass: components["schemas"]["MatchClass"];
+            reviewState: components["schemas"]["ReviewState"];
+        };
+        /**
+         * PairOutcome
+         * @enum {string}
+         */
+        PairOutcome: "suggested" | "already_competitive" | "below_min_change" | "no_allowed_price";
+        /**
+         * PairRationale
+         * @description One step of the reasoning; ``params`` are strings and numbers stay digits.
+         */
+        PairRationale: {
+            code: components["schemas"]["PairRationaleCode"];
+            /** Params */
+            params: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * PairRationaleCode
+         * @enum {string}
+         */
+        PairRationaleCode: "current_gap" | "already_competitive" | "target" | "clamped" | "rounded" | "beats_rival" | "matches_rival" | "short_of_rival" | "below_min_change" | "no_allowed_price";
         /** PairRow */
         PairRow: {
             basePrice: components["schemas"]["MoneyValue"] | null;
@@ -1618,6 +1719,21 @@ export interface components {
             /** Name */
             name: string;
             otherPrice: components["schemas"]["MoneyValue"] | null;
+        };
+        /**
+         * PairSide
+         * @description One side of a pair. ``age_days`` is the as-of date minus ``observed_on``; an import's
+         *     local day can fall after the view's last date, so a snapshot's age can be negative.
+         */
+        PairSide: {
+            /** Agedays */
+            ageDays: number | null;
+            basis: components["schemas"]["SideBasis"] | null;
+            /** Context */
+            context: string;
+            /** Observedon */
+            observedOn: string | null;
+            price: components["schemas"]["MoneyValue"] | null;
         };
         /**
          * PriceFlag
@@ -1646,6 +1762,43 @@ export interface components {
             points: components["schemas"]["IndexPoint"][];
             /** Trendavailable */
             trendAvailable: boolean;
+        };
+        /** PriceSuggestions */
+        PriceSuggestions: {
+            aim: components["schemas"]["PairAim"];
+            guardrails: components["schemas"]["Guardrails"];
+            /**
+             * Label
+             * @default rule-based, not ML
+             * @constant
+             */
+            label: "rule-based, not ML";
+            /** Outcomes */
+            outcomes: {
+                [key: string]: number;
+            };
+            /** Reasons */
+            reasons: {
+                [key: string]: number;
+            };
+            /** Rival */
+            rival: string;
+            /** Rows */
+            rows: components["schemas"]["SuggestionRow"][];
+            /**
+             * Staledays
+             * @default 7
+             */
+            staleDays: number;
+            /** Subject */
+            subject: string;
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** ProductCard */
         ProductCard: {
@@ -1999,6 +2152,11 @@ export interface components {
             retailer: string;
             status: components["schemas"]["RetailerStatus"];
         };
+        /**
+         * SideBasis
+         * @enum {string}
+         */
+        SideBasis: "observed" | "imported_snapshot";
         /** Sides */
         Sides: {
             base: components["schemas"]["Side"];
@@ -2086,6 +2244,30 @@ export interface components {
          * @enum {string}
          */
         Status: "ok" | "not_enough_data";
+        /** SuggestionRow */
+        SuggestionRow: {
+            /** Brand */
+            brand: string;
+            /** Category */
+            category: string[];
+            /** Changepct */
+            changePct: string | null;
+            gap: components["schemas"]["Gap"] | null;
+            /** Id */
+            id: string;
+            match: components["schemas"]["PairMatch"] | null;
+            /** Name */
+            name: string;
+            outcome: components["schemas"]["PairOutcome"] | null;
+            /** Rationale */
+            rationale: components["schemas"]["PairRationale"][];
+            /** Reachesrival */
+            reachesRival: boolean;
+            reason: components["schemas"]["NoSuggestion"] | null;
+            rival: components["schemas"]["PairSide"];
+            subject: components["schemas"]["PairSide"];
+            suggested: components["schemas"]["MoneyValue"] | null;
+        };
         /** SummaryView */
         SummaryView: {
             /**
@@ -3950,6 +4132,116 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_MetaView_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_price_suggestions_api_v1_price_suggestions_get: {
+        parameters: {
+            query: {
+                /** @description Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut. */
+                limit?: number | null;
+                market?: string | null;
+                scope?: string | null;
+                brand?: string[];
+                category?: string[];
+                /** @description The context whose prices are advised. */
+                subject: string;
+                /** @description The context it should beat or match. */
+                rival: string;
+                id?: string[];
+                date?: string | null;
+                aim?: components["schemas"]["PairAim"];
+                /** @description Largest cut, in percent of the current price (0-50, default 10). */
+                maxChangePct?: string | null;
+                /** @description Smallest cut worth suggesting, in percent (default 1). */
+                minChangePct?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_PriceSuggestions_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */

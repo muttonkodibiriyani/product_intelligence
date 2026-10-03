@@ -432,3 +432,102 @@ describe("category_compare (API 1.8.0)", () => {
     expect(tool?.input.safeParse({ ...PAIR, level: "leaf" }).success).toBe(false);
   });
 });
+
+describe("price_suggestions (API 1.13.0)", () => {
+  const aed = (amount: string) => ({ amount, currency: "AED", minor: Number(amount) * 100 });
+  const sideOf = (context: string, price: string, basis = "observed") => ({
+    context,
+    price: aed(price),
+    observedOn: "2026-09-30",
+    ageDays: 0,
+    basis,
+  });
+  const DATA = {
+    label: "rule-based, not ML",
+    subject: "north",
+    rival: "south",
+    aim: "beat",
+    guardrails: { maxChangePct: "10", minChangePct: "1", endings: [".00", ".50", "x9.00"] },
+    staleDays: 7,
+    rows: [
+      {
+        id: "p03",
+        name: INJECTION,
+        brand: "Aurel",
+        category: ["skincare"],
+        subject: sideOf("north", "110.00", "imported_snapshot"),
+        rival: sideOf("south", "100.00"),
+        match: { matchClass: "exact", reviewState: "locked", confidence: "0.95" },
+        gap: { amount: aed("-10.00"), pct: "-9.1", cheaper: "other" },
+        outcome: "suggested",
+        suggested: aed("99.50"),
+        changePct: "-9.5",
+        reachesRival: true,
+        reason: null,
+        rationale: [{ code: "beats_rival", params: { suggested: "99.50", rival: "100.00" } }],
+      },
+      {
+        id: "p09",
+        name: "Night Serum",
+        brand: "Aurel",
+        category: ["skincare"],
+        subject: sideOf("north", "80.00"),
+        rival: null,
+        match: null,
+        gap: null,
+        outcome: null,
+        suggested: null,
+        changePct: null,
+        reachesRival: false,
+        reason: "stale_observation",
+        rationale: [],
+      },
+    ],
+    total: 2,
+    truncated: false,
+    outcomes: { suggested: 1 },
+    reasons: { stale_observation: 1 },
+  };
+
+  it("sends the pair and ids, keeps enums verifiable and wraps product text", async () => {
+    const api = new FakeApi(() => okEnvelope(DATA));
+    const result = (await registry(api).run(
+      "price_suggestions",
+      { subject: "north", rival: "south", ids: ["p03", "p09"], maxChangePct: "8" },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(api.calls[0]?.request).toEqual({
+      method: "GET",
+      path: "/api/v1/price-suggestions",
+      query: {
+        subject: ["north"],
+        rival: ["south"],
+        id: ["p03", "p09"],
+        aim: ["beat"],
+        maxChangePct: ["8"],
+        limit: ["25"],
+      },
+    });
+    expect(result.status).toBe("ok");
+    const rows = (result.data as { rows: Record<string, unknown>[] }).rows;
+    expect(rows[0]?.outcome).toBe("suggested");
+    expect((rows[0]?.subject as { basis: unknown }).basis).toBe("imported_snapshot");
+    expect(rows[1]?.reason).toBe("stale_observation");
+    expect(Object.keys(rows[0]?.name as object)).toEqual(["untrusted"]);
+    expect(
+      verifyAnswerNumbers("Cut [[product:p03]] from 110.00 to 99.50 AED (-9.5%).", [result]).ok,
+    ).toBe(true);
+    expect(verifyAnswerNumbers("Cut [[product:p03]] to 95.00 AED.", [result]).ok).toBe(false);
+  });
+
+  it("rejects a same-retailer pair, ids with filters and a non-decimal guardrail", () => {
+    const tool = TOOLS.find((t) => t.name === "price_suggestions");
+    const pair = { subject: "north", rival: "south" };
+    expect(tool?.input.safeParse({ subject: "north", rival: "north" }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, ids: ["p1"], brand: ["Aurel"] }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, maxChangePct: 10 }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, aim: "raise" }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, aim: "match" }).success).toBe(true);
+  });
+});

@@ -45,6 +45,7 @@ from pi_api.analytics import (
     LaunchesRowsQuery,
     MatchesQuery,
     MatchPage,
+    PriceSuggestionsQuery,
     PromotionsQuery,
     PromotionsRowsQuery,
     ReviewsQuery,
@@ -52,6 +53,7 @@ from pi_api.analytics import (
     capped_comparison,
     capped_launches,
     capped_promotions,
+    capped_suggestions,
     matches,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
@@ -131,6 +133,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
+from pi_metrics.pair_pricing import PriceSuggestions, price_suggestions
 from pi_metrics.summary import Summary
 from pi_metrics.view import AmbiguousContext, UnknownInput
 
@@ -785,6 +788,42 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         if query.on is None:
             metric = stale_first(loaded, metric, query.retailer)
         return respond(loaded, "promotions", query, capped_promotions(metric, query.limit))
+
+    @api.get(
+        f"{PREFIX}/price-suggestions",
+        response_model=Envelope[PriceSuggestions],
+        description=(
+            "Rule-based, not ML: where the subject context could cut a price to beat (aim=beat, "
+            "strictly below) or match (aim=match, at or below) the rival, over exact approved or "
+            "locked pairs of the same size in one currency. Down only: a subject already there "
+            "is already_competitive and its gap (rival - subject) is data, never advice to "
+            "raise. A cut is at most maxChangePct, at least minChangePct, to an allowed ending. "
+            "Every row without an outcome carries one reason. Each side's price is its last "
+            "collected price; a side older than staleDays is stale_observation, except a "
+            "subject served from a one-off import (basis imported_snapshot, observedOn = the "
+            "import date). No demand, volume, revenue or margin figure: none is collected. "
+            "Rows: suggested first, largest overprice first; then the rest, then id."
+        ),
+    )
+    def get_price_suggestions(
+        query: Annotated[PriceSuggestionsQuery, Query()], _: Viewer
+    ) -> Envelope[PriceSuggestions]:
+        loaded = source.select(query.market, query.scope)
+        # Always the view itself, never ``latest``: that carries a stale source's last price to
+        # the view's last date, and this rule judges staleness from each side's real date.
+        metric = price_suggestions(
+            loaded.dataset,
+            query.subject,
+            query.rival,
+            query.where(),
+            on=query.on,
+            aim=query.aim,
+            guardrails=query.guardrails(),
+            imported={c: shop.imported_on for shop in loaded.imported for c in shop.contexts},
+        )
+        if query.on is None:
+            metric = stale_first(loaded, metric, (query.subject, query.rival))
+        return respond(loaded, "price_suggestions", query, capped_suggestions(metric, query.limit))
 
     @api.get(f"{PREFIX}/assortment-gaps", response_model=Envelope[AssortmentGaps])
     def get_assortment_gaps(
