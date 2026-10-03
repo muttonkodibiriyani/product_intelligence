@@ -1,0 +1,596 @@
+{
+  "caveats": [],
+  "cohort": {
+    "description": "rule-based, not ML: exact approved/locked pairs, same size, both priced, rival observed within 7 days, supported retailers",
+    "n": 6
+  },
+  "data": {
+    "aim": "beat",
+    "guardrails": {
+      "endings": [
+        ".00",
+        ".50",
+        "x9.00"
+      ],
+      "maxChangePct": "10",
+      "minChangePct": "1"
+    },
+    "label": "rule-based, not ML",
+    "outcomes": {
+      "already_competitive": 3,
+      "suggested": 3
+    },
+    "reasons": {
+      "early": 1,
+      "match_not_exact": 1,
+      "match_rejected": 1,
+      "match_unreviewed": 1,
+      "no_match": 1,
+      "not_offered": 1,
+      "size_mismatch": 1,
+      "unpriced": 1
+    },
+    "rival": "shop_b",
+    "rows": [
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": "-9.5",
+        "gap": {
+          "amount": {
+            "amount": "-10.00",
+            "currency": "AED",
+            "minor": -1000
+          },
+          "cheaper": "other",
+          "pct": "-9.1"
+        },
+        "id": "p03",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "locked"
+        },
+        "name": "Product p03",
+        "outcome": "suggested",
+        "rationale": [
+          {
+            "code": "current_gap",
+            "params": {
+              "gapPct": "-9.1",
+              "rival": "100.00",
+              "subject": "110.00"
+            }
+          },
+          {
+            "code": "target",
+            "params": {
+              "aim": "beat",
+              "point": "100.00"
+            }
+          },
+          {
+            "code": "rounded",
+            "params": {
+              "endings": ".00,.50,x9.00",
+              "price": "99.50"
+            }
+          },
+          {
+            "code": "beats_rival",
+            "params": {
+              "rival": "100.00"
+            }
+          }
+        ],
+        "reachesRival": true,
+        "reason": null,
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "110.00",
+            "currency": "AED",
+            "minor": 11000
+          }
+        },
+        "suggested": {
+          "amount": "99.50",
+          "currency": "AED",
+          "minor": 9950
+        }
+      },
+      {
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": "-5.5",
+        "gap": {
+          "amount": {
+            "amount": "-5.25",
+            "currency": "AED",
+            "minor": -525
+          },
+          "cheaper": "other",
+          "pct": "-5.0"
+        },
+        "id": "p06",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "approved"
+        },
+        "name": "Product p06",
+        "outcome": "suggested",
+        "rationale": [
+          {
+            "code": "current_gap",
+            "params": {
+              "gapPct": "-5.0",
+              "rival": "100.00",
+              "subject": "105.25"
+            }
+          },
+          {
+            "code": "target",
+            "params": {
+              "aim": "beat",
+              "point": "100.00"
+            }
+          },
+          {
+            "code": "rounded",
+            "params": {
+              "endings": ".00,.50,x9.00",
+              "price": "99.50"
+            }
+          },
+          {
+            "code": "beats_rival",
+            "params": {
+              "rival": "100.00"
+            }
+          }
+        ],
+        "reachesRival": true,
+        "reason": null,
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "105.25",
+            "currency": "AED",
+            "minor": 10525
+          }
+        },
+        "suggested": {
+          "amount": "99.50",
+          "currency": "AED",
+          "minor": 9950
+        }
+      },
+      {
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": "-1.0",
+        "gap": {
+          "amount": {
+            "amount": "0.00",
+            "currency": "AED",
+            "minor": 0
+          },
+          "cheaper": "equal",
+          "pct": "0.0"
+        },
+        "id": "p02",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "approved"
+        },
+        "name": "Product p02",
+        "outcome": "suggested",
+        "rationale": [
+          {
+            "code": "current_gap",
+            "params": {
+              "gapPct": "0.0",
+              "rival": "100.00",
+              "subject": "100.00"
+            }
+          },
+          {
+            "code": "target",
+            "params": {
+              "aim": "beat",
+              "point": "100.00"
+            }
+          },
+          {
+            "code": "rounded",
+            "params": {
+              "endings": ".00,.50,x9.00",
+              "price": "99.00"
+            }
+          },
+          {
+            "code": "beats_rival",
+            "params": {
+              "rival": "100.00"
+            }
+          }
+        ],
+        "reachesRival": true,
+        "reason": null,
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        "suggested": {
+          "amount": "99.00",
+          "currency": "AED",
+          "minor": 9900
+        }
+      },
+      {
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": null,
+        "gap": {
+          "amount": {
+            "amount": "4.50",
+            "currency": "AED",
+            "minor": 450
+          },
+          "cheaper": "base",
+          "pct": "4.7"
+        },
+        "id": "p04",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "approved"
+        },
+        "name": "Product p04",
+        "outcome": "already_competitive",
+        "rationale": [
+          {
+            "code": "current_gap",
+            "params": {
+              "gapPct": "4.7",
+              "rival": "100.00",
+              "subject": "95.50"
+            }
+          },
+          {
+            "code": "already_competitive",
+            "params": {
+              "aim": "beat"
+            }
+          }
+        ],
+        "reachesRival": true,
+        "reason": null,
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "95.50",
+            "currency": "AED",
+            "minor": 9550
+          }
+        },
+        "suggested": null
+      },
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": null,
+        "gap": {
+          "amount": {
+            "amount": "10.00",
+            "currency": "AED",
+            "minor": 1000
+          },
+          "cheaper": "base",
+          "pct": "11.1"
+        },
+        "id": "p01",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "approved"
+        },
+        "name": "Product p01",
+        "outcome": "already_competitive",
+        "rationale": [
+          {
+            "code": "current_gap",
+            "params": {
+              "gapPct": "11.1",
+              "rival": "100.00",
+              "subject": "90.00"
+            }
+          },
+          {
+            "code": "already_competitive",
+            "params": {
+              "aim": "beat"
+            }
+          }
+        ],
+        "reachesRival": true,
+        "reason": null,
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "90.00",
+            "currency": "AED",
+            "minor": 9000
+          }
+        },
+        "suggested": null
+      },
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": null,
+        "gap": {
+          "amount": {
+            "amount": "20.00",
+            "currency": "AED",
+            "minor": 2000
+          },
+          "cheaper": "base",
+          "pct": "25.0"
+        },
+        "id": "p05",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "locked"
+        },
+        "name": "Product p05",
+        "outcome": "already_competitive",
+        "rationale": [
+          {
+            "code": "current_gap",
+            "params": {
+              "gapPct": "25.0",
+              "rival": "100.00",
+              "subject": "80.00"
+            }
+          },
+          {
+            "code": "already_competitive",
+            "params": {
+              "aim": "beat"
+            }
+          }
+        ],
+        "reachesRival": true,
+        "reason": null,
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "100.00",
+            "currency": "AED",
+            "minor": 10000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "80.00",
+            "currency": "AED",
+            "minor": 8000
+          }
+        },
+        "suggested": null
+      },
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": null,
+        "gap": null,
+        "id": "p07",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "proposed"
+        },
+        "name": "Product p07",
+        "outcome": null,
+        "rationale": [],
+        "reachesRival": false,
+        "reason": "match_unreviewed",
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          }
+        },
+        "suggested": null
+      },
+      {
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "changePct": null,
+        "gap": null,
+        "id": "p08",
+        "match": {
+          "confidence": "0.95",
+          "matchClass": "exact",
+          "reviewState": "rejected"
+        },
+        "name": "Product p08",
+        "outcome": null,
+        "rationale": [],
+        "reachesRival": false,
+        "reason": "match_rejected",
+        "rival": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_b",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          }
+        },
+        "subject": {
+          "ageDays": 0,
+          "basis": "observed",
+          "context": "shop_a",
+          "observedOn": "2026-09-30",
+          "price": {
+            "amount": "50.00",
+            "currency": "AED",
+            "minor": 5000
+          }
+        },
+        "suggested": null
+      }
+    ],
+    "staleDays": 7,
+    "subject": "shop_a",
+    "total": 14,
+    "truncated": true
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.14.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "price_suggestions",
+    "filters": {
+      "aim": "beat",
+      "limit": 8,
+      "rival": "shop_b",
+      "subject": "shop_a"
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-03.1",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}
