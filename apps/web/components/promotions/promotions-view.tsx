@@ -237,6 +237,7 @@ function Grid({ items, name, from }: Rows) {
           <ProductCard
             href={evidenceHref(locale, i.id, from)}
             image={i.image ?? null}
+            imageRetailer={i.retailer}
             brand={i.brand || null}
             name={i.name}
             category={i.category || null}
@@ -297,6 +298,7 @@ function List({ items, name, from }: Rows) {
                     url={i.image ?? null}
                     label={tc('noImage')}
                     monogram={i.brand ? monogram(i.brand) : undefined}
+                    retailer={i.retailer}
                     cls="size-14 shrink-0 rounded-ctl bg-surface-2 p-1"
                     px={56}
                   />

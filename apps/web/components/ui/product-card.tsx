@@ -51,6 +51,7 @@ const TONE: Record<ChipTone, string> = {
 export function ProductCard({
   href,
   image,
+  imageRetailer,
   brand,
   name,
   size,
@@ -61,6 +62,8 @@ export function ProductCard({
 }: {
   href: string;
   image?: string | null;
+  /** A single-retailer card must bind its image to that retailer's exact allowlisted host. */
+  imageRetailer?: string;
   /** The brand; a list the API sends without one (promotions) has no brand line and no monogram. */
   brand?: string | null;
   name: string;
@@ -81,6 +84,7 @@ export function ProductCard({
           url={image}
           label={t('noImage')}
           monogram={brand ? monogram(brand) : undefined}
+          retailer={imageRetailer}
           px={320}
           cls="aspect-square w-full rounded-none p-3"
         />

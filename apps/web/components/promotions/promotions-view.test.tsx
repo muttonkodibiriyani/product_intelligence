@@ -66,11 +66,20 @@ describe('PromotionsView', () => {
       ...measured,
       data: {
         ...measured.data!,
-        items: measured.data!.items.map((row, index) => (index === 0 ? { ...row, image } : row)),
+        items: measured.data!.items.map((row, index) =>
+          index === 0 ? { ...row, retailer: 'sephora_me', image } : row,
+        ),
+        retailers: [
+          ...measured.data!.retailers,
+          {
+            ...measured.data!.retailers[0]!,
+            retailer: 'sephora_me',
+          },
+        ],
       },
     };
-    view(visual, 'retailer=shop_a');
-    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts at Shop A' });
+    view(visual);
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts' });
 
     expect(document.querySelector(`img[src="${image}"]`)).toBeTruthy();
     expect(screen.getAllByText('Fixture Beauty').length).toBeGreaterThan(0);
