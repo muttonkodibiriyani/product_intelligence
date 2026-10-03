@@ -47,7 +47,7 @@
     "premium": "فاخر",
     "median": "الوسيط",
     "legend": "الاقتصادي هو الربع الأرخص، والمتوسط هو النصف الأوسط، والفاخر هو الربع الأعلى. يزداد محور السعر بالمضاعفات لا بمبالغ ثابتة (مقياس لوغاريتمي)، لتظهر الفئات الرخيصة والغالية في رسم واحد.",
-    "label": "نطاقات الأسعار حسب الفئة، {n} فئة.",
+    "label": "نطاقات الأسعار حسب الفئة، {n, plural, one {فئة واحدة} two {فئتان} few {{n, number, latn} فئات} many {{n, number, latn} فئة} other {{n, number, latn} فئة}}.",
     "takeaway": "تتراوح وسيطات الفئات من {low} في {lowCat} إلى {high} في {highCat}.",
     "takeawayOne": "فئة واحدة فقط لها وسيط حتى الآن: {cat} عند {median}."
   },
@@ -62,19 +62,19 @@
   "brands": {
     "title": "تموضع أسعار العلامات التجارية",
     "question": "السعر الوسيط {n, plural, one {للعلامة التجارية الأكثر منتجات} other {لأكثر {n, number, latn} علامة تجارية من حيث عدد المنتجات}}.",
-    "label": "السعر الوسيط لكل علامة تجارية، {n} علامة، الأعلى أولًا.",
+    "label": "السعر الوسيط لكل علامة تجارية، {n, plural, one {علامة واحدة} two {علامتان} few {{n, number, latn} علامات} many {{n, number, latn} علامة} other {{n, number, latn} علامة}}، الأعلى أولًا.",
     "takeaway": "من بين أكبر {n, number, latn} علامة تجارية، {high} لها أعلى وسيط عند {highPrice} و{low} الأدنى عند {lowPrice}.",
     "takeawayOne": "علامة تجارية واحدة فقط كبيرة بما يكفي للترتيب حتى الآن: {brand}، الوسيط {median}."
   },
   "mix": {
     "title": "توزيع الفئات",
     "question": "عدد المنتجات في كل فئة؛ المساحة تمثّل العدد.",
-    "label": "المنتجات حسب الفئة، {n} فئة رئيسية."
+    "label": "المنتجات حسب الفئة، {n, plural, one {فئة رئيسية واحدة} two {فئتان رئيسيتان} few {{n, number, latn} فئات رئيسية} many {{n, number, latn} فئة رئيسية} other {{n, number, latn} فئة رئيسية}}."
   },
   "hist": {
     "title": "توزيع الأسعار",
     "question": "عدد المنتجات في كل نطاق سعري.",
-    "label": "المنتجات حسب النطاق السعري، {n} نطاق.",
+    "label": "المنتجات حسب النطاق السعري، {n, plural, one {نطاق واحد} two {نطاقان} few {{n, number, latn} نطاقات} many {{n, number, latn} نطاقًا} other {{n, number, latn} نطاق}}.",
     "takeaway": "النطاق الأكثر امتلاءً من {lo} إلى {hi}: {share} من المنتجات المسعّرة."
   },
   "rating": {
@@ -85,7 +85,7 @@
     "price": "السعر",
     "rating": "التقييم",
     "reviews": "{n, plural, zero {لا مراجعات} one {مراجعة واحدة} two {مراجعتان} few {{n, number, latn} مراجعات} many {{n, number, latn} مراجعة} other {{n, number, latn} مراجعة}}",
-    "label": "التقييم مقابل السعر، {k} منتج."
+    "label": "التقييم مقابل السعر، {k, plural, one {منتج واحد} two {منتجان} few {{k, number, latn} منتجات} many {{k, number, latn} منتجًا} other {{k, number, latn} منتج}}."
   },
   "top": {
     "title": "أكبر التخفيضات",
@@ -106,7 +106,7 @@
     "headline": "تستحوذ أكبر {k} علامة تجارية على <b>{share}</b> من كل المنتجات.",
     "share": "حصة المنتجات",
     "cum": "المجموع التراكمي",
-    "label": "حصة المنتجات لكل علامة تجارية، أكبر {n} علامة."
+    "label": "حصة المنتجات لكل علامة تجارية، {n, plural, one {أكبر علامة} two {أكبر علامتين} few {أكبر {n, number, latn} علامات} many {أكبر {n, number, latn} علامة} other {أكبر {n, number, latn} علامة}}."
   },
   "withheld": {
     "prices": "مخططات الأسعار غير معروضة.",
@@ -120,7 +120,7 @@
     "noHistory": "يبدأ السجل بعد تشغيل الجمع الليلي.",
     "index": "المؤشر",
     "parity": "التساوي",
-    "label": "مؤشر الأسعار لكل يوم جمع، {n} أيام."
+    "label": "مؤشر الأسعار لكل يوم جمع، {n, plural, one {يوم واحد} two {يومان} few {{n, number, latn} أيام} many {{n, number, latn} يومًا} other {{n, number, latn} يوم}}."
   },
   "gaps": {
     "title": "أكبر فجوات الأسعار",
@@ -136,7 +136,7 @@
     "otherCheaper": "{r} أرخص",
     "median": "الفجوة الوسيطة",
     "thin": "{n, plural, one {فئة واحدة أزواجها} two {فئتان أزواجهما} few {{n, number, latn} فئات أزواجها} many {{n, number, latn} فئة أزواجها} other {{n, number, latn} فئة أزواجها}} أقل من أن تُحتسب: {list}.",
-    "label": "الأزواج التي يفوز بها كل متجر في كل فئة، {n} فئة.",
+    "label": "الأزواج التي يفوز بها كل متجر في كل فئة، {n, plural, one {فئة واحدة} two {فئتان} few {{n, number, latn} فئات} many {{n, number, latn} فئة} other {{n, number, latn} فئة}}.",
     "more": "أزواج أكثر",
     "fewer": "أزواج أقل"
   },
@@ -146,7 +146,7 @@
     "below": "أقل من {v}",
     "atLeast": "بدءًا من {v}",
     "range": "من {lo} إلى {hi}",
-    "label": "الأزواج المطابقة لكل نطاق فرق سعر، {n} نطاقات.",
+    "label": "الأزواج المطابقة لكل نطاق فرق سعر، {n, plural, one {نطاق واحد} two {نطاقان} few {{n, number, latn} نطاقات} many {{n, number, latn} نطاقًا} other {{n, number, latn} نطاق}}.",
     "takeaway": "{other} أغلى في {dearer} من {n, plural, zero {لا أزواج مطابقة} one {زوج مطابق واحد} two {زوجين مطابقين} few {{n, number, latn} أزواج مطابقة} many {{n, number, latn} زوجًا مطابقًا} other {{n, number, latn} زوج مطابق}} وأرخص في {cheaper}.",
     "takeawaySame": "{other} أغلى في {dearer} من {n, plural, zero {لا أزواج مطابقة} one {زوج مطابق واحد} two {زوجين مطابقين} few {{n, number, latn} أزواج مطابقة} many {{n, number, latn} زوجًا مطابقًا} other {{n, number, latn} زوج مطابق}} وأرخص في {cheaper}؛ و{same} في النطاق المحيط بالصفر."
   },
@@ -158,7 +158,7 @@
     "byCategory": "فئة",
     "median": "الفجوة الوسيطة",
     "mean": "متوسط الفجوة",
-    "label": "الفجوة السعرية الوسيطة لكل مجموعة، {n} مجموعة."
+    "label": "الفجوة السعرية الوسيطة لكل مجموعة، {n, plural, one {مجموعة واحدة} two {مجموعتان} few {{n, number, latn} مجموعات} many {{n, number, latn} مجموعة} other {{n, number, latn} مجموعة}}."
   },
   "controls": {
     "top": "أكبر {n}",
@@ -169,7 +169,7 @@
   "cross": {
     "title": "من الأرخص حسب الفئة والعلامة التجارية",
     "question": "على كل زوج مطابَق في فئة وعلامة تجارية، كم مرة يكون كل متجر أرخص. اختر خلية لفتح تلك الأزواج.",
-    "label": "من الأرخص لكل فئة وعلامة تجارية، {rows} فئة في {cols} علامة تجارية.",
+    "label": "من الأرخص لكل فئة وعلامة تجارية، {rows, plural, one {فئة واحدة} two {فئتان} few {{rows, number, latn} فئات} many {{rows, number, latn} فئة} other {{rows, number, latn} فئة}} في {cols, plural, one {علامة تجارية واحدة} two {علامتين تجاريتين} few {{cols, number, latn} علامات تجارية} many {{cols, number, latn} علامة تجارية} other {{cols, number, latn} علامة تجارية}}.",
     "thin": "أزواج قليلة جدًا",
     "thinNote": "{n, plural, zero {لا خلايا} one {خلية واحدة فيها} two {خليتان فيهما} few {{n, number, latn} خلايا فيها} many {{n, number, latn} خلية فيها} other {{n, number, latn} خلية فيها}} أقل من {min, number, latn} أزواج وتُقرأ على أنها قليلة جدًا، لا كنتيجة.",
     "cell": "{base} أرخص {b}، متساوٍ {s}، {other} أرخص {o}",
@@ -180,7 +180,7 @@
   "cheaperShare": {
     "title": "حصة الأرخص حسب {by}",
     "question": "من الأزواج المطابَقة لكل {by}، حصة كل متجر حيث يكون أرخص. اختر شريطًا لفتح المقارنة.",
-    "label": "حصة الأزواج التي كسبها كل متجر لكل {by}، {n} مجموعة.",
+    "label": "حصة الأزواج التي كسبها كل متجر لكل {by}، {n, plural, one {مجموعة واحدة} two {مجموعتان} few {{n, number, latn} مجموعات} many {{n, number, latn} مجموعة} other {{n, number, latn} مجموعة}}.",
     "byCategory": "الفئة",
     "byBrand": "العلامة التجارية",
     "same": "السعر نفسه",
