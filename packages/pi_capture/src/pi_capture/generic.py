@@ -609,6 +609,11 @@ class _Emitter:
         """Record that the page is known not to carry ``key`` (unless something already read it)."""
         self._emit(Reading(key, get(key).level, "not_shown", None, None, None, note))
 
+    def withhold(self, key: str) -> None:
+        """Leave ``key`` unread and stop later sources filling it: the page holds the value, but
+        not in a form we can read, so any other reading of it would be a guess."""
+        self._keys.add(key)
+
     def extend(self, readings: Iterable[Reading]) -> None:
         """Take readings from another extractor; a key already read here keeps its reading."""
         for r in readings:

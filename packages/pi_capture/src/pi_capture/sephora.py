@@ -193,8 +193,14 @@ def _map_money(
     source: Mapping[str, Any] = v if v is not None else d
     base = f"{_PD}.c_variantsInfo[{i}]" if v is not None else _PD
     price = _number(source.get("c_price"))
-    sale = _number(source.get("c_salesPrice"))
-    if sale is not None:
+    raw_sale = source.get("c_salesPrice")
+    sale = _number(raw_sale)
+    if isinstance(raw_sale, str) and _RSC_REF.match(raw_sale) and raw_sale != "$undefined":
+        # a reference to data not inlined: the variant may be on sale, so neither the price paid
+        # nor "no reduced price" is known, and the JSON-LD price must not stand in for it
+        em.withhold("price_minor")
+        em.withhold("regular_price_minor")
+    elif sale is not None:
         _emit_price(em, "price_minor", str(sale), currency, f"{base}.c_salesPrice", note)
         _map_regular(em, price, sale, currency, f"{base}.c_price")
     elif price is not None:

@@ -146,6 +146,25 @@ def test_no_reduced_price_means_the_regular_price_is_explicitly_not_shown() -> N
     assert "regular" in (r["regular_price_minor"].note or "")
 
 
+def test_an_undefined_reduced_price_is_absent_so_the_price_is_the_regular_price() -> None:
+    d = details(c_variantsInfo=[variant("V1", "30 ml", 150, "$undefined")])
+    r = _by_key(readings_from_sephora(pdp_html(d), locale="en"))
+    assert (r["price_minor"].value, r["price_minor"].state) == (15000, "observed")
+    assert (r["price_minor"].source_path or "").endswith("c_variantsInfo[0].c_price")
+    assert r["regular_price_minor"].state == "not_shown"
+
+
+def test_a_reduced_price_left_as_a_reference_leaves_both_prices_unread() -> None:
+    d = details(c_variantsInfo=[variant("V1", "30 ml", 150, "$83:props:offers")])
+    r = _by_key(readings_from_sephora(pdp_html(d), locale="en"))
+    # neither c_price nor the JSON-LD offer may stand in for a price the page did not inline
+    assert "price_minor" not in r
+    assert "regular_price_minor" not in r
+    assert r["loyalty_points"].value == 150
+    assert {"price_minor", "regular_price_minor"} <= LOOKED_FOR
+    assert "price_minor" not in _by_key(readings_from_sephora_details(d))
+
+
 def test_a_regular_price_not_above_the_reduced_price_is_a_parse_failure() -> None:
     d = details(c_variantsInfo=[variant("V2", "50 ml", 199.5, 199.5)])
     r = _by_key(readings_from_sephora_details(d))
