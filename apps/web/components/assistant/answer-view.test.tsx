@@ -63,13 +63,13 @@ describe('AnswerView', () => {
     vi.useFakeTimers();
     show(answer());
     expect(screen.queryByText(/Median gap/)).toBeNull();
-    expect(screen.queryByText('Sources')).toBeNull();
+    expect(screen.queryByText('From')).toBeNull();
     act(() => void vi.advanceTimersByTime(REVEAL_STEP_MS));
     expect(screen.getByText(/Median gap/)).toBeTruthy();
     expect(screen.queryByText(/Cheapest/)).toBeNull();
     act(() => void vi.advanceTimersByTime(REVEAL_STEP_MS));
     expect(screen.getByText(/Cheapest/)).toBeTruthy();
-    expect(screen.getByText('Sources')).toBeTruthy();
+    expect(screen.getByText('From')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Show full answer' })).toBeNull();
   });
 
@@ -87,15 +87,17 @@ describe('AnswerView', () => {
     expect(screen.queryByRole('button', { name: 'Show full answer' })).toBeNull();
   });
 
-  it('cites tool, cutoff, cohort and filters, and names products from the API', async () => {
+  it('cites the page, filters, cohort and date as one pill, and names products from the API', async () => {
     reduced = true;
     show(answer());
-    const summary = screen.getByText(/data to/);
-    expect(summary.textContent).toContain('Price comparison');
-    expect(summary.textContent).toContain('2026-09-30');
-    expect(summary.textContent).toContain('Matched products');
-    expect(summary.textContent).toContain('n = 42');
-    expect(screen.getByText('category: skincare')).toBeTruthy();
+    // This citation has no retailer pair, which the Compare page needs: the pill is plain text
+    // named after the tool, with the scope, the cohort and the date, and no link.
+    expect(screen.queryByRole('link', { name: /comparison/i })).toBeNull();
+    const pill = screen.getByText('Price comparison').parentElement!;
+    expect(pill.tagName).toBe('SPAN');
+    expect(pill.textContent).toBe('Price comparisonskincare · 42 matched · 30 Sept 2026');
+    expect(document.body.textContent).not.toContain('2026-09-30');
+    expect(document.body.textContent).not.toContain('n = 42');
     expect(screen.getByText('Prices exclude delivery.')).toBeTruthy();
     expect(await screen.findByText('Brand Serum')).toBeTruthy();
     expect(get).toHaveBeenCalledWith(
@@ -152,7 +154,7 @@ describe('AnswerView', () => {
   it('unavailable: a note only, no answer text', () => {
     show(answer({ status: 'unavailable', code: 'month_cap', answerMd: '' }));
     expect(screen.getByRole('alert').textContent).toBe(en.assistant.unavailable.spendCap);
-    expect(screen.queryByText('Sources')).toBeNull();
+    expect(screen.queryByText('From')).toBeNull();
   });
 });
 

@@ -70,6 +70,7 @@ export const assistantChat = onCall(
         // Streaming callers (`httpsCallable().stream()`) get progress chunks; sendChunk is a
         // no-op for the others. A failed send (client gone) is dropped, never thrown.
         (progress) => void response?.sendChunk(progress).catch(() => false),
+        log,
       );
     } catch (cause) {
       if (cause instanceof CallableRefusal) throw new HttpsError(cause.code, cause.message);
