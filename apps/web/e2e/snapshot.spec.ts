@@ -184,9 +184,11 @@ for (const locale of ['en', 'ar'] as const) {
       // The promotions tile says the same of Ulta, once, and draws no depth strip for it; the
       // launches tile reads Ulta as a snapshot (one collection: nothing to compare against).
       const promo = kpis.locator('[data-tile=promotions]');
-      // Every /summary here is the snapshot body, so all four active shops read as not measured.
+      // Every /summary here answers for Ulta (the snapshot body), so the band has the one shop and
+      // the promotions tile one row for it: not measured, never a share.
+      await expect(promo.locator('dt')).toHaveCount(1);
       await expect(promo.locator('dd').filter({ has: page.getByText(T.none, { exact: true }) })).toHaveCount(
-        4,
+        1,
       );
       await expect(promo.locator('[role=img]')).toHaveCount(0);
       await expect(kpis.locator('[data-tile=launches]').getByText(T.snapshot, { exact: true })).toBeVisible();
@@ -262,9 +264,10 @@ for (const locale of ['en', 'ar'] as const) {
     test('a collected retailer is unchanged: aged freshness, no snapshot wording', async ({ page }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBody) });
       await signIn(page, locale);
-      const a = page.locator('#kpi-band [data-tile="shop:shop_a"]');
+      // The collected fixture answers for Sephora.
+      const a = page.locator('#kpi-band [data-tile="shop:sephora_ae"]');
       await expect(a.getByText(T.promo, { exact: true })).toBeVisible();
-      await expect(a).toContainText('18.4%');
+      await expect(a).toContainText(/18\.4\u200e?%/);
       await expect(a.getByText(T.fresh, { exact: true })).toBeVisible();
       await expect(a.locator('[role=tooltip]').filter({ hasText: T.age })).toHaveCount(1);
       await expect(a.getByText(T.snapshot, { exact: true })).toHaveCount(0);

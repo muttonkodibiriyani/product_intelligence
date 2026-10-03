@@ -283,9 +283,12 @@ export function MatchedBasket({ pair, data }: { pair: Pair; data: Comparison }) 
         </Link>
       }
     >
-      <div className="@container grid grid-cols-2 divide-x divide-line-2">
-        {basket(pair.base, 0, s.basket.base)}
-        {basket(pair.other, 1, s.basket.other, <Pct v={s.medianGapPct} />)}
+      {/* Side by side only where both totals fit; a narrow card stacks them rather than spill. */}
+      <div className="@container">
+        <div className="grid grid-cols-1 divide-y divide-line-2 @sm:grid-cols-2 @sm:divide-x @sm:divide-y-0">
+          {basket(pair.base, 0, s.basket.base)}
+          {basket(pair.other, 1, s.basket.other, <Pct v={s.medianGapPct} />)}
+        </div>
       </div>
       <div
         role="img"

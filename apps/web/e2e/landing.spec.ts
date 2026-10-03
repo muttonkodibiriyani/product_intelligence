@@ -268,7 +268,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(a).toContainText('236');
       await expect(a).toContainText('61');
       await expect(a).toContainText('139.00');
-      await expect(a).toContainText('18.4%');
+      await expect(a).toContainText(/18\.4\u200e?%/);
       await expect(a.getByText(T.fresh, { exact: true })).toBeVisible();
       await expect(tips(page, 'shop:shop_a').filter({ hasText: T.asOf })).toHaveCount(1);
       await expect(a.getByRole('link', { name: 'Shop A' })).toHaveAttribute(
@@ -276,12 +276,12 @@ for (const locale of ['en', 'ar'] as const) {
         /\/explore\/\?.*retailer=shop_a/,
       );
       await expect(tile(page, 'shop:shop_b')).toContainText('4,700');
-      await expect(tile(page, 'shop:shop_b')).toContainText('12%');
+      await expect(tile(page, 'shop:shop_b')).toContainText(/12\u200e?%/);
       // Promotions: the Promotions page's share per shop, its counts in the tooltip, and the depth strip.
       const promo = tile(page, 'promotions');
       await expect(promo.getByRole('link', { name: T.promo })).toHaveAttribute('href', /\/promotions\/$/);
-      await expect(promo).toContainText('18.4%');
-      await expect(promo).toContainText('12%');
+      await expect(promo).toContainText(/18\.4\u200e?%/);
+      await expect(promo).toContainText(/12\u200e?%/);
       await expect(tips(page, 'promotions').filter({ hasText: '881' })).toHaveCount(1);
       await expect(promo.getByText(T.depth, { exact: true })).toBeVisible();
       await expect(promo.locator('[role=img] i[data-band]').first()).toBeVisible();

@@ -30,7 +30,8 @@ export function Tip({
         tabIndex={0}
         aria-describedby={id}
         onKeyDown={onKey}
-        className="min-w-0 rounded-[6px] focus-visible:outline-2"
+        // Grows to a full-width wrapper (a strip inside it gets its width), else hugs its content.
+        className="min-w-0 grow rounded-[6px] focus-visible:outline-2"
       >
         {children}
       </span>

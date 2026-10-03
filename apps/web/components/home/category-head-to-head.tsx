@@ -209,7 +209,8 @@ function Body({ data, pair }: { data: CategoryCompare; pair: Pair }) {
   };
 
   return (
-    <div className="overflow-x-auto">
+    // Positioned, so the sr-only labels inside are clipped by this scroll box, not the page.
+    <div className="relative overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr>

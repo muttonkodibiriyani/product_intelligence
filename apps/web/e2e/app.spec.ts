@@ -38,7 +38,6 @@ for (const locale of ['en', 'ar'] as const) {
   const T = rtl
     ? {
         title: 'نظرة عامة',
-        retailers: 'المتاجر',
         signIn: 'تسجيل الدخول',
         signOut: 'تسجيل الخروج',
         bad: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
@@ -64,7 +63,6 @@ for (const locale of ['en', 'ar'] as const) {
       }
     : {
         title: 'Overview',
-        retailers: 'Retailers',
         signIn: 'Sign in',
         signOut: 'Sign out',
         bad: 'Email or password is incorrect.',
@@ -100,8 +98,8 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/$`));
       // The Overview's own heading: the page is in (the dataset block now lives on /dataset/ only).
       await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
-      await expect(page.getByRole('heading', { name: T.retailers })).toBeVisible();
-      await expect(page.getByRole('rowheader', { name: 'Shop C' })).toBeVisible();
+      // The Overview's band, from /summary: the shop's tile with its product count.
+      await expect(page.locator('#kpi-band [data-tile="shop:sephora_ae"]')).toContainText('4,812');
       await noHorizontalScroll(page);
 
       expect(mock.api.length).toBeGreaterThan(0);
@@ -206,7 +204,8 @@ for (const locale of ['en', 'ar'] as const) {
       });
       await signIn(page, locale);
       await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
-      expect(n).toBe(2);
+      // The Overview's heading draws before /meta answers; the retry lands a second later.
+      await expect.poll(() => n).toBe(2);
       await expect(mainNav(page)).toBeVisible();
       expect(mock.errors.filter((e) => !e.includes('503'))).toEqual([]);
     });

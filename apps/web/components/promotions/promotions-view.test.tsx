@@ -63,9 +63,9 @@ describe('PromotionsView', () => {
     view(measured, 'retailer=shop_a');
     await screen.findByRole('heading', { level: 2, name: 'Deepest discounts at Shop A' });
     expect(screen.getByRole('list', { name: en.promotions.shares })).toBeTruthy();
-    expect(screen.getByRole('link', { name: en.app.aboutData }).parentElement!.textContent).toMatch(
-      /^Data as of .*2026 · /,
-    );
+    // The top bar carries the date only; the one About-the-data link is in the app footer.
+    expect(screen.getByText(/^Data as of .*2026$/)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: en.app.aboutData })).toBeNull();
     expect(screen.getByText('3 products', { selector: '[role="status"]' })).toBeTruthy();
     expect(screen.queryByRole('note')).toBeNull();
   });

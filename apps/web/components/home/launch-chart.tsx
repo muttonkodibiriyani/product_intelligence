@@ -41,8 +41,9 @@ export function LaunchChart({
       deps={[series, locale]}
       build={(p: Palette) => ({
         ...base(p, rtl),
-        grid: { left: 8, right: 8, top: 12, bottom: 8, containLabel: true },
-        legend: { bottom: 0, show: series.length > 1, textStyle: { color: p.ink2 } },
+        // The legend sits above the plot with room kept for it, clear of the date labels below.
+        grid: { left: 8, right: 8, top: series.length > 1 ? 36 : 12, bottom: 8, containLabel: true },
+        legend: { top: 0, show: series.length > 1, textStyle: { color: p.ink2 } },
         xAxis: {
           type: 'category',
           inverse: rtl,
