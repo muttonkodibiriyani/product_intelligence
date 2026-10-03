@@ -18,10 +18,11 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from html.parser import HTMLParser
 from typing import Any
 
+from pi_capture._size import emit_size
 from pi_capture.generic import (
     LOOKED_FOR as GENERIC_LOOKED_FOR,
 )
@@ -47,27 +48,6 @@ _VOID = frozenset(
 )
 _WS = re.compile(r"\s+")
 _DIGITS = re.compile(r"\d+")
-_SIZE = re.compile(r"^(?P<num>\d{1,3}(?:,\d{3})+|\d+(?:[.,]\d+)?)\s*(?P<unit>[^\d\s].*?)$")
-_THOUSANDS = re.compile(r"^[1-9]\d{0,2}(?:,\d{3})+$")  # 1,000 is a thousand; 0,750 is not
-_AMBIGUOUS_THOUSANDS_UNITS = frozenset({"l", "kg"})  # 1,500 l may be 1.5 l or 1500 l
-_SIZE_UNITS = {
-    "ml": "ml",
-    "g": "g",
-    "gm": "g",
-    "gr": "g",
-    "l": "l",
-    "kg": "kg",
-    "pcs": "count",
-    "pc": "count",
-    "pieces": "count",
-    "piece": "count",
-    "count": "count",
-    "مل": "ml",
-    "جم": "g",
-    "غ": "g",
-    "لتر": "l",
-    "كجم": "kg",
-}
 _DEPARTMENTS = {
     "WOMEN": "women",
     "WOMAN": "women",
@@ -353,39 +333,7 @@ def _map_size(em: _Emitter, els: list[_El], item: Mapping[str, Any] | None) -> N
         label, path = sel.text.strip("()").strip(), "span.js-selected-value"
     if label is None:
         return
-    em.observed("size_label", label, label, path)
-    m = _SIZE.match(label)
-    if m is None:
-        em.failed("size_value", label, path, "no leading number")
-        em.failed("size_unit", label, path, "no unit after a number")
-        return
-    num = m.group("num")
-    note: str | None = None
-    if _THOUSANDS.match(num):
-        num, note = num.replace(",", ""), "comma read as a thousands separator"
-    else:
-        num = num.replace(",", ".")
-    try:
-        value = Decimal(num)
-    except InvalidOperation:  # pragma: no cover - regex guarantees a number
-        em.failed("size_value", label, path, "not a number")
-        return
-    unit = _SIZE_UNITS.get(m.group("unit").strip().lower().rstrip("."))
-    if unit is None:
-        em.failed("size_unit", label, path, f"unit {m.group('unit')!r} outside ml|g|l|kg|count")
-        em.failed("size_value", label, path, "unit not normalised, value kept with the label")
-        return
-    if note is not None and unit in _AMBIGUOUS_THOUSANDS_UNITS:
-        em.failed(
-            "size_value",
-            label,
-            path,
-            f"comma ambiguous with {unit}: {m.group('num')} may be a decimal or a thousand",
-        )
-        em.observed("size_unit", label, unit, path)
-        return
-    em.observed("size_value", label, value, path, note)
-    em.observed("size_unit", label, unit, path)
+    emit_size(em, label, path)
 
 
 def _currency(els: list[_El], item: Mapping[str, Any] | None) -> str | None:
