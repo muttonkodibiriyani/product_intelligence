@@ -6,6 +6,7 @@ export const NAV_KEYS = [
   'overview',
   'explore',
   'compare',
+  'insights',
   'promotions',
   'launches',
   'prices',
@@ -24,6 +25,7 @@ const PATH: Record<NavKey, string> = {
   overview: '',
   explore: 'explore/',
   compare: 'compare/',
+  insights: 'insights/',
   promotions: 'promotions/',
   launches: 'launches/',
   prices: 'prices/',
@@ -43,6 +45,7 @@ const MATCH: Record<NavKey, RegExp | null> = {
   overview: /^\/(en|ar)\/?$/,
   explore: /^\/(en|ar)\/(explore|product)\//,
   compare: /^\/(en|ar)\/compare\//,
+  insights: /^\/(en|ar)\/insights\//,
   promotions: /^\/(en|ar)\/promotions\//,
   launches: /^\/(en|ar)\/launches\//,
   prices: /^\/(en|ar)\/prices\//,
@@ -68,7 +71,8 @@ export interface NavSignals {
 export type NavState = 'shown' | 'hidden' | 'soon';
 
 /**
- * Overview, Compare, Dataset and the assistant always show (Compare carries its own empty state).
+ * Overview, Compare, Insights, Dataset and the assistant always show (each carries its own empty
+ * state).
  * Products and Prices need a retailer with priced products; Promotions a retailer whose discounts
  * are measured. Launches stays reachable but reads "soon" until every retailer has the collection
  * days a launch needs. While a signal is unknown (still loading, or the request failed) the page

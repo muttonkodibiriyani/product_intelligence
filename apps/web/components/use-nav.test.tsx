@@ -81,6 +81,6 @@ describe('useNav', () => {
       error: null,
     };
     const listed = keys();
-    expect(listed).toEqual(['overview', 'compare', 'launches', 'dataset', 'assistant']);
+    expect(listed).toEqual(['overview', 'compare', 'insights', 'launches', 'dataset', 'assistant']);
   });
 });
