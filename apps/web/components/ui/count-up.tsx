@@ -10,6 +10,7 @@ export function reducedMotion(): boolean {
 /**
  * A number that counts up from zero the first time it scrolls into view, 400 ms, easing out; the
  * last frame is `final`, the API's own string, so the figure that stays is never a rounded one.
+ * Before it is seen it reads `final` too, so nothing off screen (or read by a screen reader) is 0.
  * Without an IntersectionObserver (tests), or with reduced motion, the final string renders at once.
  */
 export function CountUp({
@@ -40,7 +41,8 @@ export function CountUp({
     }
     const format = fmt.current;
     let raf = 0;
-    setText(format(0));
+    // The figure stays `final` until it is on screen: an off-screen tile never reads 0.
+    setText(final);
     const io = new IntersectionObserver((entries) => {
       if (!entries.some((e) => e.isIntersecting)) return;
       io.disconnect();

@@ -37,7 +37,7 @@ describe('CountUp', () => {
     render(<CountUp to={4812} final="4,812" format={(v) => String(Math.round(v))} />);
     expect(screen.getByText('4,812')).toBeTruthy();
   });
-  it('with one it starts at zero, counts up, and ends on the API string, never a rounded one', () => {
+  it('with one it reads the API string until seen, then counts up from zero and ends on that string', () => {
     let cb: IntersectionObserverCallback = () => {};
     class IO {
       constructor(c: IntersectionObserverCallback) {
@@ -56,8 +56,13 @@ describe('CountUp', () => {
     vi.stubGlobal('cancelAnimationFrame', () => {});
     vi.spyOn(performance, 'now').mockReturnValue(0);
     render(<CountUp to={18.4} final="18.4%" format={(v) => `${v.toFixed(1)}%`} duration={100} />);
-    expect(screen.getByText('0.0%')).toBeTruthy();
+    // Off screen it is never 0: a reader (or a screen reader) gets the figure itself.
+    expect(screen.getByText('18.4%')).toBeTruthy();
+    act(() => cb([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.getByText('18.4%')).toBeTruthy();
     act(() => cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+    act(() => frame!(0));
+    expect(screen.getByText('0.0%')).toBeTruthy();
     act(() => frame!(50));
     const mid = Number.parseFloat(document.body.textContent!);
     expect(mid).toBeGreaterThan(0);
