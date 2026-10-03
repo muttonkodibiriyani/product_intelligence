@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.17.0",
+            "default": "1.18.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -289,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-03.2",
+            "default": "2026-10-03.3",
             "title": "Metricversion",
             "type": "string"
           },
@@ -5307,9 +5307,62 @@
         "title": "PromoDepth",
         "type": "object"
       },
+      "PromoGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "brand",
+              "category"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "onPromo": {
+            "title": "Onpromo",
+            "type": "integer"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "n",
+          "onPromo",
+          "share"
+        ],
+        "title": "PromoGroup",
+        "type": "object"
+      },
       "PromoItem": {
         "additionalProperties": false,
         "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
           "depthPct": {
             "title": "Depthpct",
             "type": "string"
@@ -5317,6 +5370,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
           },
           "name": {
             "title": "Name",
@@ -5331,14 +5395,20 @@
           "retailer": {
             "title": "Retailer",
             "type": "string"
+          },
+          "saved": {
+            "$ref": "#/components/schemas/MoneyValue"
           }
         },
         "required": [
           "id",
           "name",
+          "brand",
+          "category",
           "retailer",
           "price",
           "regular",
+          "saved",
           "depthPct"
         ],
         "title": "PromoItem",
@@ -5724,6 +5794,22 @@
       "RetailerPromo": {
         "additionalProperties": false,
         "properties": {
+          "bands": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PromoGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
           "n": {
             "title": "N",
             "type": "integer"
@@ -6949,7 +7035,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.17.0"
+    "version": "1.18.0"
   },
   "openapi": "3.1.0",
   "paths": {

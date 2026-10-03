@@ -518,7 +518,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.17.0
+             * @default 1.18.0
              */
             apiVersion: string;
             /** Currency */
@@ -540,7 +540,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-03.2
+             * @default 2026-10-03.3
              */
             metricVersion: string;
             /** Scope */
@@ -2081,18 +2081,41 @@ export interface components {
             /** Cells */
             cells: number[][];
         };
+        /** PromoGroup */
+        PromoGroup: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "brand" | "category";
+            /** N */
+            n: number;
+            /** Onpromo */
+            onPromo: number;
+            /** Share */
+            share: string | null;
+        };
         /** PromoItem */
         PromoItem: {
+            /** Brand */
+            brand: string;
+            /** Category */
+            category: string;
             /** Depthpct */
             depthPct: string;
             /** Id */
             id: string;
+            /** Image */
+            image?: string | null;
             /** Name */
             name: string;
             price: components["schemas"]["MoneyValue"];
             regular: components["schemas"]["MoneyValue"];
             /** Retailer */
             retailer: string;
+            saved: components["schemas"]["MoneyValue"];
         };
         /** Promotions */
         Promotions: {
@@ -2215,6 +2238,16 @@ export interface components {
         };
         /** RetailerPromo */
         RetailerPromo: {
+            /**
+             * Bands
+             * @default []
+             */
+            bands: number[];
+            /**
+             * Groups
+             * @default []
+             */
+            groups: components["schemas"]["PromoGroup"][];
             /** N */
             n: number;
             /** Onpromo */
