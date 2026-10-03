@@ -84,7 +84,8 @@ function RetailerComparison({
           </thead>
           <tbody>
             {retailers.map((r, index) => {
-              const cut = deepestCut(items, r.retailer);
+              const publishesDiscounts = listable(r);
+              const cut = publishesDiscounts ? deepestCut(items, r.retailer) : null;
               return (
                 <tr key={r.retailer} className="border-t border-line-2 first:border-t-0">
                   <th scope="row" className="px-4 py-2.5 text-start font-medium">
@@ -93,16 +94,28 @@ function RetailerComparison({
                       <span dir="auto">{name(r.retailer)}</span>
                     </span>
                   </th>
-                  <td className="px-4 py-2.5 text-end tabular-nums">{formatCount(r.onPromo, locale)}</td>
+                  <td className="px-4 py-2.5 text-end tabular-nums">
+                    {publishesDiscounts ? (
+                      formatCount(r.onPromo, locale)
+                    ) : (
+                      <span className="text-ink-3">{t('withheld')}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-end font-semibold tabular-nums">
-                    {r.share === null ? (
+                    {!publishesDiscounts || r.share === null ? (
                       <span className="font-normal text-ink-3">{t('withheld')}</span>
                     ) : (
                       `${r.share}%`
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-end font-semibold tabular-nums">
-                    {cut === null ? <span aria-hidden>—</span> : <bdi dir="ltr">−{cut}%</bdi>}
+                    {!publishesDiscounts ? (
+                      <span className="font-normal text-ink-3">{t('withheld')}</span>
+                    ) : cut === null ? (
+                      <span aria-hidden>—</span>
+                    ) : (
+                      <bdi dir="ltr">−{cut}%</bdi>
+                    )}
                   </td>
                 </tr>
               );
