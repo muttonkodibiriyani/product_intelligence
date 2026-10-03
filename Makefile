@@ -1,4 +1,4 @@
-.PHONY: install lint format types test uat uat-status openapi check up down db-shell emulators migrate
+.PHONY: install lint format types test uat uat-status openapi check up down db-shell emulators migrate test-db test-db-down
 
 install:
 	uv sync
@@ -14,8 +14,11 @@ format:
 types:
 	uv run mypy
 
-# DB tests run against the local stack (`make up`); override PI_DATABASE_URL to point elsewhere.
-PI_DATABASE_URL ?= postgresql+psycopg://pi:pi_local_only@127.0.0.1:55432/pi
+# DB tests run against a throwaway tmpfs server (`make test-db`), NEVER the stack database on
+# 55432: tests create pi_test_* databases on that server. The root conftest.py refuses ports
+# 55432/55499 and database `pi`. Pick a free port with TEST_DB_PORT=<port> on a shared host.
+TEST_DB_PORT ?= 55433
+PI_DATABASE_URL ?= postgresql+psycopg://pi:pi_test_only@127.0.0.1:$(TEST_DB_PORT)/pi_test
 export PI_DATABASE_URL
 
 test:
@@ -53,6 +56,16 @@ down:
 
 migrate:
 	uv run alembic -c packages/pi_db/alembic.ini upgrade head
+
+# Disposable PostgreSQL 16 + pgvector for DB tests: data in tmpfs (RAM), gone on `make test-db-down`.
+test-db:
+	docker run -d --rm --name pi-test-db-$(TEST_DB_PORT) --tmpfs /var/lib/postgresql/data \
+	  -p 127.0.0.1:$(TEST_DB_PORT):5432 -e POSTGRES_USER=pi -e POSTGRES_PASSWORD=pi_test_only \
+	  -e POSTGRES_DB=pi_test pgvector/pgvector:pg16
+	for i in $$(seq 60); do docker exec pi-test-db-$(TEST_DB_PORT) pg_isready -q -h 127.0.0.1 -U pi -d pi_test && exit 0; sleep 1; done; exit 1
+
+test-db-down:
+	docker rm -f pi-test-db-$(TEST_DB_PORT)
 
 db-shell:
 	$(COMPOSE) exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
