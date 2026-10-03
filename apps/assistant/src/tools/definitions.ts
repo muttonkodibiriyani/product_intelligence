@@ -12,8 +12,12 @@ import type { ApiRequest } from "../api/client.js";
 import { defineTool, type ToolView } from "./types.js";
 import { unitPriceView } from "./unit-price.js";
 
-/** Page size for search_products (the API allows up to 100; tool results are capped by size). */
-export const MAX_LIMIT = 25;
+/**
+ * Page size for search_products (the API allows up to 100). A worst-case card without its
+ * match list (four retailers priced, 120-character name) is about 950 characters sanitised, so
+ * 15 stay under MAX_RESULT_CHARS; with the match list, 12 were already refused.
+ */
+export const MAX_LIMIT = 15;
 /** The API's cap on repeated list parameters (brand, category, retailer, id). */
 export const MAX_LIST = 25;
 
@@ -78,14 +82,25 @@ const noIdsWithFilters = (value: {
 }) => !(value.ids && (value.brand || value.category));
 const NO_IDS_WITH_FILTERS = { message: "use either ids or brand/category filters, not both" };
 
+function withoutMatches(data: unknown): unknown {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return data;
+  const record = data as Record<string, unknown>;
+  if (!Array.isArray(record.items)) return data;
+  const items = record.items.map((item: unknown) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return item;
+    return Object.fromEntries(Object.entries(item).filter(([key]) => key !== "matches"));
+  });
+  return { ...record, items };
+}
+
 export const searchProducts = defineTool({
   name: "search_products",
-  version: "2",
+  version: "3",
   description:
     "Find products by text (English or Arabic), brand, category, retailer ids, match state and " +
     "price range (decimal text in the dataset currency). Returns product cards with the latest " +
     "price at each retailer and, with exactly two retailers, the gap (the first is the base). " +
-    "Use it to find product ids for get_product, compare or reviews_summary.",
+    "Use it to find product ids for get_product (match details), compare or reviews_summary.",
   minRole: "viewer",
   input: z
     .object({
@@ -100,6 +115,8 @@ export const searchProducts = defineTool({
     })
     .strict(),
   request: (input) => get("/products", input),
+  // Each card's match list is dropped (get_product has it) so a full page fits the size cap.
+  view: (data) => ({ data: withoutMatches(data) }),
 });
 
 /** Products scanned per price_per_unit call (the API's page maximum). */

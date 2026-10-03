@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { verifyAnswerNumbers } from "../src/guard/verifier.js";
-import { TOOLS } from "../src/tools/definitions.js";
+import { MAX_LIMIT, TOOLS } from "../src/tools/definitions.js";
 import { MAX_RESULT_CHARS, ToolRegistry, type ToolEnvelope } from "../src/tools/registry.js";
 import { type AnyToolDef, callerRole, defineTool } from "../src/tools/types.js";
 import { z } from "zod";
@@ -430,5 +430,69 @@ describe("category_compare (API 1.8.0)", () => {
       false,
     );
     expect(tool?.input.safeParse({ ...PAIR, level: "leaf" }).success).toBe(false);
+  });
+});
+
+describe("search_products v3 (size cap)", () => {
+  const RETAILERS = ["north", "south", "east", "west"];
+  const aed = (amount: string) => ({ amount, currency: "AED", minor: 123450 });
+  const matches = RETAILERS.flatMap((a, i) =>
+    RETAILERS.slice(i + 1).map((b) => ({
+      a,
+      b,
+      confidence: "0.95",
+      matchClass: "exact",
+      reviewState: "approved",
+    })),
+  );
+  // Worst case: four retailers priced, six match pairs, 120-character name, long category path.
+  const card = (i: number) => ({
+    id: `prod_${String(i).padStart(8, "0")}`,
+    brand: "B".repeat(60),
+    name: "N".repeat(120),
+    category: ["c".repeat(30), "d".repeat(30), "e".repeat(30)],
+    image: `https://img.example/${"i".repeat(150)}`,
+    size: { unit: "ml", value: "100" },
+    sizeLabel: "100 ml / 3.4 fl oz",
+    sizeSystem: "metric",
+    prices: Object.fromEntries(RETAILERS.map((r) => [r, aed("1234.50")])),
+    priceFlags: {},
+    matches,
+    gap: {
+      base: "north",
+      other: "south",
+      excludedReason: null,
+      sizeLabels: null,
+      gap: { amount: aed("-120.50"), pct: "-12.3", cheaper: "other" },
+    },
+  });
+  const page = (n: number) =>
+    okEnvelope({
+      items: Array.from({ length: n }, (_, i) => card(i)),
+      total: 5000,
+      nextCursor: "c",
+    });
+
+  it("fits a full worst-case page under MAX_RESULT_CHARS and drops each card's matches", async () => {
+    const api = new FakeApi(() => page(MAX_LIMIT));
+    const result = (await registry(api).run(
+      "search_products",
+      { limit: MAX_LIMIT },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(result.status).toBe("ok");
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+    const items = (result.data as { items: Record<string, unknown>[] }).items;
+    expect(items).toHaveLength(MAX_LIMIT);
+    expect(items[0]).not.toHaveProperty("matches");
+    expect(items[0]).toHaveProperty("gap");
+    expect(items[0]).toHaveProperty("prices");
+  });
+
+  it("caps limit at 15 and defaults to 10", () => {
+    const tool = TOOLS.find((t) => t.name === "search_products");
+    expect(tool?.input.safeParse({ limit: 16 }).success).toBe(false);
+    expect((tool?.input.parse({}) as { limit: number }).limit).toBe(10);
   });
 });
