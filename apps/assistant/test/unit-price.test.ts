@@ -164,6 +164,16 @@ describe("unitPriceView", () => {
             },
           ),
           card("otherpair", ml, { north: "10.00", south: "12.00" }, sameSize("north", "east")),
+          card("otherbase", ml, { north: "10.00", south: "12.00" }, sameSize("east", "south")),
+          card(
+            "flagged",
+            ml,
+            { north: "10.00", south: "12.00" },
+            {
+              ...sameSize("north", "south"),
+              excludedReason: "size_mismatch",
+            },
+          ),
           card(
             "three",
             ml,
@@ -171,7 +181,7 @@ describe("unitPriceView", () => {
             sameSize("north", "south"),
           ),
         ],
-        total: 6,
+        total: 8,
       },
       ASC,
     );
@@ -180,6 +190,6 @@ describe("unitPriceView", () => {
       "single@north",
       "pair@south",
     ]);
-    expect(view.data).toMatchObject({ excluded: { sizeUnproven: 4 } });
+    expect(view.data).toMatchObject({ excluded: { sizeUnproven: 6 } });
   });
 });
