@@ -354,6 +354,7 @@ for (const locale of ['en', 'ar'] as const) {
     for (const [host, url] of [
       ['img-product.sephora.me', IMG],
       ['media.alshaya.com', IMG_ULTA],
+      ['www.faces.ae', 'https://www.faces.ae/media/catalog/product/cache/1/image/f1.jpg'],
     ] as const)
       test(`product page: the ${host} image beside the name; a failing one is a placeholder`, async ({
         page,

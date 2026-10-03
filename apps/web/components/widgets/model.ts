@@ -169,18 +169,20 @@ export function ratingPoints(r: Summary['ratingPrice']) {
 
 /**
  * Product images are hotlinked, never copied, and only from each retailer's own image host, over
- * https (image decision B; media.alshaya.com only keeps the owner's ulta_ae view live). Each host is
- * credited with a link to its owner's public home page.
+ * https (image decision B; media.alshaya.com only keeps the owner's ulta_ae view live; www.faces.ae serves
+ * faces_ae's own pages). Each host is credited with a link to its owner's public home page.
  */
 export const IMAGE_OWNERS = {
   'img-product.sephora.me': { name: 'Sephora', home: 'https://www.sephora.me' },
   'media.alshaya.com': { name: 'Ulta Beauty', home: 'https://www.ulta.ae' },
+  'www.faces.ae': { name: 'Faces', home: 'https://www.faces.ae' },
 } as const;
 export type ImageHost = keyof typeof IMAGE_OWNERS;
 /** The retailer each host serves; a URL is shown only for its own retailer. */
 const HOST_RETAILER: Record<ImageHost, string> = {
   'img-product.sephora.me': 'sephora_me',
   'media.alshaya.com': 'ulta_ae',
+  'www.faces.ae': 'faces_ae',
 };
 
 /** The image host of an allowed URL (https, a listed host, no credentials), else null. */
