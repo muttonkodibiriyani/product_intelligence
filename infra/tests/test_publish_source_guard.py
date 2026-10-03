@@ -58,6 +58,22 @@ def test_a_sephora_file_goes_under_its_own_source_prefix() -> None:
     assert publish_dataset.offer_counts(json.loads(gzip.decompress(body))) == {"sephora_me": 3}
 
 
+def test_a_faces_file_goes_to_datasets_ae_faces_ae_never_the_beauty_file() -> None:
+    dataset, errors = publish_dataset.validate_v2(
+        sephora_only().replace("sephora_me", "faces_ae"), allow_test=True
+    )
+    assert errors == []
+    _, paths, summary, meta_doc = publish_dataset.package_v2(dataset)
+    assert paths == [
+        "datasets/ae/faces_ae/20260930T000000Z.json",
+        "datasets/ae/faces_ae/latest.json",
+    ]
+    assert publish_dataset.outside_prefixes(paths) == []
+    assert meta_doc == "v2_ae_faces_ae"
+    assert summary["storagePath"] == "datasets/ae/faces_ae/latest.json"
+    assert "datasets/ae/beauty/latest.json" not in paths
+
+
 def test_packaging_is_deterministic() -> None:
     one, _ = publish_dataset.validate_v2(sephora_only(), allow_test=True)
     two, _ = publish_dataset.validate_v2(sephora_only(), allow_test=True)
@@ -78,11 +94,12 @@ def test_a_file_with_two_sources_is_refused() -> None:
 
 
 def test_only_sources_pi_publishes_are_accepted() -> None:
-    assert publish_dataset.PUBLISH_SOURCES == ("sephora_me",)
+    assert publish_dataset.PUBLISH_SOURCES == ("sephora_me", "faces_ae")
     assert publish_dataset.publishing_source(catalog(sephora_me=2)) == ("sephora_me", [])
+    assert publish_dataset.publishing_source(catalog(faces_ae=2)) == ("faces_ae", [])
     source, errors = publish_dataset.publishing_source(catalog(ulta_ae=2))
     assert source is None
-    assert errors == ["ulta_ae is not a source PI publishes (sephora_me)"]
+    assert errors == ["ulta_ae is not a source PI publishes (sephora_me, faces_ae)"]
     assert publish_dataset.publishing_source(catalog())[0] is None
 
 

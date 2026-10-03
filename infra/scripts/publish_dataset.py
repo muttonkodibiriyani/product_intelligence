@@ -21,7 +21,7 @@ the original cutoff copy is never replaced.
 
 - v2 (ADR-0007 §6): checked by pi_dataset's strict ``load_dataset``. One file per source: the
   file's offers must all come from one source PI publishes (``PUBLISH_SOURCES``), and it goes to
-  ``datasets/<country>/<source>/`` (e.g. datasets/ae/sephora_me), meta in
+  ``datasets/<country>/<source>/`` (e.g. datasets/ae/sephora_me, datasets/ae/faces_ae), meta in
   demo_meta/v2_<country>_<source>. Nothing is ever written outside those prefixes: other sources'
   data (e.g. ulta_ae in datasets/ae/beauty/latest.json) is not PI's to replace (owner, 2026-10-01).
 - Before uploading, the live latest.json at the target is read and the publish is HELD if any
@@ -58,7 +58,7 @@ from typing import Any
 SCHEMA = "pi.dataset/v1"
 SCHEMA_V2 = "pi.dataset/v2"
 # The only sources PI publishes; any other source's data is protected (owner, 2026-10-01).
-PUBLISH_SOURCES = ("sephora_me",)
+PUBLISH_SOURCES = ("sephora_me", "faces_ae")
 PROTECTED_SOURCES = ("ulta_ae",)  # owner hard rule: never dropped, not even with --drop-source
 V1_PREFIX = "datasets/uae"
 V1_SOURCE = "sephora_me"
