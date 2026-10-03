@@ -398,10 +398,10 @@ for (const locale of ['en', 'ar'] as const) {
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/product/?id=${p.data.card.id}`);
       await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
-      const row = page
-        .getByRole('row')
-        .filter({ has: page.getByRole('rowheader', { name: 'Shop A', exact: true }) });
-      await expect(row.first().getByText(T.underReview)).toHaveCount(2);
+      // Shop A is the sheet's first retailer column: its price and its regular price.
+      const sheet = page.locator('[data-offer-sheet]');
+      for (const attr of ['price', 'regular'])
+        await expect(sheet.locator(`tr[data-attr=${attr}] td`).first()).toHaveText(T.underReview);
       await expect(page.getByText(T.underReview)).toHaveCount(3);
       await expect(page.locator('main')).not.toContainText(/(^|[^\d])0\.0[01]([^\d]|$)/);
     });
