@@ -1,8 +1,10 @@
-"""The read-time view of an imported retailer (``pi_api.dq``, API 1.5.0).
+"""The read-time view of an imported retailer (``pi_api.dq``, API 1.5.0; 1.13.0).
 
-``ulta_ae`` here is the fixture's ``shop_b`` renamed. All six of its offers that carry a
-was-price carry one equal to the price, so without the view its promotion share would be
-measured as 0%, the figure the owner ruled out.
+``ulta_ae`` here is the fixture's ``shop_b`` renamed. Six of its offers carry a was-price: p03's
+is above its price (a promotion), the other five equal the price (not one). Since 1.13.0 (owner,
+2026-10-03: "Show Ulta discounts") those stated was-prices are served and measured with a
+``was_price_stated`` caveat; ``WAS_PRICE_WITHHELD`` brings back the 1 October rule, under which
+the view cleared them so the share never read 0%.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from typing import Any
 from api_fixture import Client, bearer, make_client, write
 from pi_api.app import _named
 from pi_api.catalog import ProductQuery
-from pi_api.dq import IMPORTED, Imported, caveats, imported_view
+from pi_api.dq import IMPORTED, WAS_PRICE_WITHHELD, Imported, caveats, imported_view
 from pi_dataset import ContractModel, DatasetV3
 from pi_metrics import CaveatCode, Reason, promotions, summary
 from pi_metrics.model import ProductFilter
@@ -61,8 +63,40 @@ def codes(body: Any) -> list[str]:
     return [c["code"] for c in body["caveats"]]
 
 
-def test_ulta_ae_is_the_imported_retailer() -> None:
+def test_ulta_ae_is_the_imported_retailer_and_its_was_prices_are_not_withheld() -> None:
     assert frozenset({ULTA}) == IMPORTED
+    assert frozenset() == WAS_PRICE_WITHHELD  # owner, 2026-10-03: "Show Ulta discounts"
+
+
+def test_the_view_keeps_ulta_stated_was_prices_and_finds_the_import_date() -> None:
+    ds = load(ulta_doc())
+    view, (found,) = imported_view(ds)
+    assert (found.retailer, found.contexts, found.was_prices, found.withheld) == (
+        ULTA,
+        (ULTA,),
+        6,
+        False,
+    )
+    assert found.imported_at == datetime(2026, 9, 30, 21, 15, tzinfo=UTC)
+    assert view.products == ds.products  # nothing cleared: served as the retailer states them
+    assert view.meta == ds.meta
+
+
+def test_ulta_discounts_are_counted_and_a_was_price_at_or_below_the_price_is_not_one() -> None:
+    d = ulta_doc()
+    # p05: a was-price below the price; the four others equal it. Only p03 (80 < 100) is a
+    # promotion, and none of the others is counted as one.
+    p05 = offer(d, "p05", ULTA)["series"]
+    p05["price"][-1] = {**p05["regular"][-1], "amount": "999.00", "minor": 99900}
+    view, _ = imported_view(load(d))
+    s = summary(view, ULTA).data
+    assert s.promo_share_pct == Decimal("100") / 6
+    assert s.top_discounts is not None
+    assert [t.id for t in s.top_discounts] == ["p03"]
+    p = promotions(view, (ULTA,), ProductFilter())
+    (share,) = p.data.retailers
+    assert (share.retailer, share.reason) == (ULTA, None)
+    assert [(item.id, item.retailer) for item in p.data.items] == [("p03", ULTA)]
 
 
 def test_a_dataset_without_an_imported_retailer_is_served_as_the_same_object() -> None:
@@ -72,10 +106,15 @@ def test_a_dataset_without_an_imported_retailer_is_served_as_the_same_object() -
     assert found == ()
 
 
-def test_the_view_clears_only_the_imported_was_prices_and_finds_the_import_date() -> None:
+def test_a_withheld_retailer_has_only_its_was_prices_cleared() -> None:
     ds = load(ulta_doc())
-    view, (found,) = imported_view(ds)
-    assert (found.retailer, found.contexts, found.was_prices) == (ULTA, (ULTA,), 6)
+    view, (found,) = imported_view(ds, withheld=IMPORTED)
+    assert (found.retailer, found.contexts, found.was_prices, found.withheld) == (
+        ULTA,
+        (ULTA,),
+        6,
+        True,
+    )
     assert found.imported_at == datetime(2026, 9, 30, 21, 15, tzinfo=UTC)
     for before, after in zip(ds.products, view.products, strict=True):
         for cid, o in after.offers.items():
@@ -102,8 +141,8 @@ def test_the_import_date_is_the_local_day_in_the_market_time_zone() -> None:
     assert date_of(datetime(2026, 9, 30, 23, 59, tzinfo=UTC)) == "2026-10-01"
 
 
-def test_without_the_view_ulta_was_prices_would_be_measured() -> None:
-    """The failure the view prevents: unverified was-prices read as a promotion share."""
+def test_without_withholding_ulta_was_prices_are_measured() -> None:
+    """What withholding prevents when a retailer's was-prices are not to be read."""
     d = ulta_doc()
     assert summary(load(d), ULTA).data.promo_share_pct == Decimal("100") / 6  # p03 only
     offer(d, "p03", ULTA)["series"]["price"][-1] = offer(d, "p03", ULTA)["series"]["regular"][-1]
@@ -111,7 +150,7 @@ def test_without_the_view_ulta_was_prices_would_be_measured() -> None:
 
 
 def test_metrics_withhold_promotions_of_an_unverified_context_with_a_reason() -> None:
-    view, _ = imported_view(load(ulta_doc()))
+    view, _ = imported_view(load(ulta_doc()), withheld=IMPORTED)
     s = summary(view, ULTA, frozenset({ULTA})).data
     assert (s.promo_share_pct, s.promo_depth, s.top_discounts) == (None, None, None)
     assert (s.withheld[0].section, s.withheld[0].reason) == (
@@ -126,20 +165,27 @@ def test_metrics_withhold_promotions_of_an_unverified_context_with_a_reason() ->
     assert all(item.retailer != ULTA for item in p.data.items)
 
 
-def test_summary_of_ulta_is_a_withheld_promotion_and_a_dated_snapshot(tmp_path: Path) -> None:
+def test_summary_of_ulta_measures_its_stated_discounts_as_a_dated_snapshot(
+    tmp_path: Path,
+) -> None:
     body = get(served(tmp_path), f"/summary?retailer={ULTA}")
     data = body["data"]
-    assert data["promoSharePct"] is None
-    assert data["promoSharePct"] != 0
-    assert (data["promoDepth"], data["topDiscounts"]) == (None, None)
-    assert {"section": "promotions", "reason": "was_price_unverified"} in data["withheld"]
+    assert data["promoSharePct"] is not None
+    assert [t["id"] for t in data["topDiscounts"]] == ["p03"]
+    assert not [w for w in data["withheld"] if w["section"] == "promotions"]
     assert data["freshness"]["status"] == "snapshot"
     assert data["freshness"]["cutoff"] == IMPORTED_AT
     assert codes(body)[-3:] == [
-        "was_price_unverified",
+        "was_price_stated",
         "snapshot_import_date",
         "parent_listings_included",
     ]
+    stated = next(c for c in body["caveats"] if c["code"] == "was_price_stated")
+    assert stated["params"] == {"retailer": ULTA}
+    assert stated["en"] == (
+        "ulta_ae's discounts use the was-prices it states itself; PI has not checked them."
+    )
+    assert stated["ar"]
     snapshot = next(c for c in body["caveats"] if c["code"] == "snapshot_import_date")
     assert snapshot["params"] == {"retailer": ULTA, "date": "2026-10-01"}
     assert snapshot["en"] == SNAPSHOT_EN
@@ -149,21 +195,21 @@ def test_summary_of_ulta_is_a_withheld_promotion_and_a_dated_snapshot(tmp_path: 
 def test_another_retailers_summary_has_no_ulta_caveat(tmp_path: Path) -> None:
     body = get(served(tmp_path), "/summary?retailer=shop_a")
     assert not {c.value for c in CaveatCode if "snapshot" in c.value} & set(codes(body))
-    assert "was_price_unverified" not in codes(body)
+    assert not {"was_price_unverified", "was_price_stated"} & set(codes(body))
     assert body["data"]["freshness"]["status"] != "snapshot"
     assert body["data"]["promoSharePct"] is not None
 
 
-def test_promotions_withhold_ulta_and_keep_the_others(tmp_path: Path) -> None:
+def test_promotions_count_ulta_with_its_stated_was_prices(tmp_path: Path) -> None:
     body = get(served(tmp_path), "/promotions")
     shares = {r["retailer"]: r for r in body["data"]["retailers"]}
-    assert shares[ULTA]["share"] is None
-    assert shares[ULTA]["reason"] == "was_price_unverified"
+    assert shares[ULTA]["share"] is not None
+    assert shares[ULTA]["reason"] is None
     assert shares["shop_a"]["share"] is not None
-    assert all(item["retailer"] != ULTA for item in body["data"]["items"])
-    assert body["reason"] == "was_price_unverified"
-    assert "was-prices are unverified" in body["detail"]["en"]
-    assert "was_price_unverified" in codes(body)
+    assert [i["id"] for i in body["data"]["items"] if i["retailer"] == ULTA] == ["p03"]
+    assert body["reason"] != "was_price_unverified"
+    assert "was_price_stated" in codes(body)
+    assert "was_price_unverified" not in codes(body)
 
 
 def test_promotions_of_shop_a_alone_owe_no_ulta_caveat(tmp_path: Path) -> None:
@@ -172,20 +218,21 @@ def test_promotions_of_shop_a_alone_owe_no_ulta_caveat(tmp_path: Path) -> None:
     assert body["status"] == "ok"
 
 
-def test_a_product_shows_no_ulta_was_price_or_discount(tmp_path: Path) -> None:
+def test_a_product_shows_ulta_stated_was_price_and_discount(tmp_path: Path) -> None:
     client = served(tmp_path)
     body = get(client, "/products/p03")
     offers = {o["retailer"]: o for o in body["data"]["offers"]}
-    assert (offers[ULTA]["regular"], offers[ULTA]["promoPct"]) == (None, None)
+    assert offers[ULTA]["regular"] is not None
+    assert offers[ULTA]["promoPct"] is not None
     assert offers[ULTA]["price"]["amount"] == "80.00"
     assert offers["shop_a"]["regular"] is not None
     assert codes(body)[-3:] == [
-        "was_price_unverified",
+        "was_price_stated",
         "snapshot_import_date",
         "parent_listings_included",
     ]
     assert "snapshot_import_date" not in codes(get(client, "/products/p12"))  # shop_a only
-    assert "was_price_unverified" in codes(get(client, f"/products?retailer={ULTA}"))
+    assert "was_price_stated" in codes(get(client, f"/products?retailer={ULTA}"))
 
 
 def test_endpoints_without_prices_owe_only_the_snapshot_caveats() -> None:
@@ -195,8 +242,19 @@ def test_endpoints_without_prices_owe_only_the_snapshot_caveats() -> None:
         CaveatCode.PARENT_LISTINGS_INCLUDED,
     ]
     first, *_ = caveats(found, "export_promotions", frozenset({ULTA}))
-    assert first.code is CaveatCode.WAS_PRICE_UNVERIFIED
+    assert first.code is CaveatCode.WAS_PRICE_STATED
     assert caveats(found, "summary", frozenset({"shop_a"})) == ()
+
+
+def test_the_was_price_caveat_follows_withholding_and_is_owed_only_with_was_prices() -> None:
+    at = datetime(2026, 9, 30, 21, 15, tzinfo=UTC)
+
+    def first(shop: Imported) -> CaveatCode:
+        return caveats((shop,), "promotions", frozenset())[0].code
+
+    assert first(Imported(ULTA, (ULTA,), at, 3)) is CaveatCode.WAS_PRICE_STATED
+    assert first(Imported(ULTA, (ULTA,), at, 3, withheld=True)) is CaveatCode.WAS_PRICE_UNVERIFIED
+    assert first(Imported(ULTA, (ULTA,), at, 0)) is CaveatCode.SNAPSHOT_IMPORT_DATE
 
 
 def test_a_sephora_only_dataset_has_no_dq_caveats(tmp_path: Path) -> None:
@@ -205,7 +263,8 @@ def test_a_sephora_only_dataset_has_no_dq_caveats(tmp_path: Path) -> None:
     write(tmp_path, DatasetV3.model_validate(d))
     client = make_client(tmp_path)[0]
     for path in ("/summary", "/promotions", "/products?limit=5", "/coverage"):
-        assert not {"snapshot_import_date", "was_price_unverified"} & set(codes(get(client, path)))
+        found = set(codes(get(client, path)))
+        assert not {"snapshot_import_date", "was_price_unverified", "was_price_stated"} & found
 
 
 COLLECTED_AT = "2026-09-29T10:00:00Z"
@@ -304,7 +363,7 @@ def test_pair_and_history_endpoints_owe_ulta_caveats_only_when_ulta_is_in_them(
 ) -> None:
     """AIE and Reviewer, #131: the scope comes from the pair, the assortment ends or the series."""
     client = served(tmp_path)
-    ulta_codes = {"was_price_unverified", "snapshot_import_date", "parent_listings_included"}
+    ulta_codes = {"was_price_stated", "snapshot_import_date", "parent_listings_included"}
     for path in (
         "/compare?retailers=shop_a,shop_c",
         "/index?retailers=shop_a,shop_c",
@@ -316,7 +375,7 @@ def test_pair_and_history_endpoints_owe_ulta_caveats_only_when_ulta_is_in_them(
     assert "snapshot_import_date" in codes(
         get(client, f"/assortment-gaps?missing_at={ULTA}&present_at=shop_a")
     )
-    assert "was_price_unverified" in codes(get(client, "/products/p03/history"))
+    assert "was_price_stated" in codes(get(client, "/products/p03/history"))
 
 
 def test_a_query_naming_retailers_in_two_fields_involves_all_of_them() -> None:
@@ -331,3 +390,27 @@ def test_a_query_naming_retailers_in_two_fields_involves_all_of_them() -> None:
     assert _named(Both(retailer=(ULTA,))) == {ULTA}
     assert _named(Both()) == frozenset()
     assert _named(ProductQuery(retailer=("shop_a", ULTA))) == {"shop_a", ULTA}
+
+
+def test_an_imported_subject_is_served_as_its_snapshot(tmp_path: Path) -> None:
+    body = get(served(tmp_path), f"/price-suggestions?subject={ULTA}&rival=shop_a")
+    rows = {r["id"]: r for r in body["data"]["rows"]}
+    priced = [r for r in rows.values() if r["subject"]["price"] is not None]
+    assert priced
+    for row in priced:
+        assert row["subject"]["basis"] == "imported_snapshot"
+        assert row["subject"]["observedOn"] == "2026-10-01"  # the import's local day
+        assert row["subject"]["ageDays"] == -1  # the import's day is after the view's last
+    assert all(r["rival"]["basis"] == "observed" for r in priced if r["rival"]["price"])
+    assert any(r["outcome"] == "suggested" for r in rows.values())
+    assert "snapshot_import_date" in codes(body)
+    assert "was_price_stated" in codes(body)  # stated was-prices are served (#203)
+
+
+def test_an_imported_rival_is_never_fresh(tmp_path: Path) -> None:
+    body = get(served(tmp_path), f"/price-suggestions?subject=shop_a&rival={ULTA}")
+    assert (body["status"], body["reason"]) == ("not_enough_data", "retailer_partial")
+    assert not body["data"]["outcomes"]
+    reasons = {r["reason"] for r in body["data"]["rows"]}
+    assert "stale_observation" in reasons
+    assert None not in reasons

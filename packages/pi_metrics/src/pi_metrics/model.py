@@ -20,7 +20,7 @@ from pi_core import ReviewState
 from pi_dataset import ContractModel, Product, ProductV3
 
 #: Changes whenever a metric definition changes; recorded in docs/decision-log.md (design §7).
-METRIC_VERSION = "2026-10-01.4"
+METRIC_VERSION = "2026-10-03.1"
 #: Summary statistics need at least this many members (design §7.4).
 MIN_COHORT = 5
 #: Edge states a counted pair may have (design §7.2): approved (human or auto-accept) or locked.
@@ -112,6 +112,8 @@ class CaveatCode(StrEnum):
     SIZE_LABELS_DIFFER_TOTAL = "size_labels_differ_total"
     #: A retailer's was-prices are unverified: its discounts and promotions are not shown.
     WAS_PRICE_UNVERIFIED = "was_price_unverified"
+    #: A retailer's discounts use its own stated was-prices, which PI has not checked.
+    WAS_PRICE_STATED = "was_price_stated"
     #: A retailer's data is a snapshot imported on ``date``; its capture date is unknown.
     SNAPSHOT_IMPORT_DATE = "snapshot_import_date"
     #: A retailer's products may include parent listings that duplicate their variants.
