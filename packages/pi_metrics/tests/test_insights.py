@@ -4,8 +4,19 @@ from decimal import Decimal
 
 import pytest
 
-from metrics_fixture import A, B, D, edge, metrics_dataset, offer, product, with_capabilities
-from pi_core import ReviewState
+from metrics_fixture import (
+    IN,
+    OUT,
+    A,
+    B,
+    D,
+    edge,
+    metrics_dataset,
+    offer,
+    product,
+    with_capabilities,
+)
+from pi_core import AvailabilityState, ReviewState
 from pi_dataset import Dataset, DatasetV3, Product
 from pi_metrics import view
 from pi_metrics.insights import LadderBasis, Policy, insights, policy
@@ -166,3 +177,33 @@ def test_unknown_or_equal_contexts_are_refused() -> None:
         insights(metrics_dataset(), A, A)
     with pytest.raises(UnknownInput):
         insights(metrics_dataset(), A, "nowhere")
+
+
+def _stocked(pid: str, brand: str, last: AvailabilityState | None) -> Product:
+    return product(pid, {A: offer(A, ["10.00"] * 3, stock=[IN, IN, last])}, brand=brand)
+
+
+def test_brand_stockouts_are_counts_whole_brand_first() -> None:
+    rows = [
+        *(_stocked(f"w{n}", "Whole", OUT) for n in range(5)),
+        *(_stocked(f"h{n}", "Half", OUT) for n in range(6)),
+        *(_stocked(f"h{n}i", "Half", IN) for n in range(6)),
+        _stocked("h-unseen", "Half", None),  # not observed: neither out nor observed
+        *(_stocked(f"f{n}", "Few", OUT) for n in range(2)),
+        _stocked("gone", "Gone", AvailabilityState.REMOVED),  # not an observed stock state
+    ]
+    by = {s.retailer: s for s in insights(_with(rows), A, B).data.stockouts}
+    a = by[A]
+    assert a.reason is None
+    assert [(r.brand, r.out_of_stock, r.observed) for r in a.brands] == [
+        ("Whole", 5, 5),
+        ("Half", 6, 12),
+    ]
+    assert (a.qualifying, a.suppressed) == (2, 1)
+    assert by[B].brands == ()
+    assert by[D].reason is Reason.RETAILER_BLOCKED
+
+
+def test_stockouts_without_the_stock_capability_say_so() -> None:
+    m = insights(with_capabilities(metrics_dataset(), stock=False), A, B)
+    assert {s.reason for s in m.data.stockouts} == {Reason.CAPABILITY_OFF, Reason.RETAILER_BLOCKED}

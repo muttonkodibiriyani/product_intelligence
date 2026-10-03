@@ -1,6 +1,6 @@
 """Decision insights: brand price policy, price gaps by size, and size-ladder value.
 
-Three aggregates for the Insights page, each over rules the other metrics already own:
+Four aggregates for the Insights page, each over rules the other metrics already own:
 
 * **Brand price policy** groups ``compare``'s counted pairs (exact, approved or locked, same
   size, one currency) by brand. A brand with at least ``MIN_COHORT`` counted pairs is labelled
@@ -17,6 +17,11 @@ Three aggregates for the Insights page, each over rules the other metrics alread
   says it used. A family with two offers at one measure is skipped as ambiguous. A step whose
   larger size costs more than ``HELD_OUT_PCT`` % more per unit is held out as two products
   sharing a name, and counted.
+* **Brand stock-outs** count, per context and brand, the offers observed out of stock on the
+  date against the offers in an observed stock state (in, low or out of stock). Counts only,
+  never a share: retailers are crawled partially, so a share of the catalogue would overstate
+  what was seen. A brand is listed when at least ``MIN_COHORT`` of its offers are out of stock,
+  whole-brand outages first; a day without an observation is never out of stock.
 
 No cross-retailer number comes from an unreviewed match: when no pair is counted the pricing
 parts say ``matches_unreviewed`` (or why else) and carry no rows.
@@ -31,6 +36,7 @@ from decimal import Decimal
 from enum import StrEnum
 from itertools import pairwise
 
+from pi_core import AvailabilityState
 from pi_dataset import ContractModel, DatasetV3, MoneyValue, ProductV3
 from pi_dataset.models import RetailerStatus
 from pi_metrics import view
@@ -56,6 +62,8 @@ POLICY_SHARE = Decimal(80)
 HELD_OUT_PCT = Decimal(50)
 #: The most ladder exceptions listed per context; ``not_cheaper`` counts them all.
 EXCEPTIONS_LISTED = 12
+#: Brands listed per context in the stock-out counts.
+BRANDS_LISTED = 12
 PROFILES = EVERY_PROFILE
 
 
@@ -134,9 +142,28 @@ class Ladder(ContractModel):
     exceptions: tuple[LadderStep, ...]
 
 
+class BrandStock(ContractModel):
+    brand: str
+    #: Offers in an observed stock state (in, low or out of stock) on the date.
+    observed: int
+    out_of_stock: int
+
+
+class Stockouts(ContractModel):
+    retailer: str
+    reason: Reason | None
+    #: Brands with at least ``MIN_COHORT`` offers out of stock, whole-brand outages first.
+    brands: tuple[BrandStock, ...]
+    #: Brands that qualify; only the first ``BRANDS_LISTED`` are listed.
+    qualifying: int
+    #: Brands with some, but fewer than ``MIN_COHORT``, offers out of stock: not listed.
+    suppressed: int
+
+
 class Insights(ContractModel):
     pricing: PairInsights
     ladders: tuple[Ladder, ...]
+    stockouts: tuple[Stockouts, ...] = ()
     policy_share_pct: Pct = POLICY_SHARE
     held_out_pct: Pct = HELD_OUT_PCT
 
@@ -323,6 +350,41 @@ def _steepest(step: LadderStep) -> tuple[Decimal, str]:
     return (-step.unit_change_pct, step.larger_id)
 
 
+def _stockouts(ds: DatasetV3, context: str, i: int) -> Stockouts:
+    reason = None
+    if view.status(ds, context) is RetailerStatus.BLOCKED:
+        reason = Reason.RETAILER_BLOCKED
+    elif not ds.meta.capabilities.stock:
+        reason = Reason.CAPABILITY_OFF
+    if reason is not None:
+        return Stockouts(retailer=context, reason=reason, brands=(), qualifying=0, suppressed=0)
+    observed: defaultdict[str, int] = defaultdict(int)
+    out: defaultdict[str, int] = defaultdict(int)
+    for product in ds.products:
+        offer = view.collected(product, context)
+        states = None if offer is None else offer.series.availability
+        state = None if states is None else states[i]
+        if state is None or not state.is_known:
+            continue
+        observed[product.brand] += 1
+        out[product.brand] += state is AvailabilityState.OUT_OF_STOCK
+    rows = sorted(
+        (
+            BrandStock(brand=b, observed=observed[b], out_of_stock=n)
+            for b, n in out.items()
+            if n >= MIN_COHORT
+        ),
+        key=lambda r: (r.out_of_stock < r.observed, -r.out_of_stock, r.brand),
+    )
+    return Stockouts(
+        retailer=context,
+        reason=None,
+        brands=tuple(rows[:BRANDS_LISTED]),
+        qualifying=len(rows),
+        suppressed=sum(1 for n in out.values() if 0 < n < MIN_COHORT),
+    )
+
+
 def insights(
     dataset: view.AnyDataset, base: str, other: str, *, on: date | None = None
 ) -> Metric[Insights]:
@@ -357,6 +419,7 @@ def insights(
         )
     pricing = _pricing(ds, base, other, on)
     ladders = tuple(_ladder(ds, c.id, i) for c in ds.meta.contexts)
+    stockouts = tuple(_stockouts(ds, c.id, i) for c in ds.meta.contexts)
     caveats = tuple(
         Caveat(code=CaveatCode.RETAILER_PARTIAL, params={"retailer": c.id})
         for c in ds.meta.contexts
@@ -365,7 +428,7 @@ def insights(
     ok = pricing.status is Status.OK or any(ladder.reason is None for ladder in ladders)
     return Metric[Insights](
         status=Status.OK if ok else Status.NOT_ENOUGH_DATA,
-        data=Insights(pricing=pricing, ladders=ladders),
+        data=Insights(pricing=pricing, ladders=ladders, stockouts=stockouts),
         reason=None if ok else pricing.reason,
         cohort=Cohort(description="counted exact pairs, approved or locked", n=pricing.n),
         caveats=caveats,

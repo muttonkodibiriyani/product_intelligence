@@ -75,7 +75,37 @@
       "suppressedBrands": 2,
       "suppressedSizes": 0,
       "unreviewed": 1
-    }
+    },
+    "stockouts": [
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": null,
+        "retailer": "shop_a",
+        "suppressed": 2
+      },
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": null,
+        "retailer": "shop_b",
+        "suppressed": 0
+      },
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": null,
+        "retailer": "shop_c",
+        "suppressed": 0
+      },
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": "retailer_blocked",
+        "retailer": "shop_d",
+        "suppressed": 0
+      }
+    ]
   },
   "detail": null,
   "meta": {

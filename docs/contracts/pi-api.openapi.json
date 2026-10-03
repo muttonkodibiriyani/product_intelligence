@@ -596,6 +596,30 @@
         "title": "BrandPrice",
         "type": "object"
       },
+      "BrandStock": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "integer"
+          },
+          "outOfStock": {
+            "title": "Outofstock",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "brand",
+          "observed",
+          "outOfStock"
+        ],
+        "title": "BrandStock",
+        "type": "object"
+      },
       "Capabilities": {
         "additionalProperties": false,
         "description": "What this snapshot can answer. All explicit: a consumer never guesses from absence.",
@@ -3416,6 +3440,14 @@
           },
           "pricing": {
             "$ref": "#/components/schemas/PairInsights"
+          },
+          "stockouts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Stockouts"
+            },
+            "title": "Stockouts",
+            "type": "array"
           }
         },
         "required": [
@@ -6269,6 +6301,49 @@
         ],
         "title": "Status",
         "type": "string"
+      },
+      "Stockouts": {
+        "additionalProperties": false,
+        "properties": {
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandStock"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "qualifying": {
+            "title": "Qualifying",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "suppressed": {
+            "title": "Suppressed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "reason",
+          "brands",
+          "qualifying",
+          "suppressed"
+        ],
+        "title": "Stockouts",
+        "type": "object"
       },
       "SuggestionRow": {
         "additionalProperties": false,
