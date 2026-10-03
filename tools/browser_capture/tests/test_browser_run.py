@@ -8,6 +8,7 @@ from __future__ import annotations
 import gzip
 import json
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -75,15 +76,17 @@ class FakeSession:
         self,
         answers: Mapping[str, Answer | Exception],
         visits: Mapping[str, Visit | Exception | Callable[[policy.Gate], Visit | Exception]],
+        engine: Engine = ENGINE,
     ) -> None:
         self.answers = answers
         self.visits = visits
+        self._engine = engine
         self.calls: list[tuple[str, str]] = []
         self.closed = False
 
     @property
     def engine(self) -> Engine:
-        return ENGINE
+        return self._engine
 
     def answer(self, url: str, *, timeout_s: float) -> Answer:
         self.calls.append(("answer", url))
@@ -231,6 +234,30 @@ def test_config_from_env_reads_every_knob_and_refuses_bad_values() -> None:
 # ----------------------------------------------------------------------- happy path
 
 
+def test_the_manifest_webrtc_line_follows_the_init_script_the_engine_installs(
+    tmp_path: Path,
+) -> None:
+    url = f"{SHOP}/p/lip-pencil"
+    shut = replace(ENGINE, init_script=policy.NO_WEBRTC)
+    session = FakeSession({f"{SHOP}/robots.txt": answer(200, ROBOTS)}, {url: visit(url)}, shut)
+    job, _ = make_job(tmp_path, session, [url])
+    job.run()
+    job.finish()
+    browser = read_json(tmp_path, "manifest.json")["browser"]
+    assert browser["init_script"] == policy.NO_WEBRTC
+    assert browser["webrtc"] == "removed from every frame by the init script"
+    # a script that leaves one constructor behind is recorded as such, naming it
+    partial = replace(ENGINE, init_script="delete window.RTCPeerConnection;")
+    session = FakeSession({f"{SHOP}/robots.txt": answer(200, ROBOTS)}, {url: visit(url)}, partial)
+    job, _ = make_job(tmp_path / "partial", session, [url])
+    job.run()
+    job.finish()
+    browser = read_json(tmp_path / "partial", "manifest.json")["browser"]
+    assert browser["webrtc"] == (
+        "left in place: init script does not delete webkitRTCPeerConnection, RTCDataChannel"
+    )
+
+
 def test_an_allowed_page_is_visited_once_with_its_evidence_stored(tmp_path: Path) -> None:
     url = f"{SHOP}/p/lip-pencil"
     session = FakeSession({f"{SHOP}/robots.txt": answer(200, ROBOTS)}, {url: visit(url)})
@@ -273,7 +300,10 @@ def test_an_allowed_page_is_visited_once_with_its_evidence_stored(tmp_path: Path
         "launch_args": [],
         "policy_args": [],
         "init_script": "",
-        "webrtc": "removed from every frame by the init script",
+        "webrtc": (
+            "left in place: init script does not delete "
+            "RTCPeerConnection, webkitRTCPeerConnection, RTCDataChannel"
+        ),
         "fresh_browser_per_page": True,
         "service_workers": "block",
         "websockets": "refused",
