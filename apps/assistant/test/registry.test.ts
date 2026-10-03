@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { verifyAnswerNumbers } from "../src/guard/verifier.js";
-import { TOOLS } from "../src/tools/definitions.js";
+import { readFileSync } from "node:fs";
+
+import { MAX_LIMIT, SUGGESTION_ROWS, TOOLS } from "../src/tools/definitions.js";
 import { MAX_RESULT_CHARS, ToolRegistry, type ToolEnvelope } from "../src/tools/registry.js";
 import { type AnyToolDef, callerRole, defineTool } from "../src/tools/types.js";
 import { z } from "zod";
@@ -430,5 +432,222 @@ describe("category_compare (API 1.8.0)", () => {
       false,
     );
     expect(tool?.input.safeParse({ ...PAIR, level: "leaf" }).success).toBe(false);
+  });
+});
+
+describe("price_suggestions (API 1.14.0)", () => {
+  const aed = (amount: string) => ({ amount, currency: "AED", minor: Number(amount) * 100 });
+  const sideOf = (context: string, price: string, basis = "observed") => ({
+    context,
+    price: aed(price),
+    observedOn: "2026-09-30",
+    ageDays: 0,
+    basis,
+  });
+  const DATA = {
+    label: "rule-based, not ML",
+    subject: "north",
+    rival: "south",
+    aim: "beat",
+    guardrails: { maxChangePct: "10", minChangePct: "1", endings: [".00", ".50", "x9.00"] },
+    staleDays: 7,
+    rows: [
+      {
+        id: "p03",
+        name: INJECTION,
+        brand: "Aurel",
+        category: ["skincare"],
+        subject: sideOf("north", "110.00", "imported_snapshot"),
+        rival: sideOf("south", "100.00"),
+        match: { matchClass: "exact", reviewState: "locked", confidence: "0.95" },
+        gap: { amount: aed("-10.00"), pct: "-9.1", cheaper: "other" },
+        outcome: "suggested",
+        suggested: aed("99.50"),
+        changePct: "-9.5",
+        reachesRival: true,
+        reason: null,
+        rationale: [{ code: "beats_rival", params: { suggested: "99.50", rival: "100.00" } }],
+      },
+      {
+        id: "p09",
+        name: "Night Serum",
+        brand: "Aurel",
+        category: ["skincare"],
+        subject: sideOf("north", "80.00"),
+        rival: null,
+        match: null,
+        gap: null,
+        outcome: null,
+        suggested: null,
+        changePct: null,
+        reachesRival: false,
+        reason: "stale_observation",
+        rationale: [],
+      },
+    ],
+    total: 2,
+    truncated: false,
+    outcomes: { suggested: 1 },
+    reasons: { stale_observation: 1 },
+  };
+
+  it("sends the pair and ids, keeps enums verifiable and wraps product text", async () => {
+    const api = new FakeApi(() => okEnvelope(DATA));
+    const result = (await registry(api).run(
+      "price_suggestions",
+      { subject: "north", rival: "south", ids: ["p03", "p09"], maxChangePct: "8" },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(api.calls[0]?.request).toEqual({
+      method: "GET",
+      path: "/api/v1/price-suggestions",
+      query: {
+        subject: ["north"],
+        rival: ["south"],
+        id: ["p03", "p09"],
+        aim: ["beat"],
+        maxChangePct: ["8"],
+        limit: ["10"],
+      },
+    });
+    expect(result.status).toBe("ok");
+    const rows = (result.data as { rows: Record<string, unknown>[] }).rows;
+    expect(rows[0]?.outcome).toBe("suggested");
+    expect((rows[0]?.subject as { basis: unknown }).basis).toBe("imported_snapshot");
+    expect(rows[1]?.reason).toBe("stale_observation");
+    expect(Object.keys(rows[0]?.name as object)).toEqual(["untrusted"]);
+    expect(
+      verifyAnswerNumbers("Cut [[product:p03]] from 110.00 to 99.50 AED (-9.5%).", [result]).ok,
+    ).toBe(true);
+    expect(verifyAnswerNumbers("Cut [[product:p03]] to 95.00 AED.", [result]).ok).toBe(false);
+  });
+
+  it("rejects a same-retailer pair, ids with filters and a non-decimal guardrail", () => {
+    const tool = TOOLS.find((t) => t.name === "price_suggestions");
+    const pair = { subject: "north", rival: "south" };
+    expect(tool?.input.safeParse({ subject: "north", rival: "north" }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, ids: ["p1"], brand: ["Aurel"] }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, maxChangePct: 10 }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, aim: "raise" }).success).toBe(false);
+    expect(tool?.input.safeParse({ ...pair, aim: "match" }).success).toBe(true);
+  });
+
+  it("keeps a full page of golden rows with long names under MAX_RESULT_CHARS", async () => {
+    const golden = JSON.parse(
+      readFileSync(
+        new URL("../../../docs/contracts/golden/pi-api/price-suggestions.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { data: { rows: Record<string, unknown>[] } };
+    const rows = golden.data.rows;
+    golden.data.rows = Array.from({ length: SUGGESTION_ROWS }, (_, i) => ({
+      ...rows[i % rows.length],
+      id: `p${String(i)}`,
+      name: "N".repeat(120),
+      brand: "B".repeat(60),
+    }));
+    const api = new FakeApi(() => golden);
+    const result = (await registry(api).run(
+      "price_suggestions",
+      { subject: "north", rival: "south" },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(result.status).toBe("ok");
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+  });
+});
+
+describe("search_products v3 (size cap)", () => {
+  const RETAILERS = ["north", "south", "east", "west"];
+  const aed = (amount: string) => ({ amount, currency: "AED", minor: 123450 });
+  const matches = RETAILERS.flatMap((a, i) =>
+    RETAILERS.slice(i + 1).map((b) => ({
+      a,
+      b,
+      confidence: "0.95",
+      matchClass: "exact",
+      reviewState: "approved",
+    })),
+  );
+  // Worst case: four retailers priced, six match pairs, 120-character name, long category path.
+  const card = (i: number) => ({
+    id: `prod_${String(i).padStart(8, "0")}`,
+    brand: "B".repeat(60),
+    name: "N".repeat(120),
+    category: ["c".repeat(30), "d".repeat(30), "e".repeat(30)],
+    image: `https://img.example/${"i".repeat(150)}`,
+    size: { unit: "ml", value: "100" },
+    sizeLabel: "100 ml / 3.4 fl oz",
+    sizeSystem: "metric",
+    prices: Object.fromEntries(RETAILERS.map((r) => [r, aed("1234.50")])),
+    priceFlags: {},
+    matches,
+    gap: {
+      base: "north",
+      other: "south",
+      excludedReason: null,
+      sizeLabels: null,
+      gap: { amount: aed("-120.50"), pct: "-12.3", cheaper: "other" },
+    },
+  });
+  const page = (n: number) =>
+    okEnvelope({
+      items: Array.from({ length: n }, (_, i) => card(i)),
+      total: 5000,
+      nextCursor: "c",
+    });
+
+  it("fits a full worst-case page under MAX_RESULT_CHARS and slims each card's matches", async () => {
+    const api = new FakeApi(() => page(MAX_LIMIT));
+    const result = (await registry(api).run(
+      "search_products",
+      { limit: MAX_LIMIT },
+      VIEWER,
+      "t",
+    )) as ToolEnvelope;
+    expect(result.status).toBe("ok");
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+    const items = (result.data as { items: Record<string, unknown>[] }).items;
+    expect(items).toHaveLength(MAX_LIMIT);
+    expect(items[0]).not.toHaveProperty("matches");
+    expect(items[0]?.unconfirmedMatch).toBe(false);
+    expect(items[0]).toHaveProperty("gap");
+    expect(items[0]).toHaveProperty("prices");
+  });
+
+  it.each([
+    ["exact and approved or locked", [{ reviewState: "locked" }, {}], 2, false],
+    ["one proposed edge", [{}, { reviewState: "proposed" }], 2, true],
+    ["one rejected edge", [{ reviewState: "rejected" }], 2, true],
+    ["an approved family edge", [{ matchClass: "family" }], 2, true],
+    ["an approved size_normalized edge", [{ matchClass: "size_normalized" }], 2, true],
+    ["several retailers priced with no edge", [], 2, true],
+    ["one retailer priced with no edge", [], 1, false],
+  ])("flags unconfirmedMatch for %s", async (_label, edges, priced, expected) => {
+    const item = {
+      ...card(0),
+      prices: Object.fromEntries(RETAILERS.slice(0, priced).map((r) => [r, aed("10.00")])),
+      matches: edges.map((edge) => ({
+        a: "north",
+        b: "south",
+        confidence: null,
+        matchClass: "exact",
+        reviewState: "approved",
+        ...edge,
+      })),
+    };
+    const api = new FakeApi(() => okEnvelope({ items: [item], total: 1, nextCursor: null }));
+    const result = (await registry(api).run("search_products", {}, VIEWER, "t")) as ToolEnvelope;
+    const [out] = (result.data as { items: Record<string, unknown>[] }).items;
+    expect(out?.unconfirmedMatch).toBe(expected);
+    expect(out).not.toHaveProperty("matches");
+  });
+
+  it("caps limit at 15 and defaults to 10", () => {
+    const tool = TOOLS.find((t) => t.name === "search_products");
+    expect(tool?.input.safeParse({ limit: 16 }).success).toBe(false);
+    expect((tool?.input.parse({}) as { limit: number }).limit).toBe(10);
   });
 });

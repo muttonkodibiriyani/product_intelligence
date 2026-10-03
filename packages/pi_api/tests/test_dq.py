@@ -390,3 +390,27 @@ def test_a_query_naming_retailers_in_two_fields_involves_all_of_them() -> None:
     assert _named(Both(retailer=(ULTA,))) == {ULTA}
     assert _named(Both()) == frozenset()
     assert _named(ProductQuery(retailer=("shop_a", ULTA))) == {"shop_a", ULTA}
+
+
+def test_an_imported_subject_is_served_as_its_snapshot(tmp_path: Path) -> None:
+    body = get(served(tmp_path), f"/price-suggestions?subject={ULTA}&rival=shop_a")
+    rows = {r["id"]: r for r in body["data"]["rows"]}
+    priced = [r for r in rows.values() if r["subject"]["price"] is not None]
+    assert priced
+    for row in priced:
+        assert row["subject"]["basis"] == "imported_snapshot"
+        assert row["subject"]["observedOn"] == "2026-10-01"  # the import's local day
+        assert row["subject"]["ageDays"] == -1  # the import's day is after the view's last
+    assert all(r["rival"]["basis"] == "observed" for r in priced if r["rival"]["price"])
+    assert any(r["outcome"] == "suggested" for r in rows.values())
+    assert "snapshot_import_date" in codes(body)
+    assert "was_price_stated" in codes(body)  # stated was-prices are served (#203)
+
+
+def test_an_imported_rival_is_never_fresh(tmp_path: Path) -> None:
+    body = get(served(tmp_path), f"/price-suggestions?subject=shop_a&rival={ULTA}")
+    assert (body["status"], body["reason"]) == ("not_enough_data", "retailer_partial")
+    assert not body["data"]["outcomes"]
+    reasons = {r["reason"] for r in body["data"]["rows"]}
+    assert "stale_observation" in reasons
+    assert None not in reasons

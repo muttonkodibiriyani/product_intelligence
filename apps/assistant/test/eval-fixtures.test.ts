@@ -18,6 +18,8 @@ describe("S6 eval fixtures", () => {
     ["price_history", { id: "p01" }, "110.00"],
     ["price_ladder", { retailer: "north" }, "64.00"],
     ["brand_positioning", { retailer: "north" }, "58.75"],
+    // API 1.14.0: the pair rule's suggestion for p02 (gold case "price suggestion").
+    ["price_suggestions", { subject: "north", rival: "south" }, "41.00"],
   ])("%s answers with its planted figure", async (tool, input, figure) => {
     const result = await run(tool, input);
     expect(result.status).toBe("ok");

@@ -31,6 +31,8 @@ from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
 from pi_metrics.compare import Comparison, PairRow
 from pi_metrics.launches import Launch, Launches
+from pi_metrics.pair_pricing import PairAim, PriceSuggestions
+from pi_metrics.pricing import Guardrails
 from pi_metrics.promotions import PromoItem, Promotions
 from pi_metrics.taxonomy import Level
 
@@ -116,6 +118,47 @@ class IndexQuery(PairQuery):
     end: date | None = Field(default=None, alias="to")
 
 
+class PriceSuggestionsQuery(FilterQuery, RowLimit):
+    """``/price-suggestions``: one subject context advised against one rival context."""
+
+    subject: RetailerId = Field(description="The context whose prices are advised.")
+    rival: RetailerId = Field(description="The context it should beat or match.")
+    id: Values = ()
+    on: date | None = Field(default=None, alias="date")
+    aim: PairAim = PairAim.BEAT
+    max_change_pct: DecimalText | None = Field(
+        default=None, description="Largest cut, in percent of the current price (0-50, default 10)."
+    )
+    min_change_pct: DecimalText | None = Field(
+        default=None, description="Smallest cut worth suggesting, in percent (default 1)."
+    )
+
+    def where(self) -> ProductFilter:
+        return ProductFilter(ids=self.id, brands=self.brand, categories=self.category)
+
+    def guardrails(self) -> Guardrails:
+        given = {
+            name: Decimal(value)
+            for name, value in (
+                ("max_change_pct", self.max_change_pct),
+                ("min_change_pct", self.min_change_pct),
+            )
+            if value is not None
+        }
+        rails = Guardrails()
+        if not given:
+            return rails
+        high = given.get("max_change_pct", rails.max_change_pct)
+        low = given.get("min_change_pct", rails.min_change_pct)
+        if not Decimal(0) < high <= Decimal(50):
+            msg = "maxChangePct must be above 0 and at most 50"
+            raise InvalidQueryError(msg)
+        if low > high:
+            msg = "minChangePct must not exceed maxChangePct"
+            raise InvalidQueryError(msg)
+        return Guardrails(max_change_pct=high, min_change_pct=low)
+
+
 class RetailersQuery(FilterQuery):
     retailer: RetailerIds = ()
 
@@ -192,6 +235,17 @@ def capped_promotions(metric: Metric[Promotions], limit: int | None) -> Metric[P
     data = metric.data.model_copy(
         update={"items": tuple(items[:limit]), "truncated": len(items) > limit}
     )
+    return metric.model_copy(update={"data": data})
+
+
+def capped_suggestions(
+    metric: Metric[PriceSuggestions], limit: int | None
+) -> Metric[PriceSuggestions]:
+    """The first ``limit`` rows in the metric's own order; counts are over every row."""
+    if limit is None:
+        return metric
+    rows = metric.data.rows
+    data = metric.data.model_copy(update={"rows": rows[:limit], "truncated": len(rows) > limit})
     return metric.model_copy(update={"data": data})
 
 

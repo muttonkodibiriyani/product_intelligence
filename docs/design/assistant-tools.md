@@ -6,17 +6,18 @@ are defined in code (`apps/assistant/src/tools/definitions.ts`) and never genera
 `apps/assistant/test/endpoint-map.test.ts` fails when a new `/api/v1` operation has neither a
 tool nor an exclusion below, or when this page misses a tool or an operation.
 
-Contract: `docs/contracts/pi-api.openapi.json` (API 1.8.0). All operations are GET.
+Contract: `docs/contracts/pi-api.openapi.json` (API 1.14.0). All operations are GET.
 
 ## Tools
 
 | Tool | Endpoint | What it returns |
 | --- | --- | --- |
-| `search_products` | `/products` | Product cards with the latest price per retailer; the gap for two retailers |
+| `search_products` | `/products` | Product cards with the latest price per retailer; the gap for two retailers. Each card's match list becomes one `unconfirmedMatch` flag (true when any edge is not exact and approved/locked, or several retailers are priced with no edge; such prices are not compared), match details come from `get_product`, and a page is at most 15 cards, so a worst-case page fits the result size cap |
 | `price_per_unit` | `/products` | Price per 1 ml or 1 g (listed price / published size, exact decimals), ranked; products with no size or price are counted as excluded |
 | `get_product` | `/products/{product_id}` | Offers per retailer, pair gaps, match details, evidence links |
 | `price_history` | `/products/{product_id}/history` | Per-retailer price, regular price and availability per collection date |
 | `compare` | `/compare` | Exact same-size pair gaps between two retailers, with summaries |
+| `price_suggestions` | `/price-suggestions` | Rule-based (not ML) price cuts so a subject retailer beats or matches a rival on exact reviewed same-size pairs, with the outcome or no-suggestion reason per row (API 1.14.0) |
 | `category_compare` | `/category-compare` | Per-category price stats for two retailers' full catalogues and the gap between medians (no product matching); drops the `unmapped` breadcrumb list, keeping its count |
 | `index_trend` | `/index` | Fixed-basket price index between two retailers over time |
 | `promotions` | `/promotions` | Promotion share per retailer and promoted products |

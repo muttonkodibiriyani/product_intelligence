@@ -179,3 +179,31 @@ wired:
   positioned at its promotional price. A `regular`-price basis is a possible later option.
 * **KPI-26..30: TODO.** The requirements register is not in this public repository, so these KPIs
   are cited by ID only. The coordinator maps them; no register wording is copied here.
+
+## 9. Pair suggestions: beat or match one rival (API 1.14.0)
+
+Task 01a1005d adds a second, separate rule, `pi_metrics.pair_pricing`, served by
+`GET /api/v1/price-suggestions?subject=&rival=` and the assistant tool `price_suggestions`. It
+does not change the cohort rule above.
+
+* **Pairs:** a product the subject offers counts only if compare's pair ladder accepts it:
+  an exact match, approved or locked, same size, both priced, not early, in one currency. Every
+  other product has a `reason` (`no_match`, `match_unreviewed`, `size_mismatch`, `unpriced`, ...).
+* **Down only:** `aim` is `beat` (default; land strictly below the rival) or `match`. The cut is
+  clamped to `maxChangePct` (default 10) and rounded to the guardrail endings, using
+  `allowed_prices` from §5. An outcome is `suggested`, `already_competitive` (the gap is still
+  returned as data), `below_min_change` or `no_allowed_price`. A clamped cut that stays above
+  the rival has `reachesRival` false and the rationale `short_of_rival`.
+* **Staleness:** `STALE_DAYS = 7`, echoed as `staleDays`. A side whose last collection is
+  older is `stale_observation`. The route reads the observed dataset, never `latest`, which
+  carries a stale source's last price forward.
+* **One-off imports:** only the subject may be served from a one-off import. That is detected
+  from the loaded data (`Loaded.imported`), never from a retailer id. Such a row's subject has
+  `basis: imported_snapshot`, `observedOn` = the import date, and `ageDays`, which can be
+  negative when the import postdates the crawl. The envelope carries the import caveat. The UI and
+  the assistant say "<retailer> price from the <date> import". An imported rival is always
+  `stale_observation`, and the envelope reason is `retailer_partial`.
+* **Assistant:** the tool cites each row as a product token, quotes `suggested`, `changePct`
+  and the rationale as given, and never claims a sales, revenue or margin effect. The refusal
+  eval covers that.
+* **Web view:** FE builds it after this merges (b3).
