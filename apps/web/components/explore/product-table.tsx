@@ -6,7 +6,7 @@ import type { Schemas } from '@/lib/api/types';
 import { gapBar, gapScale } from '@/lib/verdict';
 import { Known } from '../ui/known';
 import { Money, Pct, Price as PriceOf } from '../ui/money';
-import { SizeText } from '../ui/product-card';
+import { MatchReviewLabel, SizeText } from '../ui/product-card';
 import { monogram, RowThumb } from './row-thumb';
 
 type Card = Schemas['ProductCard'];
@@ -100,6 +100,7 @@ export function ProductTable({
                       {c.size && c.category.length > 0 && ' · '}
                       <span dir="auto">{c.category.join(' › ')}</span>
                     </span>
+                    <MatchReviewLabel review={c.matchReview} className="mt-1" />
                   </div>
                 </div>
               </th>

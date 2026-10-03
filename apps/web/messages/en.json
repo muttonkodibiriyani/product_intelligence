@@ -260,7 +260,7 @@
     "view": "Show as",
     "viewGrid": "Grid",
     "viewList": "List",
-    "matchedHint": "Both shops: products matched to the same product at the other shop.",
+    "matchedHint": "Both shops: products matched to the same product at the other shop. Matches not yet reviewed are labelled.",
     "done": "Done",
     "chips": {
       "label": "Active filters",
@@ -301,7 +301,9 @@
     "cheaper": "{shop} cheaper {pct}%",
     "dearer": "{shop} {pct}% dearer",
     "same": "Same price",
-    "sizesDiffer": "Sizes differ"
+    "sizesDiffer": "Sizes differ",
+    "unreviewedMatch": "Unreviewed match",
+    "unreviewedMatchHint": "Matched to the same product at another shop, but a reviewer has not confirmed it yet, so it is left out of price gaps."
   },
   "match": {
     "class": {
