@@ -42,6 +42,7 @@ from pi_api.analytics import (
     CompareQuery,
     CompareRowsQuery,
     IndexQuery,
+    InsightsQuery,
     LaunchesRowsQuery,
     MatchesQuery,
     MatchPage,
@@ -134,6 +135,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
+from pi_metrics.insights import Insights, insights
 from pi_metrics.pair_pricing import PriceSuggestions, price_suggestions
 from pi_metrics.summary import Summary
 from pi_metrics.view import AmbiguousContext, UnknownInput
@@ -676,6 +678,7 @@ def build_api(
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
     _metric_routes(api, source, images)
+    _insights_route(api, source)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -954,6 +957,35 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
     except BaseException:  # pragma: no cover - no response, so free the slot now
         stream.close()
         raise
+
+
+def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
+    """S3: the Insights page aggregates (``pi_metrics.insights``)."""
+
+    @api.get(
+        f"{PREFIX}/insights",
+        response_model=Envelope[Insights],
+        description=(
+            "Decision aggregates for the Insights page. pricing: compare's counted pairs "
+            "(exact, approved or locked, same size, one currency) between retailers=<base>,"
+            "<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at "
+            "least policySharePct % of a brand's pairs agree, else mixed) and by the base "
+            "offer's published measure; groups under minCohort are withheld and counted in "
+            "suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is "
+            "still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per "
+            "context, consecutive sizes of one family (the retailer's content.family, else "
+            "the same brand, name, category and unit: basis=name) and how many larger sizes "
+            "do not cost less per unit; a step more than heldOutPct % dearer per unit is "
+            "held out as a different product and counted in heldOut."
+        ),
+    )
+    def get_insights(query: Annotated[InsightsQuery, Query()], _: Viewer) -> Envelope[Insights]:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = insights(loaded.dataset, base, other, on=query.on)
+        if query.on is None:
+            metric = stale_first(loaded, metric, (base, other))
+        return respond(loaded, "insights", query, metric)
 
 
 def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
