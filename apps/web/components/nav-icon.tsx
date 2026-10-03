@@ -33,20 +33,3 @@ export function NavIcon({ name, size = 16 }: { name: NavKey; size?: number }) {
     />
   );
 }
-
-/** The brand mark: three bars on an ink tile, the tallest in Ulta orange. */
-export function BrandMark({ size = 28 }: { size?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="grid shrink-0 place-items-center rounded-[8px] bg-ink"
-      style={{ width: size, height: size }}
-    >
-      <svg width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="8" width="3" height="6" rx="1" fill="#fff" />
-        <rect x="6.5" y="4" width="3" height="10" rx="1" fill="#fff" />
-        <rect x="11" y="1.5" width="3" height="12.5" rx="1" fill="var(--color-ulta)" />
-      </svg>
-    </span>
-  );
-}

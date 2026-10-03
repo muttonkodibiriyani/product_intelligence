@@ -210,5 +210,10 @@ export function Chart({
 
   // LTR box: an inherited rtl direction flips SVG text-anchor and misplaces axis labels. The
   // options mirror the layout for Arabic instead, and the tooltip sets its own direction.
-  return <div ref={el} dir="ltr" role="img" aria-label={label} data-chart className="w-full" />;
+  // Clipped: ECharts sizes its inner box in px and only shrinks it when the observer fires, a frame
+  // or more after a resize (Safari is slowest), so a narrower card never scrolls the page sideways.
+  // The tooltip is confined to the box, so the clip never cuts it.
+  return (
+    <div ref={el} dir="ltr" role="img" aria-label={label} data-chart className="w-full overflow-hidden" />
+  );
 }

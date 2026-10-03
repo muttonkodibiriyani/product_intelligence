@@ -609,3 +609,41 @@ def test_offer_listing_count_is_optional_and_at_least_one() -> None:
     for bad in (0, -1, "3"):
         offer["listingCount"] = bad
         assert "listingCount" in _errors(doc)
+
+
+def test_offer_content_is_optional_and_checked() -> None:
+    doc = _v3_doc()
+    offer = next(iter(doc["products"][0]["offers"].values()))
+    assert offer["content"] is None  # upgrade: v2 has no page content
+    del offer["content"]  # additive: a v3 document without it still loads
+    assert next(iter(_load(doc).products[0].offers.values())).content is None
+    offer["content"] = {
+        "captured": ["description", "images", "shade", "gtin"],
+        "description": "Long-wear.",
+        "images": ["https://img.example/1.jpg"],
+        "variants": [{"sku": "A1", "shade": "Rose", "gtin": "4006381333931"}],
+        "family": "10",
+    }
+    content = next(iter(_load(doc).products[0].offers.values())).content
+    assert content is not None
+    assert content.variants[0].gtin == "4006381333931"
+    assert content.ingredients is None
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"variants": [{"sku": "A1", "gtin": "4006381333932"}]}, "GTIN"),
+        ({"variants": [{"sku": "A1", "gtin": "12345"}]}, "GTIN"),
+        ({"ingredients": "Aqua"}, "ingredients"),
+        ({"captured": ["description", "description"]}, "description"),
+        ({"captured": ["colour"]}, "captured"),
+        ({"description": ""}, "description"),
+        ({"variants": [{"sku": ""}]}, "sku"),
+    ],
+)
+def test_bad_offer_content(change: dict[str, Any], message: str) -> None:
+    doc = _v3_doc()
+    offer = next(iter(doc["products"][0]["offers"].values()))
+    offer["content"] = {"captured": ["description", "gtin"], "description": "x", **change}
+    assert message in _errors(doc)

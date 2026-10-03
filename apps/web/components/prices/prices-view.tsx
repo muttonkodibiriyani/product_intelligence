@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { formatCount } from '@/lib/format';
@@ -57,19 +57,19 @@ export function PricesView() {
   const tw = useTranslations('widgets');
   const locale = useLocale();
   const sp = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
   const tr = useTranslations('reasons');
   const name = useRetailerName();
   const { ids, pair, loading, error } = useRetailers();
   const s = useSummaries(ids);
 
+  // Only the query changes, so the history API is enough: Next syncs useSearchParams with it, and
+  // unlike router.replace there is no page payload to fetch first, so the URL and chart move on click.
   const set = (k: string, v: string | null) => {
     const q = new URLSearchParams(sp.toString());
     if (v === null) q.delete(k);
     else q.set(k, v);
     const qs = q.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
   };
   const wanted = sp.get('retailer');
   const selected = (wanted && ids.includes(wanted) ? wanted : ids[0]) ?? null;

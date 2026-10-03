@@ -201,7 +201,7 @@ are **numbers**.
 |---|---|---|
 | `enabled` | boolean | `false` |
 | `model` | string | `gemini-2.5-flash` |
-| `promptVersion` | string | `chat-2026-10-01.3` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` on the deployed commit; re-checked in the section 10 version pre-check) |
+| `promptVersion` | string | `chat-2026-10-03.1` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` on the deployed commit; re-checked in the section 10 version pre-check) |
 | `priceTableVersion` | string | `2026-09-30-planning` (must equal `version` in `apps/assistant/config/prices.json`) |
 | `caps.monthUsd` | string | `4.00` |
 | `caps.labelMonthUsd.ci` | string | `1.50` |
