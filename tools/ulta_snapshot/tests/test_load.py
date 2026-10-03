@@ -375,6 +375,16 @@ def test_prod_database_is_refused_before_any_query() -> None:
         guard(Conn())  # type: ignore[arg-type]
 
 
+#: offline_import.ulta_catalogue's statement, verbatim: renaming either side fails a test.
+IMPORTER_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtext('ulta-catalogue-import'))"
+
+
+def test_writer_lock_is_the_ulta_catalogue_importers_lock() -> None:
+    importer = Path(__file__).parents[3] / "tools/offline_import/offline_import/ulta_catalogue.py"
+    assert f'"{IMPORTER_LOCK_SQL}"' in importer.read_text()
+    assert f"hashtext('{load.WRITER_LOCK}')" in IMPORTER_LOCK_SQL
+
+
 def _lock_free(url: str) -> bool:
     """True if another session can take the ulta_catalogue writer lock right now."""
     with psycopg.connect(url) as other:
@@ -388,7 +398,7 @@ def test_concurrent_ulta_writer_refuses_and_writes_nothing(fresh_db: str, tmp_pa
     snap = _snapshot(tmp_path, [_rec("ulta_ae_pdp_en_morphe_trio.html", "en")])
     with psycopg.connect(fresh_db) as importer, psycopg.connect(fresh_db) as conn:
         # offline_import.ulta_catalogue's lock, held in an open transaction.
-        importer.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (load.WRITER_LOCK,))
+        importer.execute(IMPORTER_LOCK_SQL)
         before = _rows(conn)
         with pytest.raises(Refused, match="lock"):
             Loader(conn, snap, "gs://test/ulta")

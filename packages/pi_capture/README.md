@@ -30,6 +30,12 @@ package says what the page should have told us and what it actually did.
   grouping and nothing else: `1 299,50` reads, `12 50` (fils set as a superscript) and `1 2 3`
   are refused rather than read as 1250 and 123. `loads` refuses an untagged float, NaN or
   Infinity in a capture line.
+* `pi_capture.faces` — the first shop-specific extractor (faces.ae, Salesforce Commerce Cloud):
+  reads the `dataLayer` `view_item` push, the SFCC data attributes and the rendered fragments
+  (shade swatches, MUSE points, tabby/tamara instalments, badges, free-gift button, gallery, VAT
+  line, description accordion) first, then lets the generic extractors fill the gaps. Ratings and
+  related products render client-side there and are recorded `not_shown`. `faces_facts` keeps
+  the availability flags. Tests use synthetic SFCC-shaped HTML only.
 * `pi_capture.coverage` — per retailer, per applicable page-sourced attribute: how many pages
   showed it, hid it, blocked us, could not be read, or was never looked for by the extractor.
   JSON and a plain Markdown table.
