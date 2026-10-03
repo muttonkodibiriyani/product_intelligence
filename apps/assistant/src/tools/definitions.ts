@@ -515,6 +515,46 @@ export const categoryCompare = defineTool({
   },
 });
 
+/**
+ * Row cap for price_suggestions. A row carries both sides, the match and the rationale (about
+ * 900 characters sanitised), so 20 rows already exceed MAX_RESULT_CHARS; 10 leave room for long
+ * product names. Suggestions come first, so the cut keeps them.
+ */
+export const SUGGESTION_ROWS = 10;
+
+export const priceSuggestions = defineTool({
+  name: "price_suggestions",
+  version: "1",
+  description:
+    "Rule-based (not ML) cuts so subject beats or matches rival on exact reviewed same-size " +
+    "pairs. Quote each row's outcome or reason as given; never claim sales effects. Basis " +
+    "imported_snapshot: say 'price from the <observedOn> import'.",
+  minRole: "viewer",
+  listKey: "rows",
+  input: z
+    .object({
+      subject: retailerId,
+      rival: retailerId,
+      ids: z.array(productId).min(1).max(MAX_LIST).optional(),
+      ...filters,
+      date: isoDate.optional(),
+      aim: z.enum(["beat", "match"]).default("beat"),
+      maxChangePct: money.optional(),
+      minChangePct: money.optional(),
+      limit: z.number().int().min(1).max(SUGGESTION_ROWS).default(SUGGESTION_ROWS),
+    })
+    .strict()
+    // One refinement, so the contract test can still reach the object shape.
+    .superRefine((value, ctx) => {
+      if (value.subject === value.rival) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "two different retailers" });
+      }
+      if (!noIdsWithFilters(value))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, ...NO_IDS_WITH_FILTERS });
+    }),
+  request: ({ ids, ...rest }) => get("/price-suggestions", { ...rest, id: ids }),
+});
+
 export const TOOLS = [
   searchProducts,
   pricePerUnit,
@@ -534,4 +574,5 @@ export const TOOLS = [
   categoryMix,
   assortmentBreadth,
   categoryCompare,
+  priceSuggestions,
 ] as const;

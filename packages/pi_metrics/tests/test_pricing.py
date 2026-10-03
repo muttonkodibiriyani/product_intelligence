@@ -12,8 +12,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from metrics_fixture import A, B, metrics_dataset
+from pi_dataset import ContractModel
 from pi_metrics import Reason, Status, UnknownInput
 from pi_metrics.gated import Gated
+from pi_metrics.pair_pricing import PriceSuggestions, SuggestionRow
 from pi_metrics.pricing import (
     _ORDER,
     RULE_LABEL,
@@ -380,7 +382,9 @@ def _names(schema: Any) -> set[str]:
     return found
 
 
-@pytest.mark.parametrize("model", [PricePosition, PriceSuggestion, Gated])
-def test_no_demand_fields(model: type[PricePosition | PriceSuggestion | Gated]) -> None:
+@pytest.mark.parametrize(
+    "model", [PricePosition, PriceSuggestion, Gated, PriceSuggestions, SuggestionRow]
+)
+def test_no_demand_fields(model: type[ContractModel]) -> None:
     names = {n.casefold() for n in _names(model.model_json_schema(by_alias=False))}
     assert not [n for n in names for w in DEMAND_WORDS if w in n]

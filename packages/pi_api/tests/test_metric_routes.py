@@ -44,6 +44,7 @@ METRIC_PATHS = [
     "/launches",
     "/reviews-summary",
     "/matches",
+    f"/price-suggestions?subject={A}&rival={B}",
 ]
 
 
@@ -85,6 +86,13 @@ def test_metric_routes_are_bearer_only_and_no_store(client: Client, path: str) -
         "/promotions?limit=ten",
         "/launches?limit=0",
         "/index?retailers=shop_a,shop_b&limit=3",
+        "/price-suggestions?subject=shop_a",
+        "/price-suggestions?subject=shop_a&rival=shop_a",
+        "/price-suggestions?subject=shop_a&rival=shop_b&maxChangePct=60",
+        "/price-suggestions?subject=shop_a&rival=shop_b&maxChangePct=0",
+        "/price-suggestions?subject=shop_a&rival=shop_b&minChangePct=20",
+        "/price-suggestions?subject=shop_a&rival=shop_b&aim=raise",
+        "/price-suggestions?subject=shop_a&rival=shop_b&maxChangePct=-5",
     ],
 )
 def test_bad_metric_queries_are_422(client: Client, path: str) -> None:
@@ -374,3 +382,58 @@ def test_category_compare_at_common_level_says_the_breadcrumb_is_missing(client:
 
 def test_category_compare_refuses_an_unknown_level(client: Client) -> None:
     assert body(client, f"/category-compare?{PAIR}&level=shade", 422)["error"]["code"]
+
+
+SUGGEST = f"/price-suggestions?subject={A}&rival={B}"
+
+
+def test_price_suggestions_are_rule_based_and_down_only(client: Client) -> None:
+    doc = body(client, SUGGEST)
+    assert doc["status"] == "ok"
+    data = doc["data"]
+    assert (data["label"], data["aim"], data["staleDays"]) == ("rule-based, not ML", "beat", 7)
+    assert data["guardrails"]["maxChangePct"] == "10"
+    rows = {r["id"]: r for r in data["rows"]}
+    p03 = rows["p03"]
+    assert (p03["outcome"], p03["suggested"]["amount"], p03["changePct"]) == (
+        "suggested",
+        "99.50",
+        "-9.5",
+    )
+    assert p03["subject"]["price"]["amount"] == "110.00"
+    assert p03["rival"]["basis"] == "observed"
+    assert p03["match"] == {"matchClass": "exact", "reviewState": "locked", "confidence": "0.95"}
+    assert rows["p01"]["outcome"] == "already_competitive"
+    assert rows["p01"]["suggested"] is None
+    assert rows["p07"]["reason"] == "match_unreviewed"
+    assert all(
+        r["outcome"] in {"suggested", "already_competitive"} or r["reason"] for r in data["rows"]
+    )
+    assert data["outcomes"] == {"already_competitive": 3, "suggested": 3}
+    assert doc["meta"]["filters"]["subject"] == A
+
+
+def test_price_suggestions_limit_keeps_suggestions_first(client: Client) -> None:
+    data = body(client, f"{SUGGEST}&limit=2")["data"]
+    assert [r["outcome"] for r in data["rows"]] == ["suggested", "suggested"]
+    assert (data["total"], data["truncated"]) == (14, True)
+    assert sum(data["outcomes"].values()) == 6  # over every row, not the page
+
+
+def test_price_suggestions_guardrails_and_aim(client: Client) -> None:
+    doc = body(client, f"{SUGGEST}&aim=match&maxChangePct=5&id=p03")
+    (row,) = doc["data"]["rows"]
+    assert (row["suggested"]["amount"], row["reachesRival"]) == ("104.50", False)
+    assert doc["data"]["guardrails"]["maxChangePct"] == "5"
+
+
+def test_price_suggestions_against_a_blocked_rival_withhold_every_row(client: Client) -> None:
+    doc = body(client, f"/price-suggestions?subject={A}&rival={D}")
+    assert (doc["status"], doc["reason"]) == ("not_enough_data", "retailer_blocked")
+    assert {r["reason"] for r in doc["data"]["rows"]} == {"retailer_blocked"}
+    assert doc["data"]["outcomes"] == {}
+
+
+def test_price_suggestions_against_a_partial_rival_withhold_every_row(client: Client) -> None:
+    doc = body(client, f"/price-suggestions?subject={A}&rival={C}")
+    assert doc["reason"] == "retailer_partial"
