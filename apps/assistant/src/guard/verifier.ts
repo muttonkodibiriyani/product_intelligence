@@ -16,6 +16,12 @@
  *   the shown number of decimal places. Nothing else counts: no rounding to tens, no unit
  *   conversion, no arithmetic on sources.
  * - Always allowed, exactly: 5 (rating scale) and 100 (index base).
+ * - The length of a list a tool returned counts as a source ("7 products" when the rows list
+ *   has 7 entries): the count is a fact of the result, not arithmetic on a metric.
+ * - The closing "Source:" line (the prompt asks for it, with the filters used) may also quote
+ *   the echoed tool inputs (`citation.filters`, e.g. "limit 10", "priceMax 50"). Only that
+ *   line: a filter value anywhere else is still unsupported, so a number the model chose
+ *   cannot launder itself into the answer body.
  * - Version fields (`apiVersion`, `metricVersion`, …) are never sources, and of the citation
  *   only `cohort.n` counts: "2.5" as a version must not allow "2.5 AED".
  * - Stripped before matching, and only these:
@@ -182,6 +188,7 @@ export function collectToolNumbers(outputs: readonly unknown[]): Decimal[] {
     } else if (typeof value === "number") {
       if (Number.isSafeInteger(value)) found.push(abs({ units: BigInt(value), scale: 0 }));
     } else if (Array.isArray(value)) {
+      found.push({ units: BigInt(value.length), scale: 0 });
       value.forEach(visit);
     } else if (typeof value === "object" && value !== null && !("untrusted" in value)) {
       for (const [key, child] of Object.entries(value)) {
@@ -213,11 +220,53 @@ export interface VerifyResult {
   readonly unsupported: string[];
 }
 
+/** The echoed tool inputs (`citation.filters`) of each output: numbers and decimal text. */
+export function collectFilterNumbers(outputs: readonly unknown[]): Decimal[] {
+  const found: Decimal[] = [];
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      if (DECIMAL_TEXT.test(value)) found.push(abs(parseDecimal(value)));
+    } else if (typeof value === "number") {
+      if (Number.isSafeInteger(value)) found.push(abs({ units: BigInt(value), scale: 0 }));
+    } else if (Array.isArray(value)) {
+      value.forEach(visit);
+    } else if (typeof value === "object" && value !== null && !("untrusted" in value)) {
+      Object.values(value).forEach(visit);
+    }
+  };
+  for (const output of outputs) {
+    if (typeof output !== "object" || output === null || !("citation" in output)) continue;
+    const { citation } = output;
+    if (typeof citation === "object" && citation !== null && "filters" in citation) {
+      visit(citation.filters);
+    }
+  }
+  return found;
+}
+
+/** The closing source line: "Source:" in English or "المصدر:" in Arabic, bold or not. */
+const SOURCE_LINE = /^\s*(?:[*_]{1,2})?(?:source|sources|المصدر|المصادر)(?:[*_]{1,2})?\s*[:：]/i;
+
 export function verifyAnswerNumbers(answer: string, toolOutputs: readonly unknown[]): VerifyResult {
   const allowed = [...collectToolNumbers(toolOutputs), ...ALWAYS_ALLOWED.map(parseDecimal)];
-  const unsupported = extractNumbers(answer, collectToolTimes(toolOutputs)).filter((text) => {
+  const times = collectToolTimes(toolOutputs);
+  const supported = (sources: readonly Decimal[]) => (text: string) => {
     const shown = parseDecimal(text);
-    return !allowed.some((source) => isDisplayOf(shown, source));
+    return sources.some((source) => isDisplayOf(shown, source));
+  };
+  const lines = answer.split("\n");
+  let sourceAt = -1;
+  lines.forEach((line, index) => {
+    if (SOURCE_LINE.test(line)) sourceAt = index;
   });
+  const body = sourceAt < 0 ? answer : lines.filter((_, index) => index !== sourceAt).join("\n");
+  const unsupported = extractNumbers(body, times).filter((text) => !supported(allowed)(text));
+  if (sourceAt >= 0) {
+    const withFilters = [...allowed, ...collectFilterNumbers(toolOutputs)];
+    const line = lines[sourceAt] ?? "";
+    unsupported.push(
+      ...extractNumbers(line, times).filter((text) => !supported(withFilters)(text)),
+    );
+  }
   return { ok: unsupported.length === 0, unsupported };
 }

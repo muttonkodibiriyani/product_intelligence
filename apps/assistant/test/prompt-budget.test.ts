@@ -1,7 +1,7 @@
 /**
  * Prompt budget at the deployed defaults: the production system prompt, every tool spec and the
  * runbook seed limits, with no test override. `promptTokenBound` counts UTF-8 bytes, so the
- * system prompt plus the tool specs alone (about 18 kB) must fit `limits.maxInputTokens` with
+ * system prompt plus the tool specs alone (about 19.5 kB) must fit `limits.maxInputTokens` with
  * room for history and tool results. A 10000 default refused every question as
  * `prompt_too_large`.
  */
@@ -142,7 +142,8 @@ describe("prompt budget at the runbook seed limits", () => {
       const { answer, bounds } = await ask(role, locale, [{ text: "Hello.", toolCalls: [] }]);
       expect(answer.status).toBe("answered");
       expect(bounds).toHaveLength(1);
-      // Measured: 17906 (en) and 17999 (ar) bytes; 22000 left for history and tool results.
+      // Measured: 19453 (en) and 19546 (ar) bytes with 18 tools; 20400 left for history and
+      // tool results.
       expect(bounds[0]).toBeLessThanOrEqual(maxInputTokens / 2);
     },
   );
@@ -154,7 +155,7 @@ describe("prompt budget at the runbook seed limits", () => {
       expect(answer.status).toBe("answered");
       expect(answer.toolCalls.map((record) => record.status)).toEqual(Array(5).fill("ok"));
       expect(bounds).toHaveLength(maxModelCallsPerQuestion);
-      // Measured peak: 27038 (viewer, en) to 27768 (admin, ar) bytes, about 12000 headroom.
+      // Measured peak: 28585 (viewer, en) to 29315 (admin, ar) bytes, about 10700 headroom.
       const peak = Math.max(...bounds);
       expect(peak).toBe(bounds.at(-1));
       expect(maxInputTokens - peak).toBeGreaterThanOrEqual(10_000);

@@ -30,8 +30,19 @@ export class ApiError extends Error {
 
 export const MAX_RESPONSE_BYTES = 1_000_000;
 
+/**
+ * The request URL. A base that already ends in the request's own prefix (PI_API_BASE_URL set to
+ * ".../api/v1" while every tool path starts with "/api/v1") is not doubled: on 2026-10-03 the
+ * live callable sent /api/v1/api/v1/products and every tool got a 404.
+ */
 export function requestUrl(base: string, request: ApiRequest): URL {
-  const url = new URL(request.path.replace(/^\//, ""), base.endsWith("/") ? base : `${base}/`);
+  const root = new URL(base.endsWith("/") ? base : `${base}/`);
+  const basePath = root.pathname.replace(/\/+$/, "");
+  const path =
+    basePath !== "" && request.path.startsWith(`${basePath}/`)
+      ? request.path.slice(basePath.length)
+      : request.path;
+  const url = new URL(path.replace(/^\//, ""), root);
   for (const [key, value] of Object.entries(request.query ?? {})) {
     for (const item of typeof value === "string" ? [value] : value) {
       url.searchParams.append(key, item);

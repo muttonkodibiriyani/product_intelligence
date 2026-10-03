@@ -630,10 +630,21 @@
       "retrying": "Re-checking the answer",
       "tool": "Reading {tool}",
       "toolEmpty": "{tool}: not enough data",
-      "toolError": "{tool}: unavailable"
+      "toolErrors": {
+        "unavailable": "{tool}: unavailable",
+        "notFound": "{tool}: no product with that id",
+        "invalid": "{tool}: request not accepted",
+        "forbidden": "{tool}: not available to your role",
+        "signIn": "{tool}: sign in again",
+        "busy": "{tool}: busy, try again shortly",
+        "refreshed": "{tool}: data was refreshed",
+        "tooLarge": "{tool}: result too large",
+        "service": "{tool}: data service unavailable"
+      }
     },
     "tools": {
       "search_products": "Product search",
+      "price_per_unit": "Price per ml or g",
       "get_product": "Product details",
       "compare": "Price comparison",
       "category_compare": "Category prices",

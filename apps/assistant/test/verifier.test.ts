@@ -145,4 +145,31 @@ describe("verifyAnswerNumbers", () => {
     expect(result.ok).toBe(false);
     expect(result.unsupported).toEqual(["50", "777", "42", "42", "999", "17.5"]);
   });
+
+  it("lets only the closing Source line quote the echoed filters (2026-10-03 false fail)", () => {
+    const listed = {
+      data: { rows: [{ price: "129.00" }, { price: "99.00" }], total: 2 },
+      citation: { cutoff: "2026-09-15T20:00:00Z", filters: { limit: 10, priceMax: "150" } },
+    };
+    const source =
+      "Source: search_products, filters limit 10, priceMax 150, n 2, cutoff 2026-09-15.";
+    expect(verifyAnswerNumbers(`Cheapest is 99.00 of 2.\n${source}`, [listed]).ok).toBe(true);
+    expect(verifyAnswerNumbers(`Cheapest is 99.00.\n**Source:** limit 10`, [listed]).ok).toBe(true);
+    // A filter value in the body is still the model's own number, not a result.
+    expect(verifyAnswerNumbers(`The top 10 cost under 150.\n${source}`, [listed])).toEqual({
+      ok: false,
+      unsupported: ["10", "150"],
+    });
+    // Only the last Source line is exempt, and it still may not invent numbers.
+    expect(verifyAnswerNumbers("Source: limit 10\nSource: n 7", [listed])).toEqual({
+      ok: false,
+      unsupported: ["10", "7"],
+    });
+  });
+
+  it("accepts a list's length as a count", () => {
+    const listed = { data: { rows: [{ id: "p1" }, { id: "p2" }, { id: "p3" }] } };
+    expect(verifyAnswerNumbers("3 products match.", [listed]).ok).toBe(true);
+    expect(verifyAnswerNumbers("4 products match.", [listed]).ok).toBe(false);
+  });
 });

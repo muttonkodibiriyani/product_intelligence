@@ -13,6 +13,7 @@ Contract: `docs/contracts/pi-api.openapi.json` (API 1.8.0). All operations are G
 | Tool | Endpoint | What it returns |
 | --- | --- | --- |
 | `search_products` | `/products` | Product cards with the latest price per retailer; the gap for two retailers |
+| `price_per_unit` | `/products` | Price per 1 ml or 1 g (listed price / published size, exact decimals), ranked; products with no size or price are counted as excluded |
 | `get_product` | `/products/{product_id}` | Offers per retailer, pair gaps, match details, evidence links |
 | `price_history` | `/products/{product_id}/history` | Per-retailer price, regular price and availability per collection date |
 | `compare` | `/compare` | Exact same-size pair gaps between two retailers, with summaries |

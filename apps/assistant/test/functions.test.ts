@@ -4,7 +4,12 @@ import { ChatFlow } from "../src/flows/chat.js";
 import type { ChatModel } from "../src/flows/model.js";
 import { PROMPT_VERSION } from "../src/flows/prompt.js";
 import { MemoryThreadStore } from "../src/flows/threads.js";
-import { CallableRefusal, callerFrom, handleChat } from "../src/functions/callable.js";
+import {
+  type AnswerLog,
+  CallableRefusal,
+  callerFrom,
+  handleChat,
+} from "../src/functions/callable.js";
 import {
   DeployConfigError,
   MAX_ALERT_AGE_MS,
@@ -138,6 +143,24 @@ describe("loadChatEnv", () => {
   ])("refuses %s=%j", (name, value) => {
     const error = refusal(() => loadChatEnv({ ...CHAT_ENV, [name]: value }));
     expect(error.message).toBe(`refusing to start: ${name} is missing or invalid`);
+  });
+
+  it.each([
+    "https://pi.example.test/api/v1",
+    "https://pi.example.test/api/v1/",
+    "https://pi.example.test/proxy/API/V1",
+  ])("refuses a base that already ends in /api/v1 (%s)", (value) => {
+    const error = refusal(() => loadChatEnv({ ...CHAT_ENV, PI_API_BASE_URL: value }));
+    expect(error.message).toBe(
+      "refusing to start: PI_API_BASE_URL must not end in /api/v1 (the tools add it)",
+    );
+    expect(error.message).not.toContain("pi.example.test");
+  });
+
+  it("accepts an origin or a proxy path", () => {
+    for (const value of ["https://pi.example.test/", "https://pi.example.test/proxy"]) {
+      expect(loadChatEnv({ ...CHAT_ENV, PI_API_BASE_URL: value }).apiBaseUrl).toBe(value);
+    }
   });
 
   it("refuses another project", () => {
@@ -431,6 +454,14 @@ describe("assistantChat request handling (reviewer D2)", () => {
     }
   });
 
+  it("still answers when the log write throws", async () => {
+    const { flow } = realFlow();
+    const answer = await handleChat(request("viewer"), flow, undefined, () => {
+      throw new Error("logging backend down");
+    });
+    expect(answer.status).toBeDefined();
+  });
+
   it("logs nothing for a refused caller", async () => {
     const { flow } = realFlow();
     const entries: unknown[] = [];
@@ -504,6 +535,37 @@ describe("src/index.ts", () => {
     await expect(
       Promise.resolve(index.budgetKillSwitch.run({ data: { message: stale } } as never)),
     ).resolves.toBeUndefined();
+  });
+
+  it("wires the structured logger into handleChat as its fourth argument (#190)", async () => {
+    vi.stubEnv("FUNCTIONS_CONTROL_API", "true");
+    let sink: unknown;
+    vi.doMock("../src/functions/callable.js", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/functions/callable.js")>();
+      return {
+        ...actual,
+        handleChat: (...args: Parameters<typeof actual.handleChat>) => {
+          sink = args[3];
+          return actual.handleChat(...args);
+        },
+      };
+    });
+    const { logger } = await import("firebase-functions");
+    const write = vi.spyOn(logger, "write").mockImplementation(() => undefined);
+    const index = await import("../src/index.js");
+    await Promise.resolve(
+      index.assistantChat.run({ ...request("killswitch"), rawRequest: {} } as never),
+    ).catch(() => undefined);
+    expect(typeof sink).toBe("function");
+    (sink as AnswerLog)({ event: "assistant_answer", severity: "WARNING", code: "x" });
+    expect(write).toHaveBeenCalledWith({
+      event: "assistant_answer",
+      severity: "WARNING",
+      code: "x",
+      message: "assistant_answer",
+    });
+    vi.doUnmock("../src/functions/callable.js");
+    write.mockRestore();
   });
 
   it("refuses to load in a container whose settings are invalid", async () => {
