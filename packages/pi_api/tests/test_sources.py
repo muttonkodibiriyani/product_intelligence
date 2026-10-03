@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from api_fixture import bearer, make_client, write
+from pi_api import dq
 from pi_api.config import Settings, dataset_entries
 from pi_api.source import LocalStore, SnapshotSource
 from pi_dataset import DatasetV3
@@ -175,12 +176,13 @@ def test_the_imported_retailer_is_corrected_in_composed_and_whole_views(tmp_path
     views = {d.path: d for d in source.datasets()}
     assert sorted(views) == [COMBINED, f"{SEPHORA}={SEPHORA_FILE},{ULTA}={COMBINED}"]
     for loaded in views.values():
-        assert loaded.unverified == {ULTA}
+        assert loaded.unverified == frozenset()  # stated was-prices are served (API 1.13.0)
+        assert loaded.imported_contexts == {ULTA}
         assert [(shop.retailer, shop.was_prices) for shop in loaded.imported] == [(ULTA, 2)]
         regular = {
             cid: o.series.regular for p in loaded.dataset.products for cid, o in p.offers.items()
         }
-        assert regular[ULTA] is None
+        assert regular[ULTA] is not None
     whole = views[COMBINED].dataset
     assert all(p.offers[SEPHORA].series.regular for p in whole.products if SEPHORA in p.offers)
 
@@ -375,8 +377,12 @@ def test_a_stale_collected_source_summary_is_as_of_its_own_cutoff(tmp_path: Path
     assert body["caveats"][0]["params"] == {"retailer": shop, "asOf": "2026-09-22"}
 
 
-def test_the_latest_date_view_keeps_the_imported_correction(tmp_path: Path) -> None:
-    """A stale Ulta read at its own last date never brings back its cleared was-prices."""
+def test_the_latest_date_view_keeps_the_imported_correction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale Ulta read at its own last date never brings back its cleared was-prices, when
+    they are withheld (``WAS_PRICE_WITHHELD``; empty since API 1.13.0)."""
+    monkeypatch.setattr(dq, "WAS_PRICE_WITHHELD", frozenset({ULTA}))
     combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
     for product in combined["products"]:
         series = product["offers"][ULTA]["series"]
