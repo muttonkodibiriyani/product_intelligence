@@ -1,6 +1,12 @@
 """Load a downloaded Sephora snapshot (jsonl.gz parts) into pi_db, append-only and idempotent.
 
 Usage: python -m sephora_snapshot.load <local_snapshot_dir> <gcs_uri_prefix> [--finish]
+       [--country AE|SA]
+
+--country picks the storefront the snapshot was taken from (default AE). Each country is its own
+source (sephora_me for the UAE, sephora_sa for Saudi Arabia): a Saudi load never upserts, touches
+or re-dates a UAE listing, and the two never share an idempotency key. A price in any currency
+other than the country's own is recorded as unknown, never converted.
 
 Grain: one source_listing per Sephora variant id (SourceListingKey = SKU id, e.g. "712845";
 the master product id "P…" is kept in listing_content.labels). One offer_observation per
@@ -17,6 +23,7 @@ import hashlib
 import json
 import os
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -25,12 +32,40 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-SOURCE = "sephora_me"
 CONNECTOR_VERSION = "sephora_snapshot/0.1"
-TZ = "Asia/Dubai"
 RETENTION = timedelta(days=90)
 # pi_db FETCH_METHOD_RUNG: the site JSON API is rung 0, the PDP HTML fetch is plain HTTP (rung 1).
 METHOD_RUNG = {"site_api": 0, "plain_http": 1}
+
+
+@dataclass(frozen=True)
+class Market:
+    """One Sephora storefront: its own pi_db source, context country, time zone and currency."""
+
+    source: str
+    country: str
+    time_zone: str
+    currency: str
+    notes: str
+
+
+MARKETS = {
+    "AE": Market(
+        "sephora_me",
+        "AE",
+        "Asia/Dubai",
+        "AED",
+        "Sephora Middle East; UAE storefront /ae-en, /ae-ar",
+    ),
+    "SA": Market(
+        "sephora_sa",
+        "SA",
+        "Asia/Riyadh",
+        "SAR",
+        "Sephora Middle East; Saudi storefront /sa-en, /sa-ar",
+    ),
+}
+SOURCE = MARKETS["AE"].source  # the UAE source name, kept for existing callers
 
 
 def _money(v: Any) -> Decimal | None:
@@ -84,8 +119,11 @@ def _images(d: dict[str, Any], v: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 class Loader:
-    def __init__(self, conn: psycopg.Connection[Any], root: Path, gcs: str) -> None:
+    def __init__(
+        self, conn: psycopg.Connection[Any], root: Path, gcs: str, market: Market = MARKETS["AE"]
+    ) -> None:
         self.c = conn
+        self.market = market
         self.root = root
         self.gcs = gcs.rstrip("/")
         self.ledger = root.parent / f".loaded-{root.name}.json"  # snapshot dir may be read-only
@@ -121,32 +159,31 @@ class Loader:
         return rid
 
     def _source(self) -> int:
-        sid = self._one("SELECT id FROM source WHERE name=%s", (SOURCE,))
+        m = self.market
+        sid = self._one("SELECT id FROM source WHERE name=%s", (m.source,))
         return sid or self._new(
             "INSERT INTO source (name, kind, base_url, notes) VALUES (%s,'web',%s,%s) RETURNING id",
-            (
-                SOURCE,
-                "https://www.sephora.me",
-                "Sephora Middle East; UAE storefront /ae-en, /ae-ar",
-            ),
+            (m.source, "https://www.sephora.me", m.notes),
         )
 
     def _context(self, lang: str) -> int:
-        locale = f"{lang}-AE"
+        m = self.market
+        locale = f"{lang}-{m.country}"
         cid = self._one(
-            "SELECT id FROM source_context WHERE source_id=%s AND country='AE' AND locale=%s AND"
+            "SELECT id FROM source_context WHERE source_id=%s AND country=%s AND locale=%s AND"
             " valid_to IS NULL",
-            (self.source_id, locale),
+            (self.source_id, m.country, locale),
         )
         return cid or self._new(
             "INSERT INTO source_context (source_id, country, channel, locale, time_zone,"
             " ladder_rung_current,"
-            " coverage_status, refresh_policy) VALUES (%s,'AE','online',%s,%s,1,'partial',%s)"
+            " coverage_status, refresh_policy) VALUES (%s,%s,'online',%s,%s,1,'partial',%s)"
             " RETURNING id",
             (
                 self.source_id,
+                m.country,
                 locale,
-                TZ,
+                m.time_zone,
                 _jsonb({"mode": "on_demand", "note": "owner: baseline + on-demand refresh"}),
             ),
         )
@@ -181,7 +218,8 @@ class Loader:
             return None
         if bid_key in self.brands:
             return self.brands[bid_key]
-        alias = f"sephora_me:{bid_key}"
+        alias = f"{self.market.source}:{bid_key}"
+        own = self.market.source.replace("_", "\\_") + ":%"  # LIKE pattern (a bound value)
         if lang == "en":
             # Never write a brand row this loader did not create: another source's load (e.g.
             # ulta_ae) may own a row with the same name, and it must stay untouched (owner rule
@@ -192,8 +230,8 @@ class Loader:
             )
             bid = self._one(
                 "SELECT id FROM brand WHERE name=%s AND EXISTS"
-                " (SELECT 1 FROM unnest(aliases) a WHERE a LIKE 'sephora\\_me:%%')",
-                (name,),
+                " (SELECT 1 FROM unnest(aliases) a WHERE a LIKE %s)",
+                (name, own),
             )
             if bid is None:
                 self.bump("brand_name_clash")
@@ -205,8 +243,8 @@ class Loader:
                 # neither is a row whose name_ar is already set (no no-op row versions).
                 cur = self.c.execute(
                     "UPDATE brand SET name_ar=%s WHERE id=%s AND name_ar IS NULL AND NOT EXISTS"
-                    " (SELECT 1 FROM unnest(aliases) a WHERE a NOT LIKE 'sephora\\_me:%%')",
-                    (name, bid),
+                    " (SELECT 1 FROM unnest(aliases) a WHERE a NOT LIKE %s)",
+                    (name, bid, own),
                 )
                 if cur.rowcount == 0:
                     self.bump("brand_name_ar_skipped")
@@ -374,11 +412,17 @@ class Loader:
             fs: dict[str, str] = {}
             price = sale if promo else regular
             currency = d.get("currency")
-            if price is not None and not currency:  # never assume AED
+            if price is not None and not currency:  # never assume the market's currency
                 price = regular = sale = None
                 promo = False
                 fs["price_current"] = "unknown"
                 self.bump("price_without_currency")
+            elif price is not None and currency != self.market.currency:
+                # e.g. an AED page in a Saudi snapshot: never stored as if it were SAR
+                price = regular = sale = None
+                promo = False
+                fs["price_current"] = "unknown"
+                self.bump("price_currency_mismatch")
             elif price is None:
                 fs["price_current"] = "not_published"
             if not has_rating:
@@ -394,7 +438,7 @@ class Loader:
                 " VALUES (%s,%s,%s,%s,%s,now(),%s,%s,%s,%s,%s,'not_observed',%s,%s,%s,%s,%s,%s)"
                 " ON CONFLICT DO NOTHING",
                 (
-                    _sha(SOURCE, lang, "pdp", key, rec["at"]),
+                    _sha(self.market.source, lang, "pdp", key, rec["at"]),
                     self.run_id(lang),
                     self.ctx[lang],
                     lid,
@@ -455,7 +499,7 @@ class Loader:
                 " field_state, evidence_id)"
                 " VALUES (%s,%s,%s,%s,%s,now(),%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                 (
-                    _sha(SOURCE, "en", "trpc", key, rec["at"]),
+                    _sha(self.market.source, "en", "trpc", key, rec["at"]),
                     self.run_id("en"),
                     self.ctx["en"],
                     lid,
@@ -555,11 +599,23 @@ class Loader:
         self.c.commit()
 
 
+def market_from_args(args: list[str]) -> Market:
+    """The --country value (default AE); an unknown or missing value is refused, never guessed."""
+    if "--country" not in args:
+        return MARKETS["AE"]
+    i = args.index("--country")
+    code = args[i + 1].upper() if i + 1 < len(args) else ""
+    if code not in MARKETS:
+        raise SystemExit(f"--country must be one of {', '.join(sorted(MARKETS))}")
+    return MARKETS[code]
+
+
 def main() -> int:
     root, gcs = Path(sys.argv[1]), sys.argv[2]
+    market = market_from_args(sys.argv[3:])
     url = os.environ["PI_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(url) as conn:
-        ld = Loader(conn, root, gcs)
+        ld = Loader(conn, root, gcs, market)
         conn.commit()
         print(json.dumps(ld.load()))
         if "--finish" in sys.argv:
