@@ -58,6 +58,13 @@
           "pct": "11.1"
         },
         "id": "p01",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p01",
         "otherPrice": {
           "amount": "100.00",
@@ -88,6 +95,13 @@
           "pct": "0.0"
         },
         "id": "p02",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p02",
         "otherPrice": {
           "amount": "100.00",
@@ -118,6 +132,13 @@
           "pct": "-9.1"
         },
         "id": "p03",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "locked"
+        },
         "name": "Product p03",
         "otherPrice": {
           "amount": "100.00",
@@ -148,6 +169,13 @@
           "pct": "4.7"
         },
         "id": "p04",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p04",
         "otherPrice": {
           "amount": "100.00",
@@ -178,6 +206,13 @@
           "pct": "25.0"
         },
         "id": "p05",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "locked"
+        },
         "name": "Product p05",
         "otherPrice": {
           "amount": "100.00",
@@ -208,6 +243,13 @@
           "pct": "-5.0"
         },
         "id": "p06",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p06",
         "otherPrice": {
           "amount": "100.00",
@@ -230,6 +272,13 @@
         "excludedReason": "match_unreviewed",
         "gap": null,
         "id": "p07",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": null,
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "proposed"
+        },
         "name": "Product p07",
         "otherPrice": {
           "amount": "50.00",
@@ -252,6 +301,13 @@
         "excludedReason": "match_rejected",
         "gap": null,
         "id": "p08",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "rejected"
+        },
         "name": "Product p08",
         "otherPrice": {
           "amount": "50.00",
@@ -274,6 +330,13 @@
         "excludedReason": "match_not_exact",
         "gap": null,
         "id": "p09",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "family",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p09",
         "otherPrice": {
           "amount": "50.00",
@@ -296,6 +359,13 @@
         "excludedReason": "size_mismatch",
         "gap": null,
         "id": "p10",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p10",
         "otherPrice": {
           "amount": "50.00",
@@ -318,6 +388,13 @@
         "excludedReason": "unpriced",
         "gap": null,
         "id": "p11",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p11",
         "otherPrice": null
       },
@@ -336,6 +413,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p12",
+        "match": null,
         "name": "Product p12",
         "otherPrice": null
       },
@@ -354,6 +432,13 @@
         "excludedReason": "early",
         "gap": null,
         "id": "p13",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p13",
         "otherPrice": {
           "amount": "55.00",
@@ -371,6 +456,7 @@
         "excludedReason": "not_offered",
         "gap": null,
         "id": "p14",
+        "match": null,
         "name": "Product p14",
         "otherPrice": {
           "amount": "60.00",
@@ -393,6 +479,7 @@
         "excludedReason": "no_match",
         "gap": null,
         "id": "p16",
+        "match": null,
         "name": "Product p16",
         "otherPrice": {
           "amount": "50.00",
@@ -473,13 +560,14 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.16.0",
+    "apiVersion": "1.17.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",
     "filters": {
       "groupBy": "brand",
-      "retailers": "shop_a,shop_b"
+      "retailers": "shop_a,shop_b",
+      "rows": "all"
     },
     "generation": "1790000000000000000",
     "market": "AE",

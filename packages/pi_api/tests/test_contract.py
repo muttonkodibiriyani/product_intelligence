@@ -66,6 +66,11 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
         {},
     ),
     "compare-blocked": ("/compare?retailers=shop_a,shop_d", Envelope[Comparison], {}),
+    "compare-overlap": (
+        "/compare?retailers=shop_a,shop_b&rows=overlap&sort=gap",
+        Envelope[Comparison],
+        {},
+    ),
     "price-suggestions": (
         "/price-suggestions?subject=shop_a&rival=shop_b&limit=8",
         Envelope[PriceSuggestions],
