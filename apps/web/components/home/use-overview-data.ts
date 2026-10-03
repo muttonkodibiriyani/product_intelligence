@@ -89,7 +89,11 @@ export function useLaunchCounts(ids: readonly string[]): { shops: ShopLaunches[]
         end,
         state: 'ready',
         total,
-        perDay: d && !d.truncated && query.since ? perDay(d.items, query.since, end) : null,
+        // A body without its items list is not counted per day, rather than taking the page down.
+        perDay:
+          d && !d.truncated && Array.isArray(d.items) && query.since
+            ? perDay(d.items, query.since, end)
+            : null,
         env: q.data,
       };
     }),
