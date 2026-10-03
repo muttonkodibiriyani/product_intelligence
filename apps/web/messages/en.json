@@ -11,6 +11,7 @@
       "overview": "Overview",
       "explore": "Products",
       "compare": "Compare",
+      "insights": "Insights",
       "promotions": "Promotions",
       "launches": "Launches",
       "status": "Dataset",
@@ -783,6 +784,86 @@
       "priced": "{n} priced",
       "onPromo": "on promotion",
       "notMeasured": "Not available yet."
+    }
+  },
+  "insights": {
+    "title": "Insights",
+    "intro": "What the latest data supports deciding, one card per decision. Each number opens the products it was counted from.",
+    "pickPair": "Pick two shops to see what the data says about them.",
+    "loading": "Loading the insights…",
+    "unavailable": "Insights is not available yet: it needs data service version {need} or later, and this site runs {have}. Nothing is shown until the service is updated.",
+    "unavailableRoute": "Insights is not available yet: the data service does not serve it. Nothing is shown until the service is updated.",
+    "soWhat": "So what:",
+    "evidence": "See the evidence",
+    "unreviewed": "{n, plural, one {# unreviewed match} other {# unreviewed matches}}: not counted",
+    "positioning": {
+      "title": "Price position",
+      "none": "No reviewed exact matches between these shops yet, so no price is compared.",
+      "line": "{shop} is cheaper on {k} of {n} matched products; {equal} cost the same. Median gap {gap}.",
+      "tip": "Reviewed exact matches only, at the latest observed price. Gap = ({other} − {base}) ÷ {base}.",
+      "bar": "Matched products by which shop is cheaper"
+    },
+    "size": {
+      "title": "Price gap by size",
+      "headline": "{shop} undercuts most at {size}: median {gap} on {n} matched products.",
+      "headlineNone": "{shop} undercuts on no size with enough matched products.",
+      "meta": "{n} matched products",
+      "tip": "Median gap per size over reviewed exact matches; a bar left of the line means {other} is cheaper than {base}. Sizes with fewer than {min} matches are hidden ({hidden}).",
+      "row": "{n} matches: {other} cheaper at the other shop, {equal} equal, {base} cheaper at the base shop",
+      "cheaperAt": "Cheaper at {shop}",
+      "action": "Check the sizes where the gap is widest first. Shoppers compare those."
+    },
+    "policy": {
+      "title": "Brand price policy",
+      "headline": "{k, plural, =0 {No brand is} one {# brand is} other {# brands are}} consistently cheaper at {shop}; {p, plural, =0 {none hold} one {# holds} other {# hold}} price parity.",
+      "meta": "{mixed} mixed · {hidden} below the floor",
+      "tip": "A brand takes a column when at least {share}% of its matched products fall on that side. Brands with fewer than {min} matches are not placed.",
+      "colCheaper": "Cheaper at {shop}",
+      "colParity": "Same price",
+      "row": "{n} matches: {other} cheaper at the other shop, {equal} equal, {base} cheaper at the base shop",
+      "more": "+{n} more",
+      "action": "Start brand price talks with the brands in the cheaper-elsewhere column."
+    },
+    "space": {
+      "title": "Assortment white space",
+      "headlineMissing": "{present} lists {count} {n, plural, one {product} other {products}} that {absent} does not carry.",
+      "headlineUnmatched": "{present} lists {count} {n, plural, one {product} other {products}} with no reviewed match at {absent}.",
+      "meta": "Top brands by count",
+      "tip": "\"No reviewed match\" is not proof that {absent} lacks the product: it may be unmatched or not yet crawled. A product counts as missing only after a complete crawl and a reviewed match.",
+      "action": "Review the top brands for listing gaps before treating them as range opportunities."
+    },
+    "promo": {
+      "title": "Promotion strategy",
+      "headline": "Discount depth, share and mechanics are measured on the Promotions page.",
+      "action": "Compare promotion depth there; this page repeats no promotion numbers.",
+      "open": "Open Promotions"
+    },
+    "stock": {
+      "title": "Brand stock-outs",
+      "headline": "{brand} at {shop}: {out} observed out-of-stock listings among {observed} observed listings {crawl, select, partial {in a partial crawl} other {in the latest crawl}}.",
+      "headlineSome": "Brands with at least {min} listings observed out of stock.",
+      "meta": "Observed counts, not shares",
+      "tip": "Listings observed out of stock at {date}, per brand. These are minimum counts from what was observed, not a share of the brand's range, and shops are not ranked by them. Brands with fewer than {min} out-of-stock listings are hidden ({hidden}).",
+      "partial": "partial crawl",
+      "none": "No brand has {min} or more listings observed out of stock.",
+      "row": "{out} out of stock / {observed} observed",
+      "more": "+{n} more brands",
+      "action": "Check supply for the brands at the top: shoppers who cannot buy there may go elsewhere."
+    },
+    "traps": {
+      "title": "Size traps",
+      "headline": "{k} of {n} size steps cost the same or more per unit at the larger size.",
+      "meta": "Same product, next size up, same shop",
+      "tip": "Each step compares a product with its next larger size at one shop, per ml or g. Steps that change by more than {held}% are held out as likely data errors ({heldOut}).",
+      "shop": "{shop}: {k} of {n} steps",
+      "perUnit": "Change in price per {unit} (sizes grouped by {basis, select, family {the shop's product family} other {product name}})",
+      "action": "Fix the larger sizes priced above their per-unit value: they read as a trap to shoppers."
+    },
+    "more": {
+      "title": "More",
+      "saving": "{shop}: the typical step up in size saves {pct} per unit ({n} steps).",
+      "method": "Price cards count reviewed exact matches only. A brand needs {share}% of its matches on one side to be placed. Size steps beyond {held}% are held out. Any cohort under {min} is hidden.",
+      "later": "Not shown yet, for lack of a backed aggregate: the EDP vs EDT price ladder, price against rating, and verified real discounts."
     }
   }
 }
