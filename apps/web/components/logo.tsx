@@ -8,7 +8,7 @@ import { useLocale, useTranslations } from 'next-intl';
  * shorter than the other: two shops' prices head to head, which is what the product does. One
  * path in one colour (the bars are holes, by even-odd fill), so it takes the text colour wherever
  * it sits and reads the same in RTL; drawn on a 16-unit grid so it stays crisp at 16 and 32px.
- * The same path is the favicon (app/icon.svg).
+ * The same path is the favicon (public/icon.svg).
  */
 export const MARK_PATH =
   'M4 0h8a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V4a4 4 0 0 1 4-4Zm0 8v5h3V8H4Zm5-4v9h3V4H9Z';
