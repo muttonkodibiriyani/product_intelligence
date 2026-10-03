@@ -132,7 +132,11 @@ class ProductCapture:
         check_locale(self.locale)
         if self.retrieved_at.tzinfo is None:
             raise ReadingError("retrieved_at must be timezone-aware")
-        object.__setattr__(self, "retrieved_at", self.retrieved_at.astimezone(UTC))
+        try:
+            utc = self.retrieved_at.astimezone(UTC)
+        except OverflowError as exc:
+            raise ReadingError("retrieved_at is outside the range a UTC time can hold") from exc
+        object.__setattr__(self, "retrieved_at", utc)
         if not _SHA256_RE.match(self.page_sha256):
             raise ReadingError("page_sha256 must be a lowercase SHA-256 hex digest")
         if self.capture_state not in CAPTURE_STATES:
