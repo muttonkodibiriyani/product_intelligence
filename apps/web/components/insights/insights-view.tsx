@@ -117,6 +117,16 @@ export function InsightsView() {
         title={t('title')}
         intro={t('intro')}
         asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
+        tools={
+          active.length >= 3 ? (
+            <Link
+              href={`/${locale}/insights/three/`}
+              className="text-accent underline-offset-2 hover:underline"
+            >
+              {t('p1Link')}
+            </Link>
+          ) : undefined
+        }
       />
       {served && !missing && <PairPicker state={state} update={update} fixed={fixed} grouping={false} />}
       {served === false ? (
