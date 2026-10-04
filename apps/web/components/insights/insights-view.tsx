@@ -239,22 +239,22 @@ function Cards({
       <CardGrid>
         {/* Primary evidence never moves while the smaller supporting requests settle. */}
         {hasStock && (
-          <div id="finding-stock">
+          <div className="contents" id="finding-stock">
             <StockCard rows={stocks} cutoff={env.meta.cutoff} />
           </div>
         )}
         {hasTraps && (
-          <div id="finding-traps">
+          <div className="contents" id="finding-traps">
             <TrapCard ladders={ladders} held={data.heldOutPct} />
           </div>
         )}
         {hasSizes && (
-          <div id="finding-size">
+          <div className="contents" id="finding-size">
             <SizeCard pricing={data.pricing} {...pair} />
           </div>
         )}
         {hasPolicy && (
-          <div id="finding-policy">
+          <div className="contents" id="finding-policy">
             <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />
           </div>
         )}
@@ -262,7 +262,7 @@ function Cards({
           <Card title={t('promo.title')} span={6} state="loading" skeleton="lines" />
         ) : (
           hasPromos && (
-            <div id="finding-promo">
+            <div className="contents" id="finding-promo">
               <PromoCard items={promoItems} base={base} other={other} />
             </div>
           )
@@ -271,7 +271,7 @@ function Cards({
           <Card title={t('space.title')} span={6} state="loading" skeleton="chart" />
         ) : (
           hasSpace && (
-            <div id="finding-space">
+            <div className="contents" id="finding-space">
               <WhiteSpaceCard env={gaps} />
             </div>
           )
