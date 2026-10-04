@@ -19,6 +19,8 @@ def listing(
     phash: int,
     brand: str | None = "dior",
     status: ImageStatus = ImageStatus.OK,
+    *,
+    dhash: int | None = None,
 ) -> ListingImage:
     hashed = status in {ImageStatus.OK, ImageStatus.PLACEHOLDER}
     return ListingImage(
@@ -28,7 +30,7 @@ def listing(
         image_url=f"https://img/{source}/{key}.jpg",
         status=status,
         phash=to_hex(phash) if hashed else None,
-        dhash=to_hex(phash) if hashed else None,
+        dhash=to_hex(phash if dhash is None else dhash) if hashed else None,
         image_sha=SHA if hashed else None,
     )
 
@@ -62,6 +64,16 @@ def test_phash_near_duplicates_without_embeddings() -> None:
     assert first.dhash_distance == 1
     assert first.cosine is None
     assert first.rank is None
+
+
+def test_near_duplicate_requires_phash_and_dhash_gates() -> None:
+    rows = [
+        listing("sephora_me", "s1", 0, dhash=0),
+        listing("ulta_ae", "u1", 1, dhash=2**64 - 1),
+    ]
+    assert generate(rows, {}, k=0) == ((), ())
+    pairs, _ = generate(rows, {}, k=0, dhash_max=64)
+    assert [key(pair) for pair in pairs] == [("sephora_me", "s1", "ulta_ae", "u1")]
 
 
 def test_ann_top_k_and_both() -> None:
@@ -101,6 +113,20 @@ def test_cross_brand_hits_are_alias_suggestions_only() -> None:
     assert [(a.left_brand, a.right_brand) for a in aliases] == [
         ("ysl beauty", "yves saint laurent")
     ]
+
+
+def test_ann_only_alias_suggestions_require_high_cosine() -> None:
+    rows = [
+        listing("sephora_me", "s1", 0, brand="one"),
+        listing("ulta_ae", "u1", 2**64 - 1, brand="two"),
+    ]
+    vectors = {
+        rows[0].image_url or "": unit(1, 0),
+        rows[1].image_url or "": unit(0.9, 0.43589),
+    }
+    assert generate(rows, vectors, k=1)[1] == ()
+    _, aliases = generate(rows, vectors, k=1, alias_cosine_min=0.89)
+    assert [key(alias) for alias in aliases] == [("sephora_me", "s1", "ulta_ae", "u1")]
 
 
 @pytest.mark.parametrize(

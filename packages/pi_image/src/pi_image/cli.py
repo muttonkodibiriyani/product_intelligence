@@ -2,7 +2,8 @@
 
     uv run pi-image refs --dataset beauty.json --dataset faces.json --out refs.jsonl
     uv run pi-image run --refs refs.jsonl --cache /dev/shm/pi-image --out out/image [--offline]
-        [--embed siglip] [--k 10] [--phash-max 6]
+        [--embed siglip] [--k 10] [--phash-max 6] [--dhash-max 8]
+        [--alias-cosine-min 0.95]
 
 ``run`` writes, sorted and deterministic for the same inputs and cache:
 
@@ -26,7 +27,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from pi_fetch.transports.http import HttpTransport
-from pi_image.candidates import DEFAULT_K, PHASH_NEAR, generate
+from pi_image.candidates import (
+    ALIAS_COSINE_MIN,
+    DEFAULT_K,
+    DHASH_NEAR,
+    PHASH_NEAR,
+    generate,
+)
 from pi_image.embed import (
     SIGLIP_BASE,
     Embedder,
@@ -118,7 +125,14 @@ def cmd_run(args: argparse.Namespace, embedder: Embedder | None = None) -> int:
     finally:
         if transport is not None:
             transport.close()
-    pairs, aliases = generate(analysis.listings, vectors, k=args.k, phash_max=args.phash_max)
+    pairs, aliases = generate(
+        analysis.listings,
+        vectors,
+        k=args.k,
+        phash_max=args.phash_max,
+        dhash_max=args.dhash_max,
+        alias_cosine_min=args.alias_cosine_min,
+    )
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
     _write_jsonl(out / "image_status.jsonl", [li.model_dump_json() for li in analysis.listings])
@@ -145,6 +159,8 @@ def cmd_run(args: argparse.Namespace, embedder: Embedder | None = None) -> int:
         ),
         "k": args.k,
         "phash_max": args.phash_max,
+        "dhash_max": args.dhash_max,
+        "alias_cosine_min": args.alias_cosine_min,
         "placeholder": {"radius": SHARED_RADIUS, "min_brands": MIN_BRANDS},
         "placeholder_hashes": analysis.placeholders,
         "approved_hosts": sorted(APPROVED_HOSTS),
@@ -180,6 +196,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--embed", choices=("none", "siglip"), default="none")
     run.add_argument("--k", type=int, default=DEFAULT_K)
     run.add_argument("--phash-max", type=int, default=PHASH_NEAR)
+    run.add_argument("--dhash-max", type=int, default=DHASH_NEAR)
+    run.add_argument("--alias-cosine-min", type=float, default=ALIAS_COSINE_MIN)
     return root
 
 

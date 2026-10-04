@@ -42,9 +42,15 @@ and takes about 0.2 s per image on CPU.
 | `alias_suggestions.jsonl` | image hits whose brand keys are both known and differ. These are for brand-alias review only and are never candidates |
 | `image_meta.json` | tool version, refs SHA-256, model pin, k, thresholds, placeholder hashes, counts and stopped hosts |
 
-A pair is proposed when its pHash distance is ≤ `--phash-max` (default 6), or when either side
-is in the other's top `--k` (default 10) by cosine. Output is deterministic for the same refs
-and cache.
+A pair is proposed when its pHash distance is ≤ `--phash-max` (default 6) **and** its dHash
+distance is ≤ `--dhash-max` (default 8), or when either side is in the other's top `--k`
+(default 10) by cosine. Output is deterministic for the same refs and cache.
+
+Cross-brand hits remain review-only alias suggestions. ANN-only alias hits must also meet
+`--alias-cosine-min` (default 0.95); hash-gated near-duplicates are retained for review even
+without an embedding. The gold set contains no cross-brand-key pairs, so this threshold controls
+review volume and makes no precision claim. See [EVIDENCE.md](EVIDENCE.md) for the complete
+calibration, incremental-yield and Wilson-interval report.
 
 ## Placeholders
 

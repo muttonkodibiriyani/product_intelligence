@@ -1,9 +1,10 @@
 """Cross-retailer candidate pairs from images: pHash near-duplicates plus top-k by cosine.
 
 For every pair of sources (sorted, so ``left_source < right_source``), a pair is proposed when
-its pHash distance is at most ``phash_max`` (``via=phash``), or when either listing is among the
-other's ``k`` nearest by embedding cosine (``via=ann``); both gives ``via=both``. Only listings
-whose image status is ``ok`` take part: placeholders, missing and failed images never do.
+its pHash distance is at most ``phash_max`` AND its dHash distance is at most ``dhash_max``
+(``via=phash``), or when either listing is among the other's ``k`` nearest by embedding cosine
+(``via=ann``); both gives ``via=both``. Only listings whose image status is ``ok`` take part:
+placeholders, missing and failed images never do.
 
 Deterministic: listings are ordered by key and ties in cosine are broken by that order, so the
 same inputs give the same rows. Cosines are rounded to 4 dp.
@@ -25,6 +26,10 @@ from pi_image.model import ImageSignal, ImageStatus, ListingImage, Via
 DEFAULT_K = 10
 #: pHash bits that may differ for a near-duplicate (same packshot, re-encoded or re-cropped).
 PHASH_NEAR = 6
+#: dHash bits that may differ for a near-duplicate.  The two hash gates are conjunctive.
+DHASH_NEAR = 8
+#: Minimum embedding cosine for an ANN-only cross-brand alias suggestion.
+ALIAS_COSINE_MIN = 0.95
 _CHUNK = 1024
 _Q = Decimal("0.0001")
 
@@ -60,11 +65,14 @@ def _side(listings: Sequence[ListingImage], vectors: Mapping[str, FloatArray]) -
     )
 
 
-def _near(left: _Side, right: _Side, limit: int) -> set[tuple[int, int]]:
+def _near(left: _Side, right: _Side, phash_limit: int, dhash_limit: int) -> set[tuple[int, int]]:
     found: set[tuple[int, int]] = set()
     for start in range(0, len(left.phash), _CHUNK):
-        block = left.phash[start : start + _CHUNK]
-        rows, cols = np.nonzero(np.bitwise_count(block[:, None] ^ right.phash[None, :]) <= limit)
+        phash = left.phash[start : start + _CHUNK]
+        dhash = left.dhash[start : start + _CHUNK]
+        close = np.bitwise_count(phash[:, None] ^ right.phash[None, :]) <= phash_limit
+        close &= np.bitwise_count(dhash[:, None] ^ right.dhash[None, :]) <= dhash_limit
+        rows, cols = np.nonzero(close)
         found.update(zip((rows + start).tolist(), cols.tolist(), strict=True))
     return found
 
@@ -105,12 +113,14 @@ def _cosine(left: _Side, right: _Side, i: int, j: int) -> Decimal | None:
     return Decimal(f"{value:.4f}").quantize(_Q)
 
 
-def generate(
+def generate(  # noqa: PLR0913 - explicit CLI-tunable evidence gates
     listings: Sequence[ListingImage],
     vectors: Mapping[str, FloatArray],
     *,
     k: int = DEFAULT_K,
     phash_max: int = PHASH_NEAR,
+    dhash_max: int = DHASH_NEAR,
+    alias_cosine_min: float = ALIAS_COSINE_MIN,
 ) -> tuple[tuple[ImageSignal, ...], tuple[ImageSignal, ...]]:
     """``(candidates, alias_suggestions)`` across sources; ``vectors`` are unit rows by image URL.
 
@@ -126,7 +136,7 @@ def generate(
     aliases: list[ImageSignal] = []
     for a, b in combinations(sorted(sides), 2):
         left, right = sides[a], sides[b]
-        near = _near(left, right, phash_max)
+        near = _near(left, right, phash_max, dhash_max)
         ann: dict[tuple[int, int], int] = {}
         if left.vectors is not None and right.vectors is not None:
             ann = _top_k(left.vectors, left.has_vector, right.vectors, right.has_vector, k)
@@ -154,5 +164,12 @@ def generate(
                 right_image_sha=right.shas[j],
             )
             differ = lb is not None and rb is not None and lb != rb
-            (aliases if differ else out).append(signal)
+            alias_evidence = in_near or (
+                signal.cosine is not None and float(signal.cosine) >= alias_cosine_min
+            )
+            if differ:
+                if alias_evidence:
+                    aliases.append(signal)
+            else:
+                out.append(signal)
     return tuple(out), tuple(aliases)

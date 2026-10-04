@@ -196,7 +196,7 @@ class SiglipOnnx:
 
 def open_session(path: Path, threads: int = 4) -> Session:  # pragma: no cover - needs ORT
     """An ONNX Runtime CPU session (import is lazy: the ``embed`` extra is optional)."""
-    import onnxruntime as ort  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
+    import onnxruntime as ort  # type: ignore[import-not-found,import-untyped,unused-ignore]  # noqa: PLC0415
 
     options = ort.SessionOptions()
     options.intra_op_num_threads = threads
