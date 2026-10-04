@@ -3,7 +3,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from PIL import Image
 
-from image_fixtures import as_bytes, packshot, transparent, with_margin
+from .image_fixtures import as_bytes, packshot, transparent, with_margin
 from pi_image.candidates import PHASH_NEAR
 from pi_image.hashing import (
     UnreadableImageError,

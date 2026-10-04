@@ -5,7 +5,7 @@ description = "Competitive product and price intelligence platform (workspace ro
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["pi-capture", "pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-profiles", "pi-metrics", "pi-api"]
+dependencies = ["pi-capture", "pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-profiles", "pi-metrics", "pi-api", "pi-image"]
 
 [tool.uv]
 package = false
@@ -24,6 +24,7 @@ pi-db = { workspace = true }
 pi-fetch = { workspace = true }
 pi-match = { workspace = true }
 pi-profiles = { workspace = true }
+pi-image = { workspace = true }
 
 [dependency-groups]
 dev = [

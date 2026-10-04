@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from image_fixtures import as_bytes, packshot
+from .image_fixtures import as_bytes, packshot
 from pi_fetch.pacing import HostPacer
 from pi_fetch.transports.base import RawResponse, TransportError
 from pi_fetch.types import FetchRequest

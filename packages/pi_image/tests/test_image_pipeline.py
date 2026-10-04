@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from image_fixtures import GridEmbedder, as_bytes, packshot
+from .image_fixtures import GridEmbedder, as_bytes, packshot
 from pi_image.embed import EmbeddingCache
 from pi_image.fetch import Fetched, ImageCache, ImageFetcher
 from pi_image.hashing import dhash, from_hex, normalise, phash
