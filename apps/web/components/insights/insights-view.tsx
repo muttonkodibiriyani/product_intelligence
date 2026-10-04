@@ -220,6 +220,19 @@ function Cards({
   return (
     <div className="space-y-5">
       <Readiness ready={readyCount} pending={pending} unreviewed={data.pricing.unreviewed} />
+      <ReportMethod pricing={data.pricing} stocks={stocks} ladders={ladders} />
+      <FindingToc
+        items={
+          [
+            hasStock && ['stock', t('stock.title')],
+            hasTraps && ['traps', t('traps.title')],
+            hasSizes && ['size', t('size.title')],
+            hasPolicy && ['policy', t('policy.title')],
+            hasPromos && ['promo', t('promo.title')],
+            hasSpace && ['space', t('space.title')],
+          ].filter(Boolean) as [string, string][]
+        }
+      />
       {data.pricing.status === 'ok' && data.pricing.n > 0 && (
         <Positioning env={summary} pricing={data.pricing} {...pair} />
       )}
@@ -254,7 +267,84 @@ function Cards({
         ladders={ladders}
       />
       <More ladders={ladders} share={data.policySharePct} held={data.heldOutPct} />
+      <TestedNotPromoted />
     </div>
+  );
+}
+
+/** Analyses intentionally withheld from the ranked report until their evidence is publishable. */
+function TestedNotPromoted() {
+  const t = useTranslations('insights.report');
+  return (
+    <section aria-labelledby="tested-not-promoted" className="panel px-5 py-4">
+      <h2 id="tested-not-promoted" className="text-base font-semibold">
+        {t('testedTitle')}
+      </h2>
+      <p className="mt-1 text-sm text-ink-2">{t('testedIntro')}</p>
+      <ul className="mt-3 grid gap-2 text-sm text-ink-2 sm:grid-cols-2">
+        {(['history', 'gwp', 'rating'] as const).map((key) => (
+          <li key={key} className="rounded-ctl bg-surface-2 px-3 py-2">
+            <span className="font-medium text-ink">{t(`tested.${key}.title`)}</span>
+            <span className="ms-1">{t(`tested.${key}.body`)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function FindingToc({ items }: { items: [string, string][] }) {
+  const t = useTranslations('insights.report');
+  if (items.length === 0) return null;
+  return (
+    <nav aria-label={t('toc')} className="panel px-5 py-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-2">{t('toc')}</p>
+      <ol className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map(([id, label], i) => (
+          <li key={id}>
+            <a
+              className="flex items-baseline gap-2 text-sm underline-offset-2 hover:underline"
+              href={`#finding-${id}`}
+            >
+              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-semibold text-surface">
+                {i + 1}
+              </span>
+              {label}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+function ReportMethod({
+  pricing,
+  stocks,
+  ladders,
+}: {
+  pricing: Insights['pricing'];
+  stocks: Stockouts[];
+  ladders: Ladder[];
+}) {
+  const t = useTranslations('insights.report');
+  const partial =
+    stocks.some((s) => s.reason === null && s.brands.length > 0) ||
+    ladders.some((l) => l.reason === 'cohort_too_small');
+  return (
+    <details className="panel px-5 py-3 text-sm text-ink-2">
+      <summary className="cursor-pointer font-medium text-ink">{t('method')}</summary>
+      <dl className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('n')}</dt>
+        <dd>{pricing.n}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('cohort')}</dt>
+        <dd>{t('cohortValue')}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('matches')}</dt>
+        <dd>{pricing.unreviewed > 0 ? t('unreviewed', { n: pricing.unreviewed }) : t('reviewed')}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('coverage')}</dt>
+        <dd>{partial ? t('partial') : t('complete')}</dd>
+      </dl>
+    </details>
   );
 }
 
@@ -405,6 +495,7 @@ function SizeCard({ pricing, base, other }: Pair & { pricing: Insights['pricing'
   const deep = deepestUndercut(sizes);
   return (
     <Card
+      id="finding-size"
       title={t('title')}
       span={6}
       question={
@@ -481,6 +572,7 @@ function PolicyCard({ pricing, share, base, other }: Pair & { pricing: Insights[
   };
   return (
     <Card
+      id="finding-policy"
       title={t('title')}
       span={6}
       question={t('headline', {
@@ -549,6 +641,7 @@ function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | un
   const max = Math.max(1, ...top.map((b) => b.count));
   return (
     <Card
+      id="finding-space"
       title={t('title')}
       span={6}
       question={t(missing ? 'headlineMissing' : 'headlineUnmatched', {
@@ -590,6 +683,7 @@ function PromoCard({ items, base, other }: Pair & { items: Schemas['PromoItem'][
   const deepest = shown[0]!;
   return (
     <Card
+      id="finding-promo"
       title={t('title')}
       span={6}
       question={t('headline', {
@@ -659,6 +753,7 @@ function StockCard({ rows, cutoff }: { rows: Stockouts[]; cutoff: string }) {
   const max = Math.max(1, ...rows.flatMap((r) => r.brands.map((b) => b.observed)));
   return (
     <Card
+      id="finding-stock"
       title={t('title')}
       span={6}
       question={
@@ -754,6 +849,7 @@ function TrapCard({ ladders, held }: { ladders: Ladder[]; held: string }) {
     return <ReasonCard title={t('title')} reason={ladders.find((l) => l.reason)?.reason} />;
   return (
     <Card
+      id="finding-traps"
       title={t('title')}
       question={t('headline', {
         k: measured.reduce((n, l) => n + l.notCheaper, 0),

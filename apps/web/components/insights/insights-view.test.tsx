@@ -172,6 +172,12 @@ describe('InsightsView', () => {
     view(rich);
     await screen.findByText('Shop B undercuts most at 100 ml: median ⁦-11.5%⁩ on 9 matched products.');
     await screen.findByText('6 decision signals are ready');
+    expect(screen.getByRole('navigation', { name: en.insights.report.toc })).toBeTruthy();
+    expect(screen.getByText(en.insights.report.cohortValue)).toBeTruthy();
+    expect(screen.getByText('1 proposed match excluded')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Size traps/ }).getAttribute('href')).toBe('#finding-traps');
+    expect(screen.getByRole('heading', { name: en.insights.report.testedTitle })).toBeTruthy();
+    expect(screen.getByText(en.insights.report.tested.history.body)).toBeTruthy();
     const decisions = [
       en.insights.stock.title,
       en.insights.traps.title,
