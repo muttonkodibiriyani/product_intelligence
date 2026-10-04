@@ -265,7 +265,27 @@ function Cards({
         ladders={ladders}
       />
       <More ladders={ladders} share={data.policySharePct} held={data.heldOutPct} />
+      <TestedNotPromoted />
     </div>
+  );
+}
+
+/** Analyses intentionally withheld from the ranked report until their evidence is publishable. */
+function TestedNotPromoted() {
+  const t = useTranslations('insights.report');
+  return (
+    <section aria-labelledby="tested-not-promoted" className="panel px-5 py-4">
+      <h2 id="tested-not-promoted" className="text-base font-semibold">{t('testedTitle')}</h2>
+      <p className="mt-1 text-sm text-ink-2">{t('testedIntro')}</p>
+      <ul className="mt-3 grid gap-2 text-sm text-ink-2 sm:grid-cols-2">
+        {(['history', 'gwp', 'rating'] as const).map((key) => (
+          <li key={key} className="rounded-ctl bg-surface-2 px-3 py-2">
+            <span className="font-medium text-ink">{t(`tested.${key}.title`)}</span>
+            <span className="ms-1">{t(`tested.${key}.body`)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -825,7 +825,14 @@
       "unreviewed": "{n, plural, one {# proposed match excluded} other {# proposed matches excluded}}",
       "coverage": "Coverage",
       "partial": "Partial snapshots; absence may mean not collected",
-      "complete": "Latest collected snapshot"
+      "complete": "Latest collected snapshot",
+      "testedTitle": "Tested, not promoted",
+      "testedIntro": "These questions stay out of the ranked findings until the published data can support them. No proposed match becomes a fact.",
+      "tested": {
+        "history": { "title": "Launches and price changes:", "body": "need repeated complete collections." },
+        "gwp": { "title": "Gift-with-purchase:", "body": "not exported in the current promotions contract." },
+        "rating": { "title": "Price versus rating:", "body": "needs enough reviewed pairs with ratings." }
+      }
     },
     "readiness": {
       "eyebrow": "Decision readiness",

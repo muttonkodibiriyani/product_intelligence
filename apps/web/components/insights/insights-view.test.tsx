@@ -176,6 +176,8 @@ describe('InsightsView', () => {
     expect(screen.getByText(en.insights.report.cohortValue)).toBeTruthy();
     expect(screen.getByText('1 proposed match excluded')).toBeTruthy();
     expect(screen.getByRole('link', { name: /Size traps/ }).getAttribute('href')).toBe('#finding-traps');
+    expect(screen.getByRole('heading', { name: en.insights.report.testedTitle })).toBeTruthy();
+    expect(screen.getByText(en.insights.report.tested.history.body)).toBeTruthy();
     const decisions = [
       en.insights.stock.title,
       en.insights.traps.title,
