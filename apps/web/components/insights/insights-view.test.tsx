@@ -14,6 +14,7 @@ type Env = Envelope<Insights>;
 const base = golden('insights') as Env;
 const compare = golden('compare') as Envelope<Schemas['Comparison']>;
 const gaps = golden('assortment-gaps') as Envelope<Schemas['AssortmentGaps']>;
+const promotions = golden('promotions') as Envelope<Schemas['Promotions']>;
 
 const money = (amount: string) => ({ amount, currency: 'AED', minor: Math.round(Number(amount) * 100) });
 
@@ -106,12 +107,12 @@ let answers: Record<string, unknown> = {};
 let search = '';
 let status: Record<string, string> = { shop_a: 'supported', shop_b: 'partial' };
 let apiVersion = '1.18.0';
-const asked: string[] = [];
+const asked: Array<{ path: string; query: unknown }> = [];
 vi.mock('../auth-provider', () => ({
   useAuth: () => ({
     api: {
-      get: async (path: string) => {
-        asked.push(path);
+      get: async (path: string, options?: { query?: unknown }) => {
+        asked.push({ path, query: options?.query });
         const a = answers[path];
         if (a instanceof Error) throw a;
         return a;
@@ -139,7 +140,13 @@ vi.mock('../use-meta', () => ({
 afterEach(cleanup);
 
 function view(env: Env, locale: 'en' | 'ar' = 'en', more: Record<string, unknown> = {}) {
-  answers = { '/api/v1/insights': env, '/api/v1/compare': compare, '/api/v1/assortment-gaps': gaps, ...more };
+  answers = {
+    '/api/v1/insights': env,
+    '/api/v1/compare': compare,
+    '/api/v1/assortment-gaps': gaps,
+    '/api/v1/promotions': promotions,
+    ...more,
+  };
   search = 'retailers=shop_a,shop_b';
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -160,19 +167,49 @@ function view(env: Env, locale: 'en' | 'ar' = 'en', more: Record<string, unknown
 const card = (name: string) => screen.getByRole('heading', { level: 2, name }).closest('section')!;
 
 describe('InsightsView', () => {
-  it('leads each card with its one-line headline, in the agreed order', async () => {
+  it('leads with ready evidence and keeps supporting cards after the stable primary cards', async () => {
+    asked.length = 0;
     view(rich);
     await screen.findByText('Shop B undercuts most at 100 ml: median ⁦-11.5%⁩ on 9 matched products.');
-    const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(titles).toEqual([
-      en.insights.size.title,
-      en.insights.policy.title,
-      en.insights.space.title,
-      en.insights.promo.title,
+    await screen.findByText('6 decision signals are ready');
+    expect(screen.getByRole('navigation', { name: en.insights.report.toc })).toBeTruthy();
+    expect(screen.getByText(en.insights.report.cohortValue)).toBeTruthy();
+    expect(screen.getByText('1 proposed match excluded')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Size traps/ }).getAttribute('href')).toBe('#finding-traps');
+    expect(screen.getByRole('heading', { name: en.insights.report.testedTitle })).toBeTruthy();
+    expect(screen.getByText(en.insights.report.tested.history.body)).toBeTruthy();
+    const decisions = [
       en.insights.stock.title,
       en.insights.traps.title,
-    ]);
+      en.insights.size.title,
+      en.insights.policy.title,
+      en.insights.promo.title,
+      en.insights.space.title,
+    ];
+    const titles = screen
+      .getAllByRole('heading', { level: 2 })
+      .map((h) => h.textContent)
+      .filter((title): title is string => !!title && decisions.includes(title));
+    expect(titles).toEqual(decisions);
     expect(screen.getByText(/1 unreviewed match: not counted/)).toBeTruthy();
+    expect(asked.map((a) => a.path).sort()).toEqual([
+      '/api/v1/assortment-gaps',
+      '/api/v1/compare',
+      '/api/v1/insights',
+      '/api/v1/promotions',
+    ]);
+    expect(asked.find((a) => a.path === '/api/v1/compare')?.query).toEqual({
+      retailers: 'shop_a,shop_b',
+      limit: 1,
+    });
+    expect(asked.find((a) => a.path === '/api/v1/assortment-gaps')?.query).toEqual({
+      presentAt: 'shop_b',
+      missingAt: 'shop_a',
+    });
+    expect(asked.find((a) => a.path === '/api/v1/promotions')?.query).toEqual({
+      retailer: ['shop_a', 'shop_b'],
+      limit: 4,
+    });
   });
 
   it('stock-outs are counts with the partial-crawl label, never a share or a ranking', async () => {
@@ -201,6 +238,22 @@ describe('InsightsView', () => {
     status = { shop_a: 'supported', shop_b: 'partial' };
   });
 
+  it('uses retailer coverage metadata even when a partial shop has no qualifying stockout brands', async () => {
+    const noStockoutBrands = {
+      ...rich,
+      data: {
+        ...rich.data!,
+        stockouts: rich.data!.stockouts.map((row) =>
+          row.retailer === 'shop_b' ? { ...row, brands: [], qualifying: 0, suppressed: 0 } : row,
+        ),
+      },
+    };
+    status = { shop_a: 'supported', shop_b: 'partial' };
+    view(noStockoutBrands);
+    await screen.findByText(en.insights.report.partial);
+    expect(screen.getByText(en.insights.report.partial)).toBeTruthy();
+  });
+
   it('brands sit in their policy column and link to their counted pairs', async () => {
     view(rich);
     await screen.findByRole('heading', { level: 2, name: en.insights.policy.title });
@@ -226,12 +279,65 @@ describe('InsightsView', () => {
     expect(links.some((h) => h?.includes('p50'))).toBe(true);
   });
 
-  it('the golden: no placed brand, no stock-out, no ladder: each card says why, with no number', async () => {
+  it('promotion evidence is measured, ranked and linked instead of a dead hand-off card', async () => {
     view(base);
-    await screen.findByRole('heading', { level: 2, name: en.insights.policy.title });
-    expect(within(card(en.insights.policy.title)).getByText(en.reasons.cohort_too_small)).toBeTruthy();
-    expect(within(card(en.insights.stock.title)).getByText(en.reasons.cohort_too_small)).toBeTruthy();
-    expect(within(card(en.insights.traps.title)).getByText(en.reasons.cohort_too_small)).toBeTruthy();
+    await screen.findByText('3 decision signals are ready');
+    const c = card(en.insights.promo.title);
+    expect(within(c).getByText('Product p05 at Shop A has the deepest listed cut: −33.3%.')).toBeTruthy();
+    expect(within(c).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(c).getByRole('link', { name: 'Product p05' }).getAttribute('href')).toMatch(
+      /^\/en\/product\/?\?id=p05#evidence$/,
+    );
+    expect(c.textContent).toMatch(/Save.*AED.*40\.00/);
+    expect(within(c).getByRole('link', { name: en.insights.promo.open }).getAttribute('href')).toMatch(
+      /^\/en\/promotions\/?$/,
+    );
+  });
+
+  it('a measured zero stays a measured zero, never field-not-collected', async () => {
+    const none = {
+      ...promotions,
+      status: 'ok',
+      reason: null,
+      data: {
+        ...promotions.data!,
+        items: [],
+        total: 0,
+        truncated: false,
+        retailers: promotions.data!.retailers.map((row) =>
+          row.retailer === 'shop_a' || row.retailer === 'shop_b'
+            ? { ...row, share: '0.0', n: 6, onPromo: 0, reason: null }
+            : row,
+        ),
+      },
+    } as Envelope<Schemas['Promotions']>;
+    view(base, 'en', { '/api/v1/promotions': none });
+    await screen.findByText('2 decision signals are ready');
+    expect(screen.getByText(en.insights.readiness.nonePromotions)).toBeTruthy();
+    expect(screen.queryByText(en.reasons.field_not_collected)).toBeNull();
+  });
+
+  it('an unavailable Insights cohort makes only the one primary request', async () => {
+    const withheld: Env = { ...base, status: 'not_enough_data', reason: 'field_not_collected', data: null };
+    asked.length = 0;
+    view(withheld);
+    await screen.findByText(en.reasons.field_not_collected);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(asked.map((a) => a.path)).toEqual(['/api/v1/insights']);
+    expect(screen.queryByText(/decision signals are ready/)).toBeNull();
+  });
+
+  it('the golden leads with its three supported decisions and folds the dead cards away', async () => {
+    view(base);
+    await screen.findByText('3 decision signals are ready');
+    expect(screen.getByRole('heading', { level: 2, name: en.insights.size.title })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: en.insights.promo.title })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: en.insights.space.title })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: en.insights.policy.title })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: en.insights.stock.title })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: en.insights.traps.title })).toBeNull();
+    expect(screen.getByText('3 analyses are not ready')).toBeTruthy();
+    expect(screen.getAllByText(en.reasons.cohort_too_small)).toHaveLength(3);
     // White space: a confirmed absence, worded as missing.
     expect(screen.getByText('Shop A lists 1 product that Shop B does not carry.')).toBeTruthy();
   });
@@ -252,11 +358,13 @@ describe('InsightsView', () => {
         },
       },
     };
-    const none = { ...compare, data: { ...compare.data!, summary: null } };
-    view(pending, 'en', { '/api/v1/compare': none });
-    await screen.findByRole('heading', { level: 2, name: en.insights.size.title });
-    expect(within(card(en.insights.size.title)).getByText(en.reasons.matches_unreviewed)).toBeTruthy();
-    expect(screen.getByText(/6 unreviewed matches: not counted/)).toBeTruthy();
+    asked.length = 0;
+    view(pending);
+    await screen.findByText('2 decision signals are ready');
+    expect(screen.queryByRole('heading', { level: 2, name: en.insights.size.title })).toBeNull();
+    expect(screen.getAllByText(en.reasons.matches_unreviewed)).toHaveLength(2);
+    expect(screen.getByText('6 unreviewed matches excluded')).toBeTruthy();
+    expect(asked.map((a) => a.path)).not.toContain('/api/v1/compare');
   });
 
   it('the follow-ups are named, not filled', async () => {
@@ -268,12 +376,23 @@ describe('InsightsView', () => {
   it('Arabic: the same cards, the stock-out wording in Arabic', async () => {
     view(rich, 'ar');
     await screen.findByRole('heading', { level: 2, name: ar.insights.stock.title });
+    await screen.findByText('6 إشارات قرار جاهزة');
     expect(
       screen.getByText(
         /Balmain في Shop B: 113 قائمة مرصودة نافدة من المخزون من بين 113 قائمة مرصودة في رصد جزئي/,
       ),
     ).toBeTruthy();
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(6);
+    const cards = [
+      ar.insights.stock.title,
+      ar.insights.traps.title,
+      ar.insights.size.title,
+      ar.insights.policy.title,
+      ar.insights.promo.title,
+      ar.insights.space.title,
+    ];
+    expect(
+      screen.getAllByRole('heading', { level: 2 }).filter((h) => cards.includes(h.textContent ?? '')),
+    ).toHaveLength(6);
   });
 
   it('API 1.16.0 (no /insights): says so and asks the API nothing, no card, no number', async () => {
