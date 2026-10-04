@@ -17,6 +17,18 @@ import { PageHeader } from '../ui/page-header';
 
 type Pair = { base: string; other: string };
 
+export type PairEvidence = { matched: number | null; unreviewed: number | null; counted: boolean };
+
+/** Missing/withheld evidence is represented as null, never as a numeric zero. */
+export function pairEvidence(pricing: Insights['pricing'] | undefined): PairEvidence {
+  if (!pricing) return { matched: null, unreviewed: null, counted: false };
+  return {
+    matched: pricing.status === 'ok' ? pricing.n : null,
+    unreviewed: pricing.unreviewed,
+    counted: pricing.status === 'ok',
+  };
+}
+
 export function threeRetailerPairs(ids: string[]): Pair[] {
   return ids.flatMap((base, i) => ids.slice(i + 1).map((other) => ({ base, other })));
 }
@@ -100,8 +112,8 @@ export function ThreeRetailerReport() {
             </div>
           </Card>
           {selected.map((pair, i) => {
-            const env = results[i]!.data as Envelope<Insights>;
-            const pricing = env.data?.pricing;
+            const env = results[i]!.data as Envelope<Insights> | undefined;
+            const evidence = pairEvidence(env?.data?.pricing);
             return (
               <Card
                 key={`${pair.base}-${pair.other}`}
@@ -112,15 +124,15 @@ export function ThreeRetailerReport() {
                 <dl className="space-y-2 text-sm">
                   <div className="flex justify-between gap-3">
                     <dt className="text-ink-2">{t('matched')}</dt>
-                    <dd className="font-semibold tabular-nums">{pricing?.n ?? 0}</dd>
+                    <dd className="font-semibold tabular-nums">{evidence.matched ?? t('notAvailable')}</dd>
                   </div>
                   <div className="flex justify-between gap-3">
                     <dt className="text-ink-2">{t('unreviewed')}</dt>
-                    <dd className="font-semibold tabular-nums">{pricing?.unreviewed ?? 0}</dd>
+                    <dd className="font-semibold tabular-nums">{evidence.unreviewed ?? t('notAvailable')}</dd>
                   </div>
                   <div className="flex justify-between gap-3">
                     <dt className="text-ink-2">{t('statusLabel')}</dt>
-                    <dd>{pricing?.status === 'ok' ? t('counted') : t('withheld')}</dd>
+                    <dd>{evidence.counted ? t('counted') : t('withheld')}</dd>
                   </div>
                 </dl>
                 <Link

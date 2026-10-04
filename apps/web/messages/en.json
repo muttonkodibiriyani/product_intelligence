@@ -936,6 +936,7 @@
       "matched": "Reviewed matches",
       "unreviewed": "Proposed matches withheld",
       "statusLabel": "Evidence status",
+      "notAvailable": "Not available",
       "counted": "Counted pair evidence",
       "withheld": "Withheld — insufficient governed data",
       "openEvidence": "Open pair evidence",
