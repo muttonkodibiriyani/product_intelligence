@@ -222,33 +222,59 @@ function Cards({
       <Readiness ready={readyCount} pending={pending} unreviewed={data.pricing.unreviewed} />
       <ReportMethod pricing={data.pricing} stocks={stocks} ladders={ladders} />
       <FindingToc
-        items={[
-          hasStock && ['stock', t('stock.title')],
-          hasTraps && ['traps', t('traps.title')],
-          hasSizes && ['size', t('size.title')],
-          hasPolicy && ['policy', t('policy.title')],
-          hasPromos && ['promo', t('promo.title')],
-          hasSpace && ['space', t('space.title')],
-        ].filter(Boolean) as [string, string][]}
+        items={
+          [
+            hasStock && ['stock', t('stock.title')],
+            hasTraps && ['traps', t('traps.title')],
+            hasSizes && ['size', t('size.title')],
+            hasPolicy && ['policy', t('policy.title')],
+            hasPromos && ['promo', t('promo.title')],
+            hasSpace && ['space', t('space.title')],
+          ].filter(Boolean) as [string, string][]
+        }
       />
       {data.pricing.status === 'ok' && data.pricing.n > 0 && (
         <Positioning env={summary} pricing={data.pricing} {...pair} />
       )}
       <CardGrid>
         {/* Primary evidence never moves while the smaller supporting requests settle. */}
-        {hasStock && <div id="finding-stock"><StockCard rows={stocks} cutoff={env.meta.cutoff} /></div>}
-        {hasTraps && <div id="finding-traps"><TrapCard ladders={ladders} held={data.heldOutPct} /></div>}
-        {hasSizes && <div id="finding-size"><SizeCard pricing={data.pricing} {...pair} /></div>}
-        {hasPolicy && <div id="finding-policy"><PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} /></div>}
+        {hasStock && (
+          <div id="finding-stock">
+            <StockCard rows={stocks} cutoff={env.meta.cutoff} />
+          </div>
+        )}
+        {hasTraps && (
+          <div id="finding-traps">
+            <TrapCard ladders={ladders} held={data.heldOutPct} />
+          </div>
+        )}
+        {hasSizes && (
+          <div id="finding-size">
+            <SizeCard pricing={data.pricing} {...pair} />
+          </div>
+        )}
+        {hasPolicy && (
+          <div id="finding-policy">
+            <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />
+          </div>
+        )}
         {promotionsPending ? (
           <Card title={t('promo.title')} span={6} state="loading" skeleton="lines" />
         ) : (
-          hasPromos && <div id="finding-promo"><PromoCard items={promoItems} base={base} other={other} /></div>
+          hasPromos && (
+            <div id="finding-promo">
+              <PromoCard items={promoItems} base={base} other={other} />
+            </div>
+          )
         )}
         {gapsPending ? (
           <Card title={t('space.title')} span={6} state="loading" skeleton="chart" />
         ) : (
-          hasSpace && <div id="finding-space"><WhiteSpaceCard env={gaps} /></div>
+          hasSpace && (
+            <div id="finding-space">
+              <WhiteSpaceCard env={gaps} />
+            </div>
+          )
         )}
       </CardGrid>
       <Deferred
@@ -275,7 +301,9 @@ function TestedNotPromoted() {
   const t = useTranslations('insights.report');
   return (
     <section aria-labelledby="tested-not-promoted" className="panel px-5 py-4">
-      <h2 id="tested-not-promoted" className="text-base font-semibold">{t('testedTitle')}</h2>
+      <h2 id="tested-not-promoted" className="text-base font-semibold">
+        {t('testedTitle')}
+      </h2>
       <p className="mt-1 text-sm text-ink-2">{t('testedIntro')}</p>
       <ul className="mt-3 grid gap-2 text-sm text-ink-2 sm:grid-cols-2">
         {(['history', 'gwp', 'rating'] as const).map((key) => (
@@ -298,8 +326,13 @@ function FindingToc({ items }: { items: [string, string][] }) {
       <ol className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {items.map(([id, label], i) => (
           <li key={id}>
-            <a className="flex items-baseline gap-2 text-sm underline-offset-2 hover:underline" href={`#finding-${id}`}>
-              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-semibold text-surface">{i + 1}</span>
+            <a
+              className="flex items-baseline gap-2 text-sm underline-offset-2 hover:underline"
+              href={`#finding-${id}`}
+            >
+              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-semibold text-surface">
+                {i + 1}
+              </span>
               {label}
             </a>
           </li>
@@ -309,17 +342,31 @@ function FindingToc({ items }: { items: [string, string][] }) {
   );
 }
 
-function ReportMethod({ pricing, stocks, ladders }: { pricing: Insights['pricing']; stocks: Stockouts[]; ladders: Ladder[] }) {
+function ReportMethod({
+  pricing,
+  stocks,
+  ladders,
+}: {
+  pricing: Insights['pricing'];
+  stocks: Stockouts[];
+  ladders: Ladder[];
+}) {
   const t = useTranslations('insights.report');
-  const partial = stocks.some((s) => s.reason === null && s.brands.length > 0) || ladders.some((l) => l.reason === 'cohort_too_small');
+  const partial =
+    stocks.some((s) => s.reason === null && s.brands.length > 0) ||
+    ladders.some((l) => l.reason === 'cohort_too_small');
   return (
     <details className="panel px-5 py-3 text-sm text-ink-2">
       <summary className="cursor-pointer font-medium text-ink">{t('method')}</summary>
       <dl className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
-        <dt className="text-xs font-semibold uppercase tracking-wide">{t('n')}</dt><dd>{pricing.n}</dd>
-        <dt className="text-xs font-semibold uppercase tracking-wide">{t('cohort')}</dt><dd>{t('cohortValue')}</dd>
-        <dt className="text-xs font-semibold uppercase tracking-wide">{t('matches')}</dt><dd>{pricing.unreviewed > 0 ? t('unreviewed', { n: pricing.unreviewed }) : t('reviewed')}</dd>
-        <dt className="text-xs font-semibold uppercase tracking-wide">{t('coverage')}</dt><dd>{partial ? t('partial') : t('complete')}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('n')}</dt>
+        <dd>{pricing.n}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('cohort')}</dt>
+        <dd>{t('cohortValue')}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('matches')}</dt>
+        <dd>{pricing.unreviewed > 0 ? t('unreviewed', { n: pricing.unreviewed }) : t('reviewed')}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('coverage')}</dt>
+        <dd>{partial ? t('partial') : t('complete')}</dd>
       </dl>
     </details>
   );
