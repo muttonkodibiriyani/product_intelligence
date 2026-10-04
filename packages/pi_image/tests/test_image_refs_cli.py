@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from .image_fixtures import GridEmbedder, as_bytes, packshot
+from image_fixtures import GridEmbedder, as_bytes, packshot
 from pi_fetch.transports.base import RawResponse
 from pi_fetch.types import FetchRequest
 from pi_image import cli

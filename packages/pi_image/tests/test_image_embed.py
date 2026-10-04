@@ -9,7 +9,7 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from PIL import Image
 
-from .image_fixtures import GridEmbedder, packshot
+from image_fixtures import GridEmbedder, packshot
 from pi_image.embed import (
     SIGLIP_BASE,
     EmbeddingCache,
