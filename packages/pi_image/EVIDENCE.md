@@ -71,12 +71,13 @@ family/related and unlabelled rows; matcher hard rules must classify or reject t
 The stratified packet contains 313 rows:
 
 - 135 rows already adjudicated in gold: 5 exact, 2 family, 116 related, 1 different, 11 unsure.
-- 178 unseen rows (108 normal candidates, 70 aliases), owner-adjudicated as
-  `human_label=unsure` and explicitly review-only. They remain excluded from
-  counted matches and auto-acceptance; each row records the owner-attestation source.
+- 178 unseen rows (108 normal candidates, 70 aliases) are explicitly review-only. The owner
+  attested 176 as `unsure`; a later partial artifact labels one exact and one different.
+  None may become auto-accepted products, and aliases remain review-only.
 - Machine evidence (`same_bytes`, pHash/dHash gate, cosine, rank and route) is nested separately
   from `human_label`. The attestation is recorded in `approval.json` with source message
-  `01a1055c-65e9-7953-a3ba-e9c8f8a765af`.
+  `01a1055c-65e9-7953-a3ba-e9c8f8a765af`; the two explicit labels are from
+  `01a10562-2264-77d6-abd0-cfe3c3466630`.
 
 The Shiseido case demonstrates the boundary: Sephora `s-P10058416-150-ml` vs Ulta
 `u-UB0000007780-150-ml` has pHash 0, dHash 1, cosine 0.9870 and rank 1, but remains gold
@@ -91,7 +92,7 @@ catalogue metadata and image URLs):
 | `image_status.jsonl` | `975a1c644af96911fd625e7d5bc50fdda02832d16ca76ee388bcc02e23b1f131` |
 | `image_signals.jsonl` | `3593f987f7ec22b1956f5b265333990b7a893dc400e8aacf520195a967ae73e9` |
 | `alias_suggestions.jsonl` | `4d5f955b4ee78ed3e6c82495559103112eec84d56bc877e35a5dd8afd1c1080a` |
-| enhanced `summary.json` | `4e42e7996d22f3eb832456b79e1f8bd68560553692a3f32d3e75b28f296111f8` |
-| `review_sample.jsonl` (owner labels) | `75d03c3485273ab8db3625e052031110dad67d5804e68f203712fe310570372c` |
-| `approval.json` | `3a1e6b31bfe7ffa3db4e60ae01ff03186015da6f1d9d6bcbd8897f2d8c9b294c` |
+| enhanced `summary.json` | `56fb8beb04a0084fa776979e7389eb5fe6369ddc90d616ff8a5e34cffd493e84` |
+| `review_sample.jsonl` (owner labels) | `f55bd1b4323f1992a0f9ae6ff69cab0c9fa266cf1b1360c1faa50f73515aae65` |
+| `approval.json` | `869aed468e2f09bdc276fbc9b943e3ab8d3ee86f0a73cfeda1e8e275b86f208e` |
 | `top_candidates.jsonl` | `668c9e8d00bdc9c868434d684618311131d9f9a65a1060e2c63e4e3e7df420ac` |
