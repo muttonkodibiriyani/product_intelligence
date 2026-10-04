@@ -238,43 +238,19 @@ function Cards({
       )}
       <CardGrid>
         {/* Primary evidence never moves while the smaller supporting requests settle. */}
-        {hasStock && (
-          <div className="contents" id="finding-stock">
-            <StockCard rows={stocks} cutoff={env.meta.cutoff} />
-          </div>
-        )}
-        {hasTraps && (
-          <div className="contents" id="finding-traps">
-            <TrapCard ladders={ladders} held={data.heldOutPct} />
-          </div>
-        )}
-        {hasSizes && (
-          <div className="contents" id="finding-size">
-            <SizeCard pricing={data.pricing} {...pair} />
-          </div>
-        )}
-        {hasPolicy && (
-          <div className="contents" id="finding-policy">
-            <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />
-          </div>
-        )}
+        {hasStock && <StockCard rows={stocks} cutoff={env.meta.cutoff} />}
+        {hasTraps && <TrapCard ladders={ladders} held={data.heldOutPct} />}
+        {hasSizes && <SizeCard pricing={data.pricing} {...pair} />}
+        {hasPolicy && <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />}
         {promotionsPending ? (
           <Card title={t('promo.title')} span={6} state="loading" skeleton="lines" />
         ) : (
-          hasPromos && (
-            <div className="contents" id="finding-promo">
-              <PromoCard items={promoItems} base={base} other={other} />
-            </div>
-          )
+          hasPromos && <PromoCard items={promoItems} base={base} other={other} />
         )}
         {gapsPending ? (
           <Card title={t('space.title')} span={6} state="loading" skeleton="chart" />
         ) : (
-          hasSpace && (
-            <div className="contents" id="finding-space">
-              <WhiteSpaceCard env={gaps} />
-            </div>
-          )
+          hasSpace && <WhiteSpaceCard env={gaps} />
         )}
       </CardGrid>
       <Deferred
@@ -519,6 +495,7 @@ function SizeCard({ pricing, base, other }: Pair & { pricing: Insights['pricing'
   const deep = deepestUndercut(sizes);
   return (
     <Card
+      id="finding-size"
       title={t('title')}
       span={6}
       question={
@@ -595,6 +572,7 @@ function PolicyCard({ pricing, share, base, other }: Pair & { pricing: Insights[
   };
   return (
     <Card
+      id="finding-policy"
       title={t('title')}
       span={6}
       question={t('headline', {
@@ -663,6 +641,7 @@ function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | un
   const max = Math.max(1, ...top.map((b) => b.count));
   return (
     <Card
+      id="finding-space"
       title={t('title')}
       span={6}
       question={t(missing ? 'headlineMissing' : 'headlineUnmatched', {
@@ -704,6 +683,7 @@ function PromoCard({ items, base, other }: Pair & { items: Schemas['PromoItem'][
   const deepest = shown[0]!;
   return (
     <Card
+      id="finding-promo"
       title={t('title')}
       span={6}
       question={t('headline', {
@@ -773,6 +753,7 @@ function StockCard({ rows, cutoff }: { rows: Stockouts[]; cutoff: string }) {
   const max = Math.max(1, ...rows.flatMap((r) => r.brands.map((b) => b.observed)));
   return (
     <Card
+      id="finding-stock"
       title={t('title')}
       span={6}
       question={
@@ -868,6 +849,7 @@ function TrapCard({ ladders, held }: { ladders: Ladder[]; held: string }) {
     return <ReasonCard title={t('title')} reason={ladders.find((l) => l.reason)?.reason} />;
   return (
     <Card
+      id="finding-traps"
       title={t('title')}
       question={t('headline', {
         k: measured.reduce((n, l) => n + l.notCheaper, 0),
