@@ -328,9 +328,13 @@ function ReportMethod({
   ladders: Ladder[];
 }) {
   const t = useTranslations('insights.report');
+  const meta = useMeta().data?.data;
+  const retailerIds = new Set([...stocks.map((s) => s.retailer), ...ladders.map((l) => l.retailer)]);
+  const metadataPartial = meta?.retailers.some((r) => retailerIds.has(r.id) && r.status !== 'supported');
   const partial =
-    stocks.some((s) => s.reason === null && s.brands.length > 0) ||
-    ladders.some((l) => l.reason === 'cohort_too_small');
+    metadataPartial ??
+    (stocks.some((s) => s.reason === null && s.brands.length > 0) ||
+      ladders.some((l) => l.reason === 'cohort_too_small'));
   return (
     <details className="panel px-5 py-3 text-sm text-ink-2">
       <summary className="cursor-pointer font-medium text-ink">{t('method')}</summary>
