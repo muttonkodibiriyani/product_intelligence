@@ -238,6 +238,22 @@ describe('InsightsView', () => {
     status = { shop_a: 'supported', shop_b: 'partial' };
   });
 
+  it('uses retailer coverage metadata even when a partial shop has no qualifying stockout brands', async () => {
+    const noStockoutBrands = {
+      ...rich,
+      data: {
+        ...rich.data!,
+        stockouts: rich.data!.stockouts.map((row) =>
+          row.retailer === 'shop_b' ? { ...row, brands: [], qualifying: 0, suppressed: 0 } : row,
+        ),
+      },
+    };
+    status = { shop_a: 'supported', shop_b: 'partial' };
+    view(noStockoutBrands);
+    await screen.findByText(en.insights.report.partial);
+    expect(screen.getByText(en.insights.report.partial)).toBeTruthy();
+  });
+
   it('brands sit in their policy column and link to their counted pairs', async () => {
     view(rich);
     await screen.findByRole('heading', { level: 2, name: en.insights.policy.title });
