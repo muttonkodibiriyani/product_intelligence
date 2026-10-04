@@ -807,6 +807,7 @@
   "insights": {
     "title": "Insights",
     "intro": "What the latest data supports deciding, one card per decision. Each number opens the products it was counted from.",
+    "p1Link": "Open three-retailer report",
     "pickPair": "Pick two shops to see what the data says about them.",
     "loading": "Loading the insights…",
     "unavailable": "Insights is not available yet: it needs data service version {need} or later, and this site runs {have}. Nothing is shown until the service is updated.",
@@ -917,6 +918,31 @@
       "saving": "{shop}: the typical step up in size saves {pct} per unit ({n} steps).",
       "method": "Price cards count reviewed exact matches only. A brand needs {share}% of its matches on one side to be placed. Size steps beyond {held}% are held out. Any cohort under {min} is hidden.",
       "later": "Not shown yet, for lack of a backed aggregate: the EDP vs EDT price ladder, price against rating, and verified real discounts."
+    },
+    "p1": {
+      "title": "Three-retailer decision report",
+      "intro": "A governed view of Ulta, Sephora and Faces. Pair evidence is shown separately; no three-way number is invented.",
+      "basisTitle": "How to read this report",
+      "basis": "Every number comes directly from a reviewed pair response. Proposed matches are withheld from counts, and partial or pending retailers are never presented as complete.",
+      "imageNote": "Product images are shown only when the governed API supplies an approved image reference. This release exposes source links, not guessed or copied image URLs.",
+      "coverageTitle": "Collection coverage",
+      "coverageQuestion": "Coverage status is reported per retailer and controls which evidence can be interpreted.",
+      "status": {
+        "supported": "Complete coverage",
+        "partial": "Partial coverage — interpret as a lower bound",
+        "pending": "Not collected yet"
+      },
+      "pairQuestion": "Reviewed pair evidence only; this is not a three-way aggregate.",
+      "matched": "Reviewed matches",
+      "unreviewed": "Proposed matches withheld",
+      "statusLabel": "Evidence status",
+      "notAvailable": "Not available",
+      "counted": "Counted pair evidence",
+      "withheld": "Withheld — insufficient governed data",
+      "openEvidence": "Open pair evidence",
+      "loading": "Loading governed pair evidence…",
+      "notEnough": "The three-retailer report appears when three retailers are collected.",
+      "unavailable": "This report needs data service version {need} or later."
     }
   }
 }
