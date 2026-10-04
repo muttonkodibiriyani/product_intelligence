@@ -26,7 +26,7 @@ import {
   type Stockouts,
 } from '@/lib/insights';
 import { navHref } from '@/lib/nav';
-import { listedItems } from '@/lib/promotions';
+import { listedItems, notMeasured } from '@/lib/promotions';
 import { PairPicker } from '../compare/pair-picker';
 import { useAuth } from '../auth-provider';
 import { ApiError } from '@/lib/api/client';
@@ -96,7 +96,9 @@ export function InsightsView() {
   const pricingReady = evidence?.pricing.status === 'ok' && evidence.pricing.n > 0;
   const summary = useQuery({
     queryKey: ['compare', 'insights', retailers],
-    queryFn: ({ signal }) => api!.get('/api/v1/compare', { query: { retailers, limit: 100 }, signal }),
+    // The summary is computed over the full cohort regardless of the row limit. One evidence row
+    // is enough here; the Compare link opens the full list when the user asks for it.
+    queryFn: ({ signal }) => api!.get('/api/v1/compare', { query: { retailers, limit: 1 }, signal }),
     // No reviewed exact pairs means /compare can add only another withheld card. Do not ask for it.
     enabled: !!api && ready && pricingReady,
   });
@@ -113,7 +115,7 @@ export function InsightsView() {
     queryKey: ['promotions', 'insights', retailers],
     queryFn: ({ signal }) =>
       api!.get('/api/v1/promotions', {
-        query: { retailer: [state.base, state.other], limit: 8 },
+        query: { retailer: [state.base, state.other], limit: 4 },
         signal,
       }),
     // First render the evidence aggregate; the compact promotion proof is a secondary request.
@@ -163,8 +165,10 @@ export function InsightsView() {
           summary={summary.data}
           gaps={gaps.data}
           gapsPending={gaps.isPending}
+          gapsError={gaps.isError}
           promotions={promotions.data}
           promotionsPending={promotions.isPending}
+          promotionsError={promotions.isError}
           base={state.base}
           other={state.other}
         />
@@ -180,8 +184,10 @@ function Cards({
   summary,
   gaps,
   gapsPending,
+  gapsError,
   promotions,
   promotionsPending,
+  promotionsError,
   base,
   other,
 }: Pair & {
@@ -189,8 +195,10 @@ function Cards({
   summary: Envelope<Schemas['Comparison']> | undefined;
   gaps: Envelope<Schemas['AssortmentGaps']> | undefined;
   gapsPending: boolean;
+  gapsError: boolean;
   promotions: Envelope<Schemas['Promotions']> | undefined;
   promotionsPending: boolean;
+  promotionsError: boolean;
 }) {
   const t = useTranslations('insights');
   const data = env.data;
@@ -198,7 +206,9 @@ function Cards({
   if (!data) return <ReasonCard title={t('title')} reason={env.reason} />;
   const stocks = forPair(data.stockouts, base, other);
   const ladders = forPair(data.ladders, base, other);
-  const promoItems = promotions?.data ? listedItems(promotions.data).items : [];
+  const promoItems = promotions?.data
+    ? listedItems(promotions.data).items.filter((item) => item.retailer === base || item.retailer === other)
+    : [];
   const hasSizes = data.pricing.status === 'ok' && data.pricing.sizes.length > 0;
   const hasPolicy = data.pricing.status === 'ok' && data.pricing.brands.length > 0;
   const hasSpace = !!gaps?.data && gaps.status === 'ok' && gaps.data.total > 0;
@@ -214,19 +224,32 @@ function Cards({
         <Positioning env={summary} pricing={data.pricing} {...pair} />
       )}
       <CardGrid>
-        {hasPromos && <PromoCard items={promoItems} base={base} other={other} />}
+        {/* Primary evidence never moves while the smaller supporting requests settle. */}
         {hasStock && <StockCard rows={stocks} cutoff={env.meta.cutoff} />}
         {hasTraps && <TrapCard ladders={ladders} held={data.heldOutPct} />}
         {hasSizes && <SizeCard pricing={data.pricing} {...pair} />}
         {hasPolicy && <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />}
-        {hasSpace && <WhiteSpaceCard env={gaps} />}
+        {promotionsPending ? (
+          <Card title={t('promo.title')} span={6} state="loading" skeleton="lines" />
+        ) : (
+          hasPromos && <PromoCard items={promoItems} base={base} other={other} />
+        )}
+        {gapsPending ? (
+          <Card title={t('space.title')} span={6} state="loading" skeleton="chart" />
+        ) : (
+          hasSpace && <WhiteSpaceCard env={gaps} />
+        )}
       </CardGrid>
       <Deferred
         pricing={data.pricing}
+        base={base}
+        other={other}
         gaps={gaps}
         gapsPending={gapsPending}
+        gapsError={gapsError}
         promotions={promotions}
         promotionsPending={promotionsPending}
+        promotionsError={promotionsError}
         stocks={stocks}
         ladders={ladders}
       />
@@ -256,7 +279,9 @@ function Readiness({ ready, pending, unreviewed }: { ready: number; pending: boo
               {t('unreviewed', { n: unreviewed, count: formatCount(unreviewed, locale) })}
             </span>
           )}
-          {pending && <span className="rounded-full bg-surface-2 px-2.5 py-1 text-ink-2">{t('checking')}</span>}
+          {pending && (
+            <span className="rounded-full bg-surface-2 px-2.5 py-1 text-ink-2">{t('checking')}</span>
+          )}
         </div>
       </div>
     </section>
@@ -516,8 +541,10 @@ function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | un
   const d = env.data;
   if (!d || env.status !== 'ok' || d.total === 0)
     return <ReasonCard title={t('title')} reason={env.reason ?? 'cohort_too_small'} span={6} />;
-  // "Missing" only when every gap is a confirmed absence; any unreviewed one makes the card say "no match".
-  const missing = d.items.length > 0 && d.items.every((i) => i.label === 'missing');
+  // "Missing" only when every row is a confirmed absence; any unreviewed or omitted row makes
+  // the card use the honest "no reviewed match" wording.
+  const missing =
+    d.items.length === d.total && d.items.length > 0 && d.items.every((i) => i.label === 'missing');
   const top = d.byBrand.slice(0, BRANDS_SHOWN);
   const max = Math.max(1, ...top.map((b) => b.count));
   return (
@@ -556,7 +583,10 @@ function PromoCard({ items, base, other }: Pair & { items: Schemas['PromoItem'][
   const t = useTranslations('insights.promo');
   const locale = useLocale();
   const name = useRetailerName();
-  const shown = items.filter((item) => item.retailer === base || item.retailer === other).slice(0, 4);
+  const shown = items
+    .filter((item) => item.retailer === base || item.retailer === other)
+    .sort((a, b) => Number(b.depthPct) - Number(a.depthPct) || a.id.localeCompare(b.id))
+    .slice(0, 4);
   const deepest = shown[0]!;
   return (
     <Card
@@ -796,37 +826,57 @@ function TrapCard({ ladders, held }: { ladders: Ladder[]; held: string }) {
 /** Withheld analyses live in one disclosure instead of occupying most of the page as dead cards. */
 function Deferred({
   pricing,
+  base,
+  other,
   gaps,
   gapsPending,
+  gapsError,
   promotions,
   promotionsPending,
+  promotionsError,
   stocks,
   ladders,
 }: {
   pricing: Insights['pricing'];
+  base: string;
+  other: string;
   gaps: Envelope<Schemas['AssortmentGaps']> | undefined;
   gapsPending: boolean;
+  gapsError: boolean;
   promotions: Envelope<Schemas['Promotions']> | undefined;
   promotionsPending: boolean;
+  promotionsError: boolean;
   stocks: Stockouts[];
   ladders: Ladder[];
 }) {
   const t = useTranslations('insights');
   const tr = useTranslations('reasons');
-  const promoItems = promotions?.data ? listedItems(promotions.data).items : [];
-  const rows = [
+  const promoItems = promotions?.data
+    ? listedItems(promotions.data).items.filter((item) => item.retailer === base || item.retailer === other)
+    : [];
+  const promoWhy = promotions ? notMeasured(promotions, null) : null;
+  type DeferredRow = { title: string; reason?: string; message?: string };
+  const candidates: Array<DeferredRow | null> = [
     pricing.status !== 'ok' || pricing.sizes.length === 0
       ? { title: t('size.title'), reason: pricing.reason ?? 'cohort_too_small' }
       : null,
     pricing.status !== 'ok' || pricing.brands.length === 0
       ? { title: t('policy.title'), reason: pricing.reason ?? 'cohort_too_small' }
       : null,
-    !gapsPending && (!gaps?.data || gaps.status !== 'ok' || gaps.data.total === 0)
-      ? { title: t('space.title'), reason: gaps?.reason ?? 'cohort_too_small' }
-      : null,
-    !promotionsPending && promoItems.length === 0
-      ? { title: t('promo.title'), reason: promotions?.reason ?? 'field_not_collected' }
-      : null,
+    !gapsPending && gapsError
+      ? { title: t('space.title'), message: t('readiness.failed') }
+      : !gapsPending && gaps?.status === 'ok' && gaps.data?.total === 0
+        ? { title: t('space.title'), message: t('readiness.noneSpace') }
+        : !gapsPending && (!gaps?.data || gaps.status !== 'ok')
+          ? { title: t('space.title'), reason: gaps?.reason ?? 'cohort_too_small' }
+          : null,
+    !promotionsPending && promotionsError
+      ? { title: t('promo.title'), message: t('readiness.failed') }
+      : !promotionsPending && promoItems.length === 0 && promoWhy === null && promotions?.status === 'ok'
+        ? { title: t('promo.title'), message: t('readiness.nonePromotions') }
+        : !promotionsPending && promoItems.length === 0
+          ? { title: t('promo.title'), reason: promoWhy ?? promotions?.reason ?? 'field_not_collected' }
+          : null,
     stocks.every((row) => row.brands.length === 0)
       ? {
           title: t('stock.title'),
@@ -839,7 +889,8 @@ function Deferred({
           reason: ladders.find((row) => row.reason)?.reason ?? 'cohort_too_small',
         }
       : null,
-  ].filter((row): row is { title: string; reason: string } => row !== null);
+  ];
+  const rows = candidates.filter((row): row is DeferredRow => row !== null);
   if (rows.length === 0) return null;
   return (
     <details className="panel px-5 py-4 text-sm">
@@ -852,7 +903,7 @@ function Deferred({
           <li key={row.title} className="rounded-ctl bg-surface-2 px-3 py-2">
             <b className="me-1.5 font-medium text-ink">{row.title}</b>
             <span className="text-ink-2">
-              <Known t={tr} v={row.reason} />
+              {row.message ?? (row.reason ? <Known t={tr} v={row.reason} /> : null)}
             </span>
           </li>
         ))}

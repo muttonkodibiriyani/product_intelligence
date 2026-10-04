@@ -814,6 +814,19 @@
     "soWhat": "So what:",
     "evidence": "See the evidence",
     "unreviewed": "{n, plural, one {# unreviewed match} other {# unreviewed matches}}: not counted",
+    "readiness": {
+      "eyebrow": "Decision readiness",
+      "title": "{n, plural, =0 {No decision signals are ready yet} one {# decision signal is ready} other {# decision signals are ready}}",
+      "body": "Only evidence supported by this retailer pair appears as a card. Withheld and unavailable analyses are grouped below; missing is never treated as zero.",
+      "ready": "{n, plural, =0 {Nothing ready} one {{count} ready signal} other {{count} ready signals}}",
+      "unreviewed": "{n, plural, one {{count} unreviewed match excluded} other {{count} unreviewed matches excluded}}",
+      "checking": "Checking supporting evidence…",
+      "deferred": "{n, plural, one {# analysis is not ready} other {# analyses are not ready}}",
+      "deferredBody": "Open this only to see what the current data cannot support. No withheld value is shown as zero.",
+      "noneSpace": "No governed assortment gap was observed for this pair.",
+      "nonePromotions": "No listed price cut was observed for this pair.",
+      "failed": "Supporting evidence could not be loaded."
+    },
     "positioning": {
       "title": "Price position",
       "none": "No reviewed exact matches between these shops yet, so no price is compared.",
@@ -852,8 +865,10 @@
     },
     "promo": {
       "title": "Promotion strategy",
-      "headline": "Discount depth, share and mechanics are measured on the Promotions page.",
-      "action": "Compare promotion depth there; this page repeats no promotion numbers.",
+      "headline": "{product} at {shop} has the deepest listed cut: −{pct}%.",
+      "meta": "{n, plural, one {{count} listed discount} other {Top {count} listed discounts}}, deepest first",
+      "saved": "Save",
+      "action": "Check the evidence before using a discount in a pricing decision.",
       "open": "Open Promotions"
     },
     "stock": {
