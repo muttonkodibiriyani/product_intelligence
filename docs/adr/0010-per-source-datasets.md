@@ -3,6 +3,8 @@
 - Status: proposed (drafted by the Deep Coder on the coordinator's owner-approved "scheme A"
   brief, 1 Oct 2026)
 - Date: 2026-10-01
+- Amended by: ADR-0012 (3 Oct 2026). Match edges may cross files through a `pi.matches/v1` file
+  keyed by stable listing ids. §4 "Matches" holds only when no match file is assigned.
 - Extends: ADR-0007 §6 (dataset layout), ADR-0008 §4 (`pi_api` reads v3)
 - Applies to: `pi_dataset` (`compose`), `pi_api` (`config`, `source`, `/v1/meta`), the publisher
   and the exporter (`--sources`, #112), and the `pi-api` deploy config
@@ -51,7 +53,7 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
      `notObserved` window (no categories, no context) covers each run of those dates. So a date
      outside a source's file never backs an absence claim: no launch on its first date, no
      assortment gap or removal on the other source's dates.
-   - **Matches.** Edges are never made across files. A pair is counted only if one file holds
+   - **Matches.** Edges are never made across files (amended by ADR-0012: see there). A pair is counted only if one file holds
      both offers and the edge.
    - **Meta.** `capabilities` are or-ed, a field status that differs between files is
      `partial`, `cutoff` and `generatedAt` are the latest, and `producer` is

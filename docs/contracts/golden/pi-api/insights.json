@@ -1,0 +1,126 @@
+{
+  "caveats": [
+    {
+      "ar": "بيانات shop_c مجمّعة جزئياً.",
+      "code": "retailer_partial",
+      "en": "shop_c is only partly collected.",
+      "params": {
+        "retailer": "shop_c"
+      }
+    }
+  ],
+  "cohort": {
+    "description": "counted exact pairs, approved or locked",
+    "n": 6
+  },
+  "data": {
+    "heldOutPct": "50.0",
+    "ladders": [
+      {
+        "exceptions": [],
+        "heldOut": 0,
+        "medianSavingPct": null,
+        "notCheaper": 0,
+        "reason": "cohort_too_small",
+        "retailer": "shop_a",
+        "steps": 0
+      },
+      {
+        "exceptions": [],
+        "heldOut": 0,
+        "medianSavingPct": null,
+        "notCheaper": 0,
+        "reason": "cohort_too_small",
+        "retailer": "shop_b",
+        "steps": 0
+      },
+      {
+        "exceptions": [],
+        "heldOut": 0,
+        "medianSavingPct": null,
+        "notCheaper": 0,
+        "reason": "cohort_too_small",
+        "retailer": "shop_c",
+        "steps": 0
+      },
+      {
+        "exceptions": [],
+        "heldOut": 0,
+        "medianSavingPct": null,
+        "notCheaper": 0,
+        "reason": "retailer_blocked",
+        "retailer": "shop_d",
+        "steps": 0
+      }
+    ],
+    "policySharePct": "80.0",
+    "pricing": {
+      "base": "shop_a",
+      "brands": [],
+      "n": 6,
+      "other": "shop_b",
+      "reason": null,
+      "sizes": [
+        {
+          "baseCheaper": 3,
+          "equal": 1,
+          "medianGapPct": "2.4",
+          "n": 6,
+          "otherCheaper": 2,
+          "unit": "ml",
+          "value": "50"
+        }
+      ],
+      "status": "ok",
+      "suppressedBrands": 2,
+      "suppressedSizes": 0,
+      "unreviewed": 1
+    },
+    "stockouts": [
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": null,
+        "retailer": "shop_a",
+        "suppressed": 2
+      },
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": null,
+        "retailer": "shop_b",
+        "suppressed": 0
+      },
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": null,
+        "retailer": "shop_c",
+        "suppressed": 0
+      },
+      {
+        "brands": [],
+        "qualifying": 0,
+        "reason": "retailer_blocked",
+        "retailer": "shop_d",
+        "suppressed": 0
+      }
+    ]
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.18.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "insights",
+    "filters": {
+      "retailers": "shop_a,shop_b"
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-03.3",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "status": "ok"
+}

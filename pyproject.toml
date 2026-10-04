@@ -5,7 +5,7 @@ description = "Competitive product and price intelligence platform (workspace ro
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["pi-capture", "pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-image", "pi-match", "pi-profiles", "pi-metrics", "pi-api"]
+dependencies = ["pi-capture", "pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-profiles", "pi-metrics", "pi-api"]
 
 [tool.uv]
 package = false
@@ -22,7 +22,6 @@ pi-metrics = { workspace = true }
 pi-api = { workspace = true }
 pi-db = { workspace = true }
 pi-fetch = { workspace = true }
-pi-image = { workspace = true }
 pi-match = { workspace = true }
 pi-profiles = { workspace = true }
 
@@ -80,11 +79,9 @@ mypy_path = [
   "packages/pi_db/src",
   "packages/pi_fetch/src",
   "packages/pi_fetch/tests",
-  "packages/pi_image/tests",
   "packages/pi_metrics/tests",
   "packages/pi_api/src",
   "packages/pi_api/tests",
-  "packages/pi_image/src",
   "packages/pi_match/src",
   "packages/pi_profiles/src",
   "scripts/demo_export",
@@ -121,8 +118,6 @@ files = [
   "packages/pi_db/tests",
   "packages/pi_fetch/src",
   "packages/pi_fetch/tests",
-  "packages/pi_image/src",
-  "packages/pi_image/tests",
   "packages/pi_match/src",
   "packages/pi_match/tests",
   "packages/pi_profiles/src",
@@ -167,7 +162,7 @@ warn_required_dynamic_aliases = true
 testpaths = ["packages", "apps/assistant/pytests", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "tools/sephora_snapshot/tests", "tools/page_capture/tests", "tools/browser_capture/tests", "tools/capture_read/tests", "tools/offline_import/tests", "scripts/demo_export", "infra/tests"]
 # Offline CLI adapters reuse scripts.demo_export; importlib-mode pytest needs the same repo root
 # that `python -m offline_import.ulta_feed` has, without relying on an operator's PYTHONPATH.
-pythonpath = [".", "tests", "packages/pi_fetch/tests", "packages/pi_image/tests", "packages/pi_metrics/tests", "packages/pi_api/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "tools/page_capture", "tools/page_capture/tests", "tools/browser_capture", "tools/browser_capture/tests", "tools/capture_read", "tools/offline_import", "infra/scripts"]
+pythonpath = [".", "tests", "packages/pi_fetch/tests", "packages/pi_metrics/tests", "packages/pi_api/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "tools/page_capture", "tools/page_capture/tests", "tools/browser_capture", "tools/browser_capture/tests", "tools/capture_read", "tools/offline_import", "infra/scripts"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",
@@ -188,7 +183,7 @@ markers = [
 branch = true
 source = [
   "pi_capture", "pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe",
-  "pi_image", "pi_match", "pi_metrics", "offline_import", "pi_api", "pi_profiles", "page_capture",
+  "pi_match", "pi_metrics", "offline_import", "pi_api", "pi_profiles", "page_capture",
   "browser_capture", "capture_read",
 ]
 # network entry points that run only inside their job images
