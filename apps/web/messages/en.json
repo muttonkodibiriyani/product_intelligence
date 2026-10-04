@@ -814,6 +814,19 @@
     "soWhat": "So what:",
     "evidence": "See the evidence",
     "unreviewed": "{n, plural, one {# unreviewed match} other {# unreviewed matches}}: not counted",
+    "report": {
+      "toc": "Decision findings",
+      "method": "How to read this report",
+      "n": "n",
+      "cohort": "Cohort",
+      "cohortValue": "Counted exact pairs, approved or locked",
+      "matches": "Match basis",
+      "reviewed": "Reviewed exact matches",
+      "unreviewed": "{n, plural, one {# proposed match excluded} other {# proposed matches excluded}}",
+      "coverage": "Coverage",
+      "partial": "Partial snapshots; absence may mean not collected",
+      "complete": "Latest collected snapshot"
+    },
     "readiness": {
       "eyebrow": "Decision readiness",
       "title": "{n, plural, =0 {No decision signals are ready yet} one {# decision signal is ready} other {# decision signals are ready}}",
