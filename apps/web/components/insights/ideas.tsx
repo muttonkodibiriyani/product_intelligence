@@ -336,7 +336,7 @@ function StepRow({ x, shop }: { x: LadderStep; shop: string }) {
         {t.rich('ladder.more', { pct: x.unitChangePct, unit: unitName(x.unit), n })}
       </b>
       {' · '}
-      <Num>{`${x.smallerValue}→${x.largerValue} ${unitName(x.unit)}`}</Num>
+      <Num>{`${x.smallerValue}→${x.largerValue}`}</Num> {unitName(x.unit)}
       {x.smallerOnSale && ` · ${t('ladder.onSale')}`}
     </ItemRow>
   );
