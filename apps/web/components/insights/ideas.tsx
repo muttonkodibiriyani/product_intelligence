@@ -50,7 +50,18 @@ import {
  * note. Bars compare shares or medians, never raw counts across catalogues of different sizes. A
  * shop whose number is not collected shows a quiet note, never a zero bar.
  */
-export function Ideas({ focus, shops, data }: { focus: string; shops: string[]; data: Insights }) {
+export function Ideas({
+  focus,
+  shops,
+  data,
+  answer,
+}: {
+  focus: string;
+  shops: string[];
+  data: Insights;
+  /** The /insights envelope's reason, said for a shop the answer has no row for. */
+  answer: string | null;
+}) {
   const t = useTranslations('insights');
   const name = useRetailerName();
   const order = focusFirst(focus, shops);
@@ -63,7 +74,7 @@ export function Ideas({ focus, shops, data }: { focus: string; shops: string[]; 
         <p className="text-sm text-ink-2">{t('vsd.sub', { shop: name(focus) })}</p>
       </div>
       <div className="grid items-stretch gap-3.5 min-[900px]:grid-cols-3">
-        <ValueCard focus={focus} order={order} data={data} />
+        <ValueCard focus={focus} order={order} data={data} answer={answer} />
         <SizeCard focus={focus} order={order} rows={data.ladders} held={data.heldOutPct} />
         <PromoCard focus={focus} order={order} />
       </div>
@@ -81,7 +92,17 @@ function useCatName() {
 
 // ---- Value ----------------------------------------------------------------------------------
 
-function ValueCard({ focus, order, data }: { focus: string; order: string[]; data: Insights }) {
+function ValueCard({
+  focus,
+  order,
+  data,
+  answer,
+}: {
+  focus: string;
+  order: string[];
+  data: Insights;
+  answer: string | null;
+}) {
   const t = useTranslations('insights');
   const tr = useTranslations('reasons');
   const locale = useLocale();
@@ -103,7 +124,17 @@ function ValueCard({ focus, order, data }: { focus: string; order: string[]; dat
       return {
         id: s,
         value: null,
-        note: !r || notCollected(r.reason) ? t('value.off') : <Known t={tr} v={r.reason!} />,
+        note: !r ? (
+          answer ? (
+            <Known t={tr} v={answer} />
+          ) : (
+            t('notInAnswer')
+          )
+        ) : notCollected(r.reason) ? (
+          t('value.off')
+        ) : (
+          <Known t={tr} v={r.reason!} />
+        ),
       };
     const v = valueShare(r);
     if (v.pct === null) return { id: s, value: null, note: t('value.none') };

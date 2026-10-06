@@ -131,8 +131,8 @@ export function InsightsView() {
             pairs={pairs.map((p, i) => ({ ...p, pricing: queries[i]?.data?.data?.pricing }))}
             share={data.policySharePct}
           />
-          <StockSection shops={shops} rows={data.stockouts} />
-          <Ideas focus={shop ?? active[0]!} shops={active} data={data} />
+          <StockSection shops={shops} rows={data.stockouts} answer={first?.data?.reason ?? null} />
+          <Ideas focus={shop ?? active[0]!} shops={active} data={data} answer={first?.data?.reason ?? null} />
         </>
       )}
     </section>
@@ -314,7 +314,20 @@ function Prices({ shops, pairs, share }: { shops: string[]; pairs: PairPricing[]
 
 // ---- Stock today ----------------------------------------------------------------------------
 
-function StockSection({ shops, rows }: { shops: string[]; rows: Stockouts[] }) {
+/**
+ * ``answer`` is the /insights envelope's reason: when the answer stopped early (not applicable,
+ * capability off) it carries no per-shop rows, and a missing row says that reason, never "not
+ * collected".
+ */
+function StockSection({
+  shops,
+  rows,
+  answer,
+}: {
+  shops: string[];
+  rows: Stockouts[];
+  answer: string | null;
+}) {
   const t = useTranslations('insights');
   return (
     <section aria-labelledby="ins-stock" className="space-y-2.5">
@@ -323,7 +336,7 @@ function StockSection({ shops, rows }: { shops: string[]; rows: Stockouts[] }) {
       </Heading>
       <div className={cols(shops.length)}>
         {shops.map((s) => (
-          <StockCard key={s} shop={s} row={rows.find((r) => r.retailer === s)} />
+          <StockCard key={s} shop={s} row={rows.find((r) => r.retailer === s)} answer={answer} />
         ))}
       </div>
     </section>
@@ -334,12 +347,27 @@ function StockSection({ shops, rows }: { shops: string[]; rows: Stockouts[] }) {
  * One shop's stock-outs as counts. The headline is the API's outOfStock, which already leaves out
  * brands the source reports unavailable; those are a separate, plainly worded line.
  */
-function StockCard({ shop, row }: { shop: string; row: Stockouts | undefined }) {
+function StockCard({
+  shop,
+  row,
+  answer,
+}: {
+  shop: string;
+  row: Stockouts | undefined;
+  answer: string | null;
+}) {
   const t = useTranslations('insights');
   const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
-  if (!row || notCollected(row.reason))
+  if (!row)
+    return (
+      <Panel>
+        <ShopHead id={shop} />
+        <Off>{answer ? <Known t={tr} v={answer} /> : t('notInAnswer')}</Off>
+      </Panel>
+    );
+  if (notCollected(row.reason))
     return (
       <Panel>
         <ShopHead id={shop} />
@@ -416,11 +444,12 @@ function StockCard({ shop, row }: { shop: string; row: Stockouts | undefined }) 
                   </li>
                 ))}
               </ul>
-              {row.brands.length > brands.length && (
+              {/* `brands` is capped by the API (BRANDS_LISTED); `qualifying` is the real total. */}
+              {row.qualifying > brands.length && (
                 <p className="mt-1 text-xs text-ink-2">
                   {t('stock.more', {
-                    count: row.brands.length - brands.length,
-                    num: formatCount(row.brands.length - brands.length, locale),
+                    count: row.qualifying - brands.length,
+                    num: formatCount(row.qualifying - brands.length, locale),
                   })}
                 </p>
               )}

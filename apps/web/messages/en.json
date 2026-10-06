@@ -817,6 +817,7 @@
     }
   },
   "insights": {
+    "notInAnswer": "Not in this answer.",
     "title": "Insights",
     "intro": "What the latest crawl of each shop shows. Shops are shown side by side, never ranked.",
     "shops": "Shops",

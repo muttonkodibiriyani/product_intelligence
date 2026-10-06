@@ -295,6 +295,55 @@ describe('InsightsView', () => {
     ).toBeTruthy();
   });
 
+  it('stock: "+N more brands" counts every qualifying brand, not only the ones the API lists', async () => {
+    const many: Env = {
+      ...rich,
+      data: {
+        ...rich.data!,
+        stockouts: rich.data!.stockouts.map((r) =>
+          r.retailer === 'shop_b'
+            ? {
+                ...r,
+                qualifying: 30,
+                brands: Array.from({ length: 12 }, (_, i) => ({
+                  brand: `B${i}`,
+                  observed: 20,
+                  outOfStock: 10,
+                })),
+              }
+            : r,
+        ),
+      },
+    };
+    view(many);
+    await ready();
+    const stock = section(s.stock.title);
+    expect(await within(stock).findByText('+25 more brands')).toBeTruthy();
+  });
+
+  it('an answer that stopped early says its reason for each shop, never "not collected"', async () => {
+    const early: Env = {
+      ...rich,
+      status: 'not_enough_data',
+      reason: 'not_applicable',
+      data: { ...rich.data!, stockouts: [], value: [] },
+    };
+    view(early);
+    await ready();
+    const stock = section(s.stock.title);
+    expect(await within(stock).findAllByText(en.reasons.not_applicable)).toHaveLength(2);
+    expect(stock.textContent).not.toContain('not collected');
+    const value = card(s.value.title);
+    expect(within(value).getAllByText(en.reasons.not_applicable).length).toBeGreaterThan(0);
+    expect(value.textContent).not.toContain(en.insights.value.off);
+  });
+
+  it('a missing row in an answer with no reason reads "not in this answer"', async () => {
+    view({ ...rich, data: { ...rich.data!, stockouts: [] } });
+    await ready();
+    expect(await within(section(s.stock.title)).findAllByText(en.insights.notInAnswer)).toHaveLength(2);
+  });
+
   it('value: a shop without enough rated products says why in its chart row', async () => {
     status = { shop_a: 'supported', shop_b: 'partial', shop_c: 'partial' };
     view(rich);
