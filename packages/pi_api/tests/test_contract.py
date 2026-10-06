@@ -165,13 +165,18 @@ def test_goldens_match_and_validate(name: str, golden_responses: dict[str, Any])
     assert target.read_text(encoding="utf-8") == text, "regenerate: make openapi"
 
 
-def test_hosting_routes_api_before_the_spa_catch_all() -> None:
-    """Hosting requirement 5: the /api rewrite is first, ``**`` last, and the region is pinned."""
+def test_hosting_routes_api_first_and_unknown_paths_404() -> None:
+    """Hosting requirement 5: the /api rewrite is first and its region is pinned; / goes to the
+    Next app; no catch-all rewrite, so an unknown path gets /404.html with a real 404 status."""
     hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
     rewrites = hosting["rewrites"]
     sources = [r["source"] for r in rewrites]
     assert sources[0] == "/api/**", "the API rewrite must precede every other rewrite"
-    assert sources[-1] == "**", "the SPA catch-all must be the last rewrite"
+    assert not {"**", "/**", "/app/**"} & set(sources), "a catch-all rewrite answers 404s with 200"
+    # The owner-set Firebase email action URL has no trailing slash (decision log 2026-09-30).
+    assert {"source": "/auth/action", "destination": "/auth/action/index.html"} in rewrites
+    redirects = {r["source"]: r for r in hosting["redirects"]}
+    assert redirects["/"]["destination"] == "/app/"
     for rule in rewrites:
         if rule["source"].startswith("/api"):
             assert rule["run"] == {"serviceId": "pi-api", "region": "me-central1"}

@@ -518,7 +518,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.20.0
+             * @default 1.21.0
              */
             apiVersion: string;
             /** Currency */
@@ -1878,6 +1878,8 @@ export interface components {
             gap: components["schemas"]["Gap"] | null;
             /** Id */
             id: string;
+            /** Image */
+            image?: string | null;
             match?: components["schemas"]["RowMatch"] | null;
             /** Name */
             name: string;
