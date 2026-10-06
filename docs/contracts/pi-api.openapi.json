@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.18.0",
+            "default": "1.19.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -289,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-03.3",
+            "default": "2026-10-06.1",
             "title": "Metricversion",
             "type": "string"
           },
@@ -3448,6 +3448,24 @@
             },
             "title": "Stockouts",
             "type": "array"
+          },
+          "value": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ValuePicks"
+            },
+            "title": "Value",
+            "type": "array"
+          },
+          "valueMinRatings": {
+            "default": 20,
+            "title": "Valueminratings",
+            "type": "integer"
+          },
+          "valueRatingPct": {
+            "default": "90.0",
+            "title": "Valueratingpct",
+            "type": "string"
           }
         },
         "required": [
@@ -6893,6 +6911,144 @@
         "title": "UnmappedPath",
         "type": "object"
       },
+      "ValueCategory": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ValuePick"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "median": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "picks": {
+            "title": "Picks",
+            "type": "integer"
+          },
+          "priced": {
+            "title": "Priced",
+            "type": "integer"
+          },
+          "rated": {
+            "title": "Rated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category",
+          "priced",
+          "median",
+          "rated",
+          "picks",
+          "items"
+        ],
+        "title": "ValueCategory",
+        "type": "object"
+      },
+      "ValuePick": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "string"
+          },
+          "ratingCount": {
+            "title": "Ratingcount",
+            "type": "integer"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "brand",
+          "name",
+          "price",
+          "rating",
+          "scale",
+          "ratingCount"
+        ],
+        "title": "ValuePick",
+        "type": "object"
+      },
+      "ValuePicks": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCategory"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "qualifying": {
+            "title": "Qualifying",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "suppressed": {
+            "title": "Suppressed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "reason",
+          "categories",
+          "qualifying",
+          "suppressed"
+        ],
+        "title": "ValuePicks",
+        "type": "object"
+      },
       "VariantView": {
         "additionalProperties": false,
         "description": "One listing grouped into the offer: same retailer, product family and size.",
@@ -7035,7 +7191,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.18.0"
+    "version": "1.19.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10032,7 +10188,7 @@
     },
     "/api/v1/insights": {
       "get": {
-        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.",
+        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers and priced at or below the category median (nearest rank, lower middle, over every priced offer in the market currency); categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.",
         "operationId": "get_insights_api_v1_insights_get",
         "parameters": [
           {

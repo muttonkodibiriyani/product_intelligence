@@ -96,3 +96,18 @@ def test_a_promotion_item_takes_its_card_image_from_the_shops_own_offer(tmp_path
 def test_promotion_images_are_set_after_the_cap(tmp_path: Path) -> None:
     images = promo_images(client_for(tmp_path, image_doc()), "&limit=1")
     assert list(images) == ["p05"]
+
+
+def test_a_value_pick_takes_its_card_image_from_the_shops_own_offer(tmp_path: Path) -> None:
+    """p01 at shop_b: 100.00, the lower-middle price of its 11 skincare offers, rated 4.8 by 40.
+    Only shop_b shows it, so the product image (shop_a's host) is not vouched for; the offer's is.
+    """
+    d = image_doc()
+    offer(d, "p01", "shop_b")["rating"] = {"average": "4.80", "scale": "5", "count": 40}
+    client = client_for(tmp_path, d)
+    response = client.get(f"{API}/insights?retailers=shop_a,shop_b", headers=bearer())
+    assert response.status_code == 200, response.text
+    shops = {v["retailer"]: v for v in response.json()["data"]["value"]}
+    (row,) = (r for r in shops["shop_b"]["categories"] if r["category"] == "skincare")
+    assert (row["priced"], row["median"]["amount"], row["picks"]) == (11, "100.00", 1)
+    assert [(i["id"], i["image"]) for i in row["items"]] == [("p01", OFFER_B)]

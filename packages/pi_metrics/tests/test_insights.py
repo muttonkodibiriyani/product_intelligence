@@ -15,11 +15,20 @@ from metrics_fixture import (
     offer,
     product,
     with_capabilities,
+    with_fields,
 )
 from pi_core import AvailabilityState, ReviewState
 from pi_dataset import Dataset, DatasetV3, Product
+from pi_dataset.models import FieldStatus
 from pi_metrics import view
-from pi_metrics.insights import LadderBasis, Policy, insights, policy
+from pi_metrics.insights import (
+    CATEGORIES_LISTED,
+    PICKS_LISTED,
+    LadderBasis,
+    Policy,
+    insights,
+    policy,
+)
 from pi_metrics.model import CaveatCode, Reason, Status
 from pi_metrics.view import UnknownInput
 
@@ -248,3 +257,66 @@ def test_a_larger_size_at_the_same_unit_price_is_not_cheaper() -> None:
     a = next(lad for lad in insights(_with(steps), A, B).data.ladders if lad.retailer == A)
     assert (a.steps, a.not_cheaper) == (5, 5)
     assert {s.unit_change_pct for s in a.exceptions} == {Decimal(0)}
+
+
+def _rated(
+    pid: str, price: str, rating: tuple[str, str, int] | None, category: str = "skincare"
+) -> Product:
+    return product(pid, {A: offer(A, [price] * 3, rating=rating)}, category=(category,))
+
+
+def test_value_picks_are_well_rated_at_or_below_the_category_median() -> None:
+    rows = [
+        _rated("p10", "10.00", ("4.50", "5", 20)),  # 90 % with 20 ratings: a pick
+        _rated("p20", "20.00", ("4.49", "5", 500)),  # below 90 %
+        _rated("p30", "30.00", ("9.00", "10", 25)),  # 90 % of a 10 scale, at the median
+        _rated("p40", "40.00", ("5.00", "5", 100)),  # above the median
+        _rated("p50", "50.00", ("4.90", "5", 19)),  # too few ratings: not rated
+        _rated("p60", "60.00", None),
+        *(_rated(f"m{n}", "10.00", ("5.00", "5", 50), "makeup") for n in range(4)),
+    ]
+    by = {v.retailer: v for v in insights(_with(rows), A, B).data.value}
+    a = by[A]
+    assert a.reason is None
+    (row,) = a.categories
+    assert row.category == "skincare"
+    assert (row.priced, row.rated, row.picks) == (6, 4, 2)
+    assert row.median.amount == "30.00"  # nearest rank: the lower middle of six
+    assert [(i.id, i.rating, i.scale, i.rating_count) for i in row.items] == [
+        ("p30", Decimal(9), "10", 25),  # equal share: more ratings first
+        ("p10", Decimal("4.5"), "5", 20),
+    ]
+    assert row.items[0].price.amount == "30.00"
+    assert row.items[0].image is None
+    assert (a.qualifying, a.suppressed) == (1, 1)  # makeup: four priced offers, no median
+    assert (by[B].reason, by[B].categories) == (Reason.COHORT_TOO_SMALL, ())
+    assert by[D].reason is Reason.RETAILER_BLOCKED
+
+
+def test_value_lists_the_largest_categories_and_the_best_picks() -> None:
+    rows = [
+        *(
+            _rated(f"c{c}-{n}", "10.00", ("5.00", "5", 20 + n), f"cat{c}")
+            for c in range(9)
+            for n in range(5)
+        ),
+        *(_rated(f"big{n}", f"{10 + n}.00", ("5.00", "5", 20)) for n in range(12)),
+    ]
+    a = next(v for v in insights(_with(rows), A, B).data.value if v.retailer == A)
+    assert a.qualifying == 10
+    assert len(a.categories) == CATEGORIES_LISTED
+    assert [r.category for r in a.categories[:3]] == ["skincare", "cat0", "cat1"]
+    big = a.categories[0]
+    assert (big.priced, big.median.amount, big.picks) == (12, "15.00", 6)
+    assert len(big.items) == PICKS_LISTED
+    assert [i.id for i in big.items] == ["big0", "big1", "big2", "big3", "big4"]  # cheapest first
+    assert a.categories[1].items[0].id == "c0-4"  # most ratings first
+
+
+def test_value_without_ratings_says_why() -> None:
+    off = insights(with_capabilities(metrics_dataset(), ratings=False), A, B).data.value
+    assert {v.retailer: v.reason for v in off}[A] is Reason.CAPABILITY_OFF
+    missing = with_fields(metrics_dataset(), rating=FieldStatus.NOT_COLLECTED)
+    assert {v.retailer: v.reason for v in insights(missing, A, B).data.value}[A] is (
+        Reason.FIELD_NOT_COLLECTED
+    )

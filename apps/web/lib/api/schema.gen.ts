@@ -271,7 +271,7 @@ export interface paths {
         };
         /**
          * Get Insights
-         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.
+         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers and priced at or below the category median (nearest rank, lower middle, over every priced offer in the market currency); categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.
          */
         get: operations["get_insights_api_v1_insights_get"];
         put?: never;
@@ -518,7 +518,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.18.0
+             * @default 1.19.0
              */
             apiVersion: string;
             /** Currency */
@@ -540,7 +540,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-03.3
+             * @default 2026-10-06.1
              */
             metricVersion: string;
             /** Scope */
@@ -1525,6 +1525,21 @@ export interface components {
              * @default []
              */
             stockouts: components["schemas"]["Stockouts"][];
+            /**
+             * Value
+             * @default []
+             */
+            value: components["schemas"]["ValuePicks"][];
+            /**
+             * Valueminratings
+             * @default 20
+             */
+            valueMinRatings: number;
+            /**
+             * Valueratingpct
+             * @default 90.0
+             */
+            valueRatingPct: string;
         };
         /** Label */
         Label: {
@@ -2566,6 +2581,50 @@ export interface components {
             reason: components["schemas"]["Unmapped"];
             /** Retailer */
             retailer: string;
+        };
+        /** ValueCategory */
+        ValueCategory: {
+            /** Category */
+            category: string;
+            /** Items */
+            items: components["schemas"]["ValuePick"][];
+            median: components["schemas"]["MoneyValue"];
+            /** Picks */
+            picks: number;
+            /** Priced */
+            priced: number;
+            /** Rated */
+            rated: number;
+        };
+        /** ValuePick */
+        ValuePick: {
+            /** Brand */
+            brand: string;
+            /** Id */
+            id: string;
+            /** Image */
+            image?: string | null;
+            /** Name */
+            name: string;
+            price: components["schemas"]["MoneyValue"];
+            /** Rating */
+            rating: string;
+            /** Ratingcount */
+            ratingCount: number;
+            /** Scale */
+            scale: string;
+        };
+        /** ValuePicks */
+        ValuePicks: {
+            /** Categories */
+            categories: components["schemas"]["ValueCategory"][];
+            /** Qualifying */
+            qualifying: number;
+            reason: components["schemas"]["Reason"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Suppressed */
+            suppressed: number;
         };
         /**
          * VariantView

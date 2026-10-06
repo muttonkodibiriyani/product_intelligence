@@ -32,6 +32,7 @@ from pi_dataset.models import DecidedBy
 from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
 from pi_metrics.compare import Comparison, PairRow
+from pi_metrics.insights import Insights
 from pi_metrics.launches import Launch, Launches
 from pi_metrics.pair_pricing import PairAim, PriceSuggestions
 from pi_metrics.pricing import Guardrails
@@ -270,6 +271,46 @@ def promotion_images(
         for item in metric.data.items
     )
     return metric.model_copy(update={"data": metric.data.model_copy(update={"items": items})})
+
+
+def value_images(
+    ds: DatasetV3, metric: Metric[Insights], images: EvidenceHosts
+) -> Metric[Insights]:
+    """Each listed value pick's card image (``card_image``, the shop's own offer)."""
+    products = {p.id: p for p in ds.products}
+    value = tuple(
+        shop.model_copy(
+            update={
+                "categories": tuple(
+                    row.model_copy(
+                        update={
+                            "items": tuple(
+                                pick.model_copy(
+                                    update={
+                                        "image": card_image(
+                                            ds,
+                                            products[pick.id],
+                                            [
+                                                (
+                                                    shop.retailer,
+                                                    products[pick.id].offers[shop.retailer],
+                                                )
+                                            ],
+                                            images,
+                                        )
+                                    }
+                                )
+                                for pick in row.items
+                            )
+                        }
+                    )
+                    for row in shop.categories
+                )
+            }
+        )
+        for shop in metric.data.value
+    )
+    return metric.model_copy(update={"data": metric.data.model_copy(update={"value": value})})
 
 
 def capped_suggestions(

@@ -57,6 +57,7 @@ from pi_api.analytics import (
     capped_suggestions,
     matches,
     promotion_images,
+    value_images,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
 from pi_api.catalog import (
@@ -678,7 +679,7 @@ def build_api(
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
     _metric_routes(api, source, images)
-    _insights_route(api, source)
+    _insights_route(api, source, images)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -959,7 +960,7 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
         raise
 
 
-def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
+def _insights_route(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
     """S3: the Insights page aggregates (``pi_metrics.insights``)."""
 
     @api.get(
@@ -976,13 +977,20 @@ def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
             "context, consecutive sizes of one family (the retailer's content.family, else "
             "the same brand, name, category and unit: basis=name) and how many larger sizes "
             "do not cost less per unit; a step more than heldOutPct % dearer per unit is "
-            "held out as a different product and counted in heldOut."
+            "held out as a different product and counted in heldOut. value: per context and "
+            "top-level category, offers rated at least valueRatingPct % of their own scale by "
+            "at least valueMinRatings reviewers and priced at or below the category median "
+            "(nearest rank, lower middle, over every priced offer in the market currency); "
+            "categories under minCohort priced offers have no median and are counted in "
+            "suppressed. Single-retailer: no shop is compared with another."
         ),
     )
     def get_insights(query: Annotated[InsightsQuery, Query()], _: Viewer) -> Envelope[Insights]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
-        metric = insights(loaded.dataset, base, other, on=query.on)
+        metric = value_images(
+            loaded.dataset, insights(loaded.dataset, base, other, on=query.on), images
+        )
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "insights", query, metric)

@@ -22,6 +22,12 @@ Four aggregates for the Insights page, each over rules the other metrics already
   never a share: retailers are crawled partially, so a share of the catalogue would overstate
   what was seen. A brand is listed when at least ``MIN_COHORT`` of its offers are out of stock,
   whole-brand outages first; a day without an observation is never out of stock.
+* **Value picks** stay inside one context and one top-level category: offers rated at least
+  ``VALUE_RATING_PCT`` % of their scale by at least ``VALUE_MIN_RATINGS`` reviewers, priced at
+  or below the category's median price (nearest rank, the lower middle, so an observed price).
+  The median is over every priced offer in the category and market currency, rated or not; a
+  category with fewer than ``MIN_COHORT`` of them has no median and is counted in
+  ``suppressed``. Ratings are the retailer's own; the shop is never compared with another.
 
 No cross-retailer number comes from an unreviewed match: when no pair is counted the pricing
 parts say ``matches_unreviewed`` (or why else) and carry no rows.
@@ -37,8 +43,8 @@ from enum import StrEnum
 from itertools import pairwise
 
 from pi_core import AvailabilityState
-from pi_dataset import ContractModel, DatasetV3, MoneyValue, ProductV3
-from pi_dataset.models import RetailerStatus
+from pi_dataset import ContractModel, DatasetV3, MoneyValue, OfferV3, ProductV3, Rating
+from pi_dataset.models import FieldStatus, RetailerStatus
 from pi_metrics import view
 from pi_metrics.compare import GroupBy, PairRow, compare, pair_block
 from pi_metrics.model import (
@@ -52,6 +58,7 @@ from pi_metrics.model import (
     Metric,
     Pct,
     ProductFilter,
+    RatingValue,
     Reason,
     Status,
 )
@@ -64,6 +71,13 @@ HELD_OUT_PCT = Decimal(50)
 EXCEPTIONS_LISTED = 12
 #: Brands listed per context in the stock-out counts.
 BRANDS_LISTED = 12
+#: A value pick has at least this many ratings ...
+VALUE_MIN_RATINGS = 20
+#: ... averaging at least this share (in %) of the rating scale (4.5 of 5).
+VALUE_RATING_PCT = Decimal(90)
+#: Categories listed per context, the most priced offers first; picks listed per category.
+CATEGORIES_LISTED = 8
+PICKS_LISTED = 5
 PROFILES = EVERY_PROFILE
 
 
@@ -160,12 +174,50 @@ class Stockouts(ContractModel):
     suppressed: int
 
 
+class ValuePick(ContractModel):
+    id: str
+    brand: str
+    name: str
+    price: MoneyValue
+    rating: RatingValue
+    scale: str
+    rating_count: int
+    #: The card image on an allowed evidence host (set by pi_api), else null.
+    image: str | None = None
+
+
+class ValueCategory(ContractModel):
+    category: str
+    #: Priced offers in the category and market currency, the median's cohort.
+    priced: int
+    median: MoneyValue
+    #: Of ``priced``: offers with at least ``valueMinRatings`` ratings.
+    rated: int
+    #: Of ``rated``: rated at least ``valueRatingPct`` % of the scale, priced at most ``median``.
+    picks: int
+    items: tuple[ValuePick, ...]
+
+
+class ValuePicks(ContractModel):
+    retailer: str
+    reason: Reason | None
+    #: Categories with a median, the most priced offers first (at most ``CATEGORIES_LISTED``).
+    categories: tuple[ValueCategory, ...]
+    #: Categories with a median, listed or not.
+    qualifying: int
+    #: Categories with fewer than ``minCohort`` priced offers: no median, no picks.
+    suppressed: int
+
+
 class Insights(ContractModel):
     pricing: PairInsights
     ladders: tuple[Ladder, ...]
     stockouts: tuple[Stockouts, ...] = ()
+    value: tuple[ValuePicks, ...] = ()
     policy_share_pct: Pct = POLICY_SHARE
     held_out_pct: Pct = HELD_OUT_PCT
+    value_min_ratings: int = VALUE_MIN_RATINGS
+    value_rating_pct: Pct = VALUE_RATING_PCT
 
 
 def _split(rows: list[PairRow]) -> tuple[int, int, int]:
@@ -387,6 +439,83 @@ def _stockouts(ds: DatasetV3, context: str, i: int) -> Stockouts:
     )
 
 
+def _value_off(ds: DatasetV3, context: str) -> Reason | None:
+    if view.status(ds, context) is RetailerStatus.BLOCKED:
+        return Reason.RETAILER_BLOCKED
+    if not ds.meta.capabilities.ratings:
+        return Reason.CAPABILITY_OFF
+    if ds.meta.fields.get("rating", FieldStatus.NOT_COLLECTED) is FieldStatus.NOT_COLLECTED:
+        return Reason.FIELD_NOT_COLLECTED
+    return None
+
+
+def _well_rated(rating: Rating | None) -> bool:
+    return (
+        rating is not None
+        and rating.count >= VALUE_MIN_RATINGS
+        and Decimal(rating.average) * 100 >= VALUE_RATING_PCT * Decimal(rating.scale)
+    )
+
+
+def _value(ds: DatasetV3, context: str, i: int) -> ValuePicks:
+    reason = _value_off(ds, context)
+    if reason is not None:
+        return ValuePicks(
+            retailer=context, reason=reason, categories=(), qualifying=0, suppressed=0
+        )
+    currency = view.market_currency(ds, view.context(ds, context).retailer)
+    priced: defaultdict[str, list[tuple[MoneyValue, ProductV3, OfferV3]]] = defaultdict(list)
+    for product in ds.products:
+        offer = view.collected(product, context)
+        price = None if offer is None else view.price_on(offer, i)
+        if offer is not None and price is not None and price.currency == currency:
+            priced[product.category[0]].append((price, product, offer))
+    rows = []
+    for category, offers in priced.items():
+        if len(offers) < MIN_COHORT:
+            continue
+        median = sorted((p for p, _, _ in offers), key=MoneyValue.decimal)[(len(offers) - 1) // 2]
+        rated = [
+            (p, pr, o)
+            for p, pr, o in offers
+            if o.rating is not None and o.rating.count >= VALUE_MIN_RATINGS
+        ]
+        picks = [
+            ValuePick(
+                id=pr.id,
+                brand=pr.brand,
+                name=pr.name,
+                price=p,
+                rating=Decimal(o.rating.average),
+                scale=o.rating.scale,
+                rating_count=o.rating.count,
+            )
+            for p, pr, o in rated
+            if o.rating is not None and _well_rated(o.rating) and p.decimal() <= median.decimal()
+        ]
+        picks.sort(
+            key=lambda v: (-v.rating / Decimal(v.scale), -v.rating_count, v.price.decimal(), v.id)
+        )
+        rows.append(
+            ValueCategory(
+                category=category,
+                priced=len(offers),
+                median=median,
+                rated=len(rated),
+                picks=len(picks),
+                items=tuple(picks[:PICKS_LISTED]),
+            )
+        )
+    rows.sort(key=lambda r: (-r.priced, r.category))
+    return ValuePicks(
+        retailer=context,
+        reason=None if rows else Reason.COHORT_TOO_SMALL,
+        categories=tuple(rows[:CATEGORIES_LISTED]),
+        qualifying=len(rows),
+        suppressed=sum(1 for o in priced.values() if len(o) < MIN_COHORT),
+    )
+
+
 def insights(
     dataset: view.AnyDataset, base: str, other: str, *, on: date | None = None
 ) -> Metric[Insights]:
@@ -422,15 +551,20 @@ def insights(
     pricing = _pricing(ds, base, other, on)
     ladders = tuple(_ladder(ds, c.id, i) for c in ds.meta.contexts)
     stockouts = tuple(_stockouts(ds, c.id, i) for c in ds.meta.contexts)
+    value = tuple(_value(ds, c.id, i) for c in ds.meta.contexts)
     caveats = tuple(
         Caveat(code=CaveatCode.RETAILER_PARTIAL, params={"retailer": c.id})
         for c in ds.meta.contexts
         if view.status(ds, c.id) is RetailerStatus.PARTIAL
     )
-    ok = pricing.status is Status.OK or any(ladder.reason is None for ladder in ladders)
+    ok = (
+        pricing.status is Status.OK
+        or any(ladder.reason is None for ladder in ladders)
+        or any(v.reason is None for v in value)
+    )
     return Metric[Insights](
         status=Status.OK if ok else Status.NOT_ENOUGH_DATA,
-        data=Insights(pricing=pricing, ladders=ladders, stockouts=stockouts),
+        data=Insights(pricing=pricing, ladders=ladders, stockouts=stockouts, value=value),
         reason=None if ok else pricing.reason,
         cohort=Cohort(description="counted exact pairs, approved or locked", n=pricing.n),
         caveats=caveats,
