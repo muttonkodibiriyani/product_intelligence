@@ -833,9 +833,18 @@
       "testedTitle": "Tested, not promoted",
       "testedIntro": "These questions stay out of the ranked findings until the published data can support them. No proposed match becomes a fact.",
       "tested": {
-        "history": { "title": "Launches and price changes:", "body": "need repeated complete collections." },
-        "gwp": { "title": "Gift-with-purchase:", "body": "not exported in the current promotions contract." },
-        "rating": { "title": "Price versus rating:", "body": "needs enough reviewed pairs with ratings." }
+        "history": {
+          "title": "Launches and price changes:",
+          "body": "need repeated complete collections."
+        },
+        "gwp": {
+          "title": "Gift-with-purchase:",
+          "body": "not exported in the current promotions contract."
+        },
+        "rating": {
+          "title": "Price versus rating:",
+          "body": "needs enough reviewed pairs with ratings."
+        }
       }
     },
     "readiness": {
@@ -946,6 +955,205 @@
       "loading": "Loading governed pair evidence…",
       "notEnough": "The three-retailer report appears when three retailers are collected.",
       "unavailable": "This report needs data service version {need} or later."
+    },
+    "findings": {
+      "title": "Findings",
+      "intro": "Ranked for {focus}, set against {rival}. Recomputed from each shop's latest crawl.",
+      "glance": "At a glance",
+      "glanceHint": "Select a tile to jump to its finding.",
+      "why": "Why we say this",
+      "question": "Question",
+      "action": "Action",
+      "products": "Products behind it",
+      "about": "About this number",
+      "notMeasured": "not measured",
+      "loading": "Working out the findings…",
+      "withheld": "Not shown: {reason}",
+      "withheldTile": "not shown",
+      "rank": "#{rank}",
+      "priceWithheld": "price withheld",
+      "themes": {
+        "assortment": "Assortment",
+        "price": "Price",
+        "promo": "Promo",
+        "stock": "Stock",
+        "reviews": "Reviews",
+        "dq": "Data quality"
+      },
+      "match": {
+        "counted_pairs": "Matched pairs",
+        "within_shop": "Within one shop",
+        "brand_level": "Brand level",
+        "single_shop": "One shop at a time"
+      },
+      "basis": {
+        "selling_price": "Selling price",
+        "per_unit": "Price per ml or g",
+        "stated_regular": "Shop's stated regular price",
+        "stock_flag": "Shop's stock flag",
+        "rating": "Shop's own rating scale",
+        "brand_presence": "Brand presence"
+      },
+      "chips": {
+        "too_few_ratings": "{shop}: too few ratings",
+        "too_few_pairs": "{shop}: too few pairs",
+        "stock_not_collected": "{shop}: stock not collected",
+        "discounts_not_shown": "{shop}: discounts not shown"
+      },
+      "tip": {
+        "n": "Evidence",
+        "nOf": "{n} of {of}",
+        "match": "Match",
+        "basis": "Basis",
+        "threshold": "Threshold",
+        "coverage": "Shops read"
+      },
+      "codes": {
+        "edp_edt": "EDP over EDT",
+        "flanker_edp": "Flanker over EDP",
+        "high": "4.5★ and up",
+        "mid": "4.0–4.4★",
+        "low": "under 4.0★",
+        "q1": "cheapest quarter",
+        "q2": "2nd quarter",
+        "q3": "3rd quarter",
+        "q4": "dearest quarter",
+        "fragrance": "fragrance",
+        "other": "other",
+        "lips": "lips",
+        "eyes": "eyes",
+        "foundation": "foundation",
+        "skincare": "skincare",
+        "body": "body",
+        "hair": "hair",
+        "makeup": "makeup",
+        "face": "face",
+        "nails": "nails",
+        "men": "men",
+        "tools": "tools"
+      },
+      "items": {
+        "brand_white_space": {
+          "tile": "{rival} brands {focus} lacks",
+          "headline": "{rival} brands missing at {focus}{has_lead, select, yes {, led by {lead}} other {}}",
+          "decision": "Which brands should {focus} add to win the masstige shopper?",
+          "action": "Shortlist {absentNames} for proven demand{has_thirdTop, select, yes {; {thirdTop} are the gaps {third} fills} other {}}.",
+          "owner": "{focus} buyer",
+          "evidence": "{focus} lists {focusBrands} brands and {rival} {rivalBrands}. After brand-name clean-up they share {shared} ({sharedExact} on exact names). {absent} {rival} brands with at least {minListings} listings are not at {focus}; the {absentListed} most reviewed carry {absentReviews} displayed reviews.{has_lead, select, yes { {lead} has {leadChampions} highly rated products in the cheapest quarter of their category ({leadFrom}–{leadTo}).} other {}}{has_third, select, yes { {third} sells {thirdOnly} brands {focus} lacks.} other {}}",
+          "cap": "Displayed reviews at {rival}, brands not at {focus}",
+          "threshold": "At least {threshold} absent brands, each with enough listings"
+        },
+        "brand_depth_gaps": {
+          "tile": "hero products missing at {focus}",
+          "headline": "{rival} hero products have no counterpart at {focus}",
+          "decision": "Which proven {rival} products should {focus} range next?",
+          "action": "Open lines with houses already on the shelf{has_houseNames, select, yes { ({houseNames})} other {}}; rank by {rival} review volume.",
+          "owner": "{focus} buyer",
+          "evidence": "{heroes} {rival} products have {minReviews}+ reviews. {matched} are matched at {focus}, {screened} were screened out by name and {absent} have no counterpart.{has_lead, select, yes { {lead} has {leadFocusFragrance} fragrances and {leadFocusOther} other products at {focus}, against {leadRivalOther} other products at {rival}.} other {}}",
+          "cap": "Listings per brand at each shop: fragrance, then everything else",
+          "threshold": "At least {threshold} hero products with no counterpart"
+        },
+        "brand_price_policy": {
+          "tile": "{focus} basket vs {rival}",
+          "headline": "{focus} vs {rival} basket{has_lead, select, yes {; {lead} {leadMedianPct}} other {}}{has_parityLead, select, yes {, {parityLead} level} other {}}",
+          "decision": "Where should {focus} hold its price against {rival}?",
+          "action": "Target the parity houses{has_parityNames, select, yes { ({parityNames})} other {}}, where a price move would be new; watch the undercut houses weekly.",
+          "owner": "{focus} pricing",
+          "evidence": "On {n} matched pairs {focus} is cheaper on {focusCheaper}, level on {level} and dearer on {rivalCheaper}. The matched basket costs {basketFocus} at {focus} against {basketRival} at {rival}. {undercut} houses sit {undercutLowPct} to {undercutHighPct} lower; {parity} are level.{has_lead, select, yes { {lead} is cheaper on {leadCheaper} of {leadN} pairs.} other {}}",
+          "cap": "Median % vs {rival}, same product and size; a bar toward the names means {focus} is cheaper",
+          "threshold": "At least {threshold} matched pairs in a listed brand"
+        },
+        "size_level_gaps": {
+          "tile": "{focus} gap by bottle size",
+          "headline": "{focus} at {hero}; {zero_entryMedianPct, select, yes {level with {rival}} other {{entryMedianPct}}} at {entry}",
+          "decision": "Is {focus}'s price gap the same at every bottle size?",
+          "action": "Decide whether the gap at {entry}, the size a shopper compares first, is intended.",
+          "owner": "{focus} pricing",
+          "evidence": "{n} matched pairs across {sizes} sizes ({suppressed} sizes with too few pairs are not shown). At {hero}, {focus} is cheaper on {heroCheaper} of {heroN} pairs and level on {heroLevel}; at {entry}, cheaper on {entryCheaper} of {entryN} and level on {entryLevel}.",
+          "cap": "Median % vs {rival} by size; a bar toward the sizes means {focus} is cheaper",
+          "threshold": "At least {threshold} matched pairs in each of two sizes"
+        },
+        "stock": {
+          "tile": "{focus} listings out of stock",
+          "headline": "{focus} listings out of stock; {brand1}: {brand1Out} of {brand1Observed}",
+          "decision": "Which {focus} brands need a supply check?",
+          "action": "Confirm supply for {brand1}{has_brand2, select, yes { and {brand2}} other {}}, then re-check on the next snapshot.",
+          "owner": "{focus}",
+          "evidence": "{outOfStock} of {withStock} {focus} listings with a stock state are out of stock, across {brands} brands. {unavailableBrands} brands ({unavailableListings} listings) have every listing unavailable; the source reports them unavailable, so they are counted apart.{has_rivalShort, select, yes { {rivalShort} have gaps at {rival} while {focus} has them in stock.} other {}} Counts only: shops are not ranked on stock.",
+          "cap": "Out of stock (filled) of the brand's listings, latest {focus} crawl",
+          "threshold": "At least {threshold} out-of-stock listings in a brand"
+        },
+        "promo_strategy": {
+          "tile": "{focus} markdowns at one depth",
+          "headline": "{focus} markdowns are exactly {modePct} off",
+          "decision": "Is one discount depth training {focus} shoppers to wait?",
+          "action": "Test shallower or rotating depths{has_dependentNames, select, yes { on {dependentNames}} other {}}.",
+          "owner": "{focus} promo planner",
+          "evidence": "{marked} of {stated} {focus} listings with a stated regular price are marked down, {modeCount} of them by exactly {modePct}. {dependent} brands have most of their range marked down. {largeNever} of {large} large brands are never marked down.{has_third, select, yes { {third} marks down {thirdMarked} listings at a median {thirdMedianPct} off.} other {}}",
+          "cap": "Share of each brand's listings marked down at {focus}",
+          "threshold": "Brands with at least {threshold} listings with a stated regular price"
+        },
+        "real_discounts": {
+          "tile": "matched markdowns that are real",
+          "headline": "matched markdowns beat the other shop's price",
+          "decision": "Are markdowns on matched products real against the market?",
+          "action": "Advertise a markdown on a matched product as a market-beating price.",
+          "owner": "{focus}",
+          "evidence": "Of {pairs} matched pairs, {markdowns} carry a markdown and {real} are below the other shop's price (within {tolerancePct}).{has_lead, select, yes { Deepest: {lead} at {leadShop}, {leadPct} off, {leadPrice} against {leadVersusPrice} at {leadVersus}.} other {}}",
+          "cap": "Stated % off, matched products",
+          "threshold": "At least {threshold} markdowns on matched pairs"
+        },
+        "fragrance_ladder": {
+          "tile": "inverted fragrance rungs",
+          "headline": "{focus} fragrance rungs cheaper per ml than the rung below",
+          "decision": "Does {focus}'s fragrance ladder climb from EDT to EDP to flanker?",
+          "action": "Fix or confirm the inverted rungs{has_lead, select, yes {, starting with {lead}} other {}}.",
+          "owner": "{focus} pricing",
+          "evidence": "At {focus} an EDP costs a median {focusEdpPct} more per ml than its EDT ({focusEdpN} pairs, {focusEdpNegative} inverted), and a flanker {focusFlankerPct} more than its EDP ({focusFlankerN} pairs, {focusFlankerNegative} inverted). At {rival}: {rivalEdpPct} ({rivalEdpN} pairs) and {rivalFlankerPct} ({rivalFlankerN} pairs).{has_lead, select, yes { {lead} costs {leadPct} per ml against {leadBase}.} other {}}",
+          "cap": "% more per ml than the rung below; dots left of the dashed line are inverted; the tick is the median",
+          "threshold": "At least {threshold} pairs per shop and step"
+        },
+        "size_traps": {
+          "tile": "size steps dearer per ml",
+          "headline": "{focus} size steps cost more per ml when trading up",
+          "decision": "Does buying bigger always save at {focus}?",
+          "action": "Reprice the larger or the smaller size so the ladder descends{has_lead, select, yes {, starting with {lead}} other {}}.",
+          "owner": "{focus} pricing",
+          "evidence": "{focusSteps} size steps at {focus} save a median {focusSavingPct} per ml; {focusNotCheaper} do not. {rival}: {rivalSteps} steps, {rivalSavingPct} saved, {rivalNotCheaper} not cheaper.{has_third, select, yes { {third}: {thirdSteps} steps, {thirdSavingPct} saved, {thirdNotCheaper} not cheaper.} other {}}",
+          "cap": "% more per ml for the larger size at {focus}",
+          "threshold": "At least {threshold} size steps at {focus}"
+        },
+        "positioning": {
+          "tile": "{focus} lips at low prices",
+          "headline": "of {focus} lips under {lowBand}, vs {lipsUnderRival} at {rival}",
+          "decision": "Which price tier can {focus} own against {rival}?",
+          "action": "Lean into the colour tier under {lowBand}, which {rival} does not contest, before chasing luxury fragrance.",
+          "owner": "{focus}",
+          "evidence": "Lips: {lipsUnderFocus} of {focus} listings are under {lowBand} (median {lipsMedianFocus}) against {lipsUnderRival} at {rival} (median {lipsMedianRival}). Fragrance: {fragranceOverFocus} of {focus} listings cost {highBand} or more against {fragranceOverRival} at {rival}; fragrance is {fragranceShareFocus} of {focus}'s range and {fragranceShareRival} of {rival}'s.",
+          "cap": "Share of listings by price band; dot = shop",
+          "threshold": "At least {threshold} priced listings per shop and category"
+        },
+        "price_vs_rating": {
+          "tile": "{shop} price vs rating",
+          "headline": "{has_fragranceRho, select, yes {price-rating correlation for {shop} fragrance} other {{shop} products rated against price}}",
+          "decision": "Does a higher price buy better reviews at {shop}?",
+          "action": "Fix content or formula on the {laggards} laggards before any price move; feature the {champions} champions.",
+          "owner": "Brand managers",
+          "evidence": "{n} {shop} products have {minReviews}+ reviews.{has_lowRho, select, yes { The price-rating correlation by category runs from {lowRho} ({lowCategory}) to {highRho} ({highCategory}).} other {}} {champions} sit in their category's cheapest quarter and are rated highly; {laggards} sit in the dearest quarter and are rated low. Ratings stay on each shop's own scale; shops are not compared on them.",
+          "cap": "{shop} products with {minReviews}+ reviews: price quarter in their category by rating band",
+          "threshold": "At least {threshold} products with enough reviews at a shop"
+        },
+        "pricing_anomalies": {
+          "tile": "{focus} listings below the price floor",
+          "headline": "{focus} listings below the price floor, {focusInStock} in stock",
+          "decision": "Which {focus} listings show a price no shopper can pay?",
+          "action": "Hide or price the listings below the floor{has_focusBrands, select, yes {, starting with {focusBrands}} other {}}.",
+          "owner": "{focus}",
+          "evidence": "{focusCount} {focus} listings are priced below the floor ({focusInStock} in stock).{has_rival, select, yes { {rival}: {rivalCount}.} other {}}{has_third, select, yes { {third}: {thirdCount}.} other {}} Their prices are withheld from every other number on this page.",
+          "cap": "Listings priced below the floor, latest crawl",
+          "threshold": "At least {threshold} listing below the floor"
+        }
+      }
     }
   }
 }

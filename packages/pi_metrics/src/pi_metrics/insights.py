@@ -357,7 +357,7 @@ def policy(base_cheaper: int, other_cheaper: int, equal: int) -> Policy:
     return Policy.MIXED
 
 
-def _brands(counted: list[PairRow]) -> tuple[tuple[BrandPolicy, ...], int]:
+def brand_policies(counted: list[PairRow]) -> tuple[tuple[BrandPolicy, ...], int]:
     by: defaultdict[str, list[PairRow]] = defaultdict(list)
     for row in counted:
         by[row.brand].append(row)
@@ -382,7 +382,7 @@ def _brands(counted: list[PairRow]) -> tuple[tuple[BrandPolicy, ...], int]:
     return tuple(out), suppressed
 
 
-def _sizes(ds: DatasetV3, counted: list[PairRow], base: str) -> tuple[tuple[SizeGap, ...], int]:
+def size_gaps(ds: DatasetV3, counted: list[PairRow], base: str) -> tuple[tuple[SizeGap, ...], int]:
     by: defaultdict[tuple[str, Decimal], list[PairRow]] = defaultdict(list)
     for row in counted:
         size = view.product_v3(ds, row.id).offers[base].size
@@ -414,8 +414,8 @@ def _pricing(ds: DatasetV3, base: str, other: str, on: date | None) -> PairInsig
     # A blocked side or a currency mismatch counts no pair at all, as compare's own groups.
     blocked = pair_block(ds, base, other) is not None
     counted = [] if blocked else [r for r in rows if r.counted and r.gap is not None]
-    brands, quiet_brands = _brands(counted)
-    sizes, quiet_sizes = _sizes(ds, counted, base)
+    brands, quiet_brands = brand_policies(counted)
+    sizes, quiet_sizes = size_gaps(ds, counted, base)
     return PairInsights(
         base=base,
         other=other,
@@ -459,7 +459,7 @@ def _families(
     return families
 
 
-def _ladder(ds: DatasetV3, context: str, i: int) -> Ladder:
+def size_ladder(ds: DatasetV3, context: str, i: int) -> Ladder:
     status = view.status(ds, context)
     if status is RetailerStatus.BLOCKED:
         return Ladder(
@@ -565,7 +565,7 @@ def unavailable_brands(ds: DatasetV3, context: str, i: int) -> frozenset[str]:
     return _gone(observed, out)
 
 
-def _stockouts(ds: DatasetV3, context: str, i: int) -> Stockouts:
+def brand_stockouts(ds: DatasetV3, context: str, i: int) -> Stockouts:
     reason = None
     if view.status(ds, context) is RetailerStatus.BLOCKED:
         reason = Reason.RETAILER_BLOCKED
@@ -843,8 +843,8 @@ def insights(
             as_of=as_of,
         )
     pricing = _pricing(ds, base, other, on)
-    ladders = tuple(_ladder(ds, c.id, i) for c in ds.meta.contexts)
-    stockouts = tuple(_stockouts(ds, c.id, i) for c in ds.meta.contexts)
+    ladders = tuple(size_ladder(ds, c.id, i) for c in ds.meta.contexts)
+    stockouts = tuple(brand_stockouts(ds, c.id, i) for c in ds.meta.contexts)
     value = tuple(_value(ds, c.id, i) for c in ds.meta.contexts)
     caveats = tuple(
         Caveat(code=CaveatCode.RETAILER_PARTIAL, params={"retailer": c.id})

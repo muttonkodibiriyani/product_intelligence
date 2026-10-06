@@ -833,9 +833,18 @@
       "testedTitle": "اختُبرت ولم تُدرج",
       "testedIntro": "تبقى هذه الأسئلة خارج النتائج المرتبة حتى تدعمها البيانات المنشورة. لا تتحول المطابقة المقترحة إلى حقيقة.",
       "tested": {
-        "history": { "title": "الإطلاقات وتغيّر الأسعار:", "body": "تحتاج إلى عمليات جمع كاملة ومتكررة." },
-        "gwp": { "title": "الهدايا مع الشراء:", "body": "غير مُصدّرة في عقد العروض الحالي." },
-        "rating": { "title": "السعر مقابل التقييم:", "body": "تحتاج إلى مطابقات مُراجعة كافية مع تقييمات." }
+        "history": {
+          "title": "الإطلاقات وتغيّر الأسعار:",
+          "body": "تحتاج إلى عمليات جمع كاملة ومتكررة."
+        },
+        "gwp": {
+          "title": "الهدايا مع الشراء:",
+          "body": "غير مُصدّرة في عقد العروض الحالي."
+        },
+        "rating": {
+          "title": "السعر مقابل التقييم:",
+          "body": "تحتاج إلى مطابقات مُراجعة كافية مع تقييمات."
+        }
       }
     },
     "readiness": {
@@ -946,6 +955,205 @@
       "loading": "جارٍ تحميل الدليل الزوجي المحكوم…",
       "notEnough": "يظهر تقرير المتاجر الثلاثة عند جمع بيانات ثلاثة متاجر.",
       "unavailable": "يحتاج هذا التقرير إلى إصدار خدمة البيانات {need} أو أحدث."
+    },
+    "findings": {
+      "title": "النتائج",
+      "intro": "مرتبة لـ{focus} مقابل {rival}. تُعاد حسابها من آخر رصد لكل متجر.",
+      "glance": "لمحة سريعة",
+      "glanceHint": "اختر بلاطة للانتقال إلى نتيجتها.",
+      "why": "لماذا نقول هذا",
+      "question": "السؤال",
+      "action": "الإجراء",
+      "products": "المنتجات وراءها",
+      "about": "عن هذا الرقم",
+      "notMeasured": "غير مقيس",
+      "loading": "جارٍ حساب النتائج…",
+      "withheld": "غير معروضة: {reason}",
+      "withheldTile": "غير معروضة",
+      "rank": "#{rank}",
+      "priceWithheld": "السعر محجوب",
+      "themes": {
+        "assortment": "التشكيلة",
+        "price": "السعر",
+        "promo": "العروض",
+        "stock": "المخزون",
+        "reviews": "التقييمات",
+        "dq": "جودة البيانات"
+      },
+      "match": {
+        "counted_pairs": "أزواج مطابقة",
+        "within_shop": "داخل متجر واحد",
+        "brand_level": "على مستوى العلامة",
+        "single_shop": "كل متجر على حدة"
+      },
+      "basis": {
+        "selling_price": "سعر البيع",
+        "per_unit": "السعر لكل مل أو غرام",
+        "stated_regular": "السعر الأصلي المعلن من المتجر",
+        "stock_flag": "حالة المخزون لدى المتجر",
+        "rating": "مقياس التقييم الخاص بالمتجر",
+        "brand_presence": "وجود العلامة"
+      },
+      "chips": {
+        "too_few_ratings": "{shop}: تقييمات قليلة جداً",
+        "too_few_pairs": "{shop}: أزواج قليلة جداً",
+        "stock_not_collected": "{shop}: المخزون غير مرصود",
+        "discounts_not_shown": "{shop}: التخفيضات غير معروضة"
+      },
+      "tip": {
+        "n": "الأدلة",
+        "nOf": "{n} من {of}",
+        "match": "المطابقة",
+        "basis": "الأساس",
+        "threshold": "الحد",
+        "coverage": "المتاجر المقروءة"
+      },
+      "codes": {
+        "edp_edt": "EDP مقابل EDT",
+        "flanker_edp": "الإصدار الفرعي مقابل EDP",
+        "high": "4.5★ فأكثر",
+        "mid": "4.0–4.4★",
+        "low": "أقل من 4.0★",
+        "q1": "الربع الأرخص",
+        "q2": "الربع الثاني",
+        "q3": "الربع الثالث",
+        "q4": "الربع الأغلى",
+        "fragrance": "العطور",
+        "other": "أخرى",
+        "lips": "الشفاه",
+        "eyes": "العيون",
+        "foundation": "كريم الأساس",
+        "skincare": "العناية بالبشرة",
+        "body": "الجسم",
+        "hair": "الشعر",
+        "makeup": "المكياج",
+        "face": "الوجه",
+        "nails": "الأظافر",
+        "men": "الرجال",
+        "tools": "الأدوات"
+      },
+      "items": {
+        "brand_white_space": {
+          "tile": "علامات {rival} الغائبة عن {focus}",
+          "headline": "علامة من {rival} غير موجودة في {focus}{has_lead, select, yes {، أبرزها {lead}} other {}}",
+          "decision": "ما العلامات التي ينبغي أن تضيفها {focus} لكسب متسوق الفئة المتوسطة الراقية؟",
+          "action": "ضعوا قائمة مختصرة تضم {absentNames} لطلبها المثبت{has_thirdTop, select, yes {؛ و{thirdTop} هي الفجوات التي تملؤها {third}} other {}}.",
+          "owner": "مشتري {focus}",
+          "evidence": "تعرض {focus} ‏{focusBrands} علامة و{rival} ‏{rivalBrands}. بعد توحيد أسماء العلامات تشتركان في {shared} ({sharedExact} بالاسم المطابق). ‏{absent} علامة من {rival} لكل منها {minListings} منتجات على الأقل غير موجودة في {focus}؛ وأكثر {absentListed} منها تقييماً تحمل {absentReviews} تقييماً معروضاً.{has_lead, select, yes { لدى {lead} ‏{leadChampions} منتجاً عالي التقييم في الربع الأرخص من فئته ({leadFrom}–{leadTo}).} other {}}{has_third, select, yes { تبيع {third} ‏{thirdOnly} علامة لا تبيعها {focus}.} other {}}",
+          "cap": "التقييمات المعروضة في {rival}، علامات غير موجودة في {focus}",
+          "threshold": "{threshold} علامات غائبة على الأقل، لكل منها منتجات كافية"
+        },
+        "brand_depth_gaps": {
+          "tile": "منتجات أساسية ناقصة في {focus}",
+          "headline": "منتجاً أساسياً في {rival} بلا مقابل في {focus}",
+          "decision": "ما منتجات {rival} المثبتة التي ينبغي أن تضيفها {focus} تالياً؟",
+          "action": "افتحوا خطوطاً مع العلامات الموجودة على الرف{has_houseNames, select, yes { ({houseNames})} other {}}، مرتبة حسب حجم التقييمات في {rival}.",
+          "owner": "مشتري {focus}",
+          "evidence": "لدى {rival} ‏{heroes} منتجاً بأكثر من {minReviews} تقييم. منها {matched} مطابقة في {focus}، و{screened} استُبعدت بالاسم، و{absent} بلا مقابل.{has_lead, select, yes { لدى {lead} ‏{leadFocusFragrance} عطراً و{leadFocusOther} منتجاً آخر في {focus}، مقابل {leadRivalOther} منتجاً آخر في {rival}.} other {}}",
+          "cap": "منتجات كل علامة في كل متجر: العطور، ثم الباقي",
+          "threshold": "{threshold} منتجات أساسية على الأقل بلا مقابل"
+        },
+        "brand_price_policy": {
+          "tile": "سلة {focus} مقابل {rival}",
+          "headline": "سلة {focus} مقابل {rival}{has_lead, select, yes {؛ {lead} ‏{leadMedianPct}} other {}}{has_parityLead, select, yes {، و{parityLead} بالسعر نفسه} other {}}",
+          "decision": "أين ينبغي أن تثبّت {focus} سعرها أمام {rival}؟",
+          "action": "استهدفوا العلامات المتكافئة{has_parityNames, select, yes { ({parityNames})} other {}} حيث تكون حركة السعر جديدة؛ وراقبوا العلامات الأرخص أسبوعياً.",
+          "owner": "تسعير {focus}",
+          "evidence": "على {n} زوجاً مطابقاً، {focus} أرخص في {focusCheaper}، ومساوية في {level}، وأغلى في {rivalCheaper}. تكلف السلة المطابقة {basketFocus} في {focus} مقابل {basketRival} في {rival}. ‏{undercut} علامات أقل بين {undercutLowPct} و{undercutHighPct}؛ و{parity} بالسعر نفسه.{has_lead, select, yes { {lead} أرخص في {leadCheaper} من {leadN} زوجاً.} other {}}",
+          "cap": "الوسيط % مقابل {rival}، المنتج والحجم نفسه؛ الشريط باتجاه الأسماء يعني أن {focus} أرخص",
+          "threshold": "{threshold} أزواج مطابقة على الأقل في العلامة"
+        },
+        "size_level_gaps": {
+          "tile": "فارق {focus} حسب الحجم",
+          "headline": "{focus} عند {hero}؛ {zero_entryMedianPct, select, yes {مساوية لـ{rival}} other {{entryMedianPct}}} عند {entry}",
+          "decision": "هل فارق سعر {focus} واحد في كل أحجام الزجاجات؟",
+          "action": "قرّروا إن كان الفارق عند {entry}، أول حجم يقارنه المتسوق، مقصوداً.",
+          "owner": "تسعير {focus}",
+          "evidence": "{n} زوجاً مطابقاً في {sizes} أحجام (لا تُعرض {suppressed} أحجام لقلة الأزواج). عند {hero}، {focus} أرخص في {heroCheaper} من {heroN} زوجاً ومساوية في {heroLevel}؛ وعند {entry}، أرخص في {entryCheaper} من {entryN} ومساوية في {entryLevel}.",
+          "cap": "الوسيط % مقابل {rival} حسب الحجم؛ الشريط باتجاه الأحجام يعني أن {focus} أرخص",
+          "threshold": "{threshold} أزواج مطابقة على الأقل في كل من حجمين"
+        },
+        "stock": {
+          "tile": "منتجات {focus} غير المتوفرة",
+          "headline": "منتجاً غير متوفر في {focus}؛ {brand1}: {brand1Out} من {brand1Observed}",
+          "decision": "ما علامات {focus} التي تحتاج إلى فحص التوريد؟",
+          "action": "تأكدوا من التوريد لـ{brand1}{has_brand2, select, yes { و{brand2}} other {}}، ثم أعيدوا الفحص في اللقطة التالية.",
+          "owner": "{focus}",
+          "evidence": "{outOfStock} من {withStock} منتجاً لدى {focus} بحالة مخزون معروفة غير متوفرة، في {brands} علامة. لدى {unavailableBrands} علامة ({unavailableListings} منتجاً) كل المنتجات غير متاحة؛ يذكر المصدر أنها غير متاحة، فتُحسب منفصلة.{has_rivalShort, select, yes { لدى {rivalShort} نقص في {rival} بينما هي متوفرة في {focus}.} other {}} أعداد فقط: لا تُرتَّب المتاجر حسب المخزون.",
+          "cap": "غير المتوفر (الممتلئ) من منتجات العلامة، آخر رصد لـ{focus}",
+          "threshold": "{threshold} منتجات غير متوفرة على الأقل في العلامة"
+        },
+        "promo_strategy": {
+          "tile": "تخفيضات {focus} بعمق واحد",
+          "headline": "تخفيضاً في {focus} بنسبة {modePct} بالضبط",
+          "decision": "هل يعلّم عمق خصم واحد متسوقي {focus} الانتظار؟",
+          "action": "جرّبوا أعماقاً أقل أو متناوبة{has_dependentNames, select, yes { على {dependentNames}} other {}}.",
+          "owner": "مخطط العروض في {focus}",
+          "evidence": "{marked} من {stated} منتجاً لدى {focus} بسعر أصلي معلن مخفضة، منها {modeCount} بنسبة {modePct} بالضبط. لدى {dependent} علامات معظم تشكيلتها مخفض. ‏{largeNever} من {large} علامة كبيرة لا تُخفَّض أبداً.{has_third, select, yes { تخفض {third} ‏{thirdMarked} منتجاً بوسيط {thirdMedianPct}.} other {}}",
+          "cap": "نسبة منتجات كل علامة المخفضة في {focus}",
+          "threshold": "علامات لديها {threshold} منتجات على الأقل بسعر أصلي معلن"
+        },
+        "real_discounts": {
+          "tile": "تخفيضات مطابقة حقيقية",
+          "headline": "تخفيضات مطابقة تتفوق على سعر المتجر الآخر",
+          "decision": "هل التخفيضات على المنتجات المطابقة حقيقية مقارنة بالسوق؟",
+          "action": "أعلنوا عن التخفيض على منتج مطابق بصفته سعراً يتفوق على السوق.",
+          "owner": "{focus}",
+          "evidence": "من {pairs} زوجاً مطابقاً، يحمل {markdowns} تخفيضاً و{real} أقل من سعر المتجر الآخر (ضمن {tolerancePct}).{has_lead, select, yes { الأعمق: {lead} في {leadShop}، خصم {leadPct}، ‏{leadPrice} مقابل {leadVersusPrice} في {leadVersus}.} other {}}",
+          "cap": "نسبة الخصم المعلنة، منتجات مطابقة",
+          "threshold": "{threshold} تخفيضات على الأقل على أزواج مطابقة"
+        },
+        "fragrance_ladder": {
+          "tile": "درجات عطور مقلوبة",
+          "headline": "درجات عطور في {focus} أرخص لكل مل من الدرجة الأدنى",
+          "decision": "هل يصعد سلّم عطور {focus} من EDT إلى EDP إلى الإصدار الفرعي؟",
+          "action": "صحّحوا الدرجات المقلوبة أو أكدوها{has_lead, select, yes {، بدءاً بـ{lead}} other {}}.",
+          "owner": "تسعير {focus}",
+          "evidence": "في {focus} يكلف EDP وسيطاً {focusEdpPct} أكثر لكل مل من EDT ({focusEdpN} زوجاً، {focusEdpNegative} مقلوبة)، والإصدار الفرعي {focusFlankerPct} أكثر من EDP ({focusFlankerN} زوجاً، {focusFlankerNegative} مقلوبة). في {rival}: {rivalEdpPct} ({rivalEdpN} زوجاً) و{rivalFlankerPct} ({rivalFlankerN} زوجاً).{has_lead, select, yes { يكلف {lead} ‏{leadPct} لكل مل مقابل {leadBase}.} other {}}",
+          "cap": "% أكثر لكل مل من الدرجة الأدنى؛ النقاط يسار الخط المتقطع مقلوبة؛ العلامة هي الوسيط",
+          "threshold": "{threshold} أزواج على الأقل لكل متجر وخطوة"
+        },
+        "size_traps": {
+          "tile": "خطوات حجم أغلى لكل مل",
+          "headline": "خطوة حجم في {focus} أغلى لكل مل عند الانتقال للأكبر",
+          "decision": "هل يوفّر الحجم الأكبر دائماً في {focus}؟",
+          "action": "أعيدوا تسعير الحجم الأكبر أو الأصغر لينزل السلّم{has_lead, select, yes {، بدءاً بـ{lead}} other {}}.",
+          "owner": "تسعير {focus}",
+          "evidence": "{focusSteps} خطوة حجم في {focus} توفر وسيطاً {focusSavingPct} لكل مل؛ و{focusNotCheaper} لا توفر. {rival}: {rivalSteps} خطوة، توفير {rivalSavingPct}، و{rivalNotCheaper} ليست أرخص.{has_third, select, yes { {third}: {thirdSteps} خطوة، توفير {thirdSavingPct}، و{thirdNotCheaper} ليست أرخص.} other {}}",
+          "cap": "% أكثر لكل مل للحجم الأكبر في {focus}",
+          "threshold": "{threshold} خطوات حجم على الأقل في {focus}"
+        },
+        "positioning": {
+          "tile": "شفاه {focus} بأسعار منخفضة",
+          "headline": "من شفاه {focus} تحت {lowBand} مقابل {lipsUnderRival} في {rival}",
+          "decision": "أي شريحة سعرية يمكن أن تمتلكها {focus} أمام {rival}؟",
+          "action": "ركزوا على ألوان المكياج دون {lowBand}، الشريحة التي لا تنافس فيها {rival}، قبل مطاردة العطور الفاخرة.",
+          "owner": "{focus}",
+          "evidence": "الشفاه: {lipsUnderFocus} من منتجات {focus} تحت {lowBand} (الوسيط {lipsMedianFocus}) مقابل {lipsUnderRival} في {rival} (الوسيط {lipsMedianRival}). العطور: {fragranceOverFocus} من منتجات {focus} بسعر {highBand} أو أكثر مقابل {fragranceOverRival} في {rival}؛ والعطور {fragranceShareFocus} من تشكيلة {focus} و{fragranceShareRival} من تشكيلة {rival}.",
+          "cap": "حصة المنتجات حسب شريحة السعر؛ النقطة = المتجر",
+          "threshold": "{threshold} منتجاً مسعّراً على الأقل لكل متجر وفئة"
+        },
+        "price_vs_rating": {
+          "tile": "السعر مقابل التقييم في {shop}",
+          "headline": "{has_fragranceRho, select, yes {ارتباط السعر بالتقييم لعطور {shop}} other {منتجات {shop} المقيّمة مقابل السعر}}",
+          "decision": "هل يشتري السعر الأعلى تقييمات أفضل في {shop}؟",
+          "action": "أصلحوا المحتوى أو التركيبة لـ{laggards} منتجات متأخرة قبل أي تغيير في السعر؛ وأبرزوا {champions} منتجاً ممتازاً.",
+          "owner": "مديرو العلامات",
+          "evidence": "لدى {shop} ‏{n} منتجاً بأكثر من {minReviews} تقييم.{has_lowRho, select, yes { يتراوح ارتباط السعر بالتقييم حسب الفئة بين {lowRho} ({lowCategory}) و{highRho} ({highCategory}).} other {}} ‏{champions} في الربع الأرخص من فئتها وتقييمها مرتفع؛ و{laggards} في الربع الأغلى وتقييمها منخفض. تبقى التقييمات على مقياس كل متجر؛ ولا تُقارن المتاجر بها.",
+          "cap": "منتجات {shop} بأكثر من {minReviews} تقييم: ربع السعر في فئتها حسب شريحة التقييم",
+          "threshold": "{threshold} منتجاً على الأقل بتقييمات كافية في المتجر"
+        },
+        "pricing_anomalies": {
+          "tile": "منتجات {focus} تحت حد السعر",
+          "headline": "منتجاً في {focus} تحت حد السعر، منها {focusInStock} متوفرة",
+          "decision": "ما منتجات {focus} التي تعرض سعراً لا يمكن لأي متسوق دفعه؟",
+          "action": "أخفوا المنتجات تحت الحد أو سعّروها{has_focusBrands, select, yes {، بدءاً بـ{focusBrands}} other {}}.",
+          "owner": "{focus}",
+          "evidence": "{focusCount} منتجاً لدى {focus} بسعر تحت الحد ({focusInStock} متوفرة).{has_rival, select, yes { {rival}: {rivalCount}.} other {}}{has_third, select, yes { {third}: {thirdCount}.} other {}} أسعارها محجوبة عن كل رقم آخر في هذه الصفحة.",
+          "cap": "منتجات بسعر تحت الحد، آخر رصد",
+          "threshold": "{threshold} منتج على الأقل تحت الحد"
+        }
+      }
     }
   }
 }
