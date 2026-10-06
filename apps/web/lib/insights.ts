@@ -97,18 +97,8 @@ export const valueCategories = (v: ValuePicks): ValueCategory[] =>
 export const fewRated = (c: Pick<ValueCategory, 'rated' | 'priced'>): boolean =>
   c.priced > 0 && c.rated * 100 < c.priced * FEW_RATED_PCT;
 
-/**
- * Fields the Ulta category audit adds to the API (the value basis with its per-unit medians, a
- * pick's size and unit price, a size step whose smaller size is on sale). Optional here so the
- * page renders the same on an API that does not send them yet: no basis reads as a shelf price,
- * no flag as not on sale.
- */
 /** A price per ml or g: an exact decimal string in a currency, not a priced Money. */
 export type UnitAmount = { amount: string; currency: string };
-type UnitMedian = { median: string; n: number; unit: string };
-type AuditCategory = { basis?: 'per_unit' | 'shelf'; unitMedians?: UnitMedian[] };
-type AuditPick = { sizeValue?: string | null; sizeUnit?: string | null; unitPrice?: string | null };
-type AuditStep = { smallerOnSale?: boolean };
 
 /**
  * The typical price per unit of a per-unit category (fragrance), in the shelf median's currency:
@@ -116,9 +106,8 @@ type AuditStep = { smallerOnSale?: boolean };
  * median, so the line falls back to the shelf price it can show.
  */
 export const perUnitMedian = (c: ValueCategory): { median: UnitAmount; unit: string } | null => {
-  const a = c as ValueCategory & AuditCategory;
-  if (a.basis !== 'per_unit') return null;
-  const best = [...(a.unitMedians ?? [])].sort((x, y) => y.n - x.n)[0];
+  if (c.basis !== 'per_unit') return null;
+  const best = [...c.unitMedians].sort((x, y) => y.n - x.n)[0];
   return best ? { median: { amount: best.median, currency: c.median.currency }, unit: best.unit } : null;
 };
 
@@ -126,16 +115,12 @@ export const perUnitMedian = (c: ValueCategory): { median: UnitAmount; unit: str
 export const pickSize = (
   p: Schemas['ValuePick'],
 ): { size: { value: string; unit: string } | null; unitPrice: UnitAmount | null } => {
-  const a = p as Schemas['ValuePick'] & AuditPick;
-  const size = a.sizeValue && a.sizeUnit ? { value: a.sizeValue, unit: a.sizeUnit } : null;
+  const size = p.sizeValue && p.sizeUnit ? { value: p.sizeValue, unit: p.sizeUnit } : null;
   return {
     size,
-    unitPrice: size && a.unitPrice ? { amount: a.unitPrice, currency: p.price.currency } : null,
+    unitPrice: size && p.unitPrice ? { amount: p.unitPrice, currency: p.price.currency } : null,
   };
 };
-
-/** Is the smaller size of this step on sale (so the step looks dearer than usual)? */
-export const smallerOnSale = (s: LadderStep): boolean => (s as LadderStep & AuditStep).smallerOnSale === true;
 
 /** The rating floor on a five-point scale, from the API's percentage of a scale ("90.0" -> "4.5"). */
 export const ratingOutOfFive = (pct: string): string => String(Math.round(Number(pct) * 5) / 100);

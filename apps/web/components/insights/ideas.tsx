@@ -15,7 +15,6 @@ import {
   PROMOS_ASKED,
   PROMOS_SHOWN,
   ratingOutOfFive,
-  smallerOnSale,
   valueCategories,
   type Insights,
   type Ladder,
@@ -258,7 +257,7 @@ function LadderCard({ shop, row, one }: { shop: string; row: Ladder | undefined;
                     <b className="font-semibold text-bad">
                       <bdi dir="ltr">{`+${x.unitChangePct}%`}</bdi>
                     </b>
-                    {smallerOnSale(x) && (
+                    {x.smallerOnSale && (
                       <>
                         {' · '}
                         <Warn>{t('ladder.onSale')}</Warn>

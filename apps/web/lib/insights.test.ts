@@ -14,9 +14,7 @@ import {
   ratingOutOfFive,
   shopPairs,
   sizesInOrder,
-  smallerOnSale,
   valueCategories,
-  type LadderStep,
   type ValueCategory,
   type ValuePicks,
   type BrandPolicy,
@@ -111,7 +109,7 @@ describe('insights helpers', () => {
     expect(valueCategories(v).map((c) => c.category)).toEqual(['lips', 'eyes']);
   });
 
-  it('reads the audit fields when sent, and a shelf price, no size, not on sale when not', () => {
+  it('reads the audit fields: a per-unit median, else the shelf price; a size and unit price together or neither', () => {
     const c = { category: 'fragrance', median: { amount: '310.00', currency: 'AED' } } as ValueCategory;
     expect(perUnitMedian(c)).toBeNull();
     expect(perUnitMedian({ ...c, basis: 'shelf' } as ValueCategory)).toBeNull();
@@ -135,9 +133,6 @@ describe('insights helpers', () => {
       size: { value: '100', unit: 'ml' },
       unitPrice: { amount: '5.15', currency: 'AED' },
     });
-    const step = { brand: 'b', name: 'n' } as LadderStep;
-    expect(smallerOnSale(step)).toBe(false);
-    expect(smallerOnSale({ ...step, smallerOnSale: true } as LadderStep)).toBe(true);
   });
 
   it('puts the rating floor on a five-point scale', () => {
