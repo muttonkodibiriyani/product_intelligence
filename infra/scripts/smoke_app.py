@@ -53,6 +53,8 @@ document.addEventListener('securitypolicyviolation', (e) =>
   console.error(`CSP blocked ${e.violatedDirective}: ${e.blockedURI || 'inline'}`));
 """
 TIMEOUT = 20_000
+# Explore's Grid / List toggle (a group of two pressed-state buttons), per locale.
+LIST_VIEW = {"en": ("Show as", "List"), "ar": ("طريقة العرض", "قائمة")}
 
 
 def expected_csp() -> str:
@@ -180,14 +182,25 @@ def sign_in(page: Page, base: str, email: str, password: str) -> None:
     page.wait_for_load_state("networkidle")
 
 
+def list_view(page: Page, locale: str) -> None:
+    """Explore opens as a grid of cards; the smoke reads the list (a table). The choice is kept in
+    localStorage, so after the first click the list is already pressed."""
+    group, name = LIST_VIEW[locale]
+    button = page.get_by_role("group", name=group).get_by_role("button", name=name, exact=True)
+    button.wait_for(timeout=TIMEOUT)
+    if button.get_attribute("aria-pressed") != "true":
+        button.click()
+    page.get_by_role("table").wait_for(timeout=TIMEOUT)
+
+
 def explore_and_product(page: Page, base: str, problems: list[str]) -> None:
     page.goto(f"{base}/app/en/explore/")
-    page.get_by_role("table").wait_for(timeout=TIMEOUT)
+    list_view(page, "en")
     if page.get_by_text("Exports stop at 50,000 rows").count():
         # Narrow to the first row's brand so the export stays small.
         brand = page.locator("table tbody tr th span[dir=auto]").first.inner_text()
         page.goto(f"{base}/app/en/explore/?{urlencode({'brand': brand})}")
-        page.get_by_role("table").wait_for(timeout=TIMEOUT)
+        list_view(page, "en")
     page.wait_for_load_state("networkidle")
     explore_url = page.url
     page.locator("table tbody tr th a[href*='/product/']").first.click()
@@ -200,7 +213,7 @@ def explore_and_product(page: Page, base: str, problems: list[str]) -> None:
         page.wait_for_url(lambda u: same_view(u, explore_url), timeout=TIMEOUT)
     except PlaywrightTimeout:
         problems.append(f"back to products: {page.url} is not {explore_url}")
-    page.get_by_role("table").wait_for(timeout=TIMEOUT)
+    list_view(page, "en")
 
 
 def export_guard(page: Page, problems: list[str]) -> None:
@@ -221,7 +234,7 @@ def export_guard(page: Page, problems: list[str]) -> None:
 
 def arabic(page: Page, base: str, problems: list[str]) -> None:
     page.goto(f"{base}/app/ar/explore/")
-    page.get_by_role("table").wait_for(timeout=TIMEOUT)
+    list_view(page, "ar")
     page.wait_for_load_state("networkidle")
     if (d := page.get_attribute("html", "dir")) != "rtl":
         problems.append(f"ar: html dir is {d!r}")
