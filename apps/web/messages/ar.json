@@ -1071,7 +1071,7 @@
         },
         "stock": {
           "tile": "منتجات {focus} غير المتوفرة",
-          "headline": "منتجاً غير متوفر في {focus}؛ {brand1} وحدها {brand1Out} من {brand1Observed}",
+          "headline": "منتجاً غير متوفر في {focus}؛ {brand1}: {brand1Out} من {brand1Observed}",
           "decision": "ما علامات {focus} التي تحتاج إلى فحص التوريد؟",
           "action": "تأكدوا من التوريد لـ{brand1}{has_brand2, select, yes { و{brand2}} other {}}، ثم أعيدوا الفحص في اللقطة التالية.",
           "owner": "{focus}",
@@ -1111,7 +1111,7 @@
         },
         "size_traps": {
           "tile": "خطوات حجم أغلى لكل مل",
-          "headline": "خطوة حجم في {focus} تكلف أكثر لكل مل عند الانتقال للأكبر",
+          "headline": "خطوة حجم في {focus} أغلى لكل مل عند الانتقال للأكبر",
           "decision": "هل يوفّر الحجم الأكبر دائماً في {focus}؟",
           "action": "أعيدوا تسعير الحجم الأكبر أو الأصغر لينزل السلّم{has_lead, select, yes {، بدءاً بـ{lead}} other {}}.",
           "owner": "تسعير {focus}",

@@ -1031,7 +1031,7 @@
       "items": {
         "brand_white_space": {
           "tile": "{rival} brands {focus} lacks",
-          "headline": "{rival} brands are not at {focus}{has_lead, select, yes {, led by {lead}} other {}}",
+          "headline": "{rival} brands missing at {focus}{has_lead, select, yes {, led by {lead}} other {}}",
           "decision": "Which brands should {focus} add to win the masstige shopper?",
           "action": "Shortlist {absentNames} for proven demand{has_thirdTop, select, yes {; {thirdTop} are the gaps {third} fills} other {}}.",
           "owner": "{focus} buyer",
@@ -1051,7 +1051,7 @@
         },
         "brand_price_policy": {
           "tile": "{focus} basket vs {rival}",
-          "headline": "{focus} basket vs {rival}{has_lead, select, yes {; {lead} {leadMedianPct}} other {}}{has_parityLead, select, yes {, {parityLead} level} other {}}",
+          "headline": "{focus} vs {rival} basket{has_lead, select, yes {; {lead} {leadMedianPct}} other {}}{has_parityLead, select, yes {, {parityLead} level} other {}}",
           "decision": "Where should {focus} hold its price against {rival}?",
           "action": "Target the parity houses{has_parityNames, select, yes { ({parityNames})} other {}}, where a price move would be new; watch the undercut houses weekly.",
           "owner": "{focus} pricing",
@@ -1071,7 +1071,7 @@
         },
         "stock": {
           "tile": "{focus} listings out of stock",
-          "headline": "{focus} listings out of stock; {brand1} alone has {brand1Out} of {brand1Observed}",
+          "headline": "{focus} listings out of stock; {brand1}: {brand1Out} of {brand1Observed}",
           "decision": "Which {focus} brands need a supply check?",
           "action": "Confirm supply for {brand1}{has_brand2, select, yes { and {brand2}} other {}}, then re-check on the next snapshot.",
           "owner": "{focus}",
@@ -1101,7 +1101,7 @@
         },
         "fragrance_ladder": {
           "tile": "inverted fragrance rungs",
-          "headline": "{focus} fragrance rungs cost less per ml than the rung below",
+          "headline": "{focus} fragrance rungs cheaper per ml than the rung below",
           "decision": "Does {focus}'s fragrance ladder climb from EDT to EDP to flanker?",
           "action": "Fix or confirm the inverted rungs{has_lead, select, yes {, starting with {lead}} other {}}.",
           "owner": "{focus} pricing",
@@ -1121,7 +1121,7 @@
         },
         "positioning": {
           "tile": "{focus} lips at low prices",
-          "headline": "of {focus} lip listings under {lowBand}, vs {lipsUnderRival} at {rival}",
+          "headline": "of {focus} lips under {lowBand}, vs {lipsUnderRival} at {rival}",
           "decision": "Which price tier can {focus} own against {rival}?",
           "action": "Lean into the colour tier under {lowBand}, which {rival} does not contest, before chasing luxury fragrance.",
           "owner": "{focus}",
@@ -1141,7 +1141,7 @@
         },
         "pricing_anomalies": {
           "tile": "{focus} listings below the price floor",
-          "headline": "{focus} listings below the price floor, {focusInStock} of them in stock",
+          "headline": "{focus} listings below the price floor, {focusInStock} in stock",
           "decision": "Which {focus} listings show a price no shopper can pay?",
           "action": "Hide or price the listings below the floor{has_focusBrands, select, yes {, starting with {focusBrands}} other {}}.",
           "owner": "{focus}",
