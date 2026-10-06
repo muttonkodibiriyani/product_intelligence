@@ -760,7 +760,10 @@ def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> Envelope[CategoryComparison]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
-        metric = category_compare(loaded.dataset, base, other, query.level)
+        # Always the latest date: each stale source at its own last date (ADR-0010 §6).
+        metric = stale_first(
+            loaded, category_compare(loaded.current, base, other, query.level), (base, other)
+        )
         return respond(loaded, "category_compare", query, metric)
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
@@ -980,7 +983,7 @@ def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
     def get_insights(query: Annotated[InsightsQuery, Query()], _: Viewer) -> Envelope[Insights]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
-        metric = insights(loaded.dataset, base, other, on=query.on)
+        metric = insights(read_at(loaded, query.on), base, other, on=query.on)
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "insights", query, metric)

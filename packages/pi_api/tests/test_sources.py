@@ -318,6 +318,8 @@ def test_the_latest_comparison_reads_a_stale_source_at_its_own_last_date(tmp_pat
     "url",
     [
         f"index?retailers={ULTA},{SEPHORA}",
+        f"category-compare?retailers={ULTA},{SEPHORA}",
+        f"insights?retailers={ULTA},{SEPHORA}",
         f"promotions?retailer={ULTA}",
         f"availability?retailer={ULTA}",
         f"summary?retailer={ULTA}",
