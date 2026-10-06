@@ -1,4 +1,8 @@
-"""Session guard for every test run: never run tests against a real pi_db (see db_url_guard)."""
+"""Session guard for every test run: never run tests against a real pi_db (see db_url_guard).
+
+`pytest --noconftest`, or a `--confcutdir` below the repo root, skips this file and so the guard:
+never use either while PI_DATABASE_URL is set.
+"""
 
 import os
 

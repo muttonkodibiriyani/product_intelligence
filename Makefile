@@ -16,7 +16,9 @@ types:
 
 # DB tests run against a throwaway tmpfs server (`make test-db`), NEVER the stack database on
 # 55432: tests create pi_test_* databases on that server. The root conftest.py refuses ports
-# 55432/55499 and database `pi`. Pick a free port with TEST_DB_PORT=<port> on a shared host.
+# 55432/55499, database `pi` and host/port/dbname/service overrides in the query string
+# (`--noconftest` or `--confcutdir` would skip it: never with a DB URL set). Pick a free port
+# with TEST_DB_PORT=<port> on a shared host.
 TEST_DB_PORT ?= 55433
 PI_DATABASE_URL ?= postgresql+psycopg://pi:pi_test_only@127.0.0.1:$(TEST_DB_PORT)/pi_test
 export PI_DATABASE_URL
