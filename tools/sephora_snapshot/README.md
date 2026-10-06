@@ -60,6 +60,10 @@ Unattended runs (`AUTO=1`, ADR-0009 variant pass):
 - How often it runs is the Scheduler's setting. ADR-0009 makes the variant pass weekly, over two
   consecutive nights (the second night picks up where the first stopped, because the plan reads
   the first night's `covered.json.gz`). The nightly listing sweep is a separate build.
+- Schedule: `infra/gcp/sephora_schedule_setup.sh` sets the job to `AUTO=1` with an 8 h task
+  timeout, and creates the Scheduler job `pi-sephora-variant-pass` (Monday and Tuesday 18:00Z)
+  **paused**. It runs only once resumed, on the coordinator's GO; pausing it stops every run. See
+  `infra/gcp/README.md`, Sephora schedule.
 - Every AUTO run is `partial` in pi_db (it covers a subset by design).
 
 Every run, in every mode, ends by writing two files under its prefix:
