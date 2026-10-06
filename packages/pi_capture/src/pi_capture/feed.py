@@ -295,13 +295,20 @@ def _row(
     return row
 
 
+#: :func:`build_feed` exclusion reasons that :func:`completeness` treats as read elsewhere
+_OTHER_LOCALE = "locale "
+_DUPLICATE_SKU = "duplicate retailer_sku"
+
+
 def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
     """Feed rows for one shop and country, in capture order; the first page per key wins."""
     result = FeedResult()
     seen: set[str] = set()
     for capture in captures:
         if capture.locale != shop.locale:
-            result.excluded.append({"url": capture.url, "reason": f"locale {capture.locale}"})
+            result.excluded.append(
+                {"url": capture.url, "reason": f"{_OTHER_LOCALE}{capture.locale}"}
+            )
             continue
         if capture.capture_state != "ok":
             result.excluded.append(
@@ -315,7 +322,7 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
             continue
         key = str(row["listing_key"])
         if key in seen:
-            result.excluded.append({"url": capture.url, "reason": "duplicate retailer_sku"})
+            result.excluded.append({"url": capture.url, "reason": _DUPLICATE_SKU})
             continue
         seen.add(key)
         result.regular_price_dropped.update(dropped)
@@ -326,7 +333,8 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
 
 #: Feed exclusions that still leave the product read: the same page in another locale (the
 #: shop's own locale is the one read) and a second URL of a SKU already in the feed.
-_READ_ELSEWHERE = ("locale ", "duplicate retailer_sku")
+#: :func:`build_feed` writes these reasons and :func:`completeness` reads them.
+_READ_ELSEWHERE = (_OTHER_LOCALE, _DUPLICATE_SKU)
 
 
 @dataclass(frozen=True)
@@ -371,9 +379,11 @@ def completeness(
         if row.get("state") == "ok":
             fetched[url] = (str(row.get("final_url") or url), str(row.get("locale")))
     read = {c.url for c in captures if c.locale == shop.locale}
-    excluded: dict[str, str] = {}
+    gap_reasons: dict[str, set[str]] = {}  # URL -> every reason that leaves the product unread
     for e in result.excluded:
-        excluded.setdefault(e["url"], e["reason"])
+        reasons = gap_reasons.setdefault(e["url"], set())
+        if not e["reason"].startswith(_READ_ELSEWHERE):
+            reasons.add(e["reason"])
     gaps: Counter[str] = Counter()
     wanted = set(sitemap_urls)
     for url in wanted:
@@ -386,11 +396,11 @@ def completeness(
         final, locale = fetched[url]
         if locale != shop.locale:
             continue  # another locale's copy of a product: fetched is all it owes
-        reason = excluded.get(final)
-        if reason is None and final not in read:
+        unread = gap_reasons.get(final)
+        if unread:  # any real exclusion is a gap, whatever else the URL was excluded for
+            gaps[min(unread)] += 1
+        elif unread is None and final not in read:
             gaps["not_read"] += 1
-        elif reason is not None and not reason.startswith(_READ_ELSEWHERE):
-            gaps[reason] += 1
     return Completeness(sitemap_urls=len(wanted), gaps=dict(gaps))
 
 

@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from pi_dataset import RetailerStatus, dump_dataset, load_any, load_dataset
-from pi_metrics import ProductFilter, launches
+from pi_metrics import ProductFilter, launches, view
 from scripts.demo_export.export import (
     ListingRow,
     UltaContext,
@@ -240,6 +240,39 @@ def test_a_launch_needs_the_day_before_complete_too() -> None:
 def test_a_succeeded_faces_run_over_two_market_days_is_not_a_complete_day() -> None:
     across = faces_span(D1, "succeeded", last=at(D2, 1))
     assert Coverage.of([across]).complete == {"f": frozenset()}
+
+
+# A complete Faces day backs every absence claim, removals included (coordinator ruling (a),
+# 2026-10-06): the gate is view.complete_run, read by launches, assortment gaps and removals.
+GONE = {D1: [faces_seen(D1, 300), faces_seen(D1, 301)], D2: [faces_seen(D2, 300)]}
+
+
+def gone_on_d2(spans: list[RunSpan]) -> tuple[bool, list[tuple[date, date]]]:
+    """Whether D2 backs 301's absence (it was on D1, not in D2's sitemap), and the windows."""
+    ds = build_history_v2(
+        GONE, Coverage.of(spans), [], generated_at=LATER, ulta=BLOCKED, ulta_note=NOTE, slots=("f",)
+    )
+    v3 = view.as_v3(load_dataset(dump_dataset(ds)))
+    (ctx,) = view.contexts_of(v3, FACES)
+    (gone,) = [p for p in v3.products if not view.seen(p.offers[ctx.id], 1)]
+    return view.complete_run(v3, ctx.id, gone, 1), [(w.start, w.end) for w in ds.not_observed]
+
+
+def test_two_complete_faces_days_back_the_absence_of_a_product_gone_from_the_sitemap() -> None:
+    backed, windows = gone_on_d2([faces_span(D1, "succeeded"), faces_span(D2, "succeeded")])
+    assert (backed, windows) == (True, [])
+
+
+@pytest.mark.parametrize("d2", ["partial", "blocked"])
+def test_a_partial_or_blocked_second_day_backs_no_removal(d2: str) -> None:
+    backed, windows = gone_on_d2([faces_span(D1, "succeeded"), faces_span(D2, d2)])
+    assert (backed, windows) == (False, [(D2, D2)])
+
+
+def test_a_complete_second_day_after_a_partial_first_still_backs_the_absence() -> None:
+    # 301 was seen on D1 even though D1 was partial; D2 read the whole sitemap without it
+    backed, _ = gone_on_d2([faces_span(D1, "partial"), faces_span(D2, "succeeded")])
+    assert backed
 
 
 def test_one_concentration_across_a_products_offers_is_an_attribute() -> None:

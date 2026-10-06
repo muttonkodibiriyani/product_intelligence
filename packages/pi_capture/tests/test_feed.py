@@ -447,6 +447,28 @@ def test_a_redirected_page_is_matched_by_where_it_was_read(make_capture: Capture
     assert check(make_capture, pages, captures)["complete"] is True
 
 
+def test_a_redirected_page_left_out_of_the_feed_is_a_gap_under_its_own_reason(
+    make_capture: CaptureFactory,
+) -> None:
+    moved = "https://shop.example/en/p/b-new"
+    pages = [fetched(EN), fetched(AR), {**fetched(EN_B), "final_url": moved}]
+    keyless = make_capture(readings=(r("title", "No Key"),), url=moved)
+    report = check(make_capture, pages, [sku(make_capture, EN, "A"), keyless])
+    assert report["gaps"] == {"no retailer_sku on the page": 1}
+
+
+@pytest.mark.parametrize("keyless_first", [True, False])
+def test_a_real_exclusion_is_a_gap_even_beside_a_duplicate_sku(
+    make_capture: CaptureFactory, keyless_first: bool
+) -> None:
+    pages = [fetched(EN), fetched(AR), fetched(EN_B)]
+    keyless = make_capture(readings=(r("title", "No Key"),), url=EN_B)
+    again = sku(make_capture, EN_B, "A")  # a second URL of SKU A: alone, read elsewhere
+    tail = [keyless, again] if keyless_first else [again, keyless]
+    report = check(make_capture, pages, [sku(make_capture, EN, "A"), *tail])
+    assert report["gaps"] == {"no retailer_sku on the page": 1}
+
+
 def test_no_sitemap_is_never_complete(make_capture: CaptureFactory) -> None:
     assert check(make_capture, [fetched(EN)], sitemap=())["complete"] is False
 
