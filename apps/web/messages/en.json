@@ -966,11 +966,8 @@
       "loading": "Working out the findings…",
       "withheld": "Not shown: {reason}",
       "withheldTile": "not shown",
-      "noKpi": "—",
       "rank": "#{rank}",
-      "of": "{n} of {of}",
       "priceWithheld": "price withheld",
-      "versus": "{price} at {shop}",
       "themes": {
         "assortment": "Assortment",
         "price": "Price",
@@ -1002,13 +999,10 @@
       "tip": {
         "n": "Evidence",
         "nOf": "{n} of {of}",
-        "nOnly": "{n}",
         "match": "Match",
         "basis": "Basis",
         "threshold": "Threshold",
-        "coverage": "Coverage",
-        "complete": "Every shop in the pair collected",
-        "thirds": "Also read: {shops}"
+        "coverage": "Shops read"
       },
       "codes": {
         "edp_edt": "EDP over EDT",
@@ -1043,7 +1037,7 @@
           "owner": "{focus} buyer",
           "evidence": "{focus} lists {focusBrands} brands and {rival} {rivalBrands}. After brand-name clean-up they share {shared} ({sharedExact} on exact names). {absent} {rival} brands with at least {minListings} listings are not at {focus}; the {absentListed} most reviewed carry {absentReviews} displayed reviews.{has_lead, select, yes { {lead} has {leadChampions} highly rated products in the cheapest quarter of their category ({leadFrom}–{leadTo}).} other {}}{has_third, select, yes { {third} sells {thirdOnly} brands {focus} lacks.} other {}}",
           "cap": "Displayed reviews at {rival}, brands not at {focus}",
-          "threshold": "At least {threshold} absent brands with {minListings}+ listings each"
+          "threshold": "At least {threshold} absent brands, each with enough listings"
         },
         "brand_depth_gaps": {
           "tile": "hero products missing at {focus}",
@@ -1066,7 +1060,7 @@
           "threshold": "At least {threshold} matched pairs in a listed brand"
         },
         "size_level_gaps": {
-          "tile": "{focus} gap at {hero}",
+          "tile": "{focus} gap by bottle size",
           "headline": "{focus} at {hero}; {zero_entryMedianPct, select, yes {level with {rival}} other {{entryMedianPct}}} at {entry}",
           "decision": "Is {focus}'s price gap the same at every bottle size?",
           "action": "Decide whether the gap at {entry}, the size a shopper compares first, is intended.",
@@ -1086,7 +1080,7 @@
           "threshold": "At least {threshold} out-of-stock listings in a brand"
         },
         "promo_strategy": {
-          "tile": "{focus} markdowns at {modePct}",
+          "tile": "{focus} markdowns at one depth",
           "headline": "{focus} markdowns are exactly {modePct} off",
           "decision": "Is one discount depth training {focus} shoppers to wait?",
           "action": "Test shallower or rotating depths{has_dependentNames, select, yes { on {dependentNames}} other {}}.",
@@ -1126,7 +1120,7 @@
           "threshold": "At least {threshold} size steps at {focus}"
         },
         "positioning": {
-          "tile": "{focus} lips under {lowBand}",
+          "tile": "{focus} lips at low prices",
           "headline": "of {focus} lip listings under {lowBand}, vs {lipsUnderRival} at {rival}",
           "decision": "Which price tier can {focus} own against {rival}?",
           "action": "Lean into the colour tier under {lowBand}, which {rival} does not contest, before chasing luxury fragrance.",

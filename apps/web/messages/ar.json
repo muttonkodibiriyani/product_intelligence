@@ -966,11 +966,8 @@
       "loading": "جارٍ حساب النتائج…",
       "withheld": "غير معروضة: {reason}",
       "withheldTile": "غير معروضة",
-      "noKpi": "—",
       "rank": "#{rank}",
-      "of": "{n} من {of}",
       "priceWithheld": "السعر محجوب",
-      "versus": "{price} في {shop}",
       "themes": {
         "assortment": "التشكيلة",
         "price": "السعر",
@@ -1002,13 +999,10 @@
       "tip": {
         "n": "الأدلة",
         "nOf": "{n} من {of}",
-        "nOnly": "{n}",
         "match": "المطابقة",
         "basis": "الأساس",
         "threshold": "الحد",
-        "coverage": "التغطية",
-        "complete": "رُصد كلا المتجرين في الزوج",
-        "thirds": "قُرئ أيضاً: {shops}"
+        "coverage": "المتاجر المقروءة"
       },
       "codes": {
         "edp_edt": "EDP مقابل EDT",
@@ -1043,7 +1037,7 @@
           "owner": "مشتري {focus}",
           "evidence": "تعرض {focus} ‏{focusBrands} علامة و{rival} ‏{rivalBrands}. بعد توحيد أسماء العلامات تشتركان في {shared} ({sharedExact} بالاسم المطابق). ‏{absent} علامة من {rival} لكل منها {minListings} منتجات على الأقل غير موجودة في {focus}؛ وأكثر {absentListed} منها تقييماً تحمل {absentReviews} تقييماً معروضاً.{has_lead, select, yes { لدى {lead} ‏{leadChampions} منتجاً عالي التقييم في الربع الأرخص من فئته ({leadFrom}–{leadTo}).} other {}}{has_third, select, yes { تبيع {third} ‏{thirdOnly} علامة لا تبيعها {focus}.} other {}}",
           "cap": "التقييمات المعروضة في {rival}، علامات غير موجودة في {focus}",
-          "threshold": "{threshold} علامات غائبة على الأقل، لكل منها {minListings} منتجات أو أكثر"
+          "threshold": "{threshold} علامات غائبة على الأقل، لكل منها منتجات كافية"
         },
         "brand_depth_gaps": {
           "tile": "منتجات أساسية ناقصة في {focus}",
@@ -1066,7 +1060,7 @@
           "threshold": "{threshold} أزواج مطابقة على الأقل في العلامة"
         },
         "size_level_gaps": {
-          "tile": "فارق {focus} عند {hero}",
+          "tile": "فارق {focus} حسب الحجم",
           "headline": "{focus} عند {hero}؛ {zero_entryMedianPct, select, yes {مساوية لـ{rival}} other {{entryMedianPct}}} عند {entry}",
           "decision": "هل فارق سعر {focus} واحد في كل أحجام الزجاجات؟",
           "action": "قرّروا إن كان الفارق عند {entry}، أول حجم يقارنه المتسوق، مقصوداً.",
@@ -1086,7 +1080,7 @@
           "threshold": "{threshold} منتجات غير متوفرة على الأقل في العلامة"
         },
         "promo_strategy": {
-          "tile": "تخفيضات {focus} بنسبة {modePct}",
+          "tile": "تخفيضات {focus} بعمق واحد",
           "headline": "تخفيضاً في {focus} بنسبة {modePct} بالضبط",
           "decision": "هل يعلّم عمق خصم واحد متسوقي {focus} الانتظار؟",
           "action": "جرّبوا أعماقاً أقل أو متناوبة{has_dependentNames, select, yes { على {dependentNames}} other {}}.",
@@ -1126,7 +1120,7 @@
           "threshold": "{threshold} خطوات حجم على الأقل في {focus}"
         },
         "positioning": {
-          "tile": "شفاه {focus} تحت {lowBand}",
+          "tile": "شفاه {focus} بأسعار منخفضة",
           "headline": "من شفاه {focus} تحت {lowBand} مقابل {lipsUnderRival} في {rival}",
           "decision": "أي شريحة سعرية يمكن أن تمتلكها {focus} أمام {rival}؟",
           "action": "ركزوا على ألوان المكياج دون {lowBand}، الشريحة التي لا تنافس فيها {rival}، قبل مطاردة العطور الفاخرة.",

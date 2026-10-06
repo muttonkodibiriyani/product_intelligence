@@ -33,6 +33,7 @@ import { ApiError } from '@/lib/api/client';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
 import { Card, CardGrid } from '../ui/card';
+import { FindingsSection } from './findings/findings-section';
 import { Known } from '../ui/known';
 import { Money, Pct } from '../ui/money';
 import { PageHeader } from '../ui/page-header';
@@ -145,6 +146,7 @@ export function InsightsView() {
         }
       />
       {served && !missing && <PairPicker state={state} update={update} fixed={fixed} grouping={false} />}
+      {ready && <FindingsSection focus={state.base} rival={state.other} />}
       {served === false ? (
         <div role="note" className="panel px-5 py-6 text-sm text-ink-2">
           {t('unavailable', { need: INSIGHTS_API, have: meta.data!.meta.apiVersion })}

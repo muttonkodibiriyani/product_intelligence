@@ -1,7 +1,6 @@
 import type { Schemas } from './api/types';
 import { formatCount } from './format';
 import { apiAtLeast } from './insights';
-import { formatMoney } from './money';
 
 export type Findings = Schemas['Findings'];
 export type Finding = Schemas['Finding'];
@@ -89,8 +88,24 @@ export type Namers = {
   category: (code: string) => string;
 };
 
-const list = (items: readonly string[], locale: string): string =>
+/** Items joined the way the locale lists them ("A, B and C" / "A وB وC"). */
+export const list = (items: readonly string[], locale: string): string =>
   new Intl.ListFormat(locale === 'ar' ? 'ar' : 'en', { style: 'long', type: 'conjunction' }).format(items);
+
+/**
+ * An amount in a sentence or on an axis: whole amounts without decimals ("AED 50", as a shopper
+ * reads a price band), any other amount to the fils, in Latin digits.
+ */
+export function moneyText(amount: string, currency: string, locale: string): string {
+  const whole = /^-?\d+(\.0+)?$/.test(amount);
+  return new Intl.NumberFormat(locale === 'ar' ? 'ar-AE' : 'en-AE', {
+    style: 'currency',
+    currency,
+    numberingSystem: 'latn',
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  }).format(amount as Intl.StringNumericLiteral);
+}
 
 /** One param as message text: counts and money in Latin digits, a true minus, names not ids. */
 export function paramText(p: Param, locale: string, names: Namers): string {
@@ -102,9 +117,7 @@ export function paramText(p: Param, locale: string, names: Namers): string {
     case 'ratio':
       return signed(p.value);
     case 'money':
-      return p.currency
-        ? formatMoney({ amount: p.value, currency: p.currency, minor: 0 }, locale === 'ar' ? 'ar' : 'en')
-        : p.value;
+      return p.currency ? moneyText(p.value, p.currency, locale) : p.value;
     case 'retailer':
       return names.shop(p.value);
     case 'category':
@@ -134,3 +147,20 @@ export function messageArgs(f: Finding, locale: string, names: Namers): Record<s
   }
   return out;
 }
+
+/**
+ * The arguments a message names that the finding did not send, filled so an optional part reads
+ * its "other" branch instead of failing: `has_x`/`zero_x` → 'no', anything else → ''. A finding
+ * leaves a param out when there is nothing to say (no third shop, no lead brand).
+ */
+export function fillArgs(message: string, args: Record<string, string>): Record<string, string> {
+  const out = { ...args };
+  for (const [, name] of message.matchAll(/\{(\w+)[},]/g)) {
+    if (name !== undefined && !(name in out)) out[name] = /^(has|zero)_/.test(name) ? 'no' : '';
+  }
+  return out;
+}
+
+/** A headline's words (KPI included), the design's limit being twelve. */
+export const words = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
+export const HEADLINE_WORDS = 12;
