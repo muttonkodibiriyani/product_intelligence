@@ -11,6 +11,15 @@ const cut = { ...promotions, data: { ...promotions.data, total: 40, truncated: t
 const product = golden('product') as Json;
 const history = golden('history') as Json;
 const CSV = '﻿"# {""view"":""promotions"",""rows"":3}"\nid,name\np05,Product p05\n';
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  'base64',
+);
+const PROMO_IMAGES = [
+  'https://img-product.sephora.me/v1/promo-sephora.jpg',
+  'https://media.alshaya.com/adobe/assets/promo-ulta.png?width=450&height=675&preferwebp=true',
+  'https://www.faces.ae/media/catalog/product/promo-faces.jpg',
+] as const;
 
 function api(promotionsFor: (u: URL) => Json = () => promotions) {
   return async (route: Route) => {
@@ -165,6 +174,85 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors).toEqual([]);
     });
 
+    test('API 1.18 promotion images use each shop host, fixed dimensions and a quiet fallback', async ({
+      page,
+    }) => {
+      const source = promotions.data.items as Json[];
+      const rows = [
+        { ...source[0], id: 'sephora-promo', retailer: 'sephora_me', image: PROMO_IMAGES[0] },
+        { ...source[1], id: 'ulta-promo', retailer: 'ulta_ae', image: PROMO_IMAGES[1] },
+        { ...source[2], id: 'faces-promo', retailer: 'faces_ae', image: PROMO_IMAGES[2] },
+        {
+          ...source[2],
+          id: 'faces-broken',
+          retailer: 'faces_ae',
+          image: 'https://www.faces.ae/media/catalog/product/promo-broken.jpg',
+        },
+        {
+          ...source[2],
+          id: 'faces-wrong-host',
+          retailer: 'faces_ae',
+          image: 'https://img-product.sephora.me/v1/not-a-faces-image.jpg',
+        },
+      ];
+      const visual = {
+        ...promotions,
+        status: 'ok',
+        reason: null,
+        data: {
+          ...promotions.data,
+          items: rows,
+          total: rows.length,
+          truncated: false,
+          retailers: ['sephora_me', 'ulta_ae', 'faces_ae'].map((retailer) => ({
+            retailer,
+            n: rows.filter((row) => row.retailer === retailer).length,
+            onPromo: rows.filter((row) => row.retailer === retailer).length,
+            share: '100.0',
+            reason: null,
+            bands: [0, 0, 0, 0, 0, 0],
+            groups: [],
+          })),
+        },
+      };
+      const mock = await mockBackend(page, { onApi: api(() => visual) });
+      const requested: string[] = [];
+      for (const host of ['img-product.sephora.me', 'media.alshaya.com', 'www.faces.ae'])
+        await page.route(`https://${host}/**`, (route) => {
+          requested.push(route.request().url());
+          return route.request().url().includes('broken')
+            ? route.fulfill({ status: 404, body: '' })
+            : route.fulfill({ contentType: 'image/png', body: PNG });
+        });
+
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/promotions/`);
+      const products = cards(page);
+      await expect(products).toHaveCount(rows.length);
+      await products.last().scrollIntoViewIfNeeded();
+      for (let i = 0; i < 3; i++) {
+        const image = products.nth(i).locator('img');
+        await expect(image).toHaveAttribute('src', PROMO_IMAGES[i]!);
+        await expect(image).toHaveAttribute('width', '320');
+        await expect(image).toHaveAttribute('height', '320');
+        await expect(image).toHaveAttribute('loading', 'lazy');
+        await expect(image).toHaveAttribute('decoding', 'async');
+        await expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
+        await expect
+          .poll(() => image.evaluate((e: HTMLImageElement) => e.complete && e.naturalWidth))
+          .toBe(1);
+      }
+      for (const index of [3, 4]) {
+        await expect(products.nth(index).locator('img')).toHaveCount(0);
+        await expect(products.nth(index).getByRole('img')).toBeVisible();
+      }
+      await expect.poll(() => requested.length).toBe(4);
+      expect(requested).not.toContain('https://img-product.sephora.me/v1/not-a-faces-image.jpg');
+      expect(mock.external).toEqual([]);
+      expect(mock.errors.filter((error) => !/404/.test(error))).toEqual([]);
+      await noHorizontalScroll(page);
+    });
+
     test('the list is one click away and stays the choice after a reload', async ({ page }) => {
       const mock = await mockBackend(page, { onApi: api() });
       await signedIn(page, locale);
@@ -172,9 +260,12 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(cards(page)).toHaveCount(3);
       // Exact: the phone menu button ("القائمة") would otherwise match the Arabic "قائمة".
       await page.getByRole('button', { name: T.list, exact: true }).click();
-      const rows = page.getByRole('table').getByRole('row');
+      // Retailer intelligence adds a comparison table above the products. The list's caption gives
+      // it a stable accessible name in both locales, so keep this assertion scoped to that table.
+      const table = page.getByRole('table', { name: T.results, exact: true });
+      const rows = table.getByRole('row');
       await expect(rows).toHaveCount(1 + 3);
-      await expect(page.getByRole('row', { name: /Product p05/ })).toContainText('−33.3%');
+      await expect(table.getByRole('row', { name: /Product p05/ })).toContainText('−33.3%');
       await noHorizontalScroll(page);
       await page.reload();
       await expect(page.getByRole('button', { name: T.list, exact: true })).toHaveAttribute(

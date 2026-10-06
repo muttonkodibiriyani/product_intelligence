@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.15.0",
+            "default": "1.18.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -289,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-03.1",
+            "default": "2026-10-03.3",
             "title": "Metricversion",
             "type": "string"
           },
@@ -528,6 +528,49 @@
         "title": "BrandCount",
         "type": "object"
       },
+      "BrandPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "baseCheaper": {
+            "title": "Basecheaper",
+            "type": "integer"
+          },
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "equal": {
+            "title": "Equal",
+            "type": "integer"
+          },
+          "medianGapPct": {
+            "title": "Mediangappct",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "otherCheaper": {
+            "title": "Othercheaper",
+            "type": "integer"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/Policy"
+          }
+        },
+        "required": [
+          "brand",
+          "n",
+          "policy",
+          "medianGapPct",
+          "baseCheaper",
+          "otherCheaper",
+          "equal"
+        ],
+        "title": "BrandPolicy",
+        "type": "object"
+      },
       "BrandPrice": {
         "additionalProperties": false,
         "description": "One of the ``BRAND_ROWS`` brands with the most priced products (n desc, then brand).",
@@ -551,6 +594,30 @@
           "median"
         ],
         "title": "BrandPrice",
+        "type": "object"
+      },
+      "BrandStock": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "integer"
+          },
+          "outOfStock": {
+            "title": "Outofstock",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "brand",
+          "observed",
+          "outOfStock"
+        ],
+        "title": "BrandStock",
         "type": "object"
       },
       "Capabilities": {
@@ -2043,6 +2110,72 @@
         "title": "Envelope[Coverage]",
         "type": "object"
       },
+      "Envelope_Insights_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Insights"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Insights]",
+        "type": "object"
+      },
       "Envelope_Launches_": {
         "additionalProperties": false,
         "properties": {
@@ -3285,6 +3418,45 @@
         "title": "IndexPoint",
         "type": "object"
       },
+      "Insights": {
+        "additionalProperties": false,
+        "properties": {
+          "heldOutPct": {
+            "default": "50.0",
+            "title": "Heldoutpct",
+            "type": "string"
+          },
+          "ladders": {
+            "items": {
+              "$ref": "#/components/schemas/Ladder"
+            },
+            "title": "Ladders",
+            "type": "array"
+          },
+          "policySharePct": {
+            "default": "80.0",
+            "title": "Policysharepct",
+            "type": "string"
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/PairInsights"
+          },
+          "stockouts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Stockouts"
+            },
+            "title": "Stockouts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pricing",
+          "ladders"
+        ],
+        "title": "Insights",
+        "type": "object"
+      },
       "Label": {
         "additionalProperties": false,
         "properties": {
@@ -3303,6 +3475,74 @@
         ],
         "title": "Label",
         "type": "object"
+      },
+      "Ladder": {
+        "additionalProperties": false,
+        "properties": {
+          "exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/LadderStep"
+            },
+            "title": "Exceptions",
+            "type": "array"
+          },
+          "heldOut": {
+            "title": "Heldout",
+            "type": "integer"
+          },
+          "medianSavingPct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mediansavingpct"
+          },
+          "notCheaper": {
+            "title": "Notcheaper",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "steps": {
+            "title": "Steps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "steps",
+          "notCheaper",
+          "heldOut",
+          "medianSavingPct",
+          "reason",
+          "exceptions"
+        ],
+        "title": "Ladder",
+        "type": "object"
+      },
+      "LadderBasis": {
+        "enum": [
+          "family",
+          "name"
+        ],
+        "title": "LadderBasis",
+        "type": "string"
       },
       "LadderRow": {
         "additionalProperties": false,
@@ -3342,6 +3582,72 @@
           "max"
         ],
         "title": "LadderRow",
+        "type": "object"
+      },
+      "LadderStep": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/LadderBasis"
+          },
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "largerId": {
+            "title": "Largerid",
+            "type": "string"
+          },
+          "largerPrice": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "largerValue": {
+            "title": "Largervalue",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "smallerId": {
+            "title": "Smallerid",
+            "type": "string"
+          },
+          "smallerPrice": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "smallerValue": {
+            "title": "Smallervalue",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "unitChangePct": {
+            "title": "Unitchangepct",
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "brand",
+          "name",
+          "smallerId",
+          "largerId",
+          "unit",
+          "smallerValue",
+          "largerValue",
+          "smallerPrice",
+          "largerPrice",
+          "unitChangePct",
+          "basis"
+        ],
+        "title": "LadderStep",
         "type": "object"
       },
       "Launch": {
@@ -3524,6 +3830,15 @@
         ],
         "title": "MatchPage",
         "type": "object"
+      },
+      "MatchReview": {
+        "description": "Whether a matched card's exact edge was reviewed (approved/locked) or is proposed.",
+        "enum": [
+          "reviewed",
+          "unreviewed"
+        ],
+        "title": "MatchReview",
+        "type": "string"
       },
       "MatchRow": {
         "additionalProperties": false,
@@ -4043,6 +4358,76 @@
         "title": "PairGap",
         "type": "object"
       },
+      "PairInsights": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandPolicy"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "other": {
+            "title": "Other",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizes": {
+            "items": {
+              "$ref": "#/components/schemas/SizeGap"
+            },
+            "title": "Sizes",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "suppressedBrands": {
+            "title": "Suppressedbrands",
+            "type": "integer"
+          },
+          "suppressedSizes": {
+            "title": "Suppressedsizes",
+            "type": "integer"
+          },
+          "unreviewed": {
+            "title": "Unreviewed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base",
+          "other",
+          "n",
+          "unreviewed",
+          "status",
+          "reason",
+          "brands",
+          "sizes",
+          "suppressedBrands",
+          "suppressedSizes"
+        ],
+        "title": "PairInsights",
+        "type": "object"
+      },
       "PairMatch": {
         "additionalProperties": false,
         "properties": {
@@ -4263,6 +4648,16 @@
         "title": "PairSide",
         "type": "object"
       },
+      "Policy": {
+        "enum": [
+          "other_cheaper",
+          "base_cheaper",
+          "parity",
+          "mixed"
+        ],
+        "title": "Policy",
+        "type": "string"
+      },
       "PriceFlag": {
         "enum": [
           "invalid_low"
@@ -4445,6 +4840,16 @@
               }
             ],
             "title": "Image"
+          },
+          "matchReview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "matches": {
             "items": {
@@ -4902,9 +5307,62 @@
         "title": "PromoDepth",
         "type": "object"
       },
+      "PromoGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "brand",
+              "category"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "onPromo": {
+            "title": "Onpromo",
+            "type": "integer"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "n",
+          "onPromo",
+          "share"
+        ],
+        "title": "PromoGroup",
+        "type": "object"
+      },
       "PromoItem": {
         "additionalProperties": false,
         "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
           "depthPct": {
             "title": "Depthpct",
             "type": "string"
@@ -4912,6 +5370,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
           },
           "name": {
             "title": "Name",
@@ -4926,14 +5395,20 @@
           "retailer": {
             "title": "Retailer",
             "type": "string"
+          },
+          "saved": {
+            "$ref": "#/components/schemas/MoneyValue"
           }
         },
         "required": [
           "id",
           "name",
+          "brand",
+          "category",
           "retailer",
           "price",
           "regular",
+          "saved",
           "depthPct"
         ],
         "title": "PromoItem",
@@ -5319,6 +5794,22 @@
       "RetailerPromo": {
         "additionalProperties": false,
         "properties": {
+          "bands": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PromoGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
           "n": {
             "title": "N",
             "type": "integer"
@@ -5655,6 +6146,50 @@
         "title": "Size",
         "type": "object"
       },
+      "SizeGap": {
+        "additionalProperties": false,
+        "properties": {
+          "baseCheaper": {
+            "title": "Basecheaper",
+            "type": "integer"
+          },
+          "equal": {
+            "title": "Equal",
+            "type": "integer"
+          },
+          "medianGapPct": {
+            "title": "Mediangappct",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "otherCheaper": {
+            "title": "Othercheaper",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "unit",
+          "n",
+          "medianGapPct",
+          "baseCheaper",
+          "otherCheaper",
+          "equal"
+        ],
+        "title": "SizeGap",
+        "type": "object"
+      },
       "SizeSibling": {
         "additionalProperties": false,
         "description": "Another product with an offer in the same context and the same retailer product family:\nthe same item in another size.",
@@ -5852,6 +6387,49 @@
         ],
         "title": "Status",
         "type": "string"
+      },
+      "Stockouts": {
+        "additionalProperties": false,
+        "properties": {
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandStock"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "qualifying": {
+            "title": "Qualifying",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "suppressed": {
+            "title": "Suppressed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "reason",
+          "brands",
+          "qualifying",
+          "suppressed"
+        ],
+        "title": "Stockouts",
+        "type": "object"
       },
       "SuggestionRow": {
         "additionalProperties": false,
@@ -6457,7 +7035,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.15.0"
+    "version": "1.18.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8812,6 +9390,7 @@
             }
           },
           {
+            "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
             "in": "query",
             "name": "matched",
             "required": false,
@@ -8824,6 +9403,7 @@
                   "type": "null"
                 }
               ],
+              "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
               "title": "Matched"
             }
           },
@@ -9448,6 +10028,171 @@
           }
         },
         "summary": "Get Index"
+      }
+    },
+    "/api/v1/insights": {
+      "get": {
+        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.",
+        "operationId": "get_insights_api_v1_insights_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "description": "Ordered pair <base>,<other>; the first is the base.",
+            "in": "query",
+            "name": "retailers",
+            "required": true,
+            "schema": {
+              "description": "Ordered pair <base>,<other>; the first is the base.",
+              "pattern": "^[a-z][a-z0-9_]{1,62},[a-z][a-z0-9_]{1,62}$",
+              "title": "Retailers",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Insights_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Insights"
       }
     },
     "/api/v1/launches": {
@@ -10434,6 +11179,7 @@
             }
           },
           {
+            "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
             "in": "query",
             "name": "matched",
             "required": false,
@@ -10446,6 +11192,7 @@
                   "type": "null"
                 }
               ],
+              "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
               "title": "Matched"
             }
           },

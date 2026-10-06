@@ -94,6 +94,33 @@ describe('ProductCard', () => {
     expect(container.querySelector('.verdict-bad')).toBeNull();
   });
 
+  it('binds a single-retailer image to that retailer and keeps a polished fallback', () => {
+    const image = 'https://img-product.sephora.me/p1.jpg';
+    const { rerender } = card({ image, imageRetailer: 'sephora_me' });
+    const loaded = document.querySelector('img')!;
+    expect(loaded.getAttribute('src')).toBe(image);
+    expect(loaded.getAttribute('width')).toBe('320');
+    expect(loaded.getAttribute('height')).toBe('320');
+    expect(loaded.getAttribute('loading')).toBe('lazy');
+    expect(loaded.getAttribute('decoding')).toBe('async');
+    expect(loaded.getAttribute('referrerpolicy')).toBe('no-referrer');
+
+    rerender(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <ProductCard
+          href="/en/product/?id=p1"
+          image={image}
+          imageRetailer="ulta_ae"
+          brand="Estée Lauder"
+          name="Advanced Night Repair"
+          lines={lines}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(document.querySelector('img')).toBeNull();
+    expect(screen.getByRole('img', { name: en.productCard.noImage }).textContent).toBe('EL');
+  });
+
   it('in Arabic', () => {
     card({ lines: [{ retailer: 'a', label: 'أولتا', notSold: true }] }, 'ar');
     expect(screen.getByText(ar.productCard.notSold)).toBeTruthy();

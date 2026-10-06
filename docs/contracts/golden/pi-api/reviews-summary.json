@@ -52,14 +52,14 @@
     "en": "Fewer than 5 comparable items: no summary is shown."
   },
   "meta": {
-    "apiVersion": "1.15.0",
+    "apiVersion": "1.18.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "reviews_summary",
     "filters": {},
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-03.1",
+    "metricVersion": "2026-10-03.3",
     "scope": "fixture"
   },
   "reason": "cohort_too_small",
