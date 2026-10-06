@@ -130,6 +130,154 @@
           "currency": "AED",
           "minor": 10000
         }
+      },
+      {
+        "basePrice": {
+          "amount": "105.25",
+          "currency": "AED",
+          "minor": 10525
+        },
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "counted": true,
+        "excludedReason": null,
+        "gap": {
+          "amount": {
+            "amount": "-5.25",
+            "currency": "AED",
+            "minor": -525
+          },
+          "cheaper": "other",
+          "pct": "-5.0"
+        },
+        "id": "p06",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
+        "name": "Product p06",
+        "otherPrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      },
+      {
+        "basePrice": {
+          "amount": "95.50",
+          "currency": "AED",
+          "minor": 9550
+        },
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "counted": true,
+        "excludedReason": null,
+        "gap": {
+          "amount": {
+            "amount": "4.50",
+            "currency": "AED",
+            "minor": 450
+          },
+          "cheaper": "base",
+          "pct": "4.7"
+        },
+        "id": "p04",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
+        "name": "Product p04",
+        "otherPrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      },
+      {
+        "basePrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        },
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "counted": true,
+        "excludedReason": null,
+        "gap": {
+          "amount": {
+            "amount": "0.00",
+            "currency": "AED",
+            "minor": 0
+          },
+          "cheaper": "equal",
+          "pct": "0.0"
+        },
+        "id": "p02",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
+        "name": "Product p02",
+        "otherPrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      },
+      {
+        "basePrice": {
+          "amount": "50.00",
+          "currency": "AED",
+          "minor": 5000
+        },
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "counted": false,
+        "excludedReason": "match_unreviewed",
+        "gap": {
+          "amount": {
+            "amount": "0.00",
+            "currency": "AED",
+            "minor": 0
+          },
+          "cheaper": "equal",
+          "pct": "0.0"
+        },
+        "id": "p07",
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": null,
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "proposed"
+        },
+        "name": "Product p07",
+        "otherPrice": {
+          "amount": "50.00",
+          "currency": "AED",
+          "minor": 5000
+        }
       }
     ],
     "sides": {
@@ -199,8 +347,8 @@
       "medianGapPct": "2.4",
       "n": 6
     },
-    "total": 15,
-    "truncated": true
+    "total": 7,
+    "truncated": false
   },
   "detail": null,
   "meta": {
@@ -209,9 +357,9 @@
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",
     "filters": {
-      "limit": 3,
       "retailers": "shop_a,shop_b",
-      "rows": "all"
+      "rows": "overlap",
+      "sort": "gap"
     },
     "generation": "1790000000000000000",
     "market": "AE",
