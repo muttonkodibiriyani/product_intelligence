@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 pi-match = "pi_match.cli:main"
 pi-match-run = "pi_match.run_cli:main"
+pi-match-review = "pi_match.review:main"
 
 [build-system]
 requires = ["hatchling>=1.25"]

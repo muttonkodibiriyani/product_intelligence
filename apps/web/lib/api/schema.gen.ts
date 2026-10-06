@@ -271,7 +271,7 @@ export interface paths {
         };
         /**
          * Get Insights
-         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.
+         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers, not out of stock, and at or below the category median on its basis: per ml or g in fragrance (basis per_unit), else shelf price (basis shelf; minis and travel sizes are never picks). Tools and misfiled body care are left out of the cohort (excluded); the catch-all other is never ranked (unranked). Ranked by rating share shrunk toward the category mean; one pick per brand and name, at most two per brand. Categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.
          */
         get: operations["get_insights_api_v1_insights_get"];
         put?: never;
@@ -518,7 +518,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.19.0
+             * @default 1.23.0
              */
             apiVersion: string;
             /** Currency */
@@ -540,7 +540,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-03.3
+             * @default 2026-10-06.2
              */
             metricVersion: string;
             /** Scope */
@@ -1535,6 +1535,21 @@ export interface components {
              * @default []
              */
             stockouts: components["schemas"]["Stockouts"][];
+            /**
+             * Value
+             * @default []
+             */
+            value: components["schemas"]["ValuePicks"][];
+            /**
+             * Valueminratings
+             * @default 20
+             */
+            valueMinRatings: number;
+            /**
+             * Valueratingpct
+             * @default 90.0
+             */
+            valueRatingPct: string;
         };
         /** Label */
         Label: {
@@ -1585,6 +1600,11 @@ export interface components {
             family: string;
             /** Largerid */
             largerId: string;
+            /**
+             * Largeronsale
+             * @default false
+             */
+            largerOnSale: boolean;
             largerPrice: components["schemas"]["MoneyValue"];
             /** Largervalue */
             largerValue: string;
@@ -1592,6 +1612,11 @@ export interface components {
             name: string;
             /** Smallerid */
             smallerId: string;
+            /**
+             * Smalleronsale
+             * @default false
+             */
+            smallerOnSale: boolean;
             smallerPrice: components["schemas"]["MoneyValue"];
             /** Smallervalue */
             smallerValue: string;
@@ -1878,6 +1903,8 @@ export interface components {
             gap: components["schemas"]["Gap"] | null;
             /** Id */
             id: string;
+            /** Image */
+            image?: string | null;
             match?: components["schemas"]["RowMatch"] | null;
             /** Name */
             name: string;
@@ -2476,10 +2503,27 @@ export interface components {
          * @enum {string}
          */
         Status: "ok" | "not_enough_data";
+        /**
+         * StockFilter
+         * @description An observed stock state a listing can be filtered on: ``pi_core.AvailabilityState``'s
+         *     observed values. A listing with no state, or an unobserved one, never matches.
+         * @enum {string}
+         */
+        StockFilter: "in_stock" | "low_stock" | "out_of_stock";
         /** Stockouts */
         Stockouts: {
             /** Brands */
             brands: components["schemas"]["BrandStock"][];
+            /**
+             * Listed
+             * @default 0
+             */
+            listed: number;
+            /**
+             * Outofstock
+             * @default 0
+             */
+            outOfStock: number;
             /** Qualifying */
             qualifying: number;
             reason: components["schemas"]["Reason"] | null;
@@ -2487,6 +2531,26 @@ export interface components {
             retailer: string;
             /** Suppressed */
             suppressed: number;
+            /**
+             * Unavailable
+             * @default []
+             */
+            unavailable: components["schemas"]["BrandStock"][];
+            /**
+             * Unavailablebrands
+             * @default 0
+             */
+            unavailableBrands: number;
+            /**
+             * Unavailablelistings
+             * @default 0
+             */
+            unavailableListings: number;
+            /**
+             * Withstock
+             * @default 0
+             */
+            withStock: number;
         };
         /** SuggestionRow */
         SuggestionRow: {
@@ -2574,6 +2638,22 @@ export interface components {
             regular: components["schemas"]["MoneyValue"];
         };
         /**
+         * UnavailableBrands
+         * @description Listings in a brand the source reports unavailable at their context: ``only`` those,
+         *     ``exclude`` them (``pi_metrics.insights.unavailable_brands``).
+         * @enum {string}
+         */
+        UnavailableBrands: "only" | "exclude";
+        /** UnitMedian */
+        UnitMedian: {
+            /** Median */
+            median: string;
+            /** N */
+            n: number;
+            /** Unit */
+            unit: string;
+        };
+        /**
          * Unmapped
          * @enum {string}
          */
@@ -2590,6 +2670,78 @@ export interface components {
             reason: components["schemas"]["Unmapped"];
             /** Retailer */
             retailer: string;
+        };
+        /**
+         * ValueBasis
+         * @enum {string}
+         */
+        ValueBasis: "shelf" | "per_unit";
+        /** ValueCategory */
+        ValueCategory: {
+            /** @default shelf */
+            basis: components["schemas"]["ValueBasis"];
+            /** Category */
+            category: string;
+            /**
+             * Excluded
+             * @default 0
+             */
+            excluded: number;
+            /** Items */
+            items: components["schemas"]["ValuePick"][];
+            median: components["schemas"]["MoneyValue"];
+            /** Picks */
+            picks: number;
+            /** Priced */
+            priced: number;
+            /** Rated */
+            rated: number;
+            /**
+             * Unitmedians
+             * @default []
+             */
+            unitMedians: components["schemas"]["UnitMedian"][];
+        };
+        /** ValuePick */
+        ValuePick: {
+            /** Brand */
+            brand: string;
+            /** Id */
+            id: string;
+            /** Image */
+            image?: string | null;
+            /** Name */
+            name: string;
+            price: components["schemas"]["MoneyValue"];
+            /** Rating */
+            rating: string;
+            /** Ratingcount */
+            ratingCount: number;
+            /** Scale */
+            scale: string;
+            /** Sizeunit */
+            sizeUnit?: string | null;
+            /** Sizevalue */
+            sizeValue?: string | null;
+            /** Unitprice */
+            unitPrice?: string | null;
+        };
+        /** ValuePicks */
+        ValuePicks: {
+            /** Categories */
+            categories: components["schemas"]["ValueCategory"][];
+            /** Qualifying */
+            qualifying: number;
+            reason: components["schemas"]["Reason"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Suppressed */
+            suppressed: number;
+            /**
+             * Unranked
+             * @default 0
+             */
+            unranked: number;
         };
         /**
          * VariantView
@@ -3866,6 +4018,10 @@ export interface operations {
                 location?: string[];
                 /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
                 attr?: string[];
+                /** @description API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
+                availability?: components["schemas"]["StockFilter"][];
+                /** @description API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
             };
             header?: never;
             path?: never;
@@ -4686,6 +4842,10 @@ export interface operations {
                 location?: string[];
                 /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
                 attr?: string[];
+                /** @description API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
+                availability?: components["schemas"]["StockFilter"][];
+                /** @description API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
                 limit?: number;
                 cursor?: string | null;
             };

@@ -16,6 +16,7 @@ from pydantic import Field
 
 from pi_api.catalog import (
     MAX_LIMIT,
+    NO_HOSTS,
     DecimalText,
     EvidenceHosts,
     InvalidQueryError,
@@ -33,6 +34,7 @@ from pi_dataset.models import DecidedBy
 from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
 from pi_metrics.compare import Comparison, PairRow, overlapping
+from pi_metrics.insights import Insights
 from pi_metrics.launches import Launch, Launches
 from pi_metrics.pair_pricing import PairAim, PriceSuggestions
 from pi_metrics.pricing import Guardrails
@@ -269,6 +271,29 @@ def _newest_first(item: Launch) -> tuple[int, str, str]:
     return (-item.first_seen.toordinal(), item.id, item.retailer)
 
 
+def with_images(
+    ds: DatasetV3, metric: Metric[Comparison], images: EvidenceHosts = NO_HOSTS
+) -> Metric[Comparison]:
+    """Each row with its product's card image over the pair's two contexts, else null (API
+    1.21.0). The same rule as the card's ``image``, so the Overlap table and a card agree."""
+    pair = {metric.data.base, metric.data.other}
+    products = {p.id: p for p in ds.products}
+    rows = tuple(
+        r.model_copy(
+            update={
+                "image": card_image(
+                    ds,
+                    products[r.id],
+                    [(c, o) for c, o in products[r.id].offers.items() if c in pair],
+                    images,
+                )
+            }
+        )
+        for r in metric.data.rows
+    )
+    return metric.model_copy(update={"data": metric.data.model_copy(update={"rows": rows})})
+
+
 def capped_comparison(
     metric: Metric[Comparison],
     limit: int | None,
@@ -322,6 +347,46 @@ def promotion_images(
         for item in metric.data.items
     )
     return metric.model_copy(update={"data": metric.data.model_copy(update={"items": items})})
+
+
+def value_images(
+    ds: DatasetV3, metric: Metric[Insights], images: EvidenceHosts
+) -> Metric[Insights]:
+    """Each listed value pick's card image (``card_image``, the shop's own offer)."""
+    products = {p.id: p for p in ds.products}
+    value = tuple(
+        shop.model_copy(
+            update={
+                "categories": tuple(
+                    row.model_copy(
+                        update={
+                            "items": tuple(
+                                pick.model_copy(
+                                    update={
+                                        "image": card_image(
+                                            ds,
+                                            products[pick.id],
+                                            [
+                                                (
+                                                    shop.retailer,
+                                                    products[pick.id].offers[shop.retailer],
+                                                )
+                                            ],
+                                            images,
+                                        )
+                                    }
+                                )
+                                for pick in row.items
+                            )
+                        }
+                    )
+                    for row in shop.categories
+                )
+            }
+        )
+        for shop in metric.data.value
+    )
+    return metric.model_copy(update={"data": metric.data.model_copy(update={"value": value})})
 
 
 def capped_suggestions(

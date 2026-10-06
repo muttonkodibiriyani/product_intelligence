@@ -58,6 +58,8 @@ from pi_api.analytics import (
     capped_suggestions,
     matches,
     promotion_images,
+    value_images,
+    with_images,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
 from pi_api.catalog import (
@@ -679,7 +681,7 @@ def build_api(
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
     _metric_routes(api, source, images)
-    _insights_route(api, source)
+    _insights_route(api, source, images)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -731,8 +733,9 @@ def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     def get_compare(query: Annotated[CompareRowsQuery, Query()], _: Viewer) -> Envelope[Comparison]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
+        ds = read_at(loaded, query.on)
         metric = compare(
-            read_at(loaded, query.on),
+            ds,
             base,
             other,
             query.where(),
@@ -743,7 +746,9 @@ def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         )
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
-        rows = capped_comparison(metric, query.limit, query.rows, query.sort)
+        rows = with_images(
+            ds, capped_comparison(metric, query.limit, query.rows, query.sort), images
+        )
         return respond(loaded, "compare", query, rows)
 
     @api.get(
@@ -766,7 +771,10 @@ def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> Envelope[CategoryComparison]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
-        metric = category_compare(loaded.dataset, base, other, query.level)
+        # Always the latest date: each stale source at its own last date (ADR-0010 §6).
+        metric = stale_first(
+            loaded, category_compare(loaded.current, base, other, query.level), (base, other)
+        )
         return respond(loaded, "category_compare", query, metric)
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
@@ -963,7 +971,7 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
         raise
 
 
-def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
+def _insights_route(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
     """S3: the Insights page aggregates (``pi_metrics.insights``)."""
 
     @api.get(
@@ -980,13 +988,23 @@ def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
             "context, consecutive sizes of one family (the retailer's content.family, else "
             "the same brand, name, category and unit: basis=name) and how many larger sizes "
             "do not cost less per unit; a step more than heldOutPct % dearer per unit is "
-            "held out as a different product and counted in heldOut."
+            "held out as a different product and counted in heldOut. value: per context and "
+            "top-level category, offers rated at least valueRatingPct % of their own scale by "
+            "at least valueMinRatings reviewers, not out of stock, and at or below the "
+            "category median on its basis: per ml or g in fragrance (basis per_unit), else "
+            "shelf price (basis shelf; minis and travel sizes are never picks). Tools and "
+            "misfiled body care are left out of the cohort (excluded); the catch-all other is "
+            "never ranked (unranked). Ranked by rating share shrunk toward the category mean; "
+            "one pick per brand and name, at most two per brand. Categories under minCohort "
+            "priced offers have no median and are counted in suppressed. Single-retailer: no "
+            "shop is compared with another."
         ),
     )
     def get_insights(query: Annotated[InsightsQuery, Query()], _: Viewer) -> Envelope[Insights]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
-        metric = insights(loaded.dataset, base, other, on=query.on)
+        ds = read_at(loaded, query.on)
+        metric = value_images(ds, insights(ds, base, other, on=query.on), images)
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "insights", query, metric)
@@ -1022,8 +1040,9 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     def export_compare(query: Annotated[CompareExport, Query()], who: Viewer) -> StreamingResponse:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
+        ds = read_at(loaded, query.on)
         metric = compare(
-            read_at(loaded, query.on),
+            ds,
             base,
             other,
             query.where(),
@@ -1033,6 +1052,7 @@ def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
         )
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
+        metric = with_images(ds, metric, images)
         return _download(
             loaded,
             view=view.COMPARE,
@@ -1155,6 +1175,7 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         settings.refresh_seconds,
         allow_test=settings.allow_test,
         assigned=settings.sources,
+        matches=settings.matches,
     )
     source.load_all()
     catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)
