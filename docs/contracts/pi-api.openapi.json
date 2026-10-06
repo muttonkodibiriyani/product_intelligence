@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.18.0",
+            "default": "1.19.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -1321,6 +1321,22 @@
         ],
         "title": "Cohort",
         "type": "object"
+      },
+      "CompareRows": {
+        "enum": [
+          "all",
+          "overlap"
+        ],
+        "title": "CompareRows",
+        "type": "string"
+      },
+      "CompareSort": {
+        "enum": [
+          "name",
+          "gap"
+        ],
+        "title": "CompareSort",
+        "type": "string"
       },
       "CompareSummary": {
         "additionalProperties": false,
@@ -4557,6 +4573,16 @@
             "title": "Id",
             "type": "string"
           },
+          "match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RowMatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -6011,6 +6037,52 @@
         "title": "ReviewsSummary",
         "type": "object"
       },
+      "RowMatch": {
+        "additionalProperties": false,
+        "description": "The edge between the pair's two retailers, verbatim; null on a one-retailer pair.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecidedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "matchClass": {
+            "$ref": "#/components/schemas/MatchClass"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "reviewState": {
+            "$ref": "#/components/schemas/ReviewState"
+          }
+        },
+        "required": [
+          "matchClass",
+          "reviewState",
+          "decidedBy",
+          "method",
+          "confidence"
+        ],
+        "title": "RowMatch",
+        "type": "object"
+      },
       "ScopeRef": {
         "additionalProperties": false,
         "properties": {
@@ -7035,7 +7107,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.18.0"
+    "version": "1.19.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8204,6 +8276,35 @@
                 }
               ],
               "title": "Groupby"
+            }
+          },
+          {
+            "description": "API 1.19.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that are only unreviewed (counted=false, excludedReason match_unreviewed) and pass the rest of the ladder priced on both sides; only this value gives such a pair its gap (all keeps it null). total, limit and truncated apply to these rows; summary, groups, sides and cohort are unchanged (counted rows only).",
+            "in": "query",
+            "name": "rows",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CompareRows",
+              "default": "all",
+              "description": "API 1.19.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that are only unreviewed (counted=false, excludedReason match_unreviewed) and pass the rest of the ladder priced on both sides; only this value gives such a pair its gap (all keeps it null). total, limit and truncated apply to these rows; summary, groups, sides and cohort are unchanged (counted rows only)."
+            }
+          },
+          {
+            "description": "API 1.19.0, applied before limit. name: by name, then id. gap: largest |gap.pct| first (with rows=overlap an unreviewed row's gap included), rows without a gap last, then id. Unset: rows in dataset order, or with limit the largest counted |gap.pct| first.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CompareSort"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "API 1.19.0, applied before limit. name: by name, then id. gap: largest |gap.pct| first (with rows=overlap an unreviewed row's gap included), rows without a gap last, then id. Unset: rows in dataset order, or with limit the largest counted |gap.pct| first.",
+              "title": "Sort"
             }
           }
         ],

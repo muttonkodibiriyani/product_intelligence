@@ -17,7 +17,7 @@ from enum import StrEnum
 
 from pi_core import MatchClass, ReviewState
 from pi_dataset import ContractModel, DatasetV3, MoneyValue, ProductV3
-from pi_dataset.models import RetailerStatus
+from pi_dataset.models import DecidedBy, MatchEdge, RetailerStatus
 from pi_metrics import view
 from pi_metrics.model import (
     COUNTED_STATES,
@@ -63,6 +63,26 @@ class GroupBy(StrEnum):
     BRAND = "brand"
 
 
+class RowMatch(ContractModel):
+    """The edge between the pair's two retailers, verbatim; null on a one-retailer pair."""
+
+    match_class: MatchClass
+    review_state: ReviewState
+    decided_by: DecidedBy | None
+    method: str
+    confidence: str | None
+
+    @classmethod
+    def of(cls, edge: MatchEdge) -> RowMatch:
+        return cls(
+            match_class=edge.match_class,
+            review_state=edge.review_state,
+            decided_by=edge.decided_by,
+            method=edge.method,
+            confidence=edge.confidence,
+        )
+
+
 class PairRow(ContractModel):
     id: str
     name: str
@@ -73,6 +93,8 @@ class PairRow(ContractModel):
     gap: Gap | None
     counted: bool
     excluded_reason: Excluded | None
+    #: ``/compare`` and its export (API 1.19.0, ``matches=True``): the retailers' edge, else null.
+    match: RowMatch | None = None
 
 
 class Basket(ContractModel):
@@ -159,8 +181,16 @@ def gap(base: MoneyValue, other: MoneyValue) -> Gap:
     )
 
 
+#: Every state but ``rejected``: the overlap view's reading of an edge (ruling A). Never counted.
+UNREJECTED = frozenset(ReviewState) - {ReviewState.REJECTED}
+
+
 def _identity(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
-    ds: DatasetV3, product: ProductV3, base: str, other: str
+    ds: DatasetV3,
+    product: ProductV3,
+    base: str,
+    other: str,
+    reviewed: frozenset[ReviewState] = COUNTED_STATES,
 ) -> Excluded | None:
     """Why the two contexts' offers aren't known to be one item, or None (ADR-0008 §2)."""
     a_shop, b_shop = view.context(ds, base).retailer, view.context(ds, other).retailer
@@ -178,15 +208,21 @@ def _identity(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
         return Excluded.NO_MATCH
     if edge.review_state is ReviewState.REJECTED:
         return Excluded.MATCH_REJECTED
-    if edge.review_state not in COUNTED_STATES:
+    if edge.review_state not in reviewed:
         return Excluded.MATCH_UNREVIEWED
     if edge.match_class is not MatchClass.EXACT:
         return Excluded.MATCH_NOT_EXACT
     return None
 
 
-def _exclusion(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
-    ds: DatasetV3, product: ProductV3, base: str, other: str, i: int
+def _exclusion(  # noqa: PLR0911, PLR0913 -- one ordered decision ladder, first match wins
+    ds: DatasetV3,
+    product: ProductV3,
+    base: str,
+    other: str,
+    i: int,
+    *,
+    reviewed: frozenset[ReviewState] = COUNTED_STATES,
 ) -> tuple[Excluded | None, LabelPair | None]:
     """The first reason the pair is not counted on date ``i``, in a fixed order; else None.
 
@@ -199,7 +235,7 @@ def _exclusion(  # noqa: PLR0911 -- one ordered decision ladder, first match win
         return Excluded.EARLY, None
     if a.currency != b.currency:
         return Excluded.CURRENCY_MISMATCH, None
-    identity = _identity(ds, product, base, other)
+    identity = _identity(ds, product, base, other, reviewed)
     if identity is not None:
         return identity, None
     size = view.same_size(a.size, b.size, labels_comparable=ds.meta.profile.size_labels_comparable)
@@ -246,6 +282,40 @@ def pair_row(ds: DatasetV3, product: ProductV3, base: str, other: str, i: int) -
     return pair_with_labels(ds, product, base, other, i)[0]
 
 
+def with_overlap(  # noqa: PLR0913 -- pair_row's arguments plus the row it built
+    ds: DatasetV3,
+    product: ProductV3,
+    base: str,
+    other: str,
+    row: PairRow,
+    *,
+    i: int,
+    gaps: bool,
+) -> PairRow:
+    """``row`` with its retailers' edge as ``match`` and, when ``gaps`` (``rows=overlap`` only),
+    on an uncounted pair whose only gap is review (an exact edge, proposed, passing the rest of
+    the ladder priced on both sides), the gap. Such a row stays ``counted=false`` with
+    ``excludedReason: match_unreviewed``, so no summary, group, cohort or side count takes it
+    (ruling A)."""
+    shops = view.context(ds, base).retailer, view.context(ds, other).retailer
+    edge = None if shops[0] == shops[1] else view.edge_between(product, *shops)
+    update: dict[str, object] = {"match": None if edge is None else RowMatch.of(edge)}
+    if (
+        gaps
+        and row.excluded_reason is Excluded.MATCH_UNREVIEWED
+        and row.base_price is not None
+        and row.other_price is not None
+        and _exclusion(ds, product, base, other, i, reviewed=UNREJECTED)[0] is None
+    ):
+        update["gap"] = gap(row.base_price, row.other_price)
+    return row.model_copy(update=update)
+
+
+def overlapping(row: PairRow) -> bool:
+    """A ``rows=overlap`` row: counted, or exact and unreviewed with a gap (``with_overlap``)."""
+    return row.gap is not None
+
+
 def pair_caveats(ds: DatasetV3, base: str, other: str, labels: list[LabelPair]) -> list[Caveat]:
     """``channel_differs`` and one ``size_labels_differ`` per distinct label pair (ADR-0008).
 
@@ -290,7 +360,7 @@ def gap_histogram(pcts: list[Decimal]) -> GapHistogram:
 
 def summarise(rows: tuple[PairRow, ...], base: str, other: str) -> CompareSummary | None:
     """Median/mean gap and basket over counted rows; ``None`` below the cohort minimum."""
-    counted = [r for r in rows if r.gap is not None and r.base_price and r.other_price]
+    counted = [r for r in rows if r.counted and r.gap and r.base_price and r.other_price]
     if len(counted) < MIN_COHORT:
         return None
     # Sorted, so the inexact Decimal sum doesn't depend on row order.
@@ -415,12 +485,16 @@ def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are k
     *,
     on: date | None = None,
     group_by: GroupBy | None = None,
+    matches: bool = False,
+    overlap: bool = False,
 ) -> Metric[Comparison]:
     """Rows for every product either context offers, plus the summary when n ≥ 5 (§7.4).
 
     ``base`` and ``other`` are context ids. ``group_by`` adds one summary per brand or top-level
     category, each under its own n ≥ 5 rule. The summary and groups always cover every row, never
-    a page of them.
+    a page of them. ``matches`` adds each row's ``match``; ``overlap`` (``rows=overlap`` only)
+    also gives the gap of an exact pair that is only unreviewed (``with_overlap``). Nothing either
+    adds is counted, and a default read never carries an uncounted gap.
     """
     ds = view.as_v3(dataset)
     if base == other:
@@ -434,6 +508,11 @@ def compare(  # noqa: PLR0913 -- the endpoint's filters; date and grouping are k
         return _not_applicable(ds, base, other, offered, i)
     pairs = [pair_with_labels(ds, p, base, other, i) for p in offered]
     rows = tuple(row for row, _ in pairs)
+    if matches or overlap:
+        rows = tuple(
+            with_overlap(ds, p, base, other, r, i=i, gaps=overlap)
+            for p, r in zip(offered, rows, strict=True)
+        )
     n = sum(r.counted for r in rows)
     reason = _headline(ds, rows, base, other, n)
     summary = summarise(rows, base, other) if reason is None else None
