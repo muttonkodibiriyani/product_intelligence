@@ -4,9 +4,12 @@
 only read, and so are the source files: the served view changes, never a file.
 
 * **The file overrides in-file pairs.** A listing pair that an in-file product groups and the
-  file rejects, or names with a class other than ``exact``, is split: the product becomes one
-  product per retailer, with the ids the exporter gives the listing tokens (``pi_api.ids``
-  resolves the old ``m-`` id to them). An in-file pair the file has an exact edge for takes the
+  file rejects, or accepts (approved or locked edge, or a human decision) as a class other than
+  ``exact``, is split; a proposed family or substitute edge splits nothing. A pair the file
+  accepts both as exact and as another class is a conflict: neither is applied, the pair stays as
+  the source has it, and it is counted (``class_conflict``). A split product becomes one product
+  per retailer, with the ids the exporter gives the listing tokens (``pi_api.ids`` resolves the
+  old ``m-`` id to them). An in-file pair the file has an exact edge for takes the
   file's state.
 * **Only human-accepted exact edges merge.** Exact edges in ``COUNTED_STATES`` (approved,
   locked) whose two listings are both in the view are taken in priority order (locked, approved,
@@ -58,6 +61,7 @@ class Applied:
     #: In-file products split because the file rejects a pair they grouped.
     split: tuple[str, ...]
     #: ``merged`` (edges that joined products), ``edge_not_clique``, ``edge_conflict``,
+    #: ``class_conflict`` (a pair accepted as exact and as another class: left as in the source),
     #: ``absent`` (an edge with a listing outside the view) and ``unreviewed`` (a proposed exact
     #: edge, which never merges).
     counts: Mapping[str, int]
@@ -75,15 +79,26 @@ def apply(ds: DatasetV3, file: MatchFile) -> Applied:
     tokens = listing_tokens([(p.id, {retailer_of[c] for c in p.offers}) for p in ds.products])
     exact = {e.pair(): e for e in file.edges if e.match_class is MatchClass.EXACT}
     rejected = {d.pair() for d in file.decisions if d.verdict is Verdict.REJECT}
-    #: Pairs the file holds as another class: a family or substitute is never one product.
-    other = {e.pair() for e in file.edges if e.match_class is not MatchClass.EXACT} | {
-        d.pair()
-        for d in file.decisions
-        if d.verdict is not Verdict.REJECT and d.match_class is not MatchClass.EXACT
-    }
+    accepted = {d for d in file.decisions if d.verdict is not Verdict.REJECT}
+    #: Pairs the file accepts as another class: a family or substitute is never one product.
+    #: A proposed edge is a suggestion and changes nothing.
+    other = {
+        e.pair()
+        for e in file.edges
+        if e.match_class is not MatchClass.EXACT and e.review_state in COUNTED_STATES
+    } | {d.pair() for d in accepted if d.match_class is not MatchClass.EXACT}
+    #: Pairs the file accepts both as exact and as another class: neither is applied, and the
+    #: pair stays as the source has it.
+    conflict = other & (
+        {q for q, e in exact.items() if e.review_state in COUNTED_STATES}
+        | {d.pair() for d in accepted if d.match_class is MatchClass.EXACT}
+    )
+    other -= conflict
+    exact = {q: e for q, e in exact.items() if q not in conflict}
 
     groups, split = _groups(ds, tokens, retailer_of, rejected | other)
     counts = _merge(groups, exact, rejected)
+    counts["class_conflict"] = len(conflict)
 
     products: list[ProductV3] = []
     aliases: dict[str, str] = {}

@@ -85,10 +85,15 @@ size, shade, concentration and kind. That makes careful calibration and review m
      `no_match` in the view.
    - **The match file overrides in-file pairs.** When the match file and an in-file edge name the
      same listing pair, the match file's state wins, because it carries the review. If the match
-     file rejects a pair that an in-file `m-` product groups, or names it as another class than
-     `exact` (a family or substitute is never one product), the in-file edge is dropped and the
-     product is split into one product per retailer, with the one-offer ids the exporter would
-     give (the listing tokens). The old `m-` id resolves through `pi_api.ids`, as after any split.
+     file rejects a pair that an in-file `m-` product groups, or accepts it (an approved or
+     locked edge, or a human decision) as another class than `exact` (a family or substitute is
+     never one product), the in-file edge is dropped and the product is split into one product
+     per retailer, with the one-offer ids the exporter would give (the listing tokens). The old
+     `m-` id resolves through `pi_api.ids`, as after any split. A *proposed* family or
+     substitute edge splits nothing. A pair the file accepts both as `exact` and as another
+     class is a conflict: neither is applied, the pair stays as the source has it, and it is
+     counted (`class_conflict`). A split pair never meets again through a third listing: the
+     clique rule needs the pair's own accepted exact edge.
    - **Proposed edges change no answer.** A golden test pins compare, index, coverage and
      price-suggestion outputs with and without a match file that holds only proposed edges:
      they are identical.

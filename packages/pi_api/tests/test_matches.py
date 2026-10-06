@@ -116,6 +116,7 @@ S12, U14, F1, F2 = (
 )
 S01, U01 = (SEPHORA, "s-01-50-ml"), (ULTA, "u-01-50-ml")
 S07, U07 = (SEPHORA, "s-07-50-ml"), (ULTA, "u-07-50-ml")
+LOCKED = ReviewState.LOCKED
 
 
 def setup(root: Path) -> None:
@@ -245,6 +246,54 @@ def test_the_file_splits_an_in_file_pair_it_keeps_apart(tmp_path: Path, file: Ma
         half = products[token]
         assert half.matches == ()
         assert half.offers == {c: o for c, o in old.offers.items() if retailer_of[c] == retailer}
+
+
+@pytest.mark.parametrize("cls", [MatchClass.FAMILY, MatchClass.SUBSTITUTE])
+def test_a_proposed_other_class_edge_splits_nothing(tmp_path: Path, cls: MatchClass) -> None:
+    # (c) only an accepted family or substitute verdict keeps a pair apart
+    ds = view(tmp_path)
+    got = apply(ds, match_file((edge(S01, U01, cls, ReviewState.PROPOSED),)))
+    assert got.dataset == ds
+    assert (dict(got.aliases), got.split, dict(got.counts)) == ({}, (), {})
+
+
+@pytest.mark.parametrize(
+    "file",
+    [
+        match_file((edge(S01, U01, state=LOCKED), edge(S01, U01, MatchClass.FAMILY, LOCKED))),
+        match_file(
+            (edge(S01, U01, MatchClass.FAMILY, LOCKED),),
+            (decision(S01, U01, Verdict.APPROVE),),
+        ),
+    ],
+    ids=["two_locked_edges", "family_edge_exact_decision"],
+)
+def test_a_pair_accepted_as_two_classes_stays_as_in_the_source(
+    tmp_path: Path, file: MatchFile
+) -> None:
+    # (d) the in-file product p01 is neither split nor re-made under another id
+    ds = view(tmp_path)
+    got = apply(ds, file)
+    assert got.dataset == ds
+    assert (dict(got.aliases), got.split, dict(got.counts)) == ({}, (), {"class_conflict": 1})
+    # and a pair the source keeps apart is not merged
+    conflicted = match_file(
+        (edge(S12, U14, state=LOCKED), edge(S12, U14, MatchClass.FAMILY, LOCKED))
+    )
+    got = apply(ds, conflicted)
+    assert got.dataset == ds
+    assert dict(got.counts) == {"class_conflict": 1}
+
+
+def test_a_split_pair_is_not_joined_again_through_a_third_listing(tmp_path: Path) -> None:
+    # (e) s01-u01 is rejected; f1 has accepted edges to both, but s01 and u01 never meet again
+    rejected = (decision(S01, U01, Verdict.REJECT),)
+    got = apply(view(tmp_path), match_file((edge(F1, S01), edge(F1, U01)), rejected))
+    assert got.split == ("m-s-01-50-ml-u-01-50-ml",)
+    assert dict(got.counts) == {"edge_not_clique": 1, "merged": 1}
+    holders = {got.aliases.get(t, t) for t in ("s-01-50-ml", "u-01-50-ml")}
+    assert len(holders) == 2
+    assert holders <= set(by_id(got.dataset))
 
 
 def test_an_in_file_pair_takes_the_files_state(tmp_path: Path) -> None:
