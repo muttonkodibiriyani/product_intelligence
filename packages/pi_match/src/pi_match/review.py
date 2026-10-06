@@ -453,6 +453,29 @@ class AnswersError(ValueError):
     """An answers file that does not belong to the packet or contradicts another."""
 
 
+def _answers(meta: Mapping[str, Any], found: Mapping[str, Any]) -> dict[str, str]:
+    """Pair number -> answer, from ``answers`` and/or the ``decisions`` list of an export.
+
+    A ``decisions`` entry names its two listings; they must be the pair the packet gave that
+    number, so an answer can never land on another pair.
+    """
+    out = {str(k): v for k, v in (found.get("answers") or {}).items()}
+    for entry in found.get("decisions") or []:
+        number = str(entry.get("pair"))
+        pair = meta["pairs"].get(number)
+        if pair is None:
+            msg = f"pair {number} is not in the packet"
+            raise AnswersError(msg)
+        refs = {f"{r['retailer']}:{r['token']}" for r in (pair["a"], pair["b"])}
+        if {entry.get("a"), entry.get("b")} != refs:
+            msg = f"pair {number} names other listings than the packet"
+            raise AnswersError(msg)
+        if out.setdefault(number, entry.get("verdict")) != entry.get("verdict"):
+            msg = f"pair {number} answered both {out[number]!r} and {entry.get('verdict')!r}"
+            raise AnswersError(msg)
+    return out
+
+
 def decisions(meta: Mapping[str, Any], answers: Sequence[Mapping[str, Any]]) -> list[Decision]:
     """The decisions in ``answers`` (one per saved page), checked against the packet."""
     chosen: dict[str, str] = {}
@@ -460,7 +483,7 @@ def decisions(meta: Mapping[str, Any], answers: Sequence[Mapping[str, Any]]) -> 
         if found.get("packet") != meta["packet"]:
             msg = f"answers for packet {found.get('packet')!r}, not {meta['packet']!r}"
             raise AnswersError(msg)
-        for number, answer in (found.get("answers") or {}).items():
+        for number, answer in _answers(meta, found).items():
             if number not in meta["pairs"]:
                 msg = f"pair {number} is not in the packet"
                 raise AnswersError(msg)

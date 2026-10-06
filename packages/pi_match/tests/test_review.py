@@ -191,6 +191,15 @@ def test_answers_are_checked_against_the_packet() -> None:
     both = [{"packet": "abc", "answers": {"1": "yes"}}, {"packet": "abc", "answers": {"1": "no"}}]
     with pytest.raises(AnswersError, match="both"):
         decisions(meta, both)
+    listed = {"pair": 1, "a": "faces_ae:f-1", "b": "ulta_ae:u-1", "verdict": "yes"}
+    got2 = decisions(meta, [{"packet": "abc", "decisions": [listed]}])
+    assert got2 == got
+    with pytest.raises(AnswersError, match="other listings"):
+        decisions(meta, [{"packet": "abc", "decisions": [{**listed, "b": "ulta_ae:u-9"}]}])
+    with pytest.raises(AnswersError, match="not in the packet"):
+        decisions(meta, [{"packet": "abc", "decisions": [{**listed, "pair": 7}]}])
+    with pytest.raises(AnswersError, match="both"):
+        decisions(meta, [{"packet": "abc", "answers": {"1": "no"}, "decisions": [listed]}])
     a = ListingRef.model_validate(pair["a"])
     b = ListingRef.model_validate(pair["b"])
     old = Decision(a=a, b=b, verdict=Verdict.LOCK)
