@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
+from functools import cache
 from itertools import combinations
 
 from pi_core import AvailabilityState
@@ -1425,19 +1426,21 @@ def real_discounts(  # noqa: PLR0913 -- the request's parts, then the unverified
     thirds: tuple[str, ...],
     i: int,
     *,
+    first: _Pairs,
     on: date | None,
     unverified: frozenset[str],
 ) -> Finding:
     """On counted pairs between any two shops: the markdowns either side states, and how many
-    are real (the stated regular price is what the other shop charges)."""
+    are real (the stated regular price is what the other shop charges). ``first`` holds the
+    rival's and the focus shop's pairs, already read."""
     key = FindingKey.REAL_DISCOUNTS
     counted = 0
     marks: list[_Markdown] = []
-    first: Reason | None = None
-    for a, b in combinations((focus, rival, *thirds), 2):
-        pairs = _pairs(ds, a, b, on)
-        if {a, b} == {focus, rival}:
-            first = pairs.reason
+    for s, t in combinations((focus, rival, *thirds), 2):
+        if {s, t} == {focus, rival}:
+            a, b, pairs = rival, focus, first
+        else:
+            a, b, pairs = s, t, _pairs(ds, s, t, on)
         counted += len(pairs.counted)
         for r in pairs.counted:
             if r.base_price is None or r.other_price is None:
@@ -1454,7 +1457,7 @@ def real_discounts(  # noqa: PLR0913 -- the request's parts, then the unverified
                 ):
                     marks.append(_Markdown(r, x, y, price, regular, other))
     if counted == 0:
-        return _withhold(key, first or Reason.NO_MATCH)
+        return _withhold(key, first.reason or Reason.NO_MATCH)
     if len(marks) < REAL_DISCOUNT_MIN:
         return _withhold(key, Reason.COHORT_TOO_SMALL)
     marks.sort(key=lambda m: (-m.depth, m.row.id, m.on))
@@ -1961,6 +1964,7 @@ def findings(  # noqa: PLR0913 -- the request, then the injected brand key and u
             as_of=as_of,
         )
     pairs = _pairs(ds, rival, focus, on)
+    brand_key = cache(brand_key)  # one key per brand name, not per listing
     shown = ranked(
         _no_markdowns(f, ds, unverified)
         for f in (
@@ -1970,7 +1974,9 @@ def findings(  # noqa: PLR0913 -- the request, then the injected brand key and u
             size_level_gaps(ds, focus, rival, pairs, i),
             stock(ds, focus, rival, thirds, i, brand_key=brand_key),
             promo_strategy(ds, focus, thirds, i, unverified),
-            real_discounts(ds, focus, rival, thirds, i, on=on, unverified=unverified),
+            real_discounts(
+                ds, focus, rival, thirds, i, first=pairs, on=on, unverified=unverified
+            ),
             fragrance_ladder(ds, focus, rival, thirds, i, brand_key=brand_key),
             size_traps(ds, focus, rival, thirds, i),
             positioning(ds, focus, rival, thirds, i),
