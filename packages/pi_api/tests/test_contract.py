@@ -25,8 +25,8 @@ from pi_metrics.assortment import AssortmentGaps
 from pi_metrics.availability import Availability
 from pi_metrics.compare import Comparison
 from pi_metrics.coverage import Coverage
-from pi_metrics.index import PriceIndex
 from pi_metrics.findings import Findings
+from pi_metrics.index import PriceIndex
 from pi_metrics.insights import Insights
 from pi_metrics.launches import Launches
 from pi_metrics.pair_pricing import PriceSuggestions

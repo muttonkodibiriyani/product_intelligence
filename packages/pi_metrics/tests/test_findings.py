@@ -23,6 +23,7 @@ from pi_core import ReviewState
 from pi_dataset import Dataset, DatasetV3, Product
 from pi_metrics import view
 from pi_metrics.findings import (
+    ACRONYM_LETTERS,
     EXAMPLES_LISTED,
     FIGURE,
     MISSING,
@@ -676,6 +677,7 @@ def test_price_vs_rating_speaks_for_the_first_shop_with_enough_ratings() -> None
     assert f.status is Status.OK
     p = f.params
     assert (p["shop"].value, p["n"].value, p["focusRated"].value) == (RIVAL, "100", "20")
+    assert p["rivalRated"].value == "100"
     assert (p["champions"].value, p["laggards"].value) == ("25", "25")
     assert p["lowCategory"].value == "skincare"
     assert Decimal(p["lowRho"].value) < Decimal(0)
@@ -689,6 +691,11 @@ def test_price_vs_rating_speaks_for_the_first_shop_with_enough_ratings() -> None
         ("low", (Decimal(0), Decimal(0), Decimal(0), Decimal(25))),
     ]
     assert [e.rating for e in f.examples] == [Decimal("4.8")] * 2 + [Decimal("3.5")] * 2
+    # the focus shop speaks first whenever it qualifies; a chip only marks a shop below the minimum
+    both = [*_rated_shop(RIVAL, RATED_SHOP_MIN), *_rated_shop(FOCUS, RATED_SHOP_MIN)]
+    g = _get(_run(_with(both)), FindingKey.PRICE_VS_RATING)
+    assert (g.params["shop"].value, g.params["rivalRated"].value) == (FOCUS, "100")
+    assert {c.retailer for c in g.chips} == {C, D}
     few = _get(_run(_with(_rated_shop(RIVAL, RATED_SHOP_MIN - 1))), FindingKey.PRICE_VS_RATING)
     assert (few.status, few.reason) == (Status.NOT_ENOUGH_DATA, Reason.COHORT_TOO_SMALL)
 
@@ -770,26 +777,47 @@ def test_every_finding_carries_its_evidence() -> None:
     [
         (["CHANEL", "Chanel"], "Chanel"),  # the spelling that is not all capitals
         (["DIOR", "DIOR", "Dior"], "Dior"),  # however rare
+        (["LUX", "Lux"], "Lux"),
         (["Too Faced", "Too faced", "Too faced"], "Too faced"),  # then the most frequent
         (["NARS Cosmetics", "Nars cosmetics"], "NARS Cosmetics"),  # then alphabetically first
-        (["ESTEE LAUDER"], "Estee Lauder"),  # all capitals: title-cased
+        (["E.L.F. COSMETICS", "e.l.f."], "e.l.f."),  # a mixed form as the shop writes it
+        (["e.l.f. Cosmetics"], "e.l.f. Cosmetics"),
+        (["ESTEE LAUDER"], "Estee Lauder"),  # all capitals: long words title-cased
         (["L'ORÉAL PARIS", "L'ORÉAL PARIS"], "L'Oréal Paris"),
-        (["YSL"], "Ysl"),  # the rule's known cost: an acronym written only in capitals
+        (["COSMETICS"], "Cosmetics"),
+        # all capitals, short words: acronyms, kept as written
+        (["YSL"], "YSL"),
+        (["NYX"], "NYX"),
+        (["MAC"], "MAC"),
+        (["KVD"], "KVD"),
+        (["GHD"], "GHD"),
+        (["LUX"], "LUX"),
+        (["NYX PROFESSIONAL MAKEUP"], "NYX Professional Makeup"),
+        (["E.L.F. COSMETICS"], "E.L.F. Cosmetics"),
+        (["KVD BEAUTY", "KVD BEAUTY"], "KVD Beauty"),
         (["Kayali"], "Kayali"),
     ],
 )
-def test_display_brand_prefers_a_spelling_that_is_not_all_capitals(
+def test_display_brand_prefers_mixed_case_and_keeps_acronyms(
     spellings: list[str], shown: str
 ) -> None:
     assert display_brand(spellings) == shown
 
 
+WORDS = st.sampled_from(["YSL", "NYX", "MAC", "GUCCI", "Gucci", "BEAUTY", "Beauty", "e.l.f."])
+
+
 @settings(max_examples=50)
-@given(st.lists(st.sampled_from(["GUCCI", "Gucci", "gucci", "GuCCi"]), min_size=1))
-def test_display_brand_is_a_spelling_or_its_title_case(spellings: list[str]) -> None:
+@given(st.lists(st.lists(WORDS, min_size=1, max_size=3).map(" ".join), min_size=1))
+def test_display_brand_changes_only_the_case_of_long_capital_words(spellings: list[str]) -> None:
     shown = display_brand(spellings)
     mixed = {s for s in spellings if s.upper() != s}
-    assert shown in mixed if mixed else shown == spellings[0].title()
+    if mixed:
+        assert shown in mixed
+    else:
+        assert shown.upper() in {s.upper() for s in spellings}
+        for word in shown.split(" "):
+            assert word.isupper() if len(word) <= ACRONYM_LETTERS else word == word.title()
     assert display_brand(reversed(spellings)) == shown  # order of the shops does not matter
 
 

@@ -73,6 +73,8 @@ from pi_metrics.model import (
     fixed,
 )
 
+#: An all-capitals brand word this short is an acronym and keeps its capitals (YSL, NYX).
+ACRONYM_LETTERS = 4
 #: Product examples per finding.
 EXAMPLES_LISTED = 4
 #: Examples from each side when a finding contrasts two groups (cheap and dear, say).
@@ -855,15 +857,24 @@ def _exact(keys: dict[str, dict[str, list[_Listing]]], a: str, b: str, key: str)
     return bool({x.product.brand for x in keys[a][key]} & {x.product.brand for x in keys[b][key]})
 
 
+def _title_token(token: str) -> str:
+    """One word of an all-capitals brand: up to ``ACRONYM_LETTERS`` letters is an acronym and
+    stays as written (YSL, NYX, E.L.F.), a longer word is title-cased (COSMETICS)."""
+    if sum(c.isalpha() for c in token) <= ACRONYM_LETTERS:
+        return token
+    return token.title()
+
+
 def display_brand(spellings: Iterable[str]) -> str:
     """How one brand is written in findings, from every spelling the shops use: the most frequent
-    spelling that is not all capitals (then the first alphabetically); if every spelling is in
-    capitals, the most frequent one title-cased."""
+    spelling that is not all capitals, as found (then the first alphabetically); if every
+    spelling is in capitals, the most frequent one with its long words title-cased."""
     counts = Counter(spellings)
     mixed = [s for s in counts if s.upper() != s]
     if mixed:
         return min(mixed, key=lambda s: (-counts[s], s))
-    return min(counts, key=lambda s: (-counts[s], s)).title()
+    shown = min(counts, key=lambda s: (-counts[s], s))
+    return " ".join(_title_token(t) for t in shown.split(" "))
 
 
 @dataclass(frozen=True)
@@ -1896,6 +1907,7 @@ def price_vs_rating(
         "champions": _count(len(champions)),
         "laggards": _count(len(laggards)),
         "focusRated": _count(rated[focus].n),
+        "rivalRated": _count(rated[rival].n),
     }
     params |= dict.fromkeys(
         ("fragranceRho", "fragranceN", "lowRho", "lowCategory", "highRho", "highCategory"),

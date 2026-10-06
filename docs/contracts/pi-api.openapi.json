@@ -3373,6 +3373,16 @@
             "title": "Examples",
             "type": "array"
           },
+          "figure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Param"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "key": {
             "$ref": "#/components/schemas/FindingKey"
           },
@@ -3435,6 +3445,7 @@
           "basis",
           "threshold",
           "params",
+          "figure",
           "chart",
           "examples"
         ],

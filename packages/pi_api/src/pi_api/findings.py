@@ -59,9 +59,9 @@ class FindingsCache:
     """``pi_metrics.findings`` per (generation, focus, rival, date), least recently used out
     first. Concurrent misses on one key may each compute it; the result is the same."""
 
-    def __init__(self, images: EvidenceHosts, size: int = CACHE_SIZE) -> None:
+    def __init__(self, images: EvidenceHosts, size: int | None = None) -> None:
         self._images = images
-        self._size = size
+        self._size = CACHE_SIZE if size is None else size
         self._lock = threading.Lock()
         self._entries: OrderedDict[tuple[str, str, str, date | None], Metric[Findings]] = (
             OrderedDict()
