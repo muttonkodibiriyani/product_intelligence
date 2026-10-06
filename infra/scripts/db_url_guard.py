@@ -6,13 +6,16 @@ DB tests create and drop ``pi_test_*`` databases on the server named by PI_DATAB
 server (``make test-db``); the root ``conftest.py`` calls :func:`check` before any test runs.
 """
 
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 # Ports of the pi_db servers on the shared build server; never a test target.
 PROTECTED_PORTS = frozenset({55432, 55499})
 # The stack database name. CI's own disposable service also uses it, so CI is exempt from this
 # one rule (never from the port rule) until its URL names a test database.
 PROTECTED_DATABASE = "pi"
+# Query keys SQLAlchemy hands to libpq as connect args; any of them can override the server or
+# database named in the URL itself (e.g. ``…:55433/pi_test?port=55432``).
+OVERRIDE_KEYS = frozenset({"host", "hostaddr", "port", "dbname", "service", "servicefile"})
 
 
 class ProtectedDatabaseError(Exception):
@@ -28,6 +31,13 @@ def check(url: str | None, *, ci: bool = False) -> None:
         port = parts.port
     except ValueError as exc:
         raise ProtectedDatabaseError(f"PI_DATABASE_URL is not a valid URL ({exc})") from None
+    keys = {k for k, _ in parse_qsl(parts.query, keep_blank_values=True)}
+    overrides = sorted(keys & OVERRIDE_KEYS)
+    if overrides:
+        raise ProtectedDatabaseError(
+            f"PI_DATABASE_URL query sets {', '.join(overrides)}; "
+            "name the test server in the URL itself"
+        )
     if parts.hostname is None:
         raise ProtectedDatabaseError("PI_DATABASE_URL has no host; name the test server explicitly")
     if port is None:
