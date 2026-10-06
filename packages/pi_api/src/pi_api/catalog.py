@@ -38,6 +38,7 @@ from pi_dataset import (
     ContractModel,
     DatasetV3,
     FieldStatus,
+    MatchEdge,
     MoneyValue,
     OfferV3,
     ProductV3,
@@ -49,7 +50,7 @@ from pi_dataset import (
 from pi_dataset.compose import SourceInfo, source_infos
 from pi_dataset.profiles import AttributeDef, ProfileInfo
 from pi_dataset.text import SourceText
-from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
+from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status, view
 from pi_metrics.compare import Gap, pair_with_labels
 from pi_metrics.promotions import depth
 from pi_metrics.view import AmbiguousContext, context, price_on, regular_on
@@ -228,7 +229,17 @@ class ProductFilters(ContractModel):
             )
         ),
     ] = ()
-    matched: bool | None = None
+    matched: Annotated[
+        bool | None,
+        Field(
+            description=(
+                "API 1.16.0 (ruling A): true keeps products with an exact edge that is not "
+                "rejected (proposed included; see each card's matchReview), false the rest. "
+                "A pair whose identity is unclear is never matched. Counted metrics still use "
+                "approved/locked edges only."
+            )
+        ),
+    ] = None
     price_min: DecimalText | None = None
     price_max: DecimalText | None = None
     sort: ProductSort = ProductSort.NAME
@@ -258,6 +269,13 @@ class ProductFilters(ContractModel):
 class ProductQuery(ProductFilters):
     limit: int = Field(default=25, ge=1, le=MAX_LIMIT)
     cursor: Annotated[str, Field(max_length=512)] | None = None
+
+
+class MatchReview(StrEnum):
+    """Whether a matched card's exact edge was reviewed (approved/locked) or is proposed."""
+
+    REVIEWED = "reviewed"
+    UNREVIEWED = "unreviewed"
 
 
 class CardMatch(ContractModel):
@@ -327,6 +345,9 @@ class ProductCard(ContractModel):
     #: and the label's system (``eu``, ``alpha``) where it matters.
     size_label: SourceText | None = None
     size_system: SourceText | None = None
+    #: API 1.16.0: set exactly when the product is ``matched`` (ruling A): ``reviewed`` when one
+    #: of its matching edges is approved or locked, else ``unreviewed``. Null otherwise.
+    match_review: MatchReview | None = None
 
 
 class FacetCount(ContractModel):
@@ -437,6 +458,7 @@ def card(
         image=card_image(ds, product, offers, images),
         size_label=label,
         size_system=system,
+        match_review=match_review(ds, product),
     )
 
 
@@ -453,11 +475,30 @@ def card_image(
     )
 
 
-def _matched(product: ProductV3) -> bool:
-    return any(
-        e.match_class is MatchClass.EXACT and e.review_state in COUNTED_STATES
+def matching_edges(ds: DatasetV3, product: ProductV3) -> list[MatchEdge]:
+    """The product's edges that make it ``matched`` (ruling A): exact and not rejected, between
+    two retailers whose identity in the product is clear (else compare reads ``no_match``).
+    Proposed edges count here; counted metrics still take approved/locked only."""
+    return [
+        e
         for e in product.matches
-    )
+        if e.match_class is MatchClass.EXACT
+        and e.review_state is not ReviewState.REJECTED
+        and not view.identity_unclear(ds, product, e.a)
+        and not view.identity_unclear(ds, product, e.b)
+    ]
+
+
+def _matched(ds: DatasetV3, product: ProductV3) -> bool:
+    return bool(matching_edges(ds, product))
+
+
+def match_review(ds: DatasetV3, product: ProductV3) -> MatchReview | None:
+    edges = matching_edges(ds, product)
+    if not edges:
+        return None
+    reviewed = any(e.review_state in COUNTED_STATES for e in edges)
+    return MatchReview.REVIEWED if reviewed else MatchReview.UNREVIEWED
 
 
 def _named(ds: DatasetV3, ids: Iterable[str]) -> frozenset[str]:
@@ -553,7 +594,7 @@ def _predicates(ds: DatasetV3, query: ProductFilters) -> dict[str, Check]:
         checks["context"] = lambda p: any(c in shown and not o.early for c, o in p.offers.items())
     if query.matched is not None:
         is_matched = query.matched
-        checks["matched"] = lambda p: _matched(p) is is_matched
+        checks["matched"] = lambda p: _matched(ds, p) is is_matched
     if low is not None or high is not None:
 
         def priced(p: ProductV3) -> bool:

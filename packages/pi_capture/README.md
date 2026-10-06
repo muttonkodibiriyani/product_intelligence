@@ -36,6 +36,12 @@ package says what the page should have told us and what it actually did.
   line, description accordion) first, then lets the generic extractors fill the gaps. Ratings and
   related products render client-side there and are recorded `not_shown`. `faces_facts` keeps
   the availability flags. Tests use synthetic SFCC-shaped HTML only.
+* `pi_capture.landmark` — Landmark Group's shared Next.js storefront (Centrepoint, Splash,
+  Babyshop, Home Centre, Max): decodes the base64 `initialState` and returns one reading list
+  per sellable variant (SKU, EAN, size, colour, the price paid and the regular price). JSON-LD
+  there shows the regular price only, so price keys always come from the variant block. A zero
+  or check-digit-failing EAN is recorded, never padded into a barcode. Per-variant stock is not
+  in the page. Tests use synthetic pages only.
 * `pi_capture.coverage` — per retailer, per applicable page-sourced attribute: how many pages
   showed it, hid it, blocked us, could not be read, or was never looked for by the extractor.
   JSON and a plain Markdown table.

@@ -78,3 +78,21 @@ def test_an_early_offer_neither_shows_nor_vouches_for_an_image(tmp_path: Path) -
     d = image_doc(product=f"https://{B_IMG}/p01.jpg")  # only shop_b's host
     offer(d, "p01", "shop_b")["early"] = True
     assert card(client_for(tmp_path, d))["image"] is None
+
+
+def promo_images(client: Client, query: str = "") -> dict[str, Any]:
+    response = client.get(f"{API}/promotions?retailer=shop_a{query}", headers=bearer())
+    assert response.status_code == 200, response.text
+    return {i["id"]: i["image"] for i in response.json()["data"]["items"]}
+
+
+def test_a_promotion_item_takes_its_card_image_from_the_shops_own_offer(tmp_path: Path) -> None:
+    assert promo_images(client_for(tmp_path, image_doc()))["p01"] == PRODUCT
+    # Only shop_b's host serves it: a shop_a promotion does not borrow another shop's picture.
+    on_b = image_doc(product=f"https://{B_IMG}/p01.jpg")
+    assert promo_images(client_for(tmp_path, on_b))["p01"] is None
+
+
+def test_promotion_images_are_set_after_the_cap(tmp_path: Path) -> None:
+    images = promo_images(client_for(tmp_path, image_doc()), "&limit=1")
+    assert list(images) == ["p05"]

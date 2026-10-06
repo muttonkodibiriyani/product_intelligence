@@ -178,3 +178,14 @@ def test_the_category_section_fails_when_empty_or_wrong(
     state: dict[str, object] | None, width: int, want: str
 ) -> None:
     assert any(want in b for b in pages.bucket_problems(state, "en", width))
+
+
+def test_p3_covers_every_pinned_retailer_unless_narrowed() -> None:
+    base = ["--phase", "before", "--out", "o", "--browser", "firefox", "--viewport", "desktop"]
+    assert set(pages.IMAGE_HOSTS) == {"sephora_me", "ulta_ae", "faces_ae"}
+    assert pages.IMAGE_HOSTS["faces_ae"] == "www.faces.ae"
+    assert pages.parse_args(base).retailer is None
+    narrowed = pages.parse_args([*base, "--retailer", "sephora_me", "--retailer", "ulta_ae"])
+    assert narrowed.retailer == ["sephora_me", "ulta_ae"]
+    with pytest.raises(SystemExit):
+        pages.parse_args([*base, "--retailer", "noon_ae"])

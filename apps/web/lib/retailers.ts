@@ -1,11 +1,12 @@
 /**
- * What a shop is called on screen. An internal retailer id (`ulta_ae`, `sephora_me`) never reaches
+ * What a shop is called on screen. An internal retailer id (`ulta_ae`, `sephora_me`, `faces_ae`) never reaches
  * a customer: the known ids map to the shop's own name, in both languages; any other id takes the
  * name /meta gives it, and only as a last resort reads as sent.
  */
 const NAMES: Readonly<Record<string, string>> = {
   ulta_ae: 'Ulta',
   sephora_me: 'Sephora',
+  faces_ae: 'Faces',
   // The same shop under the id some fixtures and older data use.
   sephora_ae: 'Sephora',
 };
