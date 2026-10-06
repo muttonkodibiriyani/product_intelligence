@@ -14,6 +14,7 @@ from decimal import Decimal
 from enum import StrEnum
 from importlib import resources
 from types import MappingProxyType
+from urllib.parse import unquote, urlsplit
 
 #: Trailing words dropped from a brand when something remains, e.g. "Nars Cosmetics".
 _BRAND_SUFFIXES = ("cosmetics", "makeup", "skincare", "paris", "london", "new york")
@@ -53,6 +54,21 @@ class Concentration(StrEnum):
     BODY_MIST = "body_mist"
 
 
+class Form(StrEnum):
+    """What the product physically is. Two known forms that differ are never the same item."""
+
+    FRAGRANCE = "fragrance"  # implied by a parfum/EDP/EDT/EDC concentration
+    HAIR_MIST = "hair_mist"
+    BODY_MIST = "body_mist"
+    DEODORANT = "deodorant"
+    SHOWER = "shower"
+    BODY_LOTION = "body_lotion"
+    BODY_OIL = "body_oil"
+    AFTERSHAVE = "aftershave"
+    SOAP = "soap"
+    CANDLE = "candle"
+
+
 class ItemKind(StrEnum):
     """Minis, refills and sets are separate classes (blueprint §8.4)."""
 
@@ -65,10 +81,50 @@ class ItemKind(StrEnum):
 _CONCENTRATION_PATTERNS: tuple[tuple[Concentration, re.Pattern[str]], ...] = (
     (Concentration.EDP, re.compile(r"\b(eau de parfum|edp)\b")),
     (Concentration.EDT, re.compile(r"\b(eau de toilette|edt)\b")),
-    (Concentration.EDC, re.compile(r"\b(eau de cologne|edc)\b")),
+    (Concentration.EDC, re.compile(r"\b(eau de cologne|edc|cologne)\b")),
     (Concentration.BODY_MIST, re.compile(r"\b(body mist|hair mist|hair and body mist)\b")),
     (Concentration.PARFUM, re.compile(r"\b(parfum|extrait|perfume)\b")),
 )
+#: Checked in order: the first match wins ("hair and body mist" is a body mist).
+_FORM_PATTERNS: tuple[tuple[Form, re.Pattern[str]], ...] = (
+    (Form.BODY_MIST, re.compile(r"\b(hair and body mist|body mist|moisture mist|body spray)\b")),
+    (Form.HAIR_MIST, re.compile(r"\b(hair mist|hair perfume|hair fragrance)\b")),
+    (Form.DEODORANT, re.compile(r"\b(deodorant|deo|antiperspirant)\b")),
+    (Form.SHOWER, re.compile(r"\b(shower gel|shower cream|shower oil|body wash|bath gel)\b")),
+    (Form.BODY_LOTION, re.compile(r"\b(body lotion|body cream|body milk|body butter)\b")),
+    (Form.BODY_OIL, re.compile(r"\b(body oil|dry oil)\b")),
+    (Form.AFTERSHAVE, re.compile(r"\b(after shave|aftershave)\b")),
+    (Form.SOAP, re.compile(r"\bsoap\b")),
+    (Form.CANDLE, re.compile(r"\bcandle\b")),
+)
+_FRAGRANCE = frozenset(
+    {Concentration.PARFUM, Concentration.EDP, Concentration.EDT, Concentration.EDC}
+)
+#: A concentration phrase is an attribute; a bare "eau" is part of a name ("Eau Sauvage").
+_CONCENTRATION_PHRASE_RE = re.compile(r"\b(?:l)?eau de (?:parfum|toilette|cologne)\b")
+#: Words that make a flanker or an edition of a line: one side having one that the other lacks
+#: is never the same item ("Libre" vs "Libre Intense", "The Scent Parfum" vs "Le Parfum").
+FLANKER_WORDS = frozenset(
+    {
+        "intense", "intensement", "elixir", "absolu", "absolue", "extreme", "sport", "fraiche",
+        "tendre", "vive", "leparfum", "nuit", "night", "noir", "prive", "extradose", "edition",
+        "limited", "collector", "summer",
+    }
+)  # fmt: skip
+#: The retailers' own labels: their products are never another retailer's.
+#: Words of the form patterns: dropped from a name only to compare the line under two forms.
+FORM_WORDS = frozenset(
+    {
+        "after", "aftershave", "antiperspirant", "bath", "body", "butter", "candle", "cream",
+        "deo", "deodorant", "dry", "fragrance", "gel", "hair", "lotion", "milk", "mist",
+        "moisture", "oil", "perfume", "shave", "shower", "soap", "spray", "wash",
+    }
+)  # fmt: skip
+OWN_BRANDS = frozenset({"sephora collection", "sephora favorites", "faces", "ulta beauty"})
+#: A sized item joined to another by "x" or "+" ("100ml x 50ml", "50ml + 100ml") is a set.
+_BUNDLE_RE = re.compile(r"\d\s*(?:ml|g)\s*(?:x|\+)\s*\S", re.IGNORECASE)
+#: Faces set pages: ``...-pset0193...html``, ``...-p2set...``, ``...-psetPM_...``.
+_SET_SLUG_RE = re.compile(r"[-_]p2?set[0-9a-z_]", re.IGNORECASE)
 _KIND_PATTERNS: tuple[tuple[ItemKind, re.Pattern[str]], ...] = (
     (ItemKind.SET, re.compile(r"\b(set|kit|gift set|coffret|duo|trio|bundle|collection)\b")),
     (ItemKind.REFILL, re.compile(r"\b(refill|recharge)\b")),
@@ -78,7 +134,7 @@ _KIND_PATTERNS: tuple[tuple[ItemKind, re.Pattern[str]], ...] = (
 #: comparison is about the product, and those attributes are compared on their own.
 _ATTRIBUTE_WORDS = frozenset(
     {
-        "eau", "parfum", "toilette", "cologne", "edp", "edt", "edc", "extrait", "perfume",
+        "parfum", "toilette", "cologne", "edp", "edt", "edc", "extrait", "perfume",
         "ml", "cl", "l", "g", "gr", "kg", "mg", "oz", "fl", "spray", "vaporisateur",
         "mini", "travel", "size", "refill", "recharge", "set", "kit", "gift",
     }
@@ -346,8 +402,41 @@ def concentration(text: str) -> Concentration | None:
     return None
 
 
+def form(text: str) -> Form | None:
+    """The product form written in ``text``; a fragrance concentration implies ``FRAGRANCE``."""
+    folded = fold(text)
+    for value, pattern in _FORM_PATTERNS:
+        if pattern.search(folded):
+            return value
+    found = concentration(text)
+    return Form.FRAGRANCE if found in _FRAGRANCE else None
+
+
+def url_words(url: str | None) -> str:
+    """The words of a product URL's last path segment ("...-eau-de-parfum-PM_X_EDP.html")."""
+    if not url:
+        return ""
+    last = unquote(urlsplit(url).path).rstrip("/").rsplit("/", 1)[-1]
+    last = re.sub(r"\.html?$", "", last)
+    # "perfume" in a slug is a category word ("women-perfume"), not a concentration.
+    words = re.sub(r"[-_.+]+", " ", last)
+    # Some slugs run the concentration together ("gucci-bloom-eaudetoilette").
+    words = re.sub(r"(?i)\beaude(parfum|toilette|cologne)\b", r"eau de \1", words)
+    return re.sub(r"\bperfume\b", " ", words, flags=re.IGNORECASE)
+
+
+def is_set_url(url: str | None) -> bool:
+    """A set or bundle page: a Faces ``pset``/``p2set`` id, or sized items joined by x or +."""
+    if not url:
+        return False
+    path = unquote(urlsplit(url).path)
+    return bool(_SET_SLUG_RE.search(path)) or bool(re.search(r"\d(?:ml|g)-+(?:x|\+)-", path, re.I))
+
+
 def item_kind(text: str) -> ItemKind:
     """SET / REFILL / MINI when the text says so, else REGULAR."""
+    if _BUNDLE_RE.search(text):
+        return ItemKind.SET
     folded = fold(text)
     for value, pattern in _KIND_PATTERNS:
         if pattern.search(folded):
@@ -357,7 +446,9 @@ def item_kind(text: str) -> ItemKind:
 
 def name_tokens(name: str, brand_key: str = "") -> frozenset[str]:
     """Product-name tokens without the brand, stopwords, sizes and attribute words."""
-    folded = re.sub(r"\bspf\s*(\d+)", r"spf\1", fold(_SIZE_RE.sub(" ", name)))
+    text = re.sub(r"(?i)\bspf\s*(\d+)\s*\+", r"spf\1plus ", _SIZE_RE.sub(" ", name))
+    folded = re.sub(r"\bspf\s*(\d+)", r"spf\1", fold(text))
+    folded = _CONCENTRATION_PHRASE_RE.sub(" ", folded).replace("le parfum", "leparfum")
     brand_words = set(brand_key.split())
     return frozenset(
         token
@@ -367,6 +458,13 @@ def name_tokens(name: str, brand_key: str = "") -> frozenset[str]:
         and token not in brand_words
         and not re.fullmatch(r"\d+(\.\d+)?", token)
     )
+
+
+def line_numbers(name: str, shade_code: str | None = None) -> frozenset[str]:
+    """Bare numbers that name a line (N°5, 212, The Only One 2), not sizes, SPF or the shade."""
+    text = re.sub(r"(?i)\bspf\s*\d+", " ", _SIZE_RE.sub(" ", name))
+    found = {n.replace(",", ".") for n in _NUMBER_RE.findall(fold(text))}
+    return frozenset(found - {shade_code} if shade_code else found)
 
 
 def valid_gtin(gtin: str | None) -> str | None:

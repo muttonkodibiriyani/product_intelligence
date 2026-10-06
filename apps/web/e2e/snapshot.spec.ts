@@ -235,12 +235,16 @@ for (const locale of ['en', 'ar'] as const) {
       await page.goto(`/app/${locale}/product/?id=${productMixed.data.card.id}`);
       await expect(page.getByRole('heading', { name: T.offers, exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: T.offersOn })).toHaveCount(0);
-      const row = (name: string) =>
-        page.locator('article table').first().locator('tbody tr').filter({ hasText: name });
-      await expect(row('Ulta').locator('time')).toHaveText(T.offerImported);
-      await expect(row('Ulta')).not.toContainText(T.captured);
+      // Retailers are the offer sheet's columns: the evidence cell under each one's heading.
+      const sheet = page.locator('[data-offer-sheet]');
+      await expect(sheet.locator('thead th')).toHaveCount(productMixed.data.offers.length);
+      const heads = await sheet.locator('thead th').allTextContents();
+      const evidence = (name: string) =>
+        sheet.locator('tr[data-attr=evidence] td').nth(heads.findIndex((h) => h.includes(name)));
+      await expect(evidence('Ulta').locator('time')).toHaveText(T.offerImported);
+      await expect(evidence('Ulta')).not.toContainText(T.captured);
       await expect(page.locator('main')).not.toContainText('Ulta Beauty UAE');
-      await expect(row('Shop A').locator('time')).toHaveText(T.captured);
+      await expect(evidence('Shop A').locator('time')).toHaveText(T.captured);
       await noHorizontalScroll(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);

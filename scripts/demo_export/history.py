@@ -59,9 +59,11 @@ from scripts.demo_export.export import (
     latest_params,
     pair_groups,
     psycopg_database_url,
+    slot,
 )
 from scripts.demo_export.tidy import tidy_rows
 from scripts.demo_export.v2 import (
+    INCOMPLETE_CATALOGUE,
     MARKET,
     RETAILERS,
     Stale,
@@ -123,15 +125,6 @@ def day_bounds(day: date) -> tuple[datetime, datetime]:
     return start, datetime.combine(day + timedelta(days=1), time(), zone)
 
 
-def slot(source_name: str) -> str:
-    """The v1 slot (``u``/``s``) of a source name, as ``ListingRow.retailer`` names it."""
-    if source_name.startswith("sephora"):
-        return "s"
-    if source_name.startswith("ulta"):
-        return "u"
-    raise ValueError(f"unsupported source {source_name!r}")
-
-
 @dataclass(frozen=True)
 class RunSpan:
     source_name: str
@@ -158,7 +151,8 @@ class RunSpan:
 
 @dataclass(frozen=True)
 class Coverage:
-    """Per v1 slot: the market days it was observed on, and those it was completely observed."""
+    """Per slot: the market days it was observed on, and those it was completely observed. An
+    ``INCOMPLETE_CATALOGUE`` slot (Faces) is never complete, whatever its runs say."""
 
     observed: Mapping[str, frozenset[date]] = field(default_factory=dict)
     complete: Mapping[str, frozenset[date]] = field(default_factory=dict)
@@ -172,7 +166,7 @@ class Coverage:
             shop = slot(span.source_name)
             observed.setdefault(shop, set()).update(span.days)
             contexts.setdefault(shop, set()).add(span.context_id)
-            day = span.complete_day
+            day = None if shop in INCOMPLETE_CATALOGUE else span.complete_day
             if day is not None:
                 complete.setdefault((shop, span.context_id), set()).add(day)
         return cls(
@@ -304,6 +298,7 @@ def build_history_v2(  # noqa: PLR0913 - mirrors build_dataset_v2 plus the cover
     ulta_note: Mapping[str, str],
     scope: str = "beauty",
     producer_commit: str | None = None,
+    slots: Sequence[str] | None = None,
 ) -> Dataset:
     """The multi-day v2 dataset. ``days`` maps each market day to that day's rows only; a day
     with no rows is not a date."""
@@ -322,6 +317,7 @@ def build_history_v2(  # noqa: PLR0913 - mirrors build_dataset_v2 plus the cover
         ulta_note=ulta_note,
         scope=scope,
         producer_commit=producer_commit,
+        slots=slots,
     )
     groups = group_rows(tidy_rows(latest))
     key_of = {listing(row): key for key, rows in groups.items() for row in rows}
@@ -341,8 +337,8 @@ def build_history_v2(  # noqa: PLR0913 - mirrors build_dataset_v2 plus the cover
 
     pairs, unpaired = pair_groups(groups, matches)
     products = [
-        built((sephora, ulta_key), pair_token(ulta_key, sephora), (edge(match),))
-        for ulta_key, sephora, match in pairs
+        built((namer, other), pair_token(other, namer), (edge(match, (namer, other)),))
+        for other, namer, match in pairs
     ]
     products += [built((key,), key.stable_token) for key in unpaired]
     products.sort(key=lambda p: p.id)
