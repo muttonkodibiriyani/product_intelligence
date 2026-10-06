@@ -26,6 +26,7 @@ from pi_metrics.availability import Availability
 from pi_metrics.compare import Comparison
 from pi_metrics.coverage import Coverage
 from pi_metrics.index import PriceIndex
+from pi_metrics.insights import Insights
 from pi_metrics.launches import Launches
 from pi_metrics.pair_pricing import PriceSuggestions
 from pi_metrics.promotions import Promotions
@@ -72,6 +73,7 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
         {},
     ),
     "index": ("/index?retailers=shop_a,shop_b", Envelope[PriceIndex], {}),
+    "insights": ("/insights?retailers=shop_a,shop_b", Envelope[Insights], {}),
     "promotions": ("/promotions?minPct=10", Envelope[Promotions], {}),
     "assortment-gaps": (
         "/assortment-gaps?missingAt=shop_b&presentAt=shop_a",
@@ -198,7 +200,8 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
 
     Images are hotlinked, never copied or rehosted. img-product.sephora.me is the only host for
     PI-collected (sephora_me) images; media.alshaya.com is allowed solely to keep serving the
-    ulta_ae view live since 2026-10-01 (decision log, 2026-10-01).
+    ulta_ae view live since 2026-10-01 (decision log, 2026-10-01); www.faces.ae serves faces_ae's
+    images (owner approval, 2026-10-03).
     ``connect-src`` keeps the Firebase Auth and Storage hosts it already had. The assistant
     (switch-on build, App Check with reCAPTCHA Enterprise) adds exactly the reCAPTCHA script and
     frame paths, the App Check token exchange and the me-central1 callable host.
@@ -213,6 +216,7 @@ def test_the_csp_names_only_the_expected_external_hosts() -> None:
         "data:",
         "https://img-product.sephora.me",
         "https://media.alshaya.com",
+        "https://www.faces.ae",
     }
     assert external.pop("connect-src") == {
         "https://identitytoolkit.googleapis.com",

@@ -33,6 +33,7 @@ export function RowThumb({
   url,
   label,
   monogram: letters,
+  retailer,
   px = 48,
   cls = 'float-start me-3 size-12 rounded-ctl bg-surface-2',
 }: {
@@ -40,23 +41,25 @@ export function RowThumb({
   label: string;
   /** Letters to show instead of the icon when there is no image (see `monogram`). */
   monogram?: string;
+  /** When known, the image must be on this retailer's exact allowlisted host. */
+  retailer?: string;
   px?: number;
   cls?: string;
 }) {
-  const src = imageSrc(url);
+  const src = imageSrc(url, retailer);
   const [failed, setFailed] = useState<string | null>(null);
   if (!src || failed === src)
     return (
       <span
         role="img"
         aria-label={label}
-        className={`${cls} grid place-items-center ${letters ? 'text-ink-3' : 'text-line-3'}`}
+        className={`${cls} grid place-items-center bg-gradient-to-br from-surface-2 to-surface ${letters ? 'text-ink-2' : 'text-line-3'}`}
       >
         {letters ? (
           <span
             aria-hidden
             dir="auto"
-            className={`font-semibold tracking-wide ${px > 64 ? 'text-2xl' : 'text-xs'}`}
+            className={`grid aspect-square w-2/5 place-items-center rounded-full border border-line-2 bg-surface font-semibold tracking-wide shadow-sm ${px > 64 ? 'text-2xl' : 'text-xs'}`}
           >
             {letters}
           </span>
@@ -84,6 +87,7 @@ export function RowThumb({
       height={px}
       unoptimized
       loading="lazy"
+      decoding="async"
       referrerPolicy="no-referrer"
       onError={() => setFailed(src)}
       className={`${cls} object-contain`}

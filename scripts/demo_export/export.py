@@ -119,11 +119,7 @@ class ListingRow:
 
     @property
     def retailer(self) -> str:
-        if self.source_name.startswith("sephora"):
-            return "s"
-        if self.source_name.startswith("ulta"):
-            return "u"
-        raise ValueError(f"unsupported source {self.source_name!r}")
+        return slot(self.source_name)
 
     @property
     def effective_size(self) -> tuple[str | None, Decimal | None]:
@@ -157,6 +153,22 @@ class MatchRow:
     review_state: str
     #: A reviewer is recorded (the identity itself is never read or published, SEC-06).
     human: bool = False
+
+
+#: Source-name prefix -> v1 slot. ``f`` (Faces, 2026-10-03) is v2/v3 only: v1 stays u/s.
+SLOTS = {"sephora": "s", "ulta": "u", "faces": "f"}
+#: Pair naming preference: a matched pair is named by its first slot here (Sephora, as before).
+NAMING_ORDER = ("s", "f", "u")
+#: ``meta.retailers`` order (v2's ``RETAILERS``).
+SLOT_ORDER = ("u", "s", "f")
+
+
+def slot(source_name: str) -> str:
+    """The slot (``u``/``s``/``f``) of a source name."""
+    for prefix, key in SLOTS.items():
+        if source_name.startswith(prefix):
+            return key
+    raise ValueError(f"unsupported source {source_name!r}")
 
 
 # Owner decision for the pilot (2026-09-30): ulta.ae is blocked; the status line is data (CLI).
@@ -342,7 +354,14 @@ SELECT
   lc.description,
   lc.ingredients,
   latest.price_current AS price,
-  latest.price_regular_stated AS regular,
+  -- A full-price row is its own regular price: Sephora and Faces state a regular only on
+  -- promotional rows, and a null there would leave every full-price offer out of the
+  -- discount share's cohort (a false "every offer discounted").
+  CASE
+    WHEN latest.price_regular_stated IS NULL AND latest.price_type = 'full'
+    THEN latest.price_current
+    ELSE latest.price_regular_stated
+  END AS regular,
   latest.price_type,
   latest.availability_state AS availability,
   latest.rating_value AS rating,
@@ -361,9 +380,10 @@ SELECT
   latest.stock_run_id,
   -- The main image. Two element shapes are read: the Sephora loader's {role: 'main', url}, and
   -- the owner's ulta_ae load {roles: [..., 'image', ...], download_url} (download_url is the CDN
-  -- URL the live combined file carries; local_path is never read). Lowest position wins; no
-  -- element, or none with a URL, is NULL. v2 then keeps only the source's own host.
-  (
+  -- URL the live combined file carries; local_path is never read). Lowest position wins. With no
+  -- such element, the import's single labels.image_url (the faces_ae load) is the main image;
+  -- else NULL. v2 then keeps only the source's own host.
+  COALESCE((
     SELECT COALESCE(img ->> 'url', img ->> 'download_url')
     FROM jsonb_array_elements(
       CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
@@ -374,10 +394,11 @@ SELECT
       CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
       COALESCE(img ->> 'url', img ->> 'download_url')
     LIMIT 1
-  ) AS image,
+  ), NULLIF(lc.labels ->> 'image_url', '')) AS image,
   -- The gallery: every element of the same two shapes (role 'main' or 'alt'; roles holding
-  -- 'image'), swatches left out, in position order. v2 keeps only the source's own hosts.
-  ARRAY(
+  -- 'image'), swatches left out, in position order; with none, labels.image_url alone. v2 keeps
+  -- only the source's own hosts.
+  COALESCE(NULLIF(ARRAY(
     SELECT COALESCE(img ->> 'url', img ->> 'download_url')
     FROM jsonb_array_elements(
       CASE WHEN jsonb_typeof(lc.labels -> 'images') = 'array' THEN lc.labels -> 'images' END
@@ -390,7 +411,7 @@ SELECT
     ORDER BY
       CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
       COALESCE(img ->> 'url', img ->> 'download_url')
-  ) AS images
+  ), '{}'), ARRAY_REMOVE(ARRAY[NULLIF(lc.labels ->> 'image_url', '')], NULL)) AS images
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id
@@ -548,6 +569,7 @@ def invalid_prices(rows: Iterable[ListingRow]) -> dict[str, int]:
     """Listing rows per retailer slot whose price is at or below ``PRICE_FLOOR`` (run log)."""
     counts = dict.fromkeys(("u", "s"), 0)
     for row in rows:
+        counts.setdefault(row.retailer, 0)
         if row.price is not None and not valid_price(row.price):
             counts[row.retailer] += 1
     return counts
@@ -636,8 +658,11 @@ def product_for_group(key: GroupKey, rows: Sequence[ListingRow]) -> dict[str, An
 def pair_groups(
     groups: Mapping[GroupKey, Sequence[ListingRow]], matches: Sequence[MatchRow]
 ) -> tuple[list[tuple[GroupKey, GroupKey, MatchRow]], list[GroupKey]]:
-    """Exact, same-size Ulta/Sephora pairs (best score first, each group used once), and the
-    groups left unpaired in stable-token order. Shared by the v1 and v2 builders."""
+    """Exact, same-size pairs of two retailers (best score first, each group used once), and the
+    groups left unpaired in stable-token order. Shared by the v1 and v2 builders.
+
+    A pair is ``(other, namer)``: the namer is the side first in ``NAMING_ORDER`` (Sephora for
+    Ulta/Sephora, as before), so any two retailers pair and no pair assumes which two."""
     by_variant = {row.variant_id: key for key, rows in groups.items() for row in rows}
     candidates: dict[tuple[GroupKey, GroupKey], MatchRow] = {}
     for match in matches:
@@ -647,7 +672,8 @@ def pair_groups(
         right = by_variant.get(match.variant_b)
         if left is None or right is None or left.retailer == right.retailer:
             continue
-        pair = (left, right) if left.retailer == "u" else (right, left)
+        namer = min((left, right), key=lambda k: NAMING_ORDER.index(k.retailer))
+        pair = (right, namer) if namer is left else (left, namer)
         if (
             pair[0].size_unit is None
             or pair[0].size_value is None
@@ -669,11 +695,11 @@ def pair_groups(
             item[0][1].stable_token,
         ),
     )
-    for (ulta_key, sephora_key), match in ordered:
-        if ulta_key in used or sephora_key in used:
+    for (other, namer), match in ordered:
+        if other in used or namer in used:
             continue
-        pairs.append((ulta_key, sephora_key, match))
-        used.update((ulta_key, sephora_key))
+        pairs.append((other, namer, match))
+        used.update((other, namer))
     unpaired = [
         key for key in sorted(groups, key=lambda item: item.stable_token) if key not in used
     ]
@@ -833,6 +859,19 @@ def contains_secret(value: Any) -> bool:
     return False
 
 
+def export_slots(sources: Sequence[str]) -> tuple[str, ...]:
+    """The retailers a v2 file lists for ``--sources``: Ulta and Sephora together as before (Ulta
+    is the owner's statement even when not exported), any other source on its own."""
+    named = {slot(source) for source in sources}
+    legacy = bool(named & {"u", "s"})
+    return tuple(s for s in SLOT_ORDER if (legacy and s in {"u", "s"}) or s in named)
+
+
+def v1_rows(rows: Iterable[ListingRow]) -> list[ListingRow]:
+    """v1 (the legacy dashboard) carries Ulta and Sephora only; another slot is v2/v3 only."""
+    return [row for row in rows if row.retailer in ("u", "s")]
+
+
 def retailer_status(rows: Sequence[ListingRow], retailer: str) -> str:
     source_rows = [row for row in rows if row.retailer == retailer]
     if not source_rows:
@@ -852,6 +891,7 @@ def build_dataset(
     ulta_early: Sequence[dict[str, Any]] = (),
     ulta: UltaContext,
 ) -> dict[str, Any]:
+    rows = v1_rows(rows)
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
     from scripts.demo_export.tidy import tidy_rows  # noqa: PLC0415 - tidy imports ListingRow
@@ -1142,6 +1182,35 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must not be empty")
 
 
+def build_v1(
+    args: argparse.Namespace,
+    rows: Sequence[ListingRow],
+    matches: Sequence[MatchRow],
+    early: Sequence[dict[str, Any]],
+    generated_at: datetime,
+) -> dict[str, Any] | None:
+    """The v1 dataset, or ``None`` for a Faces-only export (an ADR-0010 per-source file): v1 is
+    Ulta/Sephora only, and such an export must then write v2 or v3."""
+    if not v1_rows(rows) and not early:
+        if args.output_v2 is None and args.output_v3 is None:
+            raise SystemExit(f"--sources {','.join(args.sources)} has no v1: pass --output-v2/v3")
+        return None
+    return build_dataset(
+        rows,
+        matches,
+        generated_at=generated_at,
+        ulta_early=early,
+        ulta=UltaContext(
+            blocked_since=parse_utc(args.ulta_blocked_since),
+            blocked=not args.ulta_unblocked,
+            recon_observed_count=args.ulta_recon_observed_count,
+            recon_source=args.ulta_recon_source,
+            blocked_note=args.ulta_blocked_note or ULTA_BLOCKED_NOTE,
+            blocked_note_ar=args.ulta_blocked_note_ar or ULTA_BLOCKED_NOTE_AR,
+        ),
+    )
+
+
 def main() -> None:
     args = parser().parse_args()
     check_args(args)
@@ -1156,20 +1225,9 @@ def main() -> None:
             )
         )
     generated_at = parse_utc(args.generated_at) if args.generated_at else datetime.now(UTC)
-    dataset = build_dataset(
-        rows,
-        matches,
-        generated_at=generated_at,
-        ulta_early=early,
-        ulta=UltaContext(
-            blocked_since=parse_utc(args.ulta_blocked_since),
-            blocked=not args.ulta_unblocked,
-            recon_observed_count=args.ulta_recon_observed_count,
-            recon_source=args.ulta_recon_source,
-            blocked_note=args.ulta_blocked_note or ULTA_BLOCKED_NOTE,
-            blocked_note_ar=args.ulta_blocked_note_ar or ULTA_BLOCKED_NOTE_AR,
-        ),
-    )
+    slots = export_slots(args.sources)
+    dataset = build_v1(args, rows, matches, early, generated_at)
+    ulta_note = dataset["meta"]["retailers"][0]["note"] if dataset is not None else {}
     if args.output_v2 is not None or args.output_v3 is not None:
         # Build v2 (and v3) first: if the contract refuses the data, no file is written.
         from pi_dataset import dump_dataset, load_any, load_dataset  # noqa: PLC0415
@@ -1200,9 +1258,10 @@ def main() -> None:
                 matches,
                 generated_at=generated_at,
                 ulta=v2_ulta,
-                ulta_note=dataset["meta"]["retailers"][0]["note"],
+                ulta_note=ulta_note,
                 scope=args.scope,
                 producer_commit=args.producer_commit,
+                slots=slots,
             )
             v2_rows = latest_rows(days)
             complete = {s: sorted(d.isoformat() for d in v) for s, v in cover.complete.items()}
@@ -1217,10 +1276,11 @@ def main() -> None:
                 matches,
                 generated_at=generated_at,
                 ulta=v2_ulta,
-                ulta_note=dataset["meta"]["retailers"][0]["note"],
+                ulta_note=ulta_note,
                 ulta_early=early,
                 scope=args.scope,
                 producer_commit=args.producer_commit,
+                slots=slots,
             )
         body = dump_dataset(v2)
         load_dataset(body)  # the publisher's strict load, credential scan included
@@ -1230,11 +1290,14 @@ def main() -> None:
             load_any(body_v3)  # the same strict load, as v3
             v3_groups = v3_bytes_by_group(v3, len(body_v3))
             check_v3_size(len(body_v3), v3_groups)
-    write_json(args.output, dataset)
-    print(
-        f"wrote {len(dataset['products'])} products to {args.output} "
-        f"sha256={sha256(args.output)} cutoff={dataset['meta']['cutoff']}"
-    )
+    if dataset is None:
+        print(f"v1 not written to {args.output}: no Ulta/Sephora rows in {args.sources}")
+    else:
+        write_json(args.output, dataset)
+        print(
+            f"wrote {len(dataset['products'])} products to {args.output} "
+            f"sha256={sha256(args.output)} cutoff={dataset['meta']['cutoff']}"
+        )
     if args.output_v2 is not None:
         write_bytes(args.output_v2, body)
         print(
