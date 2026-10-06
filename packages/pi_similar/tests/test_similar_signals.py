@@ -1,5 +1,6 @@
 """Signals are in [0, 1] or absent; absent ones are never imputed."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -104,6 +105,45 @@ def test_price_is_absent_without_a_unit_price() -> None:
     found = _fragrances(["10.00", "20.00", "30.00", "40.00", "50.00"])
     unpriced = items([dataset([Prod("x", "Bloom EDP", ["Fragrance"], {NORTH: Off(None)})])])[0]
     assert price(found[0], unpriced, PriceBands.of(found)) == (None, None)
+
+
+def _priced(offers: list[Off]) -> tuple[Item, ...]:
+    """Fragrance items, alternating retailers, one per offer."""
+    retailers = (NORTH, SOUTH)
+    return items(
+        [
+            dataset(
+                [
+                    Prod(f"p{i}", "Bloom EDP", ["Fragrance"], {retailers[i % 2]: o})
+                    for i, o in enumerate(offers)
+                ]
+            )
+        ]
+    )
+
+
+AMOUNTS = ["10.00", "20.00", "30.00", "40.00", "50.00"]
+
+
+def test_price_is_absent_across_currencies() -> None:
+    # One dataset has one market currency, so the SAR items are the same items re-priced in SAR.
+    aed_items = _priced([Off(a) for a in AMOUNTS])
+    found = (*aed_items, *(replace(it, currency="SAR") for it in aed_items))
+    aed, sar = found[0], found[len(AMOUNTS)]
+    bands = PriceBands.of(found)
+    assert bands.band(aed) == bands.band(sar)  # each currency has bands, and the same one
+    assert price(aed, sar, bands) == (None, None)
+
+
+def test_price_is_absent_across_price_bases() -> None:
+    found = _priced([Off(a) for a in AMOUNTS] + [Off(a, size=("50", "g")) for a in AMOUNTS])
+    ml, g = found[0], found[len(AMOUNTS)]
+    assert ml.unit_price is not None
+    assert g.unit_price is not None
+    assert ml.unit_price.basis is not g.unit_price.basis
+    bands = PriceBands.of(found)
+    assert bands.band(ml) == bands.band(g)  # each basis has bands, and the same one
+    assert price(ml, g, bands) == (None, None)
 
 
 def _one(name: str, **attrs: str) -> Item:

@@ -90,6 +90,30 @@ def test_departments_never_cross_and_items_without_one_are_left_out() -> None:
     assert "s-lip" not in listed  # a lipstick with nothing to compete with at the other side
 
 
+def test_no_candidate_from_another_department() -> None:
+    def prods(retailer: str, tag: str, name: str, category: str) -> list[Prod]:
+        return [
+            Prod(f"{tag}{i}", f"Brand{i} Rose {name} for Women", [category],
+                 {retailer: Off(PRICES[i])}, brand=f"Brand{i}")
+            for i in range(3)
+        ]  # fmt: skip
+
+    doc = dataset(
+        [
+            *prods(NORTH, "n-lip", "Lipstick", "Makeup"),
+            *prods(SOUTH, "s-lip", "Lipstick", "Makeup"),
+            *prods(NORTH, "n-edp", "Eau de Parfum", "Fragrance"),
+            *prods(SOUTH, "s-edp", "Eau de Parfum", "Fragrance"),
+        ]
+    )
+    found = _build(doc)
+    assert found.similar  # same-department pairs are found
+    for entry in found.similar:
+        prefix = entry.product[2:5]  # "lip" or "edp"
+        assert entry.competitors
+        assert {c.product[2:5] for c in entry.competitors} == {prefix}, entry.product
+
+
 def test_an_empty_catalogue_gives_an_empty_file() -> None:
     doc = dataset([Prod("g", "Gift Card", ["Gifts"], {NORTH: Off()})])
     assert _build(doc).similar == ()
