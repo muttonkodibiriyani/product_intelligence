@@ -918,6 +918,16 @@ export interface components {
             /** N */
             n: number;
         };
+        /**
+         * CompareRows
+         * @enum {string}
+         */
+        CompareRows: "all" | "overlap";
+        /**
+         * CompareSort
+         * @enum {string}
+         */
+        CompareSort: "name" | "gap";
         /** CompareSummary */
         CompareSummary: {
             basket: components["schemas"]["Basket"];
@@ -1893,6 +1903,9 @@ export interface components {
             gap: components["schemas"]["Gap"] | null;
             /** Id */
             id: string;
+            /** Image */
+            image?: string | null;
+            match?: components["schemas"]["RowMatch"] | null;
             /** Name */
             name: string;
             otherPrice: components["schemas"]["MoneyValue"] | null;
@@ -2329,6 +2342,19 @@ export interface components {
         ReviewsSummary: {
             /** Retailers */
             retailers: components["schemas"]["RetailerReviews"][];
+        };
+        /**
+         * RowMatch
+         * @description The edge between the pair's two retailers, verbatim; null on a one-retailer pair.
+         */
+        RowMatch: {
+            /** Confidence */
+            confidence: string | null;
+            decidedBy: components["schemas"]["DecidedBy"] | null;
+            matchClass: components["schemas"]["MatchClass"];
+            /** Method */
+            method: string;
+            reviewState: components["schemas"]["ReviewState"];
         };
         /** ScopeRef */
         ScopeRef: {
@@ -3373,6 +3399,10 @@ export interface operations {
                 id?: string[];
                 date?: string | null;
                 groupBy?: components["schemas"]["GroupBy"] | null;
+                /** @description API 1.19.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that are only unreviewed (counted=false, excludedReason match_unreviewed) and pass the rest of the ladder priced on both sides; only this value gives such a pair its gap (all keeps it null). total, limit and truncated apply to these rows; summary, groups, sides and cohort are unchanged (counted rows only). */
+                rows?: components["schemas"]["CompareRows"];
+                /** @description API 1.19.0, applied before limit. name: by name, then id. gap: largest |gap.pct| first (with rows=overlap an unreviewed row's gap included), rows without a gap last, then id. Unset: rows in dataset order, or with limit the largest counted |gap.pct| first. */
+                sort?: components["schemas"]["CompareSort"] | null;
             };
             header?: never;
             path?: never;
@@ -3990,7 +4020,7 @@ export interface operations {
                 attr?: string[];
                 /** @description API 1.22.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
                 availability?: components["schemas"]["StockFilter"][];
-                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (every observed listing of the brand out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
                 unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
             };
             header?: never;
@@ -4814,7 +4844,7 @@ export interface operations {
                 attr?: string[];
                 /** @description API 1.22.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
                 availability?: components["schemas"]["StockFilter"][];
-                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (every observed listing of the brand out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
                 unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
                 limit?: number;
                 cursor?: string | null;

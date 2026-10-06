@@ -43,6 +43,14 @@
           "pct": "25.0"
         },
         "id": "p05",
+        "image": null,
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "locked"
+        },
         "name": "Product p05",
         "otherPrice": {
           "amount": "100.00",
@@ -73,6 +81,14 @@
           "pct": "11.1"
         },
         "id": "p01",
+        "image": null,
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
         "name": "Product p01",
         "otherPrice": {
           "amount": "100.00",
@@ -103,6 +119,14 @@
           "pct": "-9.1"
         },
         "id": "p03",
+        "image": null,
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "locked"
+        },
         "name": "Product p03",
         "otherPrice": {
           "amount": "100.00",
@@ -189,7 +213,8 @@
     "endpoint": "compare",
     "filters": {
       "limit": 3,
-      "retailers": "shop_a,shop_b"
+      "retailers": "shop_a,shop_b",
+      "rows": "all"
     },
     "generation": "1790000000000000000",
     "market": "AE",

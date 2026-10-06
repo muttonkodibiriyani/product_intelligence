@@ -66,6 +66,8 @@ class Settings(PiModel):
     #: Per source (retailer id), the object whose part for that source is served (ADR-0010).
     #: Same-scope sources are composed into one view.
     sources: Mapping[str, str] = Field(default_factory=dict)
+    #: ``PI_API_MATCHES``: a ``pi.matches/v1`` file applied to the composed views (ADR-0012 §6).
+    matches: str | None = None
     #: Optional SKU identities and galleries; these never change the price dataset's cutoff.
     catalogues: tuple[str, ...] = ()
     #: GCS bucket holding ``datasets``; ``None`` reads them from ``local_dir`` (dev and tests).
@@ -89,6 +91,9 @@ class Settings(PiModel):
         if not self.datasets and not self.sources:
             msg = "PI_API_DATASETS names no dataset"
             raise ValueError(msg)
+        if self.matches is not None and not self.sources:
+            msg = "PI_API_MATCHES applies to per-source views: set source=path in PI_API_DATASETS"
+            raise ValueError(msg)
         both = sorted(set(self.datasets) & set(self.sources.values()))
         if both:
             msg = f"PI_API_DATASETS serves {both} both whole and per source"
@@ -105,6 +110,10 @@ class Settings(PiModel):
             if not _OBJECT.match(path) or ".." in path:
                 msg = f"dataset/catalogue entry {path!r} is not a plain .json object path"
                 raise ValueError(msg)
+        matches = env.get("PI_API_MATCHES", "").strip() or None
+        if matches is not None and (not _OBJECT.match(matches) or ".." in matches):
+            msg = f"PI_API_MATCHES {matches!r} is not a plain .json object path"
+            raise ValueError(msg)
         bucket = env.get("PI_API_BUCKET") or None
         local_dir = env.get("PI_API_LOCAL_DIR") or None
         if (bucket is None) == (local_dir is None):
@@ -114,6 +123,7 @@ class Settings(PiModel):
             project_id=env.get("PI_API_FIREBASE_PROJECT", ""),
             datasets=datasets,
             sources=sources,
+            matches=matches,
             catalogues=catalogues,
             bucket=bucket,
             local_dir=local_dir,

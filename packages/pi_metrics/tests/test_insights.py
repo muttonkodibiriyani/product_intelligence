@@ -19,7 +19,8 @@ from metrics_fixture import (
 )
 from pi_core import AvailabilityState, ReviewState
 from pi_dataset import Dataset, DatasetV3, Product, Size
-from pi_dataset.models import FieldStatus
+from pi_dataset.models import FieldStatus, MoneyValue
+from pi_dataset.v3 import ProductV3
 from pi_metrics import view
 from pi_metrics.insights import (
     CATEGORIES_LISTED,
@@ -28,6 +29,7 @@ from pi_metrics.insights import (
     Policy,
     ValueBasis,
     ValuePicks,
+    _on_sale,
     insights,
     policy,
 )
@@ -206,6 +208,7 @@ def test_brand_stockouts_are_counts_apart_from_brands_the_source_reports_unavail
         *(_stocked(f"f{n}", "Few", OUT) for n in range(2)),
         _stocked("f-in", "Few", IN),
         _stocked("gone", "Gone", AvailabilityState.REMOVED),  # not an observed stock state
+        _stocked("solo", "Solo", OUT),  # one listing out: an ordinary stock-out, not unavailable
     ]
     by = {s.retailer: s for s in insights(_with(rows), A, B).data.stockouts}
     a = by[A]
@@ -214,8 +217,8 @@ def test_brand_stockouts_are_counts_apart_from_brands_the_source_reports_unavail
         ("Big", 7, 8),
         ("Half", 6, 12),
     ]
-    assert (a.qualifying, a.suppressed) == (2, 1)  # Few: two out, not listed
-    assert (a.listed, a.with_stock, a.out_of_stock) == (32, 30, 15)  # 7 + 6 + 2, partly out only
+    assert (a.qualifying, a.suppressed) == (2, 2)  # Few and Solo: out, too few to list
+    assert (a.listed, a.with_stock, a.out_of_stock) == (33, 31, 16)  # 7 + 6 + 2 + 1, partly out
     assert (a.unavailable_brands, a.unavailable_listings) == (2, 7)  # Whole and Tiny
     assert [(r.brand, r.out_of_stock, r.observed) for r in a.unavailable] == [("Whole", 5, 5)]
     assert (by[B].brands, by[B].listed, by[B].unavailable) == ((), 0, ())
@@ -393,6 +396,15 @@ def _pick(
     )
 
 
+def _in_usd(p: ProductV3) -> ProductV3:
+    """``p`` with its A offer, prices included, in USD (the market currency is AED)."""
+    o = p.offers[A]
+    usd = tuple(None if m is None else MoneyValue.of(m.decimal(), "USD") for m in o.series.price)
+    series = o.series.model_copy(update={"price": usd})
+    o = o.model_copy(update={"currency": "USD", "series": series})
+    return p.model_copy(update={"offers": {A: o}})
+
+
 def _value_a(rows: list[Product]) -> ValuePicks:
     return next(v for v in insights(_with(rows), A, B).data.value if v.retailer == A)
 
@@ -534,3 +546,24 @@ def test_a_ladder_exception_says_which_size_is_on_sale() -> None:
     a = next(lad for lad in insights(_with(rows), A, B).data.ladders if lad.retailer == A)
     flags = {s.name: (s.smaller_on_sale, s.larger_on_sale) for s in a.exceptions}
     assert flags == {"Large Sale": (False, True), "Small Sale": (True, False)}
+
+
+def test_an_offer_outside_the_market_currency_is_not_in_the_value_cohort() -> None:
+    """A dataset rejects an off-market offer; the guard still holds if one slips through."""
+    rows = [_pick(f"s{n}", f"Night Cream {n}", price=f"{20 + n}.00") for n in range(5)]
+    ds = view.as_v3(_with([*rows, _pick("usd", "Dollar Cream", price="1.00")]))
+    *kept, cheap = ds.products  # the cheapest and best rated, moved to USD unvalidated
+    ds = ds.model_copy(update={"products": (*kept, _in_usd(cheap))})
+    a = next(v for v in insights(ds, A, B).data.value if v.retailer == A)
+    (row,) = a.categories
+    assert (row.priced, row.median.amount) == (5, "22.00")
+    assert "usd" not in {i.id for i in row.items}
+
+
+def test_a_regular_price_in_another_currency_is_not_a_sale() -> None:
+    """A dataset rejects mixed currencies in one offer; the guard still holds on its own."""
+    sale = product("p", {A: offer(A, ["50.00"] * 3, regular=["60.00"] * 3)})
+    (v3,) = view.as_v3(_with([sale])).products
+    o = v3.offers[A]
+    assert _on_sale(o, MoneyValue.of(Decimal("50.00"), "AED"), 0)
+    assert not _on_sale(o, MoneyValue.of(Decimal("50.00"), "USD"), 0)  # AED 60 vs USD 50
