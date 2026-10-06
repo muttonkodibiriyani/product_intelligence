@@ -55,7 +55,8 @@ gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_leve
 - **Hosting → Cloud Run in me-central1** is supported (Infra confirmed; design §11 Q1). If a
   Hosting deploy still rejects the rewrite, stop and report it (stop rule).
 - Note the datasets to serve: the object paths `publish_dataset.py` writes under `datasets/`
-  (e.g. `datasets/ae/beauty/latest.json`). They become `PI_API_DATASETS`.
+  (e.g. `datasets/ae/beauty/latest.json`). They become `PI_API_DATASETS` on a first deploy; later
+  deploys take the live value (§6).
   With per-source files (API ≥ 1.10.0, ADR-0010), assign each source to its file instead, e.g.
   `sephora_me=datasets/ae/sephora_me/latest.json,ulta_ae=datasets/ae/beauty/latest.json`. Don't
   also list one of those paths bare in the same scope.
@@ -103,13 +104,32 @@ Deploy by digest, not by tag.
 
 ## 6. Deploy
 
+`PI_API_DATASETS` comes from the live service, not from this doc: the served files move
+(per-source files, the matched file), and `--set-env-vars` replaces every variable. Set
+`DATASETS` to the value you mean to serve (the paths from §2 on a first deploy), then run:
+
+```sh
+LIVE_DATASETS=$(gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
+  --format=json 2>/dev/null | python3 -c 'import json,sys
+c = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0]
+print(next((e.get("value", "") for e in c.get("env", []) if e["name"] == "PI_API_DATASETS"), ""))')
+test -n "$DATASETS" && { test "$DATASETS" = "$LIVE_DATASETS" \
+  || { test "$FIRST_DEPLOY" = 1 && test -z "$LIVE_DATASETS"; }; } \
+  && echo "PI_API_DATASETS ok: $DATASETS" \
+  || echo "STOP: PI_API_DATASETS live=[$LIVE_DATASETS] wanted=[$DATASETS]"
+```
+
+On STOP, do not deploy. Either take the live value (`DATASETS=$LIVE_DATASETS`) or treat the
+difference as a dataset switch with its own approval and its own before/after diff. Only a first
+deploy (no service yet) sets `FIRST_DEPLOY=1`; a failed describe otherwise STOPs.
+
 ```sh
 gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
   --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
   --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
-  --set-env-vars="^@^PI_API_FIREBASE_PROJECT=$PROJECT@PI_API_BUCKET=$BUCKET@PI_API_DATASETS=<paths from §2>@PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me,ulta_ae=www.ulta.ae@PI_API_IMAGE_HOSTS=sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com"
+  --set-env-vars="^@^PI_API_FIREBASE_PROJECT=$PROJECT@PI_API_BUCKET=$BUCKET@PI_API_DATASETS=$DATASETS@PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me,ulta_ae=www.ulta.ae@PI_API_IMAGE_HOSTS=sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com"
 ```
 
 This full form is for a first deploy or a deliberate config change only. The values above are the
