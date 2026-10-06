@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,37 @@ def test_price_without_currency_is_unknown_not_aed(db: str, tmp_path: Path) -> N
             " WHERE l.source_listing_key = '5001'"
         ).fetchone()
         assert row == (None, None, "unknown")
+
+
+@pytest.mark.parametrize(
+    ("pid", "sale", "expected"),
+    [
+        ("P701", "$undefined", (Decimal("99.95"), None, "full", "AED", None)),
+        ("P702", "$83:props:offers", (None, None, None, None, "unknown")),
+        ("P703", "on sale", (None, None, None, None, "unknown")),
+        ("P704", {"value": 80}, (None, None, None, None, "unknown")),
+        ("P705", [80], (None, None, None, None, "unknown")),
+    ],
+)
+def test_a_reduced_price_left_as_a_reference_makes_the_price_unknown(
+    db: str, tmp_path: Path, pid: str, sale: Any, expected: tuple[Any, ...]
+) -> None:
+    d = details(pid)
+    d["currency"] = "AED"
+    d["c_variantsInfo"][0] |= {"c_price": 99.95, "c_salesPrice": sale}
+    root = _folder(tmp_path / "ref", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec(pid, "en", d)])
+    with psycopg.connect(db) as conn:
+        stats = _load(conn, root)
+        assert stats.get("sale_price_unreadable", 0) == (0 if expected[4] is None else 1)
+        row = conn.execute(
+            "SELECT o.price_current, o.price_promo, o.price_type, o.currency,"
+            " o.field_state ->> 'price_current'"
+            " FROM offer_observation o JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key = %s",
+            (f"{pid[1:]}1",),
+        ).fetchone()
+        assert row == expected
 
 
 def test_prices_are_read_as_exact_decimals(db: str, tmp_path: Path) -> None:

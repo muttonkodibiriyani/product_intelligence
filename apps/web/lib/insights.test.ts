@@ -5,6 +5,7 @@ import {
   insightsServed,
   barPct,
   deepestUndercut,
+  defaultPair,
   forPair,
   gapScale,
   policyColumns,
@@ -87,5 +88,21 @@ describe('insights helpers', () => {
     expect(insightsServed({ meta: { apiVersion: '1.17.0' } })).toBe(false);
     expect(insightsServed({ meta: { apiVersion: '1.18.0' } })).toBe(true);
     expect(insightsServed(undefined)).toBeUndefined();
+  });
+});
+
+describe('defaultPair', () => {
+  it.each([
+    [['faces_ae', 'sephora_me', 'ulta_ae'], { base: 'ulta_ae', other: 'sephora_me' }],
+    [['faces_ae', 'ulta_ae'], { base: 'ulta_ae', other: 'faces_ae' }],
+    [['sephora_me', 'faces_ae'], { base: 'sephora_me', other: 'faces_ae' }],
+    [['shop_a', 'shop_b', 'shop_c'], { base: 'shop_a', other: 'shop_b' }],
+  ])('opens %j on %j', (active, pair) => {
+    expect(defaultPair(active)).toEqual(pair);
+  });
+
+  it('has no pair below two shops', () => {
+    expect(defaultPair(['ulta_ae'])).toBeNull();
+    expect(defaultPair([])).toBeNull();
   });
 });

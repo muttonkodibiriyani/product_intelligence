@@ -105,6 +105,30 @@ def test_preparation_preserves_money_gaps_and_original_times(tmp_path: Path) -> 
     assert child["stock_observed_at"] == "2026-10-01T00:24:00+00:00"
 
 
+@pytest.mark.parametrize(
+    ("stock", "availability"),
+    [
+        ({"in_stock": True}, "in_stock"),
+        ({"in_stock": True, "stock_data": {"few_in_stock": True}}, "low_stock"),
+        ({"in_stock": False}, "out_of_stock"),
+        ({"in_stock": False, "stock_data": {"few_in_stock": True}}, "out_of_stock"),
+        ({}, "unknown"),
+        ({"in_stock": None}, "unknown"),
+        ({"in_stock": "false"}, "unknown"),
+        ({"in_stock": 0}, "unknown"),
+    ],
+)
+def test_availability_is_the_source_reported_stock_state(
+    tmp_path: Path, stock: dict[str, Any], availability: str
+) -> None:
+    """Only an explicit ``in_stock: false`` is out of stock; anything not a bool is unknown."""
+    record = source_record("sku", stock={**stock, "checked_at": "2026-10-01T00:24:00Z"})
+    folder = tmp_path / "prepared"
+    prepare(feed(tmp_path, [record]), folder)
+    (item,) = json.loads((folder / "ulta-import.json").read_text())
+    assert item["availability"] == availability
+
+
 def test_missing_capture_requires_evidence_and_duplicates_fail(tmp_path: Path) -> None:
     item = source_record("search-only", provenance={}, stock={})
     source = feed(tmp_path, [item])
