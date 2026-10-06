@@ -14,13 +14,14 @@
   },
   "devDependencies": {
     "jks-js": "file:./stubs/jks-js",
-    "promptfoo": "0.123.1"
+    "promptfoo": "0.124.0"
   },
   "overrides": {
     "basic-ftp": "^6.2.1",
     "jks-js": "$jks-js",
     "nunjucks": {
       "chokidar": "^4.0.3"
-    }
+    },
+    "smol-toml": "^1.9.0"
   }
 }
