@@ -1,0 +1,19 @@
+[project]
+name = "pi-similar"
+version = "0.1.0"
+description = "Similar / competing products across retailers: a separate signal, never an identity match"
+requires-python = ">=3.12"
+dependencies = [
+  "pi-core",
+  "pi-dataset",
+  "pi-match",
+  "pydantic>=2.9",
+  "numpy>=2.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pi_similar"]
