@@ -20,11 +20,11 @@ describe('described', () => {
   it("puts the chart's own label in ECharts' aria description, keeping the rest of aria", () => {
     const o = described(
       { aria: { enabled: true }, series: [] },
-      'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقات.',
+      'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقًا.',
     );
     expect(o.aria).toEqual({
       enabled: true,
-      label: { description: 'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقات.' },
+      label: { description: 'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقًا.' },
     });
     expect(o.series).toEqual([]);
   });
