@@ -13,7 +13,6 @@ import pytest
 
 from pi_dataset import RetailerStatus, dump_dataset, load_any, load_dataset
 from pi_metrics import ProductFilter, launches
-from pi_metrics.model import Reason
 from scripts.demo_export.export import (
     ListingRow,
     UltaContext,
@@ -24,7 +23,7 @@ from scripts.demo_export.export import (
     pair_groups,
     slot,
 )
-from scripts.demo_export.history import Coverage, build_history_v2
+from scripts.demo_export.history import Coverage, RunSpan, build_history_v2
 from scripts.demo_export.test_export import match, row
 from scripts.demo_export.test_history import D1, D2, D3, NOTE, at, span
 from scripts.demo_export.test_history import NOW as LATER
@@ -176,7 +175,7 @@ def test_export_slots(sources: tuple[str, ...], slots: tuple[str, ...]) -> None:
     assert export_slots(sources) == slots
 
 
-# ---------------------------------------------------------------- history: never a complete day
+# ------------------------------------- history: complete only on a run that read the whole sitemap
 
 
 def faces_seen(day: date, variant: int) -> ListingRow:
@@ -186,30 +185,61 @@ def faces_seen(day: date, variant: int) -> ListingRow:
     )
 
 
-def test_faces_history_has_no_complete_day_so_no_launch() -> None:
-    spans = [span(d, source=FACES) for d in (D1, D2, D3)]  # succeeded and supported
-    assert Coverage.of(spans).complete == {"f": frozenset()}
-    days = {
-        D1: [faces_seen(D1, 300)],
-        D2: [faces_seen(D2, 300)],
-        D3: [faces_seen(D3, 300), faces_seen(D3, 301)],
-    }
+def faces_span(day: date, status: str, *, last: datetime | None = None) -> RunSpan:
+    """A Faces import run: its context keeps the importer's ``partial`` coverage."""
+    return replace(
+        span(day, source=FACES),
+        status=status,
+        coverage_status="partial",
+        last_at=last or at(day, 12),
+    )
+
+
+DAYS = {
+    D1: [faces_seen(D1, 300)],
+    D2: [faces_seen(D2, 300)],
+    D3: [faces_seen(D3, 300), faces_seen(D3, 301)],
+}
+
+
+def history(spans: list[RunSpan]) -> Any:
+    cover = Coverage.of(spans)
     ds = build_history_v2(
-        days,
-        Coverage.of(spans),
-        [],
-        generated_at=LATER,
-        ulta=BLOCKED,
-        ulta_note=NOTE,
-        slots=("f",),
+        DAYS, cover, [], generated_at=LATER, ulta=BLOCKED, ulta_note=NOTE, slots=("f",)
     )
     load_dataset(dump_dataset(ds))
+    return ds
+
+
+def test_a_blocked_or_cut_short_faces_run_is_partial_and_backs_no_launch() -> None:
+    spans = [faces_span(D1, "succeeded"), faces_span(D2, "partial"), faces_span(D3, "partial")]
+    assert Coverage.of(spans).complete == {"f": frozenset({D1})}
+    ds = history(spans)
     (shop,) = ds.meta.retailers
-    assert shop.status is RetailerStatus.PARTIAL
-    assert [(w.start, w.end) for w in ds.not_observed] == [(D1, D3)]
+    assert shop.status is RetailerStatus.PARTIAL  # the latest day is not complete
+    assert [(w.start, w.end) for w in ds.not_observed] == [(D2, D3)]
     found = launches(ds, (), ProductFilter())
     assert found.data.items == ()
-    assert found.reason in {Reason.RETAILER_PARTIAL, Reason.CAPABILITY_OFF, None}
+
+
+def test_faces_runs_that_read_the_whole_sitemap_back_launches() -> None:
+    ds = history([faces_span(d, "succeeded") for d in (D1, D2, D3)])
+    (shop,) = ds.meta.retailers
+    assert (shop.status, shop.since) == (RetailerStatus.SUPPORTED, D1)
+    assert ds.not_observed == ()
+    found = launches(ds, (), ProductFilter())
+    assert [(i.retailer, i.first_seen) for i in found.data.items] == [(FACES, D3)]
+
+
+def test_a_launch_needs_the_day_before_complete_too() -> None:
+    spans = [faces_span(D1, "succeeded"), faces_span(D2, "partial"), faces_span(D3, "succeeded")]
+    found = launches(history(spans), (), ProductFilter())
+    assert found.data.items == ()  # D2, the day before 301 appeared, was not complete
+
+
+def test_a_succeeded_faces_run_over_two_market_days_is_not_a_complete_day() -> None:
+    across = faces_span(D1, "succeeded", last=at(D2, 1))
+    assert Coverage.of([across]).complete == {"f": frozenset()}
 
 
 def test_one_concentration_across_a_products_offers_is_an_attribute() -> None:
