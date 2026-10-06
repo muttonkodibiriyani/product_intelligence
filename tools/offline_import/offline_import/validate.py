@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from offline_import.mapping import ImportMapping, is_http_url
+from offline_import.mapping import LIST_FIELDS, ImportMapping, is_http_url
 from offline_import.readers import NumberedRow, Row, read_rows
 from pi_core import AvailabilityState, is_valid_gtin
 
@@ -39,6 +39,8 @@ class ImportRow:
     price_promo: Decimal | None
     stock_qty: int | None
     text: dict[str, str | None]  # sku, gtin, url, name, name_ar, brand, category_path, ...
+    #: badges, promotions, image_urls: each item stripped, blanks and repeats left out
+    lists: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass
@@ -109,6 +111,17 @@ def _text(value: object) -> str | None:
         return None
     text = str(value).lower() if isinstance(value, bool) else str(value).strip()
     return text or None
+
+
+def _items(value: object) -> tuple[str, ...]:
+    """A list column's items in feed order: a JSON array, or one value as a one-item list."""
+    values = value if isinstance(value, list | tuple) else [value]
+    out: list[str] = []
+    for item in values:
+        text = _text(item)
+        if text is not None and text not in out:
+            out.append(text)
+    return tuple(out)
 
 
 def parse_decimal(value: object, decimal_separator: str) -> Decimal | None:
@@ -198,8 +211,17 @@ class _Validator:
         text = {
             f: _text(get.get(f))
             for f in self.cols
-            if f not in {*PRICE_FIELDS, "listing_key", "stock_qty", "availability", "observed_at"}
+            if f
+            not in {
+                *PRICE_FIELDS,
+                *LIST_FIELDS,
+                "listing_key",
+                "stock_qty",
+                "availability",
+                "observed_at",
+            }
         }
+        lists = self._lists(get, warnings)
         url = text.get("url")
         if url is not None and not is_http_url(url):
             if self.m.url_template is None:
@@ -237,8 +259,17 @@ class _Validator:
                 price_promo=promo,
                 stock_qty=stock,
                 text=text,
+                lists=lists,
             )
         )
+
+    def _lists(self, get: dict[str, object], warnings: list[str]) -> dict[str, tuple[str, ...]]:
+        lists = {f: _items(get.get(f)) for f in LIST_FIELDS if f in self.cols}
+        images = lists.get("image_urls", ())
+        if bad := [u for u in images if not is_http_url(u)]:
+            warnings.append(f"{len(bad)} image URL(s) not http(s); dropped")
+            lists["image_urls"] = tuple(u for u in images if is_http_url(u))
+        return lists
 
     def _stock(self, value: object, reasons: list[str]) -> int | None:
         try:

@@ -315,6 +315,13 @@ def product(
     rows = groups[keys[0]]
     rep = choose_representative(rows)
     shade_families = sorted({row.shade_family for row in rows if row.shade_family})
+    attributes: dict[str, Any] = {"shadeFamilies": shade_families} if shade_families else {}
+    # one concentration across every offer's rows, or none: a conflict is never resolved here
+    concentrations = {
+        c.lower() for key in keys for row in groups[key] if (c := _text(row.concentration))
+    }
+    if len(concentrations) == 1:
+        attributes["concentration"] = concentrations.pop()
     offers = {
         RETAILERS[key.retailer][0]: offer(groups[key], MARKET.currency, stale) for key in keys
     }
@@ -327,7 +334,7 @@ def product(
         offers=offers,
         matches=tuple(matches),
         shades=tuple(sorted({row.shade_hex.lower() for row in rows if row.shade_hex})[:12]),
-        attributes={"shadeFamilies": list(shade_families)} if shade_families else {},
+        attributes=attributes,
         # the naming offer's thumbnail, else the first other offer that has one
         image=next((o.image for o in offers.values() if o.image is not None), None),
     )
