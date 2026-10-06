@@ -18,7 +18,7 @@ from metrics_fixture import (
     with_fields,
 )
 from pi_core import AvailabilityState, ReviewState
-from pi_dataset import Dataset, DatasetV3, Product
+from pi_dataset import Dataset, DatasetV3, Product, Size
 from pi_dataset.models import FieldStatus
 from pi_metrics import view
 from pi_metrics.insights import (
@@ -26,6 +26,8 @@ from pi_metrics.insights import (
     PICKS_LISTED,
     LadderBasis,
     Policy,
+    ValueBasis,
+    ValuePicks,
     insights,
     policy,
 )
@@ -272,9 +274,16 @@ def test_a_larger_size_at_the_same_unit_price_is_not_cheaper() -> None:
 
 
 def _rated(
-    pid: str, price: str, rating: tuple[str, str, int] | None, category: str = "skincare"
+    pid: str,
+    price: str,
+    rating: tuple[str, str, int] | None,
+    category: str = "skincare",
+    *,
+    brand: str = "Fixture Beauty",
 ) -> Product:
-    return product(pid, {A: offer(A, [price] * 3, rating=rating)}, category=(category,))
+    return product(
+        pid, {A: offer(A, [price] * 3, rating=rating)}, category=(category,), brand=brand
+    )
 
 
 def test_value_picks_are_well_rated_at_or_below_the_category_median() -> None:
@@ -294,12 +303,19 @@ def test_value_picks_are_well_rated_at_or_below_the_category_median() -> None:
     assert row.category == "skincare"
     assert (row.priced, row.rated, row.picks) == (6, 4, 2)
     assert row.median.amount == "30.00"  # nearest rank: the lower middle of six
+    # Equal 90 % shares shrink toward the category mean (92.45 %): fewer ratings move further.
     assert [(i.id, i.rating, i.scale, i.rating_count) for i in row.items] == [
-        ("p30", Decimal(9), "10", 25),  # equal share: more ratings first
         ("p10", Decimal("4.5"), "5", 20),
+        ("p30", Decimal(9), "10", 25),
     ]
-    assert row.items[0].price.amount == "30.00"
-    assert row.items[0].image is None
+    assert row.items[1].price.amount == "30.00"
+    assert row.items[1].image is None
+    assert (row.basis, row.unit_medians) == (ValueBasis.SHELF, ())
+    assert (row.items[1].size_value, row.items[1].size_unit, row.items[1].unit_price) == (
+        "50",
+        "ml",
+        "0.6000",
+    )
     assert (a.qualifying, a.suppressed) == (1, 1)  # makeup: four priced offers, no median
     assert (by[B].reason, by[B].categories) == (Reason.COHORT_TOO_SMALL, ())
     assert by[D].reason is Reason.RETAILER_BLOCKED
@@ -312,7 +328,10 @@ def test_value_lists_the_largest_categories_and_the_best_picks() -> None:
             for c in range(9)
             for n in range(5)
         ),
-        *(_rated(f"big{n}", f"{10 + n}.00", ("5.00", "5", 20)) for n in range(12)),
+        *(
+            _rated(f"big{n}", f"{10 + n}.00", ("5.00", "5", 20), brand=f"Brand {n}")
+            for n in range(12)
+        ),
     ]
     a = next(v for v in insights(_with(rows), A, B).data.value if v.retailer == A)
     assert a.qualifying == 10
@@ -354,3 +373,164 @@ def test_body_care_filed_under_fragrance_is_left_out_of_the_value_cohort() -> No
     assert (by["fragrance"].priced, by["fragrance"].excluded) == (7, 3)
     assert (by["skincare"].priced, by["skincare"].excluded) == (5, 0)
     assert not {i.id for i in by["fragrance"].items} & {"lotion", "kids", "gel"}
+
+
+def _pick(
+    pid: str,
+    name: str,
+    category: str = "skincare",
+    *,
+    price: str = "10.00",
+    rating: tuple[str, str, int] = ("5.00", "5", 50),
+    stock: list[AvailabilityState | None] | None = None,
+    brand: str | None = None,
+    size: tuple[str, str] | None = ("50", "ml"),
+) -> Product:
+    o = offer(A, [price] * 3, rating=rating, stock=stock)
+    o = o.model_copy(update={"size": None if size is None else Size(value=size[0], unit=size[1])})
+    return product(pid, {A: o}, category=(category,), brand=brand or f"Brand {pid}").model_copy(
+        update={"name": name}
+    )
+
+
+def _value_a(rows: list[Product]) -> ValuePicks:
+    return next(v for v in insights(_with(rows), A, B).data.value if v.retailer == A)
+
+
+def test_the_catch_all_category_is_never_ranked() -> None:
+    rows = [
+        *(_pick(f"o{n}", "Nail Polish", "other") for n in range(6)),
+        *(_pick(f"s{n}", "Night Cream") for n in range(5)),
+    ]
+    a = _value_a(rows)
+    assert [c.category for c in a.categories] == ["skincare"]
+    assert (a.unranked, a.qualifying, a.suppressed) == (6, 1, 0)
+
+
+def test_tools_and_misfiled_body_care_leave_the_cohort() -> None:
+    rows = [
+        # skincare: tools and body care out; an applicator's description or "De-Puff" stays.
+        *(
+            _pick(pid, name)
+            for pid, name in [
+                ("brush", "Kabuki Brush"),
+                ("sponge", "Makeup Sponges"),
+                ("roller", "Jade Roller"),
+                ("scrub", "Citrus Sugar Scrub"),
+                ("epsom", "Lavender Epsom Soak"),
+                ("adhesive", "Brush On Lash Adhesive"),
+                ("liner", "Brush-Tip Liner"),
+                ("depuff", "De-Puff Eye Gel"),
+                ("n1", "Night Cream"),
+                ("n2", "Day Cream"),
+            ]
+        ),
+        # body: body care belongs here; a tool still does not.
+        *(_pick(f"b{n}", f"Coconut Body Wash {n}", "body") for n in range(4)),
+        _pick("sugar", "Sugar Scrub", "body"),
+        _pick("mitt", "Bath Mitt", "body"),
+        # fragrance: shaving is body care unless a fragrance term says otherwise.
+        _pick("shave", "Truly After Shave Oil", "fragrance"),
+        _pick("aftershave", "Cooling Aftershave Balm", "fragrance"),
+        _pick("shaving", "Shaving Foam", "fragrance"),
+        _pick("edt", "Aftershave Eau de Toilette", "fragrance"),
+        _pick("rollon", "Rose Roll-On Perfume", "fragrance"),
+        *(_pick(f"e{n}", f"Oud {n} Eau de Parfum", "fragrance") for n in range(3)),
+    ]
+    by = {c.category: c for c in _value_a(rows).categories}
+    assert {k: (c.priced, c.excluded) for k, c in by.items()} == {
+        "skincare": (5, 5),
+        "body": (5, 1),
+        "fragrance": (5, 3),
+    }
+    assert {i.id for i in by["skincare"].items} == {"adhesive", "liner", "depuff", "n1", "n2"}
+
+
+def test_a_pick_is_in_stock_or_of_unknown_stock_on_the_date() -> None:
+    rows = [
+        _pick("out", "Gone", stock=[IN, IN, OUT]),
+        _pick("back", "Back", stock=[OUT, OUT, IN]),
+        _pick("low", "Low", stock=[IN, IN, AvailabilityState.LOW_STOCK]),
+        _pick("unseen", "Unseen", stock=[IN, IN, None]),
+        _pick("never", "Never"),
+        _pick("more", "More"),
+    ]
+    (row,) = _value_a(rows).categories
+    assert (row.priced, row.picks) == (6, 5)
+    assert "out" not in {i.id for i in row.items}
+
+
+def test_fragrance_is_ranked_per_unit_against_its_units_median() -> None:
+    rows = [
+        _pick("big", "Big Eau de Parfum", "fragrance", price="100.00", size=("100", "ml")),
+        _pick("mid", "Mid Eau de Parfum", "fragrance", price="60.00", size=("50", "ml")),
+        _pick("small", "Small Eau de Parfum", "fragrance", price="45.00", size=("30", "ml")),
+        _pick("mini", "Mini Eau de Parfum", "fragrance", price="20.00", size=("10", "ml")),
+        _pick("dear", "Dear Eau de Parfum", "fragrance", price="80.00", size=("40", "ml")),
+        _pick("solid", "Solid Perfume", "fragrance", price="15.00", size=("10", "g")),
+        _pick("bare", "Plain Cologne", "fragrance", price="10.00", size=None),
+    ]
+    (row,) = _value_a(rows).categories
+    assert row.basis is ValueBasis.PER_UNIT
+    assert row.median.amount == "45.00"  # the shelf median is still reported
+    # 1.00, 1.20, 1.50, 2.00, 2.00 per ml; one offer in g is below the cohort, so no g median.
+    assert [(m.unit, m.median, m.n) for m in row.unit_medians] == [("ml", "1.5000", 5)]
+    # The 100 ml bottle is above the shelf median and a pick; the unsized, the solid (no g
+    # median) and the 10 ml at 2.00/ml are not.
+    assert [(i.id, i.unit_price) for i in row.items] == [
+        ("big", "1.0000"),
+        ("mid", "1.2000"),
+        ("small", "1.5000"),
+    ]
+    assert row.picks == 3
+
+
+def test_small_sizes_are_never_shelf_price_picks() -> None:
+    rows = [
+        _pick("mini", "Mini Night Cream"),
+        _pick("travel", "Travel Cleanser"),
+        _pick("deluxe", "Deluxe Sample Serum"),
+        *(_pick(f"n{n}", f"Night Cream {n}") for n in range(3)),
+    ]
+    (row,) = _value_a(rows).categories
+    assert (row.priced, row.picks) == (6, 3)
+    assert {i.id for i in row.items} == {"n0", "n1", "n2"}
+
+
+def test_many_ratings_outrank_a_few_perfect_ones() -> None:
+    rows = [
+        _pick("few", "Few", rating=("5.00", "5", 20)),
+        _pick("many", "Many", rating=("4.80", "5", 2000)),
+        *(_pick(f"ok{n}", f"Ok {n}", rating=("4.50", "5", 100)) for n in range(3)),
+    ]
+    (row,) = _value_a(rows).categories
+    assert [i.id for i in row.items[:2]] == ["many", "few"]
+
+
+def test_one_pick_per_name_and_at_most_two_per_brand() -> None:
+    rows = [
+        _pick("d1", "Glow Serum", brand="Dup", price="9.00"),
+        _pick("d2", "GLOW  serum", brand="dup", price="8.00"),  # the same name: cheaper kept
+        _pick("a", "Other A", brand="Dup"),
+        _pick("b", "Other B", brand="Dup"),
+        _pick("solo", "Solo", brand="Solo"),
+    ]
+    (row,) = _value_a(rows).categories
+    assert (row.priced, row.picks) == (5, 3)
+    assert [i.id for i in row.items] == ["d2", "a", "solo"]
+
+
+def test_a_ladder_exception_says_which_size_is_on_sale() -> None:
+    def size(pid: str, name: str, value: str, price: str, regular: str) -> Product:
+        o = offer(A, [price] * 3, regular=[regular] * 3, size=value)
+        return product(pid, {A: o}, brand="Sale").model_copy(update={"name": name})
+
+    rows = [
+        size("l30", "Large Sale", "30", "60.00", "60.00"),
+        size("l50", "Large Sale", "50", "110.00", "120.00"),  # 2.00 -> 2.20/ml, larger on sale
+        size("s30", "Small Sale", "30", "50.00", "60.00"),  # 1.67 -> 2.00/ml, smaller on sale
+        size("s50", "Small Sale", "50", "100.00", "100.00"),
+    ]
+    a = next(lad for lad in insights(_with(rows), A, B).data.ladders if lad.retailer == A)
+    flags = {s.name: (s.smaller_on_sale, s.larger_on_sale) for s in a.exceptions}
+    assert flags == {"Large Sale": (False, True), "Small Sale": (True, False)}

@@ -3620,6 +3620,11 @@
             "title": "Largerid",
             "type": "string"
           },
+          "largerOnSale": {
+            "default": false,
+            "title": "Largeronsale",
+            "type": "boolean"
+          },
           "largerPrice": {
             "$ref": "#/components/schemas/MoneyValue"
           },
@@ -3634,6 +3639,11 @@
           "smallerId": {
             "title": "Smallerid",
             "type": "string"
+          },
+          "smallerOnSale": {
+            "default": false,
+            "title": "Smalleronsale",
+            "type": "boolean"
           },
           "smallerPrice": {
             "$ref": "#/components/schemas/MoneyValue"
@@ -6922,6 +6932,30 @@
         "title": "UnavailableBrands",
         "type": "string"
       },
+      "UnitMedian": {
+        "additionalProperties": false,
+        "properties": {
+          "median": {
+            "title": "Median",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "median",
+          "n"
+        ],
+        "title": "UnitMedian",
+        "type": "object"
+      },
       "Unmapped": {
         "enum": [
           "no_breadcrumb",
@@ -6963,9 +6997,21 @@
         "title": "UnmappedPath",
         "type": "object"
       },
+      "ValueBasis": {
+        "enum": [
+          "shelf",
+          "per_unit"
+        ],
+        "title": "ValueBasis",
+        "type": "string"
+      },
       "ValueCategory": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ValueBasis",
+            "default": "shelf"
+          },
           "category": {
             "title": "Category",
             "type": "string"
@@ -6996,6 +7042,14 @@
           "rated": {
             "title": "Rated",
             "type": "integer"
+          },
+          "unitMedians": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UnitMedian"
+            },
+            "title": "Unitmedians",
+            "type": "array"
           }
         },
         "required": [
@@ -7049,6 +7103,39 @@
           "scale": {
             "title": "Scale",
             "type": "string"
+          },
+          "sizeUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizeunit"
+          },
+          "sizeValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizevalue"
+          },
+          "unitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unitprice"
           }
         },
         "required": [
@@ -7093,6 +7180,11 @@
           },
           "suppressed": {
             "title": "Suppressed",
+            "type": "integer"
+          },
+          "unranked": {
+            "default": 0,
+            "title": "Unranked",
             "type": "integer"
           }
         },
@@ -10279,7 +10371,7 @@
     },
     "/api/v1/insights": {
       "get": {
-        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers and priced at or below the category median (nearest rank, lower middle, over every priced offer in the market currency); categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.",
+        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers, not out of stock, and at or below the category median on its basis: per ml or g in fragrance (basis per_unit), else shelf price (basis shelf; minis and travel sizes are never picks). Tools and misfiled body care are left out of the cohort (excluded); the catch-all other is never ranked (unranked). Ranked by rating share shrunk toward the category mean; one pick per brand and name, at most two per brand. Categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.",
         "operationId": "get_insights_api_v1_insights_get",
         "parameters": [
           {

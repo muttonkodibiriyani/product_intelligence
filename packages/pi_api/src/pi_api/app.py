@@ -979,10 +979,14 @@ def _insights_route(api: FastAPI, source: SnapshotSource, images: EvidenceHosts)
             "do not cost less per unit; a step more than heldOutPct % dearer per unit is "
             "held out as a different product and counted in heldOut. value: per context and "
             "top-level category, offers rated at least valueRatingPct % of their own scale by "
-            "at least valueMinRatings reviewers and priced at or below the category median "
-            "(nearest rank, lower middle, over every priced offer in the market currency); "
-            "categories under minCohort priced offers have no median and are counted in "
-            "suppressed. Single-retailer: no shop is compared with another."
+            "at least valueMinRatings reviewers, not out of stock, and at or below the "
+            "category median on its basis: per ml or g in fragrance (basis per_unit), else "
+            "shelf price (basis shelf; minis and travel sizes are never picks). Tools and "
+            "misfiled body care are left out of the cohort (excluded); the catch-all other is "
+            "never ranked (unranked). Ranked by rating share shrunk toward the category mean; "
+            "one pick per brand and name, at most two per brand. Categories under minCohort "
+            "priced offers have no median and are counted in suppressed. Single-retailer: no "
+            "shop is compared with another."
         ),
     )
     def get_insights(query: Annotated[InsightsQuery, Query()], _: Viewer) -> Envelope[Insights]:

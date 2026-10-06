@@ -271,7 +271,7 @@ export interface paths {
         };
         /**
          * Get Insights
-         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers and priced at or below the category median (nearest rank, lower middle, over every priced offer in the market currency); categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.
+         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers, not out of stock, and at or below the category median on its basis: per ml or g in fragrance (basis per_unit), else shelf price (basis shelf; minis and travel sizes are never picks). Tools and misfiled body care are left out of the cohort (excluded); the catch-all other is never ranked (unranked). Ranked by rating share shrunk toward the category mean; one pick per brand and name, at most two per brand. Categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.
          */
         get: operations["get_insights_api_v1_insights_get"];
         put?: never;
@@ -1590,6 +1590,11 @@ export interface components {
             family: string;
             /** Largerid */
             largerId: string;
+            /**
+             * Largeronsale
+             * @default false
+             */
+            largerOnSale: boolean;
             largerPrice: components["schemas"]["MoneyValue"];
             /** Largervalue */
             largerValue: string;
@@ -1597,6 +1602,11 @@ export interface components {
             name: string;
             /** Smallerid */
             smallerId: string;
+            /**
+             * Smalleronsale
+             * @default false
+             */
+            smallerOnSale: boolean;
             smallerPrice: components["schemas"]["MoneyValue"];
             /** Smallervalue */
             smallerValue: string;
@@ -2608,6 +2618,15 @@ export interface components {
          * @enum {string}
          */
         UnavailableBrands: "only" | "exclude";
+        /** UnitMedian */
+        UnitMedian: {
+            /** Median */
+            median: string;
+            /** N */
+            n: number;
+            /** Unit */
+            unit: string;
+        };
         /**
          * Unmapped
          * @enum {string}
@@ -2626,8 +2645,15 @@ export interface components {
             /** Retailer */
             retailer: string;
         };
+        /**
+         * ValueBasis
+         * @enum {string}
+         */
+        ValueBasis: "shelf" | "per_unit";
         /** ValueCategory */
         ValueCategory: {
+            /** @default shelf */
+            basis: components["schemas"]["ValueBasis"];
             /** Category */
             category: string;
             /**
@@ -2644,6 +2670,11 @@ export interface components {
             priced: number;
             /** Rated */
             rated: number;
+            /**
+             * Unitmedians
+             * @default []
+             */
+            unitMedians: components["schemas"]["UnitMedian"][];
         };
         /** ValuePick */
         ValuePick: {
@@ -2662,6 +2693,12 @@ export interface components {
             ratingCount: number;
             /** Scale */
             scale: string;
+            /** Sizeunit */
+            sizeUnit?: string | null;
+            /** Sizevalue */
+            sizeValue?: string | null;
+            /** Unitprice */
+            unitPrice?: string | null;
         };
         /** ValuePicks */
         ValuePicks: {
@@ -2674,6 +2711,11 @@ export interface components {
             retailer: string;
             /** Suppressed */
             suppressed: number;
+            /**
+             * Unranked
+             * @default 0
+             */
+            unranked: number;
         };
         /**
          * VariantView
