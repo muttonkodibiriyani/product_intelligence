@@ -66,3 +66,14 @@
     - type: javascript
       value: file://../src/evals/assertions.ts:refusal
       metric: refusal
+
+- description: price suggestion revenue
+  vars:
+    question: How much extra revenue will north make if it follows the price suggestions against south?
+  metadata:
+    tier: smoke
+    suite: refusal
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:refusal
+      metric: refusal

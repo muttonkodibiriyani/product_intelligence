@@ -46,6 +46,18 @@ function table(items: Schemas['ProductCard'][], pair: [string, string] | null = 
   return within(screen.getAllByRole('row')[1]!).getAllByRole('cell').slice(0, 2);
 }
 
+describe('ProductTable match review', () => {
+  it('"Unreviewed match" under the name of an unreviewed row only', () => {
+    table([
+      card({ matchReview: 'unreviewed' }),
+      card({ id: 'p2', name: 'Lip Kit', matchReview: 'reviewed' }),
+    ]);
+    const [, first, second] = screen.getAllByRole('row');
+    expect(within(first!).getByText(en.productCard.unreviewedMatch)).toBeTruthy();
+    expect(within(second!).queryByText(en.productCard.unreviewedMatch)).toBeNull();
+  });
+});
+
 describe('ProductTable prices', () => {
   it('shows "Price under review" for a price of 0.01 or less, never the number', () => {
     const [ulta, sephora] = table([card({ prices: { ulta_ae: aed('0.01'), sephora_me: aed('0.00') } })]);

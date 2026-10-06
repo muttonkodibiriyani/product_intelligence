@@ -264,7 +264,7 @@ def test_meta_envelope(client: Client) -> None:
     doc = body(client, f"{API}/meta")
     assert doc["status"] == "ok"
     meta = doc["meta"]
-    assert meta["apiVersion"] == "1.13.0"
+    assert meta["apiVersion"] == "1.18.0"
     assert (meta["endpoint"], meta["market"], meta["currency"]) == ("meta", "AE", "AED")
     assert [r["id"] for r in doc["data"]["retailers"]] == [A, B, C, "shop_d"]
     tree = {n["key"]: n for n in doc["data"]["categories"]}
@@ -341,11 +341,12 @@ def test_facets_ignore_their_own_filter(client: Client) -> None:
     assert facets["category"] == []
 
 
-def test_matched_filter_means_an_exact_counted_edge(client: Client) -> None:
-    matched = ids(body(client, f"{API}/products?matched=true"))
-    assert matched == ["p01", "p02", "p03", "p04", "p05", "p06", "p10", "p11", "p13", "p16"]
+def test_matched_filter_means_an_exact_non_rejected_edge(client: Client) -> None:
+    """Ruling A (API 1.16.0): proposed exact edges count; test_matched.py has the rest."""
+    matched = ids(body(client, f"{API}/products?matched=true&limit=100"))
+    assert matched == ["p01", "p02", "p03", "p04", "p05", "p06", "p07", "p10", "p11", "p13", "p16"]
     unmatched = ids(body(client, f"{API}/products?matched=false"))
-    assert unmatched == ["p07", "p08", "p09", "p12", "p14", "p15"]
+    assert unmatched == ["p08", "p09", "p12", "p14", "p15"]
 
 
 def test_price_filter_uses_the_visible_retailers_and_skips_early_offers(client: Client) -> None:

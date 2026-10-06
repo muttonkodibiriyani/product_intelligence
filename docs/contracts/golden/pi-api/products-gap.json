@@ -68,6 +68,7 @@
         },
         "id": "p05",
         "image": null,
+        "matchReview": "reviewed",
         "matches": [
           {
             "a": "shop_a",
@@ -121,6 +122,7 @@
         },
         "id": "p01",
         "image": null,
+        "matchReview": "reviewed",
         "matches": [
           {
             "a": "shop_a",
@@ -174,6 +176,7 @@
         },
         "id": "p04",
         "image": null,
+        "matchReview": "reviewed",
         "matches": [
           {
             "a": "shop_a",
@@ -210,7 +213,7 @@
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.13.0",
+    "apiVersion": "1.18.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "products",
@@ -224,7 +227,7 @@
     },
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-01.4",
+    "metricVersion": "2026-10-03.3",
     "scope": "fixture"
   },
   "reason": null,

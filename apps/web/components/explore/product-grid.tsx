@@ -58,6 +58,7 @@ export function ProductGrid({
             category={c.category.at(-1)}
             lines={priceLines(c, retailers, name)}
             chip={chip(verdictOf(c))}
+            matchReview={c.matchReview}
           />
         </li>
       ))}

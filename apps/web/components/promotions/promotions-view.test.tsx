@@ -9,6 +9,7 @@ import en from '@/messages/en.json';
 import { PromotionsView } from './promotions-view';
 
 type Env = Envelope<Schemas['Promotions']>;
+type Item = Schemas['PromoItem'];
 const measured = golden('promotions') as Env;
 /** What pi_metrics answers when promotions cannot be measured at all: no shops, no items, a reason. */
 const withheld = (reason: Schemas['Reason']): Env => ({
@@ -59,6 +60,34 @@ function view(env: Env, query = '', locale: 'en' | 'ar' = 'en') {
 const EMPTY = { en: en.promotions.empty, ar: ar.promotions.empty };
 
 describe('PromotionsView', () => {
+  it('shows image-first ranked cards with brand, savings and a direct evidence anchor', async () => {
+    const image = 'https://img-product.sephora.me/p05.jpg';
+    const visual = {
+      ...measured,
+      data: {
+        ...measured.data!,
+        items: measured.data!.items.map((row, index) =>
+          index === 0 ? { ...row, retailer: 'sephora_me', image } : row,
+        ),
+        retailers: [
+          ...measured.data!.retailers,
+          {
+            ...measured.data!.retailers[0]!,
+            retailer: 'sephora_me',
+          },
+        ],
+      },
+    };
+    view(visual);
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts' });
+
+    expect(document.querySelector(`img[src="${image}"]`)).toBeTruthy();
+    expect(screen.getAllByText('Fixture Beauty').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Discount rank 1').textContent).toContain('#1');
+    expect(document.body.textContent).toContain('Save');
+    expect(screen.getByRole('link', { name: 'Product p05' }).getAttribute('href')).toMatch(/#evidence$/);
+  });
+
   it('a measured answer: tiles, the heading from the user’s pick, the as-of date, the deepest first', async () => {
     view(measured, 'retailer=shop_a');
     await screen.findByRole('heading', { level: 2, name: 'Deepest discounts at Shop A' });
@@ -68,6 +97,37 @@ describe('PromotionsView', () => {
     expect(screen.queryByRole('link', { name: en.app.aboutData })).toBeNull();
     expect(screen.getByText('3 products', { selector: '[role="status"]' })).toBeTruthy();
     expect(screen.queryByRole('note')).toBeNull();
+  });
+
+  it('an API 1.16 answer without 1.17 visual fields still renders only its measured facts', async () => {
+    const legacy = {
+      ...measured,
+      data: {
+        ...measured.data!,
+        items: measured.data!.items.map((row) => {
+          const item: Partial<Item> = { ...row };
+          delete item.brand;
+          delete item.category;
+          delete item.saved;
+          delete item.image;
+          return item;
+        }),
+        retailers: measured.data!.retailers.map((row) => {
+          const retailer: Partial<Schemas['RetailerPromo']> = { ...row };
+          delete retailer.bands;
+          delete retailer.groups;
+          return retailer;
+        }),
+      },
+    } as unknown as Env;
+
+    view(legacy, 'retailer=shop_a');
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts at Shop A' });
+    expect(screen.getByText('Product p05')).toBeTruthy();
+    expect(screen.getAllByText('−33.3%').length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain('Fixture Beauty');
+    expect(document.body.textContent).not.toContain('undefined');
+    expect(document.body.textContent).not.toContain('NaN');
   });
 
   it('the heading names no shop when the user picked none, even if every row is one shop’s', async () => {
@@ -96,6 +156,83 @@ describe('PromotionsView', () => {
       expect(screen.queryByLabelText(en.promotions.minPct)).toBeNull();
     },
   );
+
+  it('every shop partly covered (the live state): the discounts seen are listed, the shares are not', async () => {
+    const rows = measured.data!.items;
+    const partly = rows.map((i) => i.retailer).filter((r, k, all) => all.indexOf(r) === k);
+    view({
+      ...measured,
+      status: 'not_enough_data',
+      reason: 'retailer_partial',
+      data: {
+        ...measured.data!,
+        retailers: [
+          ...partly.map((retailer) => ({
+            retailer,
+            n: 50,
+            onPromo: 3,
+            share: null,
+            reason: 'retailer_partial' as const,
+            bands: [],
+            groups: [],
+          })),
+          {
+            retailer: 'shop_z',
+            n: 0,
+            onPromo: 0,
+            share: null,
+            reason: 'retailer_partial' as const,
+            bands: [],
+            groups: [],
+          },
+        ],
+      },
+    });
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts' });
+    expect(screen.queryByText(en.promotions.notMeasuredFilters)).toBeNull();
+    expect(screen.getByText(`${rows.length} products`, { selector: '[role="status"]' })).toBeTruthy();
+    // The list's tools are back: the minimum discount picker.
+    expect(screen.getByLabelText(en.promotions.minPct)).toBeTruthy();
+    // The shop with no price pair seen still says its discounts are not measured.
+    expect(screen.getByText(en.promotions.notMeasuredShop)).toBeTruthy();
+  });
+
+  it('a partly covered shop next to a blocked one: only the partly covered shop’s discounts are listed', async () => {
+    const [a, b, c] = measured.data!.items as [Item, Item, Item];
+    view({
+      ...measured,
+      status: 'not_enough_data',
+      reason: 'retailer_partial',
+      data: {
+        ...measured.data!,
+        items: [a, b, { ...c, retailer: 'shop_b' }],
+        retailers: [
+          {
+            retailer: 'shop_a',
+            n: 50,
+            onPromo: 2,
+            share: null,
+            reason: 'retailer_partial' as const,
+            bands: [],
+            groups: [],
+          },
+          {
+            retailer: 'shop_b',
+            n: 40,
+            onPromo: 1,
+            share: null,
+            reason: 'retailer_blocked' as const,
+            bands: [],
+            groups: [],
+          },
+        ],
+      },
+    });
+    await screen.findByRole('heading', { level: 2, name: 'Deepest discounts' });
+    expect(screen.getByText('2 products', { selector: '[role="status"]' })).toBeTruthy();
+    expect(screen.queryByText(c.name)).toBeNull();
+    expect(screen.getByText(a.name)).toBeTruthy();
+  });
 
   it('names the picked shop in the not-measured line, and keeps the shop chip so the pick can be undone', async () => {
     view(withheld('capability_off'), 'retailer=shop_b');
