@@ -401,6 +401,66 @@ series, ratings, match edges, the field statuses and capabilities are all identi
 - The OpenAPI and the `pi_api` goldens regenerate when `pi_api` switches to v3. The drift tests are
   the guard.
 
+### 5. `beauty@2`: extracted attributes with evidence (amendment, 2026-10-06)
+Coordinator brief, attribute lane (task 01a102de-0f9d): publish more of what a beauty page states.
+One profile change covers every new key, so readers see one version bump. `beauty@1` stays
+committed: `upgrade(v2, profile)` and the beauty equality test keep using it.
+
+**Keys.** `beauty@2` = `beauty@1` (`finish`, `concentration`, `shadeFamilies`, unchanged) plus:
+
+| Key | Level | Type | Values | Facet | Block |
+|---|---|---|---|---|---|
+| `sunProtectionFactor` | product | `decimal` | the stated SPF number, e.g. `"50"` | yes | summary |
+| `gender` | product | `enum` | `women`, `men`, `unisex` | yes | summary |
+| `skinTypes` | product | `text_list` | from `normal`, `dry`, `oily`, `combination`, `sensitive`, `all` | yes | summary |
+| `makeupCoverage` | product | `text_list` | from `sheer`, `light`, `medium`, `full` | yes | summary |
+| `productForm` | product | `text` | the product form, e.g. `cream`, `stick`, `spray` | yes | summary |
+| `keyIngredients` | product | `text_list` | named actives, e.g. `niacinamide` | no | summary |
+| `giftWithPurchase` | offer | `text_list` | the retailer's own gift titles, e.g. `["Free mini mascara"]` | no | null |
+
+- `giftWithPurchase` is offer-level because a promotion belongs to one retailer's offer (Faces B1,
+  Crawl Engineer). Sources: Sephora `labels.gift_with_purchase` (product-class gifts only), Faces
+  `labels.promotions`. It is a label only, with no price change, and no metric reads it as a
+  price. A page that had only order-level promotions, or none, publishes no value.
+- Size is not an attribute. It stays `Offer.size` (§1).
+- `skinTypes` and `makeupCoverage` take only the ids above. The attribute model enforces this on the
+  write path (`validate_attributes`), so the facet stays closed without a list-of-enum wire type
+  (a range such as "light to medium" is two ids).
+- The keys avoid names that are already code words: `coverage` (a metric), `form`, `spf` (a
+  taxonomy rule). The literal guard (§3) would otherwise fail on unrelated code.
+
+**Evidence.** `Product.attributeEvidence` and `Offer.attributeEvidence` are new in v3. Both are
+optional and additive, and default to `{}`. They map an attribute key to
+`{source, field, excerpt, rule}`:
+- `source`:
+  - `page`: a structured page field states the value (JSON-LD, a spec table);
+  - `text_rule`: a deterministic rule read it from free text (name, description);
+  - `model`: a language model read it.
+- `field`: where it was read, e.g. `name`, `description`, `jsonld.additionalProperty`.
+- `excerpt`: the matched retailer text, at most 120 characters. It is untrusted data, and a
+  client renders it as plain text, never as HTML or markdown.
+- `rule`: the rule id or model id; `null` for `page`.
+
+The validator checks two things:
+- every evidence key is an attribute present at that level;
+- in a `beauty` snapshot at version 2 or later, every attribute value has evidence.
+
+**Precision gate.**
+- Before a key is published as collected, it needs ≥ 98% precision on a labelled sample of
+  ≥ 300 products (stratified by retailer and category). The measurement is committed with the
+  extractor.
+- A key below the gate is declared with `capability: false`: explicitly not collected, with no
+  values. It is never silently absent, and never shown at a lower bar.
+- A snapshot may therefore turn a committed key's capability from `true` to `false`. That is the
+  only permitted difference from the committed `attributeSet`. The reverse is a validation error.
+
+**Model values.**
+- `source: model` fills gaps only. It never replaces a `page` or `text_rule` value.
+- It is held to the same gate, per key and source.
+- A model-sourced value never feeds a hard match rule (EDP ≠ EDT, size, concentration, shade).
+  Matching reads only `page` and `text_rule` values, or its own parsers.
+- No model call runs without the owner's written cost approval.
+
 ## Migration path
 Small PRs. Until step 5, beauty production output stays byte-identical v2.
 

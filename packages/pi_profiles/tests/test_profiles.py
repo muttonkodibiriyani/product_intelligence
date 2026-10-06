@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from pi_dataset import AttributeType, committed_profile, committed_profiles
 from pi_profiles import (
     BEAUTY_V1,
+    BEAUTY_V2,
     PROFILES,
     REF_PATTERN,
     Attr,
@@ -94,8 +95,9 @@ def test_non_json_values_are_value_errors(value: object) -> None:
 
 def test_get_profile() -> None:
     assert get_profile("beauty@1") is BEAUTY_V1
-    with pytest.raises(UnknownProfileError, match="no registered profile beauty@2"):
-        get_profile("beauty@2")
+    assert get_profile("beauty@2") is BEAUTY_V2
+    with pytest.raises(UnknownProfileError, match="no registered profile beauty@3"):
+        get_profile("beauty@3")
     with pytest.raises(UnknownProfileError, match="not a profile ref"):
         get_profile("beauty")
 
@@ -137,3 +139,53 @@ def test_enum_values_are_declared() -> None:
     assert daypart.values is not None
     assert [v.id for v in daypart.values] == ["breakfast"]
     assert profile.ref == "menu_test@1"
+
+
+@pytest.mark.parametrize(
+    ("raw", "stored"),
+    [
+        ({}, {}),
+        (
+            {"finish": "Matte", "sunProtectionFactor": "50"},
+            {"finish": "Matte", "sunProtectionFactor": "50"},
+        ),
+        (
+            {"skinTypes": ["dry", "oily"], "gender": "unisex"},
+            {"skinTypes": ["dry", "oily"], "gender": "unisex"},
+        ),
+        (
+            {"makeupCoverage": ["light", "medium"], "productForm": "cream"},
+            {"makeupCoverage": ["light", "medium"], "productForm": "cream"},
+        ),
+        (
+            {"keyIngredients": ["niacinamide"], "giftWithPurchase": ["Free mini mascara"]},
+            {"keyIngredients": ["niacinamide"], "giftWithPurchase": ["Free mini mascara"]},
+        ),
+        ({"skinTypes": [], "keyIngredients": [], "sunProtectionFactor": None}, {}),
+    ],
+)
+def test_beauty_2_write_path(raw: dict[str, Any], stored: dict[str, Any]) -> None:
+    assert BEAUTY_V2.validate_attributes(raw) == stored
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"sunProtectionFactor": 50},  # decimal text, never a number
+        {"sunProtectionFactor": "0"},
+        {"sunProtectionFactor": "SPF 50"},
+        {"sunProtectionFactor": "1000"},
+        {"gender": "female"},  # closed vocabularies
+        {"makeupCoverage": ["buildable"]},
+        {"makeupCoverage": "full"},
+        {"skinTypes": ["dry", "acne-prone"]},
+        {"skinTypes": "dry"},
+        {"keyIngredients": [""]},
+        {"giftWithPurchase": [" "]},
+        {"giftWithPurchase": "Free mini mascara"},
+        {"skin_types": ["dry"]},  # the Python name, not the wire key
+    ],
+)
+def test_beauty_2_write_path_rejects(raw: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match=r"validation error|undeclared attribute keys"):
+        BEAUTY_V2.validate_attributes(raw)
