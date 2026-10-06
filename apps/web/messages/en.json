@@ -570,6 +570,7 @@
     "count": "{count, plural, one {{n} product at both shops} other {{n} products at both shops}}",
     "split": "Confirmed by a reviewer: {reviewed}. Not reviewed yet: {unreviewed}.",
     "hint": "Unreviewed matches are listed so you can check them. The Summary's figures count confirmed matches only.",
+    "unreviewedHint": "Matched to the same product at another shop, but a reviewer has not confirmed it yet. Its gap is listed here so you can check it; the Summary leaves it out.",
     "shown": "The {shown} biggest gaps of {total} are listed. Pick a brand or category to see the rest.",
     "match": "Match",
     "class": {

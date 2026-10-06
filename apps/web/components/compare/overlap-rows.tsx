@@ -81,7 +81,11 @@ export function OverlapRows({
   );
   const product = (r: Matched) => (
     <ProductCell r={r} locale={locale} from={from} back="overlap">
-      <MatchReviewLabel review={isUnreviewed(r) ? 'unreviewed' : null} className="mt-1" />
+      <MatchReviewLabel
+        review={isUnreviewed(r) ? 'unreviewed' : null}
+        hint={to('unreviewedHint')}
+        className="mt-1"
+      />
     </ProductCell>
   );
   return (

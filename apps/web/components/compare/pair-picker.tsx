@@ -28,7 +28,6 @@ export function PairPicker({
   state,
   update,
   fixed,
-  grouping = true,
   tools,
   grouping = true,
 }: {
@@ -36,8 +35,6 @@ export function PairPicker({
   update: (next: Partial<CompareState>) => void;
   /** The only pair the dataset has: shown, not picked. */
   fixed: boolean;
-  /** The group-by select; a page that lists rows without groups leaves it out. */
-  grouping?: boolean;
   tools?: ReactNode;
   /** The "Group by" picker; a page that does not group (Insights) leaves it out. */
   grouping?: boolean;

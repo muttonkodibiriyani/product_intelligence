@@ -88,6 +88,16 @@ describe('OverlapRows', () => {
     expect(within(body[6]!).getByText('Exact · Not reviewed')).toBeTruthy();
   });
 
+  it('says the unreviewed gap is listed here but left out of the Summary, not out of price gaps', () => {
+    show(<OverlapRows rows={rows} data={data} name={name} from="" />);
+    const tips = screen.getAllByRole('tooltip').map((t) => t.textContent);
+    expect(tips).toContain(en.overlap.unreviewedHint);
+    expect(tips).not.toContain(en.productCard.unreviewedMatchHint);
+    cleanup();
+    show(<OverlapRows rows={rows} data={data} name={name} from="" />, 'ar');
+    expect(screen.getAllByRole('tooltip').map((t) => t.textContent)).toContain(ar.overlap.unreviewedHint);
+  });
+
   it('shows the match evidence in a tooltip wired to its trigger', () => {
     show(<MatchEvidence match={data.rows[0]!.match} />);
     const tip = screen.getByRole('tooltip');
