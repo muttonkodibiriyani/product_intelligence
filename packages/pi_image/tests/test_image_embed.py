@@ -31,6 +31,7 @@ from pi_image.embed import (
     )
 )
 @example(np.array([[7.27e-23]], dtype=np.float32))  # float32 norm underflowed: length 0.971
+@example(np.array([[1.46e-22]], dtype=np.float32))  # falsified the old property in CI
 @example(np.array([[3e38, 3e38]], dtype=np.float32))  # float32 norm overflows to inf
 def test_l2_normalise_gives_unit_or_zero_rows(vectors: FloatArray) -> None:
     norms = np.linalg.norm(l2_normalise(vectors), axis=1)
