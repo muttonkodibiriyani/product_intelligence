@@ -16,6 +16,8 @@ class ProductRecord(PiModel):
     brand: str = Field(min_length=1)
     name: str = Field(min_length=1)
     url: str | None = None
+    #: The primary (packshot) image as published; a signal for pi_image, never a hard rule.
+    image_url: str | None = None
     #: Size as published, e.g. "50 ml" (else parsed from the name); a JSON array stays a list.
     size: str | tuple[str, ...] | None = None
     shade: str | tuple[str, ...] | None = None
