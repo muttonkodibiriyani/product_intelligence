@@ -60,10 +60,15 @@ function api(over: { products?: (u: URL) => Json; product?: Json; history?: Json
   };
 }
 
-/** Signs in and waits until the session is live, so a following goto doesn't race it. */
+/**
+ * Signs in and waits until the session is live and sign-in's own redirect and prefetches have
+ * settled, so a following goto doesn't race them (a goto fired into them can hang WebKit).
+ */
 async function signedIn(page: Page, locale: 'en' | 'ar') {
   await signIn(page, locale);
   await expect(page.getByRole('navigation')).toBeVisible();
+  await page.waitForURL((u) => !/\/sign-in\/?$/.test(u.pathname));
+  await page.waitForLoadState('networkidle');
 }
 
 const productCalls = (mock: Mock) =>
