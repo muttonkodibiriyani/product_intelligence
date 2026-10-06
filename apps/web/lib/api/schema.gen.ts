@@ -540,7 +540,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-03.3
+             * @default 2026-10-06.1
              */
             metricVersion: string;
             /** Scope */

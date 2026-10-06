@@ -7,6 +7,10 @@ of the SHA-256 of its canonical JSON output (sorted keys, no whitespace), comput
 ``pi_metrics`` that predates v3 (metricVersion 2026-10-01.1); the full outputs are ~5 MB. The
 test runs the same calls on ``upgrade(v2, beauty@1)`` and requires identical output. To see a
 difference, run this module at the commit that generated the golden and diff the JSON.
+
+Re-pinned once, for metricVersion 2026-10-06.1 (compare ``only_here`` counts the ``observed``
+population). Only compare cases changed; with the old ``only_here`` the golden was reproduced
+exactly, and both v2 and its upgrade still give the same hashes.
 """
 
 from __future__ import annotations

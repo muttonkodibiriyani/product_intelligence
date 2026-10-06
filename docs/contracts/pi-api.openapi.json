@@ -289,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-03.3",
+            "default": "2026-10-06.1",
             "title": "Metricversion",
             "type": "string"
           },
