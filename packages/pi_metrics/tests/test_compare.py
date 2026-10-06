@@ -5,6 +5,8 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from metrics_fixture import (
     DATES,
@@ -14,11 +16,13 @@ from metrics_fixture import (
     D,
     edge,
     metrics_dataset,
+    offer,
+    product,
     rebuild,
     scaled,
     with_saudi_shop,
 )
-from pi_dataset import Dataset, DecidedBy, MoneyValue, RetailerStatus
+from pi_dataset import Dataset, DecidedBy, MoneyValue, Product, RetailerStatus
 from pi_metrics import EVERYTHING, Cheaper, GroupBy, ProductFilter, compare, gap, view
 from pi_metrics.compare import gap_histogram
 from pi_metrics.model import CaveatCode, Excluded, Reason, Status
@@ -147,6 +151,63 @@ def test_sides_report_what_each_retailer_contributes(ds: Dataset) -> None:
     assert (sides.other.retailer, sides.other.observed, sides.other.only_here) == (B, 12, 1)
     assert sides.base.counted == sides.other.counted == 6
     assert sides.base.reason is None
+
+
+def _only(ds: Dataset, *products: Product) -> Dataset:
+    """``ds`` holding just ``products``, plus one at a third shop (a dataset is never empty)."""
+    filler = product("filler", {C: offer(C, ["1.00", "1.00", "1.00"])})
+    return rebuild(ds.model_copy(update={"products": (*products, filler)}))
+
+
+def test_only_here_counts_only_products_seen_here(ds: Dataset) -> None:
+    # Live Compare showed "only sold here" above "products seen": only-here counted early
+    # samples and offers unpriced on the date, which seen never counts.
+    flat = ["10.00", "10.00", "10.00"]
+    changed = _only(
+        ds,
+        product("seen", {A: offer(A, flat)}),
+        product("early", {A: offer(A, flat, early=True)}),
+        product("unpriced", {A: offer(A, ["10.00", "10.00", None])}),
+        product("early_there", {A: offer(A, flat), B: offer(B, flat, early=True)}),
+        product("there", {B: offer(B, flat)}),
+    )
+    sides = compare(changed, A, B, EVERYTHING).data.sides
+    assert (sides.base.observed, sides.base.only_here) == (2, 1)  # seen, early_there
+    assert (sides.other.observed, sides.other.only_here) == (1, 1)  # there
+    on_first = compare(changed, A, B, EVERYTHING, on=DATES[0]).data.sides.base
+    assert (on_first.observed, on_first.only_here) == (3, 2)  # unpriced was priced then
+
+
+_price = st.sampled_from([None, "10.00", "12.50"])
+_offer = st.one_of(
+    st.none(),
+    st.tuples(st.lists(_price, min_size=3, max_size=3), st.booleans()),
+)
+
+
+@settings(max_examples=40, deadline=None)
+@given(st.lists(st.tuples(_offer, _offer), max_size=8), st.integers(0, 2))
+def test_only_here_is_never_more_than_seen(
+    ds: Dataset,
+    shapes: list[tuple[tuple[list[str | None], bool] | None, ...]],
+    day: int,
+) -> None:
+    products = [
+        product(
+            f"q{n}",
+            {
+                shop: offer(shop, prices, early=early)
+                for shop, shape in zip((A, B), pair, strict=True)
+                if shape is not None
+                for prices, early in [shape]
+            },
+        )
+        for n, pair in enumerate(shapes)
+        if pair != (None, None)
+    ]
+    sides = compare(_only(ds, *products), A, B, EVERYTHING, on=DATES[day]).data.sides
+    for side in (sides.base, sides.other):
+        assert 0 <= side.only_here <= side.observed
 
 
 def test_groups_apply_the_cohort_rule_each(ds: Dataset) -> None:
