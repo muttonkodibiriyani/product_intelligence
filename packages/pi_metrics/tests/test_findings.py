@@ -20,8 +20,9 @@ from metrics_fixture import (
     with_capabilities,
 )
 from pi_core import ReviewState
-from pi_dataset import Dataset, DatasetV3, Product
+from pi_dataset import Dataset, DatasetV3, MoneyValue, Product
 from pi_metrics import view
+from pi_metrics.compare import compare
 from pi_metrics.findings import (
     ACRONYM_LETTERS,
     EXAMPLES_LISTED,
@@ -50,7 +51,7 @@ from pi_metrics.findings import (
     nearest_rank,
     spearman,
 )
-from pi_metrics.model import Metric, Reason, Status
+from pi_metrics.model import Excluded, Metric, ProductFilter, Reason, Status
 from pi_metrics.view import UnknownInput
 from v3_fixture import doc, load, profile
 
@@ -133,6 +134,34 @@ def _single(
     )
     p = product(pid, {shop: o}, brand=brand, category=(category,))
     return p if name is None else _named(p, name)
+
+
+Money = tuple[MoneyValue | None, ...]
+
+
+def _restate(series: Money | None, currency: str) -> Money | None:
+    if series is None:
+        return None
+    return tuple(None if m is None else MoneyValue.of(m.decimal(), currency) for m in series)
+
+
+def _foreign(
+    ds: Dataset, ids: set[str], *, regular_only: bool = False, currency: str = "USD"
+) -> DatasetV3:
+    """The view with the series money of ``ids`` restated in ``currency`` while the market stays
+    AED: unvalidated, as a slipped-through offer would reach the metrics."""
+    v3 = view.as_v3(ds)
+    products = []
+    for p in v3.products:
+        offers = dict(p.offers)
+        if p.id in ids:
+            for cid, o in offers.items():
+                update: dict[str, Money | None] = {"regular": _restate(o.series.regular, currency)}
+                if not regular_only:
+                    update["price"] = _restate(o.series.price, currency)
+                offers[cid] = o.model_copy(update={"series": o.series.model_copy(update=update)})
+        products.append(p.model_copy(update={"offers": offers}))
+    return v3.model_copy(update={"products": tuple(products)})
 
 
 # ---------------------------------------------------------------- arithmetic
@@ -223,6 +252,29 @@ def test_without_counted_pairs_the_match_based_findings_say_why() -> None:
         assert (f.params, f.chart, f.examples, f.n) == ({}, None, (), 0)
     m = _run(_with([_single("x", A, "10.00")]))
     assert {_get(m, k).reason for k in MATCH_BASED} == {Reason.NO_MATCH}
+
+
+def test_unreviewed_exact_pairs_carry_no_gap_and_never_reach_pair_findings() -> None:
+    """Default rows mode leaves an uncounted (match_unreviewed) row without a gap, so findings'
+    ``r.counted`` filter is belt and braces: the pair findings are withheld either way."""
+    rows = [
+        *(_pair(f"u{n}", "Brand", "100.00", "50.00", state=ReviewState.PROPOSED) for n in range(6)),
+        _single("x", RIVAL, "10.00"),
+    ]
+    ds = _with(rows)
+    pairs = [r for r in compare(ds, RIVAL, FOCUS, ProductFilter()).data.rows if r.id[0] == "u"]
+    assert {(r.counted, r.excluded_reason, r.gap) for r in pairs} == {
+        (False, Excluded.MATCH_UNREVIEWED, None)
+    }
+    m = _run(ds)
+    assert m.data.counted_pairs == 0
+    for key in MATCH_BASED:
+        f = _get(m, key)
+        assert (f.status, f.reason, f.examples) == (
+            Status.NOT_ENOUGH_DATA,
+            Reason.MATCHES_UNREVIEWED,
+            (),
+        )
 
 
 def test_findings_rank_shown_first_then_withheld_in_order() -> None:
@@ -445,6 +497,21 @@ def test_stock_counts_out_of_stock_by_brand_and_rival_gaps() -> None:
     assert {e.stock for e in f.examples} == {OUT}
 
 
+def test_unknown_stock_is_never_shown_as_out_of_stock() -> None:
+    rows = [
+        *(_single(f"o{n}", FOCUS, "10.00", brand="Short", stock=OUT) for n in range(5)),
+        *(_single(f"i{n}", FOCUS, "10.00", brand="Short", stock=IN) for n in range(5)),
+        # no availability series at all, and the most reviewed listing of the brand
+        _single("unknown", FOCUS, "10.00", brand="Short", rating=("4.50", "5", 10_000)),
+    ]
+    f = _get(_run(_with(rows)), FindingKey.STOCK)
+    assert f.status is Status.OK
+    assert (f.params["brand1"].value, f.params["brand1Out"].value) == ("Short", "5")
+    assert f.examples
+    assert "unknown" not in {e.id for e in f.examples}
+    assert {e.stock for e in f.examples} == {OUT}
+
+
 def test_stock_without_the_capability_is_withheld() -> None:
     ds = with_capabilities(_with([_single("x", FOCUS, "10.00", stock=OUT)]), stock=False)
     f = _get(_run(ds), FindingKey.STOCK)
@@ -483,6 +550,19 @@ def test_promo_strategy_finds_the_flat_depth_and_dependent_brands() -> None:
     assert [(c.code, c.retailer) for c in f.chips] == [(ChipCode.DISCOUNTS_NOT_SHOWN, D)]
 
 
+def test_a_was_price_in_another_currency_is_not_a_markdown() -> None:
+    rows = _promo()
+    base = _get(_run(_with(rows)), FindingKey.PROMO_STRATEGY)
+    # priced in AED, "was" 900 USD: numerically far above, but not the same money
+    rows += [_single(f"usd{n}", FOCUS, "100.00", brand="Usd", regular="900.00") for n in range(5)]
+    usd = {f"usd{n}" for n in range(5)}
+    f = _get(_run(_foreign(_with(rows), usd, regular_only=True)), FindingKey.PROMO_STRATEGY)
+    assert f.status is Status.OK
+    assert f.params["marked"] == base.params["marked"]
+    assert f.params["dependentNames"].items == ("Deal",)
+    assert usd.isdisjoint(e.id for e in f.examples)
+
+
 def test_unverified_was_prices_show_no_discounts() -> None:
     m = _run(_with(_promo()), unverified=frozenset({FOCUS}))
     f = _get(m, FindingKey.PROMO_STRATEGY)
@@ -517,6 +597,14 @@ def test_real_discounts_compare_the_stated_regular_with_the_other_shop() -> None
     assert f.examples[0].gap_pct == Decimal(-40)
     few = _get(_run(_with(rows[:4])), FindingKey.REAL_DISCOUNTS)
     assert (few.status, few.reason) == (Status.NOT_ENOUGH_DATA, Reason.COHORT_TOO_SMALL)
+
+
+def test_real_discounts_skip_a_was_price_in_another_currency() -> None:
+    rows = [_pair(f"m{n}", "Mark", "100.00", "70.00", regular="101.00") for n in range(4)]
+    rows.append(_pair("usd", "Mark", "100.00", "60.00", regular="120.00"))
+    f = _get(_run(_foreign(_with(rows), {"usd"}, regular_only=True)), FindingKey.REAL_DISCOUNTS)
+    # four markdowns in AED, below the minimum: the USD "was" price is not a fifth
+    assert (f.status, f.reason) == (Status.NOT_ENOUGH_DATA, Reason.COHORT_TOO_SMALL)
 
 
 # ---------------------------------------------------------------- 8 fragrance ladder
@@ -652,6 +740,23 @@ def test_positioning_shares_by_band_and_suppresses_small_categories() -> None:
     assert focus_row.parts[:2] == (Decimal(10) * 100 / 30, Decimal(20) * 100 / 30)
     only_focus = _get(_run(_with(rows[:POSITION_MIN])), FindingKey.POSITIONING)
     assert only_focus.reason is Reason.COHORT_TOO_SMALL
+
+
+def test_positioning_ignores_offers_priced_in_another_currency() -> None:
+    rows = [
+        _single(f"fl{n}", FOCUS, "40.00" if n < 10 else "80.00", category="lips")
+        for n in range(POSITION_MIN)
+    ]
+    rows += [_single(f"rl{n}", RIVAL, "900.00", category="lips") for n in range(POSITION_MIN)]
+    base = _get(_run(_with(rows)), FindingKey.POSITIONING)
+    usd = {f"usd{n}" for n in range(POSITION_MIN)}
+    rows += [_single(i, FOCUS, "900.00", category="lips") for i in sorted(usd)]
+    f = _get(_run(_foreign(_with(rows), usd)), FindingKey.POSITIONING)
+    assert f.status is Status.OK
+    keys = ("lipsUnderFocus", "lipsMedianFocus", "lipsOverRival")
+    assert [f.params[k] for k in keys] == [base.params[k] for k in keys]
+    assert f.n == base.n
+    assert f.chart == base.chart
 
 
 # ---------------------------------------------------------------- 11 price vs rating
