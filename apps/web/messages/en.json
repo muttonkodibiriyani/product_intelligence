@@ -963,6 +963,7 @@
       "action": "Action",
       "products": "Products behind it",
       "about": "About this number",
+      "notMeasured": "not measured",
       "loading": "Working out the findings…",
       "withheld": "Not shown: {reason}",
       "withheldTile": "not shown",

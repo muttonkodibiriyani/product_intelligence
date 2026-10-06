@@ -97,19 +97,19 @@ describe('numbers', () => {
 
 describe('params', () => {
   it('words each kind of param, never an id', () => {
-    expect(paramText(p('count', '1234'), 'en', names)).toBe('1,234');
-    expect(paramText(p('pct', '-3.9'), 'en', names)).toBe('−3.9%');
-    expect(paramText(p('ratio', '-0.27'), 'en', names)).toBe('−0.27');
-    expect(paramText(p('retailer', 'shop_a'), 'en', names)).toBe('Ulta');
-    expect(paramText(p('list', '', null, ['A', 'B', 'C']), 'en', names)).toBe('A, B, and C');
-    expect(paramText(p('missing'), 'en', names)).toBe('');
+    expect(paramText(p('count', '1234'), 'en', names, '–')).toBe('1,234');
+    expect(paramText(p('pct', '-3.9'), 'en', names, '–')).toBe('−3.9%');
+    expect(paramText(p('ratio', '-0.27'), 'en', names, '–')).toBe('−0.27');
+    expect(paramText(p('retailer', 'shop_a'), 'en', names, '–')).toBe('Ulta');
+    expect(paramText(p('list', '', null, ['A', 'B', 'C']), 'en', names, '–')).toBe('A, B, and C');
+    expect(paramText(p('missing'), 'en', names, '–')).toBe('–');
   });
 
   it('adds has_ and zero_ flags so a message words a missing or zero value', () => {
     const f = {
       params: { a: p('count', '0'), b: p('missing'), c: p('list'), d: p('pct', '2.0') },
     } as unknown as Finding;
-    expect(messageArgs(f, 'en', names)).toMatchObject({
+    expect(messageArgs(f, 'en', names, '–')).toMatchObject({
       a: '0',
       has_a: 'yes',
       zero_a: 'yes',
@@ -125,8 +125,9 @@ describe('params', () => {
       {
         x: '1',
       },
+      '–',
     );
-    expect(out).toEqual({ x: '1', has_y: 'no', y: '', zero_z: 'no' });
+    expect(out).toEqual({ x: '1', has_y: 'no', y: '–', zero_z: 'no' });
   });
 });
 
@@ -140,16 +141,17 @@ describe.each([
     raw: (key: string) => unknown;
     has: (key: string) => boolean;
   };
+  const NOT = t('notMeasured');
   const say = (f: Finding, part: string) => {
     const args = {
       focus: names.shop(data.focus),
       rival: names.shop(data.rival),
       shop: names.shop(data.focus),
       threshold: String(f.threshold),
-      ...messageArgs(f, locale, names),
+      ...messageArgs(f, locale, names, NOT),
     };
     const key = `items.${f.key}.${part}`;
-    return t(key, fillArgs(t.raw(key) as string, args));
+    return t(key, fillArgs(t.raw(key) as string, args, NOT));
   };
 
   it('has every part for every finding, and the fixture serves all twelve', () => {
@@ -159,13 +161,36 @@ describe.each([
         expect(t.has(`items.${f.key}.${part}`), `${f.key}.${part}`).toBe(true);
   });
 
+  // A shown finding may carry `missing` params (the engine could not measure them) or leave one
+  // out; every slot then reads "not measured", never a blank (Reviewer, #263).
+  it.each(findings.map((f) => [f.key, f] as const))('%s never prints a blank for a missing value', (_, f) => {
+    const gone = {
+      ...f,
+      params: Object.fromEntries(Object.keys(f.params).map((k) => [k, { kind: 'missing' }])),
+    };
+    for (const g of [gone, { ...f, params: {} }] as Finding[])
+      for (const part of [
+        'tile',
+        'headline',
+        'decision',
+        'action',
+        'owner',
+        'evidence',
+        'cap',
+        'threshold',
+      ]) {
+        const s = say(g, part);
+        expect(s, `${f.key}.${part}`).not.toMatch(/ {2}|\( |\(\)| [,.:;)]|^\s|\s$/);
+      }
+  });
+
   it.each(findings.map((f) => [f.key, f] as const))('%s words cleanly, headline within the limit', (_, f) => {
     for (const part of ['tile', 'headline', 'decision', 'action', 'owner', 'evidence', 'cap']) {
       const s = say(f, part);
       expect(s.trim(), `${f.key}.${part}`).not.toBe('');
       expect(s, `${f.key}.${part}`).not.toMatch(/\{|\}|undefined|NaN|shop_[a-z]/);
     }
-    const kpi = f.figure && f.figure.kind !== 'missing' ? paramText(f.figure, locale, names) : '';
+    const kpi = f.figure && f.figure.kind !== 'missing' ? paramText(f.figure, locale, names, '–') : '';
     expect(words(`${kpi} ${say(f, 'headline')}`), f.key).toBeLessThanOrEqual(HEADLINE_WORDS);
   });
 });

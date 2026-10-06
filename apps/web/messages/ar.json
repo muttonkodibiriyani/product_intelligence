@@ -963,6 +963,7 @@
       "action": "الإجراء",
       "products": "المنتجات وراءها",
       "about": "عن هذا الرقم",
+      "notMeasured": "غير مقيس",
       "loading": "جارٍ حساب النتائج…",
       "withheld": "غير معروضة: {reason}",
       "withheldTile": "غير معروضة",

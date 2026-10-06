@@ -107,8 +107,11 @@ export function moneyText(amount: string, currency: string, locale: string): str
   }).format(amount as Intl.StringNumericLiteral);
 }
 
-/** One param as message text: counts and money in Latin digits, a true minus, names not ids. */
-export function paramText(p: Param, locale: string, names: Namers): string {
+/**
+ * One param as message text: counts and money in Latin digits, a true minus, names not ids, and a
+ * value the engine could not measure as ``missing`` (the page's "not measured"), never a blank.
+ */
+export function paramText(p: Param, locale: string, names: Namers, missing: string): string {
   switch (p.kind) {
     case 'count':
       return formatCount(Number(p.value), locale);
@@ -127,7 +130,7 @@ export function paramText(p: Param, locale: string, names: Namers): string {
     case 'text':
       return p.value;
     case 'missing':
-      return '';
+      return missing;
   }
 }
 
@@ -136,10 +139,15 @@ export function paramText(p: Param, locale: string, names: Namers): string {
  * empty) and `zero_<name>` for numbers, so a message words a missing or zero value explicitly
  * instead of printing a blank.
  */
-export function messageArgs(f: Finding, locale: string, names: Namers): Record<string, string> {
+export function messageArgs(
+  f: Finding,
+  locale: string,
+  names: Namers,
+  missing: string,
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, p] of Object.entries(f.params)) {
-    out[k] = paramText(p, locale, names);
+    out[k] = paramText(p, locale, names, missing);
     const present = p.kind === 'list' ? p.items.length > 0 : p.kind !== 'missing';
     out[`has_${k}`] = present ? 'yes' : 'no';
     if (p.kind === 'count' || p.kind === 'pct' || p.kind === 'ratio')
@@ -150,13 +158,18 @@ export function messageArgs(f: Finding, locale: string, names: Namers): Record<s
 
 /**
  * The arguments a message names that the finding did not send, filled so an optional part reads
- * its "other" branch instead of failing: `has_x`/`zero_x` → 'no', anything else → ''. A finding
- * leaves a param out when there is nothing to say (no third shop, no lead brand).
+ * its "other" branch instead of failing: `has_x`/`zero_x` → 'no', anything else → ``missing`` (the
+ * page's "not measured", never a blank). A finding leaves a param out when there is nothing to say
+ * (no third shop, no lead brand).
  */
-export function fillArgs(message: string, args: Record<string, string>): Record<string, string> {
+export function fillArgs(
+  message: string,
+  args: Record<string, string>,
+  missing: string,
+): Record<string, string> {
   const out = { ...args };
   for (const [, name] of message.matchAll(/\{(\w+)[},]/g)) {
-    if (name !== undefined && !(name in out)) out[name] = /^(has|zero)_/.test(name) ? 'no' : '';
+    if (name !== undefined && !(name in out)) out[name] = /^(has|zero)_/.test(name) ? 'no' : missing;
   }
   return out;
 }

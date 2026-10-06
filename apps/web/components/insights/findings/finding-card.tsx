@@ -34,19 +34,24 @@ export function useFindingText(f: Finding, names: Namers, pair: Pair) {
     rival: names.shop(pair.rival),
     shop: names.shop(pair.focus),
     threshold: formatCount(f.threshold, locale),
-    ...messageArgs(f, locale, names),
+    ...messageArgs(f, locale, names, t('notMeasured')),
   };
   const say = (part: string) => {
     const key = `items.${f.key}.${part}` as const;
-    return t(key, fillArgs(t.raw(key) as string, args));
+    return t(key, fillArgs(t.raw(key) as string, args, t('notMeasured')));
   };
   const shown = f.status === 'ok';
-  const kpi = shown && f.figure && f.figure.kind !== 'missing' ? paramText(f.figure, locale, names) : '';
+  const kpi =
+    shown && f.figure && f.figure.kind !== 'missing'
+      ? paramText(f.figure, locale, names, t('notMeasured'))
+      : '';
   return {
     id: findingId(f.key),
     kpi,
     tile: say('tile'),
-    headline: shown ? say('headline') : t('withheld', { reason: f.reason ? known(tr, '', f.reason) : '' }),
+    headline: shown
+      ? say('headline')
+      : t('withheld', { reason: f.reason ? known(tr, '', f.reason) : t('notMeasured') }),
     shown,
     say,
   };
