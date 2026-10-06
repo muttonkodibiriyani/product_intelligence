@@ -9,7 +9,9 @@ price is ``not_published``, never 0). Nothing is guessed:
   which the importer never reads as removal; a wrong-currency price is never relabelled.
 - ``observed_at`` is the page's capture time, never the time the feed was built.
 - Availability is only what the page itself stated in its structured product data, and only when
-  the shop's settings trust that statement. Otherwise the column is absent (``not_observed``).
+  the shop's settings trust that statement. Every statement on the page must agree (JSON-LD
+  ``availability`` and a dataLayer ``item_in_stock`` flag alike); otherwise, or with none, the
+  column is absent (``not_observed``). Absence is never read as a stock-out.
 """
 
 from __future__ import annotations
@@ -62,6 +64,9 @@ AVAILABILITY_MAP: dict[str, str] = {
     "soldout": "out_of_stock",
 }
 
+#: A dataLayer ``item_in_stock`` flag in the same tokens as schema.org availability.
+_STOCK_FLAG = {True: "instock", False: "outofstock"}
+
 
 @dataclass(frozen=True)
 class Shop:
@@ -87,6 +92,9 @@ SHOPS: dict[str, Shop] = {
         currency="AED",
         time_zone="Asia/Dubai",
         notes="Faces UAE (Chalhoub), product pages captured by pi_capture (task 01a0fc6d)",
+        # per page, from the page's own JSON-LD and dataLayer only (coordinator ruling
+        # 2026-10-06); the catalogue stays partial, so a missing page is never a stock-out
+        markup_availability=True,
     ),
 }
 
@@ -135,7 +143,11 @@ def _major(minor: JsonValue, currency: str) -> str | None:
 
 
 def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[str]) -> str | None:
-    """The single availability the structured data states; two different ones -> None."""
+    """The single availability the structured data states; two different ones -> None.
+
+    Read from schema.org ``availability`` values and from boolean ``item_in_stock`` flags (the
+    dataLayer block), so a page whose JSON-LD and dataLayer disagree states nothing usable.
+    """
     found: set[str] = set()
 
     def walk(node: JsonValue) -> None:
@@ -143,6 +155,9 @@ def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[s
             value = node.get("availability")
             if isinstance(value, str) and value.strip():
                 found.add(value.strip().rstrip("/").rsplit("/", 1)[-1].lower())
+            flag = node.get("item_in_stock")
+            if isinstance(flag, bool):
+                found.add(_STOCK_FLAG[flag])
             for child in node.values():
                 walk(child)
         elif isinstance(node, list):

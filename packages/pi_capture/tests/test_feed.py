@@ -270,7 +270,38 @@ def test_the_faces_shop_mapping_is_valid_for_the_importer() -> None:
     assert (mapping.source.name, mapping.country, mapping.currency) == ("faces_ae", "AE", "AED")
     assert mapping.columns.observed_at == "observed_at"
     assert mapping.observed_at is None
-    assert not mapping.complete_catalogue
+    assert not mapping.complete_catalogue  # partial: a page not seen is never a removal
+    assert mapping.columns.availability == "availability"
+
+
+def _flag(in_stock: JsonValue) -> Reading:
+    return r(
+        "structured_data",
+        {"item_in_stock": in_stock},
+        path="dataLayer.view_item.items[0].item_in_stock",
+    )
+
+
+@pytest.mark.parametrize(
+    ("statements", "expected"),
+    [
+        ((_flag(True),), "instock"),
+        ((_flag(False),), "outofstock"),
+        ((_markup("http://schema.org/InStock"), _flag(True)), "instock"),
+        ((_markup("http://schema.org/OutOfStock"), _flag(False)), "outofstock"),
+        # the page contradicts itself: unknown, never in or out of stock
+        ((_markup("http://schema.org/InStock"), _flag(False)), None),
+        ((_markup("http://schema.org/OutOfStock"), _flag(True)), None),
+        # a flag that is not a boolean is no statement
+        ((_flag("true"),), None),
+        ((_markup("http://schema.org/InStock"), _flag(1)), "instock"),
+    ],
+)
+def test_the_datalayer_stock_flag_must_agree_with_the_markup(
+    make_capture: CaptureFactory, statements: tuple[Reading, ...], expected: str | None
+) -> None:
+    result = build_feed([page(make_capture, *statements)], SHOPS["faces_ae"])
+    assert result.rows[0].get("availability") == expected
 
 
 def test_a_numeric_key_is_written_as_text_and_an_image_list_of_blanks_is_skipped(

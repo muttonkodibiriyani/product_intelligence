@@ -36,6 +36,7 @@ from pi_capture.generic import (
     readings_from_generic,
 )
 from pi_capture.model import Reading
+from pi_capture.registry import get as get_attribute
 
 __all__ = ["LOOKED_FOR", "FacesFacts", "faces_facts", "readings_from_faces"]
 
@@ -48,6 +49,10 @@ _VOID = frozenset(
 _WS = re.compile(r"\s+")
 _DIGITS = re.compile(r"\d+")
 _SIZE = re.compile(r"^(?P<num>\d{1,3}(?:,\d{3})+|\d+(?:[.,]\d+)?)\s*(?P<unit>[^\d\s].*?)$")
+# "100_ml" (a slug, seen in the dataLayer) and "'180g" (a spreadsheet text prefix) are a size
+# with the separator or prefix the template left in; anything else around the number stays as is
+_UNDERSCORE_UNIT = re.compile(r"^(\d+(?:[.,]\d+)?)_([^\W\d_]+)$")
+_LEADING_APOSTROPHE = re.compile(r"^'(?=\d)")
 _THOUSANDS = re.compile(r"^[1-9]\d{0,2}(?:,\d{3})+$")  # 1,000 is a thousand; 0,750 is not
 _AMBIGUOUS_THOUSANDS_UNITS = frozenset({"l", "kg"})  # 1,500 l may be 1.5 l or 1500 l
 _SIZE_UNITS = {
@@ -354,7 +359,8 @@ def _map_size(em: _Emitter, els: list[_El], item: Mapping[str, Any] | None) -> N
     if label is None:
         return
     em.observed("size_label", label, label, path)
-    m = _SIZE.match(label)
+    cleaned, cleaning = _clean_size_label(label)
+    m = _SIZE.match(cleaned)
     if m is None:
         em.failed("size_value", label, path, "no leading number")
         em.failed("size_unit", label, path, "no unit after a number")
@@ -384,8 +390,18 @@ def _map_size(em: _Emitter, els: list[_El], item: Mapping[str, Any] | None) -> N
         )
         em.observed("size_unit", label, unit, path)
         return
-    em.observed("size_value", label, value, path, note)
-    em.observed("size_unit", label, unit, path)
+    notes = "; ".join(n for n in (cleaning, note) if n) or None
+    em.observed("size_value", label, value, path, notes)
+    em.observed("size_unit", label, unit, path, cleaning)
+
+
+def _clean_size_label(label: str) -> tuple[str, str | None]:
+    """``100_ml`` -> ``100 ml`` and ``'180g`` -> ``180g``, with the note that says so."""
+    if (m := _UNDERSCORE_UNIT.match(label)) is not None:
+        return f"{m.group(1)} {m.group(2)}", "underscore read as a space"
+    if _LEADING_APOSTROPHE.match(label):
+        return label[1:], "leading apostrophe dropped"
+    return label, None
 
 
 def _currency(els: list[_El], item: Mapping[str, Any] | None) -> str | None:
@@ -562,6 +578,27 @@ def _map_content(em: _Emitter, els: list[_El]) -> None:
         em.observed("spf", m.group(0), int(m.group(1)), "span.js-name|#collapseDescription")
 
 
+def _datalayer_stock(item: Mapping[str, Any] | None) -> Reading | None:
+    """The ``view_item`` stock flag as a second structured-data block beside the JSON-LD.
+
+    It is the page's other machine-readable stock statement; the feed takes availability only
+    when every such statement on the page agrees, so a JSON-LD ``InStock`` beside a ``false`` flag
+    is unknown, not in stock.
+    """
+    flag = item.get("item_in_stock") if item is not None else None
+    if not isinstance(flag, bool):
+        return None
+    return Reading(
+        "structured_data",
+        get_attribute("structured_data").level,
+        "observed",
+        "true" if flag else "false",
+        {"item_in_stock": flag},
+        f"{_DL}.item_in_stock",
+        "dataLayer stock flag; cross-checked with the JSON-LD availability",
+    )
+
+
 def _faces_readings(html: str) -> _Emitter:
     els = _scan(html)
     item = _view_item(html)
@@ -628,9 +665,14 @@ LOOKED_FOR: frozenset[str] = _FACES_KEYS | GENERIC_LOOKED_FOR
 
 def readings_from_faces(html: str, *, locale: str, url: str | None = None) -> list[Reading]:
     """Faces-specific readings first, then the generic extractors fill every key still unread,
-    then the client-side blocks are marked ``not_shown`` if nothing read them."""
+    then the client-side blocks are marked ``not_shown`` if nothing read them. The dataLayer
+    stock flag is the one key read twice: a second ``structured_data`` block (see
+    :func:`_datalayer_stock`)."""
     em = _faces_readings(html)
     em.extend(readings_from_generic(html, locale=locale, url=url))
     for key, note in _CLIENT_SIDE:
         em.not_shown(key, note)
+    # appended past the emitter: the JSON-LD block keeps its own structured_data reading
+    if (stock := _datalayer_stock(_view_item(html))) is not None:
+        em.readings.append(stock)
     return em.readings
