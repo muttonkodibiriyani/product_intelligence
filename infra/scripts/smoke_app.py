@@ -2,16 +2,18 @@
 # requires-python = ">=3.12"
 # dependencies = ["firebase-admin>=6.5", "playwright==1.63.0", "requests>=2.32"]
 # ///
-"""Smoke-test the Next app at /app on live Hosting, next to the legacy dashboard at /.
+"""Smoke-test the Next app at /app on live Hosting.
 
-1. Without a user: / is still the legacy dashboard (asset names, optional byte check); /app/ is
-   the Next app with exactly the CSP in infra/firebase.json; an unknown /app page is the Next 404;
-   /api answers a missing token with a JSON 401.
+1. Without a user: / redirects to /app/; /auth/action/ is still the legacy password-reset shell
+   (asset names, optional byte check); /app/en/ is the Next app with exactly the CSP in
+   infra/firebase.json; an unknown /app page is the Next 404 with status 404; /api answers a
+   missing token with a JSON 401.
 2. Creates a temporary viewer (random password kept in memory, never printed), then in one engine:
-   legacy / signed out, sign in at /app/en/, explorer, a product and back, CSV and JSONL exports
-   (name, type, body), the Content-Type guard (a forced text/html answer is not saved), and the
-   Arabic explorer (rtl, Latin digits). Any CSP violation, console error, page error or failed
-   request is a problem. Screenshots go to --out; downloads are read in memory and never kept.
+   / signed out lands on /app/en/sign-in/, sign in, explorer, a product and back, CSV and JSONL
+   exports (name, type, body), the Content-Type guard (a forced text/html answer is not saved),
+   and the Arabic explorer (rtl, Latin digits). Any CSP violation, console error, page error or
+   failed request is a problem. Screenshots go to --out; downloads are read in memory and never
+   kept.
 3. Always deletes the temporary user.
 
 Run in mcr.microsoft.com/playwright/python:v1.63.0-noble from the repo root, SA key mounted :ro.
@@ -30,7 +32,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import requests
 from playwright.sync_api import Page, Response, sync_playwright
@@ -67,17 +69,23 @@ def expected_csp() -> str:
 
 def check_public(base: str, legacy_sha256: str | None) -> list[str]:
     problems: list[str] = []
-    root = requests.get(f"{base}/", timeout=30)
-    assets = sorted(set(LEGACY_ASSET.findall(root.text)))
-    print(f"/: {root.status_code}, legacy assets {assets}")
-    if root.status_code != 200 or len(assets) != 2:
-        problems.append(f"/: status {root.status_code}, legacy assets {assets}")
-    if "/app/_next/" in root.text:
-        problems.append("/: serves the Next app, not the legacy dashboard")
+    root = requests.get(f"{base}/", timeout=30, allow_redirects=False)
+    where = root.headers.get("Location", "")
+    print(f"/: {root.status_code} -> {where}")
+    if root.status_code not in (301, 302) or urlsplit(where).path != "/app/":
+        problems.append(f"/: {root.status_code} -> {where!r}, expected a redirect to /app/")
+
+    action = requests.get(f"{base}/auth/action/", timeout=30)
+    assets = sorted(set(LEGACY_ASSET.findall(action.text)))
+    print(f"/auth/action/: {action.status_code}, legacy assets {assets}")
+    if action.status_code != 200 or len(assets) != 2:
+        problems.append(f"/auth/action/: status {action.status_code}, legacy assets {assets}")
     if legacy_sha256:
-        got = hashlib.sha256(root.content).hexdigest()
+        got = hashlib.sha256(action.content).hexdigest()
         if got != legacy_sha256:
-            problems.append(f"/: index.html sha256 {got[:16]}…, expected {legacy_sha256[:16]}…")
+            problems.append(
+                f"/auth/action/: index.html sha256 {got[:16]}…, expected {legacy_sha256[:16]}…"
+            )
     for a in assets:
         if (s := requests.get(f"{base}/{a}", timeout=30).status_code) != 200:
             problems.append(f"/{a}: {s}")
@@ -92,8 +100,11 @@ def check_public(base: str, legacy_sha256: str | None) -> list[str]:
         problems.append("/app/en/: CSP header differs from infra/firebase.json")
 
     missing = requests.get(f"{base}/app/en/no-such-page/", timeout=30)
+    print(f"/app/en/no-such-page/: {missing.status_code}")
+    if missing.status_code != 404:
+        problems.append(f"/app/en/no-such-page/: status {missing.status_code}, expected 404")
     if 'name="robots" content="noindex"' not in missing.text or "/app/_next/" not in missing.text:
-        problems.append(f"/app/en/no-such-page/: not the Next 404 (status {missing.status_code})")
+        problems.append("/app/en/no-such-page/: not the Next 404")
 
     api = requests.get(f"{base}/api/v1/meta", timeout=30)
     kind = api.headers.get("Content-Type", "")
@@ -167,10 +178,7 @@ def export(page: Page, fmt: str, problems: list[str]) -> None:
 
 
 def sign_in(page: Page, base: str, email: str, password: str) -> None:
-    page.goto(f"{base}/")  # the legacy dashboard, signed out
-    page.wait_for_url(re.compile(r"#/signin"), timeout=TIMEOUT)
-    page.wait_for_load_state("networkidle")
-    page.goto(f"{base}/app/en/")
+    page.goto(f"{base}/")  # redirects to /app/, which picks English for a new visitor
     page.wait_for_url(re.compile(r"/app/en/sign-in/$"), timeout=TIMEOUT)
     page.fill("input[name=email]", email)
     page.fill("input[name=password]", password)
@@ -266,7 +274,9 @@ def main() -> int:
     parser.add_argument("--project", required=True)
     parser.add_argument("--base", default="https://productintelligence-beeb3.web.app")
     parser.add_argument("--engine", choices=["firefox", "webkit", "chromium"], default="firefox")
-    parser.add_argument("--legacy-sha256", help="expected sha256 of / (legacy index.html)")
+    parser.add_argument(
+        "--legacy-sha256", help="expected sha256 of /auth/action/ (legacy index.html)"
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
