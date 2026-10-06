@@ -1,4 +1,4 @@
-"""``/v1/findings`` (API 1.23.0): the twelve findings at the top of the Insights page.
+"""``/v1/findings`` (API 1.24.0): the twelve findings at the top of the Insights page.
 
 The findings come from ``pi_metrics.findings``, computed once per snapshot generation, shop pair
 and date and cached: they read every shop's catalogue and compare's counted pairs between each

@@ -1,4 +1,4 @@
-"""``/v1/findings`` (API 1.23.0): the Insights findings, their example images, the price floor
+"""``/v1/findings`` (API 1.24.0): the Insights findings, their example images, the price floor
 and the per-generation cache."""
 
 from __future__ import annotations

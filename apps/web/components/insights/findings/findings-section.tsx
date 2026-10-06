@@ -14,7 +14,7 @@ import { known } from './known';
 
 /**
  * The Findings: twelve ranked decisions for `focus` against `rival`, from GET /findings (API
- * 1.23.0), above the Insights cards. A strip of tiles (each jumps to its card), then the cards by
+ * 1.24.0), above the Insights cards. A strip of tiles (each jumps to its card), then the cards by
  * theme, each keeping its rank. Every word is in the messages; the API sends numbers, names and
  * the reason a finding is withheld. An API without /findings, or a 404, shows nothing: the cards
  * below still stand on their own.

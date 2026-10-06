@@ -11,6 +11,18 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [
+      {
+        "source": "/",
+        "destination": "/app/",
+        "type": 302
+      },
+      {
+        "source": "/index.html",
+        "destination": "/app/",
+        "type": 302
+      }
+    ],
     "rewrites": [
       {
         "source": "/api/**",
@@ -20,12 +32,8 @@
         }
       },
       {
-        "source": "/app/**",
-        "destination": "/app/404.html"
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
+        "source": "/auth/action",
+        "destination": "/auth/action/index.html"
       }
     ],
     "headers": [
@@ -54,7 +62,7 @@
           },
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; img-src 'self' data: https://img-product.sephora.me https://media.alshaya.com https://www.faces.ae; style-src 'self' 'unsafe-inline'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ 'sha256-1WguW2y2Hvj95VfkLAjG6v00CsqANfZXri2/awbdgMA=' 'sha256-1cgOvjALvoOfDf4B7QakRRZEz53bfrLkaQDfpjRc+/U=' 'sha256-4BsCCWTuHzw1ZplyHHKBr7SrsdwqBjYfmupiDoAkvTE=' 'sha256-6niDVmbeN/iYbdynRoYZa1zZVCYcwM84+j3yDct0lMg=' 'sha256-7N+DhsW/K0+XLOKEVHwH+mebkDR+ZeSJPMqriCLb2l4=' 'sha256-CfSci1IEEB2Pmuaz9sSXUBdRBBQuGcGoJEY6Rju/e74=' 'sha256-DZ/Ix9A1jWzVeBvAPCVaDEZol7g0PBXCqn27uZbGBLg=' 'sha256-GytU7K7BOgs1XlamtQiwt2cXIniGrA6XkegUWtRazsc=' 'sha256-JpeoRp8dxT3ZX8eOaQJqWMoTovnlIwRRVNRMtiBvbEA=' 'sha256-LLvboFM2pxAuW1LALENLbVdjcu+0kvMOZIDhPn0m2XQ=' 'sha256-OBTN3RiyCV4Bq7dFqZ5a2pAXjnCcCYeTJMO2I/LYKeo=' 'sha256-OjvTOvpHsMYCYWYafG8QtrPhDy326wh5HWNT8KyN56w=' 'sha256-RKwe4W7x3JZggQTjF/9fwhJPpbKKAOQo7bry+gy1jo4=' 'sha256-SgDLNIha5qPIt0oouQW6mw2M8Y7+9PX8ZIpRgcYjFDI=' 'sha256-V5GgZZEkHp4an72C+leF768+gFvNDjfQRAr78zOn00c=' 'sha256-X2h694udHlePUSPpc6XuS0H9aBxNkDSaWwB0lq0f7BM=' 'sha256-Zs6VBKAd9dNru2X6HAMdk85ZUlwtu0b52QE/nWShY4A=' 'sha256-cR+cm9FXa9pJELp0rFlnFIXkh0LPutMurAvbnJcGD6c=' 'sha256-e+7arq6Htt3VA+tFoKEbI5TEwGBwRn4QUm5roJubPLo=' 'sha256-mSxO2RXI+ZmTdNnqq3KK2bv7NtGzlpJdZj8PAcPM93Y=' 'sha256-mdSVqVCakKcyJ6AefsC7dUWgMj8ru4JLvx8Ci/r/Gl8=' 'sha256-of2ZKthXmYIQkWtAZNQgzYiOKFwWyJd6e+noETjra+s=' 'sha256-pSudcQxN+kIkcN5tVHHlyMaQY8fr451DUEmCpFInVDc=' 'sha256-qQCMzQp8GMnwSs73H3mrFp05WtyuNHgq2t775LKSs1I=' 'sha256-rdZMBuRmetWPRDxmWYZrMKKgCHCxNQwBR8fkOoczVCA=' 'sha256-vkNQbu8GTnRDPydkO3bDNxqRvzKAr65xJeGXlT82ToI=' 'sha256-vxF6ALd3SuOZ6//YRjMhHh6lNMLJq7DToHhCe8GCfn0=' 'sha256-wK31jbx++RLgrSaFnHr96GNfKxw/CJgzRe/MWX+B8UA=' 'sha256-ycotyiJ8pTxaTYaQdOKggEYsyf8LDzIfEVzl1jIb/ss='; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com https://content-firebaseappcheck.googleapis.com https://me-central1-productintelligence-beeb3.cloudfunctions.net; frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            "value": "default-src 'self'; img-src 'self' data: https://img-product.sephora.me https://media.alshaya.com https://www.faces.ae; style-src 'self' 'unsafe-inline'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ 'sha256-2P70pvsD+M7zbt5ao9J82Q0eVF1BeNCReHuAnUTq+VU=' 'sha256-6+SeJbl3ss0wT6KkwRsHjWnJazD8iLPP6nP5dokAaLc=' 'sha256-6E1Ob6FTIkLB4j9XxPphsxffCEIb1WyJaNj1taavknw=' 'sha256-9JkFc0BFBXShUBqn7GuWb7GD8c4yu/R5oiDl5UNGzBg=' 'sha256-Dv1155csgV9emOOje7uyJJ85ELY3mf+9MNsQYHxJRhA=' 'sha256-GhzKaQlXWtSoDGAwR9T7I2xpG8+yD7vQcNJKnFd+q7Y=' 'sha256-I+uzLC4CNel7vryVjhXMN/Xm/O4rwcbVlVzdYAZbHF8=' 'sha256-JAeXle8j6ALT/tF+/XLpgZK8Jk3LdER/PlEArG8ui/c=' 'sha256-OBTN3RiyCV4Bq7dFqZ5a2pAXjnCcCYeTJMO2I/LYKeo=' 'sha256-S7jH0gJXO8vREoFwhMHh/iBlBkXW1GRPABQFxLKhzbk=' 'sha256-Ta+8aOBwAwgMQFMg4f1U985BrvuDFKzQ3ICHEGYJyTE=' 'sha256-Tf2uU4dT1Mbvo2nERfma5VwqlvnvmLUypy9Ro9QYtoM=' 'sha256-VAZp7KuO9qY92eZPGd29tpUAClRqpk4Psky42QYxndc=' 'sha256-eA4yqG7zGPvqjoiZH1Q1A8D3hDEZ2IQN/FRyRquKdk0=' 'sha256-frFBSPyrPXmbjK6guvgmgN/SYXVAriK904xDDYGdWEA=' 'sha256-jF8AcRyA5PcLdEaXocHSAdnrapNFIdt02sdpFBDeg5s=' 'sha256-jZSaMc3hCpmaQKJtN8y1NiUCG4cyU+0aVlUEAvTtha8=' 'sha256-k+XgCDv09TE3ymWBETEXCyz0U9qK/hGU33Sg7PnSeuo=' 'sha256-kffsY6mstVwJss2kfE6QQEMJo7qKEkUkWlzeMXlXD9Q=' 'sha256-m3+lnjYFcuPQTAawawqIvFlQBlAEt8j4QzQcGSfvC0s=' 'sha256-mNkixsDFJjmjUI+ykaJL4CrLHtFcoDcEo96lHqlUcG4=' 'sha256-n5+8iDfV26LK0EGsaOgh3P2eeiBLaDuL3fuQp91k66A=' 'sha256-nCIlpQjvfNeLw8ELO9Jyqmwjp9hNGvgQkgp86NiX06M=' 'sha256-nPRAwrTJ0v+SnU5Y1oMjEkY7RtCGS9w6e47khT/N6FA=' 'sha256-r7na69TE+8dDuJ2HyCRq8OyBaKKwKU2BUJ1zbqQHY8c=' 'sha256-revSjMQgAH5Kqrnz9j1o3WtY7JsvyJBAOkSNwUPQdj4=' 'sha256-srZR+Hq7ok24SxuYm6jPK78/F/HL2HzrvRAF5Vnhrc0=' 'sha256-vSD0m+Hek+0I5UW7nBnyPbPprUzo6u0goo7o93Amzos=' 'sha256-vzKn9QiGt4+Lg+Z1Hz3ov1W2q4T/i0e86VDyXwdmSPg='; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com https://content-firebaseappcheck.googleapis.com https://me-central1-productintelligence-beeb3.cloudfunctions.net; frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
           }
         ]
       },

@@ -11,7 +11,7 @@ export type ChartRow = Schemas['ChartRow'];
 export type Example = Schemas['Example'];
 
 /** The first API version that serves GET /api/v1/findings. */
-export const FINDINGS_API = '1.23.0';
+export const FINDINGS_API = '1.24.0';
 
 export const findingsServed = (apiVersion: string | undefined): boolean | undefined =>
   apiVersion === undefined ? undefined : apiAtLeast(apiVersion, FINDINGS_API);
