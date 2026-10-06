@@ -16,6 +16,7 @@ from pydantic import Field
 
 from pi_api.catalog import (
     MAX_LIMIT,
+    NO_HOSTS,
     DecimalText,
     EvidenceHosts,
     InvalidQueryError,
@@ -268,6 +269,29 @@ def _deepest_first(item: PromoItem) -> tuple[Decimal, str, str]:
 
 def _newest_first(item: Launch) -> tuple[int, str, str]:
     return (-item.first_seen.toordinal(), item.id, item.retailer)
+
+
+def with_images(
+    ds: DatasetV3, metric: Metric[Comparison], images: EvidenceHosts = NO_HOSTS
+) -> Metric[Comparison]:
+    """Each row with its product's card image over the pair's two contexts, else null (API
+    1.21.0). The same rule as the card's ``image``, so the Overlap table and a card agree."""
+    pair = {metric.data.base, metric.data.other}
+    products = {p.id: p for p in ds.products}
+    rows = tuple(
+        r.model_copy(
+            update={
+                "image": card_image(
+                    ds,
+                    products[r.id],
+                    [(c, o) for c, o in products[r.id].offers.items() if c in pair],
+                    images,
+                )
+            }
+        )
+        for r in metric.data.rows
+    )
+    return metric.model_copy(update={"data": metric.data.model_copy(update={"rows": rows})})
 
 
 def capped_comparison(

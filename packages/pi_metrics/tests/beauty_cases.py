@@ -7,6 +7,10 @@ of the SHA-256 of its canonical JSON output (sorted keys, no whitespace), comput
 ``pi_metrics`` that predates v3 (metricVersion 2026-10-01.1); the full outputs are ~5 MB. The
 test runs the same calls on ``upgrade(v2, beauty@1)`` and requires identical output. To see a
 difference, run this module at the commit that generated the golden and diff the JSON.
+
+Re-pinned once, for metricVersion 2026-10-06.1 (compare ``only_here`` counts the ``observed``
+population). Only compare cases changed; with the old ``only_here`` the golden was reproduced
+exactly, and both v2 and its upgrade still give the same hashes.
 """
 
 from __future__ import annotations
@@ -137,8 +141,8 @@ def _pre_v3(output: Any) -> Any:
     ``coverage`` rows gained ``contexts`` in ADR-0008 step 4, and compare summaries ``gapHist``
     and summaries ``meanPrice`` (additive, API 1.7.1). Promotion rows gained ``bands`` and
     ``groups``, and promotion items ``brand``, ``category``, ``saved`` and ``image`` (additive,
-    API 1.17.0), and compare rows ``match`` (additive, API 1.19.0); every other field is
-    unchanged.
+    API 1.17.0), and compare rows ``match`` (additive, API 1.19.0) and ``image`` (additive,
+    API 1.21.0); every other field is unchanged.
     """
     data = output.get("data") if isinstance(output, dict) else None
     retailers = data.get("retailers") if isinstance(data, dict) else None
@@ -154,7 +158,7 @@ def _pre_v3(output: Any) -> Any:
             if isinstance(item, dict) and "depthPct" in item:
                 for key in ("brand", "category", "saved", "image"):
                     item.pop(key, None)
-    return _without(output, frozenset({"gapHist", "meanPrice", "match"}))
+    return _without(output, frozenset({"gapHist", "meanPrice", "match", "image"}))
 
 
 def _without(value: Any, keys: frozenset[str]) -> Any:

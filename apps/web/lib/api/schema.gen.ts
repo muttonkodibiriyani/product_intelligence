@@ -1903,6 +1903,8 @@ export interface components {
             gap: components["schemas"]["Gap"] | null;
             /** Id */
             id: string;
+            /** Image */
+            image?: string | null;
             match?: components["schemas"]["RowMatch"] | null;
             /** Name */
             name: string;

@@ -4601,6 +4601,17 @@
             "title": "Id",
             "type": "string"
           },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
           "match": {
             "anyOf": [
               {
