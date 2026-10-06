@@ -78,7 +78,7 @@ export function FindingCard({ finding: f, names, pair }: { finding: Finding; nam
             {t(`chips.${c.code}`, { shop: names.shop(c.retailer) })}
           </span>
         ))}
-        <About finding={f} names={names} pair={pair} />
+        <About finding={f} names={names} pair={pair} threshold={text.say('threshold')} />
       </div>
       <h4
         id={`${text.id}-h`}
@@ -137,8 +137,22 @@ export function FindingCard({ finding: f, names, pair }: { finding: Finding; nam
   );
 }
 
-/** The (i): how many, of what, matched how, on which price, above what threshold, from which shops. */
-function About({ finding: f, names, pair }: { finding: Finding; names: Namers; pair: Pair }) {
+/**
+ * The (i): how many, of what, matched how, on which price, above what threshold, from which shops.
+ * ``threshold`` is the finding's threshold sentence, filled by ``say`` like every other part (it may
+ * name the shops as well as the number).
+ */
+function About({
+  finding: f,
+  names,
+  pair,
+  threshold,
+}: {
+  finding: Finding;
+  names: Namers;
+  pair: Pair;
+  threshold: string;
+}) {
   const t = useTranslations('insights.findings');
   const locale = useLocale();
   const id = `${findingId(f.key)}-about`;
@@ -153,7 +167,7 @@ function About({ finding: f, names, pair }: { finding: Finding; names: Namers; p
     ],
     [t('tip.match'), known(t, 'match', f.match)],
     [t('tip.basis'), known(t, 'basis', f.basis)],
-    [t('tip.threshold'), t(`items.${f.key}.threshold`, { threshold: formatCount(f.threshold, locale) })],
+    [t('tip.threshold'), threshold],
     [t('tip.coverage'), list(read, locale)],
   ];
   return (

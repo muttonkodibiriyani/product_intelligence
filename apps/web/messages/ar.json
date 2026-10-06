@@ -1147,7 +1147,7 @@
           "owner": "{focus}",
           "evidence": "{focusCount} منتجاً لدى {focus} بسعر تحت الحد ({focusInStock} متوفرة).{has_rival, select, yes { {rival}: {rivalCount}.} other {}}{has_third, select, yes { {third}: {thirdCount}.} other {}} أسعارها محجوبة عن كل رقم آخر في هذه الصفحة.",
           "cap": "منتجات بسعر تحت الحد، آخر رصد",
-          "threshold": "منتج واحد على الأقل تحت الحد"
+          "threshold": "{threshold} منتج على الأقل تحت الحد"
         }
       }
     }

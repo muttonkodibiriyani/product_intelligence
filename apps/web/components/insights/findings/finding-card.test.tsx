@@ -49,6 +49,25 @@ describe('FindingCard', () => {
     expect(screen.getByRole('button', { name: /about/i }).getAttribute('aria-describedby')).toBe(tip.id);
   });
 
+  it.each(['en', 'ar'] as const)(
+    'fills every argument of the (i) threshold in %s, the shop as well as the number',
+    (locale) => {
+      const f = get('size_traps');
+      card(f, locale);
+      const row = [...screen.getByRole('tooltip').querySelectorAll('dd')][3]!.textContent!;
+      expect(row).toContain(f.threshold.toLocaleString('en'));
+      expect(row).toContain(SHOPS[pair.focus]);
+    },
+  );
+
+  it('states the pricing anomalies threshold number in Arabic too', () => {
+    const f = get('pricing_anomalies');
+    card(f, 'ar');
+    expect([...screen.getByRole('tooltip').querySelectorAll('dd')][3]!.textContent).toContain(
+      f.threshold.toLocaleString('en'),
+    );
+  });
+
   it('shows a shop left out as a chip and leaves it out of the shops read', () => {
     card(get('price_vs_rating'));
     expect(screen.getByText(/Faces/, { selector: 'span.rounded-full' })).toBeTruthy();
