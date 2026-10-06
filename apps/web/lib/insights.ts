@@ -87,3 +87,20 @@ export function apiAtLeast(version: string, min: string): boolean {
  */
 export const insightsServed = (meta: { meta: { apiVersion: string } } | undefined): boolean | undefined =>
   meta ? apiAtLeast(meta.meta.apiVersion, INSIGHTS_API) : undefined;
+
+/** The pilot's pair (owner, 6 Oct): Ulta read against Sephora, whenever both are collected. */
+export const PILOT_PAIR = ['ulta_ae', 'sephora_me'] as const;
+
+/**
+ * The pair the page opens on when the URL names none: Ulta, then Sephora, when collected; any
+ * slot the pilot cannot fill takes the next collected shop in the dataset's order.
+ */
+export function defaultPair(active: readonly string[]): { base: string; other: string } | null {
+  if (active.length < 2) return null;
+  const base = active.includes(PILOT_PAIR[0]) ? PILOT_PAIR[0] : active[0]!;
+  const other =
+    base !== PILOT_PAIR[1] && active.includes(PILOT_PAIR[1])
+      ? PILOT_PAIR[1]
+      : active.find((r) => r !== base)!;
+  return { base, other };
+}

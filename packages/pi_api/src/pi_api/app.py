@@ -92,6 +92,7 @@ from pi_api.catalogue import CatalogueDetail, CatalogueSource, CatalogueSummary,
 from pi_api.catalogue import detail as catalogue_detail
 from pi_api.catalogue import summary as catalogue_summary
 from pi_api.config import Settings
+from pi_api.findings import FindingsCache, FindingsQuery
 from pi_api.ids import resolve
 from pi_api.source import (
     AmbiguousDatasetError,
@@ -138,6 +139,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
+from pi_metrics.findings import Findings
 from pi_metrics.insights import Insights, insights
 from pi_metrics.pair_pricing import PriceSuggestions, price_suggestions
 from pi_metrics.summary import Summary
@@ -682,6 +684,7 @@ def build_api(
 
     _metric_routes(api, source, images)
     _insights_route(api, source, images)
+    _findings_route(api, source, FindingsCache(images))
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -1008,6 +1011,36 @@ def _insights_route(api: FastAPI, source: SnapshotSource, images: EvidenceHosts)
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "insights", query, metric)
+
+
+def _findings_route(api: FastAPI, source: SnapshotSource, cache: FindingsCache) -> None:
+    """The twelve findings at the top of the Insights page (``pi_metrics.findings``)."""
+
+    @api.get(
+        f"{PREFIX}/findings",
+        response_model=Envelope[Findings],
+        description=(
+            "Twelve findings for focus against rival, every other context a third shop, in "
+            "rank order: shown ones first, then those withheld with a reason. Each has the "
+            "params its headline, decision, evidence and action read (kind count, pct, money, "
+            "ratio, text, retailer, category, list or missing), a mini chart, up to six "
+            "product examples with their card image, its threshold, n and of, the match "
+            "basis (counted_pairs: compare's counted exact pairs, approved or locked, and "
+            "nothing else; within_shop; brand_level: brand names folded by pi_match; "
+            "single_shop) and chips for shops left out (too_few_ratings, too_few_pairs, "
+            "stock_not_collected, discounts_not_shown). Without counted pairs the four "
+            "matched findings (brand_depth_gaps, brand_price_policy, size_level_gaps, "
+            "real_discounts) are withheld as no_match or matches_unreviewed. Stock-outs are "
+            "counts and never rank shops; brands with every listing out are the source "
+            "reporting them unavailable. Computed once per snapshot generation."
+        ),
+    )
+    def get_findings(query: Annotated[FindingsQuery, Query()], _: Viewer) -> Envelope[Findings]:
+        loaded = source.select(query.market, query.scope)
+        metric = cache.get(loaded, read_at(loaded, query.on), query)
+        if query.on is None:
+            metric = stale_first(loaded, metric)
+        return respond(loaded, "findings", query, metric)
 
 
 def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:

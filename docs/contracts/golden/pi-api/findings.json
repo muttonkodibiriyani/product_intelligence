@@ -1,0 +1,320 @@
+{
+  "caveats": [
+    {
+      "ar": "بيانات shop_c مجمّعة جزئياً.",
+      "code": "retailer_partial",
+      "en": "shop_c is only partly collected.",
+      "params": {
+        "retailer": "shop_c"
+      }
+    }
+  ],
+  "cohort": {
+    "description": "counted exact pairs, approved or locked",
+    "n": 6
+  },
+  "data": {
+    "countedPairs": 6,
+    "findings": [
+      {
+        "area": "assortment",
+        "basis": "brand_presence",
+        "chart": null,
+        "chips": [],
+        "examples": [],
+        "figure": null,
+        "key": "brand_white_space",
+        "match": "brand_level",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 1,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "assortment",
+        "basis": "brand_presence",
+        "chart": null,
+        "chips": [],
+        "examples": [],
+        "figure": null,
+        "key": "brand_depth_gaps",
+        "match": "counted_pairs",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 2,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "price",
+        "basis": "selling_price",
+        "chart": null,
+        "chips": [],
+        "examples": [],
+        "figure": null,
+        "key": "brand_price_policy",
+        "match": "counted_pairs",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 3,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "price",
+        "basis": "selling_price",
+        "chart": null,
+        "chips": [],
+        "examples": [],
+        "figure": null,
+        "key": "size_level_gaps",
+        "match": "counted_pairs",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 4,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "availability",
+        "basis": "stock_flag",
+        "chart": null,
+        "chips": [
+          {
+            "code": "stock_not_collected",
+            "retailer": "shop_c"
+          },
+          {
+            "code": "stock_not_collected",
+            "retailer": "shop_d"
+          }
+        ],
+        "examples": [],
+        "figure": null,
+        "key": "stock",
+        "match": "brand_level",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 5,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "promotions",
+        "basis": "stated_regular",
+        "chart": null,
+        "chips": [
+          {
+            "code": "discounts_not_shown",
+            "retailer": "shop_c"
+          },
+          {
+            "code": "discounts_not_shown",
+            "retailer": "shop_d"
+          }
+        ],
+        "examples": [],
+        "figure": null,
+        "key": "promo_strategy",
+        "match": "single_shop",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 6,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 10
+      },
+      {
+        "area": "promotions",
+        "basis": "stated_regular",
+        "chart": null,
+        "chips": [],
+        "examples": [],
+        "figure": null,
+        "key": "real_discounts",
+        "match": "counted_pairs",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 7,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "fragrance",
+        "basis": "per_unit",
+        "chart": null,
+        "chips": [
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_a"
+          },
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_b"
+          },
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_c"
+          },
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_d"
+          }
+        ],
+        "examples": [],
+        "figure": null,
+        "key": "fragrance_ladder",
+        "match": "within_shop",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 8,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "value",
+        "basis": "per_unit",
+        "chart": null,
+        "chips": [
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_a"
+          },
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_b"
+          },
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_c"
+          },
+          {
+            "code": "too_few_pairs",
+            "retailer": "shop_d"
+          }
+        ],
+        "examples": [],
+        "figure": null,
+        "key": "size_traps",
+        "match": "within_shop",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 9,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 5
+      },
+      {
+        "area": "price",
+        "basis": "selling_price",
+        "chart": null,
+        "chips": [],
+        "examples": [],
+        "figure": null,
+        "key": "positioning",
+        "match": "single_shop",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 10,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 30
+      },
+      {
+        "area": "customer_voice",
+        "basis": "rating",
+        "chart": null,
+        "chips": [
+          {
+            "code": "too_few_ratings",
+            "retailer": "shop_a"
+          },
+          {
+            "code": "too_few_ratings",
+            "retailer": "shop_b"
+          },
+          {
+            "code": "too_few_ratings",
+            "retailer": "shop_c"
+          },
+          {
+            "code": "too_few_ratings",
+            "retailer": "shop_d"
+          }
+        ],
+        "examples": [],
+        "figure": null,
+        "key": "price_vs_rating",
+        "match": "single_shop",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 11,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 100
+      },
+      {
+        "area": "trust",
+        "basis": "selling_price",
+        "chart": null,
+        "chips": [],
+        "examples": [],
+        "figure": null,
+        "key": "pricing_anomalies",
+        "match": "single_shop",
+        "n": 0,
+        "of": null,
+        "params": {},
+        "rank": 12,
+        "reason": "cohort_too_small",
+        "status": "not_enough_data",
+        "threshold": 1
+      }
+    ],
+    "focus": "shop_a",
+    "rival": "shop_b",
+    "thirds": [
+      "shop_c",
+      "shop_d"
+    ]
+  },
+  "detail": {
+    "ar": "أقل من 5 عناصر قابلة للمقارنة: لا يُعرض ملخص.",
+    "en": "Fewer than 5 comparable items: no summary is shown."
+  },
+  "meta": {
+    "apiVersion": "1.24.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "findings",
+    "filters": {
+      "focus": "shop_a",
+      "rival": "shop_b"
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-06.3",
+    "scope": "fixture"
+  },
+  "reason": "cohort_too_small",
+  "status": "not_enough_data"
+}
