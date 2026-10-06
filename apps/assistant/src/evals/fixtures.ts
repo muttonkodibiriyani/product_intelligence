@@ -292,6 +292,78 @@ function summary(query: ApiRequest["query"]) {
   );
 }
 
+/** north's suggested prices against south (pi_metrics pair rule, defaults: beat, cut <= 10%). */
+function priceSuggestions() {
+  const side = (context: string, price: string) => ({
+    context,
+    price: money(price),
+    observedOn: "2026-09-15",
+    ageDays: 0,
+    basis: "observed",
+  });
+  const match = { matchClass: "exact", reviewState: "approved", confidence: "0.97" };
+  const [hydra, mist] = ROWS as [Row, Row];
+  return ok(
+    "price_suggestions",
+    {
+      label: "rule-based, not ML",
+      subject: "north",
+      rival: "south",
+      aim: "beat",
+      guardrails: { maxChangePct: "10", minChangePct: "1", endings: [".00", ".50", "x9.00"] },
+      staleDays: 7,
+      rows: [
+        {
+          id: mist.id,
+          name: mist.name,
+          brand: mist.brand,
+          category: CATEGORY,
+          subject: side("north", mist.base),
+          rival: side("south", mist.other),
+          match,
+          gap: gapOf(mist),
+          outcome: "suggested",
+          suggested: money("41.00"),
+          changePct: "-9.9",
+          reachesRival: false,
+          reason: null,
+          rationale: [
+            { code: "current_gap", params: { subject: "45.50", rival: "39.90", gapPct: "-12.3" } },
+            { code: "target", params: { aim: "beat", point: "39.90" } },
+            { code: "clamped", params: { maxChangePct: "10.0" } },
+            { code: "rounded", params: { endings: ".00,.50,x9.00", price: "41.00" } },
+            { code: "short_of_rival", params: { rival: "39.90" } },
+          ],
+        },
+        {
+          id: hydra.id,
+          name: hydra.name,
+          brand: hydra.brand,
+          category: CATEGORY,
+          subject: side("north", hydra.base),
+          rival: side("south", hydra.other),
+          match,
+          gap: gapOf(hydra),
+          outcome: "already_competitive",
+          suggested: null,
+          changePct: null,
+          reachesRival: true,
+          reason: null,
+          rationale: [
+            { code: "current_gap", params: { subject: "100.00", rival: "120.00", gapPct: "20.0" } },
+            { code: "already_competitive", params: { aim: "beat" } },
+          ],
+        },
+      ],
+      total: 2,
+      truncated: false,
+      outcomes: { suggested: 1, already_competitive: 1 },
+      reasons: {},
+    },
+    { description: `rule-based, not ML: ${PAIRS_COHORT}, rival observed within 7 days`, n: 2 },
+  );
+}
+
 function standard(request: ApiRequest): unknown {
   const path = request.path.startsWith(PREFIX) ? request.path.slice(PREFIX.length) : "";
   if (path === "/products") {
@@ -445,6 +517,8 @@ function standard(request: ApiRequest): unknown {
       );
     case "/availability":
       return availability();
+    case "/price-suggestions":
+      return priceSuggestions();
     case "/summary":
       return summary(request.query);
     default:

@@ -7,7 +7,7 @@ import json
 import os
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import psycopg
@@ -17,7 +17,8 @@ from psycopg.rows import dict_row
 from sqlalchemy.engine import make_url
 
 from pi_db import DATABASE_URL_ENV, alembic_config
-from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow
+from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow, latest_params
+from scripts.demo_export.history import RunSpan, read_history
 
 pytestmark = pytest.mark.db
 
@@ -107,6 +108,8 @@ class World:
         availability: str = "in_stock",
         field_state: str = "{}",
         context: object = None,
+        price_type: str | None = "full",
+        regular: str | None = None,
     ) -> None:
         if key not in self.listings:
             self.listings[key] = _id(
@@ -117,9 +120,9 @@ class World:
             )
         self.conn.execute(
             "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
-            " source_listing_id, observed_at, ingested_at, price_current, price_type, currency,"
-            " availability_state, field_state, quality_status)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted')",
+            " source_listing_id, observed_at, ingested_at, price_current, price_regular_stated,"
+            " price_type, currency, availability_state, field_state, quality_status)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted')",
             (
                 f"{run}-{key}",
                 run,
@@ -128,7 +131,8 @@ class World:
                 T0.replace(hour=hour),
                 T0.replace(hour=hour),
                 Decimal(price) if price is not None else None,
-                "full" if price is not None else None,
+                Decimal(regular) if regular is not None else None,
+                price_type if price is not None else None,
                 availability,
                 field_state,
             ),
@@ -142,7 +146,7 @@ class World:
         )
 
     def latest(self) -> dict[str, tuple[object, object]]:
-        rows = self.conn.execute(LATEST_LISTINGS_SQL, {"sources": [self.name]}).fetchall()
+        rows = self.conn.execute(LATEST_LISTINGS_SQL, latest_params([self.name])).fetchall()
         return {str(r["source_listing_key"]): (r["run_id"], r["price"]) for r in rows}
 
 
@@ -236,8 +240,25 @@ STOCK_ONLY = '{"price_current": "unknown", "availability_state": "observed"}'
 
 
 def _row(world: World, key: str) -> dict[str, object]:
-    rows = world.conn.execute(LATEST_LISTINGS_SQL, {"sources": [world.name]}).fetchall()
+    rows = world.conn.execute(LATEST_LISTINGS_SQL, latest_params([world.name])).fetchall()
     return next(dict(r) for r in rows if r["source_listing_key"] == key)
+
+
+def test_a_full_price_row_is_its_own_regular_price(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    world.observe(run, "FULL", 1, "80")  # Sephora/Faces: no regular stated on a full row
+    world.observe(run, "STATED", 1, "70", regular="75")  # Ulta: stated on a full row
+    world.observe(run, "PROMO", 1, "60", price_type="promotional", regular="90")
+    world.observe(run, "BARE", 1, "50", price_type="promotional")  # a cut with no was-price
+
+    regular = {k: _row(world, k)["regular"] for k in ("FULL", "STATED", "PROMO", "BARE")}
+    assert regular == {
+        "FULL": Decimal("80"),
+        "STATED": Decimal("75"),
+        "PROMO": Decimal("90"),
+        "BARE": None,
+    }
 
 
 def test_newer_stock_read_keeps_the_page_price(conn: Conn) -> None:
@@ -377,7 +398,7 @@ def test_ulta_rows_in_the_db_stay_out_unless_named_in_sources(conn: Conn) -> Non
     ulta.observe(ulta.run("partial", 2), "u1", 2, "20")
 
     def keys(sources: list[str]) -> set[str]:
-        rows = conn.execute(LATEST_LISTINGS_SQL, {"sources": sources}).fetchall()
+        rows = conn.execute(LATEST_LISTINGS_SQL, latest_params(sources)).fetchall()
         return {str(r["source_listing_key"]) for r in rows}
 
     assert keys(["sephora_me"]) == {"s1"}
@@ -522,3 +543,49 @@ def test_an_ulta_alshaya_image_survives_the_v2_export(conn: Conn) -> None:
     assert only_offer(d)["image"] == expected
     assert d["products"][0]["image"] == expected
     assert d["meta"]["capabilities"]["images"] is True
+
+
+def _history(conn: Conn, world: World) -> tuple[list[RunSpan], dict[date, list[ListingRow]]]:
+    with conn.cursor() as cursor:
+        spans, days, _ = read_history(cursor, [world.name])
+    return spans, days
+
+
+def test_history_files_each_observation_under_its_dubai_market_day(conn: Conn) -> None:
+    # T0 is 00:00Z on 1 Oct: 02:00Z is 06:00 Dubai on 1 Oct, 21:00Z is 01:00 Dubai on 2 Oct.
+    world = World(conn)
+    conn.execute(
+        "UPDATE source_context SET coverage_status = 'supported' WHERE id = %s", (world.context,)
+    )
+    first = world.run("succeeded", 2)
+    world.observe(first, "a", 2, "10")
+    world.observe(first, "b", 3, "20")
+    second = world.run("succeeded", 21)
+    world.observe(second, "a", 21, "11")
+    world.observe(second, "c", 22, "30")
+    spans, days = _history(conn, world)
+    assert [(s.run_id, s.days, s.complete_day) for s in spans] == [
+        (first, [date(2026, 10, 1)], date(2026, 10, 1)),
+        (second, [date(2026, 10, 2)], date(2026, 10, 2)),
+    ]
+    prices = {d: {r.source_listing_key: r.price for r in rows} for d, rows in days.items()}
+    # each day holds only that day's observations: nothing from 2 Oct leaks back, nothing carries
+    assert prices == {
+        date(2026, 10, 1): {"a": Decimal(10), "b": Decimal(20)},
+        date(2026, 10, 2): {"a": Decimal(11), "c": Decimal(30)},
+    }
+
+
+def test_history_on_a_context_not_marked_supported_has_no_complete_day(conn: Conn) -> None:
+    world = World(conn)  # the column default, 'pending'; the Sephora loader writes 'partial'
+    world.observe(world.run("succeeded", 2), "a", 2, "10")
+    spans, days = _history(conn, world)
+    assert [s.complete_day for s in spans] == [None]
+    assert list(days) == [date(2026, 10, 1)]
+
+
+def test_history_ignores_failed_and_unfinished_runs(conn: Conn) -> None:
+    world = World(conn)
+    for status, hour in [("failed", 2), ("running", 3), ("aborted", 4)]:
+        world.observe(world.run(status, hour), f"k{hour}", hour, "10")
+    assert _history(conn, world) == ([], {})

@@ -25,14 +25,24 @@ const NEW_IN_S6 = new Set([
   "assortment_breadth",
   // API 1.8.0 (#148).
   "category_compare",
+  // Derived from /products sizes (2026-10-03).
+  "price_per_unit",
+  // API 1.14.0 (pair price suggestions).
+  "price_suggestions",
 ]);
 
-const VERSION_BUMPS: Readonly<Record<string, string>> = { get_product: "3", compare: "4" };
+const VERSION_BUMPS: Readonly<Record<string, string>> = {
+  get_product: "3",
+  compare: "4",
+  // Cards without their match list, page max 15 (MAX_RESULT_CHARS).
+  search_products: "3",
+};
 
 describe("tool definitions", () => {
-  it("has seventeen uniquely named, viewer-level, read-only tools", () => {
+  it("has nineteen uniquely named, viewer-level, read-only tools", () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual([
       "search_products",
+      "price_per_unit",
       "get_product",
       "compare",
       "index_trend",
@@ -49,6 +59,7 @@ describe("tool definitions", () => {
       "category_mix",
       "assortment_breadth",
       "category_compare",
+      "price_suggestions",
     ]);
     for (const tool of TOOLS) {
       expect(tool.minRole).toBe("viewer");

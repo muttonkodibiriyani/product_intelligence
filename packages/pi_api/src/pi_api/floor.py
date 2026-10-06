@@ -42,6 +42,8 @@ PRICED = frozenset(
         "compare",
         "category_compare",
         "index",
+        "insights",
+        "price_suggestions",
         "promotions",
         "summary",
     }

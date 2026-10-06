@@ -1,0 +1,178 @@
+{
+  "note": "The product structure. Three real levels, not one flat variant row. The level an attribute belongs to is the whole point: colour does not belong on a size, price does not belong on a design, and a size that carries its own colour name will contradict itself the first time somebody edits one of them.",
+  "hierarchy": [
+    {
+      "level": "style",
+      "table": "style",
+      "plain": "The design itself, before you choose a colour or a size.",
+      "keyed_by": "style_id — the retailer's own design number",
+      "beauty": "A foundation line, e.g. 'Soft Matte Blurring Foundation'",
+      "fashion": "H&M style 0979945, 'Slim Fit Cotton Shirt'",
+      "food": "'Crispy Chicken Burger' as a menu item",
+      "why": "Competitors move prices at this level, not SKU by SKU. Reporting a price change 14 times because a shirt comes in 14 sizes is how an alerting system gets muted in week one."
+    },
+    {
+      "level": "colour",
+      "table": "style_colour",
+      "plain": "The design in one particular colour or shade. This is what gets photographed and what a product page usually shows.",
+      "keyed_by": "style_id + colour_code",
+      "beauty": "Foundation in shade '240 Sand'",
+      "fashion": "The shirt in 'Light Blue'",
+      "food": "Usually not applicable; a recipe variant where it is",
+      "why": "It is the level shoppers actually browse, the level images and ratings attach to, and the level at which a shade or colourway can be discontinued on its own. Beauty lives almost entirely here — a foundation in the wrong shade is a different product, not a variation."
+    },
+    {
+      "level": "variant",
+      "table": "variant",
+      "plain": "The exact thing with a barcode and a stock figure. A colour in a size.",
+      "keyed_by": "style_id + colour_code + size_code, and a GTIN where one exists",
+      "beauty": "Shade 240 Sand in 30ml",
+      "fashion": "The light blue shirt in medium",
+      "food": "The burger as a regular, or as a combo",
+      "why": "The only level where stock is real. Availability, size-run gaps and barcode matching all live here and nowhere else."
+    },
+    {
+      "level": "offer",
+      "table": "observation",
+      "plain": "That variant, at one shop, in one country, on one delivery app, at one moment.",
+      "keyed_by": "variant + retailer + market + seller + channel + observed_at",
+      "beauty": "Shade 240 30ml at Sephora UAE today",
+      "fashion": "The medium shirt on Namshi today",
+      "food": "The combo on HungerStation at 7pm",
+      "why": "Price is never a property of a product. It is a property of a product in a place at a time, which is why it sits here and not on the variant."
+    }
+  ],
+  "grouping_rules": [
+    {
+      "rule": "Group by style ID WITHIN a retailer, never across retailers.",
+      "why": "A style number is the retailer's internal design code. H&M's 0979945 means nothing to Zara. Treating two retailers' style numbers as comparable would merge unrelated products silently."
+    },
+    {
+      "rule": "Across retailers, branded goods group by GTIN; own-label groups by nothing at all.",
+      "why": "This is the structural reason own-label fashion needs an agreed basket. There is no shared key, and no amount of attribute matching invents one."
+    },
+    {
+      "rule": "A retailer's style ID is the single strongest free grouping key we get.",
+      "why": "It is published on the page, it is stable, and it collapses a 60-row size grid into one product. Capture it on every reading even when we cannot yet use it."
+    },
+    {
+      "rule": "Where a retailer exposes no style ID, derive one and mark it derived.",
+      "why": "A derived grouping is useful and must never be mistaken for the retailer's own. Derived groupings are rebuilt when the rule changes; captured ones are not."
+    },
+    {
+      "rule": "Match once at style or colour level, then inherit to every size beneath it.",
+      "why": "Matching 14 sizes separately costs 14 times as much and produces 14 chances to disagree with itself. One shirt cannot be both matched and unmatched."
+    },
+    {
+      "rule": "Roll a price up from variants to a style only with the rule named on screen.",
+      "why": "A style has no single price. It has a cheapest size, a median size and a most-common size, and those are three different numbers that a reader will assume is one."
+    },
+    {
+      "rule": "Never collapse the levels into one wide table 'for convenience'.",
+      "why": "The first edit that sets a colour name on a size row creates a product that contradicts itself, and nothing in the system can tell which of the two rows is right."
+    }
+  ],
+  "attribute_groups": [
+    {
+      "key": "identity",
+      "name": "Identity and keys",
+      "plain": "What this thing is, and how we recognise it again tomorrow."
+    },
+    {
+      "key": "classification",
+      "name": "Classification",
+      "plain": "Where it sits in the range."
+    },
+    {
+      "key": "fashion",
+      "name": "Fashion attributes",
+      "plain": "What the garment is and how it is cut."
+    },
+    {
+      "key": "beauty",
+      "name": "Beauty attributes",
+      "plain": "Shade, formulation and what it claims to do."
+    },
+    {
+      "key": "food",
+      "name": "Food attributes",
+      "plain": "What is in it, how much, and what it is served with."
+    },
+    {
+      "key": "size",
+      "name": "Size and measurement",
+      "plain": "How big it is, in a form that can be compared."
+    },
+    {
+      "key": "commercial",
+      "name": "Commercial",
+      "plain": "Price, cost and who controls them."
+    },
+    {
+      "key": "content",
+      "name": "Content and media",
+      "plain": "How well the thing is presented on a page."
+    },
+    {
+      "key": "lifecycle",
+      "name": "Lifecycle",
+      "plain": "When it arrived, when it left."
+    },
+    {
+      "key": "sustain",
+      "name": "Claims and compliance",
+      "plain": "What the label promises, and what the law requires."
+    },
+    {
+      "key": "money",
+      "name": "What the shopper really pays",
+      "plain": "Everything between the headline price and the amount that leaves their account."
+    },
+    {
+      "key": "stockops",
+      "name": "Stock and fulfilment",
+      "plain": "Whether they can have it, how fast, and from where."
+    },
+    {
+      "key": "social",
+      "name": "Reviews and questions",
+      "plain": "What other shoppers said."
+    },
+    {
+      "key": "merch",
+      "name": "Placement and merchandising",
+      "plain": "Where the shop chose to put it, and what it shouted about it."
+    },
+    {
+      "key": "page",
+      "name": "Page and capture",
+      "plain": "Technical facts about the page we read, which make the reading reproducible."
+    }
+  ],
+  "attribute_storage": {
+    "decision": "Common attributes are real columns. Vertical-specific ones live in a defined attribute table with a registry, not in a free-form blob.",
+    "why": "A jsonb blob accepts 'colour', 'color', 'Colour' and 'col' on four consecutive days and nothing complains. Every attribute-based comparison then quietly reads a fraction of the data and reports a confident number from it.",
+    "rules": [
+      "Every attribute must exist in the registry before a value can be written against it. An unregistered key is rejected, not stored.",
+      "The registry fixes the level an attribute belongs to. A value written at the wrong level is rejected — colour cannot be set on a size.",
+      "Enumerated attributes have their allowed values listed. A new value raises a review item rather than being accepted silently.",
+      "Raw retailer text is kept alongside the normalised value, always. Normalisation is a reading, and we must be able to show the original when somebody disputes it.",
+      "Completeness is measured per attribute per retailer and shown next to anything derived from it."
+    ]
+  },
+  "capture_principle": {
+    "rule": "Capture everything the page offers on the first pass, store it raw, and parse later.",
+    "why": "A second visit is a second chance to be blocked, and tomorrow's page will not show today's price, badge or promotion. Collection is the expensive, fragile, unrepeatable step; parsing is cheap and can be redone a hundred times over stored captures. Anything not taken on the first pass is gone for good.",
+    "consequences": [
+      "Prefer the machine-readable block the retailer already publishes over reading rendered text. It is what the shop itself asserts and it breaks far less often.",
+      "Store the whole specification block unparsed even where no extractor exists yet.",
+      "Record what we expected to find and did not, per reading, so a half-parsed page is a defect rather than a quiet success.",
+      "Detect page template changes automatically. A redesign breaks every parser at once, and without detection it is a silent week of wrong data."
+    ]
+  },
+  "detail_only_meaning": {
+    "rule": "An attribute marked detail-only is shown on the product page and carried in the export, but no analytic screen aggregates it.",
+    "why": "Most descriptive fields earn their place twice over without ever becoming a chart: they are how a buyer recognises the product, they are what makes a basket line enforceable, and they are what the matching engine compares when there is no barcode. Marking them keeps that deliberate. The alternative is a registry where nobody can tell a field with a purpose from one somebody added and forgot.",
+    "consequence": "A newly added attribute is neither on an analytic screen nor marked, so it fails the build until somebody decides which it is. That is the point: the decision gets made once, when the field is added, rather than never."
+  }
+}

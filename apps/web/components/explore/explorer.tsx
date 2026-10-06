@@ -3,14 +3,14 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Envelope, Schemas } from '@/lib/api/types';
 import {
   activeFilterCount,
   currentPages,
-  EMPTY,
   hasPair,
   parseState,
+  toExportQuery,
   toQuery,
   toSearch,
   withValidSort,
@@ -19,14 +19,15 @@ import {
 import { formatCount } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
-import { EnvNotes } from '../ui/env-notes';
+import { AboutDataLink, PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
+import { EmptyResults } from './empty-results';
 import { ExportMenu } from './export-menu';
 import { Filters } from './filters';
 import { ProductGrid, useView, ViewToggle } from './product-grid';
 import { ProductTable } from './product-table';
-import { Toolbar } from './toolbar';
+import { ActiveChips, Toolbar } from './toolbar';
 
 type Page = Envelope<Schemas['ProductPage']>;
 
@@ -41,7 +42,6 @@ export function Explorer() {
   const name = useRetailerName();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useView();
-  const filtersId = useId();
 
   const search = sp.toString();
   const parsed = useMemo(() => parseState(new URLSearchParams(search)), [search]);
@@ -72,6 +72,7 @@ export function Explorer() {
   const total = last?.data?.total ?? 0;
   const restarted = (q.data?.pages.length ?? 0) > pages.length || pages[0]?.restarted;
   const currency = first?.meta.currency ?? '';
+  const active = activeFilterCount(state);
 
   const filters = (
     <Filters
@@ -84,115 +85,164 @@ export function Explorer() {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <div className="lg:hidden">
-        <button
-          type="button"
-          aria-expanded={filtersOpen}
-          aria-controls={filtersId}
-          onClick={() => setFiltersOpen((o) => !o)}
-          className="btn focus-visible:outline-2"
-        >
-          {filtersOpen ? t('hideFilters') : t('showFilters', { count: activeFilterCount(state) })}
-        </button>
-        <div id={filtersId} hidden={!filtersOpen} className="mt-3 panel p-4">
-          {filtersOpen && filters}
-        </div>
-      </div>
-      <aside aria-label={t('filters')} className="hidden self-start panel p-4 lg:block">
-        {filters}
-      </aside>
+    <div className="space-y-4">
+      <PageHeader id="explore-title" title={t('title')} />
+      <Toolbar key={state.q} state={state} update={update} name={name} />
 
-      <section aria-labelledby="explore-title" className="min-w-0">
-        <Toolbar key={state.q} state={state} update={update} name={name} />
+      <div className="grid gap-6 lg:grid-cols-[12.5rem_minmax(0,1fr)]">
+        <aside aria-label={t('filters')} className="hidden self-start lg:block">
+          {filters}
+        </aside>
 
-        <div className="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 id="explore-title" className="text-2xl font-bold tracking-tight">
-            {t('title')}
-          </h1>
-          {last && (
-            <p className="text-sm text-ink-2 tabular-nums" role="status">
-              {t('count', { total, n: formatCount(total, locale) })}
+        <section aria-labelledby="explore-title" className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {last && (
+              <p className="text-sm font-semibold text-ink tabular-nums" role="status">
+                {t('count', { total, n: formatCount(total, locale) })}
+              </p>
+            )}
+            <ActiveChips state={state} name={name} update={update} />
+            {/* Wraps on narrow screens so the row never scrolls sideways, whatever the font widths. */}
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:ms-auto">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                className="btn text-[13px] lg:hidden focus-visible:outline-2"
+              >
+                {t('showFilters', { count: active })}
+              </button>
+              <ViewToggle view={view} onChange={setView} />
+              {/* Keyed by the filters: a new list starts with a fresh export state. */}
+              {last && (
+                <ExportMenu
+                  key={search}
+                  path="/api/v1/export/products"
+                  query={(format) => toExportQuery(state, format)}
+                  fallback="pi-products"
+                  total={total}
+                  n={formatCount(total, locale)}
+                />
+              )}
+            </div>
+          </div>
+
+          <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title={t('filters')}>
+            {filters}
+          </Sheet>
+
+          <p className="mt-3 max-w-prose text-sm text-ink-2">{t('intro')}</p>
+          <p className="mt-1 text-xs text-ink-2">
+            <AboutDataLink />
+          </p>
+
+          {restarted && (
+            <p role="status" className="mt-3 rounded-ctl bg-butter px-4 py-2.5 text-sm text-warn">
+              {t('restarted')}
             </p>
           )}
-          {activeFilterCount(state) > 0 && (
-            <button
-              type="button"
-              onClick={() => update(EMPTY)}
-              className="text-sm text-accent underline-offset-2 hover:underline focus-visible:outline-2"
-            >
-              {t('clear')}
-            </button>
-          )}
-          <div className="flex items-center gap-2 sm:ms-auto">
-            <ViewToggle view={view} onChange={setView} />
-            {/* Keyed by the filters: a new list starts with a fresh export state. */}
-            {last && <ExportMenu key={search} state={state} total={total} n={formatCount(total, locale)} />}
-          </div>
-        </div>
 
-        {restarted && (
-          <p role="status" className="mt-3 rounded-ctl bg-butter px-4 py-2.5 text-sm text-warn">
-            {t('restarted')}
-          </p>
-        )}
-        {first && <EnvNotes env={first} className="mt-3" />}
-
-        <div className="mt-4">
-          {q.isError && !q.data ? (
-            <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
-          ) : !q.data ? (
-            <Loading kind="table" rows={8}>
-              {t('loading')}
-            </Loading>
-          ) : items.length === 0 ? (
-            first?.status === 'ok' && (
-              <div className="panel px-5 py-6">
-                <p className="font-medium">{t('empty')}</p>
-                <p className="mt-1 text-sm text-ink-2">{t('emptyHint')}</p>
-              </div>
-            )
-          ) : (
-            <>
-              {(() => {
-                const Body = view === 'grid' ? ProductGrid : ProductTable;
-                return (
-                  <Body
-                    items={items}
-                    retailers={columns(state, first?.data?.facets.retailer ?? [])}
-                    pair={hasPair(state) ? (state.retailer as [string, string]) : null}
-                    name={name}
-                    from={key}
-                  />
-                );
-              })()}
-              <div className="mt-4 flex flex-wrap items-center gap-4">
-                <p className="text-sm text-ink-2 tabular-nums">
-                  {t('showing', { shown: items.length, total })}
-                </p>
-                {q.hasNextPage && (
-                  <button
-                    type="button"
-                    disabled={q.isFetchingNextPage}
-                    onClick={() => void q.fetchNextPage()}
-                    className="btn focus-visible:outline-2"
-                  >
-                    {q.isFetchingNextPage
-                      ? t('loadingMore')
-                      : t('more', { n: Math.min(50, Math.max(total - items.length, 1)) })}
-                  </button>
-                )}
-              </div>
-              {q.isFetchNextPageError && (
-                <div className="mt-3">
-                  <ErrorNotice error={q.error} onRetry={() => void q.fetchNextPage()} />
+          <div className="mt-4">
+            {q.isError && !q.data ? (
+              <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
+            ) : !q.data ? (
+              <Loading kind="table" rows={8}>
+                {t('loading')}
+              </Loading>
+            ) : items.length === 0 ? (
+              first && <EmptyResults env={first} />
+            ) : (
+              <>
+                {(() => {
+                  const Body = view === 'grid' ? ProductGrid : ProductTable;
+                  return (
+                    <Body
+                      items={items}
+                      retailers={columns(state, first?.data?.facets.retailer ?? [])}
+                      pair={hasPair(state) ? (state.retailer as [string, string]) : null}
+                      name={name}
+                      from={key}
+                    />
+                  );
+                })()}
+                <div className="mt-4 flex flex-wrap items-center gap-4">
+                  <p className="text-sm text-ink-2 tabular-nums">
+                    {t('showing', { shown: items.length, total })}
+                  </p>
+                  {q.hasNextPage && (
+                    <button
+                      type="button"
+                      disabled={q.isFetchingNextPage}
+                      onClick={() => void q.fetchNextPage()}
+                      className="btn focus-visible:outline-2"
+                    >
+                      {q.isFetchingNextPage
+                        ? t('loadingMore')
+                        : t('more', { n: Math.min(50, Math.max(total - items.length, 1)) })}
+                    </button>
+                  )}
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
+                {q.isFetchNextPageError && (
+                  <div className="mt-3">
+                    <ErrorNotice error={q.error} onRetry={() => void q.fetchNextPage()} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
+  );
+}
+
+/**
+ * The filters on a phone: a native modal dialog that slides up from the bottom. Escape, the
+ * backdrop and Done close it; the filters inside it only exist while it is open.
+ */
+function Sheet({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  const t = useTranslations('explore');
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal?.();
+    else if (!open && d.open) d.close?.();
+  }, [open]);
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="m-0 mt-auto max-h-[85vh] w-full max-w-none rounded-t-2xl border-0 bg-surface p-0 text-ink shadow-pop backdrop:bg-ink/40 lg:hidden"
+    >
+      {open && (
+        <div className="flex max-h-[85vh] flex-col">
+          <div className="flex items-center justify-between border-b border-line-2 px-4 py-3">
+            <h2 id={titleId} className="text-base font-semibold">
+              {title}
+            </h2>
+            <button type="button" onClick={onClose} className="btn text-[13px] focus-visible:outline-2">
+              {t('done')}
+            </button>
+          </div>
+          <div className="overflow-y-auto px-4 py-4">{children}</div>
+        </div>
+      )}
+    </dialog>
   );
 }
 

@@ -85,6 +85,8 @@ describe("tools vs pi-api.openapi.json", () => {
         const sent = key === "ids" ? "id" : key;
         if ((tool.name === "get_product" || tool.name === "price_history") && key === "id")
           continue;
+        // price_per_unit's unit, order and row count shape its local view, never the request.
+        if (tool.name === "price_per_unit" && ["per", "order", "rows"].includes(key)) continue;
         expect(declared.has(sent), `${tool.name}.${key}`).toBe(true);
       }
     }

@@ -2,79 +2,37 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import type { GroupBy } from '@/lib/compare';
 import { formatCount } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
 import { ErrorNotice } from '../error-notice';
 import { Card, CardGrid } from '../ui/card';
-import { CaveatNotes } from '../ui/env-notes';
 import { Known } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
+import { Segmented } from '../ui/segmented';
 import { Loading, Skeleton } from '../ui/skeleton';
-import { CROSS_COLS, CROSS_ROWS, MIN_PAIRS } from '../widgets/constants';
+import { useRetailerName } from '../use-meta';
 import { PairKpis, type RetailerSummary } from '../widgets/kpis';
-import {
-  gapHistBins,
-  brandShare,
-  categoryNodes,
-  cheaperShares,
-  compareHref,
-  crossCells,
-  gapRows,
-  ladderRows,
-  pct,
-} from '../widgets/model';
+import { amount, compareHref, pct } from '../widgets/model';
 import { useCategoryCompare } from '../widgets/use-category';
-import { useCompareData, useIndexData, useRetailers } from '../widgets/use-compare';
+import { useCompareData, useRetailers } from '../widgets/use-compare';
 import { useSummaries } from '../widgets/use-summaries';
 import { CategoryCompareCard } from './category-compare';
+import { brandTakeaway, gapTakeaway, histTakeaway, ladderTakeaway } from './takeaways';
 
 const charts = () => import('../widgets/charts');
 const ChartSkeleton = () => <Skeleton kind="chart" />;
+const PriceHistWidget = dynamic(() => charts().then((m) => m.PriceHistWidget), {
+  ssr: false,
+  loading: ChartSkeleton,
+});
 const LadderWidget = dynamic(() => charts().then((m) => m.LadderWidget), {
   ssr: false,
   loading: ChartSkeleton,
 });
 const BrandPriceWidget = dynamic(() => charts().then((m) => m.BrandPriceWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const CategoryMixWidget = dynamic(() => charts().then((m) => m.CategoryMixWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const PriceHistWidget = dynamic(() => charts().then((m) => m.PriceHistWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const BrandShareWidget = dynamic(() => charts().then((m) => m.BrandShareWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const RatingPriceWidget = dynamic(() => charts().then((m) => m.RatingPriceWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const IndexTrendWidget = dynamic(() => charts().then((m) => m.IndexTrendWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const TopGapsWidget = dynamic(() => charts().then((m) => m.TopGapsWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const CrossHeatmapWidget = dynamic(() => charts().then((m) => m.CrossHeatmapWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const CheaperShareWidget = dynamic(() => charts().then((m) => m.CheaperShareWidget), {
-  ssr: false,
-  loading: ChartSkeleton,
-});
-const GroupGapWidget = dynamic(() => charts().then((m) => m.GroupGapWidget), {
   ssr: false,
   loading: ChartSkeleton,
 });
@@ -88,36 +46,41 @@ type Top = (typeof TOPS)[number];
 type Pair = NonNullable<ReturnType<typeof useRetailers>['pair']>;
 
 /**
- * Price analytics: one retailer's full catalogue at a time (distribution, ladder, brand and
- * category positioning), then the pair by category across both full catalogues (the centrepiece),
- * then the pair head to head on the exactly matched products only, with the comparable-pair count
- * beside every head-to-head figure. The retailer, the brand count and the grouping live in the URL.
+ * Price analytics, at most four charts, each led by one line computed from its own data: one
+ * retailer's full catalogue (distribution, ladder by category, brand positioning), the pair by
+ * category across both full catalogues as a table (the centrepiece), then the spread of gaps on
+ * the exactly matched products with the comparable-pair count beside it. The retailer and the
+ * brand count live in the URL.
  */
 export function PricesView() {
   const t = useTranslations('prices');
   const tw = useTranslations('widgets');
   const locale = useLocale();
   const sp = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
+  const tr = useTranslations('reasons');
+  const name = useRetailerName();
   const { ids, pair, loading, error } = useRetailers();
   const s = useSummaries(ids);
 
+  // Only the query changes, so the history API is enough: Next syncs useSearchParams with it, and
+  // unlike router.replace there is no page payload to fetch first, so the URL and chart move on click.
   const set = (k: string, v: string | null) => {
     const q = new URLSearchParams(sp.toString());
     if (v === null) q.delete(k);
     else q.set(k, v);
     const qs = q.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
   };
   const wanted = sp.get('retailer');
   const selected = (wanted && ids.includes(wanted) ? wanted : ids[0]) ?? null;
-  // Rows are keyed by the retailer the API answered for; the asked-for id is the fallback.
-  const row =
-    s.rows.find((r) => r.retailer === selected) ?? s.rows[selected ? ids.indexOf(selected) : 0] ?? s.rows[0];
+  // A summary the API withheld for this retailer: the page says why, never another retailer's data.
+  const missing = selected ? s.missing.find((m) => m.retailer === selected) : undefined;
+  // Rows are keyed by the retailer the API answered for; the asked-for id's position is the fallback.
+  const row = missing
+    ? undefined
+    : (s.rows.find((r) => r.retailer === selected) ?? s.rows[selected ? ids.indexOf(selected) : 0]);
   const topRaw = Number(sp.get('top'));
   const top: Top = (TOPS as readonly number[]).includes(topRaw) ? (topRaw as Top) : 10;
-  const groupBy: GroupBy = sp.get('groupBy') === 'category' ? 'category' : 'brand';
 
   return (
     <div className="space-y-8">
@@ -126,7 +89,7 @@ export function PricesView() {
         <ErrorNotice error={error} />
       ) : loading || (s.loading && s.rows.length === 0) ? (
         <Loading kind="chart">{t('loading')}</Loading>
-      ) : ids.length === 0 || (!row && !s.error) ? (
+      ) : ids.length === 0 || (!row && !missing && !s.error) ? (
         <p className="text-sm text-ink-2">{t('noRetailers')}</p>
       ) : (
         <>
@@ -136,15 +99,18 @@ export function PricesView() {
                 <Segmented
                   label={tw('controls.retailer')}
                   value={selected ?? ''}
-                  options={ids.map((id) => ({
-                    value: id,
-                    label: s.rows.find((r) => r.retailer === id)?.name ?? id,
-                  }))}
+                  options={ids.map((id) => ({ value: id, label: name(id) }))}
                   onChange={(v) => set('retailer', v === ids[0] ? null : v)}
                 />
               )}
             </SectionHead>
-            {s.error && !row && <ErrorNotice error={s.error.error} onRetry={s.error.retry} />}
+            {s.error && !row && !missing && <ErrorNotice error={s.error.error} onRetry={s.error.retry} />}
+            {missing && (
+              <p role="status" className="text-sm text-ink-2">
+                {t('noSummary', { retailer: name(missing.retailer) })}{' '}
+                {missing.env.reason && <Known t={tr} v={missing.env.reason} />}
+              </p>
+            )}
             {row && (
               <RetailerSection
                 row={row}
@@ -157,13 +123,7 @@ export function PricesView() {
           {pair ? (
             <>
               <ByCategory pair={pair} locale={locale} />
-              <HeadToHead
-                pair={pair}
-                locale={locale}
-                groupBy={groupBy}
-                onGroupBy={(v) => set('groupBy', v === 'brand' ? null : v)}
-                top={top}
-              />
+              <HeadToHead pair={pair} locale={locale} />
             </>
           ) : (
             <section aria-labelledby="by-category" className="space-y-4">
@@ -200,34 +160,12 @@ function SectionHead({
   );
 }
 
-/** A small group of real buttons, the pressed one filled; the label names the group for readers. */
-function Segmented<T extends string | number>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
+/** The line a chart leads with: its own data in one sentence, above the drawing. */
+function Takeaway({ children }: { children: ReactNode }) {
   return (
-    <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-ctl bg-surface-2 p-1">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={o.value === value}
-          onClick={() => onChange(o.value)}
-          className={`rounded-[8px] px-3 py-1 text-sm focus-visible:outline-2 ${
-            o.value === value ? 'bg-surface font-semibold text-ink shadow-card' : 'text-ink-2 hover:text-ink'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <p data-takeaway className="mb-3 text-sm font-medium text-ink">
+      {children}
+    </p>
   );
 }
 
@@ -252,9 +190,11 @@ function RetailerSection({
   const p = { currency: d.currency, locale };
   const withheld = d.withheld.filter((w) => w.section === 'prices' || w.section === 'ratings');
   const topOptions = TOPS.map((n) => ({ value: n as Top, label: tw('controls.top', { n }) }));
+  const hist = histTakeaway(d.priceHist);
+  const ladder = ladderTakeaway(d.ladder);
+  const brands = brandTakeaway(d.brandPrice, top);
   return (
     <div className="space-y-4">
-      <CaveatNotes caveats={row.caveats} />
       <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
         <Fact k={tk('products')}>{d.products === null ? tk('none') : formatCount(d.products, locale)}</Fact>
         <Fact k={tw('priced')}>{d.priced === null ? tk('none') : formatCount(d.priced, locale)}</Fact>
@@ -272,54 +212,94 @@ function RetailerSection({
         </p>
       )}
       <CardGrid>
-        {d.priceHist && d.priceHist.counts.some((c) => c > 0) && (
-          <Card id="p-hist" title={tw('hist.title')} question={tw('hist.question')} span={6}>
-            <PriceHistWidget data={d.priceHist} {...p} />
+        {d.priceHist && (
+          <Card
+            id="p-hist"
+            title={tw('hist.title')}
+            question={tw('hist.question')}
+            span={6}
+            state={hist ? 'ready' : 'empty'}
+          >
+            {hist && (
+              <>
+                <Takeaway>
+                  {tw('hist.takeaway', {
+                    lo: amount(hist.lo, d.currency, locale, true),
+                    hi: amount(hist.hi, d.currency, locale, true),
+                    share: pct((hist.share * 100).toFixed(1), locale),
+                  })}
+                </Takeaway>
+                <PriceHistWidget data={d.priceHist} {...p} />
+              </>
+            )}
           </Card>
         )}
-        {d.ladder && ladderRows(d.ladder).length > 0 && (
-          <Card id="p-ladder" title={tw('ladder.title')} question={tw('ladder.question')} span={6}>
-            <LadderWidget data={d.ladder} {...p} />
+        {d.ladder && (
+          <Card
+            id="p-ladder"
+            title={tw('ladder.title')}
+            question={tw('ladder.question')}
+            span={6}
+            state={ladder ? 'ready' : 'empty'}
+          >
+            {ladder && (
+              <>
+                <Takeaway>
+                  {ladder.n === 1
+                    ? tw('ladder.takeawayOne', {
+                        cat: ladder.low.category,
+                        median: formatMoney(ladder.low.median, lc),
+                      })
+                    : tw('ladder.takeaway', {
+                        lowCat: ladder.low.category,
+                        low: formatMoney(ladder.low.median, lc),
+                        highCat: ladder.high.category,
+                        high: formatMoney(ladder.high.median, lc),
+                      })}
+                </Takeaway>
+                <LadderWidget data={d.ladder} {...p} />
+              </>
+            )}
           </Card>
         )}
-        {d.brandPrice && d.brandPrice.length > 0 && (
+        {d.brandPrice && (
           <Card
             id="p-brands"
             title={tw('brands.title')}
             question={tw('brands.question', { n: Math.min(top, d.brandPrice.length) })}
             span={12}
+            state={brands ? 'ready' : 'empty'}
             tools={
-              <Segmented
-                label={tw('controls.topLabel')}
-                value={top}
-                options={topOptions.filter((o) => o.value <= Math.max(5, d.brandPrice!.length))}
-                onChange={onTop}
-              />
+              // A choice only once there are more brands than the smallest cut.
+              d.brandPrice.length > TOPS[0] && (
+                <Segmented
+                  label={tw('controls.topLabel')}
+                  value={top}
+                  options={topOptions.filter((o) => o.value <= d.brandPrice!.length || o.value === top)}
+                  onChange={onTop}
+                />
+              )
             }
           >
-            <BrandPriceWidget data={d.brandPrice} top={top} {...p} />
-          </Card>
-        )}
-        {d.categoryMix && categoryNodes(d.categoryMix).length > 0 && (
-          <Card id="p-mix" title={tw('mix.title')} question={tw('mix.question')} span={6}>
-            <CategoryMixWidget data={d.categoryMix} {...p} />
-          </Card>
-        )}
-        {d.brandPrice && d.priced && brandShare(d.brandPrice, d.priced).length > 0 && (
-          <Card id="p-share" title={tw('share.title')} question={tw('share.question')} span={6}>
-            <BrandShareWidget data={d.brandPrice} priced={d.priced} {...p} />
-          </Card>
-        )}
-        {d.ratingPrice && d.ratingPrice.points.length > 0 && (
-          <Card id="p-rating" title={tw('rating.title')} question={tw('rating.question')} span={12}>
-            <RatingPriceWidget data={d.ratingPrice} {...p} />
-            <p className="mt-1 text-xs text-ink-2">
-              {tw('rating.note', {
-                rated: pct(d.ratingPrice.ratedPct, locale),
-                n: formatCount(d.ratingPrice.n, locale),
-                k: d.ratingPrice.points.length,
-              })}
-            </p>
+            {brands && (
+              <>
+                <Takeaway>
+                  {brands.n === 1
+                    ? tw('brands.takeawayOne', {
+                        brand: brands.low.brand,
+                        median: formatMoney(brands.low.median, lc),
+                      })
+                    : tw('brands.takeaway', {
+                        n: brands.n,
+                        high: brands.high.brand,
+                        highPrice: formatMoney(brands.high.median, lc),
+                        low: brands.low.brand,
+                        lowPrice: formatMoney(brands.low.median, lc),
+                      })}
+                </Takeaway>
+                <BrandPriceWidget data={d.brandPrice} top={top} {...p} />
+              </>
+            )}
           </Card>
         )}
       </CardGrid>
@@ -336,7 +316,7 @@ function Fact({ k, children }: { k: string; children: ReactNode }) {
   );
 }
 
-/** The centrepiece: the pair by shared category over both full catalogues. */
+/** The centrepiece: the pair by shared category over both full catalogues, as a table. */
 function ByCategory({ pair, locale }: { pair: Pair; locale: string }) {
   const t = useTranslations('prices');
   const state = useCategoryCompare(pair);
@@ -351,32 +331,16 @@ function ByCategory({ pair, locale }: { pair: Pair; locale: string }) {
   );
 }
 
-/** The pair on the exactly matched set only; every card's meta line carries the pair count. */
-function HeadToHead({
-  pair,
-  locale,
-  groupBy,
-  onGroupBy,
-  top,
-}: {
-  pair: Pair;
-  locale: string;
-  groupBy: GroupBy;
-  onGroupBy: (v: GroupBy) => void;
-  top: Top;
-}) {
+/** The pair on the exactly matched set only: the headline numbers and the spread of gaps, on n. */
+function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
   const t = useTranslations('prices');
   const tw = useTranslations('widgets');
   const tc = useTranslations('card');
   const tr = useTranslations('reasons');
-  const cmp = useCompareData(pair, null, 500);
-  const truncated = cmp.kind === 'ready' && cmp.data.truncated;
-  const grouped = useCompareData(pair, groupBy);
-  const otherGrouped = useCompareData(truncated ? pair : null, groupBy === 'brand' ? 'category' : 'brand');
-  const idx = useIndexData(pair);
+  const cmp = useCompareData(pair);
   const names = { base: pair.name(pair.base), other: pair.name(pair.other) };
   const href = compareHref(locale, pair);
-  // The n every head-to-head card is on; without a summary there is nothing to put a count to.
+  // The n every head-to-head figure is on; without a summary there is nothing to put a count to.
   const n = cmp.kind === 'ready' ? cmp.data.summary?.n : undefined;
   const nPairs = n === undefined ? null : tw('nPairs', { n });
   const head = (
@@ -424,137 +388,41 @@ function HeadToHead({
       </section>
     );
   const data = cmp.data;
-  const gaps = gapRows(data.rows, top);
-  const cross = truncated
-    ? null
-    : crossCells(data.rows, { min: MIN_PAIRS, maxRows: CROSS_ROWS, maxCols: CROSS_COLS });
-  const currency = data.summary?.basket.base.currency ?? gaps[0]?.basePrice?.currency ?? '';
-  const by = (g: GroupBy) => tw(g === 'brand' ? 'cheaperShare.byBrand' : 'cheaperShare.byCategory');
-  const groupOptions = (['brand', 'category'] as const).map((g) => ({ value: g, label: by(g) }));
-  const shareCard = (state: typeof grouped, g: GroupBy, span: 6 | 12) => (
-    <Card
-      id={`p-share-${g}`}
-      title={tw('cheaperShare.title', { by: by(g) })}
-      meta={nPairs}
-      question={tw('cheaperShare.question', { by: by(g) })}
-      span={span}
-      state={state.kind === 'loading' ? 'loading' : state.kind === 'error' ? 'error' : 'ready'}
-      skeleton="chart"
-      reason={state.kind === 'error' ? <ErrorNotice error={state.error} onRetry={state.retry} /> : undefined}
-    >
-      {state.kind === 'ready' && cheaperShares(state.data.groups, pair.base, pair.other).length > 0 ? (
-        <CheaperShareWidget
-          data={state.data.groups}
-          currency={currency}
-          locale={locale}
-          pair={pair}
-          groupBy={g}
-        />
-      ) : state.kind === 'ready' ? (
-        <p className="text-sm text-ink-2">{thinText(tw, state.data.groups)}</p>
-      ) : null}
-    </Card>
-  );
+  const gap = gapTakeaway(data.summary?.gapHist);
+  const currency = data.summary?.basket.base.currency ?? '';
+  const share = (v: number) => pct((v * 100).toFixed(1), locale);
   return (
     <section aria-labelledby="head-to-head" className="space-y-4">
       {head}
       <PairKpis data={data} pair={pair} locale={locale} href={href} />
-      <CardGrid>
-        {data.summary && gapHistBins(data.summary.gapHist).length > 0 && (
+      {data.summary && (
+        <CardGrid>
           <Card
             id="p-gap-hist"
             title={tw('gapHist.title')}
             meta={nPairs}
             question={tw('gapHist.question', { other: names.other })}
             span={12}
+            state={gap ? 'ready' : 'empty'}
+            reason={cmp.env.reason ? <Known t={tr} v={cmp.env.reason} /> : undefined}
           >
-            <GapHistWidget data={data.summary.gapHist} currency={currency} locale={locale} pair={pair} />
+            {gap && (
+              <>
+                <Takeaway>
+                  {tw(gap.same > 0 ? 'gapHist.takeawaySame' : 'gapHist.takeaway', {
+                    other: names.other,
+                    n: gap.n,
+                    dearer: share(gap.dearer),
+                    cheaper: share(gap.cheaper),
+                    same: share(gap.same),
+                  })}
+                </Takeaway>
+                <GapHistWidget data={data.summary.gapHist} currency={currency} locale={locale} pair={pair} />
+              </>
+            )}
           </Card>
-        )}
-        {cross && cross.cells.length > 0 && (
-          <Card
-            id="p-cross"
-            title={tw('cross.title')}
-            meta={nPairs}
-            question={tw('cross.question')}
-            span={12}
-          >
-            <CrossHeatmapWidget data={data.rows} currency={currency} locale={locale} pair={pair} />
-          </Card>
-        )}
-        {truncated && (
-          <>
-            <p className="col-span-12 text-sm text-ink-2">{tw('cross.truncated')}</p>
-            {shareCard(grouped, groupBy, 6)}
-            {shareCard(otherGrouped, groupBy === 'brand' ? 'category' : 'brand', 6)}
-          </>
-        )}
-        <Card
-          id="p-group-gap"
-          title={groupBy === 'brand' ? tw('groupGap.title') : tw('groupGap.titleCategory')}
-          meta={nPairs}
-          question={tw('groupGap.question', { by: by(groupBy), other: names.other })}
-          span={12}
-          state={grouped.kind === 'loading' ? 'loading' : grouped.kind === 'error' ? 'error' : 'ready'}
-          skeleton="chart"
-          reason={
-            grouped.kind === 'error' ? (
-              <ErrorNotice error={grouped.error} onRetry={grouped.retry} />
-            ) : undefined
-          }
-          tools={
-            <Segmented
-              label={tw('controls.groupBy')}
-              value={groupBy}
-              options={groupOptions}
-              onChange={onGroupBy}
-            />
-          }
-        >
-          {grouped.kind === 'ready' && grouped.data.groups.some((g) => g.summary) ? (
-            <GroupGapWidget
-              data={grouped.data.groups}
-              currency={currency}
-              locale={locale}
-              pair={pair}
-              groupBy={groupBy}
-            />
-          ) : grouped.kind === 'ready' ? (
-            <p className="text-sm text-ink-2">{thinText(tw, grouped.data.groups)}</p>
-          ) : null}
-        </Card>
-        {gaps.length > 0 && (
-          <Card id="p-gaps" title={tw('gaps.title')} meta={nPairs} question={tw('gaps.question')} span={8}>
-            <TopGapsWidget data={data.rows} currency={currency} locale={locale} pair={pair} top={top} />
-          </Card>
-        )}
-        <Card
-          id="p-index"
-          title={tw('index.title')}
-          meta={nPairs}
-          question={tw('index.question', names)}
-          span={gaps.length > 0 ? 4 : 12}
-          state={idx.kind === 'loading' ? 'loading' : 'ready'}
-          skeleton="chart"
-        >
-          {idx.kind === 'ready' ? (
-            <IndexTrendWidget data={idx.data} currency={currency} locale={locale} pair={pair} />
-          ) : idx.kind === 'error' ? (
-            <ErrorNotice error={idx.error} onRetry={idx.retry} />
-          ) : (
-            <p className="text-sm text-ink-2">{tw('index.noHistory')}</p>
-          )}
-        </Card>
-      </CardGrid>
+        </CardGrid>
+      )}
     </section>
   );
-}
-
-/** Every group too thin to count, by name, with the API's reason implied: too few pairs. */
-function thinText(
-  tw: ReturnType<typeof useTranslations>,
-  groups: readonly { key: string; summary: unknown }[],
-) {
-  const thin = groups.filter((g) => !g.summary);
-  return tw('cheaperShare.thin', { n: thin.length, list: thin.map((g) => g.key).join(', ') });
 }

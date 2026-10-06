@@ -36,6 +36,7 @@ from pi_dataset.profiles import (
 from pi_dataset.upgrade import UpgradeError, upgrade
 from pi_dataset.v3 import (
     SCHEMA_ID_V3,
+    ContentField,
     Context,
     DatasetV3,
     EvidenceV3,
@@ -43,7 +44,9 @@ from pi_dataset.v3 import (
     Location,
     MetaV3,
     NotObservedV3,
+    OfferContent,
     OfferV3,
+    OfferVariant,
     ProductV3,
     SizeV3,
 )
@@ -65,6 +68,7 @@ __all__ = [
     "AttributeLevel",
     "AttributeType",
     "Capabilities",
+    "ContentField",
     "Context",
     "ContractModel",
     "Dataset",
@@ -85,7 +89,9 @@ __all__ = [
     "NotObserved",
     "NotObservedV3",
     "Offer",
+    "OfferContent",
     "OfferV3",
+    "OfferVariant",
     "Producer",
     "Product",
     "ProductV3",

@@ -36,7 +36,6 @@ export const budgetKillSwitch = onMessagePublished(
     retry: true,
     serviceAccount: "pi-killswitch@",
     secrets: [killSwitchPassword],
-    minInstances: 0,
     maxInstances: 1,
     memory: "256MiB",
     timeoutSeconds: 60,
@@ -57,7 +56,6 @@ export const assistantChat = onCall(
     region: REGION,
     enforceAppCheck: true,
     serviceAccount: "pi-assistant@",
-    minInstances: 0,
     maxInstances: 5,
     memory: "512MiB",
     timeoutSeconds: 120,
@@ -72,6 +70,7 @@ export const assistantChat = onCall(
         // Streaming callers (`httpsCallable().stream()`) get progress chunks; sendChunk is a
         // no-op for the others. A failed send (client gone) is dropped, never thrown.
         (progress) => void response?.sendChunk(progress).catch(() => false),
+        log,
       );
     } catch (cause) {
       if (cause instanceof CallableRefusal) throw new HttpsError(cause.code, cause.message);

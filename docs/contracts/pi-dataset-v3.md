@@ -53,12 +53,24 @@ uv run pi-dataset schema --v3 > docs/contracts/pi-dataset-v3.schema.json
   `null` or absent when the producer doesn't say. It is a count of listings, not of sizes or
   shades (`shadeCount` stays the distinct shade names).
 
+- **`Offer.content`** (optional, additive, 2026-10-03): what the retailer's page says beyond
+  price and stock. `captured` lists the fields (`description`, `ingredients`, `images`, `shade`,
+  `gtin`) the offer's source carries anywhere in the snapshot, each once. A listed field that is
+  null or empty on an offer is one the retailer did not publish there; an unlisted field is not
+  captured from that source, and must be empty. `images` is the page gallery in page order, only
+  on the retailer's own image hosts. `variants` holds every listing grouped into the offer
+  (`sku`, `shade`, `gtin`); a `gtin` must pass the GS1 check digit (GTIN-8/12/13/14), so a
+  producer drops an invalid barcode rather than publish it. `family` is the retailer's own
+  product family id: offers of one context that share it are sizes of one product. `content`
+  absent (every snapshot before 2026-10-03) states nothing, and `pi_api` serves every field as
+  `not_captured`.
+
 ## Upgrading v2
 
 `upgrade(v2, profile)` gives every retailer one online context whose id is the retailer id, so
 every v2 offer key stays valid. Each offer's v2 `sku` becomes `evidence.itemKey` (kind `sku`; both
 `null` without a sku), so size variants that share one page `url` stay distinct items under
-identity rule (a). `listingCount` is `null` (v2 doesn't state it). It raises `UpgradeError` if the vertical isn't the profile's, a product carries
+identity rule (a). `listingCount` is `null` and `content` is absent (v2 states neither). It raises `UpgradeError` if the vertical isn't the profile's, a product carries
 an attribute key the profile doesn't declare, or the result breaks a v3 rule (for example one sku
 in two products of a retailer).
 

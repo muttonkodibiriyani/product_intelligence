@@ -10,9 +10,14 @@ import { z } from "zod";
 
 import type { ApiRequest } from "../api/client.js";
 import { defineTool, type ToolView } from "./types.js";
+import { unitPriceView } from "./unit-price.js";
 
-/** Page size for search_products (the API allows up to 100; tool results are capped by size). */
-export const MAX_LIMIT = 25;
+/**
+ * Page size for search_products (the API allows up to 100). A worst-case card without its
+ * match list (four retailers priced, 120-character name) is about 950 characters sanitised, so
+ * 15 stay under MAX_RESULT_CHARS; with the match list, 12 were already refused.
+ */
+export const MAX_LIMIT = 15;
 /** The API's cap on repeated list parameters (brand, category, retailer, id). */
 export const MAX_LIST = 25;
 
@@ -77,14 +82,47 @@ const noIdsWithFilters = (value: {
 }) => !(value.ids && (value.brand || value.category));
 const NO_IDS_WITH_FILTERS = { message: "use either ids or brand/category filters, not both" };
 
+/** The match states the metrics layer counts in a gap (pi_metrics compare.COUNTED_STATES). */
+const CONFIRMED_STATES: ReadonlySet<unknown> = new Set(["approved", "locked"]);
+
+function confirmedEdge(edge: unknown): boolean {
+  if (typeof edge !== "object" || edge === null) return false;
+  const { matchClass, reviewState } = edge as Record<string, unknown>;
+  return matchClass === "exact" && CONFIRMED_STATES.has(reviewState);
+}
+
+/**
+ * Replaces each card's match list with `unconfirmedMatch`: true when any edge in the product
+ * group is not exact and approved/locked, or when several retailers are priced with no edge. The
+ * card's per-retailer prices are then not a like-for-like comparison.
+ */
+function slimCards(data: unknown): unknown {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return data;
+  const record = data as Record<string, unknown>;
+  if (!Array.isArray(record.items)) return data;
+  const items = record.items.map((item: unknown) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return item;
+    const { matches, ...card } = item as Record<string, unknown>;
+    const edges: unknown[] = Array.isArray(matches) ? matches : [];
+    const prices = card.prices;
+    const priced = typeof prices === "object" && prices !== null ? Object.keys(prices).length : 0;
+    const unconfirmedMatch =
+      edges.some((edge) => !confirmedEdge(edge)) || (edges.length === 0 && priced > 1);
+    return { ...card, unconfirmedMatch };
+  });
+  return { ...record, items };
+}
+
 export const searchProducts = defineTool({
   name: "search_products",
-  version: "2",
+  version: "3",
   description:
     "Find products by text (English or Arabic), brand, category, retailer ids, match state and " +
     "price range (decimal text in the dataset currency). Returns product cards with the latest " +
     "price at each retailer and, with exactly two retailers, the gap (the first is the base). " +
-    "Use it to find product ids for get_product, compare or reviews_summary.",
+    "If unconfirmedMatch is true, never compare its retailers' prices (not a confirmed same " +
+    "product). Use it to find product ids for get_product (match details), compare or " +
+    "reviews_summary.",
   minRole: "viewer",
   input: z
     .object({
@@ -99,6 +137,39 @@ export const searchProducts = defineTool({
     })
     .strict(),
   request: (input) => get("/products", input),
+  // Each card's match list becomes one flag (get_product has the list) so a full page fits the
+  // size cap.
+  view: (data) => ({ data: slimCards(data) }),
+});
+
+/** Products scanned per price_per_unit call (the API's page maximum). */
+export const UNIT_PRICE_SCAN = 100;
+
+export const pricePerUnit = defineTool({
+  name: "price_per_unit",
+  version: "1",
+  description:
+    "Price per 1 ml or 1 g ('cheapest per ml', 'best value'): listed price divided by the " +
+    "published size (L, cl, kg, mg converted exactly). Filters as search_products. Rows are " +
+    "ranked within one measure and one currency; always state the currency. If partial is " +
+    "true, say 'checked the first <scanned> of <matching> products'. `excluded` counts " +
+    "products left out by reason (no size, other unit, no price, sizeUnproven: sold at " +
+    "several retailers without a proven same size).",
+  minRole: "viewer",
+  input: z
+    .object({
+      q: text.optional(),
+      ...filters,
+      retailer: retailerList.optional(),
+      per: z.enum(["ml", "g"]).optional(),
+      order: z.enum(["asc", "desc"]).default("asc"),
+      rows: z.number().int().min(1).max(MAX_ROWS).default(10),
+    })
+    .strict(),
+  listKey: "rows",
+  request: ({ q, brand, category, retailer }) =>
+    get("/products", { q, brand, category, retailer, sort: "name", limit: UNIT_PRICE_SCAN }),
+  view: (data, input) => unitPriceView(data, input),
 });
 
 export const getProduct = defineTool({
@@ -114,6 +185,7 @@ export const getProduct = defineTool({
     "withheld as invalid (see the invalid_price_excluded caveat); say so, never call it 0 or free.",
   minRole: "viewer",
   input: z.object({ id: productId }).strict(),
+  byId: true,
   request: ({ id }) => get(`/products/${encodeURIComponent(id)}`),
 });
 
@@ -286,6 +358,7 @@ export const priceHistory = defineTool({
     .refine((value) => !value.from || !value.to || value.from <= value.to, {
       message: "from must not be after to",
     }),
+  byId: true,
   request: ({ id, ...rest }) => get(`/products/${encodeURIComponent(id)}/history`, rest),
 });
 
@@ -442,8 +515,49 @@ export const categoryCompare = defineTool({
   },
 });
 
+/**
+ * Row cap for price_suggestions. A row carries both sides, the match and the rationale (about
+ * 900 characters sanitised), so 20 rows already exceed MAX_RESULT_CHARS; 10 leave room for long
+ * product names. Suggestions come first, so the cut keeps them.
+ */
+export const SUGGESTION_ROWS = 10;
+
+export const priceSuggestions = defineTool({
+  name: "price_suggestions",
+  version: "1",
+  description:
+    "Rule-based (not ML) cuts so subject beats or matches rival on exact reviewed same-size " +
+    "pairs. Quote each row's outcome or reason as given; never claim sales effects. Basis " +
+    "imported_snapshot: say 'price from the <observedOn> import'.",
+  minRole: "viewer",
+  listKey: "rows",
+  input: z
+    .object({
+      subject: retailerId,
+      rival: retailerId,
+      ids: z.array(productId).min(1).max(MAX_LIST).optional(),
+      ...filters,
+      date: isoDate.optional(),
+      aim: z.enum(["beat", "match"]).default("beat"),
+      maxChangePct: money.optional(),
+      minChangePct: money.optional(),
+      limit: z.number().int().min(1).max(SUGGESTION_ROWS).default(SUGGESTION_ROWS),
+    })
+    .strict()
+    // One refinement, so the contract test can still reach the object shape.
+    .superRefine((value, ctx) => {
+      if (value.subject === value.rival) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "two different retailers" });
+      }
+      if (!noIdsWithFilters(value))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, ...NO_IDS_WITH_FILTERS });
+    }),
+  request: ({ ids, ...rest }) => get("/price-suggestions", { ...rest, id: ids }),
+});
+
 export const TOOLS = [
   searchProducts,
+  pricePerUnit,
   getProduct,
   compare,
   indexTrend,
@@ -460,4 +574,5 @@ export const TOOLS = [
   categoryMix,
   assortmentBreadth,
   categoryCompare,
+  priceSuggestions,
 ] as const;

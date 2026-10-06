@@ -32,10 +32,21 @@ invalid v2 document fails the whole export. `--scope` (default `beauty`) names t
 `--output-v3 PATH` (opt-in; `--output-v2` stays the default published file) also writes that v2
 snapshot upgraded to `pi.dataset/v3` under `beauty@1`, with each collected offer's
 `listingCount`: the listing rows grouped into it (one family, one pack size; an early recon offer
-states none). It is re-read with the strict `load_any` before anything is written. Publishing v3
-instead of v2 is the owner's call at re-export.
+states none) and its `content`: the representative listing's description, ingredients and
+gallery (description and ingredients fall back to the first other listing, by sku, that has
+them), and every grouped listing as a variant with its shade and GTIN. A barcode that fails the
+GS1 check digit is dropped. `captured` is, per retailer, the fields any of its exported listings
+carries, so a missing field reads *not published* for a retailer that has it elsewhere and *not
+captured* for one that never has it. It is re-read with the strict `load_any` before anything is
+written. Publishing v3 instead of v2 is the owner's call at re-export.
 
-v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
+The v3 body has a 50 MB budget (`V3_MAX_BYTES` = 50,000,000 serialized bytes; `pi_api` holds the
+parsed snapshot in memory, measured in `packages/pi_api/tests/test_content_memory.py`). The
+exporter prints the written bytes by group (`prices`, `attributes`,
+`description+ingredients`, summing to the total) and refuses, writing nothing, above the budget.
+There is no override flag.
+
+By default v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
 value captured on any other day is published as `null`, never carried forward (contract rule 6),
 and `meta.fields.price` / `regular` / `stock` say `partial`. Stock has its own capture time (the
 newest row that observed a stock state, carried as `stock_*` like `price_*`), separate from the
@@ -43,6 +54,22 @@ price capture. An offer's evidence is its price
 capture when the price is published, else its stock observation. Ulta's `blocked` status and window
 come from the owner's statement (`--ulta-blocked-since` and the notes), not from whether Ulta rows
 exist; pass `--ulta-unblocked` once Ulta is collected again.
+
+`--history` (with `--output-v2` or `--output-v3`; not with `--ulta-early-fixture`) builds a
+multi-date v2 instead (`history.py`). It reads every succeeded or partial en-AE run per retailer,
+files each observation under its Dubai market day (`Asia/Dubai`, so 21:30Z is the next day, never
+the UTC date) and lists in `meta.dates` every day that has rows. Each day's offer values come from
+that day's observations only; a day without an observation is `null`, never carried forward, and
+no date is added that has no rows. A day is *complete* for a retailer only when every one of its
+contexts had a `succeeded` run that started and ended on that market day on a context marked
+`coverage_status = supported`; every other date gets a `notObserved` window ("not collected" or
+"incomplete"), so a product missing on a partial or blocked day is neither a removal nor a launch.
+A retailer whose latest date is complete is `supported` from its first complete day (`since`);
+otherwise it keeps its snapshot status, because the status is read at the latest date. A blocked
+retailer keeps the owner's statement and window, and every other date of it that is not complete
+gets a window too. `capabilities.history` is true only with at least 2 dates. Product ids,
+names and pairing come from each listing's latest row through the snapshot's own grouping, so ids
+match the single-day export. Without `--history` the output is unchanged.
 
 For the pilot, ulta.ae is blocked (owner decision, 2026-09-30): the Ulta status line is
 `--ulta-blocked-note` / `--ulta-blocked-note-ar`, defaulting to "ulta.ae: blocked by site security

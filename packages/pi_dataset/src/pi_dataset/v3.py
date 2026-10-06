@@ -22,9 +22,10 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
-from pydantic import Field, HttpUrl, JsonValue, ValidationError, model_validator
+from pydantic import AfterValidator, Field, HttpUrl, JsonValue, ValidationError, model_validator
 
 from pi_core import Channel, CurrencyCode
+from pi_core.listing import is_valid_gtin
 from pi_core.types import NonEmptyStr
 from pi_dataset.models import (
     DECIMAL_TEXT,
@@ -133,6 +134,75 @@ class EvidenceV3(Evidence):
         return self
 
 
+class ContentField(StrEnum):
+    """An ``Offer.content`` field a source can carry (2026-10-03, additive)."""
+
+    DESCRIPTION = "description"
+    INGREDIENTS = "ingredients"
+    IMAGES = "images"
+    SHADE = "shade"
+    GTIN = "gtin"
+
+
+def _gtin(code: str) -> str:
+    if not is_valid_gtin(code):
+        msg = "gtin must be a GTIN-8/12/13/14 with a correct check digit"
+        raise ValueError(msg)
+    return code
+
+
+#: A GTIN whose GS1 check digit is right; the producer drops an invalid one (as offline_import).
+Gtin = Annotated[str, AfterValidator(_gtin)]
+
+
+class OfferVariant(ContractModel):
+    """One retailer listing the producer grouped into the offer: same retailer, same product
+    family, same size (so its siblings differ by shade)."""
+
+    sku: NonEmptyStr
+    shade: NonEmptyStr | None
+    gtin: Gtin | None
+
+
+class OfferContent(ContractModel):
+    """What the retailer's page says about the offer, beyond price and stock.
+
+    ``captured`` lists the fields the offer's source carries anywhere in this snapshot. A null
+    (or empty) field that is listed is one the retailer did not publish for this offer; a field
+    that is not listed is not captured from that source at all. ``content`` itself absent (every
+    snapshot before 2026-10-03) means nothing is stated.
+    """
+
+    captured: tuple[ContentField, ...]
+    description: NonEmptyStr | None = None
+    ingredients: NonEmptyStr | None = None
+    #: The retailer's gallery in its own order, only URLs on the retailer's image hosts.
+    images: tuple[HttpUrl, ...] = ()
+    #: Every listing grouped into the offer (``listingCount`` of them when that is stated).
+    variants: tuple[OfferVariant, ...] = ()
+    #: The retailer's own product family id: offers of one context sharing it are sizes of one
+    #: product. Null when the producer has none.
+    family: NonEmptyStr | None = None
+
+    @model_validator(mode="after")
+    def _check_captured(self) -> Self:
+        if len(set(self.captured)) != len(self.captured):
+            msg = "content.captured lists a field twice"
+            raise ValueError(msg)
+        present = {
+            ContentField.DESCRIPTION: self.description is not None,
+            ContentField.INGREDIENTS: self.ingredients is not None,
+            ContentField.IMAGES: bool(self.images),
+            ContentField.SHADE: any(v.shade is not None for v in self.variants),
+            ContentField.GTIN: any(v.gtin is not None for v in self.variants),
+        }
+        stray = sorted(f for f, has in present.items() if has and f not in self.captured)
+        if stray:
+            msg = f"content has {stray} but does not list them in captured"
+            raise ValueError(msg)
+        return self
+
+
 class OfferV3(Offer):
     size: SizeV3 | None  # type: ignore[assignment]  # v3 widens Size (ADR-0008 §1)
     evidence: EvidenceV3  # v3 adds itemKey (ADR-0008 §2)
@@ -141,6 +211,9 @@ class OfferV3(Offer):
     #: How many of the retailer's listings the producer grouped into this offer (e.g. the shades
     #: of one size); ``null`` when the producer doesn't say. Optional and additive.
     listing_count: Annotated[int, Field(ge=1)] | None = None
+    #: Page content (description, ingredients, gallery, variants); ``null`` or absent when the
+    #: producer doesn't state it. Optional and additive (2026-10-03).
+    content: OfferContent | None = None
 
 
 class ProductV3(ContractModel):

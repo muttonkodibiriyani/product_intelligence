@@ -181,3 +181,20 @@
     - type: javascript
       value: file://../src/evals/assertions.ts:answered
       metric: gold
+
+- description: price suggestion
+  vars:
+    question: What price does the rule suggest for Glow Mist at north to beat south?
+    expect:
+      - 41\.00
+    products:
+      - p02
+    tools:
+      - price_suggestions
+  metadata:
+    tier: smoke
+    suite: gold
+  assert:
+    - type: javascript
+      value: file://../src/evals/assertions.ts:answered
+      metric: gold

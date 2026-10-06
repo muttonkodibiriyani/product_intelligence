@@ -23,7 +23,7 @@ import {
   type NotEnoughDataReason,
 } from "../api/envelope.js";
 import { type Sanitised, sanitiseData } from "../guard/sanitise.js";
-import { type AnyToolDef, type CallerContext, ROLES, type Role } from "./types.js";
+import { type AnyToolDef, type CallerContext, ROLES, type Role, type ToolView } from "./types.js";
 
 /** Tool results larger than this are refused rather than truncated mid-structure. */
 export const MAX_RESULT_CHARS = 16_000;
@@ -160,11 +160,11 @@ function error(tool: string, code: ToolErrorCode, message: string): ToolError {
   return { status: "error", tool, code, message };
 }
 
-function apiErrorCode(status: number): ToolErrorCode {
+function apiErrorCode(status: number, byId: boolean): ToolErrorCode {
   if (status === 401) return "unauthenticated";
   if (status === 403) return "forbidden";
   if (status === 400 || status === 422) return "invalid_input";
-  if (status === 404) return "not_found";
+  if (status === 404) return byId ? "not_found" : "upstream_unavailable";
   if (status === 409) return "stale_cursor";
   if (status === 429) return "rate_limited";
   return "upstream_unavailable";
@@ -216,6 +216,11 @@ export class ToolRegistry {
     return this.tools.has(name);
   }
 
+  /** The key of a tool's row list (`listKey`), if it returns one. */
+  listKey(name: string): string | undefined {
+    return this.tools.get(name)?.listKey;
+  }
+
   /** Tools this caller may see; the model is never offered a tool it cannot call. */
   available(caller: CallerContext): AnyToolDef[] {
     return [...this.tools.values()].filter((tool) => rank(caller.role) >= rank(tool.minRole));
@@ -247,7 +252,7 @@ export class ToolRegistry {
       body = await this.api.call(request, idToken);
     } catch (cause) {
       if (!(cause instanceof ApiError)) throw cause;
-      const code = apiErrorCode(cause.status);
+      const code = apiErrorCode(cause.status, tool.byId === true);
       return error(name, code, API_ERROR_MESSAGES[code]);
     }
     const envelope = EnvelopeSchema.safeParse(body);
@@ -257,7 +262,7 @@ export class ToolRegistry {
     const { meta, cohort, caveats } = envelope.data;
     const view =
       tool.view && envelope.data.data !== undefined && envelope.data.data !== null
-        ? tool.view(envelope.data.data)
+        ? (tool.view as (data: unknown, value: unknown) => ToolView)(envelope.data.data, input)
         : undefined;
     const data = view ? view.data : envelope.data.data;
     const withheld = envelope.data.status === "ok" ? withheldReason(view?.withheld) : undefined;

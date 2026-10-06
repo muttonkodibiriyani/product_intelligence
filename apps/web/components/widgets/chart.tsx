@@ -184,7 +184,8 @@ export function Chart({
     let ro: ResizeObserver | null = null;
     void load().then((echarts) => {
       if (gone || !el.current) return;
-      const c = echarts.init(el.current, null, { renderer: 'svg' });
+      // The height goes to ECharts, not a style attribute, so the page needs no inline style for it.
+      const c = echarts.init(el.current, null, { renderer: 'svg', height });
       chart.current = c;
       c.setOption(guarded(described(build(palette()), label)));
       c.on('click', (e) => {
@@ -203,13 +204,16 @@ export function Chart({
       chart.current?.dispose();
       chart.current = null;
     };
-    // Rebuilt from scratch when the data changes: the charts are small.
+    // Rebuilt from scratch when the data or its label changes: the charts are small.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, label]);
 
   // LTR box: an inherited rtl direction flips SVG text-anchor and misplaces axis labels. The
   // options mirror the layout for Arabic instead, and the tooltip sets its own direction.
+  // Clipped: ECharts sizes its inner box in px and only shrinks it when the observer fires, a frame
+  // or more after a resize (Safari is slowest), so a narrower card never scrolls the page sideways.
+  // The tooltip is confined to the box, so the clip never cuts it.
   return (
-    <div ref={el} dir="ltr" role="img" aria-label={label} data-chart className="w-full" style={{ height }} />
+    <div ref={el} dir="ltr" role="img" aria-label={label} data-chart className="w-full overflow-hidden" />
   );
 }

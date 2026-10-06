@@ -201,14 +201,14 @@ are **numbers**.
 |---|---|---|
 | `enabled` | boolean | `false` |
 | `model` | string | `gemini-2.5-flash` |
-| `promptVersion` | string | `chat-2026-10-01.3` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` on the deployed commit; re-checked in the section 10 version pre-check) |
+| `promptVersion` | string | `chat-2026-10-03.1` (must equal `PROMPT_VERSION` in `apps/assistant/src/flows/prompt.ts` on the deployed commit; re-checked in the section 10 version pre-check) |
 | `priceTableVersion` | string | `2026-09-30-planning` (must equal `version` in `apps/assistant/config/prices.json`) |
 | `caps.monthUsd` | string | `4.00` |
 | `caps.labelMonthUsd.ci` | string | `1.50` |
 | `caps.labelDayUsd.chat` | string | `0.40` |
 | `caps.questionsPerUserDay.viewer` | number | `10` |
 | `caps.questionsPerUserDay.admin` | number | `30` |
-| `limits.maxInputTokens` | number | `10000` |
+| `limits.maxInputTokens` | number | `40000` |
 | `limits.maxOutputTokens` | number | `1500` |
 | `limits.thinkingBudget` | number | `0` |
 | `limits.maxModelCallsPerQuestion` | number | `4` |
@@ -221,6 +221,16 @@ model calls and 1500 output tokens per question, and thinking off (`thinkingBudg
 questions a month, under the $5 budget alert (section 1b). The meter enforces `caps.monthUsd = 4.00` before
 every call, reserving each call's worst-case cost, across every label, CI included. The kill
 switch is the backstop. Raising any of them needs the owner's OK.
+
+`limits.maxInputTokens` is 40000, not 10000: the flow refuses a call whose prompt bound (UTF-8
+bytes of the system prompt, tool specs, history and tool results, plus 1000) exceeds it, and
+the system prompt and tool specs alone are about 18,000 bytes. At 10000 every question was
+refused as `prompt_too_large`. A typical multi-turn question peaks near 28,000
+(`apps/assistant/test/prompt-budget.test.ts`). Per-call reservation on `gemini-2.5-flash`:
+40000 × $0.30 + 1500 × $2.50 per 1M tokens = $0.01575, so up to $0.063 for a question that
+makes 4 calls at their ceilings. Against `caps.labelDayUsd.chat` 0.40 that is about 6
+worst-case questions a day; the meter settles each call at its actual cost, so typical
+questions use far less.
 
 The config stays in USD because the meter prices tokens from a USD list-price table
 (`apps/assistant/config/prices.json`). The owner reads the caps in AED, at the fixed peg of
@@ -507,11 +517,20 @@ secret.
 ```sh
 git fetch origin && git checkout --detach <CHAT_SHA>
 # In apps/assistant/.env.productintelligence-beeb3, fill in the three PI_* lines:
-#   PI_API_BASE_URL=https://productintelligence-beeb3.web.app/api/v1
+#   PI_API_BASE_URL=https://productintelligence-beeb3.web.app   (origin only: no /api/v1)
 #   PI_VERTEX_LOCATION=<VERTEX_LOCATION>
 #   PI_EVIDENCE_HOSTS=<EVIDENCE_HOSTS>   (see below)
 # Keep the KILL_SWITCH_* lines from section 5 as they are.
 git status --short apps/assistant   # must NOT list the .env file
+```
+
+`PI_API_BASE_URL` is the site origin only. The tools add `/api/v1` to every path themselves
+(`API_PREFIX` in `apps/assistant/src/tools/definitions.ts`), so a base ending in `/api/v1` sends
+`/api/v1/api/v1/...` to pi-api, and every tool call returns 404. Before the deploy, check:
+
+```sh
+grep -x 'PI_API_BASE_URL=https://productintelligence-beeb3\.web\.app' \
+  apps/assistant/.env.productintelligence-beeb3   # must print the line
 ```
 
 `<EVIDENCE_HOSTS>` is the same host list as the live `pi-api` service's

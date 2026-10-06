@@ -1,4 +1,4 @@
-import type { QueryOf } from './api/types';
+import type { QueryOf, Schemas } from './api/types';
 import { cleanList, type Limit, LIMITS, parseLimit, RETAILER_ID } from './url-state';
 
 export type PromotionsQuery = QueryOf<'/api/v1/promotions'>;
@@ -52,4 +52,85 @@ export function toPromotionsQuery(s: PromotionsState): PromotionsQuery {
     ...(s.category.length ? { category: s.category } : {}),
     limit: s.limit,
   };
+}
+
+/** The export of the same list: the list's filters, no limit, in the format asked for. */
+export function toPromotionsExportQuery(s: PromotionsState, format: 'csv' | 'jsonl') {
+  const q: Partial<PromotionsQuery> = toPromotionsQuery(s);
+  delete q.limit;
+  return { ...q, format };
+}
+
+type Item = Pick<Schemas['PromoItem'], 'retailer' | 'depthPct'>;
+
+/**
+ * The deepest discount a shop shows in the list the API sent, as the API wrote it ("33.3"), or
+ * null when the list has none of that shop's products (filtered out, or cut by the limit): the
+ * tile then says nothing about depth rather than guess.
+ */
+export function deepestCut(items: readonly Item[], retailer: string): string | null {
+  let best: string | null = null;
+  for (const i of items) {
+    if (i.retailer !== retailer || !/^\d+(\.\d+)?$/.test(i.depthPct)) continue;
+    if (best === null || Number(i.depthPct) > Number(best)) best = i.depthPct;
+  }
+  return best;
+}
+
+/** A share the API wrote ("18.4") as a bar width in 0–100, or null when it is not a number. */
+export function shareWidth(share: string | null): number | null {
+  if (share === null || !/^\d+(\.\d+)?$/.test(share)) return null;
+  return Math.min(100, Number(share));
+}
+
+/** The shop the user picked, when exactly one: the list's heading names it. */
+export function pickedShop(s: Pick<PromotionsState, 'retailer'>): string | null {
+  return s.retailer.length === 1 ? s.retailer[0]! : null;
+}
+
+type Share = Pick<Schemas['RetailerPromo'], 'retailer' | 'share' | 'reason' | 'n'>;
+
+/**
+ * Reasons that withhold only a shop's share, not its discounts: a partly covered shop or a small
+ * cohort still has observed prices below observed regular prices, and those items are facts.
+ * Every other reason (unverified was-prices, the field or capability off) withholds the items too.
+ */
+const SHARE_ONLY: ReadonlySet<string> = new Set(['retailer_partial', 'cohort_too_small']);
+
+/** Whether a shop's discounted items can be listed: it has a share, or only its share is withheld. */
+export function listable(r: Share): boolean {
+  return r.share !== null || (r.n > 0 && r.reason !== null && SHARE_ONLY.has(r.reason));
+}
+
+/**
+ * The items of shops whose discounts can be listed: a blocked or unverified shop's rows stay
+ * out even when another selected shop is listable. `total` is null when the API capped the list
+ * and rows were dropped, since the filtered total is then unknown.
+ */
+export function listedItems<I extends { retailer: string }>(data: {
+  retailers: readonly Share[];
+  items: readonly I[];
+  total: number;
+  truncated: boolean;
+}): { items: I[]; total: number | null } {
+  const ok = new Set(data.retailers.filter(listable).map((r) => r.retailer));
+  const items = data.items.filter((i) => ok.has(i.retailer));
+  if (items.length === data.items.length) return { items, total: data.total };
+  return { items, total: data.truncated ? null : items.length };
+}
+
+/**
+ * Why the discounts on screen are not measured, or null when at least one shown shop's discounts
+ * can be listed: the picked shop's own reason, else the envelope's, else the first shop's. An
+ * empty list of discounts is only "no discounts" when something was measured.
+ */
+export function notMeasured(
+  env: { reason?: Schemas['Reason'] | null; data: { retailers: readonly Share[] } | null },
+  shop: string | null,
+): string | null {
+  const shares = env.data?.retailers ?? [];
+  const picked = shop ? shares.find((r) => r.retailer === shop) : undefined;
+  if (picked) return listable(picked) ? null : (picked.reason ?? env.reason ?? 'field_not_collected');
+  if (shares.some(listable)) return null;
+  return env.reason ?? shares.find((r) => r.reason)?.reason ?? 'field_not_collected';
 }

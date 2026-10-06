@@ -37,9 +37,10 @@ from zoneinfo import ZoneInfo
 
 from pydantic import HttpUrl
 
-from pi_core import AvailabilityState, MatchClass, ReviewState
+from pi_core import AvailabilityState, MatchClass, ReviewState, is_valid_gtin
 from pi_dataset import (
     Capabilities,
+    ContentField,
     Dataset,
     DatasetV3,
     DecidedBy,
@@ -51,6 +52,8 @@ from pi_dataset import (
     MoneyValue,
     NotObserved,
     Offer,
+    OfferContent,
+    OfferVariant,
     Producer,
     Product,
     Rating,
@@ -77,8 +80,16 @@ from scripts.demo_export.export import (
 from scripts.demo_export.tidy import tidy_rows
 
 MARKET = MarketInfo(country="AE", currency="AED", time_zone="Asia/Dubai", locales=("en", "ar"))
-#: v1 slot -> (source-register key, display name).
-RETAILERS = {"u": ("ulta_ae", "Ulta UAE"), "s": ("sephora_me", "Sephora UAE")}
+#: Slot -> (source-register key, display name). Faces (2026-10-03) is v2/v3 only.
+RETAILERS = {
+    "u": ("ulta_ae", "Ulta UAE"),
+    "s": ("sephora_me", "Sephora UAE"),
+    "f": ("faces_ae", "Faces UAE"),
+}
+#: Slots whose crawl is not a complete catalogue (Faces: ``complete_catalogue=false``). Such a
+#: retailer is ``partial`` whatever its runs say, never has a complete day (so it backs no launch,
+#: removal or stock-out), and its availability is not published (``null``, not observed).
+INCOMPLETE_CATALOGUE = frozenset({"f"})
 STATUS = {
     "ok": RetailerStatus.SUPPORTED,
     "partial": RetailerStatus.PARTIAL,
@@ -100,6 +111,7 @@ NOT_A_CATEGORY = frozenset({"PID Unicity", "without_pid"})
 IMAGE_HOSTS: dict[str, frozenset[str]] = {
     "sephora_me": frozenset({"img-product.sephora.me"}),
     "ulta_ae": frozenset({"media.alshaya.com"}),
+    "faces_ae": frozenset({"www.faces.ae"}),
 }
 #: The retailer's "no image" placeholder (``.../images/noimagemedium.png``) is not a product image.
 PLACEHOLDER_IMAGE = re.compile(r"/noimage[^/]*$", re.IGNORECASE)
@@ -233,7 +245,7 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
         stale.prices += 1
         stale.regulars += money(rep.regular, currency) is not None
     regular = money(rep.regular, currency) if price is not None else None
-    stock = availability(rep.availability)
+    stock = None if rep.retailer in INCOMPLETE_CATALOGUE else availability(rep.availability)
     if stock is not None and not stale.on_day(stock_at):
         stock = None
         stale.stock += 1
@@ -267,13 +279,14 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
     )
 
 
-def edge(match: MatchRow) -> MatchEdge:
-    """pi_db match_edge -> contract edge (docs/contracts/pi-dataset-v2.md rule 8)."""
+def edge(match: MatchRow, keys: Sequence[GroupKey]) -> MatchEdge:
+    """pi_db match_edge -> contract edge (docs/contracts/pi-dataset-v2.md rule 8), between the
+    retailers of the pair's own two groups (``a`` < ``b``), never an assumed pair."""
     state = ReviewState(match.review_state)
     decided = None
     if state is not ReviewState.PROPOSED:
         decided = DecidedBy.HUMAN if match.human else DecidedBy.AUTO
-    a, b = sorted(key for key, _ in RETAILERS.values())
+    a, b = sorted(RETAILERS[key.retailer][0] for key in keys)
     return MatchEdge(
         a=a,
         b=b,
@@ -286,9 +299,9 @@ def edge(match: MatchRow) -> MatchEdge:
     )
 
 
-def pair_token(ulta_key: GroupKey, sephora: GroupKey) -> str:
-    """The id token of a matched pair's product (as in v1)."""
-    return f"m-{ulta_key.stable_token}-{sephora.stable_token}"
+def pair_token(other: GroupKey, namer: GroupKey) -> str:
+    """The id token of a matched pair's product (as in v1: ``m-<ulta>-<sephora>``)."""
+    return f"m-{other.stable_token}-{namer.stable_token}"
 
 
 def product(
@@ -298,7 +311,7 @@ def product(
     stale: Stale,
     matches: Sequence[MatchEdge] = (),
 ) -> Product:
-    """One product: the first key's rows name it (Sephora for a matched pair, as in v1)."""
+    """One product: the first key's rows name it (the pair's namer: Sephora, as in v1)."""
     rows = groups[keys[0]]
     rep = choose_representative(rows)
     shade_families = sorted({row.shade_family for row in rows if row.shade_family})
@@ -362,6 +375,22 @@ def status_of(state: str) -> FieldStatus:
     return FieldStatus(state)
 
 
+def listed_slots(rows: Sequence[ListingRow], ulta_early: Sequence[Any] = ()) -> tuple[str, ...]:
+    """Ulta and Sephora as before (Ulta's status is the owner's statement, listed without rows),
+    plus any other slot with rows. A file of other slots only lists just those."""
+    present = {row.retailer for row in rows}
+    legacy = bool(present & {"u", "s"}) or bool(ulta_early) or not present
+    return tuple(s for s in RETAILERS if (legacy and s in {"u", "s"}) or s in present)
+
+
+def incomplete_status(rows: Sequence[ListingRow], shop: str) -> RetailerStatus:
+    """An ``INCOMPLETE_CATALOGUE`` retailer: ``partial`` with rows (its runs never make it
+    ``supported``), ``pending`` without."""
+    if retailer_status(rows, shop) == "pending":
+        return RetailerStatus.PENDING
+    return RetailerStatus.PARTIAL
+
+
 def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     rows: Sequence[ListingRow],
     matches: Sequence[MatchRow],
@@ -372,8 +401,12 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     ulta_early: Sequence[Mapping[str, Any]] = (),
     scope: str = "beauty",
     producer_commit: str | None = None,
+    slots: Sequence[str] | None = None,
 ) -> Dataset:
-    """``ulta_note`` is v1's ``meta.retailers[u].note``, so both versions say the same thing."""
+    """``ulta_note`` is v1's ``meta.retailers[u].note``, so both versions say the same thing.
+
+    ``slots`` are the retailers listed in ``meta.retailers`` (``listed_slots`` by default): a
+    per-source file (ADR-0010) lists only its own, e.g. ``("f",)`` for the Faces file."""
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
     captures = [row.evidence_retrieved_at or row.observed_at for row in rows]
@@ -388,12 +421,12 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     products = [
         product(
             groups,
-            (sephora, ulta_key),
-            pair_token(ulta_key, sephora),
+            (namer, other),
+            pair_token(other, namer),
             stale,
-            (edge(match),),
+            (edge(match, (namer, other)),),
         )
-        for ulta_key, sephora, match in pairs
+        for other, namer, match in pairs
     ]
     products += [product(groups, (key,), key.stable_token, stale) for key in unpaired]
     known = {p.id for p in products}
@@ -412,9 +445,10 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     has_rating = any(o.rating is not None for o in offers)
     with_image = sum(p.image is not None for p in products)
 
+    listed = listed_slots(rows, ulta_early) if slots is None else tuple(slots)
     # The owner's statement, not row presence: rows from before the block must not hide it.
     ulta_status = RetailerStatus.BLOCKED if ulta.blocked else STATUS[retailer_status(rows, "u")]
-    retailers = [
+    candidates = [
         Retailer(
             id=RETAILERS["u"][0],
             name=RETAILERS["u"][1],
@@ -434,9 +468,19 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
             since=None,
             note=None,
         ),
+        Retailer(
+            id=RETAILERS["f"][0],
+            name=RETAILERS["f"][1],
+            country=MARKET.country,
+            status=incomplete_status(rows, "f"),
+            since=None,
+            note=None,
+        ),
     ]
+    by_id = {r.id: r for r in candidates}
+    retailers = [by_id[RETAILERS[shop][0]] for shop in RETAILERS if shop in listed]
     not_observed: tuple[NotObserved, ...] = ()
-    if ulta_status is RetailerStatus.BLOCKED:
+    if "u" in listed and ulta_status is RetailerStatus.BLOCKED:
         start = ulta.blocked_since.astimezone(zone).date()
         not_observed = (
             NotObserved(
@@ -513,37 +557,114 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     )
 
 
-def listing_counts(
+def offer_rows(
     rows: Sequence[ListingRow], matches: Sequence[MatchRow]
-) -> dict[tuple[str, str], int]:
-    """Listing rows per collected offer, by (product id, retailer id): the grouping and pairing
-    ``build_dataset_v2`` uses, so every collected offer has its count."""
+) -> dict[tuple[str, str], Sequence[ListingRow]]:
+    """The listing rows of each collected offer, by (product id, retailer id): the grouping and
+    pairing ``build_dataset_v2`` uses, so every collected offer has its rows."""
     groups = group_rows(rows)
     pairs, unpaired = pair_groups(groups, matches)
     owned: list[tuple[tuple[GroupKey, ...], str]] = [
-        ((sephora, ulta_key), pair_token(ulta_key, sephora)) for ulta_key, sephora, _ in pairs
+        ((namer, other), pair_token(other, namer)) for other, namer, _ in pairs
     ]
     owned += [((key,), key.stable_token) for key in unpaired]
     return {
-        (product_id(token), RETAILERS[key.retailer][0]): len(groups[key])
+        (product_id(token), RETAILERS[key.retailer][0]): groups[key]
         for keys, token in owned
         for key in keys
     }
 
 
+def listing_counts(
+    rows: Sequence[ListingRow], matches: Sequence[MatchRow]
+) -> dict[tuple[str, str], int]:
+    """Listing rows per collected offer, by (product id, retailer id)."""
+    return {key: len(group) for key, group in offer_rows(rows, matches).items()}
+
+
+def _text(value: str | None) -> str | None:
+    """Edge-trimmed text; blank is absent, never an empty value."""
+    text = value.strip() if value is not None else ""
+    return text or None
+
+
+def _gtin(value: str | None) -> str | None:
+    """The stored barcode when it is a valid GTIN; an invalid one is dropped (as offline_import)."""
+    return value if value is not None and is_valid_gtin(value) else None
+
+
+def _gallery(row: ListingRow) -> tuple[HttpUrl, ...]:
+    """The row's gallery on the retailer's own hosts, page order, each URL once."""
+    urls = (image(url, RETAILERS[row.retailer][0]) for url in row.images)
+    return tuple(dict.fromkeys(url for url in urls if url is not None))
+
+
+def captured_fields(rows: Sequence[ListingRow]) -> dict[str, tuple[ContentField, ...]]:
+    """Per retailer id, the content fields any of its exported rows carries. A field no row of a
+    retailer has is *not captured* from it; one that some rows have is *not published* where a
+    row lacks it (Reviewer, 2026-10-03)."""
+    has: dict[str, set[ContentField]] = {rid: set() for rid, _ in RETAILERS.values()}
+    for row in rows:
+        fields = has[RETAILERS[row.retailer][0]]
+        fields.update(
+            field
+            for field, value in (
+                (ContentField.DESCRIPTION, _text(row.description)),
+                (ContentField.INGREDIENTS, _text(row.ingredients)),
+                (ContentField.IMAGES, _gallery(row)),
+                (ContentField.SHADE, _text(row.shade)),
+                (ContentField.GTIN, _gtin(row.gtin)),
+            )
+            if value
+        )
+    return {rid: tuple(f for f in ContentField if f in fields) for rid, fields in has.items()}
+
+
+def content(rows: Sequence[ListingRow], captured: tuple[ContentField, ...]) -> OfferContent:
+    """One offer's page content. Description, ingredients and gallery are the representative
+    row's (the listing the offer's price is from); description and ingredients fall back to the
+    first other row, by sku, that has them. Variants are every row of the offer, by sku."""
+    rep = choose_representative(rows)
+    ordered = [rep, *sorted((r for r in rows if r is not rep), key=_sku)]
+    return OfferContent(
+        captured=captured,
+        description=next((t for r in ordered if (t := _text(r.description))), None),
+        ingredients=next((t for r in ordered if (t := _text(r.ingredients))), None),
+        images=_gallery(rep),
+        variants=tuple(
+            OfferVariant(sku=_sku(r), shade=_text(r.shade), gtin=_gtin(r.gtin))
+            for r in sorted(rows, key=_sku)
+        ),
+        family=rep.family_id,
+    )
+
+
+def _sku(row: ListingRow) -> str:
+    return row.source_sku or row.source_listing_key
+
+
 def to_v3(v2: Dataset, rows: Sequence[ListingRow], matches: Sequence[MatchRow]) -> DatasetV3:
-    """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount``; an early
-    (recon) offer's stays ``null``. The caller validates the dump with ``load_any``."""
+    """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount`` and
+    ``content``; an early (recon) offer's stay ``null``. The caller validates the dump with
+    ``load_any``."""
     profile = committed_profile("beauty", 1)
     if profile is None:  # pragma: no cover - the profile is committed with pi_dataset
         raise ValueError("beauty@1 is not a committed profile")
-    counts = listing_counts(rows, matches)
+    grouped = offer_rows(rows, matches)
+    captured = captured_fields(rows)
     v3 = upgrade(v2, profile)
     products = tuple(
         p.model_copy(
             update={
                 "offers": {
-                    cid: o if o.early else o.model_copy(update={"listing_count": counts[p.id, cid]})
+                    cid: o
+                    if o.early
+                    else o.model_copy(
+                        update={
+                            "listing_count": len(grouped[p.id, cid]),
+                            "content": content(grouped[p.id, cid], captured[cid]),
+                        }
+                    )
                     for cid, o in p.offers.items()
                 }
             }
