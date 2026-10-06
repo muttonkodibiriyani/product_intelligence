@@ -64,7 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if path not in files:
             files[path] = json.loads(path.read_text(encoding="utf-8"))
         found[retailer], unkeyed[retailer] = listings(files[path], retailer)
-    # The view the file applies to (ADR-0012 §6): every source file must name the same one.
+    # The view the file applies to (ADR-0012 section 6): every source file must name the same one.
     scopes = {(f["meta"]["scope"], f["meta"]["vertical"]) for f in files.values()}
     if len(scopes) != 1:
         parser.error(f"the source files name more than one scope/vertical: {sorted(scopes)}")
