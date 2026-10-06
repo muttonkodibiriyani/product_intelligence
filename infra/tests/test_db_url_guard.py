@@ -18,6 +18,7 @@ ROOT = Path(__file__).parents[2]
         "",
         "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test",
         "postgresql://u:pw@localhost:6543/anything",
+        "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test?sslmode=disable&connect_timeout=3",
     ],
 )
 def test_allows_unset_or_throwaway(url: str | None) -> None:
@@ -34,6 +35,12 @@ def test_allows_unset_or_throwaway(url: str | None) -> None:
         "postgresql://pi:pw@127.0.0.1/pi_test",
         "postgresql://pi:pw@127.0.0.1:notaport/pi_test",
         "postgresql:///pi_test",
+        "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test?port=55432",
+        "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test?host=10.0.0.5",
+        "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test?hostaddr=127.0.0.1",
+        "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test?dbname=pi",
+        "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test?sslmode=disable&service=prod",
+        "postgresql+psycopg://pi:pw@127.0.0.1:55433/pi_test?servicefile=/x",
     ],
 )
 def test_refuses_protected_server_even_in_ci(url: str, ci: bool) -> None:
