@@ -13,6 +13,7 @@ import {
   barPct,
   BRANDS_SHOWN,
   deepestUndercut,
+  defaultPair,
   forPair,
   INSIGHTS_API,
   insightsServed,
@@ -72,11 +73,9 @@ export function InsightsView() {
   const parsed = useMemo(() => parseCompare(new URLSearchParams(search)), [search]);
   const [pending, setPending] = useState<{ at: string; state: CompareState } | null>(null);
   const picked = pending?.at === search ? pending.state : parsed;
-  // Until a pair is picked, the first two shops the dataset collects.
-  const state: CompareState =
-    !hasComparePair(picked) && active.length >= 2
-      ? { ...picked, base: active[0]!, other: active[1]! }
-      : picked;
+  // Until a pair is picked, the pilot's Ulta against Sephora, else the first two shops collected.
+  const opening = defaultPair(active);
+  const state: CompareState = !hasComparePair(picked) && opening ? { ...picked, ...opening } : picked;
   const fixed = active.length === 2 && active.includes(state.base) && active.includes(state.other);
   const update = (next: Partial<CompareState>) => {
     const target = { ...state, ...next };
