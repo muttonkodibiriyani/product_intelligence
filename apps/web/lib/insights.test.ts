@@ -1,14 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
-  allObservedOut,
   apiAtLeast,
   insightsServed,
   barPct,
   deepestUndercut,
-  forPair,
+  fewRated,
   gapScale,
+  oncePerName,
+  perUnitMedian,
+  pickedShop,
+  pickSize,
   policyColumns,
+  ratingOutOfFive,
+  shopPairs,
   sizesInOrder,
+  smallerOnSale,
+  valueCategories,
+  type LadderStep,
+  type ValueCategory,
+  type ValuePicks,
   type BrandPolicy,
   type SizeGap,
 } from './insights';
@@ -63,15 +73,76 @@ describe('insights helpers', () => {
     expect(barPct('3', 0)).toBe(0);
   });
 
-  it('"all observed out" needs at least one observed listing and every one out', () => {
-    expect(allObservedOut({ brand: 'x', observed: 113, outOfStock: 113 })).toBe(true);
-    expect(allObservedOut({ brand: 'x', observed: 12, outOfStock: 6 })).toBe(false);
-    expect(allObservedOut({ brand: 'x', observed: 0, outOfStock: 0 })).toBe(false);
+  it('lists a product once per brand and name, ignoring case and spacing', () => {
+    const rows = [
+      { brand: 'Milani', name: 'Fruit Fetish Lip Oil', id: '1' },
+      { brand: 'milani ', name: 'Fruit  Fetish lip oil', id: '2' },
+      { brand: 'Milani', name: 'Color Statement Lipliner', id: '3' },
+      { brand: 'NYX', name: 'Fruit Fetish Lip Oil', id: '4' },
+    ];
+    expect(oncePerName(rows).map((r) => r.id)).toEqual(['1', '3', '4']);
   });
 
-  it('keeps only the pair, in pair order, whatever order the API sent', () => {
-    const rows = [{ retailer: 'c' }, { retailer: 'b' }, { retailer: 'a' }];
-    expect(forPair(rows, 'a', 'b').map((r) => r.retailer)).toEqual(['a', 'b']);
+  it('pairs every shop with every later one, once', () => {
+    expect(shopPairs(['a', 'b', 'c'])).toEqual([
+      { base: 'a', other: 'b' },
+      { base: 'a', other: 'c' },
+      { base: 'b', other: 'c' },
+    ]);
+    expect(shopPairs(['a'])).toEqual([]);
+  });
+
+  it('reads the picked shop only when the dataset collects it', () => {
+    expect(pickedShop(new URLSearchParams('shop=b'), ['a', 'b'])).toBe('b');
+    expect(pickedShop(new URLSearchParams('shop=zz'), ['a', 'b'])).toBeNull();
+    expect(pickedShop(new URLSearchParams(''), ['a', 'b'])).toBeNull();
+  });
+
+  it('flags a category as few rated below a quarter of its priced listings', () => {
+    expect(fewRated({ rated: 119, priced: 1805 })).toBe(true);
+    expect(fewRated({ rated: 25, priced: 100 })).toBe(false);
+    expect(fewRated({ rated: 24, priced: 100 })).toBe(true);
+    expect(fewRated({ rated: 0, priced: 0 })).toBe(false);
+  });
+
+  it('drops the catch-all category from value picks', () => {
+    const cat = (category: string) => ({ category }) as ValueCategory;
+    const v = { categories: [cat('lips'), cat('other'), cat('eyes')] } as ValuePicks;
+    expect(valueCategories(v).map((c) => c.category)).toEqual(['lips', 'eyes']);
+  });
+
+  it('reads the audit fields when sent, and a shelf price, no size, not on sale when not', () => {
+    const c = { category: 'fragrance', median: { amount: '310.00', currency: 'AED' } } as ValueCategory;
+    expect(perUnitMedian(c)).toBeNull();
+    expect(perUnitMedian({ ...c, basis: 'shelf' } as ValueCategory)).toBeNull();
+    // Per unit with no unit median: no per-unit line, the shelf price shows instead.
+    expect(perUnitMedian({ ...c, basis: 'per_unit', unitMedians: [] } as ValueCategory)).toBeNull();
+    const unitMedians = [
+      { median: '9.80', n: 12, unit: 'g' },
+      { median: '3.10', n: 900, unit: 'ml' },
+    ];
+    expect(perUnitMedian({ ...c, basis: 'per_unit', unitMedians } as ValueCategory)).toEqual({
+      median: { amount: '3.10', currency: 'AED' },
+      unit: 'ml',
+    });
+    const p = { brand: 'b', id: '1', name: 'n', price: { amount: '515.00', currency: 'AED' } } as Parameters<
+      typeof pickSize
+    >[0];
+    expect(pickSize(p)).toEqual({ size: null, unitPrice: null });
+    // A unit price is shown only with the size it is per.
+    expect(pickSize({ ...p, unitPrice: '5.15' } as typeof p)).toEqual({ size: null, unitPrice: null });
+    expect(pickSize({ ...p, sizeValue: '100', sizeUnit: 'ml', unitPrice: '5.15' } as typeof p)).toEqual({
+      size: { value: '100', unit: 'ml' },
+      unitPrice: { amount: '5.15', currency: 'AED' },
+    });
+    const step = { brand: 'b', name: 'n' } as LadderStep;
+    expect(smallerOnSale(step)).toBe(false);
+    expect(smallerOnSale({ ...step, smallerOnSale: true } as LadderStep)).toBe(true);
+  });
+
+  it('puts the rating floor on a five-point scale', () => {
+    expect(ratingOutOfFive('90.0')).toBe('4.5');
+    expect(ratingOutOfFive('80')).toBe('4');
   });
 
   it('compares API versions per number, not as text', () => {
@@ -82,10 +153,10 @@ describe('insights helpers', () => {
     expect(apiAtLeast('garbage', '1.18.0')).toBe(false);
   });
 
-  it('Insights is served from API 1.18.0; unknown until /meta answers', () => {
-    expect(insightsServed({ meta: { apiVersion: '1.16.0' } })).toBe(false);
-    expect(insightsServed({ meta: { apiVersion: '1.17.0' } })).toBe(false);
-    expect(insightsServed({ meta: { apiVersion: '1.18.0' } })).toBe(true);
+  it('Insights is served from API 1.22.0; unknown until /meta answers', () => {
+    expect(insightsServed({ meta: { apiVersion: '1.18.0' } })).toBe(false);
+    expect(insightsServed({ meta: { apiVersion: '1.21.0' } })).toBe(false);
+    expect(insightsServed({ meta: { apiVersion: '1.22.0' } })).toBe(true);
     expect(insightsServed(undefined)).toBeUndefined();
   });
 });
