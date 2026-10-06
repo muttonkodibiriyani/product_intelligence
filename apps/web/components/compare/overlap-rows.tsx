@@ -20,9 +20,11 @@ const TD = 'px-3 py-2.5 align-top';
 export function MatchEvidence({
   match,
   at = 'end',
+  side,
 }: {
   match: Schemas['RowMatch'] | null | undefined;
   at?: 'start' | 'end';
+  side?: 'below' | 'above';
 }) {
   const t = useTranslations('overlap');
   const locale = useLocale();
@@ -43,6 +45,7 @@ export function MatchEvidence({
   return (
     <Tip
       at={at}
+      side={side}
       className="w-fit"
       text={lines.map((l, i) => (
         <span key={i} className="block">
@@ -79,11 +82,14 @@ export function OverlapRows({
   const price = (m: Matched['basePrice']) => (
     <Price of={{ price: m }} locale={locale} fallback={<span className="text-ink-2">–</span>} />
   );
-  const product = (r: Matched) => (
+  // The panel clips, so a bubble on the last rows opens upwards (the first rows have no room above).
+  const side = (i: number) => (i >= 2 && i >= rows.length - 2 ? 'above' : 'below');
+  const product = (r: Matched, i: number) => (
     <ProductCell r={r} locale={locale} from={from} back="overlap">
       <MatchReviewLabel
         review={isUnreviewed(r) ? 'unreviewed' : null}
         hint={to('unreviewedHint')}
+        side={side(i)}
         className="mt-1"
       />
     </ProductCell>
@@ -115,10 +121,10 @@ export function OverlapRows({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.map((r, i) => (
               <tr key={r.id} className="border-t border-line-2 first:border-t-0">
                 <th scope="row" className={`${TD} min-w-56 text-start font-normal`}>
-                  {product(r)}
+                  {product(r, i)}
                 </th>
                 <td className={`${TD} text-end tabular-nums`}>{price(r.basePrice)}</td>
                 <td className={`${TD} text-end tabular-nums`}>{price(r.otherPrice)}</td>
@@ -129,7 +135,7 @@ export function OverlapRows({
                   <CheaperPill r={r} data={data} name={name} />
                 </td>
                 <td className={`${TD} text-sm`}>
-                  <MatchEvidence match={r.match} />
+                  <MatchEvidence match={r.match} side={side(i)} />
                 </td>
               </tr>
             ))}
@@ -137,9 +143,9 @@ export function OverlapRows({
         </table>
       </div>
       <ul className="divide-y divide-line-2 sm:hidden">
-        {rows.map((r) => (
+        {rows.map((r, i) => (
           <li key={r.id} className="px-4 py-3 text-sm">
-            {product(r)}
+            {product(r, i)}
             <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
               <dt className="text-xs text-ink-2">
                 <RetailerDot id={data.base} side={0} /> {name(data.base)}
@@ -156,7 +162,7 @@ export function OverlapRows({
             </dl>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
               <CheaperPill r={r} data={data} name={name} />
-              <MatchEvidence match={r.match} />
+              <MatchEvidence match={r.match} side={side(i)} />
             </div>
           </li>
         ))}

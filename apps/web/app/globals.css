@@ -369,6 +369,12 @@ html {
         inset-inline-start: auto;
         inset-inline-end: 0;
     }
+    &[data-side='above'] {
+        top: auto;
+        bottom: 100%;
+        margin-top: 0;
+        margin-bottom: 6px;
+    }
 }
 
 /* A sparkline's bars grow up from the baseline; the same timing as `grow`. */

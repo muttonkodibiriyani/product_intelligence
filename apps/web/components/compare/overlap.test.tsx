@@ -93,6 +93,14 @@ describe('OverlapRows', () => {
     const tips = screen.getAllByRole('tooltip').map((t) => t.textContent);
     expect(tips).toContain(en.overlap.unreviewedHint);
     expect(tips).not.toContain(en.productCard.unreviewedMatchHint);
+    // The panel clips: the last two rows open their bubbles upwards, the first ones downwards.
+    const sides = (row: HTMLElement) =>
+      within(row)
+        .getAllByRole('tooltip')
+        .map((t) => t.dataset.side ?? 'below');
+    const body = within(screen.getByRole('table')).getAllByRole('row').slice(1);
+    expect(sides(body[0]!)).toEqual(['below']);
+    expect(sides(body[6]!)).toEqual(['above', 'above']);
     cleanup();
     show(<OverlapRows rows={rows} data={data} name={name} from="" />, 'ar');
     expect(screen.getAllByRole('tooltip').map((t) => t.textContent)).toContain(ar.overlap.unreviewedHint);
