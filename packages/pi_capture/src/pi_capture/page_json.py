@@ -9,6 +9,7 @@ the page agrees) and say when a readable product page is outside the capture's s
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from pi_capture.generic import _DECODER, JsonObject
@@ -51,16 +52,27 @@ def object_after(html: str, key: str) -> JsonObject | None:
     return obj if isinstance(obj, dict) else None
 
 
-def stock_flag(flag: Any, path: str, note: str) -> Reading | None:
-    """The page's own in-stock flag as a ``structured_data`` block, in the shape the feed reads
-    (``item_in_stock``); ``None`` unless the page gives a boolean."""
-    if not isinstance(flag, bool):
+def stock_flag(
+    node: Any, key: str, path: str, note: str, *, negate: bool = False
+) -> Reading | None:
+    """The page's own stock flag ``node[key]`` as a ``structured_data`` block, in the shape the
+    feed reads (``item_in_stock``; ``negate`` for an out-of-stock flag). ``None`` when the key is
+    absent. A value that is present but not a boolean is kept as stated, so the feed reads the
+    page's stock as unknown instead of letting the JSON-LD speak alone."""
+    if not isinstance(node, Mapping) or key not in node:
         return None
+    value = node[key]
+    if isinstance(value, bool):
+        flag: Any = value != negate
+        raw = "true" if flag else "false"
+    else:
+        flag, raw = value, "null" if value is None else str(value)
+        note = f"{note}; not a boolean, so the page's stock is unknown"
     return Reading(
         "structured_data",
         get_attribute("structured_data").level,
         "observed",
-        "true" if flag else "false",
+        raw,
         {"item_in_stock": flag},
         path,
         note,

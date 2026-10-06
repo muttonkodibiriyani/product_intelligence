@@ -168,9 +168,9 @@ def readings_from_bloomingdales(html: str, *, locale: str, url: str | None = Non
     em.extend(readings_from_generic(html, locale=locale, url=url))
     for key in ("rating_value", "rating_count"):
         em.not_shown(key, "Bloomingdale's UAE product pages carry no ratings in the HTML")
-    inventory = pd.get("inventory")
     flag = stock_flag(
-        inventory.get("orderable") if isinstance(inventory, Mapping) else None,
+        pd.get("inventory"),
+        "orderable",
         f"{_PD}.inventory.orderable",
         "SCAPI inventory orderable flag; cross-checked with the JSON-LD availability",
     )

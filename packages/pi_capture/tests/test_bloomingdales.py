@@ -146,16 +146,19 @@ def test_a_page_without_product_data_is_not_a_product() -> None:
         (True, "InStock", "instock"),
         (False, "OutOfStock", "outofstock"),
         (True, "OutOfStock", None),  # the page contradicts itself: unknown
-        (None, "InStock", "instock"),  # no flag: the JSON-LD alone
+        (..., "InStock", "instock"),  # no flag: the JSON-LD alone
+        (None, "InStock", None),  # a flag that is not a boolean: unknown
+        (1, "InStock", None),
     ],
 )
 def test_bloomingdales_rows_carry_the_stock_the_page_states(
     make_capture: CaptureFactory,
-    orderable: bool | None,
+    orderable: object,
     availability: str,
     expected: str | None,
 ) -> None:
-    html = _page(_product(inventory={"orderable": orderable}), availability)
+    inventory = {} if orderable is ... else {"orderable": orderable}
+    html = _page(_product(inventory=inventory), availability)
     readings = readings_from_bloomingdales(html, locale="en-AE")
     capture = make_capture(readings=tuple(readings))
     (row,) = build_feed([capture], SHOPS["bloomingdales_ae"]).rows

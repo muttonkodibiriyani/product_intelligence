@@ -194,11 +194,12 @@ def readings_from_ounass(html: str, *, locale: str, url: str | None = None) -> l
     em.extend(readings_from_generic(html, locale=locale, url=url))
     for key in ("rating_value", "rating_count"):
         em.not_shown(key, "Ounass product pages show no ratings")
-    out_of_stock = pdp.get("outOfStock")
     flag = stock_flag(
-        (not out_of_stock) if isinstance(out_of_stock, bool) else None,
+        pdp,
+        "outOfStock",
         f"{_PDP}.outOfStock",
         "pdp outOfStock flag, inverted; cross-checked with the JSON-LD availability",
+        negate=True,
     )
     if flag is not None:
         em.readings.append(flag)

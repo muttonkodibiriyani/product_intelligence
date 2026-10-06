@@ -140,8 +140,13 @@ def test_the_out_of_stock_flag_is_its_own_structured_data_block() -> None:
     blocks = [(r.source_path, r.value) for r in readings if r.key == "structured_data"]
     assert blocks[-1] == ("pdp.outOfStock", {"item_in_stock": False})
     assert blocks[0][0] == "jsonld"
-    no_flag = readings_from_ounass(_page(_pdp(outOfStock=None)), locale="en-AE")
+    pdp = _pdp()
+    del pdp["outOfStock"]
+    no_flag = readings_from_ounass(_page(pdp), locale="en-AE")
     assert [r.source_path for r in no_flag if r.key == "structured_data"] == ["jsonld"]
+    null = readings_from_ounass(_page(_pdp(outOfStock=None)), locale="en-AE")
+    (block,) = [r for r in null if r.source_path == "pdp.outOfStock"]
+    assert (block.raw_text, block.value) == ("null", {"item_in_stock": None})
 
 
 @pytest.mark.parametrize(
@@ -151,11 +156,13 @@ def test_the_out_of_stock_flag_is_its_own_structured_data_block() -> None:
         (True, "OutOfStock", "outofstock"),  # stays a row, published as out of stock
         (True, None, "outofstock"),
         (False, "OutOfStock", None),  # the page contradicts itself: unknown
+        (None, "InStock", None),  # a flag that is not a boolean: unknown
+        ("false", "InStock", None),
     ],
 )
 def test_ounass_rows_carry_the_stock_the_page_states(
     make_capture: CaptureFactory,
-    out_of_stock: bool,
+    out_of_stock: object,
     availability: str | None,
     expected: str | None,
 ) -> None:
