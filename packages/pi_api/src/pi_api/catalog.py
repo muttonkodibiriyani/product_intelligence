@@ -33,10 +33,12 @@ from pi_api.floor import PriceFlag
 from pi_core import AvailabilityState, Channel, MatchClass, ReviewState
 from pi_dataset import (
     Capabilities,
+    ContentField,
     Context,
     ContractModel,
     DatasetV3,
     FieldStatus,
+    MatchEdge,
     MoneyValue,
     OfferV3,
     ProductV3,
@@ -48,7 +50,7 @@ from pi_dataset import (
 from pi_dataset.compose import SourceInfo, source_infos
 from pi_dataset.profiles import AttributeDef, ProfileInfo
 from pi_dataset.text import SourceText
-from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status
+from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status, view
 from pi_metrics.compare import Gap, pair_with_labels
 from pi_metrics.promotions import depth
 from pi_metrics.view import AmbiguousContext, context, price_on, regular_on
@@ -69,6 +71,7 @@ AttrText = Annotated[str, Field(pattern=_ATTR_TEXT, max_length=MAX_TEXT)]
 #: Per retailer, the hosts its evidence (or image) URLs may point at (``Settings``).
 EvidenceHosts = Mapping[str, frozenset[str]]
 NO_HOSTS: EvidenceHosts = MappingProxyType({})
+NO_FAMILIES: Mapping[tuple[str, str], tuple[tuple[str, OfferV3], ...]] = MappingProxyType({})
 
 
 class InvalidQueryError(ValueError):
@@ -226,7 +229,17 @@ class ProductFilters(ContractModel):
             )
         ),
     ] = ()
-    matched: bool | None = None
+    matched: Annotated[
+        bool | None,
+        Field(
+            description=(
+                "API 1.16.0 (ruling A): true keeps products with an exact edge that is not "
+                "rejected (proposed included; see each card's matchReview), false the rest. "
+                "A pair whose identity is unclear is never matched. Counted metrics still use "
+                "approved/locked edges only."
+            )
+        ),
+    ] = None
     price_min: DecimalText | None = None
     price_max: DecimalText | None = None
     sort: ProductSort = ProductSort.NAME
@@ -256,6 +269,13 @@ class ProductFilters(ContractModel):
 class ProductQuery(ProductFilters):
     limit: int = Field(default=25, ge=1, le=MAX_LIMIT)
     cursor: Annotated[str, Field(max_length=512)] | None = None
+
+
+class MatchReview(StrEnum):
+    """Whether a matched card's exact edge was reviewed (approved/locked) or is proposed."""
+
+    REVIEWED = "reviewed"
+    UNREVIEWED = "unreviewed"
 
 
 class CardMatch(ContractModel):
@@ -325,6 +345,9 @@ class ProductCard(ContractModel):
     #: and the label's system (``eu``, ``alpha``) where it matters.
     size_label: SourceText | None = None
     size_system: SourceText | None = None
+    #: API 1.16.0: set exactly when the product is ``matched`` (ruling A): ``reviewed`` when one
+    #: of its matching edges is approved or locked, else ``unreviewed``. Null otherwise.
+    match_review: MatchReview | None = None
 
 
 class FacetCount(ContractModel):
@@ -435,6 +458,7 @@ def card(
         image=card_image(ds, product, offers, images),
         size_label=label,
         size_system=system,
+        match_review=match_review(ds, product),
     )
 
 
@@ -451,11 +475,30 @@ def card_image(
     )
 
 
-def _matched(product: ProductV3) -> bool:
-    return any(
-        e.match_class is MatchClass.EXACT and e.review_state in COUNTED_STATES
+def matching_edges(ds: DatasetV3, product: ProductV3) -> list[MatchEdge]:
+    """The product's edges that make it ``matched`` (ruling A): exact and not rejected, between
+    two retailers whose identity in the product is clear (else compare reads ``no_match``).
+    Proposed edges count here; counted metrics still take approved/locked only."""
+    return [
+        e
         for e in product.matches
-    )
+        if e.match_class is MatchClass.EXACT
+        and e.review_state is not ReviewState.REJECTED
+        and not view.identity_unclear(ds, product, e.a)
+        and not view.identity_unclear(ds, product, e.b)
+    ]
+
+
+def _matched(ds: DatasetV3, product: ProductV3) -> bool:
+    return bool(matching_edges(ds, product))
+
+
+def match_review(ds: DatasetV3, product: ProductV3) -> MatchReview | None:
+    edges = matching_edges(ds, product)
+    if not edges:
+        return None
+    reviewed = any(e.review_state in COUNTED_STATES for e in edges)
+    return MatchReview.REVIEWED if reviewed else MatchReview.UNREVIEWED
 
 
 def _named(ds: DatasetV3, ids: Iterable[str]) -> frozenset[str]:
@@ -551,7 +594,7 @@ def _predicates(ds: DatasetV3, query: ProductFilters) -> dict[str, Check]:
         checks["context"] = lambda p: any(c in shown and not o.early for c, o in p.offers.items())
     if query.matched is not None:
         is_matched = query.matched
-        checks["matched"] = lambda p: _matched(p) is is_matched
+        checks["matched"] = lambda p: _matched(ds, p) is is_matched
     if low is not None or high is not None:
 
         def priced(p: ProductV3) -> bool:
@@ -823,6 +866,183 @@ class AdminEvidence(Evidence):
     run_id: str | None
 
 
+class ContentState(StrEnum):
+    """API 1.12.0: why a content field has the value it has."""
+
+    #: The retailer's page has it and it is served.
+    OBSERVED = "observed"
+    #: Captured from this retailer, but this offer's page doesn't publish it.
+    NOT_PUBLISHED = "not_published"
+    #: Not captured from this retailer at all (or the snapshot states no content).
+    NOT_CAPTURED = "not_captured"
+
+
+class TextContent(ContractModel):
+    state: ContentState
+    #: Set only when ``state`` is ``observed``. Each leaf has its own key (``text``,
+    #: ``barcode``, ``url``) so the assistant's sanitiser can wrap it as source text.
+    text: SourceText | None
+
+
+class GtinContent(ContractModel):
+    state: ContentState
+    #: A GTIN-8/12/13/14 with a correct check digit; an invalid barcode is never served.
+    barcode: SourceText | None
+
+
+class VariantView(ContractModel):
+    """One listing grouped into the offer: same retailer, product family and size."""
+
+    sku: SourceText
+    shade: TextContent
+    gtin: GtinContent
+
+
+class VariantsContent(ContractModel):
+    state: ContentState
+    items: tuple[VariantView, ...]
+
+
+class ImageSource(StrEnum):
+    #: The offer's own page gallery, from the snapshot.
+    PAGE = "page"
+    #: The retailer's archived SKU catalogue (``/catalogues``), used when the page gallery is
+    #: not observed.
+    CATALOGUE = "catalogue"
+
+
+class ImageLink(ContractModel):
+    url: SourceText
+
+
+class ImagesContent(ContractModel):
+    state: ContentState
+    #: Only https URLs on the retailer's allowlisted image hosts, in the retailer's order.
+    items: tuple[ImageLink, ...]
+    source: ImageSource | None
+
+
+class SizeSibling(ContractModel):
+    """Another product with an offer in the same context and the same retailer product family:
+    the same item in another size."""
+
+    product_id: str
+    size: Size | None
+    size_label: SourceText | None
+
+
+class OfferContentView(ContractModel):
+    """API 1.12.0: what the retailer's page says beyond price and stock. Every field has an
+    explicit state; nothing missing is served as an empty value."""
+
+    description: TextContent
+    ingredients: TextContent
+    images: ImagesContent
+    variants: VariantsContent
+    sizes: tuple[SizeSibling, ...]
+
+
+#: ``(retailer, sku)`` -> the catalogue gallery URLs, or None when there is none.
+Gallery = Callable[[str, str], tuple[str, ...] | None]
+#: ``(context id, family)`` -> the products (id, offer) with an offer there.
+Families = Mapping[tuple[str, str], tuple[tuple[str, OfferV3], ...]]
+
+
+def family_index(ds: DatasetV3) -> Families:
+    """Every offer that names a retailer family, grouped by context and family."""
+    out: dict[tuple[str, str], list[tuple[str, OfferV3]]] = {}
+    for product in ds.products:
+        for cid, offer in product.offers.items():
+            if offer.content is not None and offer.content.family is not None:
+                out.setdefault((cid, offer.content.family), []).append((product.id, offer))
+    return MappingProxyType(
+        {key: tuple(sorted(value, key=lambda x: x[0])) for key, value in out.items()}
+    )
+
+
+def _state(captured: bool, observed: bool) -> ContentState:
+    if observed:
+        return ContentState.OBSERVED
+    return ContentState.NOT_PUBLISHED if captured else ContentState.NOT_CAPTURED
+
+
+def _text(value: str | None, field: ContentField, captured: frozenset[ContentField]) -> TextContent:
+    state = _state(field in captured, value is not None)
+    return TextContent(state=state, text=value if state is ContentState.OBSERVED else None)
+
+
+def _gtin_content(value: str | None, captured: frozenset[ContentField]) -> GtinContent:
+    state = _state(ContentField.GTIN in captured, value is not None)
+    return GtinContent(state=state, barcode=value if state is ContentState.OBSERVED else None)
+
+
+NOT_CAPTURED_TEXT = TextContent(state=ContentState.NOT_CAPTURED, text=None)
+
+
+def offer_content(  # noqa: PLR0913 - the offer plus the three lookups it may need
+    ctx: Context,
+    product_id: str,
+    offer: OfferV3,
+    *,
+    images: EvidenceHosts,
+    families: Families,
+    gallery: Gallery | None,
+) -> OfferContentView:
+    """The offer's content with every field's state (API 1.12.0). A snapshot without
+    ``Offer.content`` serves every field ``not_captured``; the catalogue gallery is used only
+    when the page gallery is not observed."""
+    content = offer.content
+    captured = frozenset(content.captured) if content is not None else frozenset()
+    urls: tuple[str, ...] = ()
+    if content is not None:
+        urls = tuple(
+            u for i in content.images if (u := evidence_url(i, ctx.retailer, images)) is not None
+        )
+    image_state = _state(ContentField.IMAGES in captured, bool(urls))
+    if content is not None and content.images and not urls:
+        # The page has a gallery, but no URL is on a host the API serves: that is not a
+        # gallery the retailer withheld, so it reads not captured (Reviewer, #199).
+        image_state = ContentState.NOT_CAPTURED
+    source = ImageSource.PAGE if urls else None
+    if not urls and gallery is not None and offer.sku is not None:
+        found = gallery(ctx.retailer, offer.sku)
+        if found:
+            urls, image_state, source = found, ContentState.OBSERVED, ImageSource.CATALOGUE
+    if content is None:
+        description = ingredients = NOT_CAPTURED_TEXT
+        variants = VariantsContent(state=ContentState.NOT_CAPTURED, items=())
+        sizes: tuple[SizeSibling, ...] = ()
+    else:
+        description = _text(content.description, ContentField.DESCRIPTION, captured)
+        ingredients = _text(content.ingredients, ContentField.INGREDIENTS, captured)
+        variants = VariantsContent(
+            state=ContentState.OBSERVED if content.variants else ContentState.NOT_PUBLISHED,
+            items=tuple(
+                VariantView(
+                    sku=v.sku,
+                    shade=_text(v.shade, ContentField.SHADE, captured),
+                    gtin=_gtin_content(v.gtin, captured),
+                )
+                for v in content.variants
+            ),
+        )
+        siblings = families.get((ctx.id, content.family), ()) if content.family else ()
+        sizes = tuple(
+            SizeSibling(product_id=pid, size=measure(o.size), size_label=size_label(o.size)[0])
+            for pid, o in siblings
+            if pid != product_id
+        )
+    return OfferContentView(
+        description=description,
+        ingredients=ingredients,
+        images=ImagesContent(
+            state=image_state, items=tuple(ImageLink(url=u) for u in urls), source=source
+        ),
+        variants=variants,
+        sizes=sizes,
+    )
+
+
 class OfferView(ContractModel):
     #: The retailer the offer is at; ``context`` says where it was observed.
     retailer: str
@@ -847,6 +1067,8 @@ class OfferView(ContractModel):
     location: str | None
     size_label: SourceText | None
     size_system: SourceText | None
+    #: API 1.12.0: description, ingredients, gallery, variants and other sizes, each with a state.
+    content: OfferContentView
 
 
 class AdminOfferView(OfferView):
@@ -904,12 +1126,21 @@ def _offers(ds: DatasetV3, product: ProductV3) -> list[tuple[Context, OfferV3]]:
     return [(context(ds, c), o) for c, o in sorted(product.offers.items())]
 
 
-def product_detail(
-    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts, images: EvidenceHosts = NO_HOSTS
+def product_detail(  # noqa: PLR0913 - the content lookups are optional
+    ds: DatasetV3,
+    product: ProductV3,
+    hosts: EvidenceHosts,
+    images: EvidenceHosts = NO_HOSTS,
+    *,
+    families: Families = NO_FAMILIES,
+    gallery: Gallery | None = None,
 ) -> Metric[ProductDetail]:
     offers = tuple(
         OfferView(
             **_offer_fields(ds, c, o),
+            content=offer_content(
+                c, product.id, o, images=images, families=families, gallery=gallery
+            ),
             evidence=Evidence(
                 captured_at=o.evidence.captured_at, url=evidence_url(o.url, c.retailer, hosts)
             ),
@@ -925,12 +1156,21 @@ def product_detail(
     )
 
 
-def admin_product_detail(
-    ds: DatasetV3, product: ProductV3, hosts: EvidenceHosts, images: EvidenceHosts = NO_HOSTS
+def admin_product_detail(  # noqa: PLR0913 - the content lookups are optional
+    ds: DatasetV3,
+    product: ProductV3,
+    hosts: EvidenceHosts,
+    images: EvidenceHosts = NO_HOSTS,
+    *,
+    families: Families = NO_FAMILIES,
+    gallery: Gallery | None = None,
 ) -> Metric[AdminProductDetail]:
     offers = tuple(
         AdminOfferView(
             **_offer_fields(ds, c, o),
+            content=offer_content(
+                c, product.id, o, images=images, families=families, gallery=gallery
+            ),
             evidence=AdminEvidence(
                 captured_at=o.evidence.captured_at,
                 url=evidence_url(o.url, c.retailer, hosts),

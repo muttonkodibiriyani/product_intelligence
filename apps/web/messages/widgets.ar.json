@@ -1,35 +1,23 @@
 {
-  "drill": "اختر عمودًا أو خانة أو نقطة لفتح المنتجات التي خلفها.",
   "products": "{n, plural, zero {لا منتجات} one {منتج واحد} two {منتجان} few {{n, number, latn} منتجات} many {{n, number, latn} منتجًا} other {{n, number, latn} منتج}}",
   "kpi": {
     "products": "المنتجات المتتبَّعة",
-    "brands": "العلامات التجارية",
-    "categories": "الفئات",
     "median": "السعر الوسيط",
-    "mean": "المتوسط {price}",
-    "promo": "ضمن العروض",
-    "promoOf": "من المنتجات",
-    "freshness": "حداثة البيانات",
     "fresh": "حديثة",
     "stale": "قديمة",
     "unknown": "العمر غير معروف",
     "asOf": "حتى {date}",
-    "age": "{days, plural, =0 {جُمعت اليوم} one {عمرها يوم واحد} two {عمرها يومان} few {عمرها {days, number, latn} أيام} many {عمرها {days, number, latn} يومًا} other {عمرها {days, number, latn} يوم}}",
     "none": "غير مُقاس",
     "aging": "تتقادم",
     "snapshot": "لقطة مستوردة",
     "imported": "استُوردت في {date}، وتاريخ جمعها غير معروف",
     "productsParents": "منتجات (لقطة، قد تشمل قوائم رئيسية)",
-    "retailers": "المتاجر",
     "pairs": "أزواج قابلة للمقارنة",
-    "pairsOf": "مطابَقة بين {base} و{other}",
     "index": "مؤشر الأسعار",
-    "indexOf": "{other} مقابل {base}، الفجوة الوسيطة على {n} زوج",
     "cheaper": "الأرخص لدى",
     "same": "{n} بالسعر نفسه",
-    "withheld": "غير مُقاس",
-    "only": "{retailer} فقط",
-    "promoOnly": "من منتجات {retailer}"
+    "pairsOf": "مطابَقة بين {base} و{other}",
+    "indexOf": "{other} مقابل {base}، الفجوة الوسيطة على {n} زوج"
   },
   "ladder": {
     "title": "سلّم الأسعار حسب الفئة",
@@ -39,7 +27,9 @@
     "premium": "فاخر",
     "median": "الوسيط",
     "legend": "الاقتصادي هو الربع الأرخص، والمتوسط هو النصف الأوسط، والفاخر هو الربع الأعلى. يزداد محور السعر بالمضاعفات لا بمبالغ ثابتة (مقياس لوغاريتمي)، لتظهر الفئات الرخيصة والغالية في رسم واحد.",
-    "label": "نطاقات الأسعار حسب الفئة، {n} فئة."
+    "label": "نطاقات الأسعار حسب الفئة، {n} فئة.",
+    "takeaway": "تتراوح وسيطات الفئات من {low} في {lowCat} إلى {high} في {highCat}.",
+    "takeawayOne": "فئة واحدة فقط لها وسيط حتى الآن: {cat} عند {median}."
   },
   "promo": {
     "title": "عمق العروض",
@@ -51,8 +41,10 @@
   },
   "brands": {
     "title": "تموضع أسعار العلامات التجارية",
-    "question": "السعر الوسيط لأكثر {n} علامة تجارية من حيث عدد المنتجات.",
-    "label": "السعر الوسيط لكل علامة تجارية، {n} علامة، الأعلى أولًا."
+    "question": "السعر الوسيط {n, plural, one {للعلامة التجارية الأكثر منتجات} other {لأكثر {n, number, latn} علامة تجارية من حيث عدد المنتجات}}.",
+    "label": "السعر الوسيط لكل علامة تجارية، {n} علامة، الأعلى أولًا.",
+    "takeaway": "من بين أكبر {n, number, latn} علامة تجارية، {high} لها أعلى وسيط عند {highPrice} و{low} الأدنى عند {lowPrice}.",
+    "takeawayOne": "علامة تجارية واحدة فقط كبيرة بما يكفي للترتيب حتى الآن: {brand}، الوسيط {median}."
   },
   "mix": {
     "title": "توزيع الفئات",
@@ -62,7 +54,8 @@
   "hist": {
     "title": "توزيع الأسعار",
     "question": "عدد المنتجات في كل نطاق سعري.",
-    "label": "المنتجات حسب النطاق السعري، {n} نطاق."
+    "label": "المنتجات حسب النطاق السعري، {n} نطاق.",
+    "takeaway": "النطاق الأكثر امتلاءً من {lo} إلى {hi}: {share} من المنتجات المسعّرة."
   },
   "rating": {
     "title": "التقييم مقابل السعر",
@@ -84,7 +77,8 @@
     "off": "التخفيض",
     "all": "كل العروض",
     "noImage": "لا توجد صورة",
-    "credit": "صور المنتجات: <link>{retailer}</link>، من {host}."
+    "credit": "صور المنتجات: <link>{retailer}</link>، من {host}.",
+    "titleAt": "أعمق التخفيضات لدى {shop}"
   },
   "share": {
     "title": "تركّز العلامات التجارية",
@@ -132,7 +126,9 @@
     "below": "أقل من {v}",
     "atLeast": "بدءًا من {v}",
     "range": "من {lo} إلى {hi}",
-    "label": "الأزواج المطابقة لكل نطاق فرق سعر، {n} نطاقات."
+    "label": "الأزواج المطابقة لكل نطاق فرق سعر، {n} نطاقات.",
+    "takeaway": "{other} أغلى في {dearer} من {n, plural, zero {لا أزواج مطابقة} one {زوج مطابق واحد} two {زوجين مطابقين} few {{n, number, latn} أزواج مطابقة} many {{n, number, latn} زوجًا مطابقًا} other {{n, number, latn} زوج مطابق}} وأرخص في {cheaper}.",
+    "takeawaySame": "{other} أغلى في {dearer} من {n, plural, zero {لا أزواج مطابقة} one {زوج مطابق واحد} two {زوجين مطابقين} few {{n, number, latn} أزواج مطابقة} many {{n, number, latn} زوجًا مطابقًا} other {{n, number, latn} زوج مطابق}} وأرخص في {cheaper}؛ و{same} في النطاق المحيط بالصفر."
   },
   "groupGap": {
     "title": "فجوة الأسعار حسب العلامة التجارية",
@@ -150,7 +146,6 @@
     "retailer": "المتجر",
     "groupBy": "التجميع حسب"
   },
-  "retailerLabel": "{title} · {retailer}",
   "cross": {
     "title": "من الأرخص حسب الفئة والعلامة التجارية",
     "question": "على كل زوج مطابَق في فئة وعلامة تجارية، كم مرة يكون كل متجر أرخص. اختر خلية لفتح تلك الأزواج.",
@@ -209,5 +204,45 @@
       "concealer": "الكونسيلر",
       "other": "أخرى"
     }
+  },
+  "categories": {
+    "title": "أين يكون كل متجر أرخص",
+    "lead": "{shop} أرخص في {k, number, latn} من {n, plural, zero {لا فئات} one {فئة واحدة} two {فئتين} few {{n, number, latn} فئات} many {{n, number, latn} فئة} other {{n, number, latn} فئة}}",
+    "tie": "{base} و{other} كل منهما أرخص في {k, number, latn} من {n, plural, zero {لا فئات} one {فئة واحدة} two {فئتين} few {{n, number, latn} فئات} many {{n, number, latn} فئة} other {{n, number, latn} فئة}}",
+    "allSame": "الوسيط نفسه في كل الفئات، وعددها {n, number, latn}",
+    "about": "حول",
+    "n": "n = {n}",
+    "open": "افتح الأسعار",
+    "category": "الفئة",
+    "gap": "الفجوة",
+    "same": "متساويان",
+    "cheaperAt": "{shop} أرخص",
+    "sideMissing": "غير متاح",
+    "tooFew": "عدد قليل جدًا (n = {n, number, latn})",
+    "notAvailable": "مقارنة الفئات غير متاحة بعد.",
+    "inCurrency": "الأسعار بـ{currency}.",
+    "note": "الأشرطة هي أعداد المنتجات في الفئة. الفجوة = وسيط {other} − وسيط {base}، كنسبة من وسيط {base}؛ القيمة السالبة تعني أن {other} أرخص. ويأخذ شريط الفجوة لون المتجر الأرخص.",
+    "minN": "يحتاج كل طرف إلى {n, plural, zero {لا منتجات مسعّرة} one {منتج مسعّر واحد} two {منتجين مسعّرين} few {{n, number, latn} منتجات مسعّرة} many {{n, number, latn} منتجًا مسعّرًا} other {{n, number, latn} منتج مسعّر}} على الأقل ليكون له وسيط.",
+    "unmapped": "لم تُصنَّف بعد: {n, plural, zero {لا منتجات} one {منتج واحد} two {منتجان} few {{n, number, latn} منتجات} many {{n, number, latn} منتجًا} other {{n, number, latn} منتج}}.",
+    "name": {
+      "fragrance": "العطور",
+      "skincare": "العناية بالبشرة",
+      "eyes": "العيون",
+      "lips": "الشفاه",
+      "body": "الجسم",
+      "cheek": "الخدود",
+      "foundation": "كريم الأساس",
+      "concealer": "الكونسيلر",
+      "other": "أخرى"
+    }
+  },
+  "basket": {
+    "title": "المنتجات المطابَقة وجهًا لوجه",
+    "open": "افتح المقارنة",
+    "basketOf": "سلة {shop}",
+    "cheaperAt": "<b>{n, number, latn}</b> أرخص لدى {shop}",
+    "same": "<b>{n, number, latn}</b> بالسعر نفسه",
+    "scope": "{n, number, latn} من {total, plural, zero {لا منتجات} one {منتج واحد} two {منتجين} few {{total, number, latn} منتجات} many {{total, number, latn} منتجًا} other {{total, number, latn} منتج}} يبيعها أحد المتجرين",
+    "tally": "{base} أرخص في {a, number, latn}، السعر نفسه في {e, number, latn}، {other} أرخص في {b, number, latn}"
   }
 }

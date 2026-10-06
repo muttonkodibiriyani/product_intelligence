@@ -569,6 +569,36 @@ reaches the model through tool output.
   $1.50. The answer then comes back `unavailable` with the meter's code, and the gate fails
   with that reason. There is no unmetered path: the eval provider refuses to start unless
   `PI_EVAL_METER=firestore`, has no in-memory mode for real calls, and has no other client.
+- **Eval mode (E1b, `apps/assistant/evals/eval-config.json`).** An eval can call a candidate
+  model, such as a 3.x model before the switch, without changing `assistant_config/current`.
+  Nothing writes a config document.
+  - The committed file holds the candidate allowlist, the `ci` caps and the call limits.
+    `PI_EVAL_MODEL` picks one candidate per run, and there is no default. The file changes
+    only in a reviewed PR, never at runtime. Its `candidateModels` stays empty until the prices
+    PR adds attested ids.
+  - The meter builds the effective config from the file and the live document before every
+    call (`src/evals/eval-config.ts`), and refuses when:
+    - either source is missing or invalid;
+    - `current.disabledBy` is set;
+    - the model is unset, not allowlisted or not in `prices.json`;
+    - `priceTableVersion` differs from current or `prices.json` (non-numeric fields must
+      equal current);
+    - any numeric cap or limit is above current's, or current has no `ci` month cap.
+    - `current.enabled` is ignored, so evals can run before switch-on. **Setting `enabled` to
+      false does not stop evals.** Only `disabledBy`, the caps, or an empty or changed
+      `candidateModels` stops them.
+  - **Cost bound.** Honouring `disabledBy` is required, but it is not the bound. No budget kill
+    switch is deployed (R4), so nothing sets it. The bound is the meter's counters:
+    `label/ci/<month>` against the `ci` cap, and the shared `total/<month>` against the live
+    `current.caps.monthUsd`. Both have refusal tests. **Eval spend reduces the live month's
+    headroom** for chat.
+  - **Run plan.** The owner runs it locally with their own ADC. CI stays validate-only, per
+    the ruling above. Use `PI_EVAL_METER=firestore`, `PI_VERTEX_LOCATION` and
+    `PI_EVAL_MODEL=<candidate>`. Report with `node src/evals/gate.ts --counts-only <results.json>`.
+    It prints pass counts, total cost and cost per question, and never prints case or model
+    text.
+  - The live function never imports this module. An import-boundary test covers
+    `src/index.ts`, `src/functions/**` and the built `lib/`.
 - **Run policy.** The model-backed suite runs only when `apps/assistant/**` changes, plus a
   manual dispatch, with promptfoo caching on. A full run is about 100 cases × ~$0.006 ≈
   **$0.60**, and the smoke subset (25 cases, Flash-Lite or Flash) ≈ **$0.15**. PRs run the
@@ -830,7 +860,7 @@ All of these must hold before Vertex is enabled or the chat callable is deployed
    one user holds `role: killswitch` (single-account check, §9.4 step 3).
 3. `assistant_config/current` is written by an admin, and it passes `AssistantConfigSchema`:
    - `promptVersion` **must equal `PROMPT_VERSION`** in `src/flows/prompt.ts`, currently
-     `chat-2026-10-01.3`. If it does not, every question is refused with
+     `chat-2026-10-03.1`. If it does not, every question is refused with
      `prompt_version_mismatch`. Each prompt change bumps the version, and the config must be
      updated in the same release.
    - `priceTableVersion` must equal the deployed price table.

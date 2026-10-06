@@ -1,35 +1,23 @@
 {
-  "drill": "Select a bar, cell or dot to open the products behind it.",
   "products": "{n, plural, one {# product} other {# products}}",
   "kpi": {
     "products": "Products tracked",
-    "brands": "Brands",
-    "categories": "Categories",
     "median": "Median price",
-    "mean": "mean {price}",
-    "promo": "On promotion",
-    "promoOf": "of products",
-    "freshness": "Data freshness",
     "fresh": "Fresh",
     "stale": "Stale",
     "unknown": "Age unknown",
     "asOf": "as of {date}",
-    "age": "{days, plural, =0 {collected today} one {# day old} other {# days old}}",
     "none": "Not measured",
     "aging": "Aging",
     "snapshot": "Snapshot",
     "imported": "Imported {date}, capture date unknown",
     "productsParents": "Products (snapshot, may include parent listings)",
-    "retailers": "Retailers",
     "pairs": "Comparable pairs",
-    "pairsOf": "matched across {base} and {other}",
     "index": "Price index",
-    "indexOf": "{other} vs {base}, median gap on {n} pairs",
     "cheaper": "Cheaper at",
     "same": "{n} same",
-    "withheld": "not measured",
-    "only": "{retailer} only",
-    "promoOnly": "of {retailer} products"
+    "pairsOf": "matched across {base} and {other}",
+    "indexOf": "{other} vs {base}, median gap on {n} pairs"
   },
   "ladder": {
     "title": "Price ladder by category",
@@ -39,7 +27,9 @@
     "premium": "Premium",
     "median": "Median",
     "legend": "Entry is the cheapest quarter, mid the middle half, premium the top quarter. The price axis grows by multiples, not fixed amounts (a log scale), so cheap and expensive categories fit on one chart.",
-    "label": "Price ranges by category, {n} categories."
+    "label": "Price ranges by category, {n} categories.",
+    "takeaway": "Category medians run from {low} in {lowCat} to {high} in {highCat}.",
+    "takeawayOne": "Only one category has a median so far: {cat} at {median}."
   },
   "promo": {
     "title": "Promotion depth",
@@ -51,8 +41,10 @@
   },
   "brands": {
     "title": "Brand price positioning",
-    "question": "Median price of the {n} brands with the most products.",
-    "label": "Median price per brand, {n} brands, highest first."
+    "question": "Median price of the {n, plural, one {brand} other {# brands}} with the most products.",
+    "label": "Median price per brand, {n} brands, highest first.",
+    "takeaway": "Of the {n} largest brands, {high} has the highest median at {highPrice} and {low} the lowest at {lowPrice}.",
+    "takeawayOne": "Only one brand is large enough to rank so far: {brand}, median {median}."
   },
   "mix": {
     "title": "Category mix",
@@ -62,7 +54,8 @@
   "hist": {
     "title": "Price distribution",
     "question": "How many products sit in each price band.",
-    "label": "Products per price band, {n} bands."
+    "label": "Products per price band, {n} bands.",
+    "takeaway": "The fullest band is {lo} to {hi}: {share} of priced products."
   },
   "rating": {
     "title": "Rating vs price",
@@ -84,7 +77,8 @@
     "off": "Off",
     "all": "All promotions",
     "noImage": "No image",
-    "credit": "Product images: <link>{retailer}</link>, served from {host}."
+    "credit": "Product images: <link>{retailer}</link>, served from {host}.",
+    "titleAt": "Deepest discounts at {shop}"
   },
   "share": {
     "title": "Brand concentration",
@@ -132,7 +126,9 @@
     "below": "< {v}",
     "atLeast": "≥ {v}",
     "range": "{lo} to {hi}",
-    "label": "Matched pairs per price-gap band, {n} bands."
+    "label": "Matched pairs per price-gap band, {n} bands.",
+    "takeaway": "{other} is dearer on {dearer} of {n, plural, one {# matched pair} other {# matched pairs}} and cheaper on {cheaper}.",
+    "takeawaySame": "{other} is dearer on {dearer} of {n, plural, one {# matched pair} other {# matched pairs}} and cheaper on {cheaper}; {same} sit in the band around zero."
   },
   "groupGap": {
     "title": "Price gap by brand",
@@ -150,7 +146,6 @@
     "retailer": "Retailer",
     "groupBy": "Group by"
   },
-  "retailerLabel": "{title} · {retailer}",
   "cross": {
     "title": "Who's cheaper by category and brand",
     "question": "On every matched pair in a category and brand, how often each retailer is cheaper. Select a cell to open those pairs.",
@@ -209,5 +204,45 @@
       "concealer": "Concealer",
       "other": "Other"
     }
+  },
+  "categories": {
+    "title": "Where each shop is cheaper",
+    "lead": "{shop} cheaper in {k} of {n, plural, one {# category} other {# categories}}",
+    "tie": "{base} and {other} each cheaper in {k} of {n, plural, one {# category} other {# categories}}",
+    "allSame": "Same median in all {n, plural, one {# category} other {# categories}}",
+    "about": "About",
+    "n": "n = {n}",
+    "open": "Open prices",
+    "category": "Category",
+    "gap": "Gap",
+    "same": "same",
+    "cheaperAt": "{shop} cheaper",
+    "sideMissing": "not available",
+    "tooFew": "too few (n = {n})",
+    "notAvailable": "Category comparison is not available yet.",
+    "inCurrency": "Prices in {currency}.",
+    "note": "Bars are product counts in the category. Gap = {other} median − {base} median, as a share of {base}’s; negative means {other} is cheaper. The gap bar takes the cheaper shop’s colour.",
+    "minN": "A side needs at least {n, plural, one {# priced product} other {# priced products}} to carry a median.",
+    "unmapped": "Not yet in a category: {n, plural, one {# product} other {# products}}.",
+    "name": {
+      "fragrance": "Fragrance",
+      "skincare": "Skincare",
+      "eyes": "Eyes",
+      "lips": "Lips",
+      "body": "Body",
+      "cheek": "Cheek",
+      "foundation": "Foundation",
+      "concealer": "Concealer",
+      "other": "Other"
+    }
+  },
+  "basket": {
+    "title": "Matched products, head to head",
+    "open": "Open compare",
+    "basketOf": "{shop} basket",
+    "cheaperAt": "<b>{n}</b> cheaper at {shop}",
+    "same": "<b>{n}</b> same price",
+    "scope": "{n} of {total, plural, one {# product} other {# products}} either shop sells",
+    "tally": "{base} cheaper on {a}, same price on {e}, {other} cheaper on {b}"
   }
 }

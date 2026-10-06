@@ -1,0 +1,4 @@
+# Real-browser capture container: stock Playwright Chromium, nothing else that touches the wire.
+# The version must match the base image tag (mcr.microsoft.com/playwright/python:v1.63.0-noble).
+playwright==1.63.0
+google-cloud-storage==2.19.0

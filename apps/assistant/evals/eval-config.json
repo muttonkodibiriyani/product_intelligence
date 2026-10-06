@@ -1,0 +1,12 @@
+{
+  "$comment": "Eval mode (E1b, src/evals/eval-config.ts). Change only in a reviewed PR. Every number must not exceed assistant_config/current, or the meter refuses. An empty candidateModels means no eval may call a model; the prices PR adds the attested 3.x ids.",
+  "candidateModels": [],
+  "priceTableVersion": "2026-09-30-planning",
+  "caps": { "labelMonthUsd": "1.50" },
+  "limits": {
+    "maxInputTokens": 40000,
+    "maxOutputTokens": 1500,
+    "thinkingBudget": 0,
+    "maxModelCallsPerQuestion": 4
+  }
+}

@@ -262,6 +262,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Insights
+         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.
+         */
+        get: operations["get_insights_api_v1_insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/launches": {
         parameters: {
             query?: never;
@@ -305,6 +325,26 @@ export interface paths {
         };
         /** Get Meta */
         get: operations["get_meta_api_v1_meta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Price Suggestions
+         * @description Rule-based, not ML: where the subject context could cut a price to beat (aim=beat, strictly below) or match (aim=match, at or below) the rival, over exact approved or locked pairs of the same size in one currency. Down only: a subject already there is already_competitive and its gap (rival - subject) is data, never advice to raise. A cut is at most maxChangePct, at least minChangePct, to an allowed ending. Every row without an outcome carries one reason. Each side's price is its last collected price; a side older than staleDays is stale_observation, except a subject served from a one-off import (basis imported_snapshot, observedOn = the import date). No demand, volume, revenue or margin figure: none is collected. Rows: suggested first, largest overprice first; then the rest, then id.
+         */
+        get: operations["get_price_suggestions_api_v1_price_suggestions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -440,6 +480,7 @@ export interface components {
         AdminOfferView: {
             availability: components["schemas"]["AvailabilityState"] | null;
             channel: components["schemas"]["Channel"];
+            content: components["schemas"]["OfferContentView"];
             /** Context */
             context: string;
             /** Early */
@@ -477,7 +518,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.11.0
+             * @default 1.18.0
              */
             apiVersion: string;
             /** Currency */
@@ -499,7 +540,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-01.4
+             * @default 2026-10-03.3
              */
             metricVersion: string;
             /** Scope */
@@ -580,6 +621,22 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** BrandPolicy */
+        BrandPolicy: {
+            /** Basecheaper */
+            baseCheaper: number;
+            /** Brand */
+            brand: string;
+            /** Equal */
+            equal: number;
+            /** Mediangappct */
+            medianGapPct: string;
+            /** N */
+            n: number;
+            /** Othercheaper */
+            otherCheaper: number;
+            policy: components["schemas"]["Policy"];
+        };
         /**
          * BrandPrice
          * @description One of the ``BRAND_ROWS`` brands with the most priced products (n desc, then brand).
@@ -590,6 +647,15 @@ export interface components {
             median: components["schemas"]["MoneyValue"];
             /** N */
             n: number;
+        };
+        /** BrandStock */
+        BrandStock: {
+            /** Brand */
+            brand: string;
+            /** Observed */
+            observed: number;
+            /** Outofstock */
+            outOfStock: number;
         };
         /**
          * Capabilities
@@ -802,7 +868,7 @@ export interface components {
          * @description Machine-readable caveats; the API renders their text per locale.
          * @enum {string}
          */
-        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "snapshot_import_date" | "parent_listings_included" | "stale_source" | "invalid_price_excluded" | "unmapped_category" | "breadcrumb_missing";
+        CaveatCode: "retailer_partial" | "early_excluded" | "launches_withheld" | "removed_unconfirmed" | "not_observed_excluded" | "history_off" | "rating_scale_mixed" | "size_labels_differ" | "channel_differs" | "size_labels_differ_total" | "was_price_unverified" | "was_price_stated" | "snapshot_import_date" | "parent_listings_included" | "stale_source" | "invalid_price_excluded" | "unmapped_category" | "breadcrumb_missing";
         /** CaveatView */
         CaveatView: {
             /** Ar */
@@ -899,6 +965,12 @@ export interface components {
             truncated: boolean;
         };
         /**
+         * ContentState
+         * @description API 1.12.0: why a content field has the value it has.
+         * @enum {string}
+         */
+        ContentState: "observed" | "not_published" | "not_captured";
+        /**
          * Context
          * @description One priced place an item is sold: retailer, channel and optionally a location (§2).
          */
@@ -952,6 +1024,12 @@ export interface components {
          * @enum {string}
          */
         DecidedBy: "human" | "auto";
+        /**
+         * Ending
+         * @description Allowed price endings. ``x9`` is a whole amount ending in 9 (49.00, 129.00).
+         * @enum {string}
+         */
+        Ending: ".00" | ".50" | "x9.00";
         /** EnumValue */
         EnumValue: {
             /** Id */
@@ -1059,6 +1137,20 @@ export interface components {
             reason?: components["schemas"]["Reason"] | null;
             status: components["schemas"]["Status"];
         };
+        /** Envelope[Insights] */
+        Envelope_Insights_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["Insights"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
         /** Envelope[Launches] */
         Envelope_Launches_: {
             /**
@@ -1110,6 +1202,20 @@ export interface components {
             caveats: components["schemas"]["CaveatView"][];
             cohort?: components["schemas"]["Cohort"] | null;
             data: components["schemas"]["PriceIndex"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** Envelope[PriceSuggestions] */
+        Envelope_PriceSuggestions_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["PriceSuggestions"] | null;
             detail?: components["schemas"]["Localized"] | null;
             meta: components["schemas"]["ApiMeta"];
             reason?: components["schemas"]["Reason"] | null;
@@ -1321,6 +1427,34 @@ export interface components {
          * @enum {string}
          */
         GroupBy: "category" | "brand";
+        /** GtinContent */
+        GtinContent: {
+            /** Barcode */
+            barcode: string | null;
+            state: components["schemas"]["ContentState"];
+        };
+        /** Guardrails */
+        Guardrails: {
+            /**
+             * Endings
+             * @default [
+             *       ".00",
+             *       ".50",
+             *       "x9.00"
+             *     ]
+             */
+            endings: components["schemas"]["Ending"][];
+            /**
+             * Maxchangepct
+             * @default 10
+             */
+            maxChangePct: string;
+            /**
+             * Minchangepct
+             * @default 1
+             */
+            minChangePct: string;
+        };
         /** History */
         History: {
             /** Id */
@@ -1341,6 +1475,23 @@ export interface components {
             price: components["schemas"]["MoneyValue"] | null;
             regular: components["schemas"]["MoneyValue"] | null;
         };
+        /** ImageLink */
+        ImageLink: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * ImageSource
+         * @enum {string}
+         */
+        ImageSource: "page" | "catalogue";
+        /** ImagesContent */
+        ImagesContent: {
+            /** Items */
+            items: components["schemas"]["ImageLink"][];
+            source: components["schemas"]["ImageSource"] | null;
+            state: components["schemas"]["ContentState"];
+        };
         /** IndexPoint */
         IndexPoint: {
             /**
@@ -1354,6 +1505,27 @@ export interface components {
             n: number;
             reason: components["schemas"]["Reason"] | null;
         };
+        /** Insights */
+        Insights: {
+            /**
+             * Heldoutpct
+             * @default 50.0
+             */
+            heldOutPct: string;
+            /** Ladders */
+            ladders: components["schemas"]["Ladder"][];
+            /**
+             * Policysharepct
+             * @default 80.0
+             */
+            policySharePct: string;
+            pricing: components["schemas"]["PairInsights"];
+            /**
+             * Stockouts
+             * @default []
+             */
+            stockouts: components["schemas"]["Stockouts"][];
+        };
         /** Label */
         Label: {
             /** Ar */
@@ -1361,6 +1533,27 @@ export interface components {
             /** En */
             en: string;
         };
+        /** Ladder */
+        Ladder: {
+            /** Exceptions */
+            exceptions: components["schemas"]["LadderStep"][];
+            /** Heldout */
+            heldOut: number;
+            /** Mediansavingpct */
+            medianSavingPct: string | null;
+            /** Notcheaper */
+            notCheaper: number;
+            reason: components["schemas"]["Reason"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Steps */
+            steps: number;
+        };
+        /**
+         * LadderBasis
+         * @enum {string}
+         */
+        LadderBasis: "family" | "name";
         /** LadderRow */
         LadderRow: {
             /** Category */
@@ -1372,6 +1565,30 @@ export interface components {
             p25: components["schemas"]["MoneyValue"];
             p50: components["schemas"]["MoneyValue"];
             p75: components["schemas"]["MoneyValue"];
+        };
+        /** LadderStep */
+        LadderStep: {
+            basis: components["schemas"]["LadderBasis"];
+            /** Brand */
+            brand: string;
+            /** Family */
+            family: string;
+            /** Largerid */
+            largerId: string;
+            largerPrice: components["schemas"]["MoneyValue"];
+            /** Largervalue */
+            largerValue: string;
+            /** Name */
+            name: string;
+            /** Smallerid */
+            smallerId: string;
+            smallerPrice: components["schemas"]["MoneyValue"];
+            /** Smallervalue */
+            smallerValue: string;
+            /** Unit */
+            unit: string;
+            /** Unitchangepct */
+            unitChangePct: string;
         };
         /** Launch */
         Launch: {
@@ -1442,6 +1659,12 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * MatchReview
+         * @description Whether a matched card's exact edge was reviewed (approved/locked) or is proposed.
+         * @enum {string}
+         */
+        MatchReview: "reviewed" | "unreviewed";
         /** MatchRow */
         MatchRow: {
             /** A */
@@ -1512,10 +1735,30 @@ export interface components {
             /** Minor */
             minor: number;
         };
+        /**
+         * NoSuggestion
+         * @description Why a row has no outcome. Every such row carries exactly one.
+         * @enum {string}
+         */
+        NoSuggestion: "not_offered" | "early" | "no_match" | "match_rejected" | "match_unreviewed" | "match_not_exact" | "unpriced" | "currency_mismatch" | "size_mismatch" | "size_unknown" | "stale_observation" | "not_observed" | "retailer_blocked" | "retailer_partial";
+        /**
+         * OfferContentView
+         * @description API 1.12.0: what the retailer's page says beyond price and stock. Every field has an
+         *     explicit state; nothing missing is served as an empty value.
+         */
+        OfferContentView: {
+            description: components["schemas"]["TextContent"];
+            images: components["schemas"]["ImagesContent"];
+            ingredients: components["schemas"]["TextContent"];
+            /** Sizes */
+            sizes: components["schemas"]["SizeSibling"][];
+            variants: components["schemas"]["VariantsContent"];
+        };
         /** OfferView */
         OfferView: {
             availability: components["schemas"]["AvailabilityState"] | null;
             channel: components["schemas"]["Channel"];
+            content: components["schemas"]["OfferContentView"];
             /** Context */
             context: string;
             /** Early */
@@ -1542,6 +1785,11 @@ export interface components {
             sku: string | null;
         };
         /**
+         * PairAim
+         * @enum {string}
+         */
+        PairAim: "beat" | "match";
+        /**
          * PairGap
          * @description One context pair's gap on the latest date, or why it isn't counted (design §7.2).
          */
@@ -1558,6 +1806,55 @@ export interface components {
                 string
             ] | null;
         };
+        /** PairInsights */
+        PairInsights: {
+            /** Base */
+            base: string;
+            /** Brands */
+            brands: components["schemas"]["BrandPolicy"][];
+            /** N */
+            n: number;
+            /** Other */
+            other: string;
+            reason: components["schemas"]["Reason"] | null;
+            /** Sizes */
+            sizes: components["schemas"]["SizeGap"][];
+            status: components["schemas"]["Status"];
+            /** Suppressedbrands */
+            suppressedBrands: number;
+            /** Suppressedsizes */
+            suppressedSizes: number;
+            /** Unreviewed */
+            unreviewed: number;
+        };
+        /** PairMatch */
+        PairMatch: {
+            /** Confidence */
+            confidence: string | null;
+            matchClass: components["schemas"]["MatchClass"];
+            reviewState: components["schemas"]["ReviewState"];
+        };
+        /**
+         * PairOutcome
+         * @enum {string}
+         */
+        PairOutcome: "suggested" | "already_competitive" | "below_min_change" | "no_allowed_price";
+        /**
+         * PairRationale
+         * @description One step of the reasoning; ``params`` are strings and numbers stay digits.
+         */
+        PairRationale: {
+            code: components["schemas"]["PairRationaleCode"];
+            /** Params */
+            params: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * PairRationaleCode
+         * @enum {string}
+         */
+        PairRationaleCode: "current_gap" | "already_competitive" | "target" | "clamped" | "rounded" | "beats_rival" | "matches_rival" | "short_of_rival" | "below_min_change" | "no_allowed_price";
         /** PairRow */
         PairRow: {
             basePrice: components["schemas"]["MoneyValue"] | null;
@@ -1575,6 +1872,26 @@ export interface components {
             name: string;
             otherPrice: components["schemas"]["MoneyValue"] | null;
         };
+        /**
+         * PairSide
+         * @description One side of a pair. ``age_days`` is the as-of date minus ``observed_on``; an import's
+         *     local day can fall after the view's last date, so a snapshot's age can be negative.
+         */
+        PairSide: {
+            /** Agedays */
+            ageDays: number | null;
+            basis: components["schemas"]["SideBasis"] | null;
+            /** Context */
+            context: string;
+            /** Observedon */
+            observedOn: string | null;
+            price: components["schemas"]["MoneyValue"] | null;
+        };
+        /**
+         * Policy
+         * @enum {string}
+         */
+        Policy: "other_cheaper" | "base_cheaper" | "parity" | "mixed";
         /**
          * PriceFlag
          * @enum {string}
@@ -1603,6 +1920,43 @@ export interface components {
             /** Trendavailable */
             trendAvailable: boolean;
         };
+        /** PriceSuggestions */
+        PriceSuggestions: {
+            aim: components["schemas"]["PairAim"];
+            guardrails: components["schemas"]["Guardrails"];
+            /**
+             * Label
+             * @default rule-based, not ML
+             * @constant
+             */
+            label: "rule-based, not ML";
+            /** Outcomes */
+            outcomes: {
+                [key: string]: number;
+            };
+            /** Reasons */
+            reasons: {
+                [key: string]: number;
+            };
+            /** Rival */
+            rival: string;
+            /** Rows */
+            rows: components["schemas"]["SuggestionRow"][];
+            /**
+             * Staledays
+             * @default 7
+             */
+            staleDays: number;
+            /** Subject */
+            subject: string;
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
         /** ProductCard */
         ProductCard: {
             /** Brand */
@@ -1614,6 +1968,7 @@ export interface components {
             id: string;
             /** Image */
             image?: string | null;
+            matchReview?: components["schemas"]["MatchReview"] | null;
             /** Matches */
             matches: components["schemas"]["CardMatch"][];
             /** Name */
@@ -1726,18 +2081,41 @@ export interface components {
             /** Cells */
             cells: number[][];
         };
+        /** PromoGroup */
+        PromoGroup: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "brand" | "category";
+            /** N */
+            n: number;
+            /** Onpromo */
+            onPromo: number;
+            /** Share */
+            share: string | null;
+        };
         /** PromoItem */
         PromoItem: {
+            /** Brand */
+            brand: string;
+            /** Category */
+            category: string;
             /** Depthpct */
             depthPct: string;
             /** Id */
             id: string;
+            /** Image */
+            image?: string | null;
             /** Name */
             name: string;
             price: components["schemas"]["MoneyValue"];
             regular: components["schemas"]["MoneyValue"];
             /** Retailer */
             retailer: string;
+            saved: components["schemas"]["MoneyValue"];
         };
         /** Promotions */
         Promotions: {
@@ -1860,6 +2238,16 @@ export interface components {
         };
         /** RetailerPromo */
         RetailerPromo: {
+            /**
+             * Bands
+             * @default []
+             */
+            bands: number[];
+            /**
+             * Groups
+             * @default []
+             */
+            groups: components["schemas"]["PromoGroup"][];
             /** N */
             n: number;
             /** Onpromo */
@@ -1955,6 +2343,11 @@ export interface components {
             retailer: string;
             status: components["schemas"]["RetailerStatus"];
         };
+        /**
+         * SideBasis
+         * @enum {string}
+         */
+        SideBasis: "observed" | "imported_snapshot";
         /** Sides */
         Sides: {
             base: components["schemas"]["Side"];
@@ -1969,6 +2362,35 @@ export interface components {
             unit: string;
             /** Value */
             value: string;
+        };
+        /** SizeGap */
+        SizeGap: {
+            /** Basecheaper */
+            baseCheaper: number;
+            /** Equal */
+            equal: number;
+            /** Mediangappct */
+            medianGapPct: string;
+            /** N */
+            n: number;
+            /** Othercheaper */
+            otherCheaper: number;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * SizeSibling
+         * @description Another product with an offer in the same context and the same retailer product family:
+         *     the same item in another size.
+         */
+        SizeSibling: {
+            /** Productid */
+            productId: string;
+            size: components["schemas"]["Size"] | null;
+            /** Sizelabel */
+            sizeLabel: string | null;
         };
         /** SkuReference */
         SkuReference: {
@@ -2030,6 +2452,42 @@ export interface components {
          * @enum {string}
          */
         Status: "ok" | "not_enough_data";
+        /** Stockouts */
+        Stockouts: {
+            /** Brands */
+            brands: components["schemas"]["BrandStock"][];
+            /** Qualifying */
+            qualifying: number;
+            reason: components["schemas"]["Reason"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Suppressed */
+            suppressed: number;
+        };
+        /** SuggestionRow */
+        SuggestionRow: {
+            /** Brand */
+            brand: string;
+            /** Category */
+            category: string[];
+            /** Changepct */
+            changePct: string | null;
+            gap: components["schemas"]["Gap"] | null;
+            /** Id */
+            id: string;
+            match: components["schemas"]["PairMatch"] | null;
+            /** Name */
+            name: string;
+            outcome: components["schemas"]["PairOutcome"] | null;
+            /** Rationale */
+            rationale: components["schemas"]["PairRationale"][];
+            /** Reachesrival */
+            reachesRival: boolean;
+            reason: components["schemas"]["NoSuggestion"] | null;
+            rival: components["schemas"]["PairSide"];
+            subject: components["schemas"]["PairSide"];
+            suggested: components["schemas"]["MoneyValue"] | null;
+        };
         /** SummaryView */
         SummaryView: {
             /**
@@ -2068,6 +2526,12 @@ export interface components {
             /** Withheld */
             withheld: components["schemas"]["Withheld"][];
         };
+        /** TextContent */
+        TextContent: {
+            state: components["schemas"]["ContentState"];
+            /** Text */
+            text: string | null;
+        };
         /** TopDiscount */
         TopDiscount: {
             /** Brand */
@@ -2102,6 +2566,22 @@ export interface components {
             reason: components["schemas"]["Unmapped"];
             /** Retailer */
             retailer: string;
+        };
+        /**
+         * VariantView
+         * @description One listing grouped into the offer: same retailer, product family and size.
+         */
+        VariantView: {
+            gtin: components["schemas"]["GtinContent"];
+            shade: components["schemas"]["TextContent"];
+            /** Sku */
+            sku: string;
+        };
+        /** VariantsContent */
+        VariantsContent: {
+            /** Items */
+            items: components["schemas"]["VariantView"][];
+            state: components["schemas"]["ContentState"];
         };
         /** Withheld */
         Withheld: {
@@ -3347,6 +3827,7 @@ export interface operations {
                 category?: string[];
                 /** @description Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context. */
                 retailer?: string[];
+                /** @description API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only. */
                 matched?: boolean | null;
                 priceMin?: string | null;
                 priceMax?: string | null;
@@ -3575,6 +4056,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_PriceIndex_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_insights_api_v1_insights_get: {
+        parameters: {
+            query: {
+                market?: string | null;
+                scope?: string | null;
+                /** @description Ordered pair <base>,<other>; the first is the base. */
+                retailers: string;
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Insights_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
@@ -3948,6 +4527,116 @@ export interface operations {
             };
         };
     };
+    get_price_suggestions_api_v1_price_suggestions_get: {
+        parameters: {
+            query: {
+                /** @description Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut. */
+                limit?: number | null;
+                market?: string | null;
+                scope?: string | null;
+                brand?: string[];
+                category?: string[];
+                /** @description The context whose prices are advised. */
+                subject: string;
+                /** @description The context it should beat or match. */
+                rival: string;
+                id?: string[];
+                date?: string | null;
+                aim?: components["schemas"]["PairAim"];
+                /** @description Largest cut, in percent of the current price (0-50, default 10). */
+                maxChangePct?: string | null;
+                /** @description Smallest cut worth suggesting, in percent (default 1). */
+                minChangePct?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_PriceSuggestions_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_products_api_v1_products_get: {
         parameters: {
             query?: {
@@ -3958,6 +4647,7 @@ export interface operations {
                 category?: string[];
                 /** @description Repeatable; a retailer id (all its contexts) or a context id. With exactly two different values the order matters: the first is the base of each card's gap and of sort=gap/gap_asc, and each must name one context. */
                 retailer?: string[];
+                /** @description API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only. */
                 matched?: boolean | null;
                 priceMin?: string | null;
                 priceMax?: string | null;

@@ -4,9 +4,13 @@ An imported retailer's data came from a one-off import, not from PI's daily coll
 stored rows and files are never changed: this view is computed from the validated dataset at
 load, once per generation, and only the served copy differs.
 
-- **Was-prices.** The imported ``regular`` (was) prices are unverified, so the view clears the
-  retailer's ``regular`` series. Every metric then treats them as not observed: no discount,
-  promotion or top-discount figure ever reads them, and none reads "no promotion" either.
+- **Was-prices.** An imported ``regular`` (was) price is the retailer's own stated was-price,
+  never checked by PI. Since the owner's decision of 2026-10-03 (API 1.13.0) they are served and
+  measured like any other, and every priced response that involves the retailer says whose
+  figure it is (``was_price_stated``). A regular price at or below the current price is never a
+  promotion (``pi_metrics``). A retailer named in ``WAS_PRICE_WITHHELD`` (none now) gets the
+  1 October rule back: the view clears its ``regular`` series, so no discount, promotion or
+  top-discount figure reads it and none reads "no promotion" either (``was_price_unverified``).
 - **Import date.** The offers' ``capturedAt`` is the import time, not an observation date. The
   retailer is served as a snapshot imported on that date, never as fresh collection, and the
   dataset's ``meta.cutoff`` is the latest capture of the other retailers' offers, so an import
@@ -15,9 +19,9 @@ load, once per generation, and only the served copy differs.
   series are left as published; ``collected_day`` caps the ``asOf`` day that a collected
   retailer's ``/summary`` reports.
 
-Each response that involves an imported retailer says so in caveats: ``was_price_unverified``
-where the endpoint shows prices or promotions, then always ``snapshot_import_date`` and
-``parent_listings_included``.
+Each response that involves an imported retailer says so in caveats: ``was_price_stated`` (or
+``was_price_unverified`` when withheld) where the endpoint shows prices or promotions and the
+retailer has was-prices, then always ``snapshot_import_date`` and ``parent_listings_included``.
 
 Not done here: dropping the import's aggregate-parent listings. The served document carries no
 parent marker, so that dedupe belongs to the export; until then the caveat says the retailer's
@@ -36,6 +40,10 @@ from pi_metrics import Caveat, CaveatCode
 #: Retailers served through this view: their data is an import, not PI's collection.
 IMPORTED = frozenset({"ulta_ae"})
 
+#: Imported retailers whose was-prices are withheld as unverified. Empty since the owner's
+#: decision of 2026-10-03 ("Show Ulta discounts"): ``ulta_ae``'s stated was-prices are served.
+WAS_PRICE_WITHHELD: frozenset[str] = frozenset()
+
 #: Endpoints that show prices, was-prices or promotions (exports by the same name).
 PRICED = frozenset(
     {
@@ -45,6 +53,8 @@ PRICED = frozenset(
         "history",
         "compare",
         "category_compare",
+        "insights",
+        "price_suggestions",
         "promotions",
         "summary",
     }
@@ -60,10 +70,12 @@ class Imported:
     contexts: tuple[str, ...]
     #: The latest ``capturedAt`` of the retailer's offers: when its snapshot was imported.
     imported_at: datetime
-    #: Offers whose ``regular`` series was cleared (any non-null value in it).
+    #: Offers that carry a stated was-price (any non-null value in their ``regular`` series).
     was_prices: int
     #: The retailer's market time zone: the import date is that local day (API 1.7.0).
     time_zone: str = "UTC"
+    #: Whether its was-prices were withheld (``WAS_PRICE_WITHHELD``): the series was cleared.
+    withheld: bool = False
 
     @property
     def imported_on(self) -> date:
@@ -75,17 +87,20 @@ def _without_regular(offer: OfferV3) -> OfferV3:
     return offer.model_copy(update={"series": offer.series.model_copy(update={"regular": None})})
 
 
-def imported_view(ds: DatasetV3) -> tuple[DatasetV3, tuple[Imported, ...]]:
+def imported_view(
+    ds: DatasetV3, withheld: frozenset[str] | None = None
+) -> tuple[DatasetV3, tuple[Imported, ...]]:
     """The dataset as served, and one ``Imported`` per imported retailer it holds.
 
     A dataset without one is returned as the same object, so other retailers' responses are
     unchanged byte for byte.
     """
+    withheld = WAS_PRICE_WITHHELD if withheld is None else withheld
     contexts = {c.id: c.retailer for c in ds.meta.contexts if c.retailer in IMPORTED}
     if not contexts:
         return ds, ()
     latest: dict[str, datetime] = {}
-    cleared: dict[str, int] = dict.fromkeys(contexts.values(), 0)
+    stated: dict[str, int] = dict.fromkeys(contexts.values(), 0)
     products: list[ProductV3] = []
     for product in ds.products:
         offers = dict(product.offers)
@@ -96,8 +111,9 @@ def imported_view(ds: DatasetV3) -> tuple[DatasetV3, tuple[Imported, ...]]:
             at = offer.evidence.captured_at
             latest[shop] = max(latest.get(shop, at), at)
             if offer.series.regular is not None:
-                cleared[shop] += any(m is not None for m in offer.series.regular)
-                offers[cid] = _without_regular(offer)
+                stated[shop] += any(m is not None for m in offer.series.regular)
+                if shop in withheld:
+                    offers[cid] = _without_regular(offer)
         products.append(
             product if offers == product.offers else product.model_copy(update={"offers": offers})
         )
@@ -114,8 +130,9 @@ def imported_view(ds: DatasetV3) -> tuple[DatasetV3, tuple[Imported, ...]]:
             retailer=shop,
             contexts=tuple(sorted(c for c, r in contexts.items() if r == shop)),
             imported_at=latest[shop],
-            was_prices=cleared[shop],
+            was_prices=stated[shop],
             time_zone=ds.market_of(shop).time_zone,
+            withheld=shop in withheld,
         )
         for shop in sorted(latest)
     )
@@ -133,10 +150,9 @@ def caveats(
     for shop in imported:
         if selected and shop.retailer not in selected and selected.isdisjoint(shop.contexts):
             continue
-        if endpoint.removeprefix("export_") in PRICED:
-            out.append(
-                Caveat(code=CaveatCode.WAS_PRICE_UNVERIFIED, params={"retailer": shop.retailer})
-            )
+        if endpoint.removeprefix("export_") in PRICED and (shop.withheld or shop.was_prices):
+            code = CaveatCode.WAS_PRICE_UNVERIFIED if shop.withheld else CaveatCode.WAS_PRICE_STATED
+            out.append(Caveat(code=code, params={"retailer": shop.retailer}))
         out.append(
             Caveat(
                 code=CaveatCode.SNAPSHOT_IMPORT_DATE,

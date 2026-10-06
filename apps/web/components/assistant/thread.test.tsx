@@ -79,7 +79,7 @@ describe('assistant thread', () => {
     expect(request.threadId).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(Object.keys(request).sort()).toEqual(['locale', 'question', 'threadId']);
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
-    expect(screen.queryByText(en.assistant.samples.title)).toBeNull();
+    expect(screen.queryByText(en.assistant.hello.title)).toBeNull();
     expect(
       (screen.getByRole('button', { name: en.assistant.composer.send }) as HTMLButtonElement).disabled,
     ).toBe(true);

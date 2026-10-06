@@ -4,7 +4,12 @@ import { ChatFlow } from "../src/flows/chat.js";
 import type { ChatModel } from "../src/flows/model.js";
 import { PROMPT_VERSION } from "../src/flows/prompt.js";
 import { MemoryThreadStore } from "../src/flows/threads.js";
-import { CallableRefusal, callerFrom, handleChat } from "../src/functions/callable.js";
+import {
+  type AnswerLog,
+  CallableRefusal,
+  callerFrom,
+  handleChat,
+} from "../src/functions/callable.js";
 import {
   DeployConfigError,
   MAX_ALERT_AGE_MS,
@@ -26,6 +31,7 @@ import { ToolRegistry } from "../src/tools/registry.js";
 import type { CallerContext } from "../src/tools/types.js";
 import { FakeApi, okEnvelope } from "./fake-api.js";
 import { CONFIG, prices } from "./meter-fixtures.js";
+import { RUNBOOK_LIMITS } from "./runbook-seed.js";
 
 const BUDGET_ID = "0d2c8a54-6f1e-4b7a-9c3d-2e5f8a1b7c90";
 const KILL_SWITCH_ENV = {
@@ -139,6 +145,24 @@ describe("loadChatEnv", () => {
     expect(error.message).toBe(`refusing to start: ${name} is missing or invalid`);
   });
 
+  it.each([
+    "https://pi.example.test/api/v1",
+    "https://pi.example.test/api/v1/",
+    "https://pi.example.test/proxy/API/V1",
+  ])("refuses a base that already ends in /api/v1 (%s)", (value) => {
+    const error = refusal(() => loadChatEnv({ ...CHAT_ENV, PI_API_BASE_URL: value }));
+    expect(error.message).toBe(
+      "refusing to start: PI_API_BASE_URL must not end in /api/v1 (the tools add it)",
+    );
+    expect(error.message).not.toContain("pi.example.test");
+  });
+
+  it("accepts an origin or a proxy path", () => {
+    for (const value of ["https://pi.example.test/", "https://pi.example.test/proxy"]) {
+      expect(loadChatEnv({ ...CHAT_ENV, PI_API_BASE_URL: value }).apiBaseUrl).toBe(value);
+    }
+  });
+
   it("refuses another project", () => {
     expect(() => loadChatEnv({ ...CHAT_ENV, GCLOUD_PROJECT: "x" })).toThrow(DeployConfigError);
   });
@@ -246,11 +270,12 @@ class SpyMeter extends Meter {
   }
 }
 
-function realFlow() {
+function realFlow(config: Record<string, unknown> = {}) {
   const store = new MemoryUsageStore({
     ...CONFIG,
     promptVersion: PROMPT_VERSION,
-    limits: { ...CONFIG.limits, maxInputTokens: 100_000 },
+    limits: RUNBOOK_LIMITS,
+    ...config,
   });
   const meter = new SpyMeter(store, prices());
   const api = new FakeApi(() => okEnvelope({}));
@@ -343,6 +368,109 @@ describe("assistantChat request handling (reviewer D2)", () => {
     expect(seen[0]).toEqual({ type: "status", stage: "thinking" });
   });
 
+  it("logs a config_invalid refusal as a code, never reaching the model (2026-10-03)", async () => {
+    // The live doc held limits above the schema maxima; the refusal left no log line.
+    const limits = {
+      maxInputTokens: 700_000,
+      maxOutputTokens: 1_500_000,
+      thinkingBudget: 0,
+      maxModelCallsPerQuestion: 14,
+    };
+    const { flow, generate } = realFlow({ limits });
+    const entries: Record<string, unknown>[] = [];
+    const answer = await handleChat(request("viewer"), flow, undefined, (entry) => {
+      entries.push({ ...entry });
+    });
+    expect(answer).toMatchObject({ status: "unavailable", code: "config_invalid" });
+    expect(generate).not.toHaveBeenCalled();
+    expect(entries).toEqual([
+      {
+        event: "assistant_answer",
+        severity: "WARNING",
+        status: "unavailable",
+        code: "config_invalid",
+        role: "viewer",
+        model: null,
+        promptVersion: PROMPT_VERSION,
+        modelCalls: 0,
+        tools: { ok: 0, not_enough_data: 0, error: 0 },
+        toolErrors: [],
+        costUsd: answer.costUsd,
+      },
+    ]);
+  });
+
+  it("logs codes and counts only: no question, answer, tool name, argument, uid or token", async () => {
+    const { flow, generate } = realFlow();
+    generate
+      .mockResolvedValueOnce({
+        text: "",
+        toolCalls: [
+          { id: "a", name: "search_products", args: { q: "private-query-words" } },
+          { id: "b", name: "private-tool-name", args: { x: "private-arg" } },
+        ],
+        usage: { input: 10, cachedInput: 0, output: 5, thinking: 0 },
+      })
+      .mockResolvedValueOnce({
+        text: "private-answer-words",
+        toolCalls: [],
+        usage: { input: 10, cachedInput: 0, output: 5, thinking: 0 },
+      });
+    const entries: Record<string, unknown>[] = [];
+    const data = { question: "private-question-words", locale: "en", threadId: "private-thread" };
+    const answer = await handleChat(request("admin", data), flow, undefined, (entry) => {
+      entries.push({ ...entry });
+    });
+    expect(entries).toHaveLength(1);
+    const entry = entries[0] ?? {};
+    expect(entry).toMatchObject({
+      event: "assistant_answer",
+      severity: "INFO",
+      status: answer.status,
+      role: "admin",
+      model: CONFIG.model,
+      modelCalls: 2,
+      tools: { ok: 1, not_enough_data: 0, error: 1 },
+      toolErrors: ["unknown_tool"],
+    });
+    expect(Object.keys(entry).sort()).toEqual(
+      [
+        "code",
+        "costUsd",
+        "event",
+        "model",
+        "modelCalls",
+        "promptVersion",
+        "role",
+        "severity",
+        "status",
+        "toolErrors",
+        "tools",
+      ].sort(),
+    );
+    const text = JSON.stringify(entry);
+    for (const secret of ["private", "u1", "id-token-1", "search_products"]) {
+      expect(text).not.toContain(secret);
+    }
+  });
+
+  it("still answers when the log write throws", async () => {
+    const { flow } = realFlow();
+    const answer = await handleChat(request("viewer"), flow, undefined, () => {
+      throw new Error("logging backend down");
+    });
+    expect(answer.status).toBeDefined();
+  });
+
+  it("logs nothing for a refused caller", async () => {
+    const { flow } = realFlow();
+    const entries: unknown[] = [];
+    await expect(
+      handleChat(request("killswitch"), flow, undefined, (entry) => void entries.push(entry)),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    expect(entries).toEqual([]);
+  });
+
   it("sends no progress to a refused caller", async () => {
     const { flow } = realFlow();
     const seen: unknown[] = [];
@@ -366,7 +494,6 @@ describe("src/index.ts", () => {
       platform: "gcfv2",
       region: ["me-central1"],
       serviceAccountEmail: "pi-killswitch@",
-      minInstances: 0,
       maxInstances: 1,
       secretEnvironmentVariables: [{ key: "KILL_SWITCH_PASSWORD" }],
       eventTrigger: {
@@ -378,9 +505,15 @@ describe("src/index.ts", () => {
     expect(index.assistantChat.__endpoint).toMatchObject({
       region: ["me-central1"],
       serviceAccountEmail: "pi-assistant@",
-      minInstances: 0,
       callableTrigger: {},
     });
+    // minInstances is left unset (scale to zero). An explicit 0 makes firebase-tools 14.27 refuse a
+    // --non-interactive deploy in me-central1: it cannot price that region and asks for --force.
+    // Unset reaches the deploy manifest as null, which the CLI's min-instance cost check accepts.
+    for (const fn of [index.budgetKillSwitch, index.assistantChat]) {
+      const wire = JSON.parse(JSON.stringify(fn.__endpoint)) as { minInstances?: unknown };
+      expect(wire.minInstances ?? null).toBeNull();
+    }
     // The chat function gets no secret.
     expect(index.assistantChat.__endpoint.secretEnvironmentVariables ?? []).toEqual([]);
     expect(Object.keys(index).sort()).toEqual(Object.values(FUNCTIONS).sort());
@@ -402,6 +535,37 @@ describe("src/index.ts", () => {
     await expect(
       Promise.resolve(index.budgetKillSwitch.run({ data: { message: stale } } as never)),
     ).resolves.toBeUndefined();
+  });
+
+  it("wires the structured logger into handleChat as its fourth argument (#190)", async () => {
+    vi.stubEnv("FUNCTIONS_CONTROL_API", "true");
+    let sink: unknown;
+    vi.doMock("../src/functions/callable.js", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/functions/callable.js")>();
+      return {
+        ...actual,
+        handleChat: (...args: Parameters<typeof actual.handleChat>) => {
+          sink = args[3];
+          return actual.handleChat(...args);
+        },
+      };
+    });
+    const { logger } = await import("firebase-functions");
+    const write = vi.spyOn(logger, "write").mockImplementation(() => undefined);
+    const index = await import("../src/index.js");
+    await Promise.resolve(
+      index.assistantChat.run({ ...request("killswitch"), rawRequest: {} } as never),
+    ).catch(() => undefined);
+    expect(typeof sink).toBe("function");
+    (sink as AnswerLog)({ event: "assistant_answer", severity: "WARNING", code: "x" });
+    expect(write).toHaveBeenCalledWith({
+      event: "assistant_answer",
+      severity: "WARNING",
+      code: "x",
+      message: "assistant_answer",
+    });
+    vi.doUnmock("../src/functions/callable.js");
+    write.mockRestore();
   });
 
   it("refuses to load in a container whose settings are invalid", async () => {

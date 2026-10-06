@@ -27,6 +27,25 @@ describe("requestUrl", () => {
       "https://api.example/base/v1/products?brand=A&brand=B+%26+C&limit=10",
     );
   });
+
+  it.each([
+    "https://pi.example/api/v1",
+    "https://pi.example/api/v1/",
+    "https://pi.example",
+    "https://pi.example/",
+  ])("does not double the /api/v1 prefix with base %s (2026-10-03)", (base) => {
+    const url = requestUrl(base, {
+      method: "GET",
+      path: "/api/v1/products",
+      query: { q: "fragrance" },
+    });
+    expect(url.toString()).toBe("https://pi.example/api/v1/products?q=fragrance");
+  });
+
+  it("keeps a base path that is not the request's prefix", () => {
+    const url = requestUrl("https://pi.example/proxy", { method: "GET", path: "/api/v1/meta" });
+    expect(url.toString()).toBe("https://pi.example/proxy/api/v1/meta");
+  });
 });
 
 describe("HttpMetricApi", () => {

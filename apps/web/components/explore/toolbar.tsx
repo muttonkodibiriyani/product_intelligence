@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { useId, useState, type FormEvent } from 'react';
-import { hasPair, SORTS, type ExploreState, type ProductSort } from '@/lib/explore';
+import { activeFilterCount, EMPTY, hasPair, SORTS, type ExploreState, type ProductSort } from '@/lib/explore';
 
 /** Search, sort and the retailer pair the gap is measured between. */
 export function Toolbar({
@@ -27,7 +27,7 @@ export function Toolbar({
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <form role="search" onSubmit={submit} className="flex min-w-0 flex-1 basis-64 gap-2">
         <label htmlFor={ids.q} className="sr-only">
           {t('searchLabel')}
@@ -47,8 +47,8 @@ export function Toolbar({
         </button>
       </form>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor={ids.sort} className="text-xs text-ink-2">
+      <div className="flex items-center gap-2">
+        <label htmlFor={ids.sort} className="text-[13px] text-ink-2">
           {t('sort')}
         </label>
         <select
@@ -74,7 +74,7 @@ export function Toolbar({
       </div>
 
       {pair && names && (
-        <div className="flex items-center gap-2 panel px-3 py-1.5 text-sm">
+        <div className="flex items-center gap-2 rounded-ctl border border-line-3 bg-surface px-3 py-1.5 text-[13px]">
           <span>{t('pair', names)}</span>
           <button
             type="button"
@@ -86,5 +86,83 @@ export function Toolbar({
         </div>
       )}
     </div>
+  );
+}
+
+type Chip = { key: string; label: string; remove: Partial<ExploreState> };
+
+/** Every active filter as a removable chip, with "Clear all" after them. */
+export function ActiveChips({
+  state,
+  name,
+  update,
+}: {
+  state: ExploreState;
+  name: (id: string) => string;
+  update: (next: Partial<ExploreState>) => void;
+}) {
+  const t = useTranslations('explore.chips');
+  const te = useTranslations('explore');
+  if (activeFilterCount(state) === 0) return null;
+  const chips: Chip[] = [
+    ...(state.q ? [{ key: 'q', label: t('search', { value: state.q }), remove: { q: '' } }] : []),
+    ...state.retailer.map((v) => ({
+      key: `retailer:${v}`,
+      label: t('shop', { value: name(v) }),
+      remove: { retailer: state.retailer.filter((x) => x !== v) },
+    })),
+    ...(state.matched !== 'any'
+      ? [
+          {
+            key: 'matched',
+            label: t(state.matched === 'yes' ? 'soldBoth' : 'soldOne'),
+            remove: { matched: 'any' as const },
+          },
+        ]
+      : []),
+    ...state.brand.map((v) => ({
+      key: `brand:${v}`,
+      label: t('brand', { value: v }),
+      remove: { brand: state.brand.filter((x) => x !== v) },
+    })),
+    ...state.category.map((v) => ({
+      key: `category:${v}`,
+      label: t('category', { value: v }),
+      remove: { category: state.category.filter((x) => x !== v) },
+    })),
+    ...(state.priceMin
+      ? [{ key: 'min', label: t('priceMin', { value: state.priceMin }), remove: { priceMin: '' } }]
+      : []),
+    ...(state.priceMax
+      ? [{ key: 'max', label: t('priceMax', { value: state.priceMax }), remove: { priceMax: '' } }]
+      : []),
+  ];
+  return (
+    <ul aria-label={t('label')} className="flex flex-wrap items-center gap-1.5">
+      {chips.map((c) => (
+        <li key={c.key}>
+          <button
+            type="button"
+            onClick={() => update(c.remove)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line-3 bg-surface px-2.5 py-0.5 text-xs text-ink hover:bg-surface-2 focus-visible:outline-2"
+          >
+            <span dir="auto">{c.label}</span>
+            <span aria-hidden className="text-ink-3">
+              ×
+            </span>
+            <span className="sr-only">{t('remove')}</span>
+          </button>
+        </li>
+      ))}
+      <li>
+        <button
+          type="button"
+          onClick={() => update(EMPTY)}
+          className="px-1.5 py-0.5 text-xs text-ink-2 underline-offset-2 hover:underline focus-visible:outline-2"
+        >
+          {te('clear')}
+        </button>
+      </li>
+    </ul>
   );
 }

@@ -64,6 +64,9 @@
           "channel": {
             "$ref": "#/components/schemas/Channel"
           },
+          "content": {
+            "$ref": "#/components/schemas/OfferContentView"
+          },
           "context": {
             "title": "Context",
             "type": "string"
@@ -216,7 +219,8 @@
           "channel",
           "location",
           "sizeLabel",
-          "sizeSystem"
+          "sizeSystem",
+          "content"
         ],
         "title": "AdminOfferView",
         "type": "object"
@@ -254,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.11.0",
+            "default": "1.18.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -285,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-01.4",
+            "default": "2026-10-03.3",
             "title": "Metricversion",
             "type": "string"
           },
@@ -524,6 +528,49 @@
         "title": "BrandCount",
         "type": "object"
       },
+      "BrandPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "baseCheaper": {
+            "title": "Basecheaper",
+            "type": "integer"
+          },
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "equal": {
+            "title": "Equal",
+            "type": "integer"
+          },
+          "medianGapPct": {
+            "title": "Mediangappct",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "otherCheaper": {
+            "title": "Othercheaper",
+            "type": "integer"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/Policy"
+          }
+        },
+        "required": [
+          "brand",
+          "n",
+          "policy",
+          "medianGapPct",
+          "baseCheaper",
+          "otherCheaper",
+          "equal"
+        ],
+        "title": "BrandPolicy",
+        "type": "object"
+      },
       "BrandPrice": {
         "additionalProperties": false,
         "description": "One of the ``BRAND_ROWS`` brands with the most priced products (n desc, then brand).",
@@ -547,6 +594,30 @@
           "median"
         ],
         "title": "BrandPrice",
+        "type": "object"
+      },
+      "BrandStock": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "integer"
+          },
+          "outOfStock": {
+            "title": "Outofstock",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "brand",
+          "observed",
+          "outOfStock"
+        ],
+        "title": "BrandStock",
         "type": "object"
       },
       "Capabilities": {
@@ -1066,6 +1137,7 @@
           "channel_differs",
           "size_labels_differ_total",
           "was_price_unverified",
+          "was_price_stated",
           "snapshot_import_date",
           "parent_listings_included",
           "stale_source",
@@ -1370,6 +1442,16 @@
         "title": "Comparison",
         "type": "object"
       },
+      "ContentState": {
+        "description": "API 1.12.0: why a content field has the value it has.",
+        "enum": [
+          "observed",
+          "not_published",
+          "not_captured"
+        ],
+        "title": "ContentState",
+        "type": "string"
+      },
       "Context": {
         "additionalProperties": false,
         "description": "One priced place an item is sold: retailer, channel and optionally a location (§2).",
@@ -1529,6 +1611,16 @@
           "auto"
         ],
         "title": "DecidedBy",
+        "type": "string"
+      },
+      "Ending": {
+        "description": "Allowed price endings. ``x9`` is a whole amount ending in 9 (49.00, 129.00).",
+        "enum": [
+          ".00",
+          ".50",
+          "x9.00"
+        ],
+        "title": "Ending",
         "type": "string"
       },
       "EnumValue": {
@@ -2018,6 +2110,72 @@
         "title": "Envelope[Coverage]",
         "type": "object"
       },
+      "Envelope_Insights_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Insights"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Insights]",
+        "type": "object"
+      },
       "Envelope_Launches_": {
         "additionalProperties": false,
         "properties": {
@@ -2280,6 +2438,72 @@
           "meta"
         ],
         "title": "Envelope[PriceIndex]",
+        "type": "object"
+      },
+      "Envelope_PriceSuggestions_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceSuggestions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[PriceSuggestions]",
         "type": "object"
       },
       "Envelope_ProductPage_": {
@@ -2965,6 +3189,64 @@
         "title": "GroupBy",
         "type": "string"
       },
+      "GtinContent": {
+        "additionalProperties": false,
+        "properties": {
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          }
+        },
+        "required": [
+          "state",
+          "barcode"
+        ],
+        "title": "GtinContent",
+        "type": "object"
+      },
+      "Guardrails": {
+        "additionalProperties": false,
+        "properties": {
+          "endings": {
+            "default": [
+              ".00",
+              ".50",
+              "x9.00"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Ending"
+            },
+            "minItems": 1,
+            "title": "Endings",
+            "type": "array"
+          },
+          "maxChangePct": {
+            "default": "10",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Maxchangepct",
+            "type": "string"
+          },
+          "minChangePct": {
+            "default": "1",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Minchangepct",
+            "type": "string"
+          }
+        },
+        "title": "Guardrails",
+        "type": "object"
+      },
       "History": {
         "additionalProperties": false,
         "properties": {
@@ -3038,6 +3320,61 @@
         "title": "HistoryPoint",
         "type": "object"
       },
+      "ImageLink": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string",
+            "x-pi-source-text": true
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "ImageLink",
+        "type": "object"
+      },
+      "ImageSource": {
+        "enum": [
+          "page",
+          "catalogue"
+        ],
+        "title": "ImageSource",
+        "type": "string"
+      },
+      "ImagesContent": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageLink"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          }
+        },
+        "required": [
+          "state",
+          "items",
+          "source"
+        ],
+        "title": "ImagesContent",
+        "type": "object"
+      },
       "IndexPoint": {
         "additionalProperties": false,
         "properties": {
@@ -3081,6 +3418,45 @@
         "title": "IndexPoint",
         "type": "object"
       },
+      "Insights": {
+        "additionalProperties": false,
+        "properties": {
+          "heldOutPct": {
+            "default": "50.0",
+            "title": "Heldoutpct",
+            "type": "string"
+          },
+          "ladders": {
+            "items": {
+              "$ref": "#/components/schemas/Ladder"
+            },
+            "title": "Ladders",
+            "type": "array"
+          },
+          "policySharePct": {
+            "default": "80.0",
+            "title": "Policysharepct",
+            "type": "string"
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/PairInsights"
+          },
+          "stockouts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Stockouts"
+            },
+            "title": "Stockouts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pricing",
+          "ladders"
+        ],
+        "title": "Insights",
+        "type": "object"
+      },
       "Label": {
         "additionalProperties": false,
         "properties": {
@@ -3099,6 +3475,74 @@
         ],
         "title": "Label",
         "type": "object"
+      },
+      "Ladder": {
+        "additionalProperties": false,
+        "properties": {
+          "exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/LadderStep"
+            },
+            "title": "Exceptions",
+            "type": "array"
+          },
+          "heldOut": {
+            "title": "Heldout",
+            "type": "integer"
+          },
+          "medianSavingPct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mediansavingpct"
+          },
+          "notCheaper": {
+            "title": "Notcheaper",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "steps": {
+            "title": "Steps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "steps",
+          "notCheaper",
+          "heldOut",
+          "medianSavingPct",
+          "reason",
+          "exceptions"
+        ],
+        "title": "Ladder",
+        "type": "object"
+      },
+      "LadderBasis": {
+        "enum": [
+          "family",
+          "name"
+        ],
+        "title": "LadderBasis",
+        "type": "string"
       },
       "LadderRow": {
         "additionalProperties": false,
@@ -3138,6 +3582,72 @@
           "max"
         ],
         "title": "LadderRow",
+        "type": "object"
+      },
+      "LadderStep": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/LadderBasis"
+          },
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "largerId": {
+            "title": "Largerid",
+            "type": "string"
+          },
+          "largerPrice": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "largerValue": {
+            "title": "Largervalue",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "smallerId": {
+            "title": "Smallerid",
+            "type": "string"
+          },
+          "smallerPrice": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "smallerValue": {
+            "title": "Smallervalue",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "unitChangePct": {
+            "title": "Unitchangepct",
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "brand",
+          "name",
+          "smallerId",
+          "largerId",
+          "unit",
+          "smallerValue",
+          "largerValue",
+          "smallerPrice",
+          "largerPrice",
+          "unitChangePct",
+          "basis"
+        ],
+        "title": "LadderStep",
         "type": "object"
       },
       "Launch": {
@@ -3320,6 +3830,15 @@
         ],
         "title": "MatchPage",
         "type": "object"
+      },
+      "MatchReview": {
+        "description": "Whether a matched card's exact edge was reviewed (approved/locked) or is proposed.",
+        "enum": [
+          "reviewed",
+          "unreviewed"
+        ],
+        "title": "MatchReview",
+        "type": "string"
       },
       "MatchRow": {
         "additionalProperties": false,
@@ -3534,6 +4053,61 @@
         "title": "MoneyValue",
         "type": "object"
       },
+      "NoSuggestion": {
+        "description": "Why a row has no outcome. Every such row carries exactly one.",
+        "enum": [
+          "not_offered",
+          "early",
+          "no_match",
+          "match_rejected",
+          "match_unreviewed",
+          "match_not_exact",
+          "unpriced",
+          "currency_mismatch",
+          "size_mismatch",
+          "size_unknown",
+          "stale_observation",
+          "not_observed",
+          "retailer_blocked",
+          "retailer_partial"
+        ],
+        "title": "NoSuggestion",
+        "type": "string"
+      },
+      "OfferContentView": {
+        "additionalProperties": false,
+        "description": "API 1.12.0: what the retailer's page says beyond price and stock. Every field has an\nexplicit state; nothing missing is served as an empty value.",
+        "properties": {
+          "description": {
+            "$ref": "#/components/schemas/TextContent"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImagesContent"
+          },
+          "ingredients": {
+            "$ref": "#/components/schemas/TextContent"
+          },
+          "sizes": {
+            "items": {
+              "$ref": "#/components/schemas/SizeSibling"
+            },
+            "title": "Sizes",
+            "type": "array"
+          },
+          "variants": {
+            "$ref": "#/components/schemas/VariantsContent"
+          }
+        },
+        "required": [
+          "description",
+          "ingredients",
+          "images",
+          "variants",
+          "sizes"
+        ],
+        "title": "OfferContentView",
+        "type": "object"
+      },
       "OfferView": {
         "additionalProperties": false,
         "properties": {
@@ -3549,6 +4123,9 @@
           },
           "channel": {
             "$ref": "#/components/schemas/Channel"
+          },
+          "content": {
+            "$ref": "#/components/schemas/OfferContentView"
           },
           "context": {
             "title": "Context",
@@ -3702,10 +4279,19 @@
           "channel",
           "location",
           "sizeLabel",
-          "sizeSystem"
+          "sizeSystem",
+          "content"
         ],
         "title": "OfferView",
         "type": "object"
+      },
+      "PairAim": {
+        "enum": [
+          "beat",
+          "match"
+        ],
+        "title": "PairAim",
+        "type": "string"
       },
       "PairGap": {
         "additionalProperties": false,
@@ -3771,6 +4357,153 @@
         ],
         "title": "PairGap",
         "type": "object"
+      },
+      "PairInsights": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandPolicy"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "other": {
+            "title": "Other",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizes": {
+            "items": {
+              "$ref": "#/components/schemas/SizeGap"
+            },
+            "title": "Sizes",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "suppressedBrands": {
+            "title": "Suppressedbrands",
+            "type": "integer"
+          },
+          "suppressedSizes": {
+            "title": "Suppressedsizes",
+            "type": "integer"
+          },
+          "unreviewed": {
+            "title": "Unreviewed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base",
+          "other",
+          "n",
+          "unreviewed",
+          "status",
+          "reason",
+          "brands",
+          "sizes",
+          "suppressedBrands",
+          "suppressedSizes"
+        ],
+        "title": "PairInsights",
+        "type": "object"
+      },
+      "PairMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "matchClass": {
+            "$ref": "#/components/schemas/MatchClass"
+          },
+          "reviewState": {
+            "$ref": "#/components/schemas/ReviewState"
+          }
+        },
+        "required": [
+          "matchClass",
+          "reviewState",
+          "confidence"
+        ],
+        "title": "PairMatch",
+        "type": "object"
+      },
+      "PairOutcome": {
+        "enum": [
+          "suggested",
+          "already_competitive",
+          "below_min_change",
+          "no_allowed_price"
+        ],
+        "title": "PairOutcome",
+        "type": "string"
+      },
+      "PairRationale": {
+        "additionalProperties": false,
+        "description": "One step of the reasoning; ``params`` are strings and numbers stay digits.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/PairRationaleCode"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "params"
+        ],
+        "title": "PairRationale",
+        "type": "object"
+      },
+      "PairRationaleCode": {
+        "enum": [
+          "current_gap",
+          "already_competitive",
+          "target",
+          "clamped",
+          "rounded",
+          "beats_rival",
+          "matches_rival",
+          "short_of_rival",
+          "below_min_change",
+          "no_allowed_price"
+        ],
+        "title": "PairRationaleCode",
+        "type": "string"
       },
       "PairRow": {
         "additionalProperties": false,
@@ -3853,6 +4586,78 @@
         "title": "PairRow",
         "type": "object"
       },
+      "PairSide": {
+        "additionalProperties": false,
+        "description": "One side of a pair. ``age_days`` is the as-of date minus ``observed_on``; an import's\nlocal day can fall after the view's last date, so a snapshot's age can be negative.",
+        "properties": {
+          "ageDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agedays"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SideBasis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "title": "Context",
+            "type": "string"
+          },
+          "observedOn": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observedon"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "context",
+          "price",
+          "observedOn",
+          "ageDays",
+          "basis"
+        ],
+        "title": "PairSide",
+        "type": "object"
+      },
+      "Policy": {
+        "enum": [
+          "other_cheaper",
+          "base_cheaper",
+          "parity",
+          "mixed"
+        ],
+        "title": "Policy",
+        "type": "string"
+      },
       "PriceFlag": {
         "enum": [
           "invalid_low"
@@ -3922,6 +4727,78 @@
         "title": "PriceIndex",
         "type": "object"
       },
+      "PriceSuggestions": {
+        "additionalProperties": false,
+        "properties": {
+          "aim": {
+            "$ref": "#/components/schemas/PairAim"
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/Guardrails"
+          },
+          "label": {
+            "const": "rule-based, not ML",
+            "default": "rule-based, not ML",
+            "title": "Label",
+            "type": "string"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Outcomes",
+            "type": "object"
+          },
+          "reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Reasons",
+            "type": "object"
+          },
+          "rival": {
+            "title": "Rival",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "staleDays": {
+            "default": 7,
+            "title": "Staledays",
+            "type": "integer"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "subject",
+          "rival",
+          "aim",
+          "guardrails",
+          "rows",
+          "total",
+          "outcomes",
+          "reasons"
+        ],
+        "title": "PriceSuggestions",
+        "type": "object"
+      },
       "ProductCard": {
         "additionalProperties": false,
         "properties": {
@@ -3963,6 +4840,16 @@
               }
             ],
             "title": "Image"
+          },
+          "matchReview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "matches": {
             "items": {
@@ -4420,9 +5307,62 @@
         "title": "PromoDepth",
         "type": "object"
       },
+      "PromoGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "brand",
+              "category"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "onPromo": {
+            "title": "Onpromo",
+            "type": "integer"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "n",
+          "onPromo",
+          "share"
+        ],
+        "title": "PromoGroup",
+        "type": "object"
+      },
       "PromoItem": {
         "additionalProperties": false,
         "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
           "depthPct": {
             "title": "Depthpct",
             "type": "string"
@@ -4430,6 +5370,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
           },
           "name": {
             "title": "Name",
@@ -4444,14 +5395,20 @@
           "retailer": {
             "title": "Retailer",
             "type": "string"
+          },
+          "saved": {
+            "$ref": "#/components/schemas/MoneyValue"
           }
         },
         "required": [
           "id",
           "name",
+          "brand",
+          "category",
           "retailer",
           "price",
           "regular",
+          "saved",
           "depthPct"
         ],
         "title": "PromoItem",
@@ -4837,6 +5794,22 @@
       "RetailerPromo": {
         "additionalProperties": false,
         "properties": {
+          "bands": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PromoGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
           "n": {
             "title": "N",
             "type": "integer"
@@ -5126,6 +6099,14 @@
         "title": "Side",
         "type": "object"
       },
+      "SideBasis": {
+        "enum": [
+          "observed",
+          "imported_snapshot"
+        ],
+        "title": "SideBasis",
+        "type": "string"
+      },
       "Sides": {
         "additionalProperties": false,
         "properties": {
@@ -5163,6 +6144,89 @@
           "unit"
         ],
         "title": "Size",
+        "type": "object"
+      },
+      "SizeGap": {
+        "additionalProperties": false,
+        "properties": {
+          "baseCheaper": {
+            "title": "Basecheaper",
+            "type": "integer"
+          },
+          "equal": {
+            "title": "Equal",
+            "type": "integer"
+          },
+          "medianGapPct": {
+            "title": "Mediangappct",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "otherCheaper": {
+            "title": "Othercheaper",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "unit",
+          "n",
+          "medianGapPct",
+          "baseCheaper",
+          "otherCheaper",
+          "equal"
+        ],
+        "title": "SizeGap",
+        "type": "object"
+      },
+      "SizeSibling": {
+        "additionalProperties": false,
+        "description": "Another product with an offer in the same context and the same retailer product family:\nthe same item in another size.",
+        "properties": {
+          "productId": {
+            "title": "Productid",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Size"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeLabel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizelabel"
+          }
+        },
+        "required": [
+          "productId",
+          "size",
+          "sizeLabel"
+        ],
+        "title": "SizeSibling",
         "type": "object"
       },
       "SkuReference": {
@@ -5323,6 +6387,172 @@
         ],
         "title": "Status",
         "type": "string"
+      },
+      "Stockouts": {
+        "additionalProperties": false,
+        "properties": {
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandStock"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "qualifying": {
+            "title": "Qualifying",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "suppressed": {
+            "title": "Suppressed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "reason",
+          "brands",
+          "qualifying",
+          "suppressed"
+        ],
+        "title": "Stockouts",
+        "type": "object"
+      },
+      "SuggestionRow": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "category": {
+            "items": {
+              "type": "string",
+              "x-pi-source-text": true
+            },
+            "title": "Category",
+            "type": "array"
+          },
+          "changePct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changepct"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairMatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string",
+            "x-pi-source-text": true
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rationale": {
+            "items": {
+              "$ref": "#/components/schemas/PairRationale"
+            },
+            "title": "Rationale",
+            "type": "array"
+          },
+          "reachesRival": {
+            "title": "Reachesrival",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoSuggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rival": {
+            "$ref": "#/components/schemas/PairSide"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/PairSide"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "brand",
+          "category",
+          "subject",
+          "rival",
+          "match",
+          "gap",
+          "outcome",
+          "suggested",
+          "changePct",
+          "reachesRival",
+          "reason",
+          "rationale"
+        ],
+        "title": "SuggestionRow",
+        "type": "object"
       },
       "SummaryView": {
         "additionalProperties": false,
@@ -5536,6 +6766,32 @@
         "title": "SummaryView",
         "type": "object"
       },
+      "TextContent": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-pi-source-text": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "state",
+          "text"
+        ],
+        "title": "TextContent",
+        "type": "object"
+      },
       "TopDiscount": {
         "additionalProperties": false,
         "properties": {
@@ -5637,6 +6893,51 @@
         "title": "UnmappedPath",
         "type": "object"
       },
+      "VariantView": {
+        "additionalProperties": false,
+        "description": "One listing grouped into the offer: same retailer, product family and size.",
+        "properties": {
+          "gtin": {
+            "$ref": "#/components/schemas/GtinContent"
+          },
+          "shade": {
+            "$ref": "#/components/schemas/TextContent"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string",
+            "x-pi-source-text": true
+          }
+        },
+        "required": [
+          "sku",
+          "shade",
+          "gtin"
+        ],
+        "title": "VariantView",
+        "type": "object"
+      },
+      "VariantsContent": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VariantView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContentState"
+          }
+        },
+        "required": [
+          "state",
+          "items"
+        ],
+        "title": "VariantsContent",
+        "type": "object"
+      },
       "Withheld": {
         "additionalProperties": false,
         "properties": {
@@ -5734,7 +7035,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.11.0"
+    "version": "1.18.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8089,6 +9390,7 @@
             }
           },
           {
+            "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
             "in": "query",
             "name": "matched",
             "required": false,
@@ -8101,6 +9403,7 @@
                   "type": "null"
                 }
               ],
+              "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
               "title": "Matched"
             }
           },
@@ -8727,6 +10030,171 @@
         "summary": "Get Index"
       }
     },
+    "/api/v1/insights": {
+      "get": {
+        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.",
+        "operationId": "get_insights_api_v1_insights_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "description": "Ordered pair <base>,<other>; the first is the base.",
+            "in": "query",
+            "name": "retailers",
+            "required": true,
+            "schema": {
+              "description": "Ordered pair <base>,<other>; the first is the base.",
+              "pattern": "^[a-z][a-z0-9_]{1,62},[a-z][a-z0-9_]{1,62}$",
+              "title": "Retailers",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Insights_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Insights"
+      }
+    },
     "/api/v1/launches": {
       "get": {
         "operationId": "get_launches_api_v1_launches_get",
@@ -9311,6 +10779,298 @@
         "summary": "Get Meta"
       }
     },
+    "/api/v1/price-suggestions": {
+      "get": {
+        "description": "Rule-based, not ML: where the subject context could cut a price to beat (aim=beat, strictly below) or match (aim=match, at or below) the rival, over exact approved or locked pairs of the same size in one currency. Down only: a subject already there is already_competitive and its gap (rival - subject) is data, never advice to raise. A cut is at most maxChangePct, at least minChangePct, to an allowed ending. Every row without an outcome carries one reason. Each side's price is its last collected price; a side older than staleDays is stale_observation, except a subject served from a one-off import (basis imported_snapshot, observedOn = the import date). No demand, volume, revenue or margin figure: none is collected. Rows: suggested first, largest overprice first; then the rest, then id.",
+        "operationId": "get_price_suggestions_api_v1_price_suggestions_get",
+        "parameters": [
+          {
+            "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return at most this many rows, in the endpoint's documented order; `total` counts them all and `truncated` says the list was cut.",
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Brand",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Category",
+              "type": "array"
+            }
+          },
+          {
+            "description": "The context whose prices are advised.",
+            "in": "query",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "description": "The context whose prices are advised.",
+              "pattern": "^[a-z][a-z0-9_]{1,62}$",
+              "title": "Subject",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The context it should beat or match.",
+            "in": "query",
+            "name": "rival",
+            "required": true,
+            "schema": {
+              "description": "The context it should beat or match.",
+              "pattern": "^[a-z][a-z0-9_]{1,62}$",
+              "title": "Rival",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 25,
+              "title": "Id",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aim",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PairAim",
+              "default": "beat"
+            }
+          },
+          {
+            "description": "Largest cut, in percent of the current price (0-50, default 10).",
+            "in": "query",
+            "name": "maxChangePct",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{1,12}(\\.\\d{1,6})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Largest cut, in percent of the current price (0-50, default 10).",
+              "title": "Maxchangepct"
+            }
+          },
+          {
+            "description": "Smallest cut worth suggesting, in percent (default 1).",
+            "in": "query",
+            "name": "minChangePct",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{1,12}(\\.\\d{1,6})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Smallest cut worth suggesting, in percent (default 1).",
+              "title": "Minchangepct"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_PriceSuggestions_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Price Suggestions"
+      }
+    },
     "/api/v1/products": {
       "get": {
         "operationId": "get_products_api_v1_products_get",
@@ -9419,6 +11179,7 @@
             }
           },
           {
+            "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
             "in": "query",
             "name": "matched",
             "required": false,
@@ -9431,6 +11192,7 @@
                   "type": "null"
                 }
               ],
+              "description": "API 1.16.0 (ruling A): true keeps products with an exact edge that is not rejected (proposed included; see each card's matchReview), false the rest. A pair whose identity is unclear is never matched. Counted metrics still use approved/locked edges only.",
               "title": "Matched"
             }
           },

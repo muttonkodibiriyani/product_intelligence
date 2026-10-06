@@ -1,10 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { apiAtLeast, INSIGHTS_API } from '../lib/insights';
 import { summaryBody } from './summary-fixture';
-import { test as base, expect, type Page, type Route } from '@playwright/test';
+import { test as base, expect, type Locator, type Page, type Route } from '@playwright/test';
 
 export const golden = (name: string): unknown =>
   JSON.parse(readFileSync(join(__dirname, '../../../docs/contracts/golden/pi-api', `${name}.json`), 'utf8'));
+
+/**
+ * A /meta body from an API that serves every page, Insights included. It is the golden itself once
+ * the golden's apiVersion reaches INSIGHTS_API; until then (a stacked branch) only the version moves.
+ */
+export function servingMeta<T>(m: T): T {
+  const v = (m as { meta: { apiVersion: string } }).meta.apiVersion;
+  if (apiAtLeast(v, INSIGHTS_API)) return m;
+  return { ...m, meta: { ...(m as { meta: object }).meta, apiVersion: INSIGHTS_API } };
+}
 
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
@@ -136,11 +147,82 @@ export async function signIn(page: Page, locale: 'en' | 'ar', password = PASSWOR
   await page.locator('button[type=submit]').click();
 }
 
+/** The main navigation: the sidebar on wide screens, the bottom tab bar on phones. */
+export const mainNav = (page: Page) => page.getByRole('navigation', { name: /^(Main|الرئيسية)$/ });
+
+/** The phone menu's navigation, listing every page; opened by `openMenu`. */
+export const allPagesNav = (page: Page) => page.getByRole('navigation', { name: /^(All pages|كل الصفحات)$/ });
+
+export async function openMenu(page: Page) {
+  await page.getByRole('button', { name: /^(Menu|القائمة)$/ }).click();
+  await expect(allPagesNav(page)).toBeVisible();
+}
+
+/**
+ * A nav link by name, wherever it lives: in the sidebar or tab bar when it is there, otherwise
+ * (a page off the phone's five tabs) in the phone menu, which this opens.
+ */
+export async function navLink(page: Page, name: string | RegExp): Promise<Locator> {
+  // The shell appears as soon as the session is in, a beat before sign-in's redirect lands; a
+  // menu opened before that would close on the route change.
+  await expect(page).not.toHaveURL(/\/sign-in\/?$/);
+  const nav = mainNav(page);
+  await expect(nav).toBeVisible();
+  const direct = nav.getByRole('link', { name });
+  if ((await direct.count()) > 0) return direct;
+  await openMenu(page);
+  return allPagesNav(page).getByRole('link', { name });
+}
+
+/** Follows a nav link by name (see `navLink`). */
+export async function openNav(page: Page, name: string | RegExp) {
+  await (await navLink(page, name)).click();
+}
+
+/** Signs out from the sidebar foot, or from the phone menu where the foot lives on small screens. */
+export async function signOut(page: Page) {
+  const button = page.getByRole('button', { name: /^(Sign out|تسجيل الخروج)$/ });
+  if ((await button.count()) === 0) await openMenu(page);
+  await button.click();
+}
+
 export async function noHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+}
+
+/**
+ * Nothing in the cards `selector` matches runs past its card: no horizontal scroll inside the
+ * card, and every visible descendant (a tooltip bubble aside, which hangs out on purpose) sits
+ * within the card's own box. Names the offender so a failure says what overflowed where.
+ */
+export async function noCardOverflow(page: Page, selector: string) {
+  const bad = await page.evaluate((sel) => {
+    const out: string[] = [];
+    for (const card of document.querySelectorAll<HTMLElement>(sel)) {
+      const name = card.dataset.tile ?? card.id ?? sel;
+      const c = card.getBoundingClientRect();
+      // Both are rounded integers of a fractional box: a 1px difference is rounding, not overflow.
+      if (card.scrollWidth > card.clientWidth + 1)
+        out.push(`${name}: scrollWidth ${card.scrollWidth} > clientWidth ${card.clientWidth}`);
+      for (const el of card.querySelectorAll<HTMLElement>('*')) {
+        if (el.closest('[role=tooltip]')) continue;
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'absolute') continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (r.right > c.right + 0.5 || r.left < c.left - 0.5)
+          out.push(
+            `${name}: <${el.tagName.toLowerCase()}> "${(el.textContent ?? '').trim().slice(0, 40)}" ` +
+              `spans ${Math.round(r.left)}–${Math.round(r.right)}, card ${Math.round(c.left)}–${Math.round(c.right)}`,
+          );
+      }
+    }
+    return out;
+  }, selector);
+  expect(bad).toEqual([]);
 }
 
 /** Answers /summary with the landing fixture and everything else with `onApi`. */

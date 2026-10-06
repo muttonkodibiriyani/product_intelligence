@@ -6,10 +6,9 @@ import type { ReactNode } from 'react';
 import type { Summary } from '@/lib/api/summary';
 import { num } from '@/lib/api/summary';
 import type { Schemas } from '@/lib/api/types';
-import { formatCount, formatDate } from '@/lib/format';
-import { formatMoney } from '@/lib/money';
+import { formatCount } from '@/lib/format';
 import type { CaveatView } from '@/lib/api/types';
-import { exploreHref, freshness, hasParents, importedOn, pct, promotions, promotionsHref } from './model';
+import { pct } from './model';
 
 /** One retailer's /summary, fetched with an explicit `?retailer=`, and the caveats scoped to it. */
 export interface RetailerSummary {
@@ -17,125 +16,6 @@ export interface RetailerSummary {
   name: string;
   data: Summary;
   caveats: readonly CaveatView[];
-}
-
-/**
- * The headline numbers, one row per retailer inside each tile so the catalogues read side by side:
- * products, brands, categories, median price (with the mean under it when served), the promotion share where it is measured, and
- * freshness. Each tile opens the list it counts. An imported retailer's count and date say so; a
- * null count is withheld by /summary, never zero.
- */
-export function KpiWidget({ rows, locale }: { rows: readonly RetailerSummary[]; locale: string }) {
-  const t = useTranslations('widgets.kpi');
-  const lc = locale === 'ar' ? 'ar' : 'en';
-  const all = exploreHref(locale, {});
-  const many = rows.length > 1;
-  const promoRows = rows.filter((r) => promotions(r.data).measured);
-  const count = (v: number | null) => (v === null ? <None>{t('none')}</None> : formatCount(v, locale));
-  const per = (f: (r: RetailerSummary) => ReactNode, sub?: (r: RetailerSummary) => ReactNode) =>
-    rows.map((r) => (
-      <Row key={r.retailer} name={many ? r.name : undefined} sub={sub?.(r)}>
-        {f(r)}
-      </Row>
-    ));
-  return (
-    <dl
-      className={`grid grid-cols-2 gap-4 sm:grid-cols-3 ${promoRows.length ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}
-    >
-      <Tile k={t('products')} href={all} tone="bg-lav">
-        {per(
-          (r) => count(r.data.products),
-          (r) => (hasParents(r.caveats, r.retailer) ? t('productsParents') : undefined),
-        )}
-      </Tile>
-      <Tile k={t('brands')} href={all} tone="bg-sky">
-        {per((r) => count(r.data.brands))}
-      </Tile>
-      <Tile k={t('categories')} href={all} tone="bg-mint">
-        {per((r) => count(r.data.categories))}
-      </Tile>
-      <Tile k={t('median')} href={exploreHref(locale, { sort: 'price_asc' })} tone="bg-butter">
-        {per(
-          (r) => (r.data.medianPrice ? formatMoney(r.data.medianPrice, lc) : <None>{t('none')}</None>),
-          // A null mean is left out, never shown as 0.
-          (r) => (r.data.meanPrice ? t('mean', { price: formatMoney(r.data.meanPrice, lc) }) : undefined),
-        )}
-      </Tile>
-      {promoRows.length > 0 && (
-        <Tile
-          k={t('promo')}
-          href={promotionsHref(locale, {})}
-          tone="bg-blush"
-          sub={
-            many && promoRows.length === 1 ? t('promoOnly', { retailer: promoRows[0]!.name }) : t('promoOf')
-          }
-        >
-          {per((r) => {
-            const p = promotions(r.data);
-            // Withheld promotions show as not measured, never as 0%.
-            return p.measured ? pct(p.share, locale) : <None>{t('withheld')}</None>;
-          })}
-        </Tile>
-      )}
-      <Tile k={t('freshness')} href="#dataset" tone="bg-surface-2">
-        {per(
-          (r) => (
-            <FreshPill data={r.data} caveats={r.caveats} />
-          ),
-          (r) => (
-            <FreshNote data={r.data} caveats={r.caveats} locale={locale} />
-          ),
-        )}
-      </Tile>
-    </dl>
-  );
-}
-
-function FreshPill({ data, caveats }: { data: Summary; caveats: readonly CaveatView[] }) {
-  const t = useTranslations('widgets.kpi');
-  const f = freshness(data.freshness);
-  // An imported snapshot reads as a snapshot even when the API's status is a collected one.
-  const k =
-    f === 'fresh' || f === 'aging' || f === 'stale'
-      ? importedOn(caveats, data.retailer)
-        ? 'snapshot'
-        : f
-      : f;
-  const tone =
-    k === 'fresh'
-      ? 'bg-mint text-mint-ink'
-      : k === 'aging'
-        ? 'bg-butter text-butter-ink'
-        : k === 'stale'
-          ? 'bg-rose text-rose-ink'
-          : 'bg-surface-2 text-ink';
-  return <span className={`pill text-sm ${tone}`}>{t(k)}</span>;
-}
-
-/** An import date, never a capture date: no 'as of' and no age (owner rule, API 1.5.0). */
-function FreshNote({
-  data,
-  caveats,
-  locale,
-}: {
-  data: Summary;
-  caveats: readonly CaveatView[];
-  locale: string;
-}) {
-  const t = useTranslations('widgets.kpi');
-  const f = freshness(data.freshness);
-  const imported =
-    f === 'snapshot'
-      ? (importedOn(caveats, data.retailer) ?? data.freshness.cutoff)
-      : importedOn(caveats, data.retailer);
-  if (imported) return <>{t('imported', { date: formatDate(imported, locale) })}</>;
-  return (
-    <>
-      {t('asOf', { date: formatDate(data.freshness.cutoff, locale) })}
-      {' · '}
-      {t('age', { days: data.freshness.ageDays })}
-    </>
-  );
 }
 
 /**
@@ -164,10 +44,10 @@ export function PairKpis({
   const gap = s ? num(s.medianGapPct) : NaN;
   return (
     <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-      <Tile k={t('pairs')} href={href} tone="bg-lav" sub={t('pairsOf', { base, other })}>
+      <PairTile k={t('pairs')} href={href} tone="bg-lav" sub={t('pairsOf', { base, other })}>
         <Row>{s ? formatCount(s.n, locale) : none}</Row>
-      </Tile>
-      <Tile
+      </PairTile>
+      <PairTile
         k={t('index')}
         href={href}
         tone="bg-sky"
@@ -187,8 +67,8 @@ export function PairKpis({
             none
           )}
         </Row>
-      </Tile>
-      <Tile
+      </PairTile>
+      <PairTile
         k={t('cheaper')}
         href={href}
         tone="bg-mint"
@@ -202,7 +82,7 @@ export function PairKpis({
         ) : (
           <Row>{none}</Row>
         )}
-      </Tile>
+      </PairTile>
     </dl>
   );
 }
@@ -211,7 +91,7 @@ export function PairKpis({
 const wins = (n: number | undefined, locale: string) =>
   typeof n === 'number' ? formatCount(n, locale) : <None>–</None>;
 
-function Tile({
+function PairTile({
   k,
   href,
   tone,

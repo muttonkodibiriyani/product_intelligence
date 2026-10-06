@@ -11,7 +11,7 @@ from pydantic import Field
 from pi_dataset import ContractModel
 from pi_metrics import METRIC_VERSION, Caveat, CaveatCode, Cohort, Metric, Reason, Status
 
-API_VERSION = "1.11.0"
+API_VERSION = "1.18.0"
 
 
 class Localized(ContractModel):
@@ -127,6 +127,10 @@ CAVEAT_TEXT: dict[CaveatCode, Localized] = {
             " shown or measured."
         ),
         ar="أسعار ما قبل الخصم لدى {retailer} غير موثّقة: لا تُعرض خصوماته وعروضه ولا تُقاس.",
+    ),
+    CaveatCode.WAS_PRICE_STATED: Localized(
+        en="{retailer}'s discounts use the was-prices it states itself; PI has not checked them.",
+        ar="خصومات {retailer} محسوبة من أسعار ما قبل الخصم التي يذكرها بنفسه، ولم يتحقق منها PI.",
     ),
     CaveatCode.SNAPSHOT_IMPORT_DATE: Localized(
         en="{retailer}: snapshot imported {date}, capture date unknown.",

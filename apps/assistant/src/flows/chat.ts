@@ -363,7 +363,9 @@ export class ChatFlow {
 
   private check(text: string, results: readonly ToolEnvelope[]) {
     const cleaned = cleanAnswer(text, knownProductIds(results));
-    const verdict = verifyAnswerNumbers(cleaned.markdown, results);
+    const verdict = verifyAnswerNumbers(cleaned.markdown, results, (tool) =>
+      this.deps.registry.listKey(tool),
+    );
     return {
       verified: verdict.ok && cleaned.markdown.length > 0,
       unsupported: verdict.unsupported,

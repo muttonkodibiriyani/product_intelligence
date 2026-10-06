@@ -79,6 +79,7 @@ for (const locale of ['en', 'ar'] as const) {
         more: /اعرض \d+ أخرى/,
         restarted: 'تحدّثت البيانات أثناء التصفح',
         empty: 'لا منتجات تطابق عوامل التصفية هذه.',
+        unreviewed: 'مطابقة غير مُراجَعة',
         gap: 'الفرق',
         swap: 'بدّل الأساس',
         sort: 'الترتيب',
@@ -91,6 +92,10 @@ for (const locale of ['en', 'ar'] as const) {
         source: 'افتح الصفحة',
         noSource: 'لا رابط للصفحة',
         filters: 'عوامل التصفية',
+        done: 'تم',
+        activeFilters: 'عوامل التصفية النشطة',
+        shopChip: 'المتجر: Shop A',
+        verdict: 'Shop B أغلى بنسبة 25.0%',
         noImage: 'لا صورة',
         underReview: 'السعر قيد المراجعة',
         results: 'النتائج',
@@ -104,6 +109,7 @@ for (const locale of ['en', 'ar'] as const) {
         more: /Show \d+ more/,
         restarted: 'The data was updated while you browsed',
         empty: 'No products match these filters.',
+        unreviewed: 'Unreviewed match',
         gap: 'Gap',
         swap: 'Swap base',
         sort: 'Sort',
@@ -116,6 +122,10 @@ for (const locale of ['en', 'ar'] as const) {
         source: 'Open page',
         noSource: 'No page link',
         filters: 'Filters',
+        done: 'Done',
+        activeFilters: 'Active filters',
+        shopChip: 'Shop: Shop A',
+        verdict: 'Shop B 25.0% dearer',
         noImage: 'No image',
         underReview: 'Price under review',
         results: 'Results',
@@ -127,14 +137,26 @@ for (const locale of ['en', 'ar'] as const) {
   const cards = (page: Page) => page.getByRole('list', { name: T.results }).getByRole('listitem');
   /** Switches to the dense list (a table), the view the column tests are about. */
   async function asList(page: Page) {
-    await page.getByRole('button', { name: T.list }).click();
+    // Exact: the phone menu button ("القائمة") would otherwise match the Arabic "قائمة".
+    await page.getByRole('button', { name: T.list, exact: true }).click();
     await expect(page.getByRole('table')).toBeVisible();
   }
 
-  /** Opens the filters on a narrow screen, where they start folded away. */
+  /** Opens the filters on a narrow screen, where they live in a bottom sheet. */
   async function filters(page: Page) {
     const toggle = page.getByRole('button', { name: new RegExp(`^${T.filters}`) });
-    if (await toggle.isVisible()) await toggle.click();
+    if (await toggle.isVisible()) {
+      await toggle.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+    }
+  }
+  /** Closes that sheet again (a no-op on a wide screen), so the list behind it can be used. */
+  async function doneWithFilters(page: Page) {
+    const done = page.getByRole('dialog').getByRole('button', { name: T.done });
+    if (await done.isVisible()) {
+      await done.click();
+      await expect(page.getByRole('dialog')).toBeHidden();
+    }
   }
 
   test.describe(`${locale} explorer`, () => {
@@ -150,7 +172,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(T.count16)).toBeVisible();
       // Cards first: one per product, the grid button pressed.
       await expect(cards(page)).toHaveCount(products.data.items.length);
-      await expect(page.getByRole('button', { name: T.grid })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.grid, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect(page.getByRole('link', { name: products.data.items[0].name })).toBeVisible();
       await noHorizontalScroll(page);
       // The list is one click away, and stays the choice after a reload.
@@ -160,9 +185,12 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('columnheader', { name: 'Shop A' })).toBeVisible();
       await noHorizontalScroll(page);
       await page.reload();
-      await expect(page.getByRole('button', { name: T.list })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('button', { name: T.list, exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await expect(rows).toHaveCount(1 + products.data.items.length);
-      await page.getByRole('button', { name: T.grid }).click();
+      await page.getByRole('button', { name: T.grid, exact: true }).click();
       await expect(cards(page)).toHaveCount(products.data.items.length);
 
       const first = productCalls(mock)[0]!;
@@ -188,14 +216,23 @@ for (const locale of ['en', 'ar'] as const) {
       });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/explore/`);
-      await asList(page);
       const sort = page.getByLabel(T.sort);
       await expect(sort.locator('option[value=gap]')).toBeDisabled();
+      await expect(page.getByRole('list', { name: T.activeFilters })).toHaveCount(0);
 
       await filters(page);
       await page.getByRole('checkbox', { name: /Shop A/ }).check();
       await page.getByRole('checkbox', { name: /Shop B/ }).check();
       await expect(page).toHaveURL(/retailer=shop_a&retailer=shop_b/);
+      await doneWithFilters(page);
+      // The picked shops are chips above the list; the card says how the other shop compares, from
+      // the API's gap: p05 is base 80 vs other 100, so Shop B is 25% dearer.
+      const chips = page.getByRole('list', { name: T.activeFilters });
+      await expect(chips.getByRole('button', { name: new RegExp(`^${T.shopChip}`) })).toBeVisible();
+      await expect(cards(page).filter({ hasText: 'Product p05' }).getByText(T.verdict)).toBeVisible();
+      await noHorizontalScroll(page);
+
+      await asList(page);
       await expect(page.getByRole('columnheader', { name: new RegExp(T.gap) })).toBeVisible();
       // p05: base 80, other 100 → +20.00, +25.0%
       await expect(page.getByRole('row', { name: /Product p05/ })).toContainText('+25.0%');
@@ -317,6 +354,7 @@ for (const locale of ['en', 'ar'] as const) {
     for (const [host, url] of [
       ['img-product.sephora.me', IMG],
       ['media.alshaya.com', IMG_ULTA],
+      ['www.faces.ae', 'https://www.faces.ae/media/catalog/product/cache/1/image/f1.jpg'],
     ] as const)
       test(`product page: the ${host} image beside the name; a failing one is a placeholder`, async ({
         page,
@@ -362,12 +400,38 @@ for (const locale of ['en', 'ar'] as const) {
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/product/?id=${p.data.card.id}`);
       await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
-      const row = page
-        .getByRole('row')
-        .filter({ has: page.getByRole('rowheader', { name: 'Shop A', exact: true }) });
-      await expect(row.first().getByText(T.underReview)).toHaveCount(2);
+      // Shop A is the sheet's first retailer column: its price and its regular price.
+      const sheet = page.locator('[data-offer-sheet]');
+      for (const attr of ['price', 'regular'])
+        await expect(sheet.locator(`tr[data-attr=${attr}] td`).first()).toHaveText(T.underReview);
       await expect(page.getByText(T.underReview)).toHaveCount(3);
       await expect(page.locator('main')).not.toContainText(/(^|[^\d])0\.0[01]([^\d]|$)/);
+    });
+
+    test('an unreviewed match is labelled on its card and its row, with the reason on focus', async ({
+      page,
+    }) => {
+      // The golden predates API 1.16.0: one product gets an unreviewed match, one a reviewed one.
+      const items = (products.data.items as Json[]).map((c, i) => ({
+        ...c,
+        matchReview: i === 0 ? 'unreviewed' : i === 1 ? 'reviewed' : null,
+      }));
+      const page1 = { ...products, data: { ...products.data, items } };
+      await mockBackend(page, { onApi: api({ products: () => page1 }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/explore/`);
+      const [first, second] = [cards(page).nth(0), cards(page).nth(1)];
+      await expect(first.getByText(T.unreviewed)).toBeVisible();
+      await expect(second.getByText(T.unreviewed)).toHaveCount(0);
+      await expect(page.getByText(T.unreviewed)).toHaveCount(1);
+      // Keyboard: the label is reachable and shows its explanation.
+      const trigger = first.locator('[aria-describedby]', { hasText: T.unreviewed });
+      await trigger.focus();
+      await expect(first.getByRole('tooltip')).toBeVisible();
+      await noHorizontalScroll(page);
+      await asList(page);
+      await expect(page.getByRole('row').nth(1).getByText(T.unreviewed)).toBeVisible();
+      await expect(page.getByText(T.unreviewed)).toHaveCount(1);
     });
 
     test('no results: says so plainly', async ({ page }) => {
@@ -377,6 +441,17 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(T.empty)).toBeVisible();
       await expect(page.getByRole('table')).toHaveCount(0);
       await expect(page.getByRole('list', { name: T.results })).toHaveCount(0);
+    });
+
+    test('product page: an unreviewed match is labelled under the name', async ({ page }) => {
+      const p = clone(product);
+      p.data.card.matchReview = 'unreviewed';
+      await mockBackend(page, { onApi: api({ product: p }) });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/product/?id=${p.data.card.id}`);
+      await expect(page.getByRole('heading', { level: 1, name: p.data.card.name })).toBeVisible();
+      await expect(page.getByText(T.unreviewed)).toHaveCount(1);
+      await expect(page.getByText(T.unreviewed)).toBeVisible();
     });
 
     test('product page: offers with evidence, gaps, history; back keeps the filters', async ({ page }) => {
@@ -454,9 +529,11 @@ for (const locale of ['en', 'ar'] as const) {
 test('S2: an unknown retailer status renders as sent, not as a key path', async ({ page }) => {
   const m = clone(meta);
   m.data.retailers[0].status = 'paused';
-  // The landing's dataset table lists the retailers; /summary gets its own fixture.
+  // The Dataset page's table lists the retailers (the Overview no longer does); /summary gets its own fixture.
   await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: m })) });
   await signIn(page, 'ar');
+  await expect(page).not.toHaveURL(/\/sign-in\/?$/);
+  await page.goto('/app/ar/dataset/');
   await expect(page.getByRole('cell', { name: 'paused', exact: true })).toBeVisible();
   await expect(page.getByText('status.paused')).toHaveCount(0);
 });

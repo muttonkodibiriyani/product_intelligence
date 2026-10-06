@@ -135,6 +135,10 @@ def test_full_run_loads_prices_then_stock_and_replays_idempotently(db: str, tmp_
         {"counts": {"pdp_en_http_404": 1}},
         {"counts": {"pdp_en_parse_error": 1}},
         {"counts": {"trpc_http_500": 1}},
+        {"counts": {"hop_host_refused": 1}},  # a redirect left the storefront host
+        {"counts": {"hop_robots_refused": 1}},
+        {"counts": {"host_refused": 1}},  # a seed URL off the storefront, never requested
+        {"counts": {"too_large": 1}},  # a page over its byte cap was dropped
         {"counts": {"seed_en": 3}},  # a seeded page never fetched
         {"counts": {"trpc_http_200": 1}},  # a stock read missing
     ],

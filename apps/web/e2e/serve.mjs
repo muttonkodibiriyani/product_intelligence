@@ -22,6 +22,7 @@ const types = {
     '.txt': 'text/plain',
     '.json': 'application/json',
     '.svg': 'image/svg+xml',
+    '.png': 'image/png',
     '.ico': 'image/x-icon',
 };
 

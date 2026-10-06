@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
@@ -31,6 +31,9 @@ from pi_api.ids import ProductIds, product_ids
 from pi_dataset import DatasetError, DatasetV3, ProductV3, load_any
 from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
 from pi_metrics.view import as_v3
+
+if TYPE_CHECKING:
+    from pi_api.catalog import Families
 
 log = logging.getLogger(__name__)
 _GZIP_MAGIC = b"\x1f\x8b"
@@ -106,13 +109,27 @@ class Loaded:
 
     @property
     def unverified(self) -> frozenset[str]:
-        """Context ids whose was-prices are unverified: promotions there are withheld."""
+        """Context ids whose was-prices are withheld as unverified: promotions there are withheld
+        (``pi_api.dq.WAS_PRICE_WITHHELD``; none since API 1.13.0)."""
+        return frozenset(c for shop in self.imported if shop.withheld for c in shop.contexts)
+
+    @property
+    def imported_contexts(self) -> frozenset[str]:
+        """Context ids of imported retailers: served as a dated snapshot, never the default."""
         return frozenset(c for shop in self.imported for c in shop.contexts)
 
     @cached_property
     def ids(self) -> ProductIds:
         """Current and old product ids (``pi_api.ids``), built once per generation at load."""
         return product_ids(self.dataset)
+
+    @cached_property
+    def families(self) -> Families:
+        """Offers by (context, retailer family), for a product's other sizes; built once per
+        generation, on the first product read."""
+        from pi_api.catalog import family_index  # noqa: PLC0415 - avoids an import cycle
+
+        return family_index(self.dataset)
 
     @property
     def current(self) -> DatasetV3:

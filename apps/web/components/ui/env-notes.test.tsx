@@ -5,6 +5,9 @@ import type { Envelope } from '@/lib/api/types';
 import en from '@/messages/en.json';
 import { EnvNotes } from './env-notes';
 
+// /meta is not loaded here: ids the app has no name for are shown as sent.
+vi.mock('../use-meta', () => ({ useRetailerName: () => (id: string) => (id === 'ulta_ae' ? 'Ulta' : id) }));
+
 afterEach(cleanup);
 
 const partial = (retailer: string) => ({
@@ -39,5 +42,20 @@ describe('EnvNotes', () => {
 
   it('shows nothing when the data is fine and there are no caveats', () => {
     expect(render(show(env([]))).container.textContent).toBe('');
+  });
+
+  it('rewords a retailer id the API mentions to the shop name, in both languages', () => {
+    const r = render(show(env([partial('ulta_ae')])));
+    expect(r.container.textContent).toBe('Ulta is only partly collected.');
+    r.rerender(
+      <NextIntlClientProvider locale="ar" messages={en}>
+        <EnvNotes env={env([partial('ulta_ae')])} />
+      </NextIntlClientProvider>,
+    );
+    expect(r.container.textContent).toBe('بيانات Ulta مجمّعة جزئياً.');
+  });
+
+  it('is the one note box: it carries the note role for the Dataset page to own', () => {
+    expect(render(show(env([partial('shop_a')]))).getByRole('note')).toBeTruthy();
   });
 });
