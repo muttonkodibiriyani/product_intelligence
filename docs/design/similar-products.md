@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed (step 1 of 3). Design and a read-only coverage script only; no model, no pipeline, no API change. |
+| Status | Proposed (step 1 of 3); §5 decided by the coordinator on 2026-10-06. Design and a read-only coverage script only; no model, no pipeline, no API change. |
 | Owner | Deep Coder |
 | Code | `scripts/similar_coverage/coverage.py` (field coverage, aggregate counts only), tests in `scripts/similar_coverage/test_coverage.py` |
 | Related | ADR-0012 (cross-file match edges: identity, which this is not); `docs/design/ml-layer.md`; `packages/pi_image` (SigLIP, CPU) |
@@ -50,16 +50,16 @@ Two consequences:
    live data today can read only the **name and category**, plus a concentration parsed from the
    name (`pi_match.normalise.concentration`).
 2. Notes, scent family and gender would need **export or feed changes** (Sephora `c_notes`, the
-   Faces feed columns, a v3 publish). Those are data artifact changes: each is proposed
-   separately and waits for the owner's go (§5). This design does not depend on them, but it
-   gets much better with them.
+   Faces feed columns). Those are data artifact changes. §5 approves them as additive v2 fields,
+   each in a separate small PR, with no v3 `content` republish. This design does not depend on
+   them, but it gets much better with them.
 
 ## 3. Proposal
 
 ### 3.1 Candidates
 
 For each product P, the candidates are products offered at **another** retailer (cross-retailer
-by default; the same retailer is an option, §5) that:
+only in v1, §5) that:
 
 - share P's top-level category bucket (fragrance, makeup, skincare, hair, body; mapped from each
   retailer's own path);
@@ -114,17 +114,17 @@ they resolve after a pair or split like every other id.
 
 ### 3.4 Quality
 
-Before anything is shown, a small human evaluation: about 100 products sampled across
-categories and retailers, with each top-5 list judged "a plausible competitor: yes / no".
+Before anything is shown, a small human evaluation: about 100 products stratified by
+retailer and category, with each top-5 list judged "a plausible competitor: yes / no".
 Precision@5 and the share of lists with at least one "yes" are reported per category. A
-category below the bar the owner sets is not shown. Agent labels alone are not enough, as with
-auto-accept in ADR-0012.
+category below the bar (§5: precision@5 of at least 80%) is not shown. Agent labels alone are
+not enough, as with auto-accept in ADR-0012.
 
 ### 3.5 Images and live traffic
 
-Image similarity needs the image bytes. Fetching them from retailer image hosts is live traffic:
-it needs the coordinator's go and follows ADR-0006 (plain httpx, ≤1 request per second per host
-with jitter, no retry on a challenge). An existing cache is reused first. Without images, the
+Image similarity needs the image bytes. Fetching them from retailer image hosts is live traffic,
+so it is phase 2 (§5): it goes through the Crawl Engineer and follows ADR-0006 (plain httpx,
+≤1 request per second per host with jitter, no retry on a challenge). An existing cache is reused first. Without images, the
 `image` signal is absent and §3.2 still holds.
 
 ## 4. Steps
@@ -141,17 +141,20 @@ with jitter, no retry on a challenge). An existing cache is reused first. Withou
    and a "Similar products at other shops" section on the product page, with the label, the
    per-signal chips and no price-gap number.
 
-## 5. Decisions needed (owner / coordinator)
+## 5. Decisions (coordinator, 2026-10-06)
 
-1. **Data:** export Sephora `c_notes` and the Faces description, gender and concentration
-   columns, and publish v3 with `content`? Each one is a separate export or feed proposal, and
-   none of them is made in this PR.
-2. **Images:** a go for the image fetch in §3.5, or text and price only at first.
-3. **Model download:** BGE-M3 (about 2.3 GB of weights) onto this machine and into CI's cache?
-   It is free and runs locally; no paid API (Vertex or Gemini) is proposed. Any paid option
-   would come with a cost estimate first.
-4. **Scope:** cross-retailer only (proposed), or the same retailer too?
-5. **The bar** for §3.4 precision@5 before a category is shown.
+1. **Data: yes.** Export Sephora `c_notes`, and the Faces description, gender and
+   concentration columns that the capture already holds, as additive v2 fields. Each export is
+   a separate small PR. Nothing else in `content` is republished.
+2. **Images: text and price first.** The image fetch (§3.5) is phase 2: under ADR-0006 pacing,
+   through the Crawl Engineer, with no new billable resource. Until then the `image` signal is
+   absent.
+3. **Model download: yes** for BGE-M3 (free, local). The weights go in `/dev/shm` or a cache
+   path outside the repo and are never committed. Disk is checked first.
+4. **Scope: cross-retailer only** for v1. Same-retailer competitors come later.
+5. **The bar:** human precision@5 of at least 80% "plausible close competitor", on about 100
+   products stratified by retailer and category. The owner may be asked to label a small
+   sample. A category below the bar is not shown.
 
 ## 6. Coverage (pending the owner's run)
 
