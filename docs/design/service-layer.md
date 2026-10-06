@@ -715,8 +715,8 @@ client.
    dataset. There are no literals.
 8. **Compare sides.** `data.sides.{base,other}` gives each retailer's `status` (with `reason`
    `retailer_blocked` / `retailer_partial`), `observed` (collected, non-early offers priced on
-   the date), `counted` (the same n on both sides) and `onlyHere` (offered here and not at the
-   other side), so a client can say which side is short without recomputing anything.
+   the date), `counted` (the same n on both sides) and `onlyHere` (of the `observed` products, those
+   with no offer at the other side, so never more than `observed`; API 1.20.0), so a client can say which side is short without recomputing anything.
 
 Every metric function takes typed inputs and returns `(value | NotEnoughData, cohort, caveats)`,
 so the envelope is assembled mechanically. `metricVersion` changes whenever a definition changes,
