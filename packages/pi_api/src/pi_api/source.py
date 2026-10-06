@@ -9,6 +9,11 @@ A path is served whole, or (ADR-0010) a source is assigned a path: then only tha
 of the file is read, and the assigned sources of one scope are composed into one view
 (``pi_dataset.compose``). Composed views are rebuilt only when every assigned file has a good
 generation; until then the previous view stays live, and with none they are not served.
+
+``matches`` (ADR-0012 §6) names a ``pi.matches/v1`` file applied to the composed view of its
+scope (``pi_api.matches``); views of other scopes are composed without it. A new generation that
+does not validate is ignored (the last good one stays applied; until one validates, the views are
+composed without it), and one whose vertical is not its view's leaves the previous views live.
 """
 
 from __future__ import annotations
@@ -28,8 +33,10 @@ from typing import TYPE_CHECKING, Protocol
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
 from pi_api.ids import ProductIds, product_ids
+from pi_api.matches import apply
 from pi_dataset import DatasetError, DatasetV3, ProductV3, load_any
 from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
+from pi_match.matchfile import MatchFile
 from pi_metrics.view import as_v3
 
 if TYPE_CHECKING:
@@ -106,6 +113,8 @@ class Loaded:
     stale: tuple[SourceInfo, ...] = field(default=())
     #: What the floor withheld in ``latest``: its flags mark latest-date reads (``current``).
     latest_floor: FloorView | None = None
+    #: Merged products' old ids -> their product now (``pi_api.matches``).
+    aliases: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def unverified(self) -> frozenset[str]:
@@ -121,7 +130,7 @@ class Loaded:
     @cached_property
     def ids(self) -> ProductIds:
         """Current and old product ids (``pi_api.ids``), built once per generation at load."""
-        return product_ids(self.dataset)
+        return product_ids(self.dataset, self.aliases)
 
     @cached_property
     def families(self) -> Families:
@@ -219,8 +228,13 @@ class SnapshotSource:
         *,
         allow_test: bool = False,
         assigned: Mapping[str, str] = MappingProxyType({}),
+        matches: str | None = None,
     ) -> None:
-        """``paths`` are served whole; ``assigned`` maps a source (retailer id) to its path."""
+        """``paths`` are served whole; ``assigned`` maps a source (retailer id) to its path;
+        ``matches`` is the match file applied to the composed views."""
+        self._matches_path = matches
+        #: The latest good match file and its generation.
+        self._matches: tuple[MatchFile, str] | None = None
         self._allow_test = allow_test
         self._store = store
         self._paths = tuple(paths)
@@ -247,6 +261,8 @@ class SnapshotSource:
                 if path in self._paths:
                     self._served[path] = _with_ids(_corrected(loaded))
                 changed = True
+        if self._matches_path is not None and self._load_matches(self._matches_path):
+            changed = True
         if not changed:
             return
         served = dict(self._served)
@@ -273,6 +289,25 @@ class SnapshotSource:
         log.info("dataset %s loaded at generation %s", path, generation)
         return Loaded(path, dataset, generation, source_infos(dataset))
 
+    def _load_matches(self, path: str) -> bool:
+        """Whether a new good generation of the match file was loaded."""
+        try:
+            if self._matches is not None and self._store.generation(path) == self._matches[1]:
+                return False
+            data, generation = self._store.read(path)
+            if data.startswith(_GZIP_MAGIC):
+                data = _gunzip(data, MAX_DATASET_BYTES)
+            file = MatchFile.model_validate_json(data)
+        except (ValueError, OSError, zlib.error) as error:
+            log.warning("match file %s not loaded: %s", path, type(error).__name__)
+            return False
+        except Exception:  # storage client errors: keep serving what we have
+            log.exception("match file %s: storage error", path)
+            return False
+        log.info("match file %s loaded at generation %s", path, generation)
+        self._matches = (file, generation)
+        return True
+
     def _composed(self) -> dict[str, Loaded] | None:
         """One view per scope of the assigned sources; ``None`` keeps the previous views."""
         missing = sorted(s for s, p in self._assigned.items() if p not in self._files)
@@ -289,8 +324,14 @@ class SnapshotSource:
                 part = Loaded(path, only(file.dataset, sources), file.generation)
                 label = ",".join(f"{s}={path}" for s in sources)
                 by_scope.setdefault(part.scope, []).append((label, part))
+            matches = self._matches
+            if matches is not None and matches[0].scope not in by_scope:
+                log.warning("match file is for scope %r: no view of it", matches[0].scope)
             views = {
-                f"scope:{scope}": _with_ids(_view(parts), f"scope:{scope}")
+                f"scope:{scope}": _with_ids(
+                    _view(parts, matches if matches and matches[0].scope == scope else None),
+                    f"scope:{scope}",
+                )
                 for scope, parts in by_scope.items()
             }
         except ValueError as error:  # CompositionError, or the composed view fails validation
@@ -346,12 +387,25 @@ class AmbiguousDatasetError(ValueError):
     """More than one dataset matches; the caller must say which (422)."""
 
 
-def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
-    """The parts of one scope as one view, with a generation that changes with any part's."""
+def _view(parts: list[tuple[str, Loaded]], matches: tuple[MatchFile, str] | None = None) -> Loaded:
+    """The parts of one scope as one view, with a generation that changes with any part's (and
+    the match file's, when one applies)."""
     composed = compose([p.dataset for _, p in parts])
     if composed.merged_ids:
         log.info("per-source view: %d product ids merged across files", len(composed.merged_ids))
     stamp = "|".join(f"{label}@{p.generation}" for label, p in parts)
+    aliases: Mapping[str, str] = {}
+    if matches is not None:
+        applied = apply(composed.dataset, matches[0])  # MatchFileError: the previous view stays
+        log.info(
+            "per-source view: match file %s applied: %s, %d products split",
+            matches[0].generated_at,
+            dict(applied.counts),
+            len(applied.split),
+        )
+        composed = replace(composed, dataset=applied.dataset)
+        aliases = applied.aliases
+        stamp += f"|matches@{matches[1]}"
     generation = "c" + hashlib.sha256(stamp.encode()).hexdigest()[:16]
     path = ",".join(label for label, _ in parts)
     as_of = latest(composed)
@@ -365,6 +419,7 @@ def _view(parts: list[tuple[str, Loaded]]) -> Loaded:
             composed.sources,
             latest=as_of.dataset if as_of.stale else None,
             stale=as_of.stale,
+            aliases=aliases,
         )
     )
 
