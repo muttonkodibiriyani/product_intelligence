@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import Field
@@ -31,7 +32,7 @@ from pi_dataset import ContractModel, DatasetV3
 from pi_dataset.models import DecidedBy
 from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, GroupBy, Metric, ProductFilter, Status
-from pi_metrics.compare import Comparison, PairRow
+from pi_metrics.compare import Comparison, PairRow, overlapping
 from pi_metrics.insights import Insights
 from pi_metrics.launches import Launch, Launches
 from pi_metrics.pair_pricing import PairAim, PriceSuggestions
@@ -123,8 +124,38 @@ class RowLimit(ContractModel):
     )
 
 
+class CompareRows(StrEnum):
+    ALL = "all"
+    OVERLAP = "overlap"
+
+
+class CompareSort(StrEnum):
+    NAME = "name"
+    GAP = "gap"
+
+
 class CompareRowsQuery(CompareQuery, RowLimit):
-    """``/compare`` only: an export never takes ``limit``."""
+    """``/compare`` only: an export never takes ``limit``, ``rows`` or ``sort``."""
+
+    rows: CompareRows = Field(
+        default=CompareRows.ALL,
+        description=(
+            "API 1.19.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that "
+            "are only unreviewed (counted=false, excludedReason match_unreviewed) and pass the "
+            "rest of the ladder priced on both sides; only this value gives such a pair its gap "
+            "(all keeps it null). total, limit and truncated apply to these rows; summary, "
+            "groups, sides and cohort are unchanged (counted rows only)."
+        ),
+    )
+    sort: CompareSort | None = Field(
+        default=None,
+        description=(
+            "API 1.19.0, applied before limit. name: by name, then id. gap: largest |gap.pct| "
+            "first (with rows=overlap an unreviewed row's gap included), rows without a gap "
+            "last, then id. "
+            "Unset: rows in dataset order, or with limit the largest counted |gap.pct| first."
+        ),
+    )
 
 
 class IndexQuery(PairQuery):
@@ -222,6 +253,15 @@ def _gap_first(row: PairRow) -> tuple[bool, Decimal, str]:
     return (row.gap is None, -abs(row.gap.pct) if row.gap else Decimal(0), row.id)
 
 
+def _counted_gap_first(row: PairRow) -> tuple[bool, Decimal, str]:
+    """``_gap_first`` over counted rows only: an unreviewed row's gap ranks as no gap."""
+    return _gap_first(row if row.counted else row.model_copy(update={"gap": None}))
+
+
+def _by_name(row: PairRow) -> tuple[str, str]:
+    return (row.name.casefold(), row.id)
+
+
 def _deepest_first(item: PromoItem) -> tuple[Decimal, str, str]:
     return (-item.depth_pct, item.id, item.retailer)
 
@@ -230,13 +270,25 @@ def _newest_first(item: Launch) -> tuple[int, str, str]:
     return (-item.first_seen.toordinal(), item.id, item.retailer)
 
 
-def capped_comparison(metric: Metric[Comparison], limit: int | None) -> Metric[Comparison]:
-    """At most ``limit`` rows by ``|gap.pct|`` desc then id; the summary is over every row."""
-    if limit is None:
-        return metric
-    rows = sorted(metric.data.rows, key=_gap_first)
+def capped_comparison(
+    metric: Metric[Comparison],
+    limit: int | None,
+    rows: CompareRows = CompareRows.ALL,
+    sort: CompareSort | None = None,
+) -> Metric[Comparison]:
+    """The ``rows`` selection in ``sort`` order, at most ``limit`` of them; ``total`` counts the
+    selection. Unsorted and limited, the largest counted ``|gap.pct|`` comes first. The summary,
+    groups and sides are over every row, whatever is selected."""
+    kept = [r for r in metric.data.rows if rows is CompareRows.ALL or overlapping(r)]
+    if sort is CompareSort.NAME:
+        kept.sort(key=_by_name)
+    elif sort is CompareSort.GAP:
+        kept.sort(key=_gap_first)
+    elif limit is not None:
+        kept.sort(key=_counted_gap_first)
+    cut = limit is not None and len(kept) > limit
     data = metric.data.model_copy(
-        update={"rows": tuple(rows[:limit]), "truncated": len(rows) > limit}
+        update={"rows": tuple(kept[:limit]), "total": len(kept), "truncated": cut}
     )
     return metric.model_copy(update={"data": data})
 
