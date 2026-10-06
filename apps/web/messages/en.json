@@ -297,6 +297,7 @@
   "productCard": {
     "notSold": "Not sold",
     "was": "was",
+    "save": "Save",
     "off": "−{pct}%",
     "noImage": "No image",
     "cheaper": "{shop} cheaper {pct}%",
@@ -570,6 +571,20 @@
     "atLeast": "{pct}% or more",
     "loading": "Loading promotions…",
     "shares": "Share on promotion by shop",
+    "comparison": "Retailer comparison",
+    "comparisonHint": "Discounted products, measured share and deepest listed cut in one view.",
+    "shop": "Shop",
+    "discounted": "Discounted",
+    "share": "Share",
+    "deepestShort": "Deepest",
+    "withheld": "Not shown",
+    "depthBands": "Discount depth",
+    "bandRange": "{min}–{max}%",
+    "bandOver": "{min}%+",
+    "topBrands": "Top brands",
+    "topCategories": "Top categories",
+    "groupCount": "{n} discounted",
+    "groupShare": "{share}% discounted",
     "pricedCount": "{n} priced products",
     "onPromo": "on promotion",
     "onPromoCount": "{total, plural, =0 {No product carries a lower price than its regular price.} one {{n} product carries a lower price than its regular price.} other {{n} products carry a lower price than their regular price.}}",
@@ -592,8 +607,11 @@
     "showMore": "Show up to {n}",
     "narrow": "Raise the minimum discount or pick fewer retailers to see the rest.",
     "empty": "No product is discounted for these filters.",
+    "rank": "Rank",
+    "rankLabel": "Discount rank {rank}",
     "product": "Product",
     "depth": "Discount",
+    "saved": "You save",
     "price": "Price",
     "regular": "Regular price"
   },
@@ -789,6 +807,7 @@
   "insights": {
     "title": "Insights",
     "intro": "What the latest data supports deciding, one card per decision. Each number opens the products it was counted from.",
+    "p1Link": "Open three-retailer report",
     "pickPair": "Pick two shops to see what the data says about them.",
     "loading": "Loading the insights…",
     "unavailable": "Insights is not available yet: it needs data service version {need} or later, and this site runs {have}. Nothing is shown until the service is updated.",
@@ -796,6 +815,39 @@
     "soWhat": "So what:",
     "evidence": "See the evidence",
     "unreviewed": "{n, plural, one {# unreviewed match} other {# unreviewed matches}}: not counted",
+    "report": {
+      "toc": "Decision findings",
+      "method": "How to read this report",
+      "n": "n",
+      "cohort": "Cohort",
+      "cohortValue": "Counted exact pairs, approved or locked",
+      "matches": "Match basis",
+      "reviewed": "Reviewed exact matches",
+      "unreviewed": "{n, plural, one {# proposed match excluded} other {# proposed matches excluded}}",
+      "coverage": "Coverage",
+      "partial": "Partial snapshots; absence may mean not collected",
+      "complete": "Latest collected snapshot",
+      "testedTitle": "Tested, not promoted",
+      "testedIntro": "These questions stay out of the ranked findings until the published data can support them. No proposed match becomes a fact.",
+      "tested": {
+        "history": { "title": "Launches and price changes:", "body": "need repeated complete collections." },
+        "gwp": { "title": "Gift-with-purchase:", "body": "not exported in the current promotions contract." },
+        "rating": { "title": "Price versus rating:", "body": "needs enough reviewed pairs with ratings." }
+      }
+    },
+    "readiness": {
+      "eyebrow": "Decision readiness",
+      "title": "{n, plural, =0 {No decision signals are ready yet} one {# decision signal is ready} other {# decision signals are ready}}",
+      "body": "Only evidence supported by this retailer pair appears as a card. Withheld and unavailable analyses are grouped below; missing is never treated as zero.",
+      "ready": "{n, plural, =0 {Nothing ready} one {{count} ready signal} other {{count} ready signals}}",
+      "unreviewed": "{n, plural, one {{count} unreviewed match excluded} other {{count} unreviewed matches excluded}}",
+      "checking": "Checking supporting evidence…",
+      "deferred": "{n, plural, one {# analysis is not ready} other {# analyses are not ready}}",
+      "deferredBody": "Open this only to see what the current data cannot support. No withheld value is shown as zero.",
+      "noneSpace": "No governed assortment gap was observed for this pair.",
+      "nonePromotions": "No listed price cut was observed for this pair.",
+      "failed": "Supporting evidence could not be loaded."
+    },
     "positioning": {
       "title": "Price position",
       "none": "No reviewed exact matches between these shops yet, so no price is compared.",
@@ -834,8 +886,10 @@
     },
     "promo": {
       "title": "Promotion strategy",
-      "headline": "Discount depth, share and mechanics are measured on the Promotions page.",
-      "action": "Compare promotion depth there; this page repeats no promotion numbers.",
+      "headline": "{product} at {shop} has the deepest listed cut: −{pct}%.",
+      "meta": "{n, plural, one {{count} listed discount} other {Top {count} listed discounts}}, deepest first",
+      "saved": "Save",
+      "action": "Check the evidence before using a discount in a pricing decision.",
       "open": "Open Promotions"
     },
     "stock": {
@@ -864,6 +918,31 @@
       "saving": "{shop}: the typical step up in size saves {pct} per unit ({n} steps).",
       "method": "Price cards count reviewed exact matches only. A brand needs {share}% of its matches on one side to be placed. Size steps beyond {held}% are held out. Any cohort under {min} is hidden.",
       "later": "Not shown yet, for lack of a backed aggregate: the EDP vs EDT price ladder, price against rating, and verified real discounts."
+    },
+    "p1": {
+      "title": "Three-retailer decision report",
+      "intro": "A governed view of Ulta, Sephora and Faces. Pair evidence is shown separately; no three-way number is invented.",
+      "basisTitle": "How to read this report",
+      "basis": "Every number comes directly from a reviewed pair response. Proposed matches are withheld from counts, and partial or pending retailers are never presented as complete.",
+      "imageNote": "Product images are shown only when the governed API supplies an approved image reference. This release exposes source links, not guessed or copied image URLs.",
+      "coverageTitle": "Collection coverage",
+      "coverageQuestion": "Coverage status is reported per retailer and controls which evidence can be interpreted.",
+      "status": {
+        "supported": "Complete coverage",
+        "partial": "Partial coverage — interpret as a lower bound",
+        "pending": "Not collected yet"
+      },
+      "pairQuestion": "Reviewed pair evidence only; this is not a three-way aggregate.",
+      "matched": "Reviewed matches",
+      "unreviewed": "Proposed matches withheld",
+      "statusLabel": "Evidence status",
+      "notAvailable": "Not available",
+      "counted": "Counted pair evidence",
+      "withheld": "Withheld — insufficient governed data",
+      "openEvidence": "Open pair evidence",
+      "loading": "Loading governed pair evidence…",
+      "notEnough": "The three-retailer report appears when three retailers are collected.",
+      "unavailable": "This report needs data service version {need} or later."
     }
   }
 }

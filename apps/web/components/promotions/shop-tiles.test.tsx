@@ -42,12 +42,21 @@ const ulta: Promo = {
   bands: [],
   groups: [],
 };
+const faces: Promo = {
+  retailer: 'faces_ae',
+  n: 940,
+  onPromo: 73,
+  share: null,
+  reason: 'retailer_blocked',
+  bands: [],
+  groups: [],
+};
 const items = [
   item('p1', 'sephora_me', '50.0'),
   item('p2', 'sephora_me', '44.0'),
   item('p3', 'other', '60.0'),
 ];
-const name = (id: string) => ({ sephora_me: 'Sephora', ulta_ae: 'Ulta' })[id] ?? id;
+const name = (id: string) => ({ sephora_me: 'Sephora', ulta_ae: 'Ulta', faces_ae: 'Faces' })[id] ?? id;
 
 function tiles(retailers: Promo[], list: Item[] = items, locale: 'en' | 'ar' = 'en') {
   return render(
@@ -64,6 +73,27 @@ function tiles(retailers: Promo[], list: Item[] = items, locale: 'en' | 'ar' = '
 }
 
 describe('ShopTiles', () => {
+  it('compares retailers and shows each shop’s depth bands, top brands and top categories', () => {
+    const detailed: Promo = {
+      ...sephora,
+      bands: [1, 3, 2, 1, 0, 1],
+      groups: [
+        { kind: 'brand', key: 'Glow Lab', n: 20, onPromo: 8, share: '40.0' },
+        { kind: 'category', key: 'skincare', n: 30, onPromo: 9, share: '30.0' },
+      ],
+    };
+    tiles([detailed, { ...sephora, retailer: 'ulta_ae', share: '12.0', onPromo: 12 }]);
+
+    expect(screen.getByRole('heading', { name: en.promotions.comparison })).toBeTruthy();
+    expect(screen.getByRole('region', { name: en.promotions.depthBands })).toBeTruthy();
+    expect(document.querySelectorAll('[data-depth-band]')).toHaveLength(6);
+    expect(screen.getByRole('region', { name: en.promotions.topBrands }).textContent).toContain('Glow Lab');
+    expect(screen.getByRole('region', { name: en.promotions.topCategories }).textContent).toContain(
+      'skincare',
+    );
+    expect(screen.getByRole('table').textContent).toContain('12.0%');
+  });
+
   it('a measured shop: share as the hero, priced and on-promo counts, the deepest cut in its list, a bar', () => {
     tiles([sephora]);
     const tile = screen.getByRole('listitem');
@@ -96,6 +126,36 @@ describe('ShopTiles', () => {
     expect(tile.textContent).not.toContain('7,316');
     expect(tile.textContent).not.toContain('not available');
   });
+
+  it.each([
+    ['en', en.promotions.withheld, en.promotions.notMeasuredShop, en.reasons],
+    ['ar', ar.promotions.withheld, ar.promotions.notMeasuredShop, ar.reasons],
+  ] as const)(
+    '%s: blocked and unverified shops expose no count, share or deepest discount as zero',
+    (locale, withheld, notMeasured, reasons) => {
+      tiles(
+        [sephora, { ...ulta, onPromo: 143 }, faces],
+        [...items, item('u1', 'ulta_ae', '65.0'), item('f1', 'faces_ae', '70.0')],
+        locale,
+      );
+
+      const table = screen.getByRole('table');
+      for (const [shop, reason] of [
+        ['Ulta', reasons.was_price_unverified],
+        ['Faces', reasons.retailer_blocked],
+      ] as const) {
+        const row = within(table).getByRole('row', { name: new RegExp(shop) });
+        expect(within(row).getAllByText(withheld)).toHaveLength(3);
+        expect(row.textContent).not.toMatch(/\d/);
+
+        const tile = screen
+          .getAllByRole('listitem')
+          .find((candidate) => candidate.textContent?.includes(shop));
+        expect(tile?.textContent).toContain(notMeasured);
+        expect(tile?.textContent).toContain(reason);
+      }
+    },
+  );
 
   it('a reason the app does not know is shown as the API sent it', () => {
     tiles([{ ...ulta, reason: 'new_reason' as Promo['reason'] }]);

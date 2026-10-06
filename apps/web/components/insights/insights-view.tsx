@@ -26,6 +26,7 @@ import {
   type Stockouts,
 } from '@/lib/insights';
 import { navHref } from '@/lib/nav';
+import { listedItems, notMeasured } from '@/lib/promotions';
 import { PairPicker } from '../compare/pair-picker';
 import { useAuth } from '../auth-provider';
 import { ApiError } from '@/lib/api/client';
@@ -91,10 +92,15 @@ export function InsightsView() {
     queryFn: ({ signal }) => api!.get('/api/v1/insights', { query: { retailers }, signal }),
     enabled: !!api && ready,
   });
+  const evidence = q.data?.data;
+  const pricingReady = evidence?.pricing.status === 'ok' && evidence.pricing.n > 0;
   const summary = useQuery({
     queryKey: ['compare', 'insights', retailers],
-    queryFn: ({ signal }) => api!.get('/api/v1/compare', { query: { retailers, limit: 100 }, signal }),
-    enabled: !!api && ready,
+    // The summary is computed over the full cohort regardless of the row limit. One evidence row
+    // is enough here; the Compare link opens the full list when the user asks for it.
+    queryFn: ({ signal }) => api!.get('/api/v1/compare', { query: { retailers, limit: 1 }, signal }),
+    // No reviewed exact pairs means /compare can add only another withheld card. Do not ask for it.
+    enabled: !!api && ready && pricingReady,
   });
   const gaps = useQuery({
     queryKey: ['assortment-gaps', 'insights', retailers],
@@ -103,7 +109,17 @@ export function InsightsView() {
         query: { presentAt: state.other, missingAt: state.base },
         signal,
       }),
-    enabled: !!api && ready,
+    enabled: !!api && ready && !!evidence,
+  });
+  const promotions = useQuery({
+    queryKey: ['promotions', 'insights', retailers],
+    queryFn: ({ signal }) =>
+      api!.get('/api/v1/promotions', {
+        query: { retailer: [state.base, state.other], limit: 4 },
+        signal,
+      }),
+    // First render the evidence aggregate; the compact promotion proof is a secondary request.
+    enabled: !!api && ready && !!evidence,
   });
 
   // A 404 from /insights means the route is not deployed whatever /meta says: the same honest
@@ -117,6 +133,16 @@ export function InsightsView() {
         title={t('title')}
         intro={t('intro')}
         asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
+        tools={
+          active.length >= 3 ? (
+            <Link
+              href={`/${locale}/insights/three/`}
+              className="text-accent underline-offset-2 hover:underline"
+            >
+              {t('p1Link')}
+            </Link>
+          ) : undefined
+        }
       />
       {served && !missing && <PairPicker state={state} update={update} fixed={fixed} grouping={false} />}
       {served === false ? (
@@ -144,7 +170,18 @@ export function InsightsView() {
           {t('loading')}
         </Loading>
       ) : (
-        <Cards env={env} summary={summary.data} gaps={gaps.data} base={state.base} other={state.other} />
+        <Cards
+          env={env}
+          summary={summary.data}
+          gaps={gaps.data}
+          gapsPending={gaps.isPending}
+          gapsError={gaps.isError}
+          promotions={promotions.data}
+          promotionsPending={promotions.isPending}
+          promotionsError={promotions.isError}
+          base={state.base}
+          other={state.other}
+        />
       )}
     </section>
   );
@@ -156,30 +193,202 @@ function Cards({
   env,
   summary,
   gaps,
+  gapsPending,
+  gapsError,
+  promotions,
+  promotionsPending,
+  promotionsError,
   base,
   other,
 }: Pair & {
   env: Envelope<Insights>;
   summary: Envelope<Schemas['Comparison']> | undefined;
   gaps: Envelope<Schemas['AssortmentGaps']> | undefined;
+  gapsPending: boolean;
+  gapsError: boolean;
+  promotions: Envelope<Schemas['Promotions']> | undefined;
+  promotionsPending: boolean;
+  promotionsError: boolean;
 }) {
   const t = useTranslations('insights');
   const data = env.data;
   const pair = { base, other };
   if (!data) return <ReasonCard title={t('title')} reason={env.reason} />;
+  const stocks = forPair(data.stockouts, base, other);
+  const ladders = forPair(data.ladders, base, other);
+  const promoItems = promotions?.data
+    ? listedItems(promotions.data).items.filter((item) => item.retailer === base || item.retailer === other)
+    : [];
+  const hasSizes = data.pricing.status === 'ok' && data.pricing.sizes.length > 0;
+  const hasPolicy = data.pricing.status === 'ok' && data.pricing.brands.length > 0;
+  const hasSpace = !!gaps?.data && gaps.status === 'ok' && gaps.data.total > 0;
+  const hasPromos = promoItems.length > 0;
+  const hasStock = stocks.some((row) => row.brands.length > 0);
+  const hasTraps = ladders.some((row) => row.reason === null && row.steps > 0);
+  const readyCount = [hasSizes, hasPolicy, hasSpace, hasPromos, hasStock, hasTraps].filter(Boolean).length;
+  const pending = gapsPending || promotionsPending;
   return (
     <div className="space-y-5">
-      <Positioning env={summary} pricing={data.pricing} {...pair} />
+      <Readiness ready={readyCount} pending={pending} unreviewed={data.pricing.unreviewed} />
+      <ReportMethod pricing={data.pricing} stocks={stocks} ladders={ladders} />
+      <FindingToc
+        items={
+          [
+            hasStock && ['stock', t('stock.title')],
+            hasTraps && ['traps', t('traps.title')],
+            hasSizes && ['size', t('size.title')],
+            hasPolicy && ['policy', t('policy.title')],
+            hasPromos && ['promo', t('promo.title')],
+            hasSpace && ['space', t('space.title')],
+          ].filter(Boolean) as [string, string][]
+        }
+      />
+      {data.pricing.status === 'ok' && data.pricing.n > 0 && (
+        <Positioning env={summary} pricing={data.pricing} {...pair} />
+      )}
       <CardGrid>
-        <SizeCard pricing={data.pricing} {...pair} />
-        <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />
-        <WhiteSpaceCard env={gaps} />
-        <PromoCard />
-        <StockCard rows={forPair(data.stockouts, base, other)} cutoff={env.meta.cutoff} />
-        <TrapCard ladders={forPair(data.ladders, base, other)} held={data.heldOutPct} />
+        {/* Primary evidence never moves while the smaller supporting requests settle. */}
+        {hasStock && <StockCard rows={stocks} cutoff={env.meta.cutoff} />}
+        {hasTraps && <TrapCard ladders={ladders} held={data.heldOutPct} />}
+        {hasSizes && <SizeCard pricing={data.pricing} {...pair} />}
+        {hasPolicy && <PolicyCard pricing={data.pricing} share={data.policySharePct} {...pair} />}
+        {promotionsPending ? (
+          <Card title={t('promo.title')} span={6} state="loading" skeleton="lines" />
+        ) : (
+          hasPromos && <PromoCard items={promoItems} base={base} other={other} />
+        )}
+        {gapsPending ? (
+          <Card title={t('space.title')} span={6} state="loading" skeleton="chart" />
+        ) : (
+          hasSpace && <WhiteSpaceCard env={gaps} />
+        )}
       </CardGrid>
-      <More ladders={forPair(data.ladders, base, other)} share={data.policySharePct} held={data.heldOutPct} />
+      <Deferred
+        pricing={data.pricing}
+        base={base}
+        other={other}
+        gaps={gaps}
+        gapsPending={gapsPending}
+        gapsError={gapsError}
+        promotions={promotions}
+        promotionsPending={promotionsPending}
+        promotionsError={promotionsError}
+        stocks={stocks}
+        ladders={ladders}
+      />
+      <More ladders={ladders} share={data.policySharePct} held={data.heldOutPct} />
+      <TestedNotPromoted />
     </div>
+  );
+}
+
+/** Analyses intentionally withheld from the ranked report until their evidence is publishable. */
+function TestedNotPromoted() {
+  const t = useTranslations('insights.report');
+  return (
+    <section aria-labelledby="tested-not-promoted" className="panel px-5 py-4">
+      <h2 id="tested-not-promoted" className="text-base font-semibold">
+        {t('testedTitle')}
+      </h2>
+      <p className="mt-1 text-sm text-ink-2">{t('testedIntro')}</p>
+      <ul className="mt-3 grid gap-2 text-sm text-ink-2 sm:grid-cols-2">
+        {(['history', 'gwp', 'rating'] as const).map((key) => (
+          <li key={key} className="rounded-ctl bg-surface-2 px-3 py-2">
+            <span className="font-medium text-ink">{t(`tested.${key}.title`)}</span>
+            <span className="ms-1">{t(`tested.${key}.body`)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function FindingToc({ items }: { items: [string, string][] }) {
+  const t = useTranslations('insights.report');
+  if (items.length === 0) return null;
+  return (
+    <nav aria-label={t('toc')} className="panel px-5 py-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-2">{t('toc')}</p>
+      <ol className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map(([id, label], i) => (
+          <li key={id}>
+            <a
+              className="flex items-baseline gap-2 text-sm underline-offset-2 hover:underline"
+              href={`#finding-${id}`}
+            >
+              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-semibold text-surface">
+                {i + 1}
+              </span>
+              {label}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+function ReportMethod({
+  pricing,
+  stocks,
+  ladders,
+}: {
+  pricing: Insights['pricing'];
+  stocks: Stockouts[];
+  ladders: Ladder[];
+}) {
+  const t = useTranslations('insights.report');
+  const meta = useMeta().data?.data;
+  const retailerIds = new Set([...stocks.map((s) => s.retailer), ...ladders.map((l) => l.retailer)]);
+  const metadataPartial = meta?.retailers.some((r) => retailerIds.has(r.id) && r.status !== 'supported');
+  const partial =
+    metadataPartial ??
+    (stocks.some((s) => s.reason === null && s.brands.length > 0) ||
+      ladders.some((l) => l.reason === 'cohort_too_small'));
+  return (
+    <details className="panel px-5 py-3 text-sm text-ink-2">
+      <summary className="cursor-pointer font-medium text-ink">{t('method')}</summary>
+      <dl className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('n')}</dt>
+        <dd>{pricing.n}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('cohort')}</dt>
+        <dd>{t('cohortValue')}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('matches')}</dt>
+        <dd>{pricing.unreviewed > 0 ? t('unreviewed', { n: pricing.unreviewed }) : t('reviewed')}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wide">{t('coverage')}</dt>
+        <dd>{partial ? t('partial') : t('complete')}</dd>
+      </dl>
+    </details>
+  );
+}
+
+/** Lead with what the snapshot can answer; the unavailable analyses are one explanation below. */
+function Readiness({ ready, pending, unreviewed }: { ready: number; pending: boolean; unreviewed: number }) {
+  const t = useTranslations('insights.readiness');
+  const locale = useLocale();
+  return (
+    <section aria-labelledby="readiness-title" className="panel overflow-hidden">
+      <div className="bg-gradient-to-br from-accent/[0.10] via-surface to-series-b/[0.08] px-5 py-5 sm:px-6">
+        <p className="text-[11px] font-semibold tracking-[0.12em] text-accent uppercase">{t('eyebrow')}</p>
+        <h2 id="readiness-title" className="mt-1 text-xl font-bold tracking-tight">
+          {t('title', { n: ready, count: formatCount(ready, locale) })}
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm text-ink-2">{t('body')}</p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-surface px-2.5 py-1 font-medium shadow-sm">
+            {t('ready', { n: ready, count: formatCount(ready, locale) })}
+          </span>
+          {unreviewed > 0 && (
+            <span className="rounded-full bg-butter px-2.5 py-1 font-medium text-butter-ink">
+              {t('unreviewed', { n: unreviewed, count: formatCount(unreviewed, locale) })}
+            </span>
+          )}
+          {pending && (
+            <span className="rounded-full bg-surface-2 px-2.5 py-1 text-ink-2">{t('checking')}</span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -300,6 +509,7 @@ function SizeCard({ pricing, base, other }: Pair & { pricing: Insights['pricing'
   const deep = deepestUndercut(sizes);
   return (
     <Card
+      id="finding-size"
       title={t('title')}
       span={6}
       question={
@@ -376,6 +586,7 @@ function PolicyCard({ pricing, share, base, other }: Pair & { pricing: Insights[
   };
   return (
     <Card
+      id="finding-policy"
       title={t('title')}
       span={6}
       question={t('headline', {
@@ -436,12 +647,15 @@ function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | un
   const d = env.data;
   if (!d || env.status !== 'ok' || d.total === 0)
     return <ReasonCard title={t('title')} reason={env.reason ?? 'cohort_too_small'} span={6} />;
-  // "Missing" only when every gap is a confirmed absence; any unreviewed one makes the card say "no match".
-  const missing = d.items.length > 0 && d.items.every((i) => i.label === 'missing');
+  // "Missing" only when every row is a confirmed absence; any unreviewed or omitted row makes
+  // the card use the honest "no reviewed match" wording.
+  const missing =
+    d.items.length === d.total && d.items.length > 0 && d.items.every((i) => i.label === 'missing');
   const top = d.byBrand.slice(0, BRANDS_SHOWN);
   const max = Math.max(1, ...top.map((b) => b.count));
   return (
     <Card
+      id="finding-space"
       title={t('title')}
       span={6}
       question={t(missing ? 'headlineMissing' : 'headlineUnmatched', {
@@ -471,12 +685,60 @@ function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | un
   );
 }
 
-/** 4. Promotions are measured on their own page; this card points there and repeats no number. */
-function PromoCard() {
+/** 4. The deepest observed discounts for the pair, from API 1.18's promotion rows. */
+function PromoCard({ items, base, other }: Pair & { items: Schemas['PromoItem'][] }) {
   const t = useTranslations('insights.promo');
   const locale = useLocale();
+  const name = useRetailerName();
+  const shown = items
+    .filter((item) => item.retailer === base || item.retailer === other)
+    .sort((a, b) => Number(b.depthPct) - Number(a.depthPct) || a.id.localeCompare(b.id))
+    .slice(0, 4);
+  const deepest = shown[0]!;
   return (
-    <Card title={t('title')} span={6} question={t('headline')}>
+    <Card
+      id="finding-promo"
+      title={t('title')}
+      span={6}
+      question={t('headline', {
+        product: deepest.name,
+        shop: name(deepest.retailer),
+        pct: deepest.depthPct,
+      })}
+      meta={t('meta', { n: shown.length, count: formatCount(shown.length, locale) })}
+    >
+      <ol className="divide-y divide-line text-sm">
+        {shown.map((item, index) => (
+          <li key={`${item.id}:${item.retailer}`} className="flex items-center gap-3 py-2 first:pt-0">
+            <span className="w-5 shrink-0 text-xs font-semibold text-ink-3 tabular-nums">
+              <bdi dir="ltr">#{formatCount(index + 1, locale)}</bdi>
+            </span>
+            <span className="min-w-0 flex-1">
+              <Link
+                href={`${productHref(locale, item.id)}#evidence`}
+                className="block truncate font-medium underline-offset-2 hover:underline focus-visible:outline-2"
+                dir="auto"
+              >
+                {item.name}
+              </Link>
+              <span className="flex items-center gap-1.5 text-xs text-ink-2">
+                <RetailerDot id={item.retailer} index={index} />
+                <span dir="auto">{name(item.retailer)}</span>
+              </span>
+            </span>
+            <span className="text-end">
+              <span className="verdict verdict-good block">
+                <bdi dir="ltr">−{item.depthPct}%</bdi>
+              </span>
+              {item.saved && (
+                <span className="mt-0.5 block text-xs text-ink-2">
+                  {t('saved')} <Money m={item.saved} locale={locale} />
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
       <Foot action={t('action')} href={navHref('promotions', locale)} label={t('open')} />
     </Card>
   );
@@ -505,6 +767,7 @@ function StockCard({ rows, cutoff }: { rows: Stockouts[]; cutoff: string }) {
   const max = Math.max(1, ...rows.flatMap((r) => r.brands.map((b) => b.observed)));
   return (
     <Card
+      id="finding-stock"
       title={t('title')}
       span={6}
       question={
@@ -600,6 +863,7 @@ function TrapCard({ ladders, held }: { ladders: Ladder[]; held: string }) {
     return <ReasonCard title={t('title')} reason={ladders.find((l) => l.reason)?.reason} />;
   return (
     <Card
+      id="finding-traps"
       title={t('title')}
       question={t('headline', {
         k: measured.reduce((n, l) => n + l.notCheaper, 0),
@@ -666,6 +930,95 @@ function TrapCard({ ladders, held }: { ladders: Ladder[]; held: string }) {
       </div>
       <Foot action={t('action')} />
     </Card>
+  );
+}
+
+/** Withheld analyses live in one disclosure instead of occupying most of the page as dead cards. */
+function Deferred({
+  pricing,
+  base,
+  other,
+  gaps,
+  gapsPending,
+  gapsError,
+  promotions,
+  promotionsPending,
+  promotionsError,
+  stocks,
+  ladders,
+}: {
+  pricing: Insights['pricing'];
+  base: string;
+  other: string;
+  gaps: Envelope<Schemas['AssortmentGaps']> | undefined;
+  gapsPending: boolean;
+  gapsError: boolean;
+  promotions: Envelope<Schemas['Promotions']> | undefined;
+  promotionsPending: boolean;
+  promotionsError: boolean;
+  stocks: Stockouts[];
+  ladders: Ladder[];
+}) {
+  const t = useTranslations('insights');
+  const tr = useTranslations('reasons');
+  const promoItems = promotions?.data
+    ? listedItems(promotions.data).items.filter((item) => item.retailer === base || item.retailer === other)
+    : [];
+  const promoWhy = promotions ? notMeasured(promotions, null) : null;
+  type DeferredRow = { title: string; reason?: string; message?: string };
+  const candidates: Array<DeferredRow | null> = [
+    pricing.status !== 'ok' || pricing.sizes.length === 0
+      ? { title: t('size.title'), reason: pricing.reason ?? 'cohort_too_small' }
+      : null,
+    pricing.status !== 'ok' || pricing.brands.length === 0
+      ? { title: t('policy.title'), reason: pricing.reason ?? 'cohort_too_small' }
+      : null,
+    !gapsPending && gapsError
+      ? { title: t('space.title'), message: t('readiness.failed') }
+      : !gapsPending && gaps?.status === 'ok' && gaps.data?.total === 0
+        ? { title: t('space.title'), message: t('readiness.noneSpace') }
+        : !gapsPending && (!gaps?.data || gaps.status !== 'ok')
+          ? { title: t('space.title'), reason: gaps?.reason ?? 'cohort_too_small' }
+          : null,
+    !promotionsPending && promotionsError
+      ? { title: t('promo.title'), message: t('readiness.failed') }
+      : !promotionsPending && promoItems.length === 0 && promoWhy === null && promotions?.status === 'ok'
+        ? { title: t('promo.title'), message: t('readiness.nonePromotions') }
+        : !promotionsPending && promoItems.length === 0
+          ? { title: t('promo.title'), reason: promoWhy ?? promotions?.reason ?? 'field_not_collected' }
+          : null,
+    stocks.every((row) => row.brands.length === 0)
+      ? {
+          title: t('stock.title'),
+          reason: stocks.find((row) => row.reason)?.reason ?? 'cohort_too_small',
+        }
+      : null,
+    !ladders.some((row) => row.reason === null && row.steps > 0)
+      ? {
+          title: t('traps.title'),
+          reason: ladders.find((row) => row.reason)?.reason ?? 'cohort_too_small',
+        }
+      : null,
+  ];
+  const rows = candidates.filter((row): row is DeferredRow => row !== null);
+  if (rows.length === 0) return null;
+  return (
+    <details className="panel px-5 py-4 text-sm">
+      <summary className="cursor-pointer font-semibold focus-visible:outline-2">
+        {t('readiness.deferred', { n: rows.length })}
+      </summary>
+      <p className="mt-2 text-ink-2">{t('readiness.deferredBody')}</p>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+        {rows.map((row) => (
+          <li key={row.title} className="rounded-ctl bg-surface-2 px-3 py-2">
+            <b className="me-1.5 font-medium text-ink">{row.title}</b>
+            <span className="text-ink-2">
+              {row.message ?? (row.reason ? <Known t={tr} v={row.reason} /> : null)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
