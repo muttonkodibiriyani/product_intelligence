@@ -30,6 +30,10 @@
           "serviceId": "pi-api",
           "region": "me-central1"
         }
+      },
+      {
+        "source": "/auth/action",
+        "destination": "/auth/action/index.html"
       }
     ],
     "headers": [
