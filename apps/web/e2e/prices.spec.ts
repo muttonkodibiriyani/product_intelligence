@@ -68,7 +68,7 @@ for (const locale of ['en', 'ar'] as const) {
           brands: 'تموضع أسعار العلامات التجارية',
           top5: 'أكبر 5',
           gapHist: 'توزيع فروق الأسعار',
-          gapLabel: 'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقات.',
+          gapLabel: 'الأزواج المطابقة لكل نطاق فرق سعر، 11 نطاقًا.',
           nPairs: 'n = 6 أزواج قابلة للمقارنة',
           // Arabic percentages carry LRM marks (50‎%‎); the retailer names stay as the API sent them.
           gapTakeaway:
