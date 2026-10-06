@@ -70,7 +70,8 @@ class ProductIds:
     opaque_pairs: int
 
 
-def product_ids(ds: DatasetV3) -> ProductIds:
+def product_ids(ds: DatasetV3, merged: Mapping[str, str] | None = None) -> ProductIds:
+    """``merged``: old ids of products a match file joined -> the product holding them now."""
     by_id = {p.id: p for p in ds.products}
     retailer = {c.id: c.retailer for c in ds.meta.contexts}
     status = {r.id: r.status for r in ds.meta.retailers}
@@ -84,6 +85,8 @@ def product_ids(ds: DatasetV3) -> ProductIds:
             claims[product_id(right)].add(p.id)
         elif len({retailer[c] for c in p.offers}) > 1:
             opaque += 1
+    for alias, owner in (merged or {}).items():
+        claims[alias].add(owner)
     old = {alias: owners for alias, owners in claims.items() if alias not in by_id}
     return ProductIds(
         by_id=by_id,
