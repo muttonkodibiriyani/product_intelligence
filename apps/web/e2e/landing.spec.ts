@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { categoryCompareBody, THIN } from './category-compare-fixture';
+import { categoryCompareBody, compareGroups, THIN, type GroupCounts } from './category-compare-fixture';
 import {
   expect,
   golden,
@@ -53,6 +53,11 @@ const shopB = asShop(summaryBody, 'shop_b', { products: 4700, priced: 4680, prom
 const compare = golden('compare') as { data: { summary: unknown; rows: unknown[] } };
 /** /compare with no matched product yet: the API's candidate and observed counts, no summary. */
 const compareEmpty = { ...compare, data: { ...compare.data, summary: null, rows: [] } };
+/**
+ * /compare's matched pairs per category (SAMPLE): Shop B cheaper on more of them in fragrance and
+ * lips, Shop A in skincare; cheek's 3 are under the minimum.
+ */
+const GROUPS: GroupCounts = { fragrance: [10, 30, 2], skincare: [12, 4, 0], lips: [3, 9, 1], cheek: 3 };
 const index = golden('index');
 
 type Json = Record<string, unknown>;
@@ -108,7 +113,7 @@ const launchesFor = (retailer: string | null, truncated = false) => {
  * The Overview's requests: /meta, one /summary per retailer, the pair's /compare, /category-compare
  * and /index, /promotions and one /launches per shop. `summary` answers by the retailer asked
  * for; `categories: false` is a backend without the category route, which the page treats as not
- * available.
+ * available. /compare grouped by category carries `groups` (none without a matched product).
  */
 const api =
   (
@@ -118,8 +123,16 @@ const api =
       cmp = compare,
       categories = true,
       promo = promotions,
+      groups = GROUPS,
       cut,
-    }: { meta?: Meta; cmp?: unknown; categories?: boolean; promo?: unknown; cut?: string } = {},
+    }: {
+      meta?: Meta;
+      cmp?: unknown;
+      categories?: boolean;
+      promo?: unknown;
+      groups?: GroupCounts;
+      cut?: string;
+    } = {},
   ) =>
   async (r: Route) => {
     const url = new URL(r.request().url());
@@ -129,7 +142,12 @@ const api =
         json: typeof summary === 'function' ? summary(url.searchParams.get('retailer')) : summary,
       });
     if (p === '/api/v1/meta') return r.fulfill({ json: meta });
-    if (p === '/api/v1/compare') return r.fulfill({ json: cmp });
+    if (p === '/api/v1/compare') {
+      const c = cmp as { data: { summary: unknown } };
+      if (url.searchParams.get('groupBy') !== 'category') return r.fulfill({ json: cmp });
+      const g = c.data.summary === null ? [] : compareGroups('shop_a', 'shop_b', groups);
+      return r.fulfill({ json: { ...c, data: { ...c.data, groupBy: 'category', groups: g } } });
+    }
     if (p === '/api/v1/category-compare' && categories)
       return r.fulfill({ json: categoryCompareBody('shop_a', 'shop_b', THIN) });
     if (p === '/api/v1/index') return r.fulfill({ json: index });
@@ -169,8 +187,10 @@ for (const locale of ['en', 'ar'] as const) {
         noneYet: 'لا منتجات مطابَقة بعد',
         total: '15 إجمالًا',
         openCompare: 'افتح المقارنة',
-        categoryLead: 'Shop B أرخص في 5 من 8 فئات',
-        categoryNone: 'مقارنة الفئات غير متاحة بعد.',
+        categoryLead: 'المنتج نفسه أرخص في Shop B في 2 من 3 فئات',
+        typical: 'السعر المعتاد (كل التشكيلة)',
+        matched: 'المنتج نفسه أرخص في',
+        thin: 'فئة أخرى واحدة: بيانات غير كافية',
         products: 'المنتجات',
         brands: 'العلامات',
         median: 'السعر الوسيط',
@@ -183,9 +203,9 @@ for (const locale of ['en', 'ar'] as const) {
         fresh: 'حديثة',
         asOf: /^حتى /,
         categories: 'أين يكون كل متجر أرخص',
-        tooFew: 'عدد قليل جدًا (n = 3)',
         same: 'متساويان',
-        cheaper: 'Shop B أرخص',
+        lowerAt: 'سعر معتاد أقل في Shop B',
+        thirty: '30 من 42',
         basket: 'المنتجات المطابَقة وجهًا لوجه',
         tally: 'Shop A أرخص في 3، السعر نفسه في 1، Shop B أرخص في 2',
         top: 'أكبر التخفيضات',
@@ -212,8 +232,10 @@ for (const locale of ['en', 'ar'] as const) {
         noneYet: 'No matched products yet',
         total: '15 in total',
         openCompare: 'Open compare',
-        categoryLead: 'Shop B cheaper in 5 of 8 categories',
-        categoryNone: 'Category comparison is not available yet.',
+        categoryLead: 'Same product cheaper at Shop B in 2 of 3 categories',
+        typical: 'Typical price (whole range)',
+        matched: 'Same product cheaper at',
+        thin: '1 more category: not enough data',
         products: 'Products',
         brands: 'Brands',
         median: 'Median price',
@@ -226,9 +248,9 @@ for (const locale of ['en', 'ar'] as const) {
         fresh: 'Fresh',
         asOf: /^as of /,
         categories: 'Where each shop is cheaper',
-        tooFew: 'too few (n = 3)',
         same: 'same',
-        cheaper: 'Shop B cheaper',
+        lowerAt: 'lower typical price at Shop B',
+        thirty: '30 of 42',
         basket: 'Matched products, head to head',
         tally: 'Shop A cheaper on 3, same price on 1, Shop B cheaper on 2',
         top: 'Top discounts',
@@ -317,21 +339,27 @@ for (const locale of ['en', 'ar'] as const) {
         /\/compare\/\?retailers=shop_a(,|%2C)shop_b$/,
       );
 
-      // Where each shop is cheaper: the finding as the title, nine category rows ranked by gap,
-      // HTML only, with the API's gap on each; the method in the About tip, not under the table.
+      // Where each shop is cheaper: the matched finding as the title, eight category rows ranked
+      // by the range gap and the one with neither read folded into a last row; the medians are
+      // "typical price (whole range)", never "cheaper"; the method in the About tip.
       const cats = page.locator('#w-categories');
       await expect(h2(page, T.categoryLead)).toBeVisible();
       await expect(cats).toContainText(T.categories);
-      await expect(cats.getByRole('rowheader')).toHaveCount(9);
+      await expect(cats.getByText(T.typical, { exact: true })).toBeVisible();
+      await expect(cats.getByRole('columnheader', { name: T.matched, exact: true })).toBeVisible();
+      await expect(cats.getByRole('rowheader')).toHaveCount(8);
       await expect(cats.getByRole('rowheader').first()).toHaveText(ar ? 'الجسم' : 'Body');
-      // The gap bar is in the cheaper shop's colour and names it; never a green/red verdict.
+      await expect(cats.getByText(T.thin, { exact: true })).toBeVisible();
+      // The gap bar is in the lower shop's colour and names it; never a green/red verdict.
       await expect(cats.locator('.gapbar i[data-shop=shop_b]')).toHaveCount(5);
       await expect(cats.locator('.gapbar i[data-shop=shop_a]')).toHaveCount(2);
-      await expect(cats.getByText(T.cheaper, { exact: true })).toHaveCount(5);
+      await expect(cats.getByText(T.lowerAt, { exact: true })).toHaveCount(5);
       await expect(cats.locator('[data-side], .text-good, .text-bad')).toHaveCount(0);
-      await expect(cats.getByText(T.tooFew, { exact: true })).toBeVisible();
       await expect(cats.getByText(T.same, { exact: true })).toBeVisible();
-      await expect(cats.locator('[role=tooltip]')).toHaveCount(1);
+      // On the same products: k of n per category; below the minimum a dash, the count in its tip.
+      await expect(cats.getByText(T.thirty, { exact: true })).toBeVisible();
+      // About, the typical-price header, the eight matched cells and the folded row.
+      await expect(cats.locator('[role=tooltip]')).toHaveCount(11);
       await expect(cats.locator('table ~ p, tfoot')).toHaveCount(0);
 
       // The matched basket: both totals and the tally of who is cheaper how often.
@@ -424,8 +452,12 @@ for (const locale of ['en', 'ar'] as const) {
       );
       // No basket without a matched product; the category table, the band and the charts stay.
       await expect(page.locator('#w-basket')).toHaveCount(0);
-      await expect(h2(page, T.categoryLead)).toBeVisible();
-      await expect(page.locator('#w-categories').getByRole('rowheader')).toHaveCount(9);
+      // No matched pair, so no matched column: the plain title over the whole-range rows.
+      await expect(h2(page, T.categories)).toBeVisible();
+      await expect(page.locator('#w-categories').getByRole('rowheader')).toHaveCount(8);
+      await expect(page.locator('#w-categories').getByRole('columnheader', { name: T.matched })).toHaveCount(
+        0,
+      );
       await expect(page.locator('#kpi-band [data-tile]')).toHaveCount(4);
       await expect(page.locator('#i-gaps [data-chart]')).toHaveCount(1);
       await expect(page.locator('#i-hist-0 [data-chart]')).toHaveCount(1);
@@ -444,6 +476,7 @@ for (const locale of ['en', 'ar'] as const) {
           meta: twoShops,
           categories: false,
           promo: promotionsNone,
+          groups: {},
         }),
       });
       await signIn(page, locale);
@@ -457,7 +490,9 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.locator('#kpi-band')).not.toContainText('%');
       await expect(page.locator('#kpi-band')).not.toContainText(/\b0\b/);
       await expect(tile(page, 'promotions').getByText(T.depth, { exact: true })).toHaveCount(0);
-      await expect(page.locator('#w-categories')).toContainText(T.categoryNone);
+      // No category read and no matched group: no card at all, and the basket takes the row.
+      await expect(page.locator('#w-categories')).toHaveCount(0);
+      await expect(page.locator('#w-basket')).toHaveClass(/lg:col-span-12/);
       await expect(page.locator('#w-top')).toHaveCount(0);
       // Nothing is charted from a withheld section: only the index and the launches draw.
       await expect(page.locator('#i-gaps')).toHaveCount(0);
