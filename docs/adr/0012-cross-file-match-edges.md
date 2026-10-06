@@ -69,30 +69,38 @@ size, shade, concentration and kind. That makes careful calibration and review m
    change of `algo_version` re-scores every pair that has no human decision.
 6. **Composition applies the file.** `PI_API_MATCHES=<path>` assigns a match file to a scope. It
    is optional, and without it everything behaves exactly as in ADR-0010.
-   - **Only exact edges merge.** After `compose`, a non-rejected `exact` edge whose two listings
-     are both in the view may join their products into one product. `family` edges never merge
+   - **Only human-accepted exact edges merge.** After `compose`, an `exact` edge in
+     `COUNTED_STATES` (`approved` or `locked`) whose two listings are both in the view may join
+     their products into one product. A `proposed` exact edge never merges (counted
+     `unreviewed`): a product grouped on unreviewed evidence is the pattern the matched switch
+     was paused for (Reviewer, 3 Oct 2026). `family` and `substitute` edges never merge
      anything, because products are per size. They stay in the match file for assortment views.
    - **Clique rule.** A merged product holds a set of listings only when every two of them from
-     different retailers have their own non-rejected exact edge. Edges u–s and s–f without u–f
-     never put u, s and f in one product (§2, no transitivity). Edges are taken in a deterministic
-     priority order (locked, approved, proposed, then confidence, then ids). An edge joins two
+     different retailers have their own accepted exact edge, from the match file or (when the
+     file does not name the pair) an `approved` or `locked` in-file edge. Edges u–s and s–f
+     without u–f never put u, s and f in one product (§2, no transitivity). Edges are taken in a
+     deterministic priority order (locked, approved, then confidence, then ids). An edge joins two
      groups only if the result is still a clique with at most one listing per retailer. Otherwise
      it is skipped and logged (`edge_not_clique` or `edge_conflict`), and that pair reads
      `no_match` in the view.
    - **The match file overrides in-file pairs.** When the match file and an in-file edge name the
      same listing pair, the match file's state wins, because it carries the review. If the match
-     file rejects a pair that an in-file `m-` product groups, the in-file edge is dropped and the
-     product is split into one product per retailer, with the one-offer ids the exporter would
-     give (the listing tokens). The old `m-` id resolves through `pi_api.ids`, as after any split.
-   - **Proposed merges never move counted numbers.** A merge on a `proposed` edge changes
-     grouping and `matched=true` (ruling A, shown as "Unreviewed match"). Counted metrics
-     (`COUNTED_STATES`: approved and locked) are unchanged. A golden test pins compare, index,
-     coverage and price-suggestion outputs with and without a match file that holds only
-     proposed edges.
+     file rejects a pair that an in-file `m-` product groups, or accepts it (an approved or
+     locked edge, or a human decision) as another class than `exact` (a family or substitute is
+     never one product), the in-file edge is dropped and the product is split into one product
+     per retailer, with the one-offer ids the exporter would give (the listing tokens). The old
+     `m-` id resolves through `pi_api.ids`, as after any split. A *proposed* family or
+     substitute edge splits nothing. A pair the file accepts both as `exact` and as another
+     class is a conflict: neither is applied, the pair stays as the source has it, and it is
+     counted (`class_conflict`). A split pair never meets again through a third listing: the
+     clique rule needs the pair's own accepted exact edge.
+   - **Proposed edges change no answer.** A golden test pins compare, index, coverage and
+     price-suggestion outputs with and without a match file that holds only proposed edges:
+     they are identical.
    - The merged product takes its fields and its id from the member with the smallest retailer
      id, as in ADR-0010's field precedence, and the other members' ids resolve to it through
-     `pi_api.ids`. A file whose scope or vertical differs from the view is refused, and the
-     previous view stays live (ADR-0010 §5).
+     `pi_api.ids`. The file applies only to the view of its scope; one whose vertical differs
+     from that view is refused, and the previous view stays live (ADR-0010 §5).
 7. **Ulta stays read-only.** Ulta listings are read from the protected file and nothing is written
    to it. The match file is PI-owned and holds no Ulta prices or content beyond listing tokens and
    fingerprints. `--drop-source ulta_ae` is never used, and the protected file's generation is
@@ -124,9 +132,10 @@ size, shade, concentration and kind. That makes careful calibration and review m
 ## Consequences
 - New Faces, Sephora or Ulta products are matched on the next publish without rebuilding any
   combined file, and all three retailer pairs are covered.
-- `matched=true` (ruling A) will include `proposed` exact edges, labelled "Unreviewed match".
-  Counted metrics still need `approved` or `locked`. Until review or calibration, comparisons
-  show matches as unreviewed and compute no gaps from them. That is the price of accuracy first.
+- Cross-file products are merged only on `approved` or `locked` exact edges. `proposed` edges
+  stay in the match file for review and do not group, match or count anything in the served
+  view. Until review or calibration, cross-file matches are not served. That is the price of
+  accuracy first.
 - A product can now combine offers from several files. Its pairs remain per edge.
 - The existing 255 Ulta–Sephora edges in the matched combined file can be seeded into the match
   file by listing token, keeping their states. The combined file is then no longer needed for
