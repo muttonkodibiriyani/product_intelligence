@@ -1,0 +1,12 @@
+n 972 agree 0.8673 kappa 0.8035
+quill {'exact': 469, 'related': 248, 'family': 105, 'different': 18, 'unsure': 132}
+verifier {'unsure': 95, 'exact': 446, 'related': 288, 'family': 125, 'different': 18}
+rows=quill cols=verifier
+            exact  family  relate  differ  unsure
+     exact    432      12       2       0      23
+    family      0      96       5       0       4
+   related      2       4     236       2       4
+ different      0       2       1      15       0
+    unsure     12      11      44       1      64
+binary exact kappa 0.8948 {(True, False): 37, (True, True): 432, (False, False): 489, (False, True): 14}
+disagreements 129

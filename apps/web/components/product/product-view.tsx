@@ -11,6 +11,7 @@ import { parseState, toSearch } from '@/lib/explore';
 import { parseLaunches, toLaunchesSearch } from '@/lib/launches';
 import { parsePromotions, toPromotionsSearch } from '@/lib/promotions';
 import { formatCount, formatDate, loc } from '@/lib/format';
+import { columns, whyMissing, type OfferField, type Why } from '@/lib/product-detail';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import type { BackTo } from '../explore/product-table';
@@ -140,16 +141,25 @@ export function ProductView() {
               </h1>
               <MatchReviewLabel review={d.card.matchReview} className="mt-2" />
               <dl className="mt-3 flex flex-wrap gap-2 text-sm">
-                {d.card.size && (
-                  <Fact k={t('size')}>
-                    <Size size={d.card.size} />
-                  </Fact>
-                )}
-                {d.card.category.length > 0 && (
-                  <Fact k={t('category')}>
+                <Fact k={t('size')}>
+                  {d.card.size || d.card.sizeLabel ? (
+                    <OfferSize o={d.card} />
+                  ) : (
+                    <span className="text-ink-2">{t('state.notPublished')}</span>
+                  )}
+                </Fact>
+                <Fact k={t('category')}>
+                  {d.card.category.length > 0 ? (
                     <span dir="auto">{d.card.category.join(' › ')}</span>
-                  </Fact>
-                )}
+                  ) : (
+                    <span className="text-ink-2">{t('state.notPublished')}</span>
+                  )}
+                </Fact>
+                <Fact k={t('productId')}>
+                  <bdi dir="ltr" className="font-mono text-xs">
+                    {d.card.id}
+                  </bdi>
+                </Fact>
               </dl>
             </div>
           </header>
@@ -212,151 +222,276 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-top';
 
-/** One row per retailer. Columns the dataset doesn't collect (per /meta) are left out, not zeroed. */
+type Offer = Schemas['OfferView'];
+
+/**
+ * One attribute of an offer: its label, the field whose absence `whyMissing` explains, and how a
+ * present value reads. Adding an attribute is one entry here.
+ */
+interface Row {
+  id: string;
+  label: string;
+  field?: OfferField;
+  value: (o: Offer) => ReactNode;
+}
+
+/**
+ * Every attribute the API serves for the offers, retailers side by side: one column per offer,
+ * one row per attribute. A missing value says why (not published, not measured), never 0 or blank.
+ */
 function Offers({
   offers,
   name,
   caveats,
 }: {
-  offers: Schemas['OfferView'][];
+  offers: Offer[];
   name: (id: string) => string;
   caveats: readonly CaveatView[];
 }) {
   const t = useTranslations('product');
   const ta = useTranslations('availability');
+  const tc = useTranslations('channel');
   const locale = useLocale();
-  const caps = useMeta().data?.data?.capabilities;
-  const show = { ratings: caps?.ratings ?? true, shades: caps?.shades ?? true, stock: caps?.stock ?? true };
+  const meta = useMeta().data?.data;
+  const caps = meta?.capabilities;
   if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
+  const ctx = (o: Offer) => meta?.contexts.find((c) => c.id === o.context);
+
+  const groups: { id: string; title: string; rows: Row[] }[] = [
+    {
+      id: 'price',
+      title: t('groupPrice'),
+      rows: [
+        { id: 'price', label: t('price'), field: 'price', value: (o) => <Price of={o} locale={locale} /> },
+        {
+          id: 'regular',
+          label: t('regular'),
+          field: 'regular',
+          value: (o) => <Price of={{ price: o.regular }} locale={locale} />,
+        },
+        {
+          id: 'promo',
+          label: t('promo'),
+          field: 'promo',
+          value: (o) => <bdi dir="ltr" className="tabular-nums">{`${o.promoPct}%`}</bdi>,
+        },
+      ],
+    },
+    {
+      id: 'listing',
+      title: t('groupListing'),
+      rows: [
+        {
+          id: 'availability',
+          label: t('availability'),
+          field: 'availability',
+          value: (o) => <Known t={ta} v={o.availability!} />,
+        },
+        {
+          id: 'rating',
+          label: t('rating'),
+          field: 'rating',
+          value: ({ rating: r }) => (
+            <>
+              <span className="tabular-nums">
+                {t('ratingValue', { average: r!.average, scale: r!.scale })}
+              </span>
+              <span className="block text-xs text-ink-2">
+                {t('ratingCount', { count: r!.count, n: formatCount(r!.count, locale) })}
+              </span>
+            </>
+          ),
+        },
+        { id: 'size', label: t('size'), field: 'size', value: (o) => <OfferSize o={o} /> },
+        {
+          id: 'shades',
+          label: t('shades'),
+          field: 'shades',
+          value: (o) => <span className="tabular-nums">{formatCount(o.shadeCount!, locale)}</span>,
+        },
+        {
+          id: 'sku',
+          label: t('sku'),
+          field: 'sku',
+          value: (o) => (
+            <bdi dir="ltr" className="font-mono text-xs break-all">
+              {o.sku}
+            </bdi>
+          ),
+        },
+        {
+          id: 'channel',
+          label: t('channel'),
+          value: (o) => {
+            const where = loc(ctx(o)?.location?.label, locale);
+            return (
+              <>
+                <Known t={tc} v={o.channel} />
+                {where && (
+                  <span dir="auto" className="block text-xs text-ink-2">
+                    {where}
+                  </span>
+                )}
+              </>
+            );
+          },
+        },
+      ],
+    },
+    {
+      id: 'evidence',
+      title: t('evidence'),
+      rows: [
+        {
+          id: 'evidence',
+          label: t('lastSeen'),
+          value: (o) => <Evidence o={o} name={name} importedAt={importedOn(caveats, o.retailer)} />,
+        },
+      ],
+    },
+  ];
+
+  const cols = columns(offers);
   return (
     <div className="relative overflow-x-auto px-2">
-      <table className="w-full text-sm">
+      <table className="w-full table-fixed text-sm" data-offer-sheet>
+        <caption className="sr-only">{t('sheetCaption')}</caption>
+        <colgroup>
+          <col className="w-28 sm:w-44" />
+          {/* Chromium honours a col's min-width in a fixed table (Firefox and WebKit don't): on a
+              390px phone, 112 + 2 × 112 fits; 2 × 128 overflowed by 28px. */}
+          {cols.map(({ offer: o }) => (
+            <col key={o.context} className="min-w-28 sm:min-w-32" />
+          ))}
+        </colgroup>
         <thead className="border-b border-line">
           <tr>
-            <th scope="col" className={`${TH} text-start`}>
-              {t('retailer')}
-            </th>
-            <th scope="col" className={`${TH} text-end`}>
-              {t('price')}
-            </th>
-            <th scope="col" className={`${TH} text-end`}>
-              {t('regular')}
-            </th>
-            <th scope="col" className={`${TH} text-end`}>
-              {t('promo')}
-            </th>
-            {show.stock && (
-              <th scope="col" className={`${TH} text-start`}>
-                {t('availability')}
+            <td />
+            {cols.map(({ offer: o, multi }) => (
+              <th key={o.context} scope="col" className={`${TH} text-start align-bottom`}>
+                <span className="whitespace-normal">{name(o.retailer)}</span>
+                {multi && (
+                  <span dir="auto" className="block text-xs font-normal text-ink-2">
+                    {loc(ctx(o)?.label, locale) || o.context}
+                  </span>
+                )}
+                {o.early && (
+                  <span className="mt-0.5 block text-xs font-normal whitespace-normal text-warn">
+                    {t('early')}
+                  </span>
+                )}
               </th>
-            )}
-            {show.ratings && (
-              <th scope="col" className={`${TH} text-start`}>
-                {t('rating')}
-              </th>
-            )}
-            <th scope="col" className={`${TH} text-start`}>
-              {t('size')}
-            </th>
-            {show.shades && (
-              <th scope="col" className={`${TH} text-end`}>
-                {t('shades')}
-              </th>
-            )}
-            <th scope="col" className={`${TH} text-start`}>
-              {t('sku')}
-            </th>
-            <th scope="col" className={`${TH} text-start`}>
-              {t('evidence')}
-            </th>
+            ))}
           </tr>
         </thead>
-        <tbody>
-          {offers.map((o) => {
-            const url = safeHttpUrl(o.evidence.url);
-            const importedAt = importedOn(caveats, o.retailer);
-            return (
-              <tr key={o.retailer} className="border-t border-line first:border-t-0">
-                <th scope="row" className={`${TD} text-start font-medium whitespace-nowrap`}>
-                  {name(o.retailer)}
-                  {o.early && (
-                    <span className="mt-0.5 block text-xs font-normal text-warn">{t('early')}</span>
-                  )}
+        {groups.map((g) => (
+          <tbody key={g.id} className="border-t border-line first-of-type:border-t-0">
+            <tr>
+              <th
+                scope="colgroup"
+                colSpan={cols.length + 1}
+                className="px-3 pt-4 pb-1 text-start text-xs font-semibold tracking-wide text-ink-2 uppercase"
+              >
+                {g.title}
+              </th>
+            </tr>
+            {g.rows.map((r) => (
+              <tr key={r.id} data-attr={r.id} className="border-t border-line-2 first:border-t-0">
+                <th scope="row" className={`${TD} text-start font-normal text-ink-2`}>
+                  {r.label}
                 </th>
-                <td className={`${TD} text-end`}>
-                  <Price of={o} locale={locale} fallback={<Dash />} />
-                </td>
-                <td className={`${TD} text-end`}>
-                  <Price of={{ price: o.regular }} locale={locale} fallback={<Dash />} />
-                </td>
-                <td className={`${TD} text-end`}>
-                  {o.promoPct ? <bdi dir="ltr" className="tabular-nums">{`${o.promoPct}%`}</bdi> : <Dash />}
-                </td>
-                {show.stock && (
-                  <td className={TD}>{o.availability ? <Known t={ta} v={o.availability} /> : <Dash />}</td>
-                )}
-                {show.ratings && (
-                  <td className={`${TD} whitespace-nowrap`}>
-                    {o.rating ? (
-                      <>
-                        <span className="tabular-nums">
-                          {t('ratingValue', { average: o.rating.average, scale: o.rating.scale })}
-                        </span>
-                        <span className="block text-xs text-ink-2">
-                          {t('ratingCount', {
-                            count: o.rating.count,
-                            n: formatCount(o.rating.count, locale),
-                          })}
-                        </span>
-                      </>
-                    ) : (
-                      <Dash />
-                    )}
-                  </td>
-                )}
-                <td className={`${TD} whitespace-nowrap`}>{o.size ? <Size size={o.size} /> : <Dash />}</td>
-                {show.shades && <td className={`${TD} text-end tabular-nums`}>{o.shadeCount ?? <Dash />}</td>}
-                <td className={TD}>
-                  {o.sku ? (
-                    <bdi dir="ltr" className="font-mono text-xs">
-                      {o.sku}
-                    </bdi>
-                  ) : (
-                    <Dash />
-                  )}
-                </td>
-                <td className={`${TD} whitespace-nowrap`}>
-                  {/* An imported retailer's capturedAt is its import time, never a capture date. */}
-                  {importedAt ? (
-                    <time dateTime={importedAt} className="block text-xs text-ink-2">
-                      {t('imported', { date: formatDate(importedAt, locale) })}
-                    </time>
-                  ) : (
-                    <time dateTime={o.evidence.capturedAt} className="block text-xs text-ink-2">
-                      {t('captured', { date: formatDate(o.evidence.capturedAt, locale, true) })}
-                    </time>
-                  )}
-                  {url ? (
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow"
-                      referrerPolicy="no-referrer"
-                      className="text-accent hover:underline focus-visible:outline-2"
-                    >
-                      {t('source')}
-                      <span className="sr-only"> ({name(o.retailer)})</span>
-                    </a>
-                  ) : (
-                    <span className="text-xs text-ink-2">{t('noSource')}</span>
-                  )}
-                </td>
+                {cols.map(({ offer: o }) => {
+                  const why = r.field && whyMissing(r.field, o, caveats, caps);
+                  return (
+                    <td key={o.context} className={`${TD} break-words`}>
+                      {why ? <Missing why={why} /> : r.value(o)}
+                    </td>
+                  );
+                })}
               </tr>
-            );
-          })}
-        </tbody>
+            ))}
+          </tbody>
+        ))}
       </table>
     </div>
+  );
+}
+
+/** "Not published" and, under it, why: a missing value's cell. */
+function Missing({ why }: { why: Why }) {
+  const t = useTranslations('product');
+  return (
+    <span className="block text-ink-2" data-missing={why.reason}>
+      {t(`state.${why.state}`)}
+      <span className="block text-xs">{t(`why.${why.reason}`)}</span>
+    </span>
+  );
+}
+
+/** The measured size, or the retailer's own label ("M", in its system) when that is all there is. */
+function OfferSize({
+  o,
+}: {
+  o: { size: Offer['size']; sizeLabel?: string | null; sizeSystem?: string | null };
+}) {
+  return (
+    <>
+      {o.size && <Size size={o.size} />}
+      {o.sizeLabel && (
+        <span className={o.size ? 'block text-xs text-ink-2' : undefined}>
+          <bdi>{o.sizeLabel}</bdi>
+          {o.sizeSystem && (
+            <>
+              {' '}
+              <bdi className="text-ink-2">({o.sizeSystem})</bdi>
+            </>
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** When the offer was seen (or imported, with no capture date), and the page it was seen on. */
+function Evidence({
+  o,
+  name,
+  importedAt,
+}: {
+  o: Offer;
+  name: (id: string) => string;
+  importedAt: string | null;
+}) {
+  const t = useTranslations('product');
+  const locale = useLocale();
+  const url = safeHttpUrl(o.evidence.url);
+  return (
+    <>
+      {/* An imported retailer's capturedAt is its import time, never a capture date. */}
+      {importedAt ? (
+        <time dateTime={importedAt} className="block text-xs text-ink-2">
+          {t('imported', { date: formatDate(importedAt, locale) })}
+        </time>
+      ) : (
+        <time dateTime={o.evidence.capturedAt} className="block text-xs text-ink-2">
+          {t('captured', { date: formatDate(o.evidence.capturedAt, locale, true) })}
+        </time>
+      )}
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          referrerPolicy="no-referrer"
+          className="text-accent hover:underline focus-visible:outline-2"
+        >
+          {t('source')}
+          <span className="sr-only"> ({name(o.retailer)})</span>
+        </a>
+      ) : (
+        <span className="text-xs text-ink-2">{t('noSource')}</span>
+      )}
+    </>
   );
 }
 
@@ -385,6 +520,11 @@ function Pairs({ pairs, name }: { pairs: Schemas['PairGap'][]; name: (id: string
               <td className={`${TD} whitespace-nowrap`}>{name(p.other)}</td>
               <td className={TD}>
                 <GapView pair={p} name={name} />
+                {p.sizeLabels && (
+                  <span className="mt-0.5 block text-xs text-ink-2">
+                    {t('pairSizes', { base: p.sizeLabels[0], other: p.sizeLabels[1] })}
+                  </span>
+                )}
               </td>
             </tr>
           ))}
@@ -420,7 +560,9 @@ function Matches({ matches, name }: { matches: Schemas['CardMatch'][]; name: (id
               <td className={TD}>
                 <MatchLabel m={m} />
               </td>
-              <td className={`${TD} text-end tabular-nums`}>{m.confidence ?? <Dash />}</td>
+              <td className={`${TD} text-end tabular-nums`}>
+                {m.confidence ?? <span className="text-ink-2">{t('state.notMeasured')}</span>}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -458,8 +600,4 @@ function History({ id, name }: { id: string; name: (id: string) => string }) {
       </p>
     );
   return <HistoryChart series={env.data.series} name={name} />;
-}
-
-function Dash() {
-  return <span className="text-ink-2">–</span>;
 }

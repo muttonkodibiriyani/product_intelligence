@@ -17,9 +17,11 @@ from pydantic import Field
 from pi_api.catalog import (
     MAX_LIMIT,
     DecimalText,
+    EvidenceHosts,
     InvalidQueryError,
     ScopeQuery,
     Values,
+    card_image,
     decode_cursor,
     encode_cursor,
     filters_digest,
@@ -83,6 +85,17 @@ class CategoryCompareQuery(ScopeQuery):
         return base, other
 
 
+class InsightsQuery(ScopeQuery):
+    """``/insights``: whole catalogues, so no brand, category or product filter."""
+
+    retailers: RetailerPair
+    on: date | None = Field(default=None, alias="date")
+
+    def pair(self) -> tuple[str, str]:
+        base, other = self.retailers.split(",")
+        return base, other
+
+
 class CompareQuery(PairQuery):
     id: Values = ()
     on: date | None = Field(default=None, alias="date")
@@ -126,7 +139,7 @@ class CompareRowsQuery(CompareQuery, RowLimit):
     rows: CompareRows = Field(
         default=CompareRows.ALL,
         description=(
-            "API 1.17.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that "
+            "API 1.19.0. overlap: only rows with a gap, i.e. counted pairs plus exact pairs that "
             "are only unreviewed (counted=false, excludedReason match_unreviewed) and pass the "
             "rest of the ladder priced on both sides; only this value gives such a pair its gap "
             "(all keeps it null). total, limit and truncated apply to these rows; summary, "
@@ -136,7 +149,7 @@ class CompareRowsQuery(CompareQuery, RowLimit):
     sort: CompareSort | None = Field(
         default=None,
         description=(
-            "API 1.17.0, applied before limit. name: by name, then id. gap: largest |gap.pct| "
+            "API 1.19.0, applied before limit. name: by name, then id. gap: largest |gap.pct| "
             "first (with rows=overlap an unreviewed row's gap included), rows without a gap "
             "last, then id. "
             "Unset: rows in dataset order, or with limit the largest counted |gap.pct| first."
@@ -288,6 +301,27 @@ def capped_promotions(metric: Metric[Promotions], limit: int | None) -> Metric[P
         update={"items": tuple(items[:limit]), "truncated": len(items) > limit}
     )
     return metric.model_copy(update={"data": data})
+
+
+def promotion_images(
+    ds: DatasetV3, metric: Metric[Promotions], images: EvidenceHosts
+) -> Metric[Promotions]:
+    """Each listed item's card image (``card_image``, the shop's own offer); call after the cap."""
+    products = {p.id: p for p in ds.products}
+    items = tuple(
+        item.model_copy(
+            update={
+                "image": card_image(
+                    ds,
+                    products[item.id],
+                    [(item.retailer, products[item.id].offers[item.retailer])],
+                    images,
+                )
+            }
+        )
+        for item in metric.data.items
+    )
+    return metric.model_copy(update={"data": metric.data.model_copy(update={"items": items})})
 
 
 def capped_suggestions(

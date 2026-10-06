@@ -30,6 +30,7 @@ export function PairPicker({
   fixed,
   grouping = true,
   tools,
+  grouping = true,
 }: {
   state: CompareState;
   update: (next: Partial<CompareState>) => void;
@@ -38,6 +39,8 @@ export function PairPicker({
   /** The group-by select; a page that lists rows without groups leaves it out. */
   grouping?: boolean;
   tools?: ReactNode;
+  /** The "Group by" picker; a page that does not group (Insights) leaves it out. */
+  grouping?: boolean;
 }) {
   const t = useTranslations('compare');
   const retailers = useMeta().data?.data?.retailers ?? [];

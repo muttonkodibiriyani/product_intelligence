@@ -11,6 +11,7 @@ import {
   type NavSignals,
   type NavState,
 } from '@/lib/nav';
+import { insightsServed } from '@/lib/insights';
 import { launchReadiness } from './launches/readiness';
 import { useMeta } from './use-meta';
 import { promotions } from './widgets/model';
@@ -38,7 +39,10 @@ export function useNav(): NavItem[] {
   const { ids } = useRetailers();
   const { rows, loading, error } = useSummaries(ids);
   const signals: NavSignals = {};
-  if (meta.data) signals.launchesReady = launchReadiness(meta.data).allReady;
+  if (meta.data) {
+    signals.launchesReady = launchReadiness(meta.data).allReady;
+    signals.insightsServed = insightsServed(meta.data);
+  }
   if (ids.length > 0 && !loading && !error) {
     signals.priced = rows.map((r) => r.data.priced);
     signals.promoMeasured = rows.some((r) => promotions(r.data).measured);

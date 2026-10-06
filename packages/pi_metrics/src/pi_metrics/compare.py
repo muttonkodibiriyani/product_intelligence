@@ -93,7 +93,7 @@ class PairRow(ContractModel):
     gap: Gap | None
     counted: bool
     excluded_reason: Excluded | None
-    #: ``/compare`` and its export (API 1.17.0, ``matches=True``): the retailers' edge, else null.
+    #: ``/compare`` and its export (API 1.19.0, ``matches=True``): the retailers' edge, else null.
     match: RowMatch | None = None
 
 
