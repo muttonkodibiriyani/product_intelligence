@@ -21,9 +21,10 @@ Four aggregates for the Insights page, each over rules the other metrics already
 * **Brand stock-outs** count, per context and brand, the offers observed out of stock on the
   date against the offers in an observed stock state (in, low or out of stock). Counts only,
   never a share: retailers are crawled partially, so a share of the catalogue would overstate
-  what was seen. A day without an observation is never out of stock. A brand whose every
-  observed offer is out of stock is one the source reports unavailable (often not sold online
-  in the market), not a sell-out: it is counted apart (``unavailable_brands``,
+  what was seen. A day without an observation is never out of stock. A brand with at least
+  ``MIN_UNAVAILABLE_LISTINGS`` observed offers, every one out of stock, is one the source
+  reports unavailable (often not sold online in the market), not a sell-out (a lone listing
+  is too little to say that of a brand): it is counted apart (``unavailable_brands``,
   ``unavailable_listings``, the ``unavailable`` rows), and ``out_of_stock`` and ``brands`` cover
   the other, partly-out brands only, so the two never overlap. A partly-out brand is listed
   when at least ``MIN_COHORT`` of its offers are out of stock, the most first. Per shop the
@@ -96,6 +97,9 @@ HELD_OUT_PCT = Decimal(50)
 EXCEPTIONS_LISTED = 12
 #: Brands listed per context in the stock-out counts.
 BRANDS_LISTED = 12
+#: Observed offers a brand needs before every one out of stock reads as "source reports
+#: unavailable"; a single out-of-stock listing stays an ordinary stock-out.
+MIN_UNAVAILABLE_LISTINGS = 2
 #: A value pick has at least this many ratings ...
 VALUE_MIN_RATINGS = 20
 #: ... averaging at least this share (in %) of the rating scale (4.5 of 5).
@@ -241,8 +245,8 @@ class Stockouts(ContractModel):
     #: Of ``with_stock``: offers out of stock in partly-out brands. Never overlaps
     #: ``unavailable_listings``.
     out_of_stock: int = 0
-    #: Brands whose every offer in an observed stock state is out of stock: the source reports
-    #: them unavailable (often not sold online in the market), which is not a sell-out.
+    #: Brands with at least ``MIN_UNAVAILABLE_LISTINGS`` offers in an observed stock state, every
+    #: one out of stock: the source reports them unavailable (often not sold online in the market), which is not a sell-out.
     unavailable_brands: int = 0
     #: Offers in ``unavailable_brands``. Never overlaps ``out_of_stock``.
     unavailable_listings: int = 0
@@ -547,12 +551,14 @@ def _brand_stock(
 
 
 def _gone(observed: dict[str, int], out: dict[str, int]) -> frozenset[str]:
-    return frozenset(b for b, n in out.items() if n == observed[b])
+    return frozenset(
+        b for b, n in out.items() if n == observed[b] and n >= MIN_UNAVAILABLE_LISTINGS
+    )
 
 
 def unavailable_brands(ds: DatasetV3, context: str, i: int) -> frozenset[str]:
-    """Brands whose every offer in an observed stock state at ``context`` on date ``i`` is out of
-    stock: the source reports them unavailable (see the module's brand stock-outs)."""
+    """Brands with at least ``MIN_UNAVAILABLE_LISTINGS`` offers in an observed stock state at
+    ``context`` on date ``i``, every one out of stock: the source reports them unavailable (see the module's brand stock-outs)."""
     _, observed, out = _brand_stock(ds, context, i)
     return _gone(observed, out)
 

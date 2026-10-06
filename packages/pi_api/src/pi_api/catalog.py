@@ -299,8 +299,8 @@ class ProductFilters(ContractModel):
         Field(
             description=(
                 "API 1.22.0. ``only`` keeps products with a listing in a brand the source reports "
-                "unavailable at that context on the latest date (every observed listing of the "
-                "brand out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those "
+                "unavailable at that context on the latest date (at least 2 observed listings of "
+                "the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those "
                 "with a listing that is not. Applies to the same listings as ``availability``, "
                 "and with it to the same listing: ``availability=out_of_stock&"
                 "unavailableBrands=exclude`` is Insights' ``outOfStock``."
@@ -661,11 +661,9 @@ def _stock_check(ds: DatasetV3, query: ProductFilters, contexts: Shown) -> Check
     i = len(ds.meta.dates) - 1
     wanted = {AvailabilityState(s) for s in query.availability}
     mode = query.unavailable_brands
-    gone = {
-        c.id: unavailable_brands(ds, c.id, i)
-        for c in ds.meta.contexts
-        if contexts is None or c.id in contexts
-    }
+    scope = [c.id for c in ds.meta.contexts if contexts is None or c.id in contexts]
+    # Only the unavailableBrands mode needs the per-brand scan.
+    gone = {} if mode is None else {c: unavailable_brands(ds, c, i) for c in scope}
 
     def keeps(product: ProductV3, context: str, offer: OfferV3) -> bool:
         states = offer.series.availability
@@ -677,7 +675,7 @@ def _stock_check(ds: DatasetV3, query: ProductFilters, contexts: Shown) -> Check
         unavailable = state is not None and state.is_known and product.brand in gone[context]
         return unavailable is (mode is UnavailableBrands.ONLY)
 
-    return lambda p: any(keeps(p, c, o) for c, o in p.offers.items() if c in gone and not o.early)
+    return lambda p: any(keeps(p, c, o) for c, o in p.offers.items() if c in scope and not o.early)
 
 
 def _passes(product: ProductV3, checks: dict[str, Check], skip: str) -> bool:

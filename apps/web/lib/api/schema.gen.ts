@@ -4018,7 +4018,7 @@ export interface operations {
                 attr?: string[];
                 /** @description API 1.22.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
                 availability?: components["schemas"]["StockFilter"][];
-                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (every observed listing of the brand out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
                 unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
             };
             header?: never;
@@ -4842,7 +4842,7 @@ export interface operations {
                 attr?: string[];
                 /** @description API 1.22.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
                 availability?: components["schemas"]["StockFilter"][];
-                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (every observed listing of the brand out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
                 unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
                 limit?: number;
                 cursor?: string | null;
