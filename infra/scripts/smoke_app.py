@@ -5,9 +5,10 @@
 """Smoke-test the Next app at /app on live Hosting.
 
 1. Without a user: / redirects to /app/; /auth/action/ is still the legacy password-reset shell
-   (asset names, optional byte check); /app/en/ is the Next app with exactly the CSP in
-   infra/firebase.json; an unknown /app page is the Next 404 with status 404; /api answers a
-   missing token with a JSON 401.
+   (asset names, optional byte check) and /auth/action?mode=…&oobCode=… serves it with the query
+   kept; /app/en/ is the Next app with exactly the CSP in infra/firebase.json; an unknown path, in
+   /app or at the root, is the Next 404 with status 404; /api answers a missing token with a JSON
+   401.
 2. Creates a temporary viewer (random password kept in memory, never printed), then in one engine:
    / signed out lands on /app/en/sign-in/, sign in, explorer, a product and back, CSV and JSONL
    exports (name, type, body), the Content-Type guard (a forced text/html answer is not saved),
@@ -32,7 +33,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import requests
 from playwright.sync_api import Page, Response, sync_playwright
@@ -67,14 +68,9 @@ def expected_csp() -> str:
     raise SystemExit("infra/firebase.json has no CSP on '**'")
 
 
-def check_public(base: str, legacy_sha256: str | None) -> list[str]:
+def check_legacy_action(base: str, legacy_sha256: str | None) -> list[str]:
+    """The legacy shell, kept only as the Firebase email action (password reset) page."""
     problems: list[str] = []
-    root = requests.get(f"{base}/", timeout=30, allow_redirects=False)
-    where = root.headers.get("Location", "")
-    print(f"/: {root.status_code} -> {where}")
-    if root.status_code not in (301, 302) or urlsplit(where).path != "/app/":
-        problems.append(f"/: {root.status_code} -> {where!r}, expected a redirect to /app/")
-
     action = requests.get(f"{base}/auth/action/", timeout=30)
     assets = sorted(set(LEGACY_ASSET.findall(action.text)))
     print(f"/auth/action/: {action.status_code}, legacy assets {assets}")
@@ -90,6 +86,30 @@ def check_public(base: str, legacy_sha256: str | None) -> list[str]:
         if (s := requests.get(f"{base}/{a}", timeout=30).status_code) != 200:
             problems.append(f"/{a}: {s}")
 
+    # The owner-set email action URL has no trailing slash; the shell reads the code from the query.
+    code = "smoke-not-a-code"
+    link = requests.get(
+        f"{base}/auth/action", params={"mode": "resetPassword", "oobCode": code}, timeout=30
+    )
+    kept = parse_qs(urlsplit(link.url).query)
+    print(f"/auth/action?mode&oobCode: {link.status_code} at {urlsplit(link.url).path}")
+    if link.status_code != 200 or len(set(LEGACY_ASSET.findall(link.text))) != 2:
+        problems.append(f"/auth/action?…: status {link.status_code}, not the legacy shell")
+    if kept.get("oobCode") != [code] or kept.get("mode") != ["resetPassword"]:
+        problems.append(f"/auth/action?…: query not kept, landed on {urlsplit(link.url).path}")
+    return problems
+
+
+def check_public(base: str, legacy_sha256: str | None) -> list[str]:
+    problems: list[str] = []
+    root = requests.get(f"{base}/", timeout=30, allow_redirects=False)
+    where = root.headers.get("Location", "")
+    print(f"/: {root.status_code} -> {where}")
+    if root.status_code not in (301, 302) or urlsplit(where).path != "/app/":
+        problems.append(f"/: {root.status_code} -> {where!r}, expected a redirect to /app/")
+
+    problems += check_legacy_action(base, legacy_sha256)
+
     shell = requests.get(f"{base}/app/en/", timeout=30)
     csp = shell.headers.get("Content-Security-Policy", "")
     hashes = len(re.findall(r"'sha256-", csp))
@@ -99,12 +119,14 @@ def check_public(base: str, legacy_sha256: str | None) -> list[str]:
     if csp.strip().rstrip(";") != expected_csp().strip().rstrip(";"):
         problems.append("/app/en/: CSP header differs from infra/firebase.json")
 
-    missing = requests.get(f"{base}/app/en/no-such-page/", timeout=30)
-    print(f"/app/en/no-such-page/: {missing.status_code}")
-    if missing.status_code != 404:
-        problems.append(f"/app/en/no-such-page/: status {missing.status_code}, expected 404")
-    if 'name="robots" content="noindex"' not in missing.text or "/app/_next/" not in missing.text:
-        problems.append("/app/en/no-such-page/: not the Next 404")
+    for path in ("/app/en/no-such-page/", "/no-such-page/"):
+        missing = requests.get(f"{base}{path}", timeout=30)
+        print(f"{path}: {missing.status_code}")
+        if missing.status_code != 404:
+            problems.append(f"{path}: status {missing.status_code}, expected 404")
+        markers = ('name="robots" content="noindex"', "/app/_next/")
+        if not all(m in missing.text for m in markers):
+            problems.append(f"{path}: not the Next 404")
 
     api = requests.get(f"{base}/api/v1/meta", timeout=30)
     kind = api.headers.get("Content-Type", "")

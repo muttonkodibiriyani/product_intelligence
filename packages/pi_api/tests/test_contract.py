@@ -168,6 +168,8 @@ def test_hosting_routes_api_first_and_unknown_paths_404() -> None:
     sources = [r["source"] for r in rewrites]
     assert sources[0] == "/api/**", "the API rewrite must precede every other rewrite"
     assert not {"**", "/**", "/app/**"} & set(sources), "a catch-all rewrite answers 404s with 200"
+    # The owner-set Firebase email action URL has no trailing slash (decision log 2026-09-30).
+    assert {"source": "/auth/action", "destination": "/auth/action/index.html"} in rewrites
     redirects = {r["source"]: r for r in hosting["redirects"]}
     assert redirects["/"]["destination"] == "/app/"
     for rule in rewrites:
