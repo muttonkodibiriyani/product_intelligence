@@ -79,37 +79,129 @@
     "stockouts": [
       {
         "brands": [],
+        "listed": 14,
+        "outOfStock": 2,
         "qualifying": 0,
         "reason": null,
         "retailer": "shop_a",
-        "suppressed": 2
+        "suppressed": 2,
+        "unavailable": [],
+        "unavailableBrands": 0,
+        "unavailableListings": 0,
+        "withStock": 5
       },
       {
         "brands": [],
+        "listed": 13,
+        "outOfStock": 0,
         "qualifying": 0,
         "reason": null,
         "retailer": "shop_b",
-        "suppressed": 0
+        "suppressed": 0,
+        "unavailable": [],
+        "unavailableBrands": 0,
+        "unavailableListings": 0,
+        "withStock": 6
       },
       {
         "brands": [],
+        "listed": 2,
+        "outOfStock": 0,
         "qualifying": 0,
         "reason": null,
         "retailer": "shop_c",
-        "suppressed": 0
+        "suppressed": 0,
+        "unavailable": [],
+        "unavailableBrands": 0,
+        "unavailableListings": 0,
+        "withStock": 0
       },
       {
         "brands": [],
+        "listed": 0,
+        "outOfStock": 0,
         "qualifying": 0,
         "reason": "retailer_blocked",
         "retailer": "shop_d",
-        "suppressed": 0
+        "suppressed": 0,
+        "unavailable": [],
+        "unavailableBrands": 0,
+        "unavailableListings": 0,
+        "withStock": 0
       }
-    ]
+    ],
+    "value": [
+      {
+        "categories": [
+          {
+            "basis": "shelf",
+            "category": "skincare",
+            "excluded": 0,
+            "items": [],
+            "median": {
+              "amount": "50.00",
+              "currency": "AED",
+              "minor": 5000
+            },
+            "picks": 0,
+            "priced": 14,
+            "rated": 0,
+            "unitMedians": []
+          }
+        ],
+        "qualifying": 1,
+        "reason": null,
+        "retailer": "shop_a",
+        "suppressed": 0,
+        "unranked": 0
+      },
+      {
+        "categories": [
+          {
+            "basis": "shelf",
+            "category": "skincare",
+            "excluded": 0,
+            "items": [],
+            "median": {
+              "amount": "100.00",
+              "currency": "AED",
+              "minor": 10000
+            },
+            "picks": 0,
+            "priced": 11,
+            "rated": 0,
+            "unitMedians": []
+          }
+        ],
+        "qualifying": 1,
+        "reason": null,
+        "retailer": "shop_b",
+        "suppressed": 1,
+        "unranked": 0
+      },
+      {
+        "categories": [],
+        "qualifying": 0,
+        "reason": "cohort_too_small",
+        "retailer": "shop_c",
+        "suppressed": 2,
+        "unranked": 0
+      },
+      {
+        "categories": [],
+        "qualifying": 0,
+        "reason": "retailer_blocked",
+        "retailer": "shop_d",
+        "suppressed": 0,
+        "unranked": 0
+      }
+    ],
+    "valueMinRatings": 20,
+    "valueRatingPct": "90.0"
   },
   "detail": null,
   "meta": {
-    "apiVersion": "1.22.0",
+    "apiVersion": "1.23.0",
     "currency": "AED",
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "insights",
@@ -118,7 +210,7 @@
     },
     "generation": "1790000000000000000",
     "market": "AE",
-    "metricVersion": "2026-10-06.1",
+    "metricVersion": "2026-10-06.2",
     "scope": "fixture"
   },
   "reason": null,
