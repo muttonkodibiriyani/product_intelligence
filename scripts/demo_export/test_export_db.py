@@ -597,8 +597,9 @@ def test_gift_with_purchase_titles_come_from_the_latest_content_in_order(conn: C
     for key in ("A", "B", "C"):
         world.observe(run, key, 1, "80")
     world.content("A", {"gift_with_purchase": ["Old gift"]}, hour=1)
-    world.content("A", {"gift_with_purchase": ["Free pouch", " ", None, "Free mini"]}, hour=2)
+    titles = ["Free pouch", " ", None, "A mini", "Zip bag"]  # page order, neither sort order
+    world.content("A", {"gift_with_purchase": titles}, hour=2)
     world.content("B", {"gift_with_purchase": "not a list"})
-    assert _row(world, "A")["gift_with_purchase"] == ["Free pouch", "Free mini"]
+    assert _row(world, "A")["gift_with_purchase"] == ["Free pouch", "A mini", "Zip bag"]
     assert _row(world, "B")["gift_with_purchase"] == []
     assert _row(world, "C")["gift_with_purchase"] == []  # no content row at all

@@ -362,8 +362,14 @@ def test_gift_with_purchase_keeps_product_class_titles_only(db: str, tmp_path: P
         "not a promotion",
     ]
     assert _gwp_labels(db, tmp_path, d) == [["Pouch + Mini Gloss", "Free travel size"]]
-    price = d["c_variantsInfo"][0]["c_price"]
-    assert price == 100  # the gift never touches the price
+    with psycopg.connect(db) as conn:  # the gift never touches the stored prices
+        prices = conn.execute(
+            "SELECT o.price_current, o.price_regular_stated, o.price_promo FROM offer_observation o"
+            " JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key = %s",
+            ("8101",),
+        ).fetchall()
+    assert prices == [(80, 100, 80)]  # the page's own sale, exactly as without the promotions
 
 
 def test_gift_with_purchase_is_empty_or_unread_never_guessed(db: str, tmp_path: Path) -> None:
