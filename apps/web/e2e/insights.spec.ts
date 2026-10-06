@@ -15,6 +15,7 @@ type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 const meta = servingMeta(golden('meta') as Json);
 const compare = golden('compare') as Json;
 const gaps = golden('assortment-gaps') as Json;
+const promotions = golden('promotions') as Json;
 const base = golden('insights') as Json;
 // The golden with stock-out counts at Shop B, so the stock card has something to show.
 const insights = {
@@ -63,6 +64,7 @@ async function api(route: Route) {
     '/api/v1/insights': insights,
     '/api/v1/compare': compare,
     '/api/v1/assortment-gaps': gaps,
+    '/api/v1/promotions': promotions,
   }[p];
   if (json) return route.fulfill({ json });
   return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
@@ -74,15 +76,11 @@ for (const locale of ['en', 'ar'] as const) {
       ? {
           nav: 'الرؤى',
           title: 'الرؤى',
-          cards: [
-            'فرق السعر حسب الحجم',
-            'سياسة أسعار العلامات',
-            'فجوات التشكيلة',
-            'استراتيجية العروض',
-            'نفاد مخزون العلامات',
-            'فخاخ الأحجام',
-          ],
+          cards: ['نفاد مخزون العلامات', 'فرق السعر حسب الحجم', 'استراتيجية العروض', 'فجوات التشكيلة'],
+          readiness: '4 إشارات قرار جاهزة',
+          deferred: 'تحليلان غير جاهزين',
           stock: 'Balmain في Shop B: 113 قائمة مرصودة نافدة من المخزون من بين 113 قائمة مرصودة في آخر رصد.',
+          promoHeadline: 'أعمق تخفيض مُدرج هو Product p05 لدى Shop A: −33.3%.',
           promo: 'افتح العروض',
           unavailable: /الرؤى غير متاحة بعد/,
           noRoute: 'الرؤى غير متاحة بعد: خدمة البيانات لا تقدّمها. لن يُعرض شيء حتى تُحدَّث الخدمة.',
@@ -90,16 +88,12 @@ for (const locale of ['en', 'ar'] as const) {
       : {
           nav: 'Insights',
           title: 'Insights',
-          cards: [
-            'Price gap by size',
-            'Brand price policy',
-            'Assortment white space',
-            'Promotion strategy',
-            'Brand stock-outs',
-            'Size traps',
-          ],
+          cards: ['Brand stock-outs', 'Price gap by size', 'Promotion strategy', 'Assortment white space'],
+          readiness: '4 decision signals are ready',
+          deferred: '2 analyses are not ready',
           stock:
             'Balmain at Shop B: 113 observed out-of-stock listings among 113 observed listings in the latest crawl.',
+          promoHeadline: 'Product p05 at Shop A has the deepest listed cut: −33.3%.',
           promo: 'Open Promotions',
           unavailable: /^Insights is not available yet/,
           noRoute:
@@ -107,7 +101,7 @@ for (const locale of ['en', 'ar'] as const) {
         };
 
   test.describe(`${locale} insights`, () => {
-    test('from the nav: the pair, six cards in order, counts not shares, evidence one click on', async ({
+    test('from the nav: ready evidence leads and unavailable analyses do not become dead cards', async ({
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api });
@@ -115,7 +109,10 @@ for (const locale of ['en', 'ar'] as const) {
       await openNav(page, T.nav);
       await expect(page).toHaveURL(new RegExp(`/${locale}/insights/`));
       await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
-      await expect(page.getByRole('heading', { level: 2 })).toHaveText(T.cards);
+      await expect(page.getByRole('heading', { name: T.readiness, level: 2 })).toBeVisible();
+      const cardTitles = page.locator('main .grid.grid-cols-12 > section > header h2');
+      await expect(cardTitles).toHaveText(T.cards);
+      await expect(page.getByText(T.deferred)).toBeVisible();
       await expect(page.getByText(T.stock)).toBeVisible();
       // The page asks for the first two collected shops when the URL names none.
       const asked = mock.api.map((r) => new URL(r.url)).find((u) => u.pathname === '/api/v1/insights');
@@ -126,20 +123,23 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors).toEqual([]);
     });
 
-    test('the promotions card links to Promotions and repeats no number', async ({ page }) => {
+    test('the promotions card shows ranked measured evidence and links to its full view', async ({
+      page,
+    }) => {
       await mockBackend(page, { onApi: api });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/insights/`);
       // The card: the one section whose own heading is this card's (the page section holds all six).
       const card = page
         .locator('main section section')
-        .filter({ has: page.getByRole('heading', { level: 2, name: T.cards[3] }) });
+        .filter({ has: page.getByRole('heading', { level: 2, name: T.cards[2] }) });
       await expect(card).toHaveCount(1);
+      await expect(page.getByText(T.promoHeadline)).toBeVisible();
+      await expect(card.getByRole('listitem')).toHaveCount(3);
       await expect(card.getByRole('link', { name: T.promo })).toHaveAttribute(
         'href',
         new RegExp(`/${locale}/promotions/$`),
       );
-      await expect(card).not.toContainText(/\d/);
     });
 
     test('an API without /insights (1.16.0): no nav entry; the page says so and requests nothing', async ({
@@ -153,7 +153,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByText(T.unavailable)).toBeVisible();
       await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
       const paths = mock.api.map((r) => new URL(r.url).pathname);
-      expect(paths.filter((p) => /\/(insights|compare|assortment-gaps)$/.test(p))).toEqual([]);
+      expect(paths.filter((p) => /\/(insights|compare|assortment-gaps|promotions)$/.test(p))).toEqual([]);
       expect(mock.errors).toEqual([]);
     });
 
