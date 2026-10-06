@@ -61,10 +61,11 @@ BEAUTY_V1 = VerticalProfile(
 )
 
 
-#: ``skinTypes`` and ``makeupCoverage`` ids: closed lists on ``text_list`` keys (ADR-0008 §5).
-#: Not wire enums, so the ids stay out of the literal guard's declared names.
-SkinType = Literal["normal", "dry", "oily", "combination", "sensitive", "all"]
-Coverage = Literal["sheer", "light", "medium", "full"]
+#: ``skinTypes`` and ``makeupCoverage`` ids: closed ``values`` lists on ``text_list`` keys
+#: (ADR-0008 §5). The ids are declared, so the literal guard scans for them: they avoid words that
+#: code already quotes (``all``, ``medium``, ``full``).
+SkinType = Literal["normal", "dry", "oily", "combination", "sensitive", "all_skin_types"]
+Coverage = Literal["sheer_coverage", "light_coverage", "medium_coverage", "full_coverage"]
 #: The stated SPF as decimal text (``"50"``, ``"30.5"``), never a float.
 SpfText = Annotated[str, StringConstraints(pattern=r"^[1-9][0-9]{0,2}(\.[0-9]+)?$")]
 
@@ -105,6 +106,14 @@ class BeautyAttributesV2(BeautyAttributesV1):
             label={"en": "Skin types", "ar": "أنواع البشرة"},
             facet=True,
             block=AttributeBlock.SUMMARY,
+            values=_enum(
+                ("normal", "Normal", "عادية"),
+                ("dry", "Dry", "جافة"),
+                ("oily", "Oily", "دهنية"),
+                ("combination", "Combination", "مختلطة"),
+                ("sensitive", "Sensitive", "حساسة"),
+                ("all_skin_types", "All skin types", "جميع أنواع البشرة"),
+            ),
         ),
         Field(alias="skinTypes"),
     ] = ()
@@ -115,6 +124,12 @@ class BeautyAttributesV2(BeautyAttributesV1):
             label={"en": "Coverage", "ar": "التغطية"},
             facet=True,
             block=AttributeBlock.SUMMARY,
+            values=_enum(
+                ("sheer_coverage", "Sheer", "شفافة"),
+                ("light_coverage", "Light", "خفيفة"),
+                ("medium_coverage", "Medium", "متوسطة"),
+                ("full_coverage", "Full", "كاملة"),
+            ),
         ),
         Field(alias="makeupCoverage"),
     ] = ()

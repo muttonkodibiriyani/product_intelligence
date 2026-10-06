@@ -62,7 +62,14 @@
       "key": "skinTypes",
       "level": "product",
       "type": "text_list",
-      "values": null,
+      "values": [
+        {"id": "normal", "label": {"en": "Normal", "ar": "عادية"}},
+        {"id": "dry", "label": {"en": "Dry", "ar": "جافة"}},
+        {"id": "oily", "label": {"en": "Oily", "ar": "دهنية"}},
+        {"id": "combination", "label": {"en": "Combination", "ar": "مختلطة"}},
+        {"id": "sensitive", "label": {"en": "Sensitive", "ar": "حساسة"}},
+        {"id": "all_skin_types", "label": {"en": "All skin types", "ar": "جميع أنواع البشرة"}}
+      ],
       "label": {"en": "Skin types", "ar": "أنواع البشرة"},
       "facet": true,
       "block": "summary",
@@ -72,7 +79,12 @@
       "key": "makeupCoverage",
       "level": "product",
       "type": "text_list",
-      "values": null,
+      "values": [
+        {"id": "sheer_coverage", "label": {"en": "Sheer", "ar": "شفافة"}},
+        {"id": "light_coverage", "label": {"en": "Light", "ar": "خفيفة"}},
+        {"id": "medium_coverage", "label": {"en": "Medium", "ar": "متوسطة"}},
+        {"id": "full_coverage", "label": {"en": "Full", "ar": "كاملة"}}
+      ],
       "label": {"en": "Coverage", "ar": "التغطية"},
       "facet": true,
       "block": "summary",

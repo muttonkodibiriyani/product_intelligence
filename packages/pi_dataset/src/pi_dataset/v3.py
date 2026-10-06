@@ -587,9 +587,8 @@ def _type_problem(spec: AttributeDef, value: JsonValue) -> str | None:
         case AttributeType.TEXT:
             ok = isinstance(value, str) and value.strip() != ""
         case AttributeType.ENUM:
-            allowed = {v.id for v in spec.values or ()}
-            if not isinstance(value, str) or value not in allowed:
-                return f"{value!r} is not one of {sorted(allowed)}"
+            if not isinstance(value, str) or value not in _ids(spec):
+                return f"{value!r} is not one of {sorted(_ids(spec))}"
             return None
         case AttributeType.DECIMAL:
             ok = isinstance(value, str) and _DECIMAL.fullmatch(value) is not None
@@ -598,10 +597,20 @@ def _type_problem(spec: AttributeDef, value: JsonValue) -> str | None:
         case AttributeType.BOOL:
             ok = isinstance(value, bool)
         case AttributeType.TEXT_LIST:
-            ok = isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value)
+            if not isinstance(value, list):
+                return f"value is not of type {spec.type}"
+            items = [v for v in value if isinstance(v, str) and v.strip()]
+            ok = len(items) == len(value)
+            outside = sorted({v for v in items if v not in _ids(spec)})
+            if ok and spec.values is not None and outside:
+                return f"{outside} are not in {sorted(_ids(spec))}"
         case AttributeType.OBJECT:
             ok = isinstance(value, dict)
     return None if ok else f"value is not of type {spec.type}"
+
+
+def _ids(spec: AttributeDef) -> frozenset[str]:
+    return frozenset(v.id for v in spec.values or ())
 
 
 def _is_money(value: JsonValue) -> bool:

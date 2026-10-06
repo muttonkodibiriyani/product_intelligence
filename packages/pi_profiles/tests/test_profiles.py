@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, get_args, get_origin
 
 import pytest
 from pydantic import ValidationError
@@ -102,6 +102,22 @@ def test_get_profile() -> None:
         get_profile("beauty")
 
 
+def _literal_ids(annotation: object) -> set[str]:
+    if get_origin(annotation) is Literal:
+        return {str(a) for a in get_args(annotation)}
+    return {i for arg in get_args(annotation) for i in _literal_ids(arg)}
+
+
+@pytest.mark.parametrize("ref", sorted(PROFILES))
+def test_closed_values_are_the_write_path_literal(ref: str) -> None:
+    """The wire ``values`` and the attribute model's ``Literal`` are one list (ADR-0008 §5)."""
+    model = PROFILES[ref].attributes
+    for name, field in model.model_fields.items():
+        attr = next(m for m in field.metadata if isinstance(m, Attr))
+        if attr.values is not None:
+            assert _literal_ids(field.annotation) == {i for i, _ in attr.values}, name
+
+
 def test_a_field_without_attr_is_a_declaration_error() -> None:
     class Bad(AttributeModel):
         colour: str | None = None
@@ -154,8 +170,8 @@ def test_enum_values_are_declared() -> None:
             {"skinTypes": ["dry", "oily"], "gender": "unisex"},
         ),
         (
-            {"makeupCoverage": ["light", "medium"], "productForm": "cream"},
-            {"makeupCoverage": ["light", "medium"], "productForm": "cream"},
+            {"makeupCoverage": ["light_coverage", "medium_coverage"], "productForm": "cream"},
+            {"makeupCoverage": ["light_coverage", "medium_coverage"], "productForm": "cream"},
         ),
         (
             {"keyIngredients": ["niacinamide"], "giftWithPurchase": ["Free mini mascara"]},
@@ -177,7 +193,8 @@ def test_beauty_2_write_path(raw: dict[str, Any], stored: dict[str, Any]) -> Non
         {"sunProtectionFactor": "1000"},
         {"gender": "female"},  # closed vocabularies
         {"makeupCoverage": ["buildable"]},
-        {"makeupCoverage": "full"},
+        {"makeupCoverage": ["full"]},
+        {"makeupCoverage": "full_coverage"},
         {"skinTypes": ["dry", "acne-prone"]},
         {"skinTypes": "dry"},
         {"keyIngredients": [""]},

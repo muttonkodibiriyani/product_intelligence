@@ -633,6 +633,44 @@ def test_beauty_2_values_carry_evidence() -> None:
     assert f"offers.{N}.attributes.giftWithPurchase: no attributeEvidence" in _errors(doc)
 
 
+@pytest.mark.parametrize(
+    ("key", "items"),
+    [("skinTypes", ["dry", "all_skin_types"]), ("makeupCoverage", ["full_coverage"])],
+)
+def test_a_closed_text_list_takes_its_ids(key: str, items: list[str]) -> None:
+    doc = _v3_beauty2()
+    product = doc["products"][0]
+    product["attributes"] = {key: items}
+    product["attributeEvidence"] = {key: _ev(excerpt="for dry skin")}
+    assert load_any(json.dumps(doc), allow_test=True).products[0].attributes[key] == items
+
+
+@pytest.mark.parametrize(
+    ("key", "items"),
+    [
+        ("skinTypes", ["dry", "very dry"]),
+        ("skinTypes", ["Dry"]),
+        ("makeupCoverage", ["full"]),
+        ("makeupCoverage", ["buildable"]),
+    ],
+)
+def test_a_closed_text_list_refuses_other_items(key: str, items: list[str]) -> None:
+    """ADR-0008 §5: the closed list is on the wire, so a producer that skips the write path is
+    still refused, and a facet cannot fragment."""
+    doc = _v3_beauty2()
+    product = doc["products"][0]
+    product["attributes"] = {key: items}
+    product["attributeEvidence"] = {key: _ev()}
+    with pytest.raises(DatasetError, match=rf"attributes\.{key}: .* are not in"):
+        load_any(json.dumps(doc), allow_test=True)
+
+
+def test_closed_lists_carry_en_and_ar_labels() -> None:
+    closed = [a for a in _beauty2().attribute_set if a.values is not None]
+    assert {a.key for a in closed} == {"gender", "skinTypes", "makeupCoverage"}
+    assert all(set(v.label) == {"en", "ar"} for a in closed for v in a.values or ())
+
+
 def test_evidence_names_only_present_keys() -> None:
     doc = _v3_doc()  # beauty@1: evidence optional, but never for an absent key
     doc["products"][0]["attributes"] = {"finish": "matte"}
@@ -695,12 +733,16 @@ def test_a_committed_uncollected_key_stays_off(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_attribute_declarations() -> None:
-    with pytest.raises(ValidationError, match="values are required exactly for type enum"):
+    with pytest.raises(ValidationError, match="values are required for type enum"):
         AttributeDef.model_validate(_attr("daypart", "enum"))
-    with pytest.raises(ValidationError, match="values are required exactly for type enum"):
-        AttributeDef.model_validate(
-            _attr("daypart", "text", values=[{"id": "a", "label": {"en": "A"}}])
-        )
+    for type_ in ("text", "decimal", "money", "bool", "object"):
+        with pytest.raises(ValidationError, match="only for types enum and text_list"):
+            AttributeDef.model_validate(
+                _attr("daypart", type_, values=[{"id": "a", "label": {"en": "A"}}])
+            )
+    closed = _attr("daypart", "text_list", values=[{"id": "a", "label": {"en": "A"}}])
+    assert AttributeDef.model_validate(closed).values is not None
+    assert AttributeDef.model_validate(_attr("daypart", "text_list")).values is None
     with pytest.raises(ValidationError, match="duplicate enum value ids"):
         AttributeDef.model_validate(
             _attr("dd", "enum", values=[{"id": "a", "label": {"en": "A"}}] * 2)

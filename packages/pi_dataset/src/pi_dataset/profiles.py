@@ -49,6 +49,10 @@ class AttributeBlock(StrEnum):
     CHANNEL = "channel"
 
 
+#: The types that may carry a closed ``values`` list.
+_VALUE_TYPES = frozenset({AttributeType.ENUM, AttributeType.TEXT_LIST})
+
+
 class EnumValue(ContractModel):
     id: NonEmptyStr
     label: LocalizedText
@@ -58,7 +62,8 @@ class AttributeDef(ContractModel):
     key: AttributeKey
     level: AttributeLevel
     type: AttributeType
-    #: The closed value list: set exactly when ``type`` is ``enum``.
+    #: The closed value list: required for ``enum``, optional for ``text_list`` (each item is then
+    #: one of the ids), refused for every other type. The labels are what a client shows.
     values: Annotated[tuple[EnumValue, ...], Field(min_length=1)] | None
     label: LocalizedText
     #: Usable as a filter (``attr=<key>:<value>``) and a facet count.
@@ -69,8 +74,11 @@ class AttributeDef(ContractModel):
 
     @model_validator(mode="after")
     def _check_values(self) -> Self:
-        if (self.type is AttributeType.ENUM) != (self.values is not None):
-            msg = f"attribute {self.key}: values are required exactly for type enum"
+        if self.type is AttributeType.ENUM and self.values is None:
+            msg = f"attribute {self.key}: values are required for type enum"
+            raise ValueError(msg)
+        if self.values is not None and self.type not in _VALUE_TYPES:
+            msg = f"attribute {self.key}: values are allowed only for types enum and text_list"
             raise ValueError(msg)
         ids = [v.id for v in self.values or ()]
         if len(ids) != len(set(ids)):
