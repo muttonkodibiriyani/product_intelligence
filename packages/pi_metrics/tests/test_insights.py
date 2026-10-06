@@ -192,30 +192,41 @@ def _stocked(pid: str, brand: str, last: AvailabilityState | None) -> Product:
     return product(pid, {A: offer(A, ["10.00"] * 3, stock=[IN, IN, last])}, brand=brand)
 
 
-def test_brand_stockouts_are_counts_whole_brand_first() -> None:
+def test_brand_stockouts_are_counts_apart_from_brands_the_source_reports_unavailable() -> None:
     rows = [
-        *(_stocked(f"w{n}", "Whole", OUT) for n in range(5)),
+        *(_stocked(f"w{n}", "Whole", OUT) for n in range(5)),  # every listing out: unavailable
+        *(_stocked(f"t{n}", "Tiny", OUT) for n in range(2)),  # unavailable, too few to list
         *(_stocked(f"h{n}", "Half", OUT) for n in range(6)),
         *(_stocked(f"h{n}i", "Half", IN) for n in range(6)),
         _stocked("h-unseen", "Half", None),  # not observed: neither out nor observed
+        *(_stocked(f"b{n}", "Big", OUT) for n in range(7)),
+        _stocked("b-in", "Big", IN),
         *(_stocked(f"f{n}", "Few", OUT) for n in range(2)),
+        _stocked("f-in", "Few", IN),
         _stocked("gone", "Gone", AvailabilityState.REMOVED),  # not an observed stock state
     ]
     by = {s.retailer: s for s in insights(_with(rows), A, B).data.stockouts}
     a = by[A]
     assert a.reason is None
     assert [(r.brand, r.out_of_stock, r.observed) for r in a.brands] == [
-        ("Whole", 5, 5),
+        ("Big", 7, 8),
         ("Half", 6, 12),
     ]
-    assert (a.qualifying, a.suppressed) == (2, 1)
-    assert by[B].brands == ()
+    assert (a.qualifying, a.suppressed) == (2, 1)  # Few: two out, not listed
+    assert (a.listed, a.with_stock, a.out_of_stock) == (32, 30, 15)  # 7 + 6 + 2, partly out only
+    assert (a.unavailable_brands, a.unavailable_listings) == (2, 7)  # Whole and Tiny
+    assert [(r.brand, r.out_of_stock, r.observed) for r in a.unavailable] == [("Whole", 5, 5)]
+    assert (by[B].brands, by[B].listed, by[B].unavailable) == ((), 0, ())
     assert by[D].reason is Reason.RETAILER_BLOCKED
+    assert (by[D].listed, by[D].with_stock, by[D].unavailable_brands) == (0, 0, 0)
 
 
 def test_stockouts_without_the_stock_capability_say_so() -> None:
     m = insights(with_capabilities(metrics_dataset(), stock=False), A, B)
     assert {s.reason for s in m.data.stockouts} == {Reason.CAPABILITY_OFF, Reason.RETAILER_BLOCKED}
+    assert {(s.listed, s.with_stock, s.out_of_stock, s.unavailable) for s in m.data.stockouts} == {
+        (0, 0, 0, ())
+    }
 
 
 def test_a_blocked_side_counts_no_pair() -> None:
@@ -246,7 +257,8 @@ def test_only_observed_stock_states_are_counted() -> None:
         *(_stocked(f"x{n}", "Whole", s) for n, s in enumerate(unseen)),
     ]
     a = next(s for s in insights(_with(rows), A, B).data.stockouts if s.retailer == A)
-    assert [(r.brand, r.out_of_stock, r.observed) for r in a.brands] == [("Whole", 5, 5)]
+    assert [(r.brand, r.out_of_stock, r.observed) for r in a.unavailable] == [("Whole", 5, 5)]
+    assert (a.listed, a.with_stock, a.unavailable_listings, a.out_of_stock) == (9, 5, 5, 0)
 
 
 def test_a_larger_size_at_the_same_unit_price_is_not_cheaper() -> None:
@@ -320,3 +332,25 @@ def test_value_without_ratings_says_why() -> None:
     assert {v.retailer: v.reason for v in insights(missing, A, B).data.value}[A] is (
         Reason.FIELD_NOT_COLLECTED
     )
+
+
+def _named(pid: str, name: str, category: str = "fragrance") -> Product:
+    return _rated(pid, "10.00", ("5.00", "5", 50), category).model_copy(update={"name": name})
+
+
+def test_body_care_filed_under_fragrance_is_left_out_of_the_value_cohort() -> None:
+    rows = [
+        *(_named(f"e{n}", f"Oud {n} Eau de Parfum") for n in range(4)),
+        _named("set", "Rose Eau de Toilette & Body Lotion Set"),  # a fragrance term: stays
+        _named("mist", "Vanilla Body Mist"),  # a mist is fragrance
+        _named("bathsheba", "Bathsheba Noir"),  # "bath" only as a whole word
+        _named("lotion", "Body Badalada Daily Glow Lotion"),
+        _named("kids", "Kids Oat & Milk 3-in-1"),
+        _named("gel", "Amber SHOWER Gel"),  # case-insensitive
+        *(_named(f"s{n}", "Hand Cream", "skincare") for n in range(5)),  # only fragrance is ruled
+    ]
+    a = next(v for v in insights(_with(rows), A, B).data.value if v.retailer == A)
+    by = {c.category: c for c in a.categories}
+    assert (by["fragrance"].priced, by["fragrance"].excluded) == (7, 3)
+    assert (by["skincare"].priced, by["skincare"].excluded) == (5, 0)
+    assert not {i.id for i in by["fragrance"].items} & {"lotion", "kids", "gel"}

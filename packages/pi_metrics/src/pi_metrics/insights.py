@@ -20,14 +20,23 @@ Four aggregates for the Insights page, each over rules the other metrics already
 * **Brand stock-outs** count, per context and brand, the offers observed out of stock on the
   date against the offers in an observed stock state (in, low or out of stock). Counts only,
   never a share: retailers are crawled partially, so a share of the catalogue would overstate
-  what was seen. A brand is listed when at least ``MIN_COHORT`` of its offers are out of stock,
-  whole-brand outages first; a day without an observation is never out of stock.
+  what was seen. A day without an observation is never out of stock. A brand whose every
+  observed offer is out of stock is one the source reports unavailable (often not sold online
+  in the market), not a sell-out: it is counted apart (``unavailable_brands``,
+  ``unavailable_listings``, the ``unavailable`` rows), and ``out_of_stock`` and ``brands`` cover
+  the other, partly-out brands only, so the two never overlap. A partly-out brand is listed
+  when at least ``MIN_COHORT`` of its offers are out of stock, the most first. Per shop the
+  response also carries ``listed`` (offers collected, the catalogue count) and ``with_stock``.
 * **Value picks** stay inside one context and one top-level category: offers rated at least
   ``VALUE_RATING_PCT`` % of their scale by at least ``VALUE_MIN_RATINGS`` reviewers, priced at
   or below the category's median price (nearest rank, the lower middle, so an observed price).
   The median is over every priced offer in the category and market currency, rated or not; a
   category with fewer than ``MIN_COHORT`` of them has no median and is counted in
   ``suppressed``. Ratings are the retailer's own; the shop is never compared with another.
+  Categories are each shop's own. A ``fragrance`` offer whose name has a body-care term
+  (``BODY_CARE_TERMS``: lotion, shower, shampoo, ...) and no fragrance term (``FRAGRANCE_TERMS``:
+  parfum, eau de, mist, ...) is body care filed under fragrance: it is left out of the cohort and
+  counted in the category's ``excluded``, so a fragrance-and-lotion gift set stays in.
 
 No cross-retailer number comes from an unreviewed match: when no pair is counted the pricing
 parts say ``matches_unreviewed`` (or why else) and carry no rows.
@@ -35,6 +44,7 @@ parts say ``matches_unreviewed`` (or why else) and carry no rows.
 
 from __future__ import annotations
 
+import re
 import statistics
 from collections import defaultdict
 from datetime import date
@@ -78,6 +88,17 @@ VALUE_RATING_PCT = Decimal(90)
 #: Categories listed per context, the most priced offers first; picks listed per category.
 CATEGORIES_LISTED = 8
 PICKS_LISTED = 5
+#: The top-level category whose body-care listings are taken out of the value cohort.
+FRAGRANCE = "fragrance"
+#: A ``fragrance`` offer named with one of these and none of ``FRAGRANCE_TERMS`` is body care.
+BODY_CARE_TERMS = re.compile(
+    r"\b(?:lotion|body wash|shower|3-in-1|shampoo|conditioner|scrub|body butter|soap|bath"
+    r"|deodorant|hand cream|body cream|body oil)\b",
+    re.IGNORECASE,
+)
+FRAGRANCE_TERMS = re.compile(
+    r"\b(?:parfum|eau de|cologne|perfume|mist|extrait|fragrance)\b", re.IGNORECASE
+)
 PROFILES = EVERY_PROFILE
 
 
@@ -166,12 +187,26 @@ class BrandStock(ContractModel):
 class Stockouts(ContractModel):
     retailer: str
     reason: Reason | None
-    #: Brands with at least ``MIN_COHORT`` offers out of stock, whole-brand outages first.
+    #: Brands with some offers in stock and at least ``MIN_COHORT`` out of stock, most out first.
     brands: tuple[BrandStock, ...]
-    #: Brands that qualify; only the first ``BRANDS_LISTED`` are listed.
+    #: Partly-out brands that qualify; only the first ``BRANDS_LISTED`` are listed.
     qualifying: int
-    #: Brands with some, but fewer than ``MIN_COHORT``, offers out of stock: not listed.
+    #: Partly-out brands with some, but fewer than ``MIN_COHORT``, offers out of stock.
     suppressed: int
+    #: Offers collected for the context, early recon samples aside: the catalogue's count.
+    listed: int = 0
+    #: Of ``listed``: offers in an observed stock state (in, low or out of stock).
+    with_stock: int = 0
+    #: Of ``with_stock``: offers out of stock in partly-out brands. Never overlaps
+    #: ``unavailable_listings``.
+    out_of_stock: int = 0
+    #: Brands whose every offer in an observed stock state is out of stock: the source reports
+    #: them unavailable (often not sold online in the market), which is not a sell-out.
+    unavailable_brands: int = 0
+    #: Offers in ``unavailable_brands``. Never overlaps ``out_of_stock``.
+    unavailable_listings: int = 0
+    #: ``unavailable_brands`` with at least ``MIN_COHORT`` offers, the most first.
+    unavailable: tuple[BrandStock, ...] = ()
 
 
 class ValuePick(ContractModel):
@@ -196,6 +231,8 @@ class ValueCategory(ContractModel):
     #: Of ``rated``: rated at least ``valueRatingPct`` % of the scale, priced at most ``median``.
     picks: int
     items: tuple[ValuePick, ...]
+    #: Priced offers taken out of the cohort as body care filed under ``fragrance``; else 0.
+    excluded: int = 0
 
 
 class ValuePicks(ContractModel):
@@ -404,6 +441,38 @@ def _steepest(step: LadderStep) -> tuple[Decimal, str]:
     return (-step.unit_change_pct, step.larger_id)
 
 
+def _brand_stock(
+    ds: DatasetV3, context: str, i: int
+) -> tuple[int, defaultdict[str, int], defaultdict[str, int]]:
+    """Offers collected, and per brand those in an observed stock state and those out of stock."""
+    listed = 0
+    observed: defaultdict[str, int] = defaultdict(int)
+    out: defaultdict[str, int] = defaultdict(int)
+    for product in ds.products:
+        offer = view.collected(product, context)
+        if offer is None:
+            continue
+        listed += 1
+        states = offer.series.availability
+        state = None if states is None else states[i]
+        if state is None or not state.is_known:
+            continue
+        observed[product.brand] += 1
+        out[product.brand] += state is AvailabilityState.OUT_OF_STOCK
+    return listed, observed, out
+
+
+def _gone(observed: dict[str, int], out: dict[str, int]) -> frozenset[str]:
+    return frozenset(b for b, n in out.items() if n == observed[b])
+
+
+def unavailable_brands(ds: DatasetV3, context: str, i: int) -> frozenset[str]:
+    """Brands whose every offer in an observed stock state at ``context`` on date ``i`` is out of
+    stock: the source reports them unavailable (see the module's brand stock-outs)."""
+    _, observed, out = _brand_stock(ds, context, i)
+    return _gone(observed, out)
+
+
 def _stockouts(ds: DatasetV3, context: str, i: int) -> Stockouts:
     reason = None
     if view.status(ds, context) is RetailerStatus.BLOCKED:
@@ -412,30 +481,25 @@ def _stockouts(ds: DatasetV3, context: str, i: int) -> Stockouts:
         reason = Reason.CAPABILITY_OFF
     if reason is not None:
         return Stockouts(retailer=context, reason=reason, brands=(), qualifying=0, suppressed=0)
-    observed: defaultdict[str, int] = defaultdict(int)
-    out: defaultdict[str, int] = defaultdict(int)
-    for product in ds.products:
-        offer = view.collected(product, context)
-        states = None if offer is None else offer.series.availability
-        state = None if states is None else states[i]
-        if state is None or not state.is_known:
-            continue
-        observed[product.brand] += 1
-        out[product.brand] += state is AvailabilityState.OUT_OF_STOCK
-    rows = sorted(
-        (
-            BrandStock(brand=b, observed=observed[b], out_of_stock=n)
-            for b, n in out.items()
-            if n >= MIN_COHORT
-        ),
-        key=lambda r: (r.out_of_stock < r.observed, -r.out_of_stock, r.brand),
-    )
+    listed, observed, out = _brand_stock(ds, context, i)
+    gone = _gone(observed, out)
+    rows = [BrandStock(brand=b, observed=observed[b], out_of_stock=n) for b, n in out.items()]
+    rows.sort(key=lambda r: (-r.out_of_stock, r.brand))
+    partly = [r for r in rows if r.brand not in gone and r.out_of_stock >= MIN_COHORT]
     return Stockouts(
         retailer=context,
         reason=None,
-        brands=tuple(rows[:BRANDS_LISTED]),
-        qualifying=len(rows),
-        suppressed=sum(1 for n in out.values() if 0 < n < MIN_COHORT),
+        brands=tuple(partly[:BRANDS_LISTED]),
+        qualifying=len(partly),
+        suppressed=sum(1 for b, n in out.items() if b not in gone and 0 < n < MIN_COHORT),
+        listed=listed,
+        with_stock=sum(observed.values()),
+        out_of_stock=sum(n for b, n in out.items() if b not in gone),
+        unavailable_brands=len(gone),
+        unavailable_listings=sum(observed[b] for b in gone),
+        unavailable=tuple(r for r in rows if r.brand in gone and r.out_of_stock >= MIN_COHORT)[
+            :BRANDS_LISTED
+        ],
     )
 
 
@@ -457,6 +521,15 @@ def _well_rated(rating: Rating | None) -> bool:
     )
 
 
+def body_care_in_fragrance(product: ProductV3) -> bool:
+    """Is ``product`` body care filed under ``fragrance``: a body-care term, no fragrance term?"""
+    return (
+        product.category[0] == FRAGRANCE
+        and BODY_CARE_TERMS.search(product.name) is not None
+        and FRAGRANCE_TERMS.search(product.name) is None
+    )
+
+
 def _value(ds: DatasetV3, context: str, i: int) -> ValuePicks:
     reason = _value_off(ds, context)
     if reason is not None:
@@ -465,10 +538,15 @@ def _value(ds: DatasetV3, context: str, i: int) -> ValuePicks:
         )
     currency = view.market_currency(ds, view.context(ds, context).retailer)
     priced: defaultdict[str, list[tuple[MoneyValue, ProductV3, OfferV3]]] = defaultdict(list)
+    excluded: defaultdict[str, int] = defaultdict(int)
     for product in ds.products:
         offer = view.collected(product, context)
         price = None if offer is None else view.price_on(offer, i)
-        if offer is not None and price is not None and price.currency == currency:
+        if offer is None or price is None or price.currency != currency:
+            continue
+        if body_care_in_fragrance(product):
+            excluded[product.category[0]] += 1
+        else:
             priced[product.category[0]].append((price, product, offer))
     rows = []
     for category, offers in priced.items():
@@ -504,6 +582,7 @@ def _value(ds: DatasetV3, context: str, i: int) -> ValuePicks:
                 rated=len(rated),
                 picks=len(picks),
                 items=tuple(picks[:PICKS_LISTED]),
+                excluded=excluded[category],
             )
         )
     rows.sort(key=lambda r: (-r.priced, r.category))

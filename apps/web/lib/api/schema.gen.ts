@@ -518,7 +518,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.19.0
+             * @default 1.22.0
              */
             apiVersion: string;
             /** Currency */
@@ -540,7 +540,7 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-06.1
+             * @default 2026-10-06.2
              */
             metricVersion: string;
             /** Scope */
@@ -2467,10 +2467,27 @@ export interface components {
          * @enum {string}
          */
         Status: "ok" | "not_enough_data";
+        /**
+         * StockFilter
+         * @description An observed stock state a listing can be filtered on: ``pi_core.AvailabilityState``'s
+         *     observed values. A listing with no state, or an unobserved one, never matches.
+         * @enum {string}
+         */
+        StockFilter: "in_stock" | "low_stock" | "out_of_stock";
         /** Stockouts */
         Stockouts: {
             /** Brands */
             brands: components["schemas"]["BrandStock"][];
+            /**
+             * Listed
+             * @default 0
+             */
+            listed: number;
+            /**
+             * Outofstock
+             * @default 0
+             */
+            outOfStock: number;
             /** Qualifying */
             qualifying: number;
             reason: components["schemas"]["Reason"] | null;
@@ -2478,6 +2495,26 @@ export interface components {
             retailer: string;
             /** Suppressed */
             suppressed: number;
+            /**
+             * Unavailable
+             * @default []
+             */
+            unavailable: components["schemas"]["BrandStock"][];
+            /**
+             * Unavailablebrands
+             * @default 0
+             */
+            unavailableBrands: number;
+            /**
+             * Unavailablelistings
+             * @default 0
+             */
+            unavailableListings: number;
+            /**
+             * Withstock
+             * @default 0
+             */
+            withStock: number;
         };
         /** SuggestionRow */
         SuggestionRow: {
@@ -2565,6 +2602,13 @@ export interface components {
             regular: components["schemas"]["MoneyValue"];
         };
         /**
+         * UnavailableBrands
+         * @description Listings in a brand the source reports unavailable at their context: ``only`` those,
+         *     ``exclude`` them (``pi_metrics.insights.unavailable_brands``).
+         * @enum {string}
+         */
+        UnavailableBrands: "only" | "exclude";
+        /**
          * Unmapped
          * @enum {string}
          */
@@ -2586,6 +2630,11 @@ export interface components {
         ValueCategory: {
             /** Category */
             category: string;
+            /**
+             * Excluded
+             * @default 0
+             */
+            excluded: number;
             /** Items */
             items: components["schemas"]["ValuePick"][];
             median: components["schemas"]["MoneyValue"];
@@ -3897,6 +3946,10 @@ export interface operations {
                 location?: string[];
                 /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
                 attr?: string[];
+                /** @description API 1.22.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
+                availability?: components["schemas"]["StockFilter"][];
+                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (every observed listing of the brand out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
             };
             header?: never;
             path?: never;
@@ -4717,6 +4770,10 @@ export interface operations {
                 location?: string[];
                 /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
                 attr?: string[];
+                /** @description API 1.22.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
+                availability?: components["schemas"]["StockFilter"][];
+                /** @description API 1.22.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (every observed listing of the brand out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
                 limit?: number;
                 cursor?: string | null;
             };
