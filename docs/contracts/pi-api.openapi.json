@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.18.0",
+            "default": "1.19.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -289,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-03.3",
+            "default": "2026-10-06.1",
             "title": "Metricversion",
             "type": "string"
           },
@@ -7035,7 +7035,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.18.0"
+    "version": "1.19.0"
   },
   "openapi": "3.1.0",
   "paths": {
