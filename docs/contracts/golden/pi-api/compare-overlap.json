@@ -16,25 +16,48 @@
   "data": {
     "base": "shop_a",
     "convention": "gapAmount = other - base; gapPct = (other - base) / base x 100. A positive gap means other is dearer than base; see cheaper.",
-    "groupBy": "brand",
-    "groups": [
-      {
-        "key": "Fixture Beauty",
-        "n": 3,
-        "reason": "cohort_too_small",
-        "status": "not_enough_data",
-        "summary": null
-      },
-      {
-        "key": "Sample Labs",
-        "n": 3,
-        "reason": "cohort_too_small",
-        "status": "not_enough_data",
-        "summary": null
-      }
-    ],
+    "groupBy": null,
+    "groups": [],
     "other": "shop_b",
     "rows": [
+      {
+        "basePrice": {
+          "amount": "80.00",
+          "currency": "AED",
+          "minor": 8000
+        },
+        "brand": "Fixture Beauty",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "counted": true,
+        "excludedReason": null,
+        "gap": {
+          "amount": {
+            "amount": "20.00",
+            "currency": "AED",
+            "minor": 2000
+          },
+          "cheaper": "base",
+          "pct": "25.0"
+        },
+        "id": "p05",
+        "image": null,
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "locked"
+        },
+        "name": "Product p05",
+        "otherPrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      },
       {
         "basePrice": {
           "amount": "90.00",
@@ -67,44 +90,6 @@
           "reviewState": "approved"
         },
         "name": "Product p01",
-        "otherPrice": {
-          "amount": "100.00",
-          "currency": "AED",
-          "minor": 10000
-        }
-      },
-      {
-        "basePrice": {
-          "amount": "100.00",
-          "currency": "AED",
-          "minor": 10000
-        },
-        "brand": "Sample Labs",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": true,
-        "excludedReason": null,
-        "gap": {
-          "amount": {
-            "amount": "0.00",
-            "currency": "AED",
-            "minor": 0
-          },
-          "cheaper": "equal",
-          "pct": "0.0"
-        },
-        "id": "p02",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "exact",
-          "method": "fixture",
-          "reviewState": "approved"
-        },
-        "name": "Product p02",
         "otherPrice": {
           "amount": "100.00",
           "currency": "AED",
@@ -151,82 +136,6 @@
       },
       {
         "basePrice": {
-          "amount": "95.50",
-          "currency": "AED",
-          "minor": 9550
-        },
-        "brand": "Sample Labs",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": true,
-        "excludedReason": null,
-        "gap": {
-          "amount": {
-            "amount": "4.50",
-            "currency": "AED",
-            "minor": 450
-          },
-          "cheaper": "base",
-          "pct": "4.7"
-        },
-        "id": "p04",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "exact",
-          "method": "fixture",
-          "reviewState": "approved"
-        },
-        "name": "Product p04",
-        "otherPrice": {
-          "amount": "100.00",
-          "currency": "AED",
-          "minor": 10000
-        }
-      },
-      {
-        "basePrice": {
-          "amount": "80.00",
-          "currency": "AED",
-          "minor": 8000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": true,
-        "excludedReason": null,
-        "gap": {
-          "amount": {
-            "amount": "20.00",
-            "currency": "AED",
-            "minor": 2000
-          },
-          "cheaper": "base",
-          "pct": "25.0"
-        },
-        "id": "p05",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "exact",
-          "method": "fixture",
-          "reviewState": "locked"
-        },
-        "name": "Product p05",
-        "otherPrice": {
-          "amount": "100.00",
-          "currency": "AED",
-          "minor": 10000
-        }
-      },
-      {
-        "basePrice": {
           "amount": "105.25",
           "currency": "AED",
           "minor": 10525
@@ -265,6 +174,82 @@
       },
       {
         "basePrice": {
+          "amount": "95.50",
+          "currency": "AED",
+          "minor": 9550
+        },
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "counted": true,
+        "excludedReason": null,
+        "gap": {
+          "amount": {
+            "amount": "4.50",
+            "currency": "AED",
+            "minor": 450
+          },
+          "cheaper": "base",
+          "pct": "4.7"
+        },
+        "id": "p04",
+        "image": null,
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
+        "name": "Product p04",
+        "otherPrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      },
+      {
+        "basePrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        },
+        "brand": "Sample Labs",
+        "category": [
+          "skincare",
+          "serum"
+        ],
+        "counted": true,
+        "excludedReason": null,
+        "gap": {
+          "amount": {
+            "amount": "0.00",
+            "currency": "AED",
+            "minor": 0
+          },
+          "cheaper": "equal",
+          "pct": "0.0"
+        },
+        "id": "p02",
+        "image": null,
+        "match": {
+          "confidence": "0.95",
+          "decidedBy": "human",
+          "matchClass": "exact",
+          "method": "fixture",
+          "reviewState": "approved"
+        },
+        "name": "Product p02",
+        "otherPrice": {
+          "amount": "100.00",
+          "currency": "AED",
+          "minor": 10000
+        }
+      },
+      {
+        "basePrice": {
           "amount": "50.00",
           "currency": "AED",
           "minor": 5000
@@ -276,7 +261,15 @@
         ],
         "counted": false,
         "excludedReason": "match_unreviewed",
-        "gap": null,
+        "gap": {
+          "amount": {
+            "amount": "0.00",
+            "currency": "AED",
+            "minor": 0
+          },
+          "cheaper": "equal",
+          "pct": "0.0"
+        },
         "id": "p07",
         "image": null,
         "match": {
@@ -287,215 +280,6 @@
           "reviewState": "proposed"
         },
         "name": "Product p07",
-        "otherPrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        }
-      },
-      {
-        "basePrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": false,
-        "excludedReason": "match_rejected",
-        "gap": null,
-        "id": "p08",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "exact",
-          "method": "fixture",
-          "reviewState": "rejected"
-        },
-        "name": "Product p08",
-        "otherPrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        }
-      },
-      {
-        "basePrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": false,
-        "excludedReason": "match_not_exact",
-        "gap": null,
-        "id": "p09",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "family",
-          "method": "fixture",
-          "reviewState": "approved"
-        },
-        "name": "Product p09",
-        "otherPrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        }
-      },
-      {
-        "basePrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": false,
-        "excludedReason": "size_mismatch",
-        "gap": null,
-        "id": "p10",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "exact",
-          "method": "fixture",
-          "reviewState": "approved"
-        },
-        "name": "Product p10",
-        "otherPrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        }
-      },
-      {
-        "basePrice": {
-          "amount": "70.00",
-          "currency": "AED",
-          "minor": 7000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": false,
-        "excludedReason": "unpriced",
-        "gap": null,
-        "id": "p11",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "exact",
-          "method": "fixture",
-          "reviewState": "approved"
-        },
-        "name": "Product p11",
-        "otherPrice": null
-      },
-      {
-        "basePrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": false,
-        "excludedReason": "not_offered",
-        "gap": null,
-        "id": "p12",
-        "image": null,
-        "match": null,
-        "name": "Product p12",
-        "otherPrice": null
-      },
-      {
-        "basePrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": false,
-        "excludedReason": "early",
-        "gap": null,
-        "id": "p13",
-        "image": null,
-        "match": {
-          "confidence": "0.95",
-          "decidedBy": "human",
-          "matchClass": "exact",
-          "method": "fixture",
-          "reviewState": "approved"
-        },
-        "name": "Product p13",
-        "otherPrice": {
-          "amount": "55.00",
-          "currency": "AED",
-          "minor": 5500
-        }
-      },
-      {
-        "basePrice": null,
-        "brand": "Fixture Beauty",
-        "category": [
-          "makeup"
-        ],
-        "counted": false,
-        "excludedReason": "not_offered",
-        "gap": null,
-        "id": "p14",
-        "image": null,
-        "match": null,
-        "name": "Product p14",
-        "otherPrice": {
-          "amount": "60.00",
-          "currency": "AED",
-          "minor": 6000
-        }
-      },
-      {
-        "basePrice": {
-          "amount": "50.00",
-          "currency": "AED",
-          "minor": 5000
-        },
-        "brand": "Fixture Beauty",
-        "category": [
-          "skincare",
-          "serum"
-        ],
-        "counted": false,
-        "excludedReason": "no_match",
-        "gap": null,
-        "id": "p16",
-        "image": null,
-        "match": null,
-        "name": "Product p16",
         "otherPrice": {
           "amount": "50.00",
           "currency": "AED",
@@ -570,7 +354,7 @@
       "medianGapPct": "2.4",
       "n": 6
     },
-    "total": 15,
+    "total": 7,
     "truncated": false
   },
   "detail": null,
@@ -580,9 +364,9 @@
     "cutoff": "2026-09-30T00:00:00Z",
     "endpoint": "compare",
     "filters": {
-      "groupBy": "brand",
       "retailers": "shop_a,shop_b",
-      "rows": "all"
+      "rows": "overlap",
+      "sort": "gap"
     },
     "generation": "1790000000000000000",
     "market": "AE",
