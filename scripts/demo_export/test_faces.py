@@ -224,6 +224,8 @@ def test_conflicting_or_absent_concentrations_publish_none() -> None:
     assert len(pair["products"]) == 1
     assert "concentration" not in pair["products"][0]["attributes"]
     assert "concentration" not in doc([faces()], slots=("f",))["products"][0]["attributes"]
+    other = doc([replace(faces(), concentration="Eau Fraiche")], slots=("f",))
+    assert "concentration" not in other["products"][0]["attributes"]  # not a pi_core value
 
 
 def test_v3_content_carries_the_faces_description_gallery_and_gtin() -> None:

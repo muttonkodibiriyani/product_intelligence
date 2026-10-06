@@ -37,7 +37,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import HttpUrl
 
-from pi_core import AvailabilityState, MatchClass, ReviewState, is_valid_gtin
+from pi_core import AvailabilityState, Concentration, MatchClass, ReviewState, is_valid_gtin
 from pi_dataset import (
     Capabilities,
     ContentField,
@@ -316,11 +316,12 @@ def product(
     rep = choose_representative(rows)
     shade_families = sorted({row.shade_family for row in rows if row.shade_family})
     attributes: dict[str, Any] = {"shadeFamilies": shade_families} if shade_families else {}
-    # one concentration across every offer's rows, or none: a conflict is never resolved here
+    # one concentration across every offer's rows, or none: a conflict is never resolved here,
+    # and a value outside pi_core's Concentration (e.g. "eau fraiche") is never published
     concentrations = {
         c.lower() for key in keys for row in groups[key] if (c := _text(row.concentration))
     }
-    if len(concentrations) == 1:
+    if len(concentrations) == 1 and concentrations <= {c.value for c in Concentration}:
         attributes["concentration"] = concentrations.pop()
     offers = {
         RETAILERS[key.retailer][0]: offer(groups[key], MARKET.currency, stale) for key in keys
