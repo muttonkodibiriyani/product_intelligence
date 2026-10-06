@@ -167,8 +167,14 @@ def test_the_datalayer_stock_flag_is_its_own_structured_data_block() -> None:
     )
     (out,) = stock(FACES_AR_HTML)
     assert out.value == {"item_in_stock": False}
-    # a flag that is not a boolean, or no dataLayer at all, states nothing
-    assert stock(FACES_HTML.replace('"item_in_stock":true', '"item_in_stock":"yes"')) == []
+    # a flag that is not a boolean is kept as stated (the feed then reads the stock as unknown)
+    (odd,) = stock(FACES_HTML.replace('"item_in_stock":true', '"item_in_stock":"yes"'))
+    assert (odd.raw_text, odd.value) == ("yes", {"item_in_stock": "yes"})
+    assert "not a boolean" in (odd.note or "")
+    (null,) = stock(FACES_HTML.replace('"item_in_stock":true', '"item_in_stock":null'))
+    assert (null.raw_text, null.value) == ("null", {"item_in_stock": None})
+    # no flag, or no dataLayer at all, states nothing
+    assert stock(FACES_HTML.replace('"item_in_stock":true,', "")) == []
     assert stock(FACES_HTML.replace(_DATALAYER, "")) == []
 
 
