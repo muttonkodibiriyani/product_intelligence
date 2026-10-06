@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.22.0",
+            "default": "1.23.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -289,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-06.2",
+            "default": "2026-10-06.3",
             "title": "Metricversion",
             "type": "string"
           },
@@ -309,6 +309,20 @@
         ],
         "title": "ApiMeta",
         "type": "object"
+      },
+      "Area": {
+        "enum": [
+          "assortment",
+          "price",
+          "availability",
+          "promotions",
+          "fragrance",
+          "value",
+          "customer_voice",
+          "trust"
+        ],
+        "title": "Area",
+        "type": "string"
       },
       "AssortmentGaps": {
         "additionalProperties": false,
@@ -490,6 +504,18 @@
           "unknown"
         ],
         "title": "AvailabilityState",
+        "type": "string"
+      },
+      "Basis": {
+        "enum": [
+          "selling_price",
+          "per_unit",
+          "stated_regular",
+          "stock_flag",
+          "rating",
+          "brand_presence"
+        ],
+        "title": "Basis",
         "type": "string"
       },
       "Basket": {
@@ -1294,6 +1320,123 @@
         "title": "Channel",
         "type": "string"
       },
+      "Chart": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ChartKind"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ChartRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/ChartUnit"
+          }
+        },
+        "required": [
+          "kind",
+          "unit",
+          "rows"
+        ],
+        "title": "Chart",
+        "type": "object"
+      },
+      "ChartKind": {
+        "enum": [
+          "bars",
+          "diverging",
+          "stacked",
+          "strips",
+          "matrix"
+        ],
+        "title": "ChartKind",
+        "type": "string"
+      },
+      "ChartRow": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "default": false,
+            "title": "Code",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "of": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Of"
+          },
+          "parts": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Parts",
+            "type": "array"
+          },
+          "retailer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retailer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "ChartRow",
+        "type": "object"
+      },
+      "ChartUnit": {
+        "enum": [
+          "pct",
+          "count"
+        ],
+        "title": "ChartUnit",
+        "type": "string"
+      },
       "Cheaper": {
         "enum": [
           "base",
@@ -1301,6 +1444,34 @@
           "equal"
         ],
         "title": "Cheaper",
+        "type": "string"
+      },
+      "Chip": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ChipCode"
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "retailer"
+        ],
+        "title": "Chip",
+        "type": "object"
+      },
+      "ChipCode": {
+        "enum": [
+          "too_few_ratings",
+          "too_few_pairs",
+          "stock_not_collected",
+          "discounts_not_shown"
+        ],
+        "title": "ChipCode",
         "type": "string"
       },
       "Cohort": {
@@ -2110,6 +2281,72 @@
         "title": "Envelope[Coverage]",
         "type": "object"
       },
+      "Envelope_Findings_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Findings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Findings]",
+        "type": "object"
+      },
       "Envelope_Insights_": {
         "additionalProperties": false,
         "properties": {
@@ -2830,6 +3067,169 @@
         "title": "Evidence",
         "type": "object"
       },
+      "Example": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "gapPct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gappct"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priceWithheld": {
+            "default": false,
+            "title": "Pricewithheld",
+            "type": "boolean"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "ratingCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratingcount"
+          },
+          "regular": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "stock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailabilityState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versus"
+          },
+          "versusId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versusid"
+          },
+          "versusName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versusname"
+          },
+          "versusPrice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "retailer",
+          "brand",
+          "name",
+          "price"
+        ],
+        "title": "Example",
+        "type": "object"
+      },
       "Excluded": {
         "description": "Why a pair row is not counted. Every excluded row carries exactly one (design §7.2).",
         "enum": [
@@ -2938,6 +3338,166 @@
         ],
         "title": "FieldStatus",
         "type": "string"
+      },
+      "Finding": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/Area"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/Basis"
+          },
+          "chart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Chart"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chips": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Chip"
+            },
+            "title": "Chips",
+            "type": "array"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/Example"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "key": {
+            "$ref": "#/components/schemas/FindingKey"
+          },
+          "match": {
+            "$ref": "#/components/schemas/MatchBasis"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "of": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Of"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Param"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "rank",
+          "area",
+          "status",
+          "reason",
+          "n",
+          "of",
+          "match",
+          "basis",
+          "threshold",
+          "params",
+          "chart",
+          "examples"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "FindingKey": {
+        "enum": [
+          "brand_white_space",
+          "brand_depth_gaps",
+          "brand_price_policy",
+          "size_level_gaps",
+          "stock",
+          "promo_strategy",
+          "real_discounts",
+          "fragrance_ladder",
+          "size_traps",
+          "positioning",
+          "price_vs_rating",
+          "pricing_anomalies"
+        ],
+        "title": "FindingKey",
+        "type": "string"
+      },
+      "Findings": {
+        "additionalProperties": false,
+        "properties": {
+          "countedPairs": {
+            "title": "Countedpairs",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "focus": {
+            "title": "Focus",
+            "type": "string"
+          },
+          "rival": {
+            "title": "Rival",
+            "type": "string"
+          },
+          "thirds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Thirds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "focus",
+          "rival",
+          "thirds",
+          "countedPairs",
+          "findings"
+        ],
+        "title": "Findings",
+        "type": "object"
       },
       "Freshness": {
         "additionalProperties": false,
@@ -3804,6 +4364,16 @@
         "title": "Location",
         "type": "object"
       },
+      "MatchBasis": {
+        "enum": [
+          "counted_pairs",
+          "within_shop",
+          "brand_level",
+          "single_shop"
+        ],
+        "title": "MatchBasis",
+        "type": "string"
+      },
       "MatchClass": {
         "description": "Relationship classes between variants (MAT-01).",
         "enum": [
@@ -4665,6 +5235,58 @@
         ],
         "title": "PairSide",
         "type": "object"
+      },
+      "Param": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ParamKind"
+          },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "Param",
+        "type": "object"
+      },
+      "ParamKind": {
+        "enum": [
+          "count",
+          "pct",
+          "money",
+          "ratio",
+          "text",
+          "retailer",
+          "category",
+          "list",
+          "missing"
+        ],
+        "title": "ParamKind",
+        "type": "string"
       },
       "Policy": {
         "enum": [
@@ -7248,7 +7870,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.22.0"
+    "version": "1.23.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10062,6 +10684,183 @@
           }
         },
         "summary": "Export Promotions"
+      }
+    },
+    "/api/v1/findings": {
+      "get": {
+        "description": "Twelve findings for focus against rival, every other context a third shop, in rank order: shown ones first, then those withheld with a reason. Each has the params its headline, decision, evidence and action read (kind count, pct, money, ratio, text, retailer, category, list or missing), a mini chart, up to six product examples with their card image, its threshold, n and of, the match basis (counted_pairs: compare's counted exact pairs, approved or locked, and nothing else; within_shop; brand_level: brand names folded by pi_match; single_shop) and chips for shops left out (too_few_ratings, too_few_pairs, stock_not_collected, discounts_not_shown). Without counted pairs the four matched findings (brand_depth_gaps, brand_price_policy, size_level_gaps, real_discounts) are withheld as no_match or matches_unreviewed. Stock-outs are counts and never rank shops; brands with every listing out are the source reporting them unavailable. Computed once per snapshot generation.",
+        "operationId": "get_findings_api_v1_findings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "description": "The context the findings advise.",
+            "in": "query",
+            "name": "focus",
+            "required": true,
+            "schema": {
+              "description": "The context the findings advise.",
+              "pattern": "^[a-z][a-z0-9_]{1,62}$",
+              "title": "Focus",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The context it is set against.",
+            "in": "query",
+            "name": "rival",
+            "required": true,
+            "schema": {
+              "description": "The context it is set against.",
+              "pattern": "^[a-z][a-z0-9_]{1,62}$",
+              "title": "Rival",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Findings_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Findings"
       }
     },
     "/api/v1/index": {

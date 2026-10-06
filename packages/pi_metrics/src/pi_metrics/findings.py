@@ -36,7 +36,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from functools import cache
-from itertools import combinations
+from itertools import chain, combinations, zip_longest
 
 from pi_core import AvailabilityState
 from pi_dataset import ContractModel, DatasetV3, MoneyValue, OfferV3, ProductV3
@@ -74,7 +74,9 @@ from pi_metrics.model import (
 )
 
 #: Product examples per finding.
-EXAMPLES_LISTED = 6
+EXAMPLES_LISTED = 4
+#: Examples from each side when a finding contrasts two groups (cheap and dear, say).
+EXAMPLES_PER_SIDE = EXAMPLES_LISTED // 2
 #: Chart rows per finding.
 CHART_ROWS = 8
 #: brand_white_space: an absent brand counts with at least this many listings at the rival, and
@@ -329,6 +331,8 @@ class Finding(ContractModel):
     #: The finding's minimum, in the unit of ``n`` (see ``THRESHOLD``).
     threshold: int
     params: dict[str, Param]
+    #: The headline's key number: ``params[FIGURE[key]]``; null when withheld.
+    figure: Param | None
     chart: Chart | None
     examples: tuple[Example, ...]
     chips: tuple[Chip, ...] = ()
@@ -671,6 +675,21 @@ THRESHOLD = {
     FindingKey.PRICE_VS_RATING: RATED_SHOP_MIN,  # products with RATED_MIN_REVIEWS reviews
     FindingKey.PRICING_ANOMALIES: 1,  # withheld prices
 }
+#: The param each finding's headline leads with: its one key number.
+FIGURE = {
+    FindingKey.BRAND_WHITE_SPACE: "absent",
+    FindingKey.BRAND_DEPTH_GAPS: "absent",
+    FindingKey.BRAND_PRICE_POLICY: "focusCheaper",
+    FindingKey.SIZE_LEVEL_GAPS: "heroMedianPct",
+    FindingKey.STOCK: "brand1Out",
+    FindingKey.PROMO_STRATEGY: "modePct",
+    FindingKey.REAL_DISCOUNTS: "real",
+    FindingKey.FRAGRANCE_LADDER: "inversions",
+    FindingKey.SIZE_TRAPS: "focusNotCheaper",
+    FindingKey.POSITIONING: "lipsUnderFocus",
+    FindingKey.PRICE_VS_RATING: "fragranceRho",
+    FindingKey.PRICING_ANOMALIES: "focusCount",
+}
 
 
 def _withhold(key: FindingKey, reason: Reason, *, chips: Iterable[Chip] = ()) -> Finding:
@@ -686,6 +705,7 @@ def _withhold(key: FindingKey, reason: Reason, *, chips: Iterable[Chip] = ()) ->
         basis=_BASIS[key],
         threshold=THRESHOLD[key],
         params={},
+        figure=None,
         chart=None,
         examples=(),
         chips=tuple(chips),
@@ -714,6 +734,7 @@ def _shown(  # noqa: PLR0913 -- one finding's parts, all keyword-only
         basis=_BASIS[key],
         threshold=THRESHOLD[key],
         params=params,
+        figure=params[FIGURE[key]],
         chart=chart,
         examples=distinct(examples)[:EXAMPLES_LISTED],
         chips=tuple(chips),
@@ -834,10 +855,38 @@ def _exact(keys: dict[str, dict[str, list[_Listing]]], a: str, b: str, key: str)
     return bool({x.product.brand for x in keys[a][key]} & {x.product.brand for x in keys[b][key]})
 
 
-def _display(listings: list[_Listing]) -> str:
-    """A brand key's display name: its most frequent exact name, then the first alphabetically."""
-    counts = Counter(x.product.brand for x in listings)
-    return min(counts, key=lambda name: (-counts[name], name))
+def display_brand(spellings: Iterable[str]) -> str:
+    """How one brand is written in findings, from every spelling the shops use: the most frequent
+    spelling that is not all capitals (then the first alphabetically); if every spelling is in
+    capitals, the most frequent one title-cased."""
+    counts = Counter(spellings)
+    mixed = [s for s in counts if s.upper() != s]
+    if mixed:
+        return min(mixed, key=lambda s: (-counts[s], s))
+    return min(counts, key=lambda s: (-counts[s], s)).title()
+
+
+@dataclass(frozen=True)
+class BrandNames:
+    """Brand keys for brand-level comparisons, and each key's ``display_brand`` spelling over
+    every product in the dataset."""
+
+    key: BrandKey
+    spelling: dict[str, str]
+
+    def show(self, brand: str) -> str:
+        return self.spelling.get(self.key(brand), brand)
+
+    def of(self, listings: list[_Listing]) -> str:
+        """The display name of the brand key ``listings`` share."""
+        return self.show(listings[0].product.brand)
+
+
+def brand_names(ds: DatasetV3, brand_key: BrandKey) -> BrandNames:
+    by: defaultdict[str, list[str]] = defaultdict(list)
+    for p in ds.products:
+        by[brand_key(p.brand)].append(p.brand)
+    return BrandNames(key=brand_key, spelling={k: display_brand(v) for k, v in by.items()})
 
 
 def _currency(ds: DatasetV3, context: str) -> str:
@@ -854,12 +903,12 @@ def brand_white_space(  # noqa: PLR0913 -- the request's parts, then the injecte
     thirds: tuple[str, ...],
     i: int,
     *,
-    brand_key: BrandKey,
+    names: BrandNames,
 ) -> Finding:
     """Brands the rival sells and the focus shop does not, the most-reviewed first; the one with
     the most cheap, highly rated products at the rival; and what the first third shop adds."""
     key = FindingKey.BRAND_WHITE_SPACE
-    names, keys = _brands(ds, (focus, rival, *thirds), i, brand_key)
+    spellings, keys = _brands(ds, (focus, rival, *thirds), i, names.key)
     absent = sorted(
         (
             (k, xs)
@@ -875,13 +924,13 @@ def brand_white_space(  # noqa: PLR0913 -- the request's parts, then the injecte
     params: dict[str, Param] = {
         "focus": _shop(focus),
         "rival": _shop(rival),
-        "focusBrands": _count(len(names[focus])),
-        "rivalBrands": _count(len(names[rival])),
+        "focusBrands": _count(len(spellings[focus])),
+        "rivalBrands": _count(len(spellings[rival])),
         "shared": _count(len(shared)),
         "sharedExact": _count(sum(1 for k in shared if _exact(keys, focus, rival, k))),
         "absent": _count(len(absent)),
         "absentListed": _count(len(listed)),
-        "absentNames": _list(_display(xs) for _, xs in listed[:6]),
+        "absentNames": _list(names.of(xs) for _, xs in listed[:6]),
         "absentReviews": _count(sum(_page_reviews(xs) for _, xs in listed)),
         "minListings": _count(WHITE_SPACE_MIN_LISTINGS),
     }
@@ -889,7 +938,7 @@ def brand_white_space(  # noqa: PLR0913 -- the request's parts, then the injecte
     champions: defaultdict[str, list[_Priced]] = defaultdict(list)
     for x in rated.items():
         if _champion(rated, x):
-            champions[brand_key(x.product.brand)].append(x)
+            champions[names.key(x.product.brand)].append(x)
     leads = sorted(
         ((k, xs) for k, xs in absent if champions[k]),
         key=lambda kv: (-len(champions[kv[0]]), kv[0]),
@@ -900,7 +949,7 @@ def brand_white_space(  # noqa: PLR0913 -- the request's parts, then the injecte
         k, xs = leads[0]
         prices = sorted((x.price for x in champions[k]), key=MoneyValue.decimal)
         params |= {
-            "lead": _text(_display(xs)),
+            "lead": _text(names.of(xs)),
             "leadListings": _count(len(xs)),
             "leadChampions": _count(len(champions[k])),
             "leadFrom": _money(prices[0]),
@@ -913,9 +962,9 @@ def brand_white_space(  # noqa: PLR0913 -- the request's parts, then the injecte
         )
         params |= {
             "third": _shop(t),
-            "thirdBrands": _count(len(names[t])),
+            "thirdBrands": _count(len(spellings[t])),
             "thirdOnly": _count(len(only)),
-            "thirdTop": _list(_display(xs) for _, xs in only[:3]),
+            "thirdTop": _list(names.of(xs) for _, xs in only[:3]),
             "thirdTopListings": _list(str(len(xs)) for _, xs in only[:3]),
         }
     chart = Chart(
@@ -923,7 +972,7 @@ def brand_white_space(  # noqa: PLR0913 -- the request's parts, then the injecte
         unit=ChartUnit.COUNT,
         rows=tuple(
             ChartRow(
-                label=_display(xs), retailer=rival, value=Decimal(_page_reviews(xs)), n=len(xs)
+                label=names.of(xs), retailer=rival, value=Decimal(_page_reviews(xs)), n=len(xs)
             )
             for _, xs in listed[:CHART_ROWS]
         ),
@@ -959,7 +1008,7 @@ def brand_depth_gaps(  # noqa: PLR0913 -- the request's parts, then the injected
     pairs: _Pairs,
     i: int,
     *,
-    brand_key: BrandKey,
+    names: BrandNames,
 ) -> Finding:
     """The rival's hero products (``HERO_MIN_REVIEWS`` reviews) from brands both shops sell that
     the focus shop lacks: no exact counted match, and no focus listing of the brand whose name
@@ -972,7 +1021,7 @@ def brand_depth_gaps(  # noqa: PLR0913 -- the request's parts, then the injected
     off = _ratings_off(ds)
     if off is not None:
         return _withhold(key, off)
-    _, keys = _brands(ds, (focus, rival), i, brand_key)
+    _, keys = _brands(ds, (focus, rival), i, names.key)
     shared = sorted(keys[focus].keys() & keys[rival].keys())
     focus_words = {k: [name_tokens(x.product.name) for x in keys[focus][k]] for k in shared}
     heroes: dict[str, list[_Listing]] = {}
@@ -988,7 +1037,7 @@ def brand_depth_gaps(  # noqa: PLR0913 -- the request's parts, then the injected
             continue
         hero = min(members, key=_most_reviewed)
         words = name_tokens(hero.product.name)
-        if words and any(words <= w for w in focus_words[brand_key(hero.product.brand)]):
+        if words and any(words <= w for w in focus_words[names.key(hero.product.brand)]):
             screened += 1
             continue
         absent.append(hero)
@@ -1003,7 +1052,7 @@ def brand_depth_gaps(  # noqa: PLR0913 -- the request's parts, then the injected
             >= POLICY_SHARE * len(h.focus)
             and h.rival_other >= MIN_COHORT
         ),
-        key=lambda h: (-h.rival_other, _display(h.rival)),
+        key=lambda h: (-h.rival_other, names.of(h.rival)),
     )
     params: dict[str, Param] = {
         "focus": _shop(focus),
@@ -1014,9 +1063,9 @@ def brand_depth_gaps(  # noqa: PLR0913 -- the request's parts, then the injected
         "screened": _count(screened),
         "minReviews": _count(HERO_MIN_REVIEWS),
         "shared": _count(len(shared)),
-        "absentNames": _list(f"{x.product.brand} {x.product.name}" for x in absent[:4]),
+        "absentNames": _list(f"{names.show(x.product.brand)} {x.product.name}" for x in absent[:4]),
         "houses": _count(len(houses)),
-        "houseNames": _list(_display(h.rival) for h in houses[:3]),
+        "houseNames": _list(names.of(h.rival) for h in houses[:3]),
         "policySharePct": _pct(POLICY_SHARE),
     }
     lead_keys = ("lead", "leadFocusFragrance", "leadFocusOther", "leadRivalOther")
@@ -1024,14 +1073,14 @@ def brand_depth_gaps(  # noqa: PLR0913 -- the request's parts, then the injected
     if houses:
         h = houses[0]
         params |= {
-            "lead": _text(_display(h.rival)),
+            "lead": _text(names.of(h.rival)),
             "leadFocusFragrance": _count(h.focus_fragrance),
             "leadFocusOther": _count(len(h.focus) - h.focus_fragrance),
             "leadRivalOther": _count(h.rival_other),
         }
     rows = []
     for h in houses[:4]:
-        label = _display(h.rival)
+        label = names.of(h.rival)
         for c, listings in ((focus, h.focus), (rival, h.rival)):
             frag = sum(x.product.category[0] == FRAGRANCE for x in listings)
             parts = (Decimal(frag), Decimal(len(listings) - frag))
@@ -1051,7 +1100,9 @@ def brand_depth_gaps(  # noqa: PLR0913 -- the request's parts, then the injected
 # ---------------------------------------------------------------- 3 brand price policy
 
 
-def brand_price_policy(ds: DatasetV3, focus: str, rival: str, pairs: _Pairs, i: int) -> Finding:
+def brand_price_policy(  # noqa: PLR0913 -- the request's parts, then the brand names
+    ds: DatasetV3, focus: str, rival: str, pairs: _Pairs, i: int, *, names: BrandNames
+) -> Finding:
     """Per brand, where the focus shop's prices sit against the rival's on the same items
     (``insights.brand_policies``), with the basket, and how many of the focus shop's cheaper
     pairs are still cheaper at its stated regular price (list price, not promotion)."""
@@ -1090,11 +1141,11 @@ def brand_price_policy(ds: DatasetV3, focus: str, rival: str, pairs: _Pairs, i: 
         "cheaperAtRegular": _count(at_regular),
         "brands": _count(len(brands)),
         "undercut": _count(len(undercut)),
-        "undercutNames": _list(b.brand for b in named),
+        "undercutNames": _list(names.show(b.brand) for b in named),
         "undercutLowPct": _or_missing(max((b.median_gap_pct for b in named), default=None), _pct),
         "undercutHighPct": _or_missing(min((b.median_gap_pct for b in named), default=None), _pct),
         "parity": _count(len(parity)),
-        "parityNames": _list(b.brand for b in parity[:4]),
+        "parityNames": _list(names.show(b.brand) for b in parity[:4]),
         "policySharePct": _pct(POLICY_SHARE),
     }
     params |= dict.fromkeys(("lead", "leadCheaper", "leadN", "leadMedianPct"), MISSING)
@@ -1102,31 +1153,34 @@ def brand_price_policy(ds: DatasetV3, focus: str, rival: str, pairs: _Pairs, i: 
     if undercut:
         lead = max(undercut, key=lambda b: (b.other_cheaper, -b.median_gap_pct, b.brand))
         params |= {
-            "lead": _text(lead.brand),
+            "lead": _text(names.show(lead.brand)),
             "leadCheaper": _count(lead.other_cheaper),
             "leadN": _count(lead.n),
             "leadMedianPct": _pct(lead.median_gap_pct),
         }
     if parity:
         params |= {
-            "parityLead": _text(parity[0].brand),
+            "parityLead": _text(names.show(parity[0].brand)),
             "parityLeadLevel": _count(parity[0].equal),
             "parityLeadN": _count(parity[0].n),
         }
-    chart = Chart(kind=ChartKind.DIVERGING, unit=ChartUnit.PCT, rows=_policy_rows(brands))
+    chart = Chart(kind=ChartKind.DIVERGING, unit=ChartUnit.PCT, rows=_policy_rows(brands, names))
     examples: list[Example] = []
-    for chosen, take in ((undercut[:2], 2), (parity[:2], 1)):
-        for b in chosen:
-            mine = sorted((r for r in rows if r.brand == b.brand), key=_by_gap)
-            examples += distinct(_pair_example(ds, r, rival, focus, i) for r in mine)[:take]
+    for chosen in (undercut[:EXAMPLES_PER_SIDE], parity[:EXAMPLES_PER_SIDE]):
+        # the brands' pairs in turn, so two brands show one pair each and one brand shows two
+        mine = [sorted((r for r in rows if r.brand == b.brand), key=_by_gap) for b in chosen]
+        turns = (r for r in chain.from_iterable(zip_longest(*mine)) if r is not None)
+        examples += distinct(_pair_example(ds, r, rival, focus, i) for r in turns)[
+            :EXAMPLES_PER_SIDE
+        ]
     return _shown(key, n=len(rows), of=pairs.both, params=params, chart=chart, examples=examples)
 
 
-def _policy_rows(brands: tuple[BrandPolicy, ...]) -> tuple[ChartRow, ...]:
+def _policy_rows(brands: tuple[BrandPolicy, ...], names: BrandNames) -> tuple[ChartRow, ...]:
     """The ``CHART_ROWS`` brands furthest from parity, most negative first."""
     far = sorted(brands, key=lambda b: (-abs(b.median_gap_pct), -b.n, b.brand))[:CHART_ROWS]
     far.sort(key=lambda b: (b.median_gap_pct, -b.n, b.brand))
-    return tuple(ChartRow(label=b.brand, value=b.median_gap_pct, n=b.n) for b in far)
+    return tuple(ChartRow(label=names.show(b.brand), value=b.median_gap_pct, n=b.n) for b in far)
 
 
 # ---------------------------------------------------------------- 4 size level gaps
@@ -1177,12 +1231,12 @@ def size_level_gaps(ds: DatasetV3, focus: str, rival: str, pairs: _Pairs, i: int
         rows=tuple(ChartRow(label=size_label(s), value=s.median_gap_pct, n=s.n) for s in sizes),
     )
     examples: list[Example] = []
-    for s, take in ((hero, 4), (entry, 2)):
+    for s in (hero, entry):
         at = sorted(
             (r for r in pairs.counted if _measure(ds, r.id, rival) == (s.unit, s.value)),
             key=_by_gap,
         )
-        examples += distinct(_pair_example(ds, r, rival, focus, i) for r in at)[:take]
+        examples += distinct(_pair_example(ds, r, rival, focus, i) for r in at)[:EXAMPLES_PER_SIDE]
     return _shown(key, n=n, of=len(pairs.counted), params=params, chart=chart, examples=examples)
 
 
@@ -1196,7 +1250,7 @@ def stock(  # noqa: PLR0913 -- the request's parts, then the injected brand key
     thirds: tuple[str, ...],
     i: int,
     *,
-    brand_key: BrandKey,
+    names: BrandNames,
 ) -> Finding:
     """Out-of-stock counts by brand at the focus shop (``insights.brand_stockouts``: brands the
     source reports wholly unavailable kept apart), and the rival's out-of-stock brands the focus
@@ -1225,25 +1279,30 @@ def stock(  # noqa: PLR0913 -- the request's parts, then the injected brand key
     }
     for n, row in enumerate(mine.brands[:2], 1):
         params |= {
-            f"brand{n}": _text(row.brand),
+            f"brand{n}": _text(names.show(row.brand)),
             f"brand{n}Out": _count(row.out_of_stock),
             f"brand{n}Observed": _count(row.observed),
         }
-    in_stock = Counter(brand_key(x.product.brand) for x in _seen(ds, focus, i) if _stocked(x, i))
+    in_stock = Counter(names.key(x.product.brand) for x in _seen(ds, focus, i) if _stocked(x, i))
     theirs = shops[rival]
     short = (
-        [] if theirs.reason else [r for r in theirs.brands if in_stock[brand_key(r.brand)] > 0][:3]
+        [] if theirs.reason else [r for r in theirs.brands if in_stock[names.key(r.brand)] > 0][:3]
     )
     params |= {
-        "rivalShort": _list(r.brand for r in short),
+        "rivalShort": _list(names.show(r.brand) for r in short),
         "rivalShortOut": _list(str(r.out_of_stock) for r in short),
-        "rivalShortFocusIn": _list(str(in_stock[brand_key(r.brand)]) for r in short),
+        "rivalShortFocusIn": _list(str(in_stock[names.key(r.brand)]) for r in short),
     }
     chart = Chart(
         kind=ChartKind.BARS,
         unit=ChartUnit.COUNT,
         rows=tuple(
-            ChartRow(label=r.brand, retailer=focus, value=Decimal(r.out_of_stock), of=r.observed)
+            ChartRow(
+                label=names.show(r.brand),
+                retailer=focus,
+                value=Decimal(r.out_of_stock),
+                of=r.observed,
+            )
             for r in mine.brands[:6]
         ),
     )
@@ -1308,8 +1367,14 @@ def _marked(x: _Priced, regular: MoneyValue) -> bool:
     return regular.decimal() > x.price.decimal()
 
 
-def promo_strategy(
-    ds: DatasetV3, focus: str, thirds: tuple[str, ...], i: int, unverified: frozenset[str]
+def promo_strategy(  # noqa: PLR0913 -- the request's parts, then the brand names
+    ds: DatasetV3,
+    focus: str,
+    thirds: tuple[str, ...],
+    i: int,
+    unverified: frozenset[str],
+    *,
+    names: BrandNames,
 ) -> Finding:
     """How the focus shop marks down: listings with a stated regular price that are marked down,
     the most common depth, the brands that depend on promotion, the large brands never marked
@@ -1347,7 +1412,7 @@ def promo_strategy(
         "modePct": _pct(mode),
         "modeCount": _count(mode_n),
         "dependent": _count(len(dependent)),
-        "dependentNames": _list(dependent[:3]),
+        "dependentNames": _list(names.show(b) for b in dependent[:3]),
         "dependentMarked": _list(str(sum(by[b])) for b in dependent[:3]),
         "dependentListed": _list(str(len(by[b])) for b in dependent[:3]),
         "large": _count(len(large)),
@@ -1368,7 +1433,7 @@ def promo_strategy(
             "thirdMarked": MISSING if theirs is None else _count(len(down)),
             "thirdMedianPct": _or_missing(median, _pct),
             "thirdBrands": _list(
-                b for b, _ in Counter(x.product.brand for x, _ in down).most_common(3)
+                names.show(b) for b, _ in Counter(x.product.brand for x, _ in down).most_common(3)
             ),
         }
     chart = Chart(
@@ -1376,7 +1441,7 @@ def promo_strategy(
         unit=ChartUnit.PCT,
         rows=tuple(
             ChartRow(
-                label=b,
+                label=names.show(b),
                 retailer=focus,
                 value=share(sum(by[b]), len(by[b])),
                 n=sum(by[b]),
@@ -1387,8 +1452,8 @@ def promo_strategy(
     )
     dearest = sorted(marked, key=lambda m: (-m[1].decimal(), m[0].product.id))
     examples = [
-        *distinct(example(x, i) for x, _ in dearest)[:3],
-        *distinct(example(x, i) for x, _ in third_down)[:3],
+        *distinct(example(x, i) for x, _ in dearest)[:EXAMPLES_PER_SIDE],
+        *distinct(example(x, i) for x, _ in third_down)[:EXAMPLES_PER_SIDE],
     ]
     of = sum(1 for _ in _priced(ds, focus, i))
     return _shown(
@@ -1429,6 +1494,7 @@ def real_discounts(  # noqa: PLR0913 -- the request's parts, then the unverified
     first: _Pairs,
     on: date | None,
     unverified: frozenset[str],
+    names: BrandNames,
 ) -> Finding:
     """On counted pairs between any two shops: the markdowns either side states, and how many
     are real (the stated regular price is what the other shop charges). ``first`` holds the
@@ -1469,7 +1535,7 @@ def real_discounts(  # noqa: PLR0913 -- the request's parts, then the unverified
         "real": _count(sum(m.real for m in marks)),
         "tolerancePct": _pct(REAL_DISCOUNT_TOLERANCE_PCT),
         "focusMarkdowns": _count(sum(m.on == focus for m in marks)),
-        "lead": _text(f"{lead.row.brand} {lead.row.name}"),
+        "lead": _text(f"{names.show(lead.row.brand)} {lead.row.name}"),
         "leadShop": _shop(lead.on),
         "leadPct": _pct(lead.depth),
         "leadPrice": _money(lead.price),
@@ -1481,7 +1547,7 @@ def real_discounts(  # noqa: PLR0913 -- the request's parts, then the unverified
         kind=ChartKind.BARS,
         unit=ChartUnit.PCT,
         rows=tuple(
-            ChartRow(label=f"{m.row.brand} {m.row.name}", retailer=m.on, value=m.depth)
+            ChartRow(label=f"{names.show(m.row.brand)} {m.row.name}", retailer=m.on, value=m.depth)
             for m in marks[:CHART_ROWS]
         ),
     )
@@ -1563,13 +1629,13 @@ def fragrance_ladder(  # noqa: PLR0913 -- the request's parts, then the injected
     thirds: tuple[str, ...],
     i: int,
     *,
-    brand_key: BrandKey,
+    names: BrandNames,
 ) -> Finding:
     """What each upgrade costs at each shop (median premium, groups under ``MIN_COHORT`` pairs
     suppressed), and the focus shop's inversions: an upgrade cheaper than its base."""
     key = FindingKey.FRAGRANCE_LADDER
     contexts = (focus, rival, *thirds)
-    rungs = {c: fragrance_rungs(ds, c, i, brand_key) for c in contexts}
+    rungs = {c: fragrance_rungs(ds, c, i, names.key) for c in contexts}
     groups = {
         (c, u): sorted(r.premium for r in rungs[c] if r.upgrade is u)
         for c in contexts
@@ -1600,7 +1666,7 @@ def fragrance_ladder(  # noqa: PLR0913 -- the request's parts, then the injected
     if inversions:
         lead = inversions[0]
         params |= {
-            "lead": _text(f"{lead.up.product.brand} {lead.up.product.name}"),
+            "lead": _text(f"{names.show(lead.up.product.brand)} {lead.up.product.name}"),
             "leadBase": _text(lead.base.product.name),
             "leadPct": _pct(lead.premium),
             "leadPrice": _money(lead.up.price),
@@ -1634,11 +1700,13 @@ def fragrance_ladder(  # noqa: PLR0913 -- the request's parts, then the injected
 # ---------------------------------------------------------------- 9 size traps
 
 
-def _step_label(s: LadderStep) -> str:
-    return f"{s.brand} {s.family} {s.smaller_value}→{s.larger_value} {s.unit}"
+def _step_label(s: LadderStep, names: BrandNames) -> str:
+    return f"{names.show(s.brand)} {s.family} {s.smaller_value}→{s.larger_value} {s.unit}"
 
 
-def size_traps(ds: DatasetV3, focus: str, rival: str, thirds: tuple[str, ...], i: int) -> Finding:
+def size_traps(  # noqa: PLR0913 -- the request's parts, then the brand names
+    ds: DatasetV3, focus: str, rival: str, thirds: tuple[str, ...], i: int, *, names: BrandNames
+) -> Finding:
     """Going up a size at each shop (``insights.size_ladder``): the median per-unit saving, and
     the focus shop's steps where the larger size is not cheaper per unit."""
     key = FindingKey.SIZE_TRAPS
@@ -1663,14 +1731,14 @@ def size_traps(ds: DatasetV3, focus: str, rival: str, thirds: tuple[str, ...], i
     params |= dict.fromkeys(("lead", "leadPct"), MISSING)
     if mine.exceptions:
         params |= {
-            "lead": _text(_step_label(mine.exceptions[0])),
+            "lead": _text(_step_label(mine.exceptions[0], names)),
             "leadPct": _pct(mine.exceptions[0].unit_change_pct),
         }
     chart = Chart(
         kind=ChartKind.BARS,
         unit=ChartUnit.PCT,
         rows=tuple(
-            ChartRow(label=_step_label(s), retailer=focus, value=s.unit_change_pct)
+            ChartRow(label=_step_label(s, names), retailer=focus, value=s.unit_change_pct)
             for s in mine.exceptions[:CHART_ROWS]
         ),
     )
@@ -1764,8 +1832,8 @@ def positioning(ds: DatasetV3, focus: str, rival: str, thirds: tuple[str, ...], 
         key=_most_reviewed,
     )
     examples = [
-        *distinct(example(x, i) for x in cheap)[:3],
-        *distinct(example(x, i) for x in dear)[:3],
+        *distinct(example(x, i) for x in cheap)[:EXAMPLES_PER_SIDE],
+        *distinct(example(x, i) for x in dear)[:EXAMPLES_PER_SIDE],
     ]
     n = sum(len(v) for v in mix.values())
     of = sum(len(v) for v in priced.values())
@@ -1863,8 +1931,8 @@ def price_vs_rating(
         ),
     )
     examples = [
-        *distinct(example(x, i) for x in champions)[:3],
-        *distinct(example(x, i) for x in laggards)[:3],
+        *distinct(example(x, i) for x in champions)[:EXAMPLES_PER_SIDE],
+        *distinct(example(x, i) for x in laggards)[:EXAMPLES_PER_SIDE],
     ]
     of = sum(1 for _ in _priced(ds, shop, i))
     return _shown(key, n=r.n, of=of, params=params, chart=chart, examples=examples, chips=chips)
@@ -1873,8 +1941,8 @@ def price_vs_rating(
 # ---------------------------------------------------------------- 12 pricing anomalies
 
 
-def pricing_anomalies(
-    ds: DatasetV3, focus: str, rival: str, thirds: tuple[str, ...], i: int
+def pricing_anomalies(  # noqa: PLR0913 -- the request's parts, then the brand names
+    ds: DatasetV3, focus: str, rival: str, thirds: tuple[str, ...], i: int, *, names: BrandNames
 ) -> Finding:
     """Listings whose price the read-time floor withheld, per shop: likely samples or gifts
     exposed as products, and the in-stock ones a customer could order at that price."""
@@ -1891,7 +1959,7 @@ def pricing_anomalies(
         "focus": _shop(focus),
         "focusCount": _count(len(mine)),
         "focusInStock": _count(sum(_stocked(x, i) for x in mine)),
-        "focusBrands": _list(b for b, _ in brands),
+        "focusBrands": _list(names.show(b) for b, _ in brands),
         "focusBrandCounts": _list(str(n) for _, n in brands),
         "rival": _shop(rival),
         "rivalCount": _count(len(bad[rival])),
@@ -1916,12 +1984,16 @@ def pricing_anomalies(
 # ---------------------------------------------------------------- all twelve
 
 
-def _no_markdowns(f: Finding, ds: DatasetV3, unverified: frozenset[str]) -> Finding:
-    """The finding with no regular price on examples from shops whose markdowns are not shown."""
+def _presented(f: Finding, ds: DatasetV3, unverified: frozenset[str], names: BrandNames) -> Finding:
+    """The finding's examples with each brand as ``display_brand`` writes it, and no regular
+    price from a shop whose markdowns are not shown."""
     examples = tuple(
-        e.model_copy(update={"regular": None})
-        if e.regular is not None and _promo_off(ds, e.retailer, unverified) is not None
-        else e
+        e.model_copy(
+            update={
+                "brand": names.show(e.brand),
+                "regular": None if _promo_off(ds, e.retailer, unverified) else e.regular,
+            }
+        )
         for e in f.examples
     )
     return f.model_copy(update={"examples": examples})
@@ -1964,24 +2036,24 @@ def findings(  # noqa: PLR0913 -- the request, then the injected brand key and u
             as_of=as_of,
         )
     pairs = _pairs(ds, rival, focus, on)
-    brand_key = cache(brand_key)  # one key per brand name, not per listing
+    names = brand_names(ds, cache(brand_key))  # one key per brand name, not per listing
     shown = ranked(
-        _no_markdowns(f, ds, unverified)
+        _presented(f, ds, unverified, names)
         for f in (
-            brand_white_space(ds, focus, rival, thirds, i, brand_key=brand_key),
-            brand_depth_gaps(ds, focus, rival, pairs, i, brand_key=brand_key),
-            brand_price_policy(ds, focus, rival, pairs, i),
+            brand_white_space(ds, focus, rival, thirds, i, names=names),
+            brand_depth_gaps(ds, focus, rival, pairs, i, names=names),
+            brand_price_policy(ds, focus, rival, pairs, i, names=names),
             size_level_gaps(ds, focus, rival, pairs, i),
-            stock(ds, focus, rival, thirds, i, brand_key=brand_key),
-            promo_strategy(ds, focus, thirds, i, unverified),
+            stock(ds, focus, rival, thirds, i, names=names),
+            promo_strategy(ds, focus, thirds, i, unverified, names=names),
             real_discounts(
-                ds, focus, rival, thirds, i, first=pairs, on=on, unverified=unverified
+                ds, focus, rival, thirds, i, first=pairs, on=on, unverified=unverified, names=names
             ),
-            fragrance_ladder(ds, focus, rival, thirds, i, brand_key=brand_key),
-            size_traps(ds, focus, rival, thirds, i),
+            fragrance_ladder(ds, focus, rival, thirds, i, names=names),
+            size_traps(ds, focus, rival, thirds, i, names=names),
             positioning(ds, focus, rival, thirds, i),
             price_vs_rating(ds, focus, rival, thirds, i),
-            pricing_anomalies(ds, focus, rival, thirds, i),
+            pricing_anomalies(ds, focus, rival, thirds, i, names=names),
         )
     )
     ok = any(f.status is Status.OK for f in shown)

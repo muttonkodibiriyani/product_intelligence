@@ -24,6 +24,7 @@ from pi_dataset import Dataset, DatasetV3, Product
 from pi_metrics import view
 from pi_metrics.findings import (
     EXAMPLES_LISTED,
+    FIGURE,
     MISSING,
     ORDER,
     POSITION_MIN,
@@ -41,6 +42,7 @@ from pi_metrics.findings import (
     band_labels,
     band_of,
     concentration,
+    display_brand,
     findings,
     fragrance_line,
     name_tokens,
@@ -277,7 +279,7 @@ def test_white_space_lists_rival_brands_the_focus_lacks() -> None:
     assert (p["lead"].value, p["leadChampions"].value) == ("Brand 1", "5")
     assert f.chart is not None
     assert [r.label for r in f.chart.rows] == list(names)
-    assert [e.brand for e in f.examples] == list(names)
+    assert [e.brand for e in f.examples] == list(names[:EXAMPLES_LISTED])
     withheld = _get(_run(_with(_absent(4))), FindingKey.BRAND_WHITE_SPACE)
     assert (withheld.status, withheld.reason) == (Status.NOT_ENOUGH_DATA, Reason.COHORT_TOO_SMALL)
 
@@ -381,6 +383,7 @@ def test_price_policy_by_brand_over_counted_pairs(priced: Dataset) -> None:
         (FOCUS, RIVAL, "Undercut"),
         (FOCUS, RIVAL, "Undercut"),
         (FOCUS, RIVAL, "Parity"),
+        (FOCUS, RIVAL, "Parity"),
     ]
     assert f.examples[0].gap_pct == Decimal(-9)
 
@@ -431,7 +434,7 @@ def test_stock_counts_out_of_stock_by_brand_and_rival_gaps() -> None:
     )
     assert (p["unavailableBrands"].value, p["unavailableListings"].value) == ("1", "5")
     assert (p["withStock"].value, p["listed"].value) == ("18", "18")
-    assert p["rivalShort"].items == ("LUX",)
+    assert p["rivalShort"].items == ("Lux",)  # the focus shop's mixed-case spelling
     assert (p["rivalShortOut"].items, p["rivalShortFocusIn"].items) == (("5",), ("3",))
     assert "Whole" not in {r.label for r in f.chart.rows} if f.chart else False
     assert [(c.code, c.retailer) for c in f.chips] == [
@@ -474,7 +477,7 @@ def test_promo_strategy_finds_the_flat_depth_and_dependent_brands() -> None:
     )
     assert f.chart is not None
     assert [(r.label, r.value, r.n, r.of) for r in f.chart.rows] == [("Deal", Decimal(90), 9, 10)]
-    assert [e.retailer for e in f.examples] == [FOCUS] * 3 + [C] * 2
+    assert [e.retailer for e in f.examples] == [FOCUS] * 2 + [C] * 2
     assert f.examples[0].regular is not None
     assert [(c.code, c.retailer) for c in f.chips] == [(ChipCode.DISCOUNTS_NOT_SHOWN, D)]
 
@@ -685,7 +688,7 @@ def test_price_vs_rating_speaks_for_the_first_shop_with_enough_ratings() -> None
         ("mid", (Decimal(0), Decimal(25), Decimal(25), Decimal(0))),
         ("low", (Decimal(0), Decimal(0), Decimal(0), Decimal(25))),
     ]
-    assert [e.rating for e in f.examples] == [Decimal("4.8")] * 3 + [Decimal("3.5")] * 3
+    assert [e.rating for e in f.examples] == [Decimal("4.8")] * 2 + [Decimal("3.5")] * 2
     few = _get(_run(_with(_rated_shop(RIVAL, RATED_SHOP_MIN - 1))), FindingKey.PRICE_VS_RATING)
     assert (few.status, few.reason) == (Status.NOT_ENOUGH_DATA, Reason.COHORT_TOO_SMALL)
 
@@ -753,12 +756,41 @@ def test_every_finding_carries_its_evidence() -> None:
         assert len(names) == len(set(names))
         if f.status is Status.OK:
             assert f.reason is None
+            assert f.figure == f.params[FIGURE[f.key]]
             assert f.chart is not None
             assert f.of is None or f.n <= f.of
             assert all(isinstance(p.kind, ParamKind) for p in f.params.values())
         else:
             assert f.reason is not None
-            assert (f.params, f.chart, f.examples) == ({}, None, ())
+            assert (f.params, f.figure, f.chart, f.examples) == ({}, None, None, ())
+
+
+@pytest.mark.parametrize(
+    ("spellings", "shown"),
+    [
+        (["CHANEL", "Chanel"], "Chanel"),  # the spelling that is not all capitals
+        (["DIOR", "DIOR", "Dior"], "Dior"),  # however rare
+        (["Too Faced", "Too faced", "Too faced"], "Too faced"),  # then the most frequent
+        (["NARS Cosmetics", "Nars cosmetics"], "NARS Cosmetics"),  # then alphabetically first
+        (["ESTEE LAUDER"], "Estee Lauder"),  # all capitals: title-cased
+        (["L'ORÉAL PARIS", "L'ORÉAL PARIS"], "L'Oréal Paris"),
+        (["YSL"], "Ysl"),  # the rule's known cost: an acronym written only in capitals
+        (["Kayali"], "Kayali"),
+    ],
+)
+def test_display_brand_prefers_a_spelling_that_is_not_all_capitals(
+    spellings: list[str], shown: str
+) -> None:
+    assert display_brand(spellings) == shown
+
+
+@settings(max_examples=50)
+@given(st.lists(st.sampled_from(["GUCCI", "Gucci", "gucci", "GuCCi"]), min_size=1))
+def test_display_brand_is_a_spelling_or_its_title_case(spellings: list[str]) -> None:
+    shown = display_brand(spellings)
+    mixed = {s for s in spellings if s.upper() != s}
+    assert shown in mixed if mixed else shown == spellings[0].title()
+    assert display_brand(reversed(spellings)) == shown  # order of the shops does not matter
 
 
 @settings(deadline=None, max_examples=20)
