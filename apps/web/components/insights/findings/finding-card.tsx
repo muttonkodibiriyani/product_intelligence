@@ -147,7 +147,7 @@ function About({ finding: f, names, pair }: { finding: Finding; names: Namers; p
   const rows: [string, string][] = [
     [
       t('tip.n'),
-      f.of === null
+      f.of == null
         ? formatCount(f.n, locale)
         : t('tip.nOf', { n: formatCount(f.n, locale), of: formatCount(f.of, locale) }),
     ],

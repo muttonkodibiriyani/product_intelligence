@@ -98,7 +98,7 @@ function Bars({
   const wide = rows.some((r) => label(r).length > WIDE);
   const text = (r: ChartRow) => {
     const v = unit === 'pct' ? `${signed(r.value)}%` : formatCount(Number(r.value), locale);
-    if (outOf && r.of !== null) return `${v} / ${formatCount(r.of, locale)}`;
+    if (outOf && r.of != null) return `${v} / ${formatCount(r.of, locale)}`;
     return v;
   };
   return (
@@ -110,7 +110,7 @@ function Bars({
         <Row key={i}>
           <Label text={label(r)} />
           <span className="min-w-0">
-            {outOf && r.of !== null ? (
+            {outOf && r.of != null ? (
               <span
                 className="relative block h-3.5 rounded-xs bg-line-2"
                 style={{ width: `${barWidth(String(r.of), max)}%` }}
@@ -166,7 +166,7 @@ function Diverging({ rows, names }: { rows: readonly ChartRow[]; names: Namers }
             </span>
             <bdi className={`${val} text-end ${strong ? 'font-semibold text-ink' : ''}`}>
               {`${signed(r.value, true)}%`}
-              {r.n !== null && ` · n=${formatCount(r.n, locale)}`}
+              {r.n != null && ` · n=${formatCount(r.n, locale)}`}
             </bdi>
             <span className="relative block h-4">
               <span className="absolute inset-y-0 w-px bg-ink" style={{ insetInlineStart: `${zero}%` }} />
@@ -251,7 +251,7 @@ function Stacked({
                   ))}
                 </span>
                 <bdi className={val}>
-                  {unit === 'pct' && r.n !== null
+                  {unit === 'pct' && r.n != null
                     ? `n=${formatCount(r.n, locale)}`
                     : r.parts.map((p) => formatCount(Number(p), locale)).join(' + ')}
                 </bdi>

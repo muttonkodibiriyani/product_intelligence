@@ -32,11 +32,11 @@ export function FindingsSection({ focus, rival }: { focus: string; rival: string
   const shop = useRetailerName();
   const names = useNames(shop);
   if (served !== true || (q.error instanceof ApiError && q.error.status === 404)) return null;
-  const findings = q.data?.data.findings;
+  const findings = q.data?.data?.findings;
   const pair: Pair = {
-    focus: q.data?.data.focus ?? focus,
-    rival: q.data?.data.rival ?? rival,
-    thirds: q.data?.data.thirds ?? [],
+    focus: q.data?.data?.focus ?? focus,
+    rival: q.data?.data?.rival ?? rival,
+    thirds: q.data?.data?.thirds ?? [],
   };
   return (
     <section aria-labelledby="findings-title" className="panel px-4 py-5 sm:px-6">
