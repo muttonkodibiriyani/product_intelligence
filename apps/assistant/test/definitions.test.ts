@@ -27,6 +27,8 @@ const NEW_IN_S6 = new Set([
   "category_compare",
   // Derived from /products sizes (2026-10-03).
   "price_per_unit",
+  // API 1.14.0 (pair price suggestions).
+  "price_suggestions",
 ]);
 
 const VERSION_BUMPS: Readonly<Record<string, string>> = {
@@ -37,7 +39,7 @@ const VERSION_BUMPS: Readonly<Record<string, string>> = {
 };
 
 describe("tool definitions", () => {
-  it("has eighteen uniquely named, viewer-level, read-only tools", () => {
+  it("has nineteen uniquely named, viewer-level, read-only tools", () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual([
       "search_products",
       "price_per_unit",
@@ -57,6 +59,7 @@ describe("tool definitions", () => {
       "category_mix",
       "assortment_breadth",
       "category_compare",
+      "price_suggestions",
     ]);
     for (const tool of TOOLS) {
       expect(tool.minRole).toBe("viewer");

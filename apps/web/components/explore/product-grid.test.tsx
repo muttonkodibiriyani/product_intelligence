@@ -2,7 +2,9 @@ import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@te
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Schemas } from '@/lib/api/types';
+import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
+import { MatchReviewLabel } from '../ui/product-card';
 import { ProductGrid, useView, ViewToggle } from './product-grid';
 
 afterEach(() => {
@@ -48,6 +50,39 @@ function grid(items: Schemas['ProductCard'][]) {
 }
 
 describe('ProductGrid', () => {
+  it('"Unreviewed match" only on a card whose match a reviewer has not confirmed, explained on focus', () => {
+    grid([
+      card({ matchReview: 'unreviewed' }),
+      card({ id: 'p2', matchReview: 'reviewed' }),
+      card({ id: 'p3', matchReview: null }),
+      card({ id: 'p4' }),
+    ]);
+    const [unreviewed, ...rest] = screen.getAllByRole('listitem');
+    const label = within(unreviewed!).getByText(en.productCard.unreviewedMatch);
+    const trigger = label.closest('[aria-describedby]')!;
+    expect(document.getElementById(trigger.getAttribute('aria-describedby')!)!.textContent).toBe(
+      en.productCard.unreviewedMatchHint,
+    );
+    expect(trigger.getAttribute('tabindex')).toBe('0');
+    for (const c of rest) expect(within(c).queryByText(en.productCard.unreviewedMatch)).toBeNull();
+  });
+
+  it('"Unreviewed match" in Arabic', () => {
+    render(
+      <NextIntlClientProvider
+        locale="ar"
+        messages={ar}
+        onError={(e) => {
+          throw e;
+        }}
+      >
+        <MatchReviewLabel review="unreviewed" />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(ar.productCard.unreviewedMatch)).toBeTruthy();
+    expect(screen.getByRole('tooltip').textContent).toBe(ar.productCard.unreviewedMatchHint);
+  });
+
   it('draws one card per product: name links to the product, a line per shop, "Not sold" where it is not', () => {
     grid([card({}), card({ id: 'p2', name: 'Lip Kit', prices: { sephora_me: aed('90.00') } })]);
     const cards = screen.getAllByRole('listitem');

@@ -23,7 +23,9 @@ served card price of 0.01 or less in the walked retailer's own contexts (the #14
 ``--known-low-price`` (an unexplained data change).
 ``check`` (after it) runs S1-S8 of the runbook against that baseline, writes
 ``<out>/check.json`` and exits 1 on any FAIL. REVIEW lines need the owner's judgement,
-not a rollback.
+not a rollback. A deploy that starts serving a new retailer names it with ``--added-retailer``
+(e.g. faces_ae): S1 then expects it on top of the baseline's retailers, and S2 requires it to
+serve > 0 products while every baseline retailer's count stays unchanged.
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -43,8 +45,18 @@ from typing import Any
 
 BASE = "https://productintelligence-beeb3.web.app/api/v1"
 EXPECTED = {"sephora_me": 9529, "ulta_ae": 7275}
-IMAGE_HOSTS = {"sephora_me": "img-product.sephora.me", "ulta_ae": "media.alshaya.com"}
-EVIDENCE_HOSTS = {"sephora_me": "www.sephora.me", "ulta_ae": "www.ulta.ae"}
+#: Every retailer the API may serve, with the one host its images / evidence links must be on.
+#: S3 checks each retailer /coverage serves, and FAILs on a served retailer missing from here.
+IMAGE_HOSTS = {
+    "sephora_me": "img-product.sephora.me",
+    "ulta_ae": "media.alshaya.com",
+    "faces_ae": "www.faces.ae",
+}
+EVIDENCE_HOSTS = {
+    "sephora_me": "www.sephora.me",
+    "ulta_ae": "www.ulta.ae",
+    "faces_ae": "www.faces.ae",
+}
 #: The live Ulta catalogue object, as described in the runbook's baselines.
 CATALOGUE_GENERATION = "1790852220300614"
 #: The default --category-param; any user value replaces it (it is not appended to).
@@ -246,7 +258,7 @@ def save(api: Api, out: Path, known_low: int) -> int:
     return status
 
 
-def s1_meta(api: Api, rep: Report, expect_api: str) -> None:
+def s1_meta(api: Api, rep: Report, expect_api: str, expected: Collection[str]) -> None:
     r = api.get("/meta", auth=False)
     rep.expect(r.status == 401, f"S1 /meta without a token -> 401 ({r.status})")
     r = api.get("/meta")
@@ -254,22 +266,31 @@ def s1_meta(api: Api, rep: Report, expect_api: str) -> None:
     rep.expect(r.status == 200, f"S1 /meta with the token -> 200 ({r.status})")
     rep.expect(version == expect_api, f"S1 apiVersion {version} == {expect_api}")
     retailers = sorted(x.get("id") for x in r.data.get("retailers") or [])
-    rep.expect(retailers == sorted(EXPECTED), f"S1 retailers {retailers}")
+    rep.expect(retailers == sorted(expected), f"S1 retailers {retailers} == {sorted(expected)}")
 
 
-def s2_counts(api: Api, rep: Report, baseline: Mapping[str, Any]) -> None:
+def s2_counts(
+    api: Api, rep: Report, baseline: Mapping[str, Any], added: Collection[str] = ()
+) -> None:
     got = coverage(api)
+    before = baseline.get("counts") or {}
+    for rid in added:
+        rep.expect(rid not in before, f"S2 {rid} is new (not in the baseline)")
+        rep.expect(got.get(rid, 0) > 0, f"S2 {rid} serves {got.get(rid, 0)} products (> 0)")
+    got = {rid: n for rid, n in got.items() if rid not in added}
     rep.expect(
         got.get("ulta_ae") == EXPECTED["ulta_ae"],
         f"S2 ulta_ae {got.get('ulta_ae')} == {EXPECTED['ulta_ae']}",
     )
-    rep.expect(
-        got == baseline.get("counts"), f"S2 /coverage {got} == baseline {baseline.get('counts')}"
-    )
+    rep.expect(got == before, f"S2 /coverage {got} == baseline {before}")
 
 
 def s3_images(api: Api, rep: Report) -> None:
-    for rid, host in IMAGE_HOSTS.items():
+    for rid in sorted(coverage(api)):
+        host = IMAGE_HOSTS.get(rid)
+        if host is None:
+            rep.expect(False, f"S3 {rid}: served but has no pinned image host")
+            continue
         r = api.get("/products", {"retailer": rid, "limit": "50"})
         items = r.data.get("items") or []
         urls = [u for u in map(image_url, items) if u]
@@ -422,8 +443,9 @@ def s8_cursor(api: Api, rep: Report, baseline: Mapping[str, Any]) -> None:
 def check(api: Api, out: Path, args: argparse.Namespace) -> int:
     baseline = json.loads((out / "baseline.json").read_text())
     rep = Report()
-    s1_meta(api, rep, args.expect_api)
-    s2_counts(api, rep, baseline)
+    added = args.added_retailer or []
+    s1_meta(api, rep, args.expect_api, {*(baseline.get("counts") or {}), *added})
+    s2_counts(api, rep, baseline, added)
     if not args.counts_only:
         s3_images(api, rep)
         s4_floor(api, rep, baseline)
@@ -463,6 +485,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--known-low-price", type=int, default=KNOWN_LOW_PRICE)
     p.add_argument("--category-route", default="/category-compare")
     p.add_argument("--category-param", action="append", default=None)
+    p.add_argument(
+        "--added-retailer",
+        action="append",
+        choices=sorted(EVIDENCE_HOSTS),
+        default=None,
+        help="check: a retailer this deploy starts serving (repeatable)",
+    )
     p.add_argument(
         "--counts-only",
         action="store_true",

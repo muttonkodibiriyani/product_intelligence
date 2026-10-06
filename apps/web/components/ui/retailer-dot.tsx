@@ -1,6 +1,6 @@
 /**
- * The colour a shop reads in everywhere: Ulta burnt orange, Sephora graphite (app/globals.css).
- * A shop the app has no colour for takes a chart series tone by its position in the list, so two
+ * The colour a shop reads in everywhere: Ulta burnt orange, Sephora graphite, Faces deep teal
+ * (app/globals.css). A shop the app has no colour for takes a chart series tone by its position in the list, so two
  * unknown shops still tell apart. Always a dot, a bar or a rule, never a fill behind text. One
  * table serves the class (`retailerTone`) and the inline value (`retailerColor`), so a shop's dot,
  * its count bars and its gap bars are the same colour.
@@ -9,6 +9,7 @@ const TONES: Readonly<Record<string, string>> = {
   ulta_ae: 'bg-ulta',
   sephora_me: 'bg-sephora',
   sephora_ae: 'bg-sephora',
+  faces_ae: 'bg-faces',
 };
 const FALLBACK = ['bg-series-b', 'bg-series-a', 'bg-lav-ink', 'bg-mint-ink'];
 

@@ -128,6 +128,9 @@ function toolRounds(): Reply[] {
   ];
 }
 
+/** Bytes allowed for an empty conversation (system prompt plus tool schemas). */
+const EMPTY_CONVERSATION_CAP = 21_000;
+
 describe("prompt budget at the runbook seed limits", () => {
   const { maxInputTokens, maxModelCallsPerQuestion } = RUNBOOK_LIMITS;
 
@@ -137,14 +140,15 @@ describe("prompt budget at the runbook seed limits", () => {
   });
 
   it.each(CASES)(
-    "answers an empty conversation (%s, %s) within half the limit",
+    "answers an empty conversation (%s, %s) within 21000 bytes",
     async (role, locale) => {
       const { answer, bounds } = await ask(role, locale, [{ text: "Hello.", toolCalls: [] }]);
       expect(answer.status).toBe("answered");
       expect(bounds).toHaveLength(1);
-      // Measured: 19580 (en) and 19673 (ar) bytes with 18 tools; 20300 left for history and
-      // tool results.
-      expect(bounds[0]).toBeLessThanOrEqual(maxInputTokens / 2);
+      // Measured: 19580 (en) and 19673 (ar) bytes with 18 tools; 20867 (en) and 20960 (ar)
+      // with 19 (price_suggestions, API 1.14.0) and the unconfirmedMatch rule (#208). The cap
+      // was raised from half the limit (20000) to 21000 by ruling (2026-10-03).
+      expect(bounds[0]).toBeLessThanOrEqual(EMPTY_CONVERSATION_CAP);
     },
   );
 
@@ -155,10 +159,12 @@ describe("prompt budget at the runbook seed limits", () => {
       expect(answer.status).toBe("answered");
       expect(answer.toolCalls.map((record) => record.status)).toEqual(Array(5).fill("ok"));
       expect(bounds).toHaveLength(maxModelCallsPerQuestion);
-      // Measured peak: 28712 (viewer, en) to 29442 (admin, ar) bytes, about 10500 headroom.
+      // Measured peak with 18 tools: 28712 (viewer, en) to 29442 (admin, ar) bytes, 10558 or
+      // more headroom; with 19 and #208: 29853 to 30583, 9417 or more. Floor 9000 (was 10000)
+      // accepted by the Reviewer (2026-10-03).
       const peak = Math.max(...bounds);
       expect(peak).toBe(bounds.at(-1));
-      expect(maxInputTokens - peak).toBeGreaterThanOrEqual(10_000);
+      expect(maxInputTokens - peak).toBeGreaterThanOrEqual(9_000);
     },
   );
 

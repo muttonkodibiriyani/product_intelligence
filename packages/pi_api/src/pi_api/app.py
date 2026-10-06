@@ -42,9 +42,11 @@ from pi_api.analytics import (
     CompareQuery,
     CompareRowsQuery,
     IndexQuery,
+    InsightsQuery,
     LaunchesRowsQuery,
     MatchesQuery,
     MatchPage,
+    PriceSuggestionsQuery,
     PromotionsQuery,
     PromotionsRowsQuery,
     ReviewsQuery,
@@ -52,7 +54,9 @@ from pi_api.analytics import (
     capped_comparison,
     capped_launches,
     capped_promotions,
+    capped_suggestions,
     matches,
+    promotion_images,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
 from pi_api.catalog import (
@@ -131,6 +135,8 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
+from pi_metrics.insights import Insights, insights
+from pi_metrics.pair_pricing import PriceSuggestions, price_suggestions
 from pi_metrics.summary import Summary
 from pi_metrics.view import AmbiguousContext, UnknownInput
 
@@ -671,7 +677,8 @@ def build_api(
         loaded = source.select(query.market, query.scope)
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
-    _metric_routes(api, source)
+    _metric_routes(api, source, images)
+    _insights_route(api, source)
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -716,7 +723,7 @@ def _catalogue_routes(
         )
 
 
-def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
+def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
     """S3: one route per ``pi_metrics`` call (design §6); every number comes from there."""
 
     @api.get(f"{PREFIX}/compare", response_model=Envelope[Comparison])
@@ -774,8 +781,9 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         query: Annotated[PromotionsRowsQuery, Query()], _: Viewer
     ) -> Envelope[Promotions]:
         loaded = source.select(query.market, query.scope)
+        ds = read_at(loaded, query.on)
         metric = promotions(
-            read_at(loaded, query.on),
+            ds,
             query.retailer,
             query.where(),
             query.min_depth(),
@@ -784,7 +792,44 @@ def _metric_routes(api: FastAPI, source: SnapshotSource) -> None:
         )
         if query.on is None:
             metric = stale_first(loaded, metric, query.retailer)
-        return respond(loaded, "promotions", query, capped_promotions(metric, query.limit))
+        capped = capped_promotions(metric, query.limit)
+        return respond(loaded, "promotions", query, promotion_images(ds, capped, images))
+
+    @api.get(
+        f"{PREFIX}/price-suggestions",
+        response_model=Envelope[PriceSuggestions],
+        description=(
+            "Rule-based, not ML: where the subject context could cut a price to beat (aim=beat, "
+            "strictly below) or match (aim=match, at or below) the rival, over exact approved or "
+            "locked pairs of the same size in one currency. Down only: a subject already there "
+            "is already_competitive and its gap (rival - subject) is data, never advice to "
+            "raise. A cut is at most maxChangePct, at least minChangePct, to an allowed ending. "
+            "Every row without an outcome carries one reason. Each side's price is its last "
+            "collected price; a side older than staleDays is stale_observation, except a "
+            "subject served from a one-off import (basis imported_snapshot, observedOn = the "
+            "import date). No demand, volume, revenue or margin figure: none is collected. "
+            "Rows: suggested first, largest overprice first; then the rest, then id."
+        ),
+    )
+    def get_price_suggestions(
+        query: Annotated[PriceSuggestionsQuery, Query()], _: Viewer
+    ) -> Envelope[PriceSuggestions]:
+        loaded = source.select(query.market, query.scope)
+        # Always the view itself, never ``latest``: that carries a stale source's last price to
+        # the view's last date, and this rule judges staleness from each side's real date.
+        metric = price_suggestions(
+            loaded.dataset,
+            query.subject,
+            query.rival,
+            query.where(),
+            on=query.on,
+            aim=query.aim,
+            guardrails=query.guardrails(),
+            imported={c: shop.imported_on for shop in loaded.imported for c in shop.contexts},
+        )
+        if query.on is None:
+            metric = stale_first(loaded, metric, (query.subject, query.rival))
+        return respond(loaded, "price_suggestions", query, capped_suggestions(metric, query.limit))
 
     @api.get(f"{PREFIX}/assortment-gaps", response_model=Envelope[AssortmentGaps])
     def get_assortment_gaps(
@@ -912,6 +957,35 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
     except BaseException:  # pragma: no cover - no response, so free the slot now
         stream.close()
         raise
+
+
+def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
+    """S3: the Insights page aggregates (``pi_metrics.insights``)."""
+
+    @api.get(
+        f"{PREFIX}/insights",
+        response_model=Envelope[Insights],
+        description=(
+            "Decision aggregates for the Insights page. pricing: compare's counted pairs "
+            "(exact, approved or locked, same size, one currency) between retailers=<base>,"
+            "<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at "
+            "least policySharePct % of a brand's pairs agree, else mixed) and by the base "
+            "offer's published measure; groups under minCohort are withheld and counted in "
+            "suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is "
+            "still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per "
+            "context, consecutive sizes of one family (the retailer's content.family, else "
+            "the same brand, name, category and unit: basis=name) and how many larger sizes "
+            "do not cost less per unit; a step more than heldOutPct % dearer per unit is "
+            "held out as a different product and counted in heldOut."
+        ),
+    )
+    def get_insights(query: Annotated[InsightsQuery, Query()], _: Viewer) -> Envelope[Insights]:
+        loaded = source.select(query.market, query.scope)
+        base, other = query.pair()
+        metric = insights(loaded.dataset, base, other, on=query.on)
+        if query.on is None:
+            metric = stale_first(loaded, metric, (base, other))
+        return respond(loaded, "insights", query, metric)
 
 
 def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
