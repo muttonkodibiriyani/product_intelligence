@@ -1,4 +1,4 @@
-"""``GET /products?availability=&unavailableBrands=`` (API 1.22.0): each Insights stock count
+"""``GET /products?availability=&unavailableBrands=`` (API 1.23.0): each Insights stock count
 links to the listings behind it, on the latest date, one listing at a time."""
 
 from __future__ import annotations

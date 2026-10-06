@@ -287,7 +287,7 @@ class ProductFilters(ContractModel):
         Field(
             max_length=MAX_VALUES,
             description=(
-                "API 1.22.0. Repeatable; keeps products with a listing in one of these stock "
+                "API 1.23.0. Repeatable; keeps products with a listing in one of these stock "
                 "states on the latest date, at the contexts ``retailer`` names (and ``channel``/"
                 "``location`` show), else at any. A listing without an observed state never "
                 "matches."
@@ -298,7 +298,7 @@ class ProductFilters(ContractModel):
         UnavailableBrands | None,
         Field(
             description=(
-                "API 1.22.0. ``only`` keeps products with a listing in a brand the source reports "
+                "API 1.23.0. ``only`` keeps products with a listing in a brand the source reports "
                 "unavailable at that context on the latest date (at least 2 observed listings of "
                 "the brand, every one out of stock: Insights' ``unavailableListings``); "
                 "``exclude`` keeps those with a listing that is not. Applies to the same "
