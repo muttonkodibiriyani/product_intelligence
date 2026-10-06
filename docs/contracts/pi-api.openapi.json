@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.22.0",
+            "default": "1.23.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -289,7 +289,7 @@
             "type": "string"
           },
           "metricVersion": {
-            "default": "2026-10-06.1",
+            "default": "2026-10-06.2",
             "title": "Metricversion",
             "type": "string"
           },
@@ -3464,6 +3464,24 @@
             },
             "title": "Stockouts",
             "type": "array"
+          },
+          "value": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ValuePicks"
+            },
+            "title": "Value",
+            "type": "array"
+          },
+          "valueMinRatings": {
+            "default": 20,
+            "title": "Valueminratings",
+            "type": "integer"
+          },
+          "valueRatingPct": {
+            "default": "90.0",
+            "title": "Valueratingpct",
+            "type": "string"
           }
         },
         "required": [
@@ -3618,6 +3636,11 @@
             "title": "Largerid",
             "type": "string"
           },
+          "largerOnSale": {
+            "default": false,
+            "title": "Largeronsale",
+            "type": "boolean"
+          },
           "largerPrice": {
             "$ref": "#/components/schemas/MoneyValue"
           },
@@ -3632,6 +3655,11 @@
           "smallerId": {
             "title": "Smallerid",
             "type": "string"
+          },
+          "smallerOnSale": {
+            "default": false,
+            "title": "Smalleronsale",
+            "type": "boolean"
           },
           "smallerPrice": {
             "$ref": "#/components/schemas/MoneyValue"
@@ -6471,6 +6499,16 @@
         "title": "Status",
         "type": "string"
       },
+      "StockFilter": {
+        "description": "An observed stock state a listing can be filtered on: ``pi_core.AvailabilityState``'s\nobserved values. A listing with no state, or an unobserved one, never matches.",
+        "enum": [
+          "in_stock",
+          "low_stock",
+          "out_of_stock"
+        ],
+        "title": "StockFilter",
+        "type": "string"
+      },
       "Stockouts": {
         "additionalProperties": false,
         "properties": {
@@ -6480,6 +6518,16 @@
             },
             "title": "Brands",
             "type": "array"
+          },
+          "listed": {
+            "default": 0,
+            "title": "Listed",
+            "type": "integer"
+          },
+          "outOfStock": {
+            "default": 0,
+            "title": "Outofstock",
+            "type": "integer"
           },
           "qualifying": {
             "title": "Qualifying",
@@ -6501,6 +6549,29 @@
           },
           "suppressed": {
             "title": "Suppressed",
+            "type": "integer"
+          },
+          "unavailable": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BrandStock"
+            },
+            "title": "Unavailable",
+            "type": "array"
+          },
+          "unavailableBrands": {
+            "default": 0,
+            "title": "Unavailablebrands",
+            "type": "integer"
+          },
+          "unavailableListings": {
+            "default": 0,
+            "title": "Unavailablelistings",
+            "type": "integer"
+          },
+          "withStock": {
+            "default": 0,
+            "title": "Withstock",
             "type": "integer"
           }
         },
@@ -6935,6 +7006,39 @@
         "title": "TopDiscount",
         "type": "object"
       },
+      "UnavailableBrands": {
+        "description": "Listings in a brand the source reports unavailable at their context: ``only`` those,\n``exclude`` them (``pi_metrics.insights.unavailable_brands``).",
+        "enum": [
+          "only",
+          "exclude"
+        ],
+        "title": "UnavailableBrands",
+        "type": "string"
+      },
+      "UnitMedian": {
+        "additionalProperties": false,
+        "properties": {
+          "median": {
+            "title": "Median",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "median",
+          "n"
+        ],
+        "title": "UnitMedian",
+        "type": "object"
+      },
       "Unmapped": {
         "enum": [
           "no_breadcrumb",
@@ -6974,6 +7078,207 @@
           "n"
         ],
         "title": "UnmappedPath",
+        "type": "object"
+      },
+      "ValueBasis": {
+        "enum": [
+          "shelf",
+          "per_unit"
+        ],
+        "title": "ValueBasis",
+        "type": "string"
+      },
+      "ValueCategory": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ValueBasis",
+            "default": "shelf"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "excluded": {
+            "default": 0,
+            "title": "Excluded",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ValuePick"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "median": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "picks": {
+            "title": "Picks",
+            "type": "integer"
+          },
+          "priced": {
+            "title": "Priced",
+            "type": "integer"
+          },
+          "rated": {
+            "title": "Rated",
+            "type": "integer"
+          },
+          "unitMedians": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UnitMedian"
+            },
+            "title": "Unitmedians",
+            "type": "array"
+          }
+        },
+        "required": [
+          "category",
+          "priced",
+          "median",
+          "rated",
+          "picks",
+          "items"
+        ],
+        "title": "ValueCategory",
+        "type": "object"
+      },
+      "ValuePick": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/MoneyValue"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "string"
+          },
+          "ratingCount": {
+            "title": "Ratingcount",
+            "type": "integer"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          },
+          "sizeUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizeunit"
+          },
+          "sizeValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizevalue"
+          },
+          "unitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unitprice"
+          }
+        },
+        "required": [
+          "id",
+          "brand",
+          "name",
+          "price",
+          "rating",
+          "scale",
+          "ratingCount"
+        ],
+        "title": "ValuePick",
+        "type": "object"
+      },
+      "ValuePicks": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCategory"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "qualifying": {
+            "title": "Qualifying",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retailer": {
+            "title": "Retailer",
+            "type": "string"
+          },
+          "suppressed": {
+            "title": "Suppressed",
+            "type": "integer"
+          },
+          "unranked": {
+            "default": 0,
+            "title": "Unranked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retailer",
+          "reason",
+          "categories",
+          "qualifying",
+          "suppressed"
+        ],
+        "title": "ValuePicks",
         "type": "object"
       },
       "VariantView": {
@@ -7118,7 +7423,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.22.0"
+    "version": "1.23.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9613,6 +9918,40 @@
               "title": "Attr",
               "type": "array"
             }
+          },
+          {
+            "description": "API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches.",
+            "in": "query",
+            "name": "availability",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches.",
+              "items": {
+                "$ref": "#/components/schemas/StockFilter"
+              },
+              "maxItems": 25,
+              "title": "Availability",
+              "type": "array"
+            }
+          },
+          {
+            "description": "API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``.",
+            "in": "query",
+            "name": "unavailableBrands",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UnavailableBrands"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``.",
+              "title": "Unavailablebrands"
+            }
           }
         ],
         "responses": {
@@ -10144,7 +10483,7 @@
     },
     "/api/v1/insights": {
       "get": {
-        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.",
+        "description": "Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers, not out of stock, and at or below the category median on its basis: per ml or g in fragrance (basis per_unit), else shelf price (basis shelf; minis and travel sizes are never picks). Tools and misfiled body care are left out of the cohort (excluded); the catch-all other is never ranked (unranked). Ranked by rating share shrunk toward the category mean; one pick per brand and name, at most two per brand. Categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.",
         "operationId": "get_insights_api_v1_insights_get",
         "parameters": [
           {
@@ -11401,6 +11740,40 @@
               "maxItems": 25,
               "title": "Attr",
               "type": "array"
+            }
+          },
+          {
+            "description": "API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches.",
+            "in": "query",
+            "name": "availability",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches.",
+              "items": {
+                "$ref": "#/components/schemas/StockFilter"
+              },
+              "maxItems": 25,
+              "title": "Availability",
+              "type": "array"
+            }
+          },
+          {
+            "description": "API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``.",
+            "in": "query",
+            "name": "unavailableBrands",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UnavailableBrands"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``.",
+              "title": "Unavailablebrands"
             }
           },
           {
