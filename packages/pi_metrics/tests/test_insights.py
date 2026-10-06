@@ -562,6 +562,8 @@ def test_an_offer_outside_the_market_currency_is_not_in_the_value_cohort() -> No
 
 def test_a_regular_price_in_another_currency_is_not_a_sale() -> None:
     """A dataset rejects mixed currencies in one offer; the guard still holds on its own."""
-    o = offer(A, ["50.00"] * 3, regular=["60.00"] * 3)
+    sale = product("p", {A: offer(A, ["50.00"] * 3, regular=["60.00"] * 3)})
+    (v3,) = view.as_v3(_with([sale])).products
+    o = v3.offers[A]
     assert _on_sale(o, MoneyValue.of(Decimal("50.00"), "AED"), 0)
     assert not _on_sale(o, MoneyValue.of(Decimal("50.00"), "USD"), 0)  # AED 60 vs USD 50
