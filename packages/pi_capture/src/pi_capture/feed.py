@@ -169,8 +169,10 @@ def _major(minor: JsonValue, currency: str) -> str | None:
 def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[str]) -> str | None:
     """The single availability the structured data states; two different ones -> None.
 
-    Read from schema.org ``availability`` values and from boolean ``item_in_stock`` flags (the
-    dataLayer block), so a page whose JSON-LD and dataLayer disagree states nothing usable.
+    Read from schema.org ``availability`` values and from ``item_in_stock`` flags (the page's own
+    stock flag), so a page whose JSON-LD and flag disagree states nothing usable. A flag that is
+    present but not a boolean adds a token no map holds, so the page's stock is unknown and the
+    token is counted in ``unmapped``.
     """
     found: set[str] = set()
 
@@ -179,9 +181,11 @@ def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[s
             value = node.get("availability")
             if isinstance(value, str) and value.strip():
                 found.add(value.strip().rstrip("/").rsplit("/", 1)[-1].lower())
-            flag = node.get("item_in_stock")
-            if isinstance(flag, bool):
-                found.add(_STOCK_FLAG[flag])
+            if "item_in_stock" in node:
+                flag = node["item_in_stock"]
+                found.add(
+                    _STOCK_FLAG[flag] if isinstance(flag, bool) else f"item_in_stock={flag!r}"
+                )
             for child in node.values():
                 walk(child)
         elif isinstance(node, list):
@@ -191,13 +195,12 @@ def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[s
     for reading in by_key.get("structured_data", ()):
         if reading.state == "observed":
             walk(reading.value)
+    for token in found - AVAILABILITY_MAP.keys():
+        unmapped[token] += 1
     if len(found) != 1:
         return None
     (token,) = found
-    if token not in AVAILABILITY_MAP:
-        unmapped[token] += 1
-        return None
-    return token
+    return token if token in AVAILABILITY_MAP else None
 
 
 def _price_columns(

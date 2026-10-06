@@ -292,9 +292,12 @@ def _flag(in_stock: JsonValue) -> Reading:
         # the page contradicts itself: unknown, never in or out of stock
         ((_markup("http://schema.org/InStock"), _flag(False)), None),
         ((_markup("http://schema.org/OutOfStock"), _flag(True)), None),
-        # a flag that is not a boolean is no statement
+        # a flag that is present but not a boolean makes the page's stock unknown
         ((_flag("true"),), None),
-        ((_markup("http://schema.org/InStock"), _flag(1)), "instock"),
+        ((_markup("http://schema.org/InStock"), _flag(1)), None),
+        ((_markup("http://schema.org/InStock"), _flag(0)), None),
+        ((_markup("http://schema.org/InStock"), _flag("false")), None),
+        ((_markup("http://schema.org/InStock"), _flag(None)), None),
     ],
 )
 def test_the_datalayer_stock_flag_must_agree_with_the_markup(
@@ -302,6 +305,12 @@ def test_the_datalayer_stock_flag_must_agree_with_the_markup(
 ) -> None:
     result = build_feed([page(make_capture, *statements)], SHOPS["faces_ae"])
     assert result.rows[0].get("availability") == expected
+
+
+def test_a_non_boolean_flag_is_counted_as_unmapped(make_capture: CaptureFactory) -> None:
+    capture = page(make_capture, _markup("http://schema.org/InStock"), _flag("false"))
+    result = build_feed([capture], SHOPS["faces_ae"])
+    assert result.report()["unmapped_availability"] == {"item_in_stock='false'": 1}
 
 
 def test_a_numeric_key_is_written_as_text_and_an_image_list_of_blanks_is_skipped(

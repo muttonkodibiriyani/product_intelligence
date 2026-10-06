@@ -589,17 +589,24 @@ def _datalayer_stock(item: Mapping[str, Any] | None) -> Reading | None:
     when every such statement on the page agrees, so a JSON-LD ``InStock`` beside a ``false`` flag
     is unknown, not in stock.
     """
-    flag = item.get("item_in_stock") if item is not None else None
-    if not isinstance(flag, bool):
+    if item is None or "item_in_stock" not in item:
         return None
+    flag = item["item_in_stock"]
+    if isinstance(flag, bool):
+        raw, note = ("true" if flag else "false"), "dataLayer stock flag"
+    else:
+        # present but not a boolean (0, "false", null): kept as stated, so the feed reads the
+        # page's stock as unknown instead of letting the JSON-LD speak alone
+        raw = "null" if flag is None else str(flag)
+        note = "dataLayer stock flag is not a boolean; the page's stock is unknown"
     return Reading(
         "structured_data",
         get_attribute("structured_data").level,
         "observed",
-        "true" if flag else "false",
+        raw,
         {"item_in_stock": flag},
         f"{_DL}.item_in_stock",
-        "dataLayer stock flag; cross-checked with the JSON-LD availability",
+        f"{note}; cross-checked with the JSON-LD availability",
     )
 
 
