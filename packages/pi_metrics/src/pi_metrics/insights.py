@@ -246,7 +246,8 @@ class Stockouts(ContractModel):
     #: ``unavailable_listings``.
     out_of_stock: int = 0
     #: Brands with at least ``MIN_UNAVAILABLE_LISTINGS`` offers in an observed stock state, every
-    #: one out of stock: the source reports them unavailable (often not sold online in the market), which is not a sell-out.
+    #: one out of stock: the source reports them unavailable (often not sold online in the
+    #: market), which is not a sell-out.
     unavailable_brands: int = 0
     #: Offers in ``unavailable_brands``. Never overlaps ``out_of_stock``.
     unavailable_listings: int = 0
@@ -558,7 +559,8 @@ def _gone(observed: dict[str, int], out: dict[str, int]) -> frozenset[str]:
 
 def unavailable_brands(ds: DatasetV3, context: str, i: int) -> frozenset[str]:
     """Brands with at least ``MIN_UNAVAILABLE_LISTINGS`` offers in an observed stock state at
-    ``context`` on date ``i``, every one out of stock: the source reports them unavailable (see the module's brand stock-outs)."""
+    ``context`` on date ``i``, every one out of stock: the source reports them unavailable (see
+    the module's brand stock-outs)."""
     _, observed, out = _brand_stock(ds, context, i)
     return _gone(observed, out)
 

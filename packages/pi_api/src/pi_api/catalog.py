@@ -300,9 +300,10 @@ class ProductFilters(ContractModel):
             description=(
                 "API 1.22.0. ``only`` keeps products with a listing in a brand the source reports "
                 "unavailable at that context on the latest date (at least 2 observed listings of "
-                "the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those "
-                "with a listing that is not. Applies to the same listings as ``availability``, "
-                "and with it to the same listing: ``availability=out_of_stock&"
+                "the brand, every one out of stock: Insights' ``unavailableListings``); "
+                "``exclude`` keeps those with a listing that is not. Applies to the same "
+                "listings as ``availability``, and with it to the same listing: "
+                "``availability=out_of_stock&"
                 "unavailableBrands=exclude`` is Insights' ``outOfStock``."
             )
         ),

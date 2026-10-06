@@ -400,7 +400,8 @@ def _in_usd(p: ProductV3) -> ProductV3:
     """``p`` with its A offer, prices included, in USD (the market currency is AED)."""
     o = p.offers[A]
     usd = tuple(None if m is None else MoneyValue.of(m.decimal(), "USD") for m in o.series.price)
-    o = o.model_copy(update={"currency": "USD", "series": o.series.model_copy(update={"price": usd})})
+    series = o.series.model_copy(update={"price": usd})
+    o = o.model_copy(update={"currency": "USD", "series": series})
     return p.model_copy(update={"offers": {A: o}})
 
 
