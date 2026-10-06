@@ -14,7 +14,7 @@ as one. The file is only read.
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from pi_match.model import ProductRecord
@@ -40,21 +40,38 @@ def _offers(product: Mapping[str, Any], retailer_of: Mapping[str, str]) -> dict[
     }
 
 
-def _slots(products: Sequence[Mapping[str, Any]], retailer_of: Mapping[str, str]) -> dict[str, str]:
+def _slots(products: Sequence[tuple[str, Collection[str]]]) -> dict[str, str]:
     """retailer -> its token slot, learned from one-offer products (``f-...`` -> ``f``).
 
     A retailer whose one-offer ids disagree on the slot gets none, and so does a slot letter
     that two retailers share: it cannot say which retailer a token belongs to.
     """
     seen: dict[str, set[str]] = defaultdict(set)
-    for product in products:
-        offers = _offers(product, retailer_of)
-        pid = product["id"]
-        if len(offers) == 1 and len(pid) > 2 and pid[1] == "-" and not pid.startswith("m-"):
-            seen[next(iter(offers))].add(pid[0])
+    for pid, retailers in products:
+        if len(retailers) == 1 and len(pid) > 2 and pid[1] == "-" and not pid.startswith("m-"):
+            seen[next(iter(retailers))].add(pid[0])
     single = {r: next(iter(s)) for r, s in seen.items() if len(s) == 1}
     claims = Counter(single.values())
     return {r: slot for r, slot in single.items() if claims[slot] == 1}
+
+
+def listing_tokens(products: Sequence[tuple[str, Collection[str]]]) -> dict[tuple[str, str], str]:
+    """``(product id, retailer)`` -> the listing token, for ``(product id, its retailers)``.
+
+    A one-retailer product's token is its id; a several-retailer product's is that retailer's
+    half of ``m-<token>-<token>`` when exactly one split names exactly its retailers. Any other
+    offer has no token (it is never guessed).
+    """
+    slots = _slots(products)
+    out: dict[tuple[str, str], str] = {}
+    for pid, retailers in products:
+        if len(retailers) == 1:
+            out[(pid, next(iter(retailers)))] = pid
+            continue
+        split = split_pair_id(pid, slots)
+        if split is not None and set(split) == set(retailers):
+            out.update({(pid, r): t for r, t in split.items()})
+    return out
 
 
 def split_pair_id(pid: str, slots: Mapping[str, str]) -> dict[str, str] | None:
@@ -99,20 +116,15 @@ def listings(data: Mapping[str, Any], retailer: str) -> tuple[tuple[ProductRecor
         msg = f"the file has no retailer {retailer}"
         raise ListingError(msg)
     products: Sequence[Mapping[str, Any]] = data["products"]
-    slots = _slots(products, retailer_of)
+    offered = [_offers(product, retailer_of) for product in products]
+    tokens = listing_tokens([(p["id"], o.keys()) for p, o in zip(products, offered, strict=True)])
     records: list[ProductRecord] = []
     unkeyed = 0
-    for product in products:
-        offers = _offers(product, retailer_of)
+    for product, offers in zip(products, offered, strict=True):
         offer = offers.get(retailer)
         if offer is None or offer.get("early"):
             continue
-        if len(offers) == 1:
-            token: str | None = product["id"]
-        else:
-            split = split_pair_id(product["id"], slots)
-            # The split must name exactly the retailers that offer the product, else no token.
-            token = split.get(retailer) if split is not None and set(split) == set(offers) else None
+        token = tokens.get((product["id"], retailer))
         if token is None:
             unkeyed += 1
             continue

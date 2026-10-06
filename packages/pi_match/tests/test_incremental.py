@@ -370,7 +370,7 @@ def product(pid: str, offers: dict[str, Any], name: str = "Sauvage EDP") -> dict
 
 
 V2: dict[str, Any] = {
-    "meta": {"retailers": [{"id": U}, {"id": S}]},
+    "meta": {"scope": "beauty", "vertical": "beauty", "retailers": [{"id": U}, {"id": S}]},
     "products": [
         product("u-1-100-ml", {U: offer(image="https://img.example/u1.jpg"), S: None}),
         product("s-P1-100-ml", {S: offer(size=None)}),
@@ -462,12 +462,13 @@ def test_cli_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     beauty = tmp_path / "beauty.json"
     beauty.write_text(json.dumps(V2))
     faces = tmp_path / "faces.json"
-    faces.write_text(json.dumps({"meta": {"retailers": [{"id": F}]},
-                                 "products": [product("f-9-100-ml", {F: offer()})]}))  # fmt: skip
+    meta = {"scope": "beauty", "vertical": "beauty", "retailers": [{"id": F}]}
+    faces.write_text(json.dumps({"meta": meta, "products": [product("f-9-100-ml", {F: offer()})]}))
     out = tmp_path / "m.json"
     argv = [f"--source={U}={beauty}", f"--source={S}={beauty}", f"--source={F}={faces}",
             "--generated-at=2026-10-03T18:00:00Z", f"--out={out}"]  # fmt: skip
     assert main(argv) == 0
+    assert MatchFile.model_validate_json(out.read_text()).scope == "beauty"  # from the sources
     stats = json.loads(capsys.readouterr().out)
     assert stats["listings"] == {F: 1, S: 2, U: 2}
     assert stats["unkeyed"] == {F: 0, S: 1, U: 1}
@@ -488,3 +489,6 @@ def test_cli_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
         main(
             [f"--source={U}={beauty}", f"--source={U}={beauty}", "--generated-at=x", f"--out={out}"]
         )
+    faces.write_text(json.dumps({"meta": {**meta, "scope": "sa"}, "products": []}))
+    with pytest.raises(SystemExit):  # a match file is for one view
+        main(argv)

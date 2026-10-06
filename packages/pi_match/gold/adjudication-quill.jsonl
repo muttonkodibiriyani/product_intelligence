@@ -1,0 +1,129 @@
+{"id": "002a77031fa7", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "007b8c3c25fc", "quill": "exact", "verifier": "related", "final": "related", "why": "Faces slug concentration differs (EDP vs EDT)"}
+{"id": "01342db48be3", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "05686980f413", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "073585d2c6fb", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "0a2c553fd38e", "quill": "family", "verifier": "related", "final": "related", "why": "Faces slug concentration differs (EDP vs EDT)"}
+{"id": "0d2f1168058f", "quill": "family", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "0d927fe1db0a", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "0df5e6b41d46", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "1245f0907c43", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "name and URL slug disagree (variant or concentration)"}
+{"id": "13cfbc131017", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "1a9e4b9150b0", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "220c6c380efd", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "23811db6d70d", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "size not observed on at least one side"}
+{"id": "23eaf85686ec", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "2f60636ab8dc", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "3310a6c353e1", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "33db42d7278e", "quill": "family", "verifier": "related", "final": "related", "why": "different release or format (Parfum vs Le Parfum; mist vs EDT; different scent line)"}
+{"id": "3bd6e9fad3c1", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "3c296a99f6cb", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "name and URL slug disagree (variant or concentration)"}
+{"id": "3f1336c93e10", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "401639500855", "quill": "related", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "403c00a8dc54", "quill": "exact", "verifier": "related", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "40c9e310cc29", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "40d360964536", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "41e1e74e71d5", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "4278247e37c7", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "439703675817", "quill": "related", "verifier": "different", "final": "different", "why": "different products of the brand"}
+{"id": "4447df495147", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "Coordinator ruling (c): Blue Expert vs Expert Sun stays unsure until image check"}
+{"id": "44966e848592", "quill": "related", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "452a2974155b", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "4a1b5e8a77e1", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "4d801dd759de", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "4e62c6d822d2", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "519a1b2dc885", "quill": "related", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "53b2777f5571", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "57d899e834e1", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "5c48b20fedcd", "quill": "family", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "5c61a476e19e", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "60b67d1d6f7c", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "61f9f2555d6f", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "62ac3a80fc69", "quill": "related", "verifier": "family", "final": "family", "why": "same product line and format, different size or scent variant"}
+{"id": "64409c2a9dbc", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "645f6fac8ce3", "quill": "family", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "64b5dc5ae0dd", "quill": "related", "verifier": "exact", "final": "exact", "why": "Faces name omits concentration/format; slug states it and it equals the other side; same size"}
+{"id": "654cca3a57fd", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "65cae1bfa4e6", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "SPF50 vs SPF50+ stated differently; not provable equal"}
+{"id": "6cd5470091cb", "quill": "related", "verifier": "family", "final": "family", "why": "same product line and format, different size or scent variant"}
+{"id": "6de2752f4939", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "706dde4cddc2", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "variant/concentration/edition not established from evidence"}
+{"id": "725d2f99e9ed", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "779fd39cf564", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "77a7931efb8b", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "7ac95d1349fb", "quill": "different", "verifier": "family", "final": "family", "why": "same product line and format, different size or scent variant"}
+{"id": "7c923fa04879", "quill": "related", "verifier": "different", "final": "different", "why": "different products of the brand"}
+{"id": "7eeabd110651", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "80ed59fe769e", "quill": "family", "verifier": "related", "final": "related", "why": "different release or format (Parfum vs Le Parfum; mist vs EDT; different scent line)"}
+{"id": "816ede77a475", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "84e355482cbc", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "8a0d670de272", "quill": "unsure", "verifier": "different", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "8c00cd33a307", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "8c13cbb703d4", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "8ed4697c9a38", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "90db6e672b6d", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "variant/concentration/edition not established from evidence"}
+{"id": "91544125c4b4", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "94393563a5ef", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "Coordinator ruling (c): Blue Expert vs Expert Sun stays unsure until image check"}
+{"id": "95b91f34b71e", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "variant/concentration/edition not established from evidence"}
+{"id": "973d4b94d4cc", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "995de7a1e507", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "9b1369d6fd30", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "Coordinator ruling (c): Blue Expert vs Expert Sun stays unsure until image check"}
+{"id": "9d4398ad724b", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "9efb6ccdfed7", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "a0433d3b519b", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "a08380e93784", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "a0c824e9f4ae", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "a133bec5c342", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "Coordinator ruling (c): Blue Expert vs Expert Sun stays unsure until image check"}
+{"id": "a54bd73c6a3d", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "a599fad5e363", "quill": "related", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "a74dcff6f687", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "name and URL slug disagree (variant or concentration)"}
+{"id": "a74fc3b1d4e7", "quill": "family", "verifier": "related", "final": "related", "why": "different release or format (Parfum vs Le Parfum; mist vs EDT; different scent line)"}
+{"id": "a91001b3197d", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "ac22f7ebbb88", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "af453dda7b74", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "variant/concentration/edition not established from evidence"}
+{"id": "b24d953153dd", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "b2fb075fd1a8", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "b398118e239d", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "variant/concentration/edition not established from evidence"}
+{"id": "b4feb15c3c39", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "b89c877fc8cc", "quill": "family", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "bb13bfbcaf34", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "bb1772ff19a6", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "bb181513ab50", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "bed6fa4db201", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "bfa1d06e9c53", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "shade/variant not observed on either side: exact needs the shade"}
+{"id": "bfa97bea8800", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "c1a1e0df2015", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "name and URL slug disagree (variant or concentration)"}
+{"id": "ce26dd6ba54a", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "ce6dd1435325", "quill": "different", "verifier": "family", "final": "family", "why": "same product line and format, different size or scent variant"}
+{"id": "d0b7a108bb43", "quill": "related", "verifier": "unsure", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "d2a1ae926710", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "d4b75de610fc", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "d627fbabf7ef", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "d8a4f5461a98", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "variant/concentration/edition not established from evidence"}
+{"id": "d96fe1825919", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "size not observed on at least one side"}
+{"id": "d997f0ba37c0", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "SPF50 vs SPF50+ stated differently; not provable equal"}
+{"id": "d9cebe0e6c22", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "d9d921da3ac4", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "da65b261ae92", "quill": "unsure", "verifier": "exact", "final": "unsure", "why": "Coordinator ruling (c): Blue Expert vs Expert Sun stays unsure until image check"}
+{"id": "db6b4858f1af", "quill": "unsure", "verifier": "family", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "dd6324a9ab50", "quill": "different", "verifier": "related", "final": "related", "why": "different release or format (Parfum vs Le Parfum; mist vs EDT; different scent line)"}
+{"id": "e2a99e88ebc0", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "e47317e882bf", "quill": "related", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "e6b96b87a7a0", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "e6ba129c43b5", "quill": "unsure", "verifier": "exact", "final": "exact", "why": "Faces name omits concentration/format; slug states it and it equals the other side; same size"}
+{"id": "e7ff187895ee", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "eba7942d0e0d", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "efa32825aa37", "quill": "exact", "verifier": "family", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "f08c61e518fa", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "f2187350273f", "quill": "unsure", "verifier": "exact", "final": "exact", "why": "Faces name omits concentration/format; slug states it and it equals the other side; same size"}
+{"id": "f40f1a22ed20", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "f462d8f33555", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "f537819c5b1f", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "f7a4ef715134", "quill": "related", "verifier": "exact", "final": "unsure", "why": "variant/concentration/edition not established from evidence"}
+{"id": "f8aa006acbe9", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "f8e344386044", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "f95989aca3b8", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}
+{"id": "fa8e75621456", "quill": "unsure", "verifier": "exact", "final": "exact", "why": "Faces name omits concentration/format; slug states it and it equals the other side; same size"}
+{"id": "fb0db49000ed", "quill": "family", "verifier": "related", "final": "related", "why": "Faces set/bundle (pset/p2set, slug 'x' between items): sets are separate, never exact or per-ml"}
+{"id": "ff16ab632f7f", "quill": "exact", "verifier": "unsure", "final": "unsure", "why": "size not observed on at least one side"}
+{"id": "fffd01f70bbe", "quill": "unsure", "verifier": "related", "final": "unsure", "why": "default: one labeller unsure and not resolved from evidence; excluded from precision"}

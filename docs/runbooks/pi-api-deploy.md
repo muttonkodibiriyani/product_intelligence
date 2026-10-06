@@ -173,9 +173,9 @@ else, so every env var stays as it is.
 
 ## 7. Hosting rewrite
 
-`infra/firebase.json` already routes `/api/**` to `{serviceId: "pi-api", region: "me-central1"}`
-**before** the SPA catch-all `**`. `test_hosting_routes_api_before_the_spa_catch_all` guards the
-order and the region. Deploy Hosting only after the service exists:
+`infra/firebase.json` routes `/api/**` to `{serviceId: "pi-api", region: "me-central1"}` as its
+first rewrite, with no catch-all after it. `test_hosting_routes_api_first_and_unknown_paths_404`
+guards the order, the region and the missing catch-all. Deploy Hosting only after the service exists:
 
 ```sh
 npx -y firebase-tools@14.27.0 deploy --only hosting --project $PROJECT

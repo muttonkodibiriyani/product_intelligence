@@ -67,17 +67,21 @@ same PR (run `build.sh`, then regenerate it as in the `verify` step) and the new
 what Infra deploys.
 
 CI checks source → pin (that `dist/` matches `deployed.sha256`), not pin → live. After each deploy,
-check the live site serves the pinned files: open https://productintelligence-beeb3.web.app, view the
+check the live site serves the pinned files: open https://productintelligence-beeb3.web.app/auth/action/, view the
 page source and compare the `app.*.js` and `styles.*.css` names with `deployed.sha256`.
 
 ## Deploy
 
-Hosting serves two apps from one `infra/web-dist/` (never committed): the legacy dashboard at `/`
-and the Next app at `/app/` (`basePath` in `next.config.ts`). Build both, then copy:
+Hosting serves the Next app at `/app/` (`basePath` in `next.config.ts`) from `infra/web-dist/`
+(never committed). `/` redirects to `/app/`, which opens the visitor's last language (English
+the first time). The legacy build stays only for `/auth/action`, the password-reset page. There
+is no catch-all rewrite: an unknown path gets the Next 404 page, copied to the root `404.html`,
+with a real 404 status. Build both, then copy:
 
 ```sh
 apps/web/build.sh verify && (cd apps/web && npm ci && npm run build)
 rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist && cp -r apps/web/out infra/web-dist/app
+cp apps/web/out/404.html infra/web-dist/404.html
 ```
 
 The Next export has inline scripts, so `infra/firebase.json` pins their `sha256` hashes in the CSP
@@ -88,14 +92,14 @@ and commit `infra/firebase.json` with it.
 `npm run build` makes two exports: `out/` (the assistant off, as deployed today) and
 `out-assistant/` (`NEXT_PUBLIC_ASSISTANT_ENABLED=true`, for switch-on). The CSP lists the union
 of both builds' hashes, so it is valid for either. At switch-on the owner deploys
-`out-assistant/` instead of `out/` and writes the reCAPTCHA Enterprise site key into
+`out-assistant/` instead of `out/` (both copies) and writes the reCAPTCHA Enterprise site key into
 `infra/web-dist/app/assistant-app-check.json` as `{"recaptchaSiteKey": "<key>"}`
 (`docs/runbooks/assistant-enablement.md` §10c). The key is read at runtime, never built in, so
 the export and its hashes don't depend on it.
 
 The owner runs `npx -y firebase-tools@14.27.0 deploy --only hosting` from `infra/` (see
-`docs/runbooks/pi-api-deploy.md` §7). To roll back, redeploy with the legacy dashboard alone
-(the first `cp` above, without `/app`), or roll back the release in the Hosting console.
+`docs/runbooks/pi-api-deploy.md` §7). To roll back, roll back the release in the Hosting
+console; that restores the previous files and routing together.
 
 ## Source layout
 
@@ -112,10 +116,12 @@ Files are concatenated in this order into one `app.<hash>.js`:
 
 ## Routes
 
-Hash routes, all served by `/index.html` (unknown routes fall back to `#/dashboard`):
-`#/dashboard`, `#/explorer`, `#/pricing`, `#/promotions`, `#/assortment`, `#/availability`,
-`#/compare`, `#/assistant`, `#/coverage`, `#/product/<id>`, `#/signin`, `#/forgot`.
-`/auth/action` is the password-reset landing page (Firebase email action URL).
+On Hosting the legacy app serves only `/auth/action`, the password-reset landing page (Firebase
+email action URL); its links back to `/#/signin` and `/#/forgot` redirect to the Next sign-in.
+Built locally (`artifact`), it still has its hash routes (unknown routes fall back to
+`#/dashboard`): `#/dashboard`, `#/explorer`, `#/pricing`, `#/promotions`, `#/assortment`,
+`#/availability`, `#/compare`, `#/assistant`, `#/coverage`, `#/product/<id>`, `#/signin`,
+`#/forgot`.
 
 ## Partial data
 
