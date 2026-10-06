@@ -307,7 +307,8 @@ meta.attributeSet[] {
               # SourceKey-shaped plus lowerCamel, so beauty's v2 key "shadeFamilies" upgrades as is
   level:      "product" | "offer"
   type:       "text" | "enum" | "decimal" | "money" | "bool" | "text_list" | "object"
-  values:     [ { id, label: LocalizedText } ] | null  # enum only; closed
+  values:     [ { id, label: LocalizedText } ] | null  # closed list: required for enum, optional
+                                                       # for text_list (each item is an id), else null
   label:      LocalizedText
   facet:      bool          # usable as a filter and a facet count
   block:      "summary" | "size_run" | "swatches" | "nutrition" | "combo" | "fees" | "channel" | null
@@ -412,8 +413,8 @@ committed: `upgrade(v2, profile)` and the beauty equality test keep using it.
 |---|---|---|---|---|---|
 | `sunProtectionFactor` | product | `decimal` | the stated SPF number, e.g. `"50"` | yes | summary |
 | `gender` | product | `enum` | `women`, `men`, `unisex` | yes | summary |
-| `skinTypes` | product | `text_list` | from `normal`, `dry`, `oily`, `combination`, `sensitive`, `all` | yes | summary |
-| `makeupCoverage` | product | `text_list` | from `sheer`, `light`, `medium`, `full` | yes | summary |
+| `skinTypes` | product | `text_list` | from `normal`, `dry`, `oily`, `combination`, `sensitive`, `all_skin_types` | yes | summary |
+| `makeupCoverage` | product | `text_list` | from `sheer_coverage`, `light_coverage`, `medium_coverage`, `full_coverage` | yes | summary |
 | `productForm` | product | `text` | the product form, e.g. `cream`, `stick`, `spray` | yes | summary |
 | `keyIngredients` | product | `text_list` | named actives, e.g. `niacinamide` | no | summary |
 | `giftWithPurchase` | offer | `text_list` | the retailer's own gift titles, e.g. `["Free mini mascara"]` | no | null |
