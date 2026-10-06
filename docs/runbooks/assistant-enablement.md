@@ -639,6 +639,7 @@ every browser); the file holds nothing else:
 
 ```sh
 rm -rf infra/web-dist && cp -r apps/web/dist infra/web-dist && cp -r apps/web/out-assistant infra/web-dist/app
+cp apps/web/out-assistant/404.html infra/web-dist/404.html
 printf '{"recaptchaSiteKey": "%s"}\n' '<RECAPTCHA_SITE_KEY>' > infra/web-dist/app/assistant-app-check.json
 grep -cE '^\{"recaptchaSiteKey": "[A-Za-z0-9_-]{20,100}"\}$' infra/web-dist/app/assistant-app-check.json   # must print 1
 (cd infra && npx -y firebase-tools@14.27.0 deploy --only hosting --project productintelligence-beeb3)
