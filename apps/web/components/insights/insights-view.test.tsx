@@ -450,6 +450,20 @@ describe('InsightsView', () => {
     expect(barWidth(promoCard, 'shop_a')).toBeLessThan(barWidth(promoCard, 'shop_b'));
   });
 
+  it('asks the Findings for the default pair, and for the picked shop against its rival', async () => {
+    apiVersion = '1.24.0'; // FINDINGS_API
+    view(rich);
+    await ready();
+    const findings = () => asked.filter((a) => a.path === '/api/v1/findings').map((a) => a.query);
+    expect(findings()).toContainEqual({ focus: 'shop_a', rival: 'shop_b' });
+    cleanup();
+    asked.length = 0;
+    search = 'shop=shop_b';
+    view(rich);
+    await ready();
+    expect(findings()).toContainEqual({ focus: 'shop_b', rival: 'shop_a' });
+  });
+
   it('the selector narrows the page to one shop and writes it to the URL', async () => {
     search = 'shop=shop_b';
     view(rich);

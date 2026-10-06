@@ -8,6 +8,8 @@ import {
   displayBrand,
   focusFirst,
   fewRated,
+  defaultPair,
+  findingsPair,
   gapScale,
   oncePerName,
   perUnitMedian,
@@ -212,5 +214,41 @@ describe('insights helpers', () => {
 
   it('puts the focus shop first, the others in their order', () => {
     expect(focusFirst('c', ['a', 'b', 'c'])).toEqual(['c', 'a', 'b']);
+  });
+});
+
+describe('defaultPair', () => {
+  it.each([
+    [['faces_ae', 'sephora_me', 'ulta_ae'], { base: 'ulta_ae', other: 'sephora_me' }],
+    [['faces_ae', 'ulta_ae'], { base: 'ulta_ae', other: 'faces_ae' }],
+    [['sephora_me', 'faces_ae'], { base: 'sephora_me', other: 'faces_ae' }],
+    [['shop_a', 'shop_b', 'shop_c'], { base: 'shop_a', other: 'shop_b' }],
+  ])('opens %j on %j', (active, pair) => {
+    expect(defaultPair(active)).toEqual(pair);
+  });
+
+  it('has no pair below two shops', () => {
+    expect(defaultPair(['ulta_ae'])).toBeNull();
+    expect(defaultPair([])).toBeNull();
+  });
+});
+
+describe('findingsPair', () => {
+  const three = ['faces_ae', 'sephora_me', 'ulta_ae'];
+  it.each([
+    [three, null, { focus: 'ulta_ae', rival: 'sephora_me' }],
+    [three, 'ulta_ae', { focus: 'ulta_ae', rival: 'sephora_me' }],
+    [three, 'faces_ae', { focus: 'faces_ae', rival: 'sephora_me' }],
+    // The focus is Sephora: its rival is Ulta, never Sephora against itself (coordinator).
+    [three, 'sephora_me', { focus: 'sephora_me', rival: 'ulta_ae' }],
+    [['sephora_me', 'faces_ae'], 'sephora_me', { focus: 'sephora_me', rival: 'faces_ae' }],
+    [['shop_a', 'shop_b', 'shop_c'], 'shop_c', { focus: 'shop_c', rival: 'shop_a' }],
+    [three, 'not_collected', { focus: 'ulta_ae', rival: 'sephora_me' }],
+  ])('%j with shop %s reads %j', (active, shop, pair) => {
+    expect(findingsPair(active, shop)).toEqual(pair);
+  });
+
+  it('has no pair below two shops', () => {
+    expect(findingsPair(['ulta_ae'], 'ulta_ae')).toBeNull();
   });
 });

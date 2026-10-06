@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api/client';
 import { EMPTY, toQuery } from '@/lib/explore';
 import { formatCount, formatDate } from '@/lib/format';
 import {
+  findingsPair,
   INSIGHTS_API,
   insightsServed,
   notCollected,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/insights';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import { FindingsSection } from './findings/findings-section';
 import { Known } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
@@ -62,6 +64,9 @@ export function InsightsView() {
   const shop = pickedShop(sp, active);
   const shops = shop ? [shop] : active;
 
+  // The Findings read a focus shop against a rival, with no pair picker on this page: the picked
+  // shop (else Ulta) against Sephora, or Ulta when the focus is Sephora (coordinator, 6 Oct).
+  const findings = findingsPair(active, shop);
   // An API older than INSIGHTS_API has no /insights: say so, and ask it nothing.
   const served = insightsServed(meta.data);
   const pairs = useMemo(() => shopPairs(active), [active]);
@@ -97,6 +102,9 @@ export function InsightsView() {
         intro={t('intro')}
         tools={active.length >= 2 ? <ShopPicker shops={active} value={shop} onChange={pick} /> : undefined}
       />
+      {served === true && !missing && findings && (
+        <FindingsSection focus={findings.focus} rival={findings.rival} />
+      )}
       {served === false ? (
         <div role="note" className="panel px-5 py-6 text-sm text-ink-2">
           {t('unavailable', { need: INSIGHTS_API, have: meta.data!.meta.apiVersion })}

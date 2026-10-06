@@ -212,3 +212,41 @@ export const focusFirst = (focus: string, shops: readonly string[]): string[] =>
   focus,
   ...shops.filter((s) => s !== focus),
 ];
+/** The pilot's pair (owner, 6 Oct): Ulta read against Sephora, whenever both are collected. */
+export const PILOT_PAIR = ['ulta_ae', 'sephora_me'] as const;
+
+/**
+ * The pair the page opens on when the URL names none: Ulta, then Sephora, when collected; any
+ * slot the pilot cannot fill takes the next collected shop in the dataset's order.
+ */
+export function defaultPair(active: readonly string[]): { base: string; other: string } | null {
+  if (active.length < 2) return null;
+  const base = active.includes(PILOT_PAIR[0]) ? PILOT_PAIR[0] : active[0]!;
+  const other =
+    base !== PILOT_PAIR[1] && active.includes(PILOT_PAIR[1])
+      ? PILOT_PAIR[1]
+      : active.find((r) => r !== base)!;
+  return { base, other };
+}
+
+/**
+ * The shops the Findings read, on the redesigned page that has no pair picker (coordinator,
+ * 6 Oct): the shop the selector picked, else Ulta (the pilot's focus); against Sephora, or Ulta
+ * when the focus is Sephora, else the next collected shop. Null below two shops.
+ */
+export function findingsPair(
+  active: readonly string[],
+  shop: string | null,
+): { focus: string; rival: string } | null {
+  const opening = defaultPair(active);
+  if (!opening) return null;
+  const focus = shop && active.includes(shop) ? shop : opening.base;
+  const [ulta, sephora] = PILOT_PAIR;
+  const rival =
+    focus !== sephora && active.includes(sephora)
+      ? sephora
+      : focus === sephora && active.includes(ulta)
+        ? ulta
+        : active.find((r) => r !== focus)!;
+  return { focus, rival };
+}
