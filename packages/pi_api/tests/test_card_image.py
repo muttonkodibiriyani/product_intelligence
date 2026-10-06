@@ -20,7 +20,7 @@ API = "/api/v1"
 A_IMG, B_IMG = "img.shop-a.example", "img.shop-b.example"
 HOSTS = {"shop_a": frozenset({A_IMG}), "shop_b": frozenset({B_IMG})}
 PRODUCT = f"https://{A_IMG}/p01.jpg"
-#: The 1.19.0 compare columns unchanged, ``image`` appended last (API 1.20.0).
+#: The 1.19.0 compare columns unchanged, ``image`` appended last (API 1.21.0).
 COMPARE_CSV_HEADER = [
     *("id", "name", "brand", "category"),
     *("basePrice.amount", "basePrice.minor", "basePrice.currency"),
@@ -115,7 +115,7 @@ def compare_row(client: Client, query: str = "") -> Any:
 
 
 def test_a_compare_row_carries_the_cards_image(tmp_path: Path) -> None:
-    """API 1.20.0: the Overlap table is image-first; a row shows what the card shows."""
+    """API 1.21.0: the Overlap table is image-first; a row shows what the card shows."""
     client = client_for(tmp_path, image_doc())
     assert compare_row(client)["image"] == card(client)["image"] == PRODUCT
     assert compare_row(client, "&rows=overlap&sort=gap")["image"] == PRODUCT

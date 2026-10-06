@@ -138,7 +138,7 @@ def _pre_v3(output: Any) -> Any:
     and summaries ``meanPrice`` (additive, API 1.7.1). Promotion rows gained ``bands`` and
     ``groups``, and promotion items ``brand``, ``category``, ``saved`` and ``image`` (additive,
     API 1.17.0), and compare rows ``match`` (additive, API 1.19.0) and ``image`` (additive,
-    API 1.20.0); every other field is unchanged.
+    API 1.21.0); every other field is unchanged.
     """
     data = output.get("data") if isinstance(output, dict) else None
     retailers = data.get("retailers") if isinstance(data, dict) else None

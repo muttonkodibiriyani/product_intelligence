@@ -274,7 +274,7 @@ def with_images(
     ds: DatasetV3, metric: Metric[Comparison], images: EvidenceHosts = NO_HOSTS
 ) -> Metric[Comparison]:
     """Each row with its product's card image over the pair's two contexts, else null (API
-    1.20.0). The same rule as the card's ``image``, so the Overlap table and a card agree."""
+    1.21.0). The same rule as the card's ``image``, so the Overlap table and a card agree."""
     pair = {metric.data.base, metric.data.other}
     products = {p.id: p for p in ds.products}
     rows = tuple(
