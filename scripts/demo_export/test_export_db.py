@@ -589,3 +589,16 @@ def test_history_ignores_failed_and_unfinished_runs(conn: Conn) -> None:
     for status, hour in [("failed", 2), ("running", 3), ("aborted", 4)]:
         world.observe(world.run(status, hour), f"k{hour}", hour, "10")
     assert _history(conn, world) == ([], {})
+
+
+def test_gift_with_purchase_titles_come_from_the_latest_content_in_order(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    for key in ("A", "B", "C"):
+        world.observe(run, key, 1, "80")
+    world.content("A", {"gift_with_purchase": ["Old gift"]}, hour=1)
+    world.content("A", {"gift_with_purchase": ["Free pouch", " ", None, "Free mini"]}, hour=2)
+    world.content("B", {"gift_with_purchase": "not a list"})
+    assert _row(world, "A")["gift_with_purchase"] == ["Free pouch", "Free mini"]
+    assert _row(world, "B")["gift_with_purchase"] == []
+    assert _row(world, "C")["gift_with_purchase"] == []  # no content row at all
