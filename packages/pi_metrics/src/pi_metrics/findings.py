@@ -681,10 +681,10 @@ THRESHOLD = {
 FIGURE = {
     FindingKey.BRAND_WHITE_SPACE: "absent",
     FindingKey.BRAND_DEPTH_GAPS: "absent",
-    FindingKey.BRAND_PRICE_POLICY: "focusCheaper",
+    FindingKey.BRAND_PRICE_POLICY: "basketPct",
     FindingKey.SIZE_LEVEL_GAPS: "heroMedianPct",
-    FindingKey.STOCK: "brand1Out",
-    FindingKey.PROMO_STRATEGY: "modePct",
+    FindingKey.STOCK: "outOfStock",
+    FindingKey.PROMO_STRATEGY: "modeCount",
     FindingKey.REAL_DISCOUNTS: "real",
     FindingKey.FRAGRANCE_LADDER: "inversions",
     FindingKey.SIZE_TRAPS: "focusNotCheaper",

@@ -11,6 +11,7 @@ import pytest
 from api_fixture import Client, bearer, make_client, write
 from pi_api import findings as route
 from pi_dataset import DatasetV3
+from pi_metrics.findings import findings
 from v3_fixture import doc, offer
 
 API = "/api/v1"
@@ -83,7 +84,7 @@ def test_bad_pairs_are_refused(tmp_path: Path, query: str) -> None:
 
 def counting(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
     calls: list[tuple[str, str]] = []
-    real = route.findings
+    real = findings
 
     def counted(*args: Any, **kwargs: Any) -> Any:
         calls.append((args[1], args[2]))

@@ -245,6 +245,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Findings
+         * @description Twelve findings for focus against rival, every other context a third shop, in rank order: shown ones first, then those withheld with a reason. Each has the params its headline, decision, evidence and action read (kind count, pct, money, ratio, text, retailer, category, list or missing), a mini chart, up to six product examples with their card image, its threshold, n and of, the match basis (counted_pairs: compare's counted exact pairs, approved or locked, and nothing else; within_shop; brand_level: brand names folded by pi_match; single_shop) and chips for shops left out (too_few_ratings, too_few_pairs, stock_not_collected, discounts_not_shown). Without counted pairs the four matched findings (brand_depth_gaps, brand_price_policy, size_level_gaps, real_discounts) are withheld as no_match or matches_unreviewed. Stock-outs are counts and never rank shops; brands with every listing out are the source reporting them unavailable. Computed once per snapshot generation.
+         */
+        get: operations["get_findings_api_v1_findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/index": {
         parameters: {
             query?: never;
@@ -518,7 +538,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.22.0
+             * @default 1.23.0
              */
             apiVersion: string;
             /** Currency */
@@ -540,12 +560,17 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-06.2
+             * @default 2026-10-06.3
              */
             metricVersion: string;
             /** Scope */
             scope: string;
         };
+        /**
+         * Area
+         * @enum {string}
+         */
+        Area: "assortment" | "price" | "availability" | "promotions" | "fragrance" | "value" | "customer_voice" | "trust";
         /** AssortmentGaps */
         AssortmentGaps: {
             /** Bybrand */
@@ -609,6 +634,11 @@ export interface components {
          * @enum {string}
          */
         AvailabilityState: "in_stock" | "low_stock" | "out_of_stock" | "not_deliverable" | "removed" | "not_observed" | "blocked" | "unknown";
+        /**
+         * Basis
+         * @enum {string}
+         */
+        Basis: "selling_price" | "per_unit" | "stated_regular" | "stock_flag" | "rating" | "brand_presence";
         /** Basket */
         Basket: {
             base: components["schemas"]["MoneyValue"];
@@ -906,11 +936,67 @@ export interface components {
          * @enum {string}
          */
         Channel: "online" | "marketplace" | "delivery" | "pickup" | "dine_in_evidenced" | "offline_audit";
+        /** Chart */
+        Chart: {
+            /**
+             * Columns
+             * @default []
+             */
+            columns: string[];
+            kind: components["schemas"]["ChartKind"];
+            /** Rows */
+            rows: components["schemas"]["ChartRow"][];
+            unit: components["schemas"]["ChartUnit"];
+        };
+        /**
+         * ChartKind
+         * @enum {string}
+         */
+        ChartKind: "bars" | "diverging" | "stacked" | "strips" | "matrix";
+        /** ChartRow */
+        ChartRow: {
+            /**
+             * Code
+             * @default false
+             */
+            code: boolean;
+            /** Label */
+            label: string;
+            /** N */
+            n?: number | null;
+            /** Of */
+            of?: number | null;
+            /**
+             * Parts
+             * @default []
+             */
+            parts: string[];
+            /** Retailer */
+            retailer?: string | null;
+            /** Value */
+            value: string;
+        };
+        /**
+         * ChartUnit
+         * @enum {string}
+         */
+        ChartUnit: "pct" | "count";
         /**
          * Cheaper
          * @enum {string}
          */
         Cheaper: "base" | "other" | "equal";
+        /** Chip */
+        Chip: {
+            code: components["schemas"]["ChipCode"];
+            /** Retailer */
+            retailer: string;
+        };
+        /**
+         * ChipCode
+         * @enum {string}
+         */
+        ChipCode: "too_few_ratings" | "too_few_pairs" | "stock_not_collected" | "discounts_not_shown";
         /** Cohort */
         Cohort: {
             /** Description */
@@ -1137,6 +1223,20 @@ export interface components {
             reason?: components["schemas"]["Reason"] | null;
             status: components["schemas"]["Status"];
         };
+        /** Envelope[Findings] */
+        Envelope_Findings_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["Findings"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
         /** Envelope[Insights] */
         Envelope_Insights_: {
             /**
@@ -1298,6 +1398,42 @@ export interface components {
             /** Url */
             url: string | null;
         };
+        /** Example */
+        Example: {
+            /** Brand */
+            brand: string;
+            /** Gappct */
+            gapPct?: string | null;
+            /** Id */
+            id: string;
+            /** Image */
+            image?: string | null;
+            /** Name */
+            name: string;
+            price: components["schemas"]["MoneyValue"] | null;
+            /**
+             * Pricewithheld
+             * @default false
+             */
+            priceWithheld: boolean;
+            /** Rating */
+            rating?: string | null;
+            /** Ratingcount */
+            ratingCount?: number | null;
+            regular?: components["schemas"]["MoneyValue"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Scale */
+            scale?: string | null;
+            stock?: components["schemas"]["AvailabilityState"] | null;
+            /** Versus */
+            versus?: string | null;
+            /** Versusid */
+            versusId?: string | null;
+            /** Versusname */
+            versusName?: string | null;
+            versusPrice?: components["schemas"]["MoneyValue"] | null;
+        };
         /**
          * Excluded
          * @description Why a pair row is not counted. Every excluded row carries exactly one (design §7.2).
@@ -1339,6 +1475,54 @@ export interface components {
          * @enum {string}
          */
         FieldStatus: "ok" | "partial" | "not_collected" | "not_published" | "parse_failure" | "blocked";
+        /** Finding */
+        Finding: {
+            area: components["schemas"]["Area"];
+            basis: components["schemas"]["Basis"];
+            chart: components["schemas"]["Chart"] | null;
+            /**
+             * Chips
+             * @default []
+             */
+            chips: components["schemas"]["Chip"][];
+            /** Examples */
+            examples: components["schemas"]["Example"][];
+            figure: components["schemas"]["Param"] | null;
+            key: components["schemas"]["FindingKey"];
+            match: components["schemas"]["MatchBasis"];
+            /** N */
+            n: number;
+            /** Of */
+            of: number | null;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /** Rank */
+            rank: number;
+            reason: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+            /** Threshold */
+            threshold: number;
+        };
+        /**
+         * FindingKey
+         * @enum {string}
+         */
+        FindingKey: "brand_white_space" | "brand_depth_gaps" | "brand_price_policy" | "size_level_gaps" | "stock" | "promo_strategy" | "real_discounts" | "fragrance_ladder" | "size_traps" | "positioning" | "price_vs_rating" | "pricing_anomalies";
+        /** Findings */
+        Findings: {
+            /** Countedpairs */
+            countedPairs: number;
+            /** Findings */
+            findings: components["schemas"]["Finding"][];
+            /** Focus */
+            focus: string;
+            /** Rival */
+            rival: string;
+            /** Thirds */
+            thirds: string[];
+        };
         /** Freshness */
         Freshness: {
             /** Agedays */
@@ -1660,6 +1844,11 @@ export interface components {
             };
         };
         /**
+         * MatchBasis
+         * @enum {string}
+         */
+        MatchBasis: "counted_pairs" | "within_shop" | "brand_level" | "single_shop";
+        /**
          * MatchClass
          * @description Relationship classes between variants (MAT-01).
          * @enum {string}
@@ -1902,6 +2091,27 @@ export interface components {
             observedOn: string | null;
             price: components["schemas"]["MoneyValue"] | null;
         };
+        /** Param */
+        Param: {
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Items
+             * @default []
+             */
+            items: string[];
+            kind: components["schemas"]["ParamKind"];
+            /**
+             * Value
+             * @default
+             */
+            value: string;
+        };
+        /**
+         * ParamKind
+         * @enum {string}
+         */
+        ParamKind: "count" | "pct" | "money" | "ratio" | "text" | "retailer" | "category" | "list" | "missing";
         /**
          * Policy
          * @enum {string}
@@ -4067,6 +4277,106 @@ export interface operations {
                 content: {
                     "application/x-ndjson": unknown;
                     "text/csv": unknown;
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_findings_api_v1_findings_get: {
+        parameters: {
+            query: {
+                market?: string | null;
+                scope?: string | null;
+                /** @description The context the findings advise. */
+                focus: string;
+                /** @description The context it is set against. */
+                rival: string;
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Findings_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
