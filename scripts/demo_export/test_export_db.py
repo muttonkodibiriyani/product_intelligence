@@ -108,6 +108,8 @@ class World:
         availability: str = "in_stock",
         field_state: str = "{}",
         context: object = None,
+        price_type: str | None = "full",
+        regular: str | None = None,
     ) -> None:
         if key not in self.listings:
             self.listings[key] = _id(
@@ -118,9 +120,9 @@ class World:
             )
         self.conn.execute(
             "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
-            " source_listing_id, observed_at, ingested_at, price_current, price_type, currency,"
-            " availability_state, field_state, quality_status)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted')",
+            " source_listing_id, observed_at, ingested_at, price_current, price_regular_stated,"
+            " price_type, currency, availability_state, field_state, quality_status)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted')",
             (
                 f"{run}-{key}",
                 run,
@@ -129,7 +131,8 @@ class World:
                 T0.replace(hour=hour),
                 T0.replace(hour=hour),
                 Decimal(price) if price is not None else None,
-                "full" if price is not None else None,
+                Decimal(regular) if regular is not None else None,
+                price_type if price is not None else None,
                 availability,
                 field_state,
             ),
@@ -239,6 +242,23 @@ STOCK_ONLY = '{"price_current": "unknown", "availability_state": "observed"}'
 def _row(world: World, key: str) -> dict[str, object]:
     rows = world.conn.execute(LATEST_LISTINGS_SQL, latest_params([world.name])).fetchall()
     return next(dict(r) for r in rows if r["source_listing_key"] == key)
+
+
+def test_a_full_price_row_is_its_own_regular_price(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    world.observe(run, "FULL", 1, "80")  # Sephora/Faces: no regular stated on a full row
+    world.observe(run, "STATED", 1, "70", regular="75")  # Ulta: stated on a full row
+    world.observe(run, "PROMO", 1, "60", price_type="promotional", regular="90")
+    world.observe(run, "BARE", 1, "50", price_type="promotional")  # a cut with no was-price
+
+    regular = {k: _row(world, k)["regular"] for k in ("FULL", "STATED", "PROMO", "BARE")}
+    assert regular == {
+        "FULL": Decimal("80"),
+        "STATED": Decimal("75"),
+        "PROMO": Decimal("90"),
+        "BARE": None,
+    }
 
 
 def test_newer_stock_read_keeps_the_page_price(conn: Conn) -> None:

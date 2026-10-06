@@ -135,14 +135,25 @@ def _pre_v3(output: Any) -> Any:
     """The output without fields added since v2, so it can equal the pre-v3 golden.
 
     ``coverage`` rows gained ``contexts`` in ADR-0008 step 4, and compare summaries ``gapHist``
-    and summaries ``meanPrice`` (additive, API 1.7.1), and compare rows ``match`` and ``image``
-    (additive, API 1.17.0/1.18.0); every other field is unchanged.
+    and summaries ``meanPrice`` (additive, API 1.7.1). Promotion rows gained ``bands`` and
+    ``groups``, and promotion items ``brand``, ``category``, ``saved`` and ``image`` (additive,
+    API 1.17.0), and compare rows ``match`` (additive, API 1.19.0) and ``image`` (additive,
+    API 1.20.0); every other field is unchanged.
     """
-    retailers = output.get("data", {}).get("retailers") if isinstance(output, dict) else None
+    data = output.get("data") if isinstance(output, dict) else None
+    retailers = data.get("retailers") if isinstance(data, dict) else None
     if isinstance(retailers, list):
         for row in retailers:
             if isinstance(row, dict):
                 row.pop("contexts", None)
+                row.pop("bands", None)
+                row.pop("groups", None)
+    items = data.get("items") if isinstance(data, dict) else None
+    if isinstance(items, list) and isinstance(retailers, list):  # promotions: rows and items
+        for item in items:
+            if isinstance(item, dict) and "depthPct" in item:
+                for key in ("brand", "category", "saved", "image"):
+                    item.pop(key, None)
     return _without(output, frozenset({"gapHist", "meanPrice", "match", "image"}))
 
 

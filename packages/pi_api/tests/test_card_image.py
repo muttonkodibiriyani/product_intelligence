@@ -20,7 +20,7 @@ API = "/api/v1"
 A_IMG, B_IMG = "img.shop-a.example", "img.shop-b.example"
 HOSTS = {"shop_a": frozenset({A_IMG}), "shop_b": frozenset({B_IMG})}
 PRODUCT = f"https://{A_IMG}/p01.jpg"
-#: The 1.17.0 compare columns unchanged, ``image`` appended last (API 1.18.0).
+#: The 1.19.0 compare columns unchanged, ``image`` appended last (API 1.20.0).
 COMPARE_CSV_HEADER = [
     *("id", "name", "brand", "category"),
     *("basePrice.amount", "basePrice.minor", "basePrice.currency"),
@@ -90,6 +90,24 @@ def test_an_early_offer_neither_shows_nor_vouches_for_an_image(tmp_path: Path) -
     assert card(client_for(tmp_path, d))["image"] is None
 
 
+def promo_images(client: Client, query: str = "") -> dict[str, Any]:
+    response = client.get(f"{API}/promotions?retailer=shop_a{query}", headers=bearer())
+    assert response.status_code == 200, response.text
+    return {i["id"]: i["image"] for i in response.json()["data"]["items"]}
+
+
+def test_a_promotion_item_takes_its_card_image_from_the_shops_own_offer(tmp_path: Path) -> None:
+    assert promo_images(client_for(tmp_path, image_doc()))["p01"] == PRODUCT
+    # Only shop_b's host serves it: a shop_a promotion does not borrow another shop's picture.
+    on_b = image_doc(product=f"https://{B_IMG}/p01.jpg")
+    assert promo_images(client_for(tmp_path, on_b))["p01"] is None
+
+
+def test_promotion_images_are_set_after_the_cap(tmp_path: Path) -> None:
+    images = promo_images(client_for(tmp_path, image_doc()), "&limit=1")
+    assert list(images) == ["p05"]
+
+
 def compare_row(client: Client, query: str = "") -> Any:
     response = client.get(f"{API}/compare?retailers=shop_a,shop_b{query}", headers=bearer())
     assert response.status_code == 200, response.text
@@ -97,7 +115,7 @@ def compare_row(client: Client, query: str = "") -> Any:
 
 
 def test_a_compare_row_carries_the_cards_image(tmp_path: Path) -> None:
-    """API 1.18.0: the Overlap table is image-first; a row shows what the card shows."""
+    """API 1.20.0: the Overlap table is image-first; a row shows what the card shows."""
     client = client_for(tmp_path, image_doc())
     assert compare_row(client)["image"] == card(client)["image"] == PRODUCT
     assert compare_row(client, "&rows=overlap&sort=gap")["image"] == PRODUCT
@@ -118,7 +136,7 @@ def test_a_compare_row_image_off_the_hosts_is_null(tmp_path: Path) -> None:
 
 
 def test_a_compare_row_never_shows_a_retailer_outside_the_pair(tmp_path: Path) -> None:
-    """Reviewer on 1.18.0: p16 is also at shop_c; its image, even allowlisted, stays out."""
+    """Reviewer on the row image: p16 is also at shop_c; its image, even allowlisted, stays out."""
     c_img = "img.shop-c.example"
     d = doc()
     d["meta"]["test"] = False

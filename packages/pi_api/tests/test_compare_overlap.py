@@ -1,4 +1,4 @@
-"""``/compare`` for the Overlap view (API 1.17.0): each row's ``match``, the gap of an exact pair
+"""``/compare`` for the Overlap view (API 1.19.0): each row's ``match``, the gap of an exact pair
 that is only unreviewed, ``rows=overlap`` and ``sort``. Nothing added is counted."""
 
 from __future__ import annotations
@@ -119,7 +119,7 @@ def test_sort_name_orders_by_name_then_id(client: Client) -> None:
 
 
 def test_unsorted_limit_still_ranks_counted_gaps_only(client: Client) -> None:
-    """Before 1.17.0 a limited /compare ranked counted rows; an unreviewed gap never jumps in."""
+    """Before 1.19.0 a limited /compare ranked counted rows; an unreviewed gap never jumps in."""
     doc = data(client, "&rows=overlap&limit=7")
     # p07 shows its gap but ranks with the gapless rows, first of them by id.
     assert [r["id"] for r in doc["rows"]] == ["p05", "p01", "p03", "p06", "p04", "p02", "p07"]

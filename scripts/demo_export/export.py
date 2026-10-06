@@ -354,7 +354,14 @@ SELECT
   lc.description,
   lc.ingredients,
   latest.price_current AS price,
-  latest.price_regular_stated AS regular,
+  -- A full-price row is its own regular price: Sephora and Faces state a regular only on
+  -- promotional rows, and a null there would leave every full-price offer out of the
+  -- discount share's cohort (a false "every offer discounted").
+  CASE
+    WHEN latest.price_regular_stated IS NULL AND latest.price_type = 'full'
+    THEN latest.price_current
+    ELSE latest.price_regular_stated
+  END AS regular,
   latest.price_type,
   latest.availability_state AS availability,
   latest.rating_value AS rating,
