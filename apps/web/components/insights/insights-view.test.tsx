@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/client';
@@ -136,7 +136,7 @@ vi.mock('../auth-provider', () => ({
         asked.push({ path, query: options?.query });
         const a = answers[path];
         if (a instanceof Error) throw a;
-        return a;
+        return typeof a === 'function' ? (a as (q: unknown) => unknown)(options?.query) : a;
       },
     },
   }),
@@ -175,6 +175,7 @@ function view(env: Env | Error, locale: 'en' | 'ar' = 'en', more: Record<string,
     '/api/v1/promotions': promotions,
     '/api/v1/coverage': coverage,
     '/api/v1/products': products,
+    '/api/v1/products/{product_id}': new ApiError('not_found', 404),
     ...more,
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -197,6 +198,12 @@ const section = (name: string | RegExp) =>
   screen.getByRole('heading', { level: 2, name }).closest('section')!;
 /** Waits for /insights to answer: the per-shop sections render after it. */
 const ready = (name: string = en.insights.stock.title) => screen.findByRole('heading', { level: 2, name });
+/** One of the value, size-step and discount cards, by its title. */
+const card = (name: string) => screen.getByRole('heading', { level: 3, name }).closest('article')!;
+const barWidth = (el: HTMLElement, shop: string) =>
+  Number.parseFloat(
+    (el.querySelector<HTMLElement>(`[data-shop="${shop}"]`)?.style.width ?? '').replace('%', ''),
+  );
 const hrefOf = (el: HTMLElement) => decodeURIComponent(el.closest('a')!.getAttribute('href')!);
 const s = en.insights;
 
@@ -209,10 +216,10 @@ describe('InsightsView', () => {
       s.glance.title,
       s.prices.title,
       s.stock.title,
-      s.value.title,
-      s.ladder.title,
-      s.promo.title,
+      'Shop A: value, size steps and discounts',
     ]);
+    const cards = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(cards.slice(-3)).toEqual([s.value.title, s.ladder.title, s.promo.title]);
     expect(screen.queryByText(/tested, not promoted/i)).toBeNull();
   });
 
@@ -288,40 +295,49 @@ describe('InsightsView', () => {
     ).toBeTruthy();
   });
 
-  it('value: a shop without enough rated products says why', async () => {
+  it('value: a shop without enough rated products says why in its chart row', async () => {
     status = { shop_a: 'supported', shop_b: 'partial', shop_c: 'partial' };
     view(rich);
     await ready();
-    const value = section(s.value.title);
+    const value = card(s.value.title);
     expect(await within(value).findByText(en.reasons.cohort_too_small)).toBeTruthy();
   });
 
-  it('value: per-ml and shelf lines, the audit notes, one row per name, five picks at most', async () => {
+  it('value: picks as a share of rated listings, category tabs, three rows, notes in the tooltip', async () => {
     view(rich);
     await ready();
-    const value = section(s.value.title);
-    await within(value).findByRole('link', { name: 'Fragrance' });
-    expect(within(value).getByText(/Typical .*6\.50.* per ml · 3 picks/)).toBeTruthy();
-    expect(within(value).getByText(/Typical shelf price .*80\.00.* · 7 picks/)).toBeTruthy();
-    expect(within(value).getByText('Few rated: 27 of 1,426 listings have 20+ ratings')).toBeTruthy();
-    expect(within(value).queryByText(/Few rated: 70/)).toBeNull();
-    expect(within(value).getByText('1 listing left out by the rules')).toBeTruthy();
-    expect(within(value).getByText('4 listings left out by the rules')).toBeTruthy();
+    const value = card(s.value.title);
+    // Shop A is the focus (the first shop): 3 + 7 picks of 27 + 70 listings with 20+ ratings.
+    expect(value.textContent).toContain('10value picks at Shop A');
+    expect(value.textContent).toContain('10.3% · 10 of 97');
+    expect(within(value).getByText(s.value.few)).toBeTruthy();
+    const tabs = within(value).getByRole('group', { name: s.value.title });
+    expect(within(tabs).getByRole('button', { name: 'Fragrance' }).getAttribute('aria-pressed')).toBe('true');
+    expect(value.textContent).toMatch(/Typical .*6\.50.* per ml/);
     expect(within(value).getAllByRole('link', { name: /Daisy/i })).toHaveLength(1);
-    expect(value.textContent).toMatch(/AED.*60\.00.* · 100 ml · .*AED.*5\.15.* per ml/);
-    expect(within(value).getAllByRole('link', { name: /^Lip \d$/ })).toHaveLength(5);
-    expect(hrefOf(within(value).getByRole('link', { name: 'Lips' }))).toContain('category=lips');
+    expect(value.textContent).toMatch(/AED.*5\.15.* per ml · .*AED.*60\.00/);
+    fireEvent.click(within(tabs).getByRole('button', { name: 'Lips' }));
+    expect(value.textContent).toMatch(/Typical shelf price .*80\.00/);
+    expect(within(value).getAllByRole('link', { name: /Lip \d$/ })).toHaveLength(3);
+    const all = within(value).getByRole('link', { name: 'See all Lips at Shop A' });
+    expect(hrefOf(all)).toContain('category=lips');
+    expect(hrefOf(all)).toContain('retailer=shop_a');
+    const tip = within(value).getByRole('tooltip').textContent;
+    expect(tip).toContain('Fragrance 27/1426; Lips 70/100');
+    expect(tip).toContain('Left out by the rules: Fragrance 1; Lips 4.');
   });
 
-  it('size steps: the median saving and the smaller-size-on-sale badge', async () => {
+  it('size steps: the median saving, the steps not cheaper per ml and the smaller-size-on-sale note', async () => {
     view(rich);
     await ready();
-    const ladder = section(s.ladder.title);
-    expect(await within(ladder).findByText(/saves a median/)).toBeTruthy();
-    expect(within(ladder).getByText('smaller size on sale')).toBeTruthy();
+    const ladder = card(s.ladder.title);
+    expect(ladder.textContent).toContain('10.0%median saving per ml or g');
+    expect(ladder.textContent).toContain('10.0% · 9 steps');
+    expect(ladder.textContent).toContain('+10.0% per ml · 30→50 ml · smaller size on sale');
+    expect(hrefOf(within(ladder).getByRole('link', { name: /Fixture Beauty Gel/ }))).toContain('p50');
   });
 
-  it('discounts: once per product name, by category without the catch-all, links to the lists', async () => {
+  it('discounts: share of priced listings, the deepest once per name, a note where none is published', async () => {
     const promo = {
       ...promotions,
       data: {
@@ -331,27 +347,58 @@ describe('InsightsView', () => {
           { ...promotions.data!.items[0]!, id: 'dup' },
           ...promotions.data!.items.slice(1),
         ],
-        retailers: promotions.data!.retailers.map((r) => ({
-          ...r,
-          groups: [
-            { key: 'skincare', kind: 'category', n: 14, onPromo: 3, share: '21.4' },
-            { key: 'other', kind: 'category', n: 9, onPromo: 2, share: '22.2' },
-          ],
-        })),
       },
     };
-    search = 'shop=shop_a';
+    status = { shop_a: 'supported', shop_b: 'partial', shop_c: 'partial' };
     view(rich, 'en', { '/api/v1/promotions': promo });
     await ready();
-    const card = section(s.promo.title);
-    await within(card).findByText(s.promo.byCat);
-    expect(within(card).getAllByRole('link', { name: promotions.data!.items[0]!.name })).toHaveLength(1);
-    expect(hrefOf(within(card).getByRole('link', { name: 'Skincare' }))).toContain('category=skincare');
-    expect(hrefOf(within(card).getByRole('link', { name: '3' }))).toContain('/en/promotions?');
-    expect(within(card).queryByText(/Other/)).toBeNull();
-    expect(hrefOf(within(card).getByRole('link', { name: /All discounts at Shop A/ }))).toContain(
-      'retailer=shop_a',
+    const promoCard = card(s.promo.title);
+    await waitFor(() => expect(promoCard.textContent).toContain('18.8% · 3 of 16'));
+    expect(promoCard.textContent).toContain('3Shop A listings on discount');
+    expect(promoCard.textContent).toContain(s.promo.noOriginal);
+    expect(within(promoCard).getAllByRole('link', { name: /Product p05/ })).toHaveLength(1);
+    expect(within(promoCard).getAllByRole('listitem')).toHaveLength(3);
+    expect(promoCard.textContent).toContain('Deepest · −33.3%');
+    expect(hrefOf(within(promoCard).getByRole('link', { name: 'See all 3 on discount' }))).toContain(
+      '/en/promotions?retailer=shop_a',
     );
+  });
+
+  it('discounts: a shop with fewer discounts but a higher share gets the longer bar', async () => {
+    const promo = {
+      ...promotions,
+      data: {
+        ...promotions.data!,
+        retailers: [
+          {
+            ...promotions.data!.retailers[0]!,
+            n: 7200,
+            onPromo: 458,
+            share: null,
+            reason: 'retailer_partial',
+          },
+          {
+            ...promotions.data!.retailers[1]!,
+            n: 107,
+            onPromo: 107,
+            share: null,
+            reason: 'retailer_partial',
+          },
+        ],
+      },
+    };
+    const priced = (q: { retailer?: string[] }) => ({
+      ...products,
+      data: { ...products.data!, total: q.retailer?.[0] === 'shop_a' ? 7200 : 1454 },
+    });
+    view(rich, 'en', { '/api/v1/promotions': promo, '/api/v1/products': priced });
+    await ready();
+    const promoCard = card(s.promo.title);
+    await waitFor(() => expect(promoCard.textContent).toContain('7.4% · 107 of 1,454'));
+    expect(promoCard.textContent).toContain('6.4% · 458 of 7,200');
+    expect(promoCard.textContent).toContain('458Shop A listings on discount');
+    expect(barWidth(promoCard, 'shop_b')).toBe(100);
+    expect(barWidth(promoCard, 'shop_a')).toBeLessThan(barWidth(promoCard, 'shop_b'));
   });
 
   it('the selector narrows the page to one shop and writes it to the URL', async () => {
@@ -385,7 +432,10 @@ describe('InsightsView', () => {
   it('renders in Arabic with every message present and numbers in left-to-right runs', async () => {
     const { container } = view(rich, 'ar');
     await screen.findByRole('heading', { level: 2, name: ar.insights.stock.title });
-    expect(screen.getByText(ar.insights.value.title)).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: ar.insights.value.title })).toBeTruthy();
+    // A signed percentage keeps its sign before the digits in Arabic: an isolated left-to-right run.
+    const [depth] = await within(card(ar.insights.promo.title)).findAllByText('−33.3%');
+    expect(depth!.closest('bdi')?.getAttribute('dir')).toBe('ltr');
     const head = within(section(ar.insights.stock.title)).getByRole('link', { name: '37' });
     expect(head.querySelector('bdi')?.getAttribute('dir')).toBe('ltr');
     expect(container.textContent).not.toMatch(/[٠-٩]/);

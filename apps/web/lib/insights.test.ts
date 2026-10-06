@@ -3,7 +3,10 @@ import {
   apiAtLeast,
   insightsServed,
   barPct,
+  barWidths,
   deepestUndercut,
+  displayBrand,
+  focusFirst,
   fewRated,
   gapScale,
   oncePerName,
@@ -12,9 +15,11 @@ import {
   pickSize,
   policyColumns,
   ratingOutOfFive,
+  sharePct,
   shopPairs,
   sizesInOrder,
   valueCategories,
+  valueShare,
   type ValueCategory,
   type ValuePicks,
   type BrandPolicy,
@@ -153,5 +158,59 @@ describe('insights helpers', () => {
     expect(insightsServed({ meta: { apiVersion: '1.21.0' } })).toBe(false);
     expect(insightsServed({ meta: { apiVersion: '1.22.0' } })).toBe(true);
     expect(insightsServed(undefined)).toBeUndefined();
+  });
+
+  it('shows brands as people write them: long all-caps words title-cased, acronyms and mixed forms kept', () => {
+    expect(displayBrand('KYLIE COSMETICS')).toBe('Kylie Cosmetics');
+    expect(displayBrand('YSL')).toBe('YSL');
+    expect(displayBrand('NYX PROFESSIONAL MAKEUP')).toBe('NYX Professional Makeup');
+    expect(displayBrand('MAC')).toBe('MAC');
+    expect(displayBrand('e.l.f.')).toBe('e.l.f.');
+    expect(displayBrand('ULTA Beauty Collection')).toBe('ULTA Beauty Collection');
+    expect(displayBrand('Peter Thomas Roth')).toBe('Peter Thomas Roth');
+    expect(displayBrand('M.A.C')).toBe('M.A.C');
+  });
+
+  it('a share of a total to one decimal, or null without a sound total', () => {
+    expect(sharePct(458, 7200)).toBe('6.4');
+    expect(sharePct(107, 1454)).toBe('7.4');
+    expect(sharePct(0, 16)).toBe('0.0');
+    expect(sharePct(3, 0)).toBeNull();
+    expect(sharePct(5, 4)).toBeNull();
+  });
+
+  it('a shop with fewer discounts but a higher share gets the longer bar', () => {
+    const rows = [
+      { id: 'ulta_ae', value: Number(sharePct(458, 7200)) },
+      { id: 'sephora_me', value: null },
+      { id: 'faces_ae', value: Number(sharePct(107, 1454)) },
+    ];
+    const w = barWidths(rows);
+    expect(w.get('faces_ae')).toBe(100);
+    expect(w.get('ulta_ae')!).toBeLessThan(100);
+    expect(w.get('ulta_ae')!).toBeCloseTo((6.4 / 7.4) * 100);
+    // A note has no bar at all, never a zero-length one.
+    expect(w.has('sephora_me')).toBe(false);
+    expect(barWidths([{ id: 'a', value: 0 }]).get('a')).toBe(0);
+    expect(
+      barWidths([
+        { id: 'a', value: -3 },
+        { id: 'b', value: 2 },
+      ]).get('a'),
+    ).toBe(0);
+  });
+
+  it('value picks against the rated listings of the listed categories, catch-all left out', () => {
+    const cat = (category: string, picks: number, rated: number) =>
+      ({ category, picks, rated }) as ValueCategory;
+    const v = {
+      categories: [cat('skincare', 20, 150), cat('other', 9, 9), cat('lips', 40, 224)],
+    } as ValuePicks;
+    expect(valueShare(v)).toEqual({ picks: 60, rated: 374, pct: '16.0' });
+    expect(valueShare({ categories: [] } as unknown as ValuePicks).pct).toBeNull();
+  });
+
+  it('puts the focus shop first, the others in their order', () => {
+    expect(focusFirst('c', ['a', 'b', 'c'])).toEqual(['c', 'a', 'b']);
   });
 });

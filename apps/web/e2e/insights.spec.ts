@@ -16,6 +16,7 @@ const meta = servingMeta(golden('meta') as Json);
 const compare = golden('compare') as Json;
 const gaps = golden('assortment-gaps') as Json;
 const promotions = golden('promotions') as Json;
+const product = golden('product') as Json;
 const coverage = golden('coverage') as Json;
 const products = golden('products') as Json;
 const base = golden('insights') as Json;
@@ -78,6 +79,8 @@ async function api(route: Route) {
     '/api/v1/products': products,
   }[p];
   if (json) return route.fulfill({ json });
+  // A size step's picture comes from its product's own card.
+  if (/^\/api\/v1\/products\/[^/]+$/.test(p)) return route.fulfill({ json: product });
   return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
 }
 
@@ -91,14 +94,13 @@ for (const locale of ['en', 'ar'] as const) {
             'نظرة سريعة',
             'الأسعار بين المتاجر',
             'المخزون اليوم',
-            'أفضل قيمة، حسب فئات كل متجر',
-            'الأحجام الأكبر، السعر لكل مل أو غ',
-            'أعمق التخفيضات',
+            'Shop A: القيمة وخطوات الأحجام والتخفيضات',
           ],
+          cards: ['القيمة', 'خطوات الأحجام', 'التخفيضات'],
           all: 'كل المتاجر',
           shops: 'المتاجر',
           unavailableLine: /يذكر المصدر أنها غير متاحة/,
-          promo: 'كل التخفيضات لدى Shop A',
+          promo: 'عرض كل المخفّضات (3)',
           unavailable: /الرؤى غير متاحة بعد/,
           noRoute: 'الرؤى غير متاحة بعد: خدمة البيانات لا تقدّمها. لن يُعرض شيء حتى تُحدَّث الخدمة.',
         }
@@ -109,14 +111,13 @@ for (const locale of ['en', 'ar'] as const) {
             'At a glance',
             'Prices across shops',
             'Stock today',
-            "Best value, by each shop's own categories",
-            'Bigger sizes, price per ml or g',
-            'Deepest discounts',
+            'Shop A: value, size steps and discounts',
           ],
+          cards: ['Value', 'Size steps', 'Discounts'],
           all: 'All shops',
           shops: 'Shops',
           unavailableLine: /Source reports unavailable/,
-          promo: 'All discounts at Shop A',
+          promo: 'See all 3 on discount',
           unavailable: /^Insights is not available yet/,
           noRoute:
             'Insights is not available yet: the data service does not serve it. Nothing is shown until the service is updated.',
@@ -132,6 +133,8 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page).toHaveURL(new RegExp(`/${locale}/insights/`));
       await expect(page.getByRole('heading', { name: T.title, level: 1 })).toBeVisible();
       await expect(page.getByRole('main').getByRole('heading', { level: 2 })).toHaveText(T.sections);
+      const ideas = page.locator('section[aria-labelledby="ins-ideas"]');
+      await expect(ideas.getByRole('heading', { level: 3 })).toHaveText(T.cards);
       const picker = page.getByRole('group', { name: T.shops });
       await expect(picker.getByRole('button')).toHaveCount(4);
       await expect(picker.getByRole('button', { name: T.all })).toHaveAttribute('aria-pressed', 'true');
@@ -164,8 +167,9 @@ for (const locale of ['en', 'ar'] as const) {
       const picker = page.getByRole('group', { name: T.shops });
       await picker.getByRole('button', { name: 'Shop A' }).click();
       await expect(page).toHaveURL(new RegExp(`/${locale}/insights/\\?shop=shop_a$`));
-      const promo = page.locator('section[aria-labelledby="ins-promo"]');
-      await expect(promo.getByRole('heading', { level: 3 })).toHaveText(['Shop A']);
+      const promo = page.locator('article[aria-labelledby="ins-promo"]');
+      // The deepest discount keeps its sign before the digits in both directions.
+      await expect(promo.locator('bdi[dir="ltr"]', { hasText: '−33.3%' }).first()).toBeVisible();
       await expect(promo.getByRole('link', { name: T.promo })).toHaveAttribute(
         'href',
         new RegExp(`/${locale}/promotions/\\?retailer=shop_a$`),

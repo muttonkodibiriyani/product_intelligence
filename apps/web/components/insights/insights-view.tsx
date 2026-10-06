@@ -28,7 +28,20 @@ import { useMeta, useRetailerName } from '../use-meta';
 import { activeRetailers, compareHref, exploreHref } from '../widgets/model';
 import { Ideas } from './ideas';
 import { PairPrices } from './pair-cards';
-import { cols, LINK, Num, linkTag, boldTag, Heading, Info, ShopHead, Panel, Label, Off } from './parts';
+import {
+  cols,
+  LINK,
+  Num,
+  linkTag,
+  boldTag,
+  Heading,
+  Info,
+  ShopHead,
+  Panel,
+  Label,
+  Off,
+  usePricedCount,
+} from './parts';
 
 /**
  * Insights: what the latest crawl of each shop shows, at a glance and in plain words, one column
@@ -119,7 +132,7 @@ export function InsightsView() {
             share={data.policySharePct}
           />
           <StockSection shops={shops} rows={data.stockouts} />
-          <Ideas shops={shops} data={data} />
+          <Ideas focus={shop ?? active[0]!} shops={active} data={data} />
         </>
       )}
     </section>
@@ -208,19 +221,10 @@ function GlanceTile({ shop, fresh }: { shop: string; fresh: string | null }) {
       }),
     enabled: !!api,
   });
-  const priced = useQuery({
-    queryKey: ['products', 'insights', shop, 'priced'],
-    queryFn: ({ signal }) =>
-      api!.get('/api/v1/products', {
-        query: { ...toQuery({ ...EMPTY, retailer: [shop], priceMin: '0' }, null), limit: 1 },
-        signal,
-      }),
-    enabled: !!api,
-  });
+  const p = usePricedCount(shop);
   const page = all.data?.data;
   const n = page?.total;
   const brands = page?.facets.brand.length;
-  const p = priced.data?.data?.total;
   return (
     <Panel top={shop}>
       <ShopHead id={shop} />

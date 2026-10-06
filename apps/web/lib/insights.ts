@@ -14,13 +14,10 @@ export type ValueCategory = Schemas['ValueCategory'];
 export const BRANDS_SHOWN = 8;
 /** Per shop: partly out-of-stock brands shown. */
 export const STOCK_BRANDS_SHOWN = 5;
-/** Size steps that are not cheaper, and discounts, shown per shop: fewer side by side, more for one shop. */
-export const EXCEPTIONS_SHOWN = { all: 3, one: 8 } as const;
-export const PROMOS_SHOWN = { all: 3, one: 8 } as const;
-/** Discounts asked per shop: enough that dropping repeated variants still leaves PROMOS_SHOWN. */
+/** Products listed under each value, size-step and discount card. */
+export const CARD_ITEMS = { value: 3, size: 3, promo: 4 } as const;
+/** Discounts asked per shop: enough that dropping repeated variants still leaves CARD_ITEMS.promo. */
 export const PROMOS_ASKED = 30;
-/** Picks shown per category (every qualifying category is shown). */
-export const PICKS_SHOWN = 5;
 /** The dataset's catch-all category: a typical price across unlike products means nothing. */
 export const CATCH_ALL = 'other';
 /**
@@ -157,3 +154,61 @@ export function apiAtLeast(version: string, min: string): boolean {
  */
 export const insightsServed = (meta: { meta: { apiVersion: string } } | undefined): boolean | undefined =>
   meta ? apiAtLeast(meta.meta.apiVersion, INSIGHTS_API) : undefined;
+
+/**
+ * A brand as written for display: an all-caps word longer than four letters is title-cased
+ * ("KYLIE COSMETICS" → "Kylie Cosmetics"); short all-caps acronyms (YSL, NYX, MAC) and mixed
+ * forms (e.l.f., ULTA's "ULTA Beauty") keep their case.
+ */
+export function displayBrand(brand: string): string {
+  return brand
+    .split(' ')
+    .map((w) => {
+      const letters = w.match(/\p{L}/gu) ?? [];
+      const caps =
+        letters.length > 4 &&
+        letters.every((c) => c === c.toLocaleUpperCase('en') && c !== c.toLocaleLowerCase('en'));
+      return caps ? w.slice(0, 1) + w.slice(1).toLocaleLowerCase('en') : w;
+    })
+    .join(' ');
+}
+
+/** A count of a total as a percentage with one decimal ("6.4"), exact integer rounding; null without a total. */
+export function sharePct(part: number, total: number): string | null {
+  if (!(total > 0) || part < 0 || part > total) return null;
+  return (Math.round((part * 1000) / total) / 10).toFixed(1);
+}
+
+/** One shop in a card's chart: a share or a percentage to draw, or a note in place of a bar. */
+export type BarRow = { id: string; value: number | null };
+
+/**
+ * Bar lengths (0–100) for a card's chart, scaled to its largest value so the longest bar fills the
+ * track; a row without a value (a note) has none, a negative value draws as 0.
+ */
+export function barWidths(rows: readonly BarRow[]): Map<string, number> {
+  const max = Math.max(0, ...rows.map((r) => r.value ?? 0));
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (r.value === null) continue;
+    out.set(r.id, max > 0 ? (Math.max(0, r.value) / max) * 100 : 0);
+  }
+  return out;
+}
+
+/**
+ * A shop's value picks against the listings that could be picked: those with enough ratings in
+ * the categories listed, so a large catalogue does not read as better value by size alone.
+ */
+export function valueShare(v: ValuePicks): { picks: number; rated: number; pct: string | null } {
+  const cats = valueCategories(v);
+  const picks = cats.reduce((a, c) => a + c.picks, 0);
+  const rated = cats.reduce((a, c) => a + c.rated, 0);
+  return { picks, rated, pct: sharePct(picks, rated) };
+}
+
+/** The shop the cards are about first, then the others in their order. */
+export const focusFirst = (focus: string, shops: readonly string[]): string[] => [
+  focus,
+  ...shops.filter((s) => s !== focus),
+];

@@ -852,39 +852,55 @@
       "noStatus": "No listing at {shop} shows a stock status in the latest crawl."
     },
     "value": {
-      "title": "Best value, by each shop's own categories",
-      "tip": "Rated at least {top} out of 5 by {min} or more shoppers, in stock, and priced at or below the category's typical shelf price. Fragrance is compared per ml. Tools, body care filed under fragrance or skincare, minis and travel sizes, and the shop's catch-all \"other\" category are left out. At most 2 picks per brand; one row per product name.",
-      "lineShelf": "Typical shelf price {median} · {count, plural, one {{num} pick} other {{num} picks}}",
-      "lineUnit": "Typical {median} per {unit} · {count, plural, one {{num} pick} other {{num} picks}}",
-      "fewRated": "Few rated: {rated} of {priced} listings have {min}+ ratings",
-      "excluded": "{count, plural, one {{num} listing} other {{num} listings}} left out by the rules",
+      "title": "Value",
+      "few": "Few rated",
+      "unit": "value picks at {shop}",
+      "sentence": "Rated {top} or more by {min}+ shoppers and priced at or below the typical price of their category.",
+      "bar": "<n>{pct}%</n> · <n>{num}</n> of <n>{rated}</n>",
+      "off": "ratings not collected",
+      "none": "no value picks yet",
+      "tip": "Rated at least {top} out of 5 by {min} or more shoppers, in stock, and priced at or below the category's typical shelf price. Fragrance is compared per ml. Tools, body care filed under fragrance or skincare, minis and travel sizes, and the shop's catch-all \"other\" category are left out. At most 2 picks per brand; one row per product name. Bars: picks as a share of each shop's listings with {min}+ ratings in its listed categories. Listings with {min}+ ratings, of priced: {few}. Left out by the rules: {excluded}.",
+      "fewTip": "Few of {shop}'s listings carry {min} or more ratings in: {few}.",
+      "typicalShelf": "Typical shelf price {median}",
+      "typicalUnit": "Typical {median} per {unit}",
       "per": "{price} per {unit}",
       "ratings": "{count, plural, one {{num} rating} other {{num} ratings}}",
-      "off": "Ratings are not collected for {shop}, so value picks cannot be shown.",
-      "none": "No listing qualifies yet."
+      "nothing": "none",
+      "see": "See all {category} at {shop}"
     },
     "ladder": {
-      "title": "Bigger sizes, price per ml or g",
-      "tip": "A size step compares one product with its next larger size at the same shop, per ml or g. A larger size costing more than {held}% more per unit is held out as a likely data error ({heldOut} held out).",
-      "head": "Going up a size saves a median {pct} per unit",
-      "sub": "{steps} size steps · {k} not cheaper",
-      "exceptions": "Not cheaper per unit",
-      "none": "No size steps at {shop} yet.",
-      "onSale": "smaller size on sale",
+      "title": "Size steps",
       "unit": {
         "ml": "ml",
         "g": "g"
-      }
+      },
+      "sentence": "{steps, plural, one {<n>{num}</n> size step} other {<n>{num}</n> size steps}}; <n>{k}</n> not cheaper per ml or g.",
+      "headline": "median saving per ml or g going up a size at {shop}",
+      "bar": "<n>{pct}%</n> · {count, plural, one {<n>{num}</n> step} other {<n>{num}</n> steps}}",
+      "none": "no size steps yet",
+      "head": "Not cheaper per ml or g",
+      "headCount": "<n>{shown}</n> of <n>{total}</n>",
+      "more": "<n>+{pct}%</n> per {unit}",
+      "onSale": "smaller size on sale",
+      "tip": "A size step compares one product with its next larger size at the same shop, per ml or g. A larger size costing more than {held}% more per unit is held out as a likely data error ({heldOut} held out). {shop}: {steps} steps, {k} not cheaper, {listed} listed. Bars: each shop's median saving per step.",
+      "seeAll": "See all {count} listed",
+      "seeFewer": "Show fewer"
     },
     "promo": {
-      "title": "Deepest discounts",
-      "tip": "The shop's own listed price against its own listed original price, latest crawl. The crawl may be partial, so other discounts may exist.",
+      "title": "Discounts",
+      "unit": "{shop} listings on discount",
+      "sentence": "<n>{pct}%</n> of <n>{priced}</n> priced listings in the latest crawl.",
+      "sentenceCount": "Listed below the shop's own original price in the latest crawl.",
+      "bar": "<n>{pct}%</n> · <n>{num}</n> of <n>{priced}</n>",
+      "count": "{count, plural, one {<n>{num}</n> on discount} other {<n>{num}</n> on discount}}",
+      "noOriginal": "no original prices published",
+      "notCollected": "original prices not collected",
+      "none": "no discounts in the latest crawl",
+      "deepest": "Deepest",
+      "depth": "<n>−{pct}%</n>",
       "was": "was {price}",
-      "all": "All discounts at {shop}",
-      "off": "Original prices are not collected for {shop}, so its discounts cannot be shown.",
-      "none": "No discounts at {shop} in the latest crawl.",
-      "byCat": "Listings on discount by category",
-      "cat": "<c>{category}</c>: <l>{num}</l> of {n}"
+      "tip": "The shop's own listed price against its own listed original price, latest crawl. Bars: listings on discount as a share of each shop's listings with a price (its Products count with any price), so a large catalogue does not read as more discounting by size alone. A shop that publishes no original prices shows a note, not zero. The crawl may be partial, so other discounts may exist. One row per brand and product name.",
+      "see": "See all {num} on discount"
     },
     "cat": {
       "skincare": "Skincare",
@@ -939,6 +955,10 @@
       "meta": "Top brands by count",
       "tip": "\"No reviewed match\" is not proof that {absent} lacks the product: it may be unmatched or not yet crawled. A product counts as missing only after a complete crawl and a reviewed match.",
       "action": "Review the top brands for listing gaps before treating them as range opportunities."
+    },
+    "vsd": {
+      "title": "{shop}: value, size steps and discounts",
+      "sub": "{shop} first; the other shops for context."
     }
   }
 }

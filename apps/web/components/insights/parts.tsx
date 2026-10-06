@@ -1,15 +1,17 @@
 'use client';
 
 /** Shared pieces of the Insights page: section headings, shop panels, linked numbers, money text. */
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { Money as MoneyValue } from '@/lib/api/types';
-import { type UnitAmount } from '@/lib/insights';
+import { EMPTY, toQuery } from '@/lib/explore';
+import { barWidths, displayBrand, type BarRow, type UnitAmount } from '@/lib/insights';
 import { formatAmount, formatMoney, isValidAmount, isValidMoney } from '@/lib/money';
+import { useAuth } from '../auth-provider';
 import { productHref } from '../explore/product-table';
 import { monogram, RowThumb } from '../explore/row-thumb';
-import { Known } from '../ui/known';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { Tip } from '../ui/tip';
 import { useRetailerName } from '../use-meta';
@@ -112,26 +114,135 @@ export function Off({ children }: { children: ReactNode }) {
   return <p className="mt-2.5 text-sm text-ink-2">{children}</p>;
 }
 
-/** The amber tag for a caveat that changes how to read the line beside it. */
-export function Warn({ children }: { children: ReactNode }) {
-  return <span className="rounded-[4px] bg-butter px-1.5 text-butter-ink">{children}</span>;
-}
-
-/** The shop's own category in the user's language, else as the shop names it. */
-export function Cat({ k }: { k: string }) {
-  const t = useTranslations('insights');
-  return <Known t={t} k="cat" v={k} />;
-}
-
 export function useUnitName() {
   const t = useTranslations('insights');
   return (u: string) => (t.has(`ladder.unit.${u}`) ? t(`ladder.unit.${u}`) : u);
 }
 
-export function ProductRow({ item, shop, children }: { item: Item; shop: string; children: ReactNode }) {
+/**
+ * A shop's listings with a price, the same count as its Products list with any price: the Glance
+ * tile shows it and the discount bars divide by it, so both read one cached answer.
+ */
+export const pricedOptions = (api: ReturnType<typeof useAuth>['api'], shop: string) => ({
+  queryKey: ['products', 'insights', shop, 'priced'],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    api!.get('/api/v1/products', {
+      query: { ...toQuery({ ...EMPTY, retailer: [shop], priceMin: '0' }, null), limit: 1 },
+      signal,
+    }),
+  enabled: !!api,
+});
+
+export function usePricedCount(shop: string): number | undefined {
+  const { api } = useAuth();
+  return useQuery(pricedOptions(api, shop)).data?.data?.total;
+}
+
+/** One shop's line in a card's chart: a value and its words, or a quiet note where it has none. */
+export type ChartRow = BarRow & { text?: ReactNode; note?: ReactNode };
+
+/**
+ * A card's chart: one full-width row per shop, its name, a bar in its colour and the words for
+ * it. A shop whose number is not collected shows a note, never a zero bar. Bars are plain HTML so
+ * they follow the page direction; the rows are read as text, the bars are decoration.
+ */
+export function Bars({ rows }: { rows: ChartRow[] }) {
+  const name = useRetailerName();
+  const width = barWidths(rows);
+  return (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-2 text-[13px]">
+      {rows.map((r) => (
+        <div key={r.id} className="contents">
+          <span className="text-end leading-5 whitespace-nowrap text-ink">{name(r.id)}</span>
+          {r.value === null ? (
+            <span className="col-span-2 text-[12.5px] leading-5 text-ink-2">{r.note}</span>
+          ) : (
+            <>
+              <span aria-hidden className="relative block h-5 min-w-0 rounded-[3px] bg-line">
+                <span
+                  data-shop={r.id}
+                  className="absolute inset-y-0 start-0 min-w-[3px] rounded-[3px]"
+                  style={{ width: `${width.get(r.id) ?? 0}%`, background: retailerColor(r.id) }}
+                />
+              </span>
+              <span className="text-[12.5px] leading-5 whitespace-nowrap text-ink-2 tabular-nums">
+                {r.text}
+              </span>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One idea card: its title (with an optional chip) and (i) note, one big number and its words,
+ * one plain sentence, its chart, its products, and one "See all" at the foot.
+ */
+export function IdeaCard({
+  id,
+  title,
+  chip,
+  tip,
+  big,
+  unit,
+  sentence,
+  chart,
+  children,
+  more,
+}: {
+  id: string;
+  title: ReactNode;
+  chip?: ReactNode;
+  tip: ReactNode;
+  big: ReactNode;
+  unit: ReactNode;
+  sentence: ReactNode;
+  chart: ReactNode;
+  children?: ReactNode;
+  more?: ReactNode;
+}) {
+  return (
+    <article aria-labelledby={id} className="panel flex min-w-0 flex-col px-4.5 pt-4 pb-3.5">
+      <div className="flex min-h-[22px] items-center gap-2">
+        <h3 id={id} className="text-[15px] font-semibold">
+          {title}
+        </h3>
+        {chip}
+        <span className="ms-auto">
+          <Info text={tip} at="end" />
+        </span>
+      </div>
+      <p className="mt-3.5 mb-1.5 flex flex-wrap items-baseline gap-x-2 leading-none">
+        <span className="text-[34px] font-bold tracking-tight tabular-nums max-sm:text-[30px]">{big}</span>
+        <span className="text-sm font-medium text-ink-2">{unit}</span>
+      </p>
+      <p className="mb-4 text-sm text-ink-2">{sentence}</p>
+      <figure className="mb-1.5 min-w-0">{chart}</figure>
+      {children}
+      {more && <p className="mt-auto pt-3.5 text-[13px]">{more}</p>}
+    </article>
+  );
+}
+
+/** The line above a card's products: a small caps label, then its detail. */
+export function ListHead({ label, children }: { label: ReactNode; children?: ReactNode }) {
+  return (
+    <p className="mt-4 mb-2 truncate text-[12.5px] text-ink-2">
+      <span className="text-xs font-semibold tracking-[.06em] uppercase rtl:text-[13px] rtl:tracking-normal rtl:normal-case">
+        {label}
+      </span>
+      {children && <> · {children}</>}
+    </p>
+  );
+}
+
+/** One product on one line: its picture, brand and name (truncated, opening the product), a detail line. */
+export function ItemRow({ item, shop, children }: { item: Item; shop: string; children: ReactNode }) {
   const locale = useLocale();
   return (
-    <li className="grid grid-cols-[56px_1fr] items-start gap-2.5">
+    <li className="grid h-14 grid-cols-[56px_minmax(0,1fr)] items-center gap-3">
       <RowThumb
         url={item.image}
         label={item.name}
@@ -141,13 +252,12 @@ export function ProductRow({ item, shop, children }: { item: Item; shop: string;
         cls="size-14 rounded-ctl border border-line bg-surface-2"
       />
       <div className="min-w-0 text-sm">
-        <p className="text-xs font-semibold text-ink-2">{item.brand}</p>
-        <p>
+        <p className="truncate rtl:text-end" dir="ltr">
           <Link href={productHref(locale, item.id)} className="underline-offset-2 hover:underline">
-            {item.name}
+            <b className="font-semibold">{displayBrand(item.brand)}</b> {item.name}
           </Link>
         </p>
-        <p className="text-xs text-ink-2">{children}</p>
+        <p className="mt-0.5 truncate text-[12.5px] text-ink-2 tabular-nums">{children}</p>
       </div>
     </li>
   );

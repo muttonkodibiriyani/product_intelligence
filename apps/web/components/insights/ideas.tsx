@@ -1,379 +1,456 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
+import { useState, type ReactNode } from 'react';
 import { formatCount } from '@/lib/format';
 import {
-  EXCEPTIONS_SHOWN,
+  CARD_ITEMS,
   fewRated,
+  focusFirst,
   notCollected,
   oncePerName,
   perUnitMedian,
   pickSize,
-  PICKS_SHOWN,
   PROMOS_ASKED,
-  PROMOS_SHOWN,
   ratingOutOfFive,
+  sharePct,
   valueCategories,
+  valueShare,
   type Insights,
   type Ladder,
-  type ValueCategory,
+  type LadderStep,
   type ValuePicks,
 } from '@/lib/insights';
-import { listedItems, notMeasured } from '@/lib/promotions';
+import { listable, listedItems } from '@/lib/promotions';
 import { useAuth } from '../auth-provider';
-import { ErrorNotice } from '../error-notice';
 import { Known } from '../ui/known';
 import { Money } from '../ui/money';
 import { useRetailerName } from '../use-meta';
 import { exploreHref, promotionsHref } from '../widgets/model';
 import {
-  cols,
+  Bars,
+  IdeaCard,
+  ItemRow,
   LINK,
+  ListHead,
   moneyText,
+  Num,
+  pricedOptions,
   unitText,
-  linkTag,
-  Heading,
-  ShopHead,
-  Panel,
-  Label,
-  Off,
-  Warn,
-  Cat,
   useUnitName,
-  ProductRow,
+  type ChartRow,
 } from './parts';
 
 /**
- * The three ideas under the shop facts: best value, bigger sizes and deepest discounts. One module
- * with one entry point (`Ideas`), so the section can be redesigned and swapped without touching
- * the rest of the page.
+ * Value, size steps and discounts: three cards about one shop (the one picked, else the first),
+ * the other shops beside it in each card's chart for context. Each card has one big number, one
+ * sentence, one bar per shop and a few products; counts, basis and exclusions are in its (i)
+ * note. Bars compare shares or medians, never raw counts across catalogues of different sizes. A
+ * shop whose number is not collected shows a quiet note, never a zero bar.
  */
-export function Ideas({ shops, data }: { shops: string[]; data: Insights }) {
-  return (
-    <>
-      <ValueSection shops={shops} data={data} />
-      <LadderSection shops={shops} rows={data.ladders} held={data.heldOutPct} />
-      <PromoSection shops={shops} />
-    </>
-  );
-}
-
-// ---- Best value -----------------------------------------------------------------------------
-
-function ValueSection({ shops, data }: { shops: string[]; data: Insights }) {
+export function Ideas({ focus, shops, data }: { focus: string; shops: string[]; data: Insights }) {
   const t = useTranslations('insights');
+  const name = useRetailerName();
+  const order = focusFirst(focus, shops);
   return (
-    <section aria-labelledby="ins-value" className="space-y-2.5">
-      <Heading
-        id="ins-value"
-        tip={t('value.tip', { top: ratingOutOfFive(data.valueRatingPct), min: data.valueMinRatings })}
-      >
-        {t('value.title')}
-      </Heading>
-      <div className="space-y-4">
-        {shops.map((s) => (
-          <ValueShop
-            key={s}
-            shop={s}
-            row={data.value.find((r) => r.retailer === s)}
-            min={data.valueMinRatings}
-          />
-        ))}
+    <section aria-labelledby="ins-ideas" className="space-y-2.5">
+      <div>
+        <h2 id="ins-ideas" className="text-[15px] font-semibold">
+          {t('vsd.title', { shop: name(focus) })}
+        </h2>
+        <p className="text-sm text-ink-2">{t('vsd.sub', { shop: name(focus) })}</p>
+      </div>
+      <div className="grid items-stretch gap-3.5 min-[900px]:grid-cols-3">
+        <ValueCard focus={focus} order={order} data={data} />
+        <SizeCard focus={focus} order={order} rows={data.ladders} held={data.heldOutPct} />
+        <PromoCard focus={focus} order={order} />
       </div>
     </section>
   );
 }
 
-/** One shop's value picks: every qualifying category of its own, four across on a wide screen. */
-function ValueShop({ shop, row, min }: { shop: string; row: ValuePicks | undefined; min: number }) {
+/** Rich-text tag for a number in a sentence: one Latin run that keeps its order in Arabic. */
+const n = (chunks: ReactNode) => <Num>{chunks}</Num>;
+
+function useCatName() {
   const t = useTranslations('insights');
-  const tr = useTranslations('reasons');
-  const name = useRetailerName();
-  const cats = row && !row.reason ? valueCategories(row) : [];
-  return (
-    <div className="space-y-2">
-      <ShopHead id={shop} />
-      {!row || notCollected(row.reason) ? (
-        <p className="text-sm text-ink-2">{t('value.off', { shop: name(shop) })}</p>
-      ) : row.reason ? (
-        <p className="text-sm text-ink-2">
-          <Known t={tr} v={row.reason} />
-        </p>
-      ) : cats.length === 0 ? (
-        <p className="text-sm text-ink-2">{t('value.none')}</p>
-      ) : (
-        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-          {cats.map((c) => (
-            <ValueCard key={c.category} shop={shop} c={c} min={min} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return (k: string) => (t.has(`cat.${k}`) ? t(`cat.${k}`) : k);
 }
 
-function ValueCard({ shop, c, min }: { shop: string; c: ValueCategory; min: number }) {
-  const t = useTranslations('insights');
-  const locale = useLocale();
-  const unitName = useUnitName();
-  const perUnit = perUnitMedian(c);
-  const picks = oncePerName(c.items).slice(0, PICKS_SHOWN);
-  const line = { count: c.picks, num: formatCount(c.picks, locale) };
-  return (
-    <Panel>
-      <p className="text-sm font-semibold">
-        <Link href={exploreHref(locale, { retailer: [shop], category: [c.category] })} className={LINK}>
-          <Cat k={c.category} />
-        </Link>
-      </p>
-      <div className="mt-0.5 space-y-1 text-xs text-ink-2">
-        <p>
-          {perUnit
-            ? t('value.lineUnit', {
-                ...line,
-                median: unitText(perUnit.median, locale),
-                unit: unitName(perUnit.unit),
-              })
-            : t('value.lineShelf', { ...line, median: moneyText(c.median, locale) })}
-        </p>
-        {/* The category audit's notes: an amber "few rated", then what the rules left out. */}
-        {fewRated(c) && (
-          <p>
-            <Warn>
-              {t('value.fewRated', {
-                rated: formatCount(c.rated, locale),
-                priced: formatCount(c.priced, locale),
-                min,
-              })}
-            </Warn>
-          </p>
-        )}
-        {c.excluded > 0 && (
-          <p>{t('value.excluded', { count: c.excluded, num: formatCount(c.excluded, locale) })}</p>
-        )}
-      </div>
-      {picks.length === 0 ? (
-        <Off>{t('value.none')}</Off>
-      ) : (
-        <ul className="mt-3 grid gap-2.5">
-          {picks.map((p) => {
-            const { size, unitPrice } = pickSize(p);
-            return (
-              <ProductRow key={p.id} item={p} shop={shop}>
-                <b className="font-semibold text-ink">
-                  <Money m={p.price} locale={locale} />
-                </b>
-                {size && (
-                  <>
-                    {' · '}
-                    <bdi dir="ltr">{size.value}</bdi> {unitName(size.unit)}
-                  </>
-                )}
-                {size &&
-                  unitPrice &&
-                  ` · ${t('value.per', { price: unitText(unitPrice, locale), unit: unitName(size.unit) })}`}
-                {' · ★ '}
-                <bdi dir="ltr">{`${p.rating}/${p.scale}`}</bdi>
-                {' · '}
-                {t('value.ratings', { count: p.ratingCount, num: formatCount(p.ratingCount, locale) })}
-              </ProductRow>
-            );
-          })}
-        </ul>
-      )}
-    </Panel>
-  );
-}
+// ---- Value ----------------------------------------------------------------------------------
 
-/** One product: its image (or the brand's monogram), brand, its name opening it, a detail line. */
-// ---- Bigger sizes ---------------------------------------------------------------------------
-
-function LadderSection({ shops, rows, held }: { shops: string[]; rows: Ladder[]; held: string }) {
-  const t = useTranslations('insights');
-  const heldOut = rows.filter((r) => shops.includes(r.retailer)).reduce((a, r) => a + r.heldOut, 0);
-  return (
-    <section aria-labelledby="ins-ladder" className="space-y-2.5">
-      <Heading id="ins-ladder" tip={t('ladder.tip', { held, heldOut })}>
-        {t('ladder.title')}
-      </Heading>
-      <div className={cols(shops.length)}>
-        {shops.map((s) => (
-          <LadderCard key={s} shop={s} row={rows.find((r) => r.retailer === s)} one={shops.length === 1} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function LadderCard({ shop, row, one }: { shop: string; row: Ladder | undefined; one: boolean }) {
+function ValueCard({ focus, order, data }: { focus: string; order: string[]; data: Insights }) {
   const t = useTranslations('insights');
   const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
+  const catName = useCatName();
   const unitName = useUnitName();
-  const exceptions = oncePerName(row?.exceptions ?? []).slice(
-    0,
-    one ? EXCEPTIONS_SHOWN.one : EXCEPTIONS_SHOWN.all,
-  );
+  const [tab, setTab] = useState(0);
+  const top = ratingOutOfFive(data.valueRatingPct);
+  const min = data.valueMinRatings;
+  const row = (s: string): ValuePicks | undefined => data.value.find((r) => r.retailer === s);
+  const own = row(focus);
+  const cats = own && !own.reason ? valueCategories(own) : [];
+  const share = own && !own.reason ? valueShare(own) : null;
+  const cat = cats[Math.min(tab, cats.length - 1)];
+
+  const chart: ChartRow[] = order.map((s) => {
+    const r = row(s);
+    if (!r || r.reason)
+      return {
+        id: s,
+        value: null,
+        note: !r || notCollected(r.reason) ? t('value.off') : <Known t={tr} v={r.reason!} />,
+      };
+    const v = valueShare(r);
+    if (v.pct === null) return { id: s, value: null, note: t('value.none') };
+    return {
+      id: s,
+      value: Number(v.pct),
+      text: t.rich('value.bar', {
+        pct: v.pct,
+        num: formatCount(v.picks, locale),
+        rated: formatCount(v.rated, locale),
+        n,
+      }),
+    };
+  });
+  const few = cats.filter(fewRated);
+  const tip = t('value.tip', {
+    top,
+    min,
+    few: cats.map((c) => `${catName(c.category)} ${c.rated}/${c.priced}`).join('; ') || t('value.nothing'),
+    excluded:
+      cats
+        .filter((c) => c.excluded > 0)
+        .map((c) => `${catName(c.category)} ${c.excluded}`)
+        .join('; ') || t('value.nothing'),
+  });
+  const perUnit = cat ? perUnitMedian(cat) : null;
+
   return (
-    <Panel>
-      <ShopHead id={shop} />
-      {row?.reason ? (
-        <Off>
-          <Known t={tr} v={row.reason} />
-        </Off>
-      ) : !row || row.steps === 0 || row.medianSavingPct === null ? (
-        <Off>{t('ladder.none', { shop: name(shop) })}</Off>
-      ) : (
-        <>
-          <p className="mt-2.5 text-[17px] font-semibold">
-            {t('ladder.head', { pct: `⁦${row.medianSavingPct}%⁩` })}
-          </p>
-          <p className="text-sm text-ink-2">
-            {t('ladder.sub', {
-              steps: formatCount(row.steps, locale),
-              k: formatCount(row.notCheaper, locale),
+    <IdeaCard
+      id="ins-value"
+      title={t('value.title')}
+      chip={
+        few.length > 0 && (
+          <span
+            title={t('value.fewTip', {
+              shop: name(focus),
+              min,
+              few: few.map((c) => `${catName(c.category)} ${c.rated}/${c.priced}`).join('; '),
             })}
-          </p>
-          {exceptions.length > 0 && (
-            <>
-              <Label>{t('ladder.exceptions')}</Label>
-              <ul className={`grid gap-2.5 ${one ? 'lg:grid-cols-2 lg:gap-x-4.5' : ''}`}>
-                {exceptions.map((x) => (
-                  <ProductRow
-                    key={`${x.smallerId},${x.largerId}`}
-                    item={{ brand: x.brand, name: x.name, id: x.largerId }}
-                    shop={shop}
-                  >
-                    <bdi dir="ltr">
-                      {`${x.smallerValue} ${unitName(x.unit)} `}
-                      <Money m={x.smallerPrice} locale={locale} />
-                      {` → ${x.largerValue} ${unitName(x.unit)} `}
-                      <Money m={x.largerPrice} locale={locale} />
-                    </bdi>
-                    {' · '}
-                    <b className="font-semibold text-bad">
-                      <bdi dir="ltr">{`+${x.unitChangePct}%`}</bdi>
-                    </b>
-                    {x.smallerOnSale && (
+            className="rounded-full border border-line bg-surface-2 px-2 text-xs text-ink-2"
+          >
+            {t('value.few')}
+          </span>
+        )
+      }
+      tip={tip}
+      big={share ? <Num>{formatCount(share.picks, locale)}</Num> : '–'}
+      unit={t('value.unit', { shop: name(focus) })}
+      sentence={t('value.sentence', { top, min })}
+      chart={<Bars rows={chart} />}
+      more={
+        cat && (
+          <Link href={exploreHref(locale, { retailer: [focus], category: [cat.category] })} className={LINK}>
+            {t('value.see', { category: catName(cat.category), shop: name(focus) })}
+          </Link>
+        )
+      }
+    >
+      {cats.length > 0 && cat && (
+        <>
+          <div role="group" aria-label={t('value.title')} className="mt-4 flex flex-wrap gap-1">
+            {cats.map((c, i) => (
+              <button
+                key={c.category}
+                type="button"
+                aria-pressed={c === cat}
+                onClick={() => setTab(i)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs focus-visible:outline-2 ${
+                  c === cat ? 'border-ink bg-ink text-white' : 'border-line text-ink-2 hover:text-ink'
+                }`}
+              >
+                {catName(c.category)}
+              </button>
+            ))}
+          </div>
+          <ListHead label={catName(cat.category)}>
+            {perUnit
+              ? t('value.typicalUnit', {
+                  median: unitText(perUnit.median, locale),
+                  unit: unitName(perUnit.unit),
+                })
+              : t('value.typicalShelf', { median: moneyText(cat.median, locale) })}
+          </ListHead>
+          <ul className="grid gap-2.5">
+            {oncePerName(cat.items)
+              .slice(0, CARD_ITEMS.value)
+              .map((p) => {
+                const { size, unitPrice } = pickSize(p);
+                const price = <Money m={p.price} locale={locale} />;
+                return (
+                  <ItemRow key={p.id} item={p} shop={focus}>
+                    {perUnit && size && unitPrice ? (
                       <>
+                        <b className="font-semibold text-ink">
+                          {t('value.per', { price: unitText(unitPrice, locale), unit: unitName(size.unit) })}
+                        </b>
                         {' · '}
-                        <Warn>{t('ladder.onSale')}</Warn>
+                        {price}
                       </>
+                    ) : (
+                      <b className="font-semibold text-ink">{price}</b>
                     )}
-                  </ProductRow>
-                ))}
-              </ul>
-            </>
-          )}
+                    {' · ★ '}
+                    <Num>{p.scale === '5' ? p.rating : `${p.rating}/${p.scale}`}</Num>
+                    {' · '}
+                    {t('value.ratings', { count: p.ratingCount, num: formatCount(p.ratingCount, locale) })}
+                  </ItemRow>
+                );
+              })}
+          </ul>
         </>
       )}
-    </Panel>
+    </IdeaCard>
   );
 }
 
-// ---- Deepest discounts ----------------------------------------------------------------------
+// ---- Size steps -----------------------------------------------------------------------------
 
-function PromoSection({ shops }: { shops: string[] }) {
+const usable = (l: Ladder | undefined): l is Ladder & { medianSavingPct: string } =>
+  !!l && !l.reason && l.steps > 0 && l.medianSavingPct !== null;
+
+function SizeCard({
+  focus,
+  order,
+  rows,
+  held,
+}: {
+  focus: string;
+  order: string[];
+  rows: Ladder[];
+  held: string;
+}) {
   const t = useTranslations('insights');
+  const tr = useTranslations('reasons');
+  const locale = useLocale();
+  const name = useRetailerName();
+  const [all, setAll] = useState(false);
+  const row = (s: string) => rows.find((r) => r.retailer === s);
+  const own = row(focus);
+  const ok = usable(own) ? own : null;
+  const exceptions = oncePerName(ok?.exceptions ?? []);
+  const shown = all ? exceptions : exceptions.slice(0, CARD_ITEMS.size);
+
+  const chart: ChartRow[] = order.map((s) => {
+    const l = row(s);
+    if (usable(l))
+      return {
+        id: s,
+        value: Number(l.medianSavingPct),
+        text: t.rich('ladder.bar', {
+          pct: l.medianSavingPct,
+          count: l.steps,
+          num: formatCount(l.steps, locale),
+          n,
+        }),
+      };
+    return { id: s, value: null, note: l?.reason ? <Known t={tr} v={l.reason} /> : t('ladder.none') };
+  });
+
   return (
-    <section aria-labelledby="ins-promo" className="space-y-2.5">
-      <Heading id="ins-promo" tip={t('promo.tip')}>
-        {t('promo.title')}
-      </Heading>
-      <div className={cols(shops.length)}>
-        {shops.map((s) => (
-          <PromoCard key={s} shop={s} one={shops.length === 1} />
-        ))}
-      </div>
-    </section>
+    <IdeaCard
+      id="ins-ladder"
+      title={t('ladder.title')}
+      tip={t('ladder.tip', {
+        held,
+        heldOut: own?.heldOut ?? 0,
+        shop: name(focus),
+        steps: own?.steps ?? 0,
+        k: own?.notCheaper ?? 0,
+        listed: exceptions.length,
+      })}
+      big={ok ? <Num>{`${ok.medianSavingPct}%`}</Num> : '–'}
+      unit={t('ladder.headline', { shop: name(focus) })}
+      sentence={
+        ok
+          ? t.rich('ladder.sentence', {
+              steps: ok.steps,
+              num: formatCount(ok.steps, locale),
+              k: formatCount(ok.notCheaper, locale),
+              n,
+            })
+          : t('ladder.none')
+      }
+      chart={<Bars rows={chart} />}
+      more={
+        exceptions.length > CARD_ITEMS.size && (
+          <button type="button" aria-expanded={all} onClick={() => setAll(!all)} className={LINK}>
+            {all ? t('ladder.seeFewer') : t('ladder.seeAll', { count: exceptions.length })}
+          </button>
+        )
+      }
+    >
+      {ok && shown.length > 0 && (
+        <>
+          <ListHead label={t('ladder.head')}>
+            {t.rich('ladder.headCount', {
+              shown: formatCount(shown.length, locale),
+              total: formatCount(ok.notCheaper, locale),
+              n,
+            })}
+          </ListHead>
+          <ul className="grid gap-2.5">
+            {shown.map((x) => (
+              <StepRow key={`${x.smallerId},${x.largerId}`} x={x} shop={focus} />
+            ))}
+          </ul>
+        </>
+      )}
+    </IdeaCard>
   );
 }
 
-/** One shop's deepest discounts, once per product name, and how many listings per category are on discount. */
-function PromoCard({ shop, one }: { shop: string; one: boolean }) {
+/** A step that is not cheaper per unit, shown with the larger size's picture from its product. */
+function StepRow({ x, shop }: { x: LadderStep; shop: string }) {
+  const t = useTranslations('insights');
+  const unitName = useUnitName();
+  const { api } = useAuth();
+  // The ladder carries no picture; the product's own card does (cached with the product page).
+  const card = useQuery({
+    queryKey: ['product', x.largerId],
+    queryFn: ({ signal }) =>
+      api!.get('/api/v1/products/{product_id}', { params: { product_id: x.largerId }, signal }),
+    enabled: !!api,
+    retry: false,
+  });
+  const image = card.data?.data?.card.image ?? null;
+  return (
+    <ItemRow item={{ brand: x.brand, name: x.name, id: x.largerId, image }} shop={shop}>
+      <b className="font-semibold text-bad">
+        {t.rich('ladder.more', { pct: x.unitChangePct, unit: unitName(x.unit), n })}
+      </b>
+      {' · '}
+      <Num>{`${x.smallerValue}→${x.largerValue} ${unitName(x.unit)}`}</Num>
+      {x.smallerOnSale && ` · ${t('ladder.onSale')}`}
+    </ItemRow>
+  );
+}
+
+// ---- Discounts ------------------------------------------------------------------------------
+
+function PromoCard({ focus, order }: { focus: string; order: string[] }) {
   const t = useTranslations('insights');
   const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   const { api } = useAuth();
-  const q = useQuery({
-    queryKey: ['promotions', 'insights', shop],
-    queryFn: ({ signal }) =>
-      api!.get('/api/v1/promotions', { query: { retailer: [shop], limit: PROMOS_ASKED }, signal }),
-    enabled: !!api,
+  const promos = useQueries({
+    queries: order.map((s) => ({
+      queryKey: ['promotions', 'insights', s],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        api!.get('/api/v1/promotions', { query: { retailer: [s], limit: PROMOS_ASKED }, signal }),
+      enabled: !!api,
+    })),
   });
-  const env = q.data;
-  const reason = env ? notMeasured(env, shop) : null;
-  const items = env?.data ? oncePerName(listedItems(env.data).items) : [];
-  const shown = items.slice(0, one ? PROMOS_SHOWN.one : PROMOS_SHOWN.all);
-  const groups = (env?.data?.retailers.find((r) => r.retailer === shop)?.groups ?? []).filter(
-    (g) => g.kind === 'category' && g.key !== 'other' && g.n > 0,
+  const priced = useQueries({ queries: order.map((s) => pricedOptions(api, s)) });
+
+  const shop = (i: number) => {
+    const s = order[i]!;
+    const env = promos[i]?.data;
+    const r = env?.data?.retailers.find((x) => x.retailer === s);
+    const p = priced[i]?.data?.data?.total;
+    const pct = r && listable(r) && p !== undefined ? sharePct(r.onPromo, p) : null;
+    // Why a shop has no discount count: still loading, not collected, no original price seen,
+    // or the API's own reason (a blocked shop is blocked, not "no original prices").
+    const why = r?.reason ?? env?.reason ?? null;
+    const note: ReactNode = !env ? (
+      '–'
+    ) : r && listable(r) ? null : notCollected(why) ? (
+      t('promo.notCollected')
+    ) : r && r.n === 0 && (r.reason === null || r.reason === 'retailer_partial') ? (
+      t('promo.noOriginal')
+    ) : (
+      <Known t={tr} v={why ?? 'field_not_collected'} />
+    );
+    return { s, env, r: note === null ? r : undefined, priced: p, pct, note };
+  };
+  const shops = order.map((_, i) => shop(i));
+  const own = shops[0]!;
+
+  const chart: ChartRow[] = shops.map((x) =>
+    x.note !== null || !x.r
+      ? { id: x.s, value: null, note: x.note }
+      : x.pct === null || x.priced === undefined
+        ? {
+            id: x.s,
+            value: null,
+            note: t.rich('promo.count', { count: x.r.onPromo, num: formatCount(x.r.onPromo, locale), n }),
+          }
+        : {
+            id: x.s,
+            value: Number(x.pct),
+            text: t.rich('promo.bar', {
+              pct: x.pct,
+              num: formatCount(x.r.onPromo, locale),
+              priced: formatCount(x.priced, locale),
+              n,
+            }),
+          },
   );
+  const items = own.r && own.env?.data ? oncePerName(listedItems(own.env.data).items) : [];
+  const deepest = items.filter((i) => i.retailer === focus).slice(0, CARD_ITEMS.promo);
+
   return (
-    <Panel>
-      <ShopHead id={shop} />
-      {q.isError ? (
-        <div className="mt-2.5">
-          <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
-        </div>
-      ) : !env ? (
-        <Off>{t('loading')}</Off>
-      ) : reason ? (
-        <Off>{notCollected(reason) ? t('promo.off', { shop: name(shop) }) : <Known t={tr} v={reason} />}</Off>
-      ) : shown.length === 0 ? (
-        <Off>{t('promo.none', { shop: name(shop) })}</Off>
-      ) : (
+    <IdeaCard
+      id="ins-promo"
+      title={t('promo.title')}
+      tip={t('promo.tip')}
+      big={own.r ? <Num>{formatCount(own.r.onPromo, locale)}</Num> : '–'}
+      unit={t('promo.unit', { shop: name(focus) })}
+      sentence={
+        !own.r
+          ? own.note
+          : own.pct !== null && own.priced !== undefined
+            ? t.rich('promo.sentence', { pct: own.pct, priced: formatCount(own.priced, locale), n })
+            : t('promo.sentenceCount')
+      }
+      chart={<Bars rows={chart} />}
+      more={
+        own.r &&
+        own.r.onPromo > 0 && (
+          <Link href={promotionsHref(locale, { retailer: focus })} className={LINK}>
+            {t('promo.see', { num: formatCount(own.r.onPromo, locale) })}
+          </Link>
+        )
+      }
+    >
+      {deepest.length > 0 ? (
         <>
-          {groups.length > 0 && (
-            <>
-              <Label>{t('promo.byCat')}</Label>
-              <p className="text-[13px] text-ink-2">
-                {groups.map((g, i) => (
-                  <span key={g.key}>
-                    {i > 0 && ' · '}
-                    {t.rich('promo.cat', {
-                      category: g.key,
-                      num: formatCount(g.onPromo, locale),
-                      n: formatCount(g.n, locale),
-                      c: () => (
-                        <Link
-                          href={exploreHref(locale, { retailer: [shop], category: [g.key] })}
-                          className={LINK}
-                        >
-                          <Cat k={g.key} />
-                        </Link>
-                      ),
-                      l: linkTag(promotionsHref(locale, { retailer: shop, category: g.key })),
-                    })}
-                  </span>
-                ))}
-              </p>
-            </>
-          )}
-          <ul className={`mt-3 grid gap-2.5 ${one ? 'lg:grid-cols-2 lg:gap-x-4.5' : ''}`}>
-            {shown.map((i) => (
-              <ProductRow key={i.id} item={i} shop={shop}>
+          <ListHead label={t('promo.deepest')}>
+            {t.rich('promo.depth', { pct: deepest[0]!.depthPct, n })}
+          </ListHead>
+          <ul className="grid gap-2.5">
+            {deepest.map((i) => (
+              <ItemRow key={i.id} item={i} shop={focus}>
                 <b className="font-semibold text-ink">
                   <Money m={i.price} locale={locale} />
                 </b>{' '}
                 {t('promo.was', { price: moneyText(i.regular, locale) })}
                 {' · '}
-                <b className="font-semibold text-good">
-                  <bdi dir="ltr">{`−${i.depthPct}%`}</bdi>
-                </b>
-              </ProductRow>
+                <b className="font-semibold text-good">{t.rich('promo.depth', { pct: i.depthPct, n })}</b>
+              </ItemRow>
             ))}
           </ul>
-          <p className="mt-3 text-sm">
-            <Link href={promotionsHref(locale, { retailer: shop })} className={LINK}>
-              {t('promo.all', { shop: name(shop) })}
-            </Link>
-          </p>
         </>
+      ) : (
+        own.r && <p className="mt-4 text-sm text-ink-2">{t('promo.none')}</p>
       )}
-    </Panel>
+    </IdeaCard>
   );
 }
