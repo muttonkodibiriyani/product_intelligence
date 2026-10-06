@@ -124,6 +124,8 @@ else: print(next((e.get("value", "") for e in env if e["name"] == sys.argv[1]), 
 FIREBASE_PROJECT=$PROJECT
 REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS" OPTIONAL="CATALOGUES MATCHES"
 ENV_OK=1 SET_ENV= KNOWN=" "
+test "$FIRST_DEPLOY" = 1 && test -n "$SVC_JSON" \
+  && { echo "STOP: FIRST_DEPLOY=1 but pi-api already exists"; ENV_OK=0; }
 for v in $REQUIRED $OPTIONAL; do
   want=${!v}; have=$(live_env "PI_API_$v"); KNOWN="$KNOWN PI_API_$v "
   case " $OPTIONAL " in *" $v "*) opt=1;; *) opt=0;; esac
@@ -145,9 +147,12 @@ On any STOP, do not deploy. Either take the live value (`DATASETS=$(live_env PI_
 and the same for the others) or treat the difference as a config change with its own approval and
 its own before/after diff. A live variable outside the seven (printed by name only) means this
 command would delete it: STOP and extend this list in a reviewed change first. Only a first
-deploy (no service yet) sets `FIRST_DEPLOY=1`; a failed describe otherwise STOPs. To change one
-variable on a running service, use `gcloud run services update --update-env-vars` with its own
-approval (it leaves the others alone), not this command.
+deploy (no service yet) sets `FIRST_DEPLOY=1`, and the guard STOPs if the service exists; a failed
+describe otherwise STOPs. The STOP lines print live values: all seven are non-secret config. A
+secret never joins this list; it would need `--set-secrets` (not used, see below) and a reviewed
+change that prints its name only. To change one variable on a running service, use `gcloud run
+services update --update-env-vars` with its own approval (it leaves the others alone), not this
+command.
 
 ```sh
 test "$ENV_OK" = 1 && gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
