@@ -126,7 +126,7 @@ const rich: Env = {
 let answers: Record<string, unknown> = {};
 let search = '';
 let status: Record<string, string> = { shop_a: 'supported', shop_b: 'partial' };
-let apiVersion = '1.22.0';
+let apiVersion = '1.23.0';
 const asked: Array<{ path: string; query: unknown }> = [];
 const push = vi.fn();
 vi.mock('../auth-provider', () => ({
@@ -161,7 +161,7 @@ vi.mock('../use-meta', () => ({
 beforeEach(() => {
   search = '';
   status = { shop_a: 'supported', shop_b: 'partial' };
-  apiVersion = '1.22.0';
+  apiVersion = '1.23.0';
   asked.length = 0;
   push.mockReset();
 });
@@ -442,9 +442,9 @@ describe('InsightsView', () => {
   });
 
   it('says so on an older API, and asks /insights nothing', () => {
-    apiVersion = '1.21.0';
+    apiVersion = '1.22.0';
     view(rich);
-    expect(screen.getByRole('note').textContent).toContain('1.22.0');
+    expect(screen.getByRole('note').textContent).toContain('1.23.0');
     expect(asked.some((a) => a.path === '/api/v1/insights')).toBe(false);
   });
 

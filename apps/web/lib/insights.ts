@@ -133,8 +133,8 @@ export function pickedShop(sp: URLSearchParams, active: readonly string[]): stri
   return s && active.includes(s) ? s : null;
 }
 
-/** The first API version that serves Insights with stock totals and value picks (API 1.22.0). */
-export const INSIGHTS_API = '1.22.0';
+/** The first API version that serves Insights with stock totals and value picks (API 1.23.0; #265's 1.22.0 has neither). */
+export const INSIGHTS_API = '1.23.0';
 
 /** Is a dotted API version at least `min`? Numeric per part, so 1.17.0 > 1.9.9. */
 export function apiAtLeast(version: string, min: string): boolean {

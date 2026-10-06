@@ -153,10 +153,10 @@ describe('insights helpers', () => {
     expect(apiAtLeast('garbage', '1.18.0')).toBe(false);
   });
 
-  it('Insights is served from API 1.22.0; unknown until /meta answers', () => {
+  it('Insights is served from API 1.23.0; unknown until /meta answers', () => {
     expect(insightsServed({ meta: { apiVersion: '1.18.0' } })).toBe(false);
-    expect(insightsServed({ meta: { apiVersion: '1.21.0' } })).toBe(false);
-    expect(insightsServed({ meta: { apiVersion: '1.22.0' } })).toBe(true);
+    expect(insightsServed({ meta: { apiVersion: '1.22.0' } })).toBe(false);
+    expect(insightsServed({ meta: { apiVersion: '1.23.0' } })).toBe(true);
     expect(insightsServed(undefined)).toBeUndefined();
   });
 
