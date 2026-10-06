@@ -26,6 +26,10 @@ served card price of 0.01 or less in the walked retailer's own contexts (the #14
 not a rollback. A deploy that starts serving a new retailer names it with ``--added-retailer``
 (e.g. faces_ae): S1 then expects it on top of the baseline's retailers, and S2 requires it to
 serve > 0 products while every baseline retailer's count stays unchanged.
+A deploy or data switch that starts serving matched pairs names their number with
+``--expect-matched N``: S2 then requires ``/products?matched=true`` to total N, and every
+baseline retailer's ``/coverage`` matchedCount to stay as ``save`` recorded it (matchedCount only
+counts approved or locked edges, so serving proposed ones must not move it).
 """
 
 from __future__ import annotations
@@ -215,6 +219,10 @@ def coverage(api: Api) -> dict[str, int]:
     return {x["id"]: x["productCount"] for x in api.get("/coverage").data.get("retailers") or []}
 
 
+def matched_counts(api: Api) -> dict[str, int]:
+    return {x["id"]: x["matchedCount"] for x in api.get("/coverage").data.get("retailers") or []}
+
+
 def image_url(card: Mapping[str, Any]) -> str | None:
     img = card.get("image")
     return img.get("url") if isinstance(img, dict) else img
@@ -229,6 +237,7 @@ def save(api: Api, out: Path, known_low: int) -> int:
         "apiVersion": meta.get("apiVersion"),
         "cutoff": meta.get("cutoff"),
         "counts": coverage(api),
+        "matched": matched_counts(api),
         "cursor": r.data.get("nextCursor"),
         "lowPrice": rows,
     }
@@ -283,6 +292,17 @@ def s2_counts(
         f"S2 ulta_ae {got.get('ulta_ae')} == {EXPECTED['ulta_ae']}",
     )
     rep.expect(got == before, f"S2 /coverage {got} == baseline {before}")
+
+
+def s2_matched(api: Api, rep: Report, baseline: Mapping[str, Any], expect: int) -> None:
+    total = api.get("/products", {"matched": "true", "limit": "1"}).data.get("total")
+    rep.expect(total == expect, f"S2 /products?matched=true total {total} == {expect}")
+    before = baseline.get("matched")
+    if before is None:
+        rep.review("S2 matchedCount not recorded: the baseline was saved by an older script")
+        return
+    got = {rid: n for rid, n in matched_counts(api).items() if rid in before}
+    rep.expect(got == before, f"S2 /coverage matchedCount {got} == baseline {before}")
 
 
 def s3_images(api: Api, rep: Report) -> None:
@@ -446,6 +466,8 @@ def check(api: Api, out: Path, args: argparse.Namespace) -> int:
     added = args.added_retailer or []
     s1_meta(api, rep, args.expect_api, {*(baseline.get("counts") or {}), *added})
     s2_counts(api, rep, baseline, added)
+    if args.expect_matched is not None:
+        s2_matched(api, rep, baseline, args.expect_matched)
     if not args.counts_only:
         s3_images(api, rep)
         s4_floor(api, rep, baseline)
@@ -491,6 +513,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=sorted(EVIDENCE_HOSTS),
         default=None,
         help="check: a retailer this deploy starts serving (repeatable)",
+    )
+    p.add_argument(
+        "--expect-matched",
+        type=int,
+        default=None,
+        metavar="N",
+        help="check: /products?matched=true totals N; matchedCount stays at the baseline",
     )
     p.add_argument(
         "--counts-only",
