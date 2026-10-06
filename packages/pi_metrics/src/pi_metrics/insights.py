@@ -16,27 +16,41 @@ Four aggregates for the Insights page, each over rules the other metrics already
   brand, name, top-level category and unit (``basis = name``), a weaker grouping the response
   says it used. A family with two offers at one measure is skipped as ambiguous. A step whose
   larger size costs more than ``HELD_OUT_PCT`` % more per unit is held out as two products
-  sharing a name, and counted.
+  sharing a name, and counted. Each step says whether either size is on sale (its regular
+  price on the date above its price), which can explain an exception.
 * **Brand stock-outs** count, per context and brand, the offers observed out of stock on the
   date against the offers in an observed stock state (in, low or out of stock). Counts only,
   never a share: retailers are crawled partially, so a share of the catalogue would overstate
-  what was seen. A day without an observation is never out of stock. A brand whose every
-  observed offer is out of stock is one the source reports unavailable (often not sold online
-  in the market), not a sell-out: it is counted apart (``unavailable_brands``,
+  what was seen. A day without an observation is never out of stock. A brand with at least
+  ``MIN_UNAVAILABLE_LISTINGS`` observed offers, every one out of stock, is one the source
+  reports unavailable (often not sold online in the market), not a sell-out (a lone listing
+  is too little to say that of a brand): it is counted apart (``unavailable_brands``,
   ``unavailable_listings``, the ``unavailable`` rows), and ``out_of_stock`` and ``brands`` cover
   the other, partly-out brands only, so the two never overlap. A partly-out brand is listed
   when at least ``MIN_COHORT`` of its offers are out of stock, the most first. Per shop the
   response also carries ``listed`` (offers collected, the catalogue count) and ``with_stock``.
-* **Value picks** stay inside one context and one top-level category: offers rated at least
-  ``VALUE_RATING_PCT`` % of their scale by at least ``VALUE_MIN_RATINGS`` reviewers, priced at
-  or below the category's median price (nearest rank, the lower middle, so an observed price).
-  The median is over every priced offer in the category and market currency, rated or not; a
-  category with fewer than ``MIN_COHORT`` of them has no median and is counted in
-  ``suppressed``. Ratings are the retailer's own; the shop is never compared with another.
-  Categories are each shop's own. A ``fragrance`` offer whose name has a body-care term
-  (``BODY_CARE_TERMS``: lotion, shower, shampoo, ...) and no fragrance term (``FRAGRANCE_TERMS``:
-  parfum, eau de, mist, ...) is body care filed under fragrance: it is left out of the cohort and
-  counted in the category's ``excluded``, so a fragrance-and-lotion gift set stays in.
+* **Value picks** stay inside one context and one top-level category (each shop's own).
+  ``UNRANKED_CATEGORIES`` (``other``, a catch-all of brushes, nails and hair) are never ranked
+  and only counted (``unranked``). Offers that are not like-for-like leave the category's cohort
+  and are counted in its ``excluded``: tools in any category (``TOOL_TERMS``; "brush on" and
+  "brush tip" name an applicator and stay); body care outside ``body`` and ``fragrance``
+  (``BODY_PRODUCT_TERMS``: body wash, sugar scrub, epsom, bath, ...); and in ``fragrance`` a name
+  with a body-care term (``BODY_CARE_TERMS``: lotion, shower, after shave, ...) and no fragrance
+  term (``FRAGRANCE_TERMS``: parfum, eau de, mist, ...), so a fragrance-and-lotion set stays. The
+  category's median price is over the rest (nearest rank, the lower middle, so an observed
+  price), rated or not, in the market currency; under ``MIN_COHORT`` offers there is no median
+  and the category is counted in ``suppressed``. A pick is rated at least ``VALUE_RATING_PCT`` %
+  of its scale by at least ``VALUE_MIN_RATINGS`` reviewers, not out of stock on the date
+  (unknown stock is allowed), and at or below its basis's median: ``fragrance`` is compared per
+  unit (``PER_UNIT``: price per ml or g against the median per unit of the category's offers in
+  the same unit, a unit with ``MIN_COHORT`` of them; an offer without such a size is not a pick);
+  every other category by shelf price (``SHELF``), where names with ``SMALL_SIZE_TERMS`` (mini,
+  travel, ...) are never picks. Picks rank by rating share shrunk toward the category's mean
+  share of its rated offers, ``(share * n + mean * PRIOR_RATINGS) / (n + PRIOR_RATINGS)``, so a
+  few perfect ratings do not outrank thousands of good ones; then most ratings, cheapest on the
+  basis, id. One brand and (folded) name is one pick, the cheapest on the basis, and a brand has
+  at most ``PICKS_PER_BRAND`` picks per category. Ratings are the retailer's own; the shop is
+  never compared with another.
 
 No cross-retailer number comes from an unreviewed match: when no pair is counted the pricing
 parts say ``matches_unreviewed`` (or why else) and carry no rows.
@@ -51,6 +65,7 @@ from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 from itertools import pairwise
+from typing import NamedTuple
 
 from pi_core import AvailabilityState
 from pi_dataset import ContractModel, DatasetV3, MoneyValue, OfferV3, ProductV3, Rating
@@ -72,6 +87,7 @@ from pi_metrics.model import (
     Reason,
     Status,
 )
+from pi_metrics.pricing import UNIT_PLACES
 
 #: Share of a brand's counted pairs (in %) that must agree for a policy label.
 POLICY_SHARE = Decimal(80)
@@ -81,6 +97,9 @@ HELD_OUT_PCT = Decimal(50)
 EXCEPTIONS_LISTED = 12
 #: Brands listed per context in the stock-out counts.
 BRANDS_LISTED = 12
+#: Observed offers a brand needs before every one out of stock reads as "source reports
+#: unavailable"; a single out-of-stock listing stays an ordinary stock-out.
+MIN_UNAVAILABLE_LISTINGS = 2
 #: A value pick has at least this many ratings ...
 VALUE_MIN_RATINGS = 20
 #: ... averaging at least this share (in %) of the rating scale (4.5 of 5).
@@ -88,17 +107,40 @@ VALUE_RATING_PCT = Decimal(90)
 #: Categories listed per context, the most priced offers first; picks listed per category.
 CATEGORIES_LISTED = 8
 PICKS_LISTED = 5
-#: The top-level category whose body-care listings are taken out of the value cohort.
+#: Top-level categories never ranked: a catch-all of unlike things (brushes, nails, hair).
+UNRANKED_CATEGORIES = frozenset({"other"})
+#: Ranked per unit (``ValueBasis.PER_UNIT``); its body-care listings leave the value cohort.
 FRAGRANCE = "fragrance"
+#: Body care's own category: ``BODY_PRODUCT_TERMS`` names stay in it (and in ``FRAGRANCE``).
+BODY = "body"
 #: A ``fragrance`` offer named with one of these and none of ``FRAGRANCE_TERMS`` is body care.
 BODY_CARE_TERMS = re.compile(
     r"\b(?:lotion|body wash|shower|3-in-1|shampoo|conditioner|scrub|body butter|soap|bath"
-    r"|deodorant|hand cream|body cream|body oil)\b",
+    r"|deodorant|hand cream|body cream|body oil|after ?shave|shave cream|shave gel|shaving)\b",
     re.IGNORECASE,
 )
 FRAGRANCE_TERMS = re.compile(
     r"\b(?:parfum|eau de|cologne|perfume|mist|extrait|fragrance)\b", re.IGNORECASE
 )
+#: Outside ``BODY`` and ``FRAGRANCE``, an offer named with one of these is body care.
+BODY_PRODUCT_TERMS = re.compile(
+    r"\b(?:body (?:wash|scrub|lotion|butter|oil|cream)|sugar scrub|epsom|bath)\b", re.IGNORECASE
+)
+#: In every category an offer named with one of these is a tool, not a product. ``brush on`` and
+#: ``brush tip`` describe a product's applicator and stay in.
+TOOL_TERMS = re.compile(
+    r"\b(?:brush(?:es)?(?![ -](?:on|tip)\b)|sponges?|(?:facial|face|jade|quartz) roller|gua sha"
+    r"|tweezers?|mitt|applicator|curler|device|powder puff|sharpener)\b",
+    re.IGNORECASE,
+)
+#: On the shelf-price basis an offer named with one of these is a small size, never a pick.
+SMALL_SIZE_TERMS = re.compile(r"\b(?:mini|travel|discovery|sample|deluxe)\b", re.IGNORECASE)
+#: Units a per-unit price is taken in (folded); other measures have no per-unit price.
+VALUE_UNITS = frozenset({"ml", "g"})
+#: Ratings of prior weight when shrinking a pick's rating share toward its category's mean.
+PRIOR_RATINGS = 50
+#: Picks listed or counted per brand in one category.
+PICKS_PER_BRAND = 2
 PROFILES = EVERY_PROFILE
 
 
@@ -164,6 +206,9 @@ class LadderStep(ContractModel):
     #: Per-unit price change from the smaller to the larger size; >= 0 means no saving.
     unit_change_pct: Pct
     basis: LadderBasis
+    #: The size is on sale: its regular price on the date is above its price.
+    smaller_on_sale: bool = False
+    larger_on_sale: bool = False
 
 
 class Ladder(ContractModel):
@@ -200,13 +245,30 @@ class Stockouts(ContractModel):
     #: Of ``with_stock``: offers out of stock in partly-out brands. Never overlaps
     #: ``unavailable_listings``.
     out_of_stock: int = 0
-    #: Brands whose every offer in an observed stock state is out of stock: the source reports
-    #: them unavailable (often not sold online in the market), which is not a sell-out.
+    #: Brands with at least ``MIN_UNAVAILABLE_LISTINGS`` offers in an observed stock state, every
+    #: one out of stock: the source reports them unavailable (often not sold online in the
+    #: market), which is not a sell-out.
     unavailable_brands: int = 0
     #: Offers in ``unavailable_brands``. Never overlaps ``out_of_stock``.
     unavailable_listings: int = 0
     #: ``unavailable_brands`` with at least ``MIN_COHORT`` offers, the most first.
     unavailable: tuple[BrandStock, ...] = ()
+
+
+class ValueBasis(StrEnum):
+    #: Shelf price against the category's median price.
+    SHELF = "shelf"
+    #: Price per ml or g against the category's per-unit median in the same unit.
+    PER_UNIT = "per_unit"
+
+
+class UnitMedian(ContractModel):
+    unit: str
+    #: Median price per unit (nearest rank, lower middle), ``UNIT_PLACES`` decimals, in the
+    #: category's currency.
+    median: str
+    #: Priced offers measured in ``unit``: the median's cohort.
+    n: int
 
 
 class ValuePick(ContractModel):
@@ -219,6 +281,11 @@ class ValuePick(ContractModel):
     rating_count: int
     #: The card image on an allowed evidence host (set by pi_api), else null.
     image: str | None = None
+    #: The published measure, when the offer has one in ``VALUE_UNITS``.
+    size_value: str | None = None
+    size_unit: str | None = None
+    #: ``price`` per ``size_unit``, ``UNIT_PLACES`` decimals, when the size is known.
+    unit_price: str | None = None
 
 
 class ValueCategory(ContractModel):
@@ -228,11 +295,17 @@ class ValueCategory(ContractModel):
     median: MoneyValue
     #: Of ``priced``: offers with at least ``valueMinRatings`` ratings.
     rated: int
-    #: Of ``rated``: rated at least ``valueRatingPct`` % of the scale, priced at most ``median``.
+    #: Of ``rated``: rated at least ``valueRatingPct`` % of the scale, in stock or of unknown
+    #: stock, at or below the basis's median, one per brand and name, at most
+    #: ``PICKS_PER_BRAND`` per brand.
     picks: int
     items: tuple[ValuePick, ...]
-    #: Priced offers taken out of the cohort as body care filed under ``fragrance``; else 0.
+    #: Priced offers taken out of the cohort as not like-for-like: body care filed under
+    #: ``fragrance`` or another category, or tools. Not in ``priced``.
     excluded: int = 0
+    basis: ValueBasis = ValueBasis.SHELF
+    #: ``PER_UNIT`` only: the median per unit with at least ``minCohort`` measured offers.
+    unit_medians: tuple[UnitMedian, ...] = ()
 
 
 class ValuePicks(ContractModel):
@@ -244,6 +317,11 @@ class ValuePicks(ContractModel):
     qualifying: int
     #: Categories with fewer than ``minCohort`` priced offers: no median, no picks.
     suppressed: int
+    #: Priced offers in ``UNRANKED_CATEGORIES``, never ranked.
+    unranked: int = 0
+
+
+_Priced = tuple[MoneyValue, ProductV3, OfferV3]
 
 
 class Insights(ContractModel):
@@ -420,6 +498,8 @@ def size_ladder(ds: DatasetV3, context: str, i: int) -> Ladder:
                     larger_price=lm,
                     unit_change_pct=change,
                     basis=basis,
+                    smaller_on_sale=_on_sale(offer, sm, i),
+                    larger_on_sale=_on_sale(lp.offers[context], lm, i),
                 )
             )
     bad = sorted((s for s in steps if s.unit_change_pct >= 0), key=_steepest)
@@ -434,6 +514,15 @@ def size_ladder(ds: DatasetV3, context: str, i: int) -> Ladder:
         else None,
         reason=None if enough else Reason.COHORT_TOO_SMALL,
         exceptions=tuple(bad[:EXCEPTIONS_LISTED]),
+    )
+
+
+def _on_sale(offer: OfferV3, price: MoneyValue, i: int) -> bool:
+    regular = view.regular_on(offer, i)
+    return (
+        regular is not None
+        and regular.currency == price.currency
+        and regular.decimal() > price.decimal()
     )
 
 
@@ -463,12 +552,15 @@ def _brand_stock(
 
 
 def _gone(observed: dict[str, int], out: dict[str, int]) -> frozenset[str]:
-    return frozenset(b for b, n in out.items() if n == observed[b])
+    return frozenset(
+        b for b, n in out.items() if n == observed[b] and n >= MIN_UNAVAILABLE_LISTINGS
+    )
 
 
 def unavailable_brands(ds: DatasetV3, context: str, i: int) -> frozenset[str]:
-    """Brands whose every offer in an observed stock state at ``context`` on date ``i`` is out of
-    stock: the source reports them unavailable (see the module's brand stock-outs)."""
+    """Brands with at least ``MIN_UNAVAILABLE_LISTINGS`` offers in an observed stock state at
+    ``context`` on date ``i``, every one out of stock: the source reports them unavailable (see
+    the module's brand stock-outs)."""
     _, observed, out = _brand_stock(ds, context, i)
     return _gone(observed, out)
 
@@ -530,6 +622,156 @@ def body_care_in_fragrance(product: ProductV3) -> bool:
     )
 
 
+def not_like_for_like(product: ProductV3) -> bool:
+    """Is ``product`` left out of its category's value cohort: body care filed under
+    ``fragrance`` or under a category other than ``body``, or a tool?"""
+    category = product.category[0]
+    return (
+        body_care_in_fragrance(product)
+        or (
+            category not in {BODY, FRAGRANCE}
+            and BODY_PRODUCT_TERMS.search(product.name) is not None
+        )
+        or TOOL_TERMS.search(product.name) is not None
+    )
+
+
+def _measure(offer: OfferV3) -> tuple[Decimal, str] | None:
+    """The offer's measure in a ``VALUE_UNITS`` unit, else None."""
+    size = offer.size
+    if size is None or size.value is None or size.unit is None:
+        return None
+    value, unit = Decimal(size.value), view.fold(size.unit)
+    return (value, unit) if value > 0 and unit in VALUE_UNITS else None
+
+
+def _lower_middle(values: list[Decimal]) -> Decimal:
+    return sorted(values)[(len(values) - 1) // 2]
+
+
+def _unit_medians(offers: list[_Priced]) -> dict[str, tuple[Decimal, int]]:
+    """Per unit, the median price per unit and its cohort size, for units with ``MIN_COHORT``."""
+    by_unit: defaultdict[str, list[Decimal]] = defaultdict(list)
+    for price, _, offer in offers:
+        measure = _measure(offer)
+        if measure is not None:
+            by_unit[measure[1]].append(price.decimal() / measure[0])
+    return {u: (_lower_middle(v), len(v)) for u, v in by_unit.items() if len(v) >= MIN_COHORT}
+
+
+def _share(rating: Rating) -> Decimal:
+    return Decimal(rating.average) / Decimal(rating.scale)
+
+
+def _in_stock_or_unknown(offer: OfferV3, i: int) -> bool:
+    states = offer.series.availability
+    return states is None or states[i] is not AvailabilityState.OUT_OF_STOCK
+
+
+def _unit_text(value: Decimal) -> str:
+    return str(value.quantize(Decimal(1).scaleb(-UNIT_PLACES)))
+
+
+class _Candidate(NamedTuple):
+    score: Decimal
+    #: The basis's price: per unit on ``PER_UNIT``, else the shelf price.
+    cost: Decimal
+    pick: ValuePick
+
+
+def _candidate(
+    entry: _Priced, mean: Decimal, units: dict[str, tuple[Decimal, int]] | None, median: Decimal
+) -> _Candidate | None:
+    """``entry`` as a pick on its basis (per unit when ``units`` is given), else None."""
+    price, product, offer = entry
+    rating = offer.rating
+    if rating is None or not _well_rated(rating):
+        return None
+    measure = _measure(offer)
+    unit_price = None if measure is None else price.decimal() / measure[0]
+    if units is not None:
+        if measure is None or unit_price is None or measure[1] not in units:
+            return None
+        if unit_price > units[measure[1]][0]:
+            return None
+        cost = unit_price
+    else:
+        if SMALL_SIZE_TERMS.search(product.name) or price.decimal() > median:
+            return None
+        cost = price.decimal()
+    score = (_share(rating) * rating.count + mean * PRIOR_RATINGS) / (rating.count + PRIOR_RATINGS)
+    pick = ValuePick(
+        id=product.id,
+        brand=product.brand,
+        name=product.name,
+        price=price,
+        rating=Decimal(rating.average),
+        scale=rating.scale,
+        rating_count=rating.count,
+        size_value=None if measure is None else f"{measure[0].normalize():f}",
+        size_unit=None if measure is None else measure[1],
+        unit_price=None if unit_price is None else _unit_text(unit_price),
+    )
+    return _Candidate(score, cost, pick)
+
+
+def _picks(candidates: list[_Candidate]) -> list[ValuePick]:
+    """One pick per brand and name (the cheapest on the basis), at most ``PICKS_PER_BRAND`` per
+    brand, by shrunk rating share, then most ratings, cheapest, id."""
+    cheapest: dict[tuple[str, str], _Candidate] = {}
+    for c in candidates:
+        key = (view.fold(c.pick.brand), view.fold(c.pick.name))
+        kept = cheapest.get(key)
+        if kept is None or (c.cost, c.pick.id) < (kept.cost, kept.pick.id):
+            cheapest[key] = c
+    ranked = sorted(
+        cheapest.values(), key=lambda c: (-c.score, -c.pick.rating_count, c.cost, c.pick.id)
+    )
+    per_brand: defaultdict[str, int] = defaultdict(int)
+    picks = []
+    for c in ranked:
+        per_brand[view.fold(c.pick.brand)] += 1
+        if per_brand[view.fold(c.pick.brand)] <= PICKS_PER_BRAND:
+            picks.append(c.pick)
+    return picks
+
+
+def _category(category: str, offers: list[_Priced], excluded: int, i: int) -> ValueCategory:
+    median = sorted((p for p, _, _ in offers), key=MoneyValue.decimal)[(len(offers) - 1) // 2]
+    rated = [
+        e for e in offers if e[2].rating is not None and e[2].rating.count >= VALUE_MIN_RATINGS
+    ]
+    mean = (
+        sum((_share(o.rating) for _, _, o in rated if o.rating is not None), Decimal(0))
+        / len(rated)
+        if rated
+        else Decimal(0)
+    )
+    units = _unit_medians(offers) if category == FRAGRANCE else None
+    candidates = [
+        c
+        for e in rated
+        if _in_stock_or_unknown(e[2], i)
+        and (c := _candidate(e, mean, units, median.decimal())) is not None
+    ]
+    picks = _picks(candidates)
+    return ValueCategory(
+        category=category,
+        priced=len(offers),
+        median=median,
+        rated=len(rated),
+        picks=len(picks),
+        items=tuple(picks[:PICKS_LISTED]),
+        excluded=excluded,
+        basis=ValueBasis.SHELF if units is None else ValueBasis.PER_UNIT,
+        unit_medians=()
+        if units is None
+        else tuple(
+            UnitMedian(unit=u, median=_unit_text(m), n=n) for u, (m, n) in sorted(units.items())
+        ),
+    )
+
+
 def _value(ds: DatasetV3, context: str, i: int) -> ValuePicks:
     reason = _value_off(ds, context)
     if reason is not None:
@@ -537,54 +779,26 @@ def _value(ds: DatasetV3, context: str, i: int) -> ValuePicks:
             retailer=context, reason=reason, categories=(), qualifying=0, suppressed=0
         )
     currency = view.market_currency(ds, view.context(ds, context).retailer)
-    priced: defaultdict[str, list[tuple[MoneyValue, ProductV3, OfferV3]]] = defaultdict(list)
+    priced: defaultdict[str, list[_Priced]] = defaultdict(list)
     excluded: defaultdict[str, int] = defaultdict(int)
+    unranked = 0
     for product in ds.products:
         offer = view.collected(product, context)
         price = None if offer is None else view.price_on(offer, i)
         if offer is None or price is None or price.currency != currency:
             continue
-        if body_care_in_fragrance(product):
-            excluded[product.category[0]] += 1
+        category = product.category[0]
+        if category in UNRANKED_CATEGORIES:
+            unranked += 1
+        elif not_like_for_like(product):
+            excluded[category] += 1
         else:
-            priced[product.category[0]].append((price, product, offer))
-    rows = []
-    for category, offers in priced.items():
-        if len(offers) < MIN_COHORT:
-            continue
-        median = sorted((p for p, _, _ in offers), key=MoneyValue.decimal)[(len(offers) - 1) // 2]
-        rated = [
-            (p, pr, o)
-            for p, pr, o in offers
-            if o.rating is not None and o.rating.count >= VALUE_MIN_RATINGS
-        ]
-        picks = [
-            ValuePick(
-                id=pr.id,
-                brand=pr.brand,
-                name=pr.name,
-                price=p,
-                rating=Decimal(o.rating.average),
-                scale=o.rating.scale,
-                rating_count=o.rating.count,
-            )
-            for p, pr, o in rated
-            if o.rating is not None and _well_rated(o.rating) and p.decimal() <= median.decimal()
-        ]
-        picks.sort(
-            key=lambda v: (-v.rating / Decimal(v.scale), -v.rating_count, v.price.decimal(), v.id)
-        )
-        rows.append(
-            ValueCategory(
-                category=category,
-                priced=len(offers),
-                median=median,
-                rated=len(rated),
-                picks=len(picks),
-                items=tuple(picks[:PICKS_LISTED]),
-                excluded=excluded[category],
-            )
-        )
+            priced[category].append((price, product, offer))
+    rows = [
+        _category(category, offers, excluded[category], i)
+        for category, offers in priced.items()
+        if len(offers) >= MIN_COHORT
+    ]
     rows.sort(key=lambda r: (-r.priced, r.category))
     return ValuePicks(
         retailer=context,
@@ -592,6 +806,7 @@ def _value(ds: DatasetV3, context: str, i: int) -> ValuePicks:
         categories=tuple(rows[:CATEGORIES_LISTED]),
         qualifying=len(rows),
         suppressed=sum(1 for o in priced.values() if len(o) < MIN_COHORT),
+        unranked=unranked,
     )
 
 

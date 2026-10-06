@@ -134,6 +134,7 @@
       {
         "categories": [
           {
+            "basis": "shelf",
             "category": "skincare",
             "excluded": 0,
             "items": [],
@@ -144,17 +145,20 @@
             },
             "picks": 0,
             "priced": 14,
-            "rated": 0
+            "rated": 0,
+            "unitMedians": []
           }
         ],
         "qualifying": 1,
         "reason": null,
         "retailer": "shop_a",
-        "suppressed": 0
+        "suppressed": 0,
+        "unranked": 0
       },
       {
         "categories": [
           {
+            "basis": "shelf",
             "category": "skincare",
             "excluded": 0,
             "items": [],
@@ -165,27 +169,31 @@
             },
             "picks": 0,
             "priced": 11,
-            "rated": 0
+            "rated": 0,
+            "unitMedians": []
           }
         ],
         "qualifying": 1,
         "reason": null,
         "retailer": "shop_b",
-        "suppressed": 1
+        "suppressed": 1,
+        "unranked": 0
       },
       {
         "categories": [],
         "qualifying": 0,
         "reason": "cohort_too_small",
         "retailer": "shop_c",
-        "suppressed": 2
+        "suppressed": 2,
+        "unranked": 0
       },
       {
         "categories": [],
         "qualifying": 0,
         "reason": "retailer_blocked",
         "retailer": "shop_d",
-        "suppressed": 0
+        "suppressed": 0,
+        "unranked": 0
       }
     ],
     "valueMinRatings": 20,
