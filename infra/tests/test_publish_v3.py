@@ -6,6 +6,7 @@ Synthetic files only (the ae-pilot example upgraded to v3 with content added); n
 import gzip
 import json
 import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -247,3 +248,66 @@ def test_the_published_v3_body_serves_its_content_composed_with_a_v2_part(
     assert content["variants"]["items"][0]["gtin"] == {"state": "observed", "barcode": GTIN}
     other = client.get("/api/v1/products/f-1", headers=bearer())
     assert other.status_code == 200, other.text
+
+
+# ------------------------------------------------------------------ two contexts of one source
+def two_contexts() -> dict[str, Any]:
+    """v3_doc() with every product offered in two sephora_me contexts, neither of them using
+    the bare retailer id (a v3 rule once a retailer has two): valid v3."""
+    doc = v3_doc()
+    (ctx,) = doc["meta"]["contexts"]
+    doc["meta"]["contexts"] = [ctx | {"id": "sephora_me_en"}, ctx | {"id": "sephora_me_ar"}]
+    for product in doc["products"]:
+        offer = product["offers"].pop(CONTEXT)
+        product["offers"] = {
+            "sephora_me_en": offer,
+            "sephora_me_ar": json.loads(json.dumps(offer)) | {"content": None},
+        }
+    return doc
+
+
+def test_a_two_context_v3_file_packages_under_its_one_source() -> None:
+    _, paths, summary, meta_doc = packaged(two_contexts())
+    assert paths == [
+        "datasets/ae/sephora_me/20260930T000000Z.json",
+        "datasets/ae/sephora_me/latest.json",
+    ]
+    assert summary["source"] == "sephora_me"
+    assert meta_doc == "v2_ae_sephora_me"
+
+
+def test_a_live_two_context_v3_file_is_judged_by_source() -> None:
+    """The live side is grouped by source too: its context ids are not sources."""
+    live = json.loads(gzip.decompress(packaged(two_contexts())[0]))
+    new = publish_dataset.by_source(live)
+    assert publish_dataset.guard(live, new, "sephora_me") == []
+    smaller = publish_dataset.by_source(json.loads(json.dumps(live)))
+    smaller["products"] = smaller["products"][:2]
+    assert publish_dataset.guard(live, smaller, "sephora_me") == [
+        "HOLD, sephora_me drops from 3 to 2 offers"
+    ]
+
+
+def test_a_live_v3_with_another_retailers_context_holds_by_source_name() -> None:
+    live = with_context(v3_doc(), "faces_online", "faces_ae")
+    assert publish_dataset.guard(live, new_v3(), "sephora_me") == [
+        "HOLD, live source faces_ae (1 offers) is missing"
+    ]
+
+
+# ------------------------------------------------------------------ pi-api must serve it
+def test_a_v3_file_pi_api_cannot_serve_is_held_and_nothing_is_uploaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """2026-10-01 rule: a file the contract accepts but pi-api can't load is never uploaded."""
+    refusal = "HOLD, pi-api cannot serve this file (1): synthetic refusal"
+    monkeypatch.setattr(publish_dataset, "serve_check", lambda raw, *, allow_test: [refusal])
+    initialized: list[object] = []
+    firebase = types.ModuleType("firebase_admin")
+    firebase.initialize_app = lambda **kwargs: initialized.append(kwargs)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "firebase_admin", firebase)
+    new = tmp_path / "new.json"
+    new.write_text(raw_of(v3_doc()), encoding="utf-8")
+    assert run([str(new), "--project", "p", "--allow-test"], monkeypatch) == 1  # not a dry run
+    assert f"INVALID: {refusal}" in capsys.readouterr().err
+    assert initialized == []
