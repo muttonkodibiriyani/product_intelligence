@@ -81,6 +81,34 @@ def _out(bucket: cr.LocalBucket, name: str) -> list[str]:
     return [line for line in data.splitlines() if line]
 
 
+def _ounass_page(division: str) -> bytes:
+    pdp = {
+        "division": division,
+        "department": "Makeup",
+        "styleColorId": "900000001_242",
+        "nameInEnglish": "Synthetic Lip Tint",
+        "priceInAED": 95,
+        "outOfStock": True,
+    }
+    return f"<html><body><script>var s={json.dumps({'pdp': pdp})}</script></body></html>".encode()
+
+
+def test_a_non_beauty_ounass_page_is_out_of_scope_and_an_out_of_stock_one_is_read(
+    tmp_path: Path,
+) -> None:
+    beauty, fashion = _ounass_page("Beauty"), _ounass_page("Fashion")
+    rows = [(_rec(1, "ounass", beauty), beauty), (_rec(2, "ounass", fashion), fashion)]
+    bucket = _capture(tmp_path, {"part-0000.jsonl.gz": rows})
+    status = cr.run(bucket, _job())
+    assert (status["pages_ok"], status["pages_out_of_scope"], status["rows"]) == (1, 1, 1)
+    (cap,) = [loads(line) for line in _out(bucket, "part-0000.jsonl.gz")]
+    assert next(r.value for r in cap.readings if r.key == "retailer_sku") == "900000001_242"
+    assert {"item_in_stock": False} in [r.value for r in cap.readings]
+    errors = gzip.decompress(bucket.get(f"{SRC}/readings/errors/part-0000.jsonl.gz")).decode()
+    (err,) = [json.loads(line) for line in errors.splitlines()]
+    assert (err["state"], err["reason"]) == ("out_of_scope", "division 'Fashion', not Beauty")
+
+
 def test_landmark_page_gives_one_capture_per_variant(tmp_path: Path) -> None:
     lm = _landmark_page(["111", "222"]).encode()
     gen = _GENERIC_PAGE.encode()
@@ -177,6 +205,8 @@ def test_tasks_split_parts_by_name_and_cover_them_all() -> None:
 def test_readers_by_retailer() -> None:
     assert cr.reader_for("max_fashion") is cr.LANDMARK
     assert cr.reader_for("faces") is cr.FACES
+    assert cr.reader_for("ounass") is cr.OUNASS
+    assert cr.reader_for("bloomingdales") is cr.BLOOMINGDALES
     assert cr.reader_for("level_shoes") is cr.GENERIC
     faces = cr.FACES.read("<html></html>", "en-AE", None)
     assert len(faces) == 1
