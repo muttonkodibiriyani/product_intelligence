@@ -1,5 +1,7 @@
 import type { Schemas } from './api/types';
+import { formatCount } from './format';
 import { apiAtLeast } from './insights';
+import { formatMoney } from './money';
 
 export type Findings = Schemas['Findings'];
 export type Finding = Schemas['Finding'];
@@ -79,4 +81,56 @@ export const stripPos = (v: number, axis: { min: number; max: number }): number 
 export function cellShade(v: string, rows: readonly ChartRow[]): number {
   const max = Math.max(1, ...rows.flatMap((r) => r.parts.map(Number)));
   return 0.06 + (0.94 * Number(v)) / max;
+}
+
+/** How the page names what a param holds: a shop by its display name, a category in the locale. */
+export type Namers = {
+  shop: (id: string) => string;
+  category: (code: string) => string;
+};
+
+const list = (items: readonly string[], locale: string): string =>
+  new Intl.ListFormat(locale === 'ar' ? 'ar' : 'en', { style: 'long', type: 'conjunction' }).format(items);
+
+/** One param as message text: counts and money in Latin digits, a true minus, names not ids. */
+export function paramText(p: Param, locale: string, names: Namers): string {
+  switch (p.kind) {
+    case 'count':
+      return formatCount(Number(p.value), locale);
+    case 'pct':
+      return `${signed(p.value)}%`;
+    case 'ratio':
+      return signed(p.value);
+    case 'money':
+      return p.currency
+        ? formatMoney({ amount: p.value, currency: p.currency, minor: 0 }, locale === 'ar' ? 'ar' : 'en')
+        : p.value;
+    case 'retailer':
+      return names.shop(p.value);
+    case 'category':
+      return names.category(p.value);
+    case 'list':
+      return list(p.items, locale);
+    case 'text':
+      return p.value;
+    case 'missing':
+      return '';
+  }
+}
+
+/**
+ * Every param as a message argument, plus `has_<name>` ('yes'/'no': present, and for a list not
+ * empty) and `zero_<name>` for numbers, so a message words a missing or zero value explicitly
+ * instead of printing a blank.
+ */
+export function messageArgs(f: Finding, locale: string, names: Namers): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, p] of Object.entries(f.params)) {
+    out[k] = paramText(p, locale, names);
+    const present = p.kind === 'list' ? p.items.length > 0 : p.kind !== 'missing';
+    out[`has_${k}`] = present ? 'yes' : 'no';
+    if (p.kind === 'count' || p.kind === 'pct' || p.kind === 'ratio')
+      out[`zero_${k}`] = Number(p.value) === 0 ? 'yes' : 'no';
+  }
+  return out;
 }
