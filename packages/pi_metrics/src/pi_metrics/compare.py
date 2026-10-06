@@ -185,6 +185,14 @@ def _identity(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
     return None
 
 
+def same_item(ds: DatasetV3, product: ProductV3, base: str, other: str) -> bool:
+    """Both contexts offer the product and their offers are known to be one item: the identity
+    rules a counted pair passes (exact, approved or locked; ADR-0008 §2), before size and price."""
+    return base in product.offers and other in product.offers and _identity(
+        ds, product, base, other
+    ) is None
+
+
 def _exclusion(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
     ds: DatasetV3, product: ProductV3, base: str, other: str, i: int
 ) -> tuple[Excluded | None, LabelPair | None]:
