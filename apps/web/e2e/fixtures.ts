@@ -1,10 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { apiAtLeast, INSIGHTS_API } from '../lib/insights';
 import { summaryBody } from './summary-fixture';
 import { test as base, expect, type Locator, type Page, type Route } from '@playwright/test';
 
 export const golden = (name: string): unknown =>
   JSON.parse(readFileSync(join(__dirname, '../../../docs/contracts/golden/pi-api', `${name}.json`), 'utf8'));
+
+/**
+ * A /meta body from an API that serves every page, Insights included. It is the golden itself once
+ * the golden's apiVersion reaches INSIGHTS_API; until then (a stacked branch) only the version moves.
+ */
+export function servingMeta<T>(m: T): T {
+  const v = (m as { meta: { apiVersion: string } }).meta.apiVersion;
+  if (apiAtLeast(v, INSIGHTS_API)) return m;
+  return { ...m, meta: { ...(m as { meta: object }).meta, apiVersion: INSIGHTS_API } };
+}
 
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
