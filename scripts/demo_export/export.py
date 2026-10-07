@@ -1044,13 +1044,14 @@ def build_dataset(
 
 #: The largest v3 file this exporter writes, in compact JSON bytes: pi_api's measured memory
 #: budget for one dataset at 3Gi (docs/runbooks/pi-api-deploy.md §6). Calibrated on the real
-#: Ounass snapshot (72.7 MB compact): ~1,530 MiB of refresh peak above the other sources, so
-#: 90 MB keeps one refresh inside the ~1,990 MiB left after imports, the other sources, two CSV
-#: exports and a 256 MiB margin. No override (Reviewer, 2026-10-03): a snapshot over it waits
-#: for the content to move to its own file. The gate is per file, but the size is for every served
-#: file together: the other files' reserve is 30 MB compact in total, so a second large catalogue
-#: passes here and still does not fit. §6 states the deploy-time byte check over all served files.
-V3_MAX_BYTES = 90_000_000
+#: Ounass snapshot (72.7 MB compact) with packed offer content: ~16.3 MiB of refresh peak per
+#: compact MB, so 120 MB keeps one refresh inside the ~1,990 MiB left after imports, the other
+#: sources, two CSV exports and a 256 MiB margin. No override (Reviewer, 2026-10-03): a snapshot
+#: over it waits for the content to move to its own file. The gate is per file, but the size is
+#: for every served file together: the other files' reserve is 30 MB compact in total, so a
+#: second large catalogue passes here and still does not fit. §6 states the deploy-time byte
+#: check over all served files.
+V3_MAX_BYTES = 120_000_000
 
 
 def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:

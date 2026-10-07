@@ -110,7 +110,7 @@ versioned snapshots.
   is `Cache-Control: private, no-store` (hosting requirement 2), so there is no `ETag`/`304` and no
   `max-age`. Paging stays consistent through cursors bound to the generation (`409 stale_cursor`).
 - **Size.** Today's pilot dataset is a few MB. The budget was ≤ 50 MB of JSON per instance. Since
-  2026-10-07 it is ≤ 90 MB of compact v3 JSON per dataset, sized for 3 GiB from measured RSS
+  2026-10-07 it is ≤ 120 MB of compact v3 JSON per dataset, sized for 3 GiB from measured RSS
   (`docs/runbooks/pi-api-deploy.md` §6). Beyond that, content and history move out and are read
   lazily (§6 exports, §9).
 - **Transition.** Until the producers emit v2 (PR-B defines it, and Infra then switches
