@@ -5,6 +5,7 @@ describe('nav routes', () => {
   it('builds locale-prefixed, trailing-slash hrefs; About the data is a section of the Dataset page', () => {
     expect(navHref('overview', 'en')).toBe('/en/');
     expect(navHref('explore', 'ar')).toBe('/ar/explore/');
+    expect(navHref('dashboard', 'ar')).toBe('/ar/dashboard/');
     expect(navHref('assistant', 'en')).toBe('/en/assistant/');
     expect(datasetHref('ar')).toBe('/ar/dataset/');
     expect(aboutDataHref('en')).toBe('/en/dataset/#about-data');
@@ -14,6 +15,8 @@ describe('nav routes', () => {
     expect(navMatches('overview', '/en/')).toBe(true);
     expect(navMatches('overview', '/ar')).toBe(true);
     expect(navMatches('overview', '/en/explore/')).toBe(false);
+    expect(navMatches('overview', '/en/dashboard/')).toBe(false);
+    expect(navMatches('dashboard', '/ar/dashboard/')).toBe(true);
     expect(navMatches('explore', '/en/product/')).toBe(true);
     expect(navMatches('launches', '/ar/launches/')).toBe(true);
     expect(navMatches('dataset', '/en/dataset/')).toBe(true);

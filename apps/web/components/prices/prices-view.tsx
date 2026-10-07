@@ -317,7 +317,7 @@ function Fact({ k, children }: { k: string; children: ReactNode }) {
 }
 
 /** The centrepiece: the pair by shared category over both full catalogues, as a table. */
-function ByCategory({ pair, locale }: { pair: Pair; locale: string }) {
+export function ByCategory({ pair, locale }: { pair: Pair; locale: string }) {
   const t = useTranslations('prices');
   const state = useCategoryCompare(pair);
   const names = { base: pair.name(pair.base), other: pair.name(pair.other) };
@@ -332,7 +332,7 @@ function ByCategory({ pair, locale }: { pair: Pair; locale: string }) {
 }
 
 /** The pair on the exactly matched set only: the headline numbers and the spread of gaps, on n. */
-function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
+export function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
   const t = useTranslations('prices');
   const tw = useTranslations('widgets');
   const tc = useTranslations('card');
