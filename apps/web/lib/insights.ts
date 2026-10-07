@@ -7,11 +7,29 @@ export type Policy = Schemas['Policy'];
 export type Ladder = Schemas['Ladder'];
 export type LadderStep = Schemas['LadderStep'];
 export type Stockouts = Schemas['Stockouts'];
+export type ValuePicks = Schemas['ValuePicks'];
+export type ValueCategory = Schemas['ValueCategory'];
 
-/** Size-trap examples listed per shop; the API lists up to twelve, steepest first. */
-export const TRAPS_SHOWN = 5;
 /** Brands shown per policy column before the rest fold into a count. */
 export const BRANDS_SHOWN = 8;
+/** Per shop: partly out-of-stock brands shown. */
+export const STOCK_BRANDS_SHOWN = 5;
+/** Products listed under each value, size-step and discount card. */
+export const CARD_ITEMS = { value: 3, size: 3, promo: 4 } as const;
+/** Discounts asked per shop: enough that dropping repeated variants still leaves CARD_ITEMS.promo. */
+export const PROMOS_ASKED = 30;
+/** The dataset's catch-all category: a typical price across unlike products means nothing. */
+export const CATCH_ALL = 'other';
+/**
+ * Below this share (%) of a category's priced products being rated by enough shoppers, its picks
+ * come from a small set; the card says so next to them.
+ */
+export const FEW_RATED_PCT = 25;
+
+/** Reasons that mean the shop's feed does not carry the field at all. */
+const NOT_COLLECTED: ReadonlySet<string> = new Set(['capability_off', 'field_not_collected']);
+export const notCollected = (reason: string | null | undefined): boolean =>
+  !!reason && NOT_COLLECTED.has(reason);
 
 /** The policy columns, left to right: the other shop cheaper, parity, the base shop cheaper. */
 export const POLICY_ORDER: readonly Policy[] = ['other_cheaper', 'parity', 'base_cheaper'];
@@ -53,21 +71,70 @@ export function barPct(gapPct: string, max: number): number {
 export const gapScale = (gaps: readonly string[]): number =>
   Math.max(1, ...gaps.map((g) => Math.abs(num(g))));
 
-/** Is every listing observed in a stock state out of stock? Said as counts, never as a share. */
-export const allObservedOut = (b: Schemas['BrandStock']): boolean =>
-  b.observed > 0 && b.outOfStock === b.observed;
-
-/** The pair's shops only, in pair order: the page never ranks shops against each other. */
-export function forPair<T extends { retailer: string }>(
-  rows: readonly T[],
-  base: string,
-  other: string,
-): T[] {
-  return [base, other].flatMap((id) => rows.filter((r) => r.retailer === id));
+/**
+ * Variants listed under one name (shades, sizes) shown once: the first of each brand and name, in
+ * the order given, compared without case or extra spaces.
+ */
+export function oncePerName<T extends { brand: string; name: string }>(items: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const key = (v: string) => v.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
+  return items.filter((i) => {
+    const k = `${key(i.brand)}\u0000${key(i.name)}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
-/** The first API version that serves GET /api/v1/insights (#231). */
-export const INSIGHTS_API = '1.18.0';
+/** A shop's value categories as shown: the API's order, without the catch-all. */
+export const valueCategories = (v: ValuePicks): ValueCategory[] =>
+  v.categories.filter((c) => c.category !== CATCH_ALL);
+
+/** Are this category's picks drawn from few rated products (see FEW_RATED_PCT)? */
+export const fewRated = (c: Pick<ValueCategory, 'rated' | 'priced'>): boolean =>
+  c.priced > 0 && c.rated * 100 < c.priced * FEW_RATED_PCT;
+
+/** A price per ml or g: an exact decimal string in a currency, not a priced Money. */
+export type UnitAmount = { amount: string; currency: string };
+
+/**
+ * The typical price per unit of a per-unit category (fragrance), in the shelf median's currency:
+ * the unit with the most priced offers. Null for a shelf-price category, or when no unit has a
+ * median, so the line falls back to the shelf price it can show.
+ */
+export const perUnitMedian = (c: ValueCategory): { median: UnitAmount; unit: string } | null => {
+  if (c.basis !== 'per_unit') return null;
+  const best = [...c.unitMedians].sort((x, y) => y.n - x.n)[0];
+  return best ? { median: { amount: best.median, currency: c.median.currency }, unit: best.unit } : null;
+};
+
+/** A pick's size and price per unit (in the pick's currency), when the API sends them. */
+export const pickSize = (
+  p: Schemas['ValuePick'],
+): { size: { value: string; unit: string } | null; unitPrice: UnitAmount | null } => {
+  const size = p.sizeValue && p.sizeUnit ? { value: p.sizeValue, unit: p.sizeUnit } : null;
+  return {
+    size,
+    unitPrice: size && p.unitPrice ? { amount: p.unitPrice, currency: p.price.currency } : null,
+  };
+};
+
+/** The rating floor on a five-point scale, from the API's percentage of a scale ("90.0" -> "4.5"). */
+export const ratingOutOfFive = (pct: string): string => String(Math.round(Number(pct) * 5) / 100);
+
+/** Every unordered pair of shops once, in the shops' order: the cross-shop price checks. */
+export function shopPairs(ids: readonly string[]): { base: string; other: string }[] {
+  return ids.flatMap((base, i) => ids.slice(i + 1).map((other) => ({ base, other })));
+}
+
+/** The shop the URL picks (`?shop=`), when it is one of the collected shops; else all of them. */
+export function pickedShop(sp: URLSearchParams, active: readonly string[]): string | null {
+  const s = sp.get('shop');
+  return s && active.includes(s) ? s : null;
+}
+
+/** The first API version that serves Insights with stock totals and value picks (API 1.23.0; #265's 1.22.0 has neither). */
+export const INSIGHTS_API = '1.23.0';
 
 /** Is a dotted API version at least `min`? Numeric per part, so 1.17.0 > 1.9.9. */
 export function apiAtLeast(version: string, min: string): boolean {
@@ -88,6 +155,63 @@ export function apiAtLeast(version: string, min: string): boolean {
 export const insightsServed = (meta: { meta: { apiVersion: string } } | undefined): boolean | undefined =>
   meta ? apiAtLeast(meta.meta.apiVersion, INSIGHTS_API) : undefined;
 
+/**
+ * A brand as written for display: an all-caps word longer than four letters is title-cased
+ * ("KYLIE COSMETICS" → "Kylie Cosmetics"); short all-caps acronyms (YSL, NYX, MAC) and mixed
+ * forms (e.l.f., ULTA's "ULTA Beauty") keep their case.
+ */
+export function displayBrand(brand: string): string {
+  return brand
+    .split(' ')
+    .map((w) => {
+      const letters = w.match(/\p{L}/gu) ?? [];
+      const caps =
+        letters.length > 4 &&
+        letters.every((c) => c === c.toLocaleUpperCase('en') && c !== c.toLocaleLowerCase('en'));
+      return caps ? w.slice(0, 1) + w.slice(1).toLocaleLowerCase('en') : w;
+    })
+    .join(' ');
+}
+
+/** A count of a total as a percentage with one decimal ("6.4"), exact integer rounding; null without a total. */
+export function sharePct(part: number, total: number): string | null {
+  if (!(total > 0) || part < 0 || part > total) return null;
+  return (Math.round((part * 1000) / total) / 10).toFixed(1);
+}
+
+/** One shop in a card's chart: a share or a percentage to draw, or a note in place of a bar. */
+export type BarRow = { id: string; value: number | null };
+
+/**
+ * Bar lengths (0–100) for a card's chart, scaled to its largest value so the longest bar fills the
+ * track; a row without a value (a note) has none, a negative value draws as 0.
+ */
+export function barWidths(rows: readonly BarRow[]): Map<string, number> {
+  const max = Math.max(0, ...rows.map((r) => r.value ?? 0));
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (r.value === null) continue;
+    out.set(r.id, max > 0 ? (Math.max(0, r.value) / max) * 100 : 0);
+  }
+  return out;
+}
+
+/**
+ * A shop's value picks against the listings that could be picked: those with enough ratings in
+ * the categories listed, so a large catalogue does not read as better value by size alone.
+ */
+export function valueShare(v: ValuePicks): { picks: number; rated: number; pct: string | null } {
+  const cats = valueCategories(v);
+  const picks = cats.reduce((a, c) => a + c.picks, 0);
+  const rated = cats.reduce((a, c) => a + c.rated, 0);
+  return { picks, rated, pct: sharePct(picks, rated) };
+}
+
+/** The shop the cards are about first, then the others in their order. */
+export const focusFirst = (focus: string, shops: readonly string[]): string[] => [
+  focus,
+  ...shops.filter((s) => s !== focus),
+];
 /** The pilot's pair (owner, 6 Oct): Ulta read against Sephora, whenever both are collected. */
 export const PILOT_PAIR = ['ulta_ae', 'sephora_me'] as const;
 
@@ -103,4 +227,26 @@ export function defaultPair(active: readonly string[]): { base: string; other: s
       ? PILOT_PAIR[1]
       : active.find((r) => r !== base)!;
   return { base, other };
+}
+
+/**
+ * The shops the Findings read, on the redesigned page that has no pair picker (coordinator,
+ * 6 Oct): the shop the selector picked, else Ulta (the pilot's focus); against Sephora, or Ulta
+ * when the focus is Sephora, else the next collected shop. Null below two shops.
+ */
+export function findingsPair(
+  active: readonly string[],
+  shop: string | null,
+): { focus: string; rival: string } | null {
+  const opening = defaultPair(active);
+  if (!opening) return null;
+  const focus = shop && active.includes(shop) ? shop : opening.base;
+  const [ulta, sephora] = PILOT_PAIR;
+  const rival =
+    focus !== sephora && active.includes(sephora)
+      ? sephora
+      : focus === sephora && active.includes(ulta)
+        ? ulta
+        : active.find((r) => r !== focus)!;
+  return { focus, rival };
 }

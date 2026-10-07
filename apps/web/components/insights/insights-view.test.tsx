@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/client';
 import { golden } from '@/lib/api/golden';
 import type { Envelope, Schemas } from '@/lib/api/types';
@@ -15,50 +15,82 @@ const base = golden('insights') as Env;
 const compare = golden('compare') as Envelope<Schemas['Comparison']>;
 const gaps = golden('assortment-gaps') as Envelope<Schemas['AssortmentGaps']>;
 const promotions = golden('promotions') as Envelope<Schemas['Promotions']>;
+const coverage = golden('coverage');
+const products = golden('products') as Envelope<Schemas['ProductPage']>;
 
 const money = (amount: string) => ({ amount, currency: 'AED', minor: Math.round(Number(amount) * 100) });
+const pick = (id: string, brand: string, name: string, extra: Record<string, unknown> = {}) => ({
+  brand,
+  id,
+  image: null,
+  name,
+  price: money('60.00'),
+  rating: '4.8',
+  ratingCount: 120,
+  scale: '5',
+  ...extra,
+});
 
-/** The golden, with every card fed: two placed brands, a size trap, and stock-out counts. */
+/** The golden with every per-shop section fed: stock-outs, whole-brand outages, value, a size step. */
 const rich: Env = {
   ...base,
   data: {
     ...base.data!,
-    pricing: {
-      ...base.data!.pricing,
-      sizes: [
-        { value: '100', unit: 'ml', n: 9, otherCheaper: 7, equal: 1, baseCheaper: 1, medianGapPct: '-11.5' },
-        ...base.data!.pricing.sizes,
-      ],
-      brands: [
-        {
-          brand: 'Undercut',
-          policy: 'other_cheaper',
-          n: 5,
-          otherCheaper: 5,
-          equal: 0,
-          baseCheaper: 0,
-          medianGapPct: '-9.0',
-        },
-        {
-          brand: 'Level',
-          policy: 'parity',
-          n: 5,
-          otherCheaper: 0,
-          equal: 5,
-          baseCheaper: 0,
-          medianGapPct: '0.0',
-        },
-        {
-          brand: 'Mixed',
-          policy: 'mixed',
-          n: 6,
-          otherCheaper: 3,
-          equal: 0,
-          baseCheaper: 3,
-          medianGapPct: '0.0',
-        },
-      ],
-    },
+    pricing: { ...base.data!.pricing, n: 0, status: 'not_enough_data', reason: 'matches_unreviewed' },
+    stockouts: base.data!.stockouts.map((s) =>
+      s.retailer === 'shop_b'
+        ? {
+            ...s,
+            listed: 900,
+            withStock: 800,
+            outOfStock: 37,
+            brands: [
+              { brand: 'Half', observed: 12, outOfStock: 6 },
+              { brand: 'Some', observed: 40, outOfStock: 4 },
+            ],
+            unavailableBrands: 2,
+            unavailableListings: 113,
+            unavailable: [{ brand: 'Balmain', observed: 100, outOfStock: 100 }],
+          }
+        : s,
+    ),
+    value: base.data!.value.map((v) =>
+      v.retailer === 'shop_a'
+        ? {
+            ...v,
+            categories: [
+              {
+                category: 'fragrance',
+                basis: 'per_unit',
+                unitMedians: [{ median: '6.50', n: 1426, unit: 'ml' }],
+                excluded: 1,
+                median: money('310.00'),
+                picks: 3,
+                priced: 1426,
+                rated: 27,
+                items: [
+                  pick('f1', 'Marc Jacobs', 'Daisy Eau de Toilette', {
+                    sizeValue: '100',
+                    sizeUnit: 'ml',
+                    unitPrice: '5.15',
+                  }),
+                  pick('f2', 'Marc Jacobs', 'Daisy  eau de toilette'),
+                  pick('f3', 'Snif', 'Extra Whip Body Mist'),
+                ],
+              },
+              {
+                category: 'lips',
+                excluded: 4,
+                median: money('80.00'),
+                picks: 7,
+                priced: 100,
+                rated: 70,
+                items: ['1', '2', '3', '4', '5', '6', '7'].map((n) => pick(`l${n}`, 'Milani', `Lip ${n}`)),
+              },
+            ],
+          }
+        : v,
+    ),
     ladders: base.data!.ladders.map((l) =>
       l.retailer === 'shop_a'
         ? {
@@ -82,34 +114,21 @@ const rich: Env = {
                 smallerPrice: money('60.00'),
                 largerPrice: money('110.00'),
                 unitChangePct: '10.0',
-                smallerOnSale: false,
-                largerOnSale: false,
+                smallerOnSale: true,
               },
             ],
           }
         : l,
     ),
-    stockouts: base.data!.stockouts.map((s) =>
-      s.retailer === 'shop_b'
-        ? {
-            ...s,
-            qualifying: 2,
-            suppressed: 1,
-            brands: [
-              { brand: 'Balmain', observed: 113, outOfStock: 113 },
-              { brand: 'Half', observed: 12, outOfStock: 6 },
-            ],
-          }
-        : s,
-    ),
-  },
+  } as Insights,
 };
 
 let answers: Record<string, unknown> = {};
 let search = '';
 let status: Record<string, string> = { shop_a: 'supported', shop_b: 'partial' };
-let apiVersion = '1.18.0';
+let apiVersion = '1.23.0';
 const asked: Array<{ path: string; query: unknown }> = [];
+const push = vi.fn();
 vi.mock('../auth-provider', () => ({
   useAuth: () => ({
     api: {
@@ -117,18 +136,18 @@ vi.mock('../auth-provider', () => ({
         asked.push({ path, query: options?.query });
         const a = answers[path];
         if (a instanceof Error) throw a;
-        return a;
+        return typeof a === 'function' ? (a as (q: unknown) => unknown)(options?.query) : a;
       },
     },
   }),
 }));
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push }),
   usePathname: () => '/en/insights/',
   useSearchParams: () => new URLSearchParams(search),
 }));
 vi.mock('../use-meta', () => ({
-  useRetailerName: () => (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id,
+  useRetailerName: () => (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B', shop_c: 'Shop C' })[id] ?? id,
   useMeta: () => ({
     data: {
       meta: { apiVersion },
@@ -139,17 +158,26 @@ vi.mock('../use-meta', () => ({
   }),
 }));
 
+beforeEach(() => {
+  search = '';
+  status = { shop_a: 'supported', shop_b: 'partial' };
+  apiVersion = '1.23.0';
+  asked.length = 0;
+  push.mockReset();
+});
 afterEach(cleanup);
 
-function view(env: Env, locale: 'en' | 'ar' = 'en', more: Record<string, unknown> = {}) {
+function view(env: Env | Error, locale: 'en' | 'ar' = 'en', more: Record<string, unknown> = {}) {
   answers = {
     '/api/v1/insights': env,
     '/api/v1/compare': compare,
     '/api/v1/assortment-gaps': gaps,
     '/api/v1/promotions': promotions,
+    '/api/v1/coverage': coverage,
+    '/api/v1/products': products,
+    '/api/v1/products/{product_id}': new ApiError('not_found', 404),
     ...more,
   };
-  search = 'retailers=shop_a,shop_b';
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -166,263 +194,325 @@ function view(env: Env, locale: 'en' | 'ar' = 'en', more: Record<string, unknown
   );
 }
 
-const card = (name: string) => screen.getByRole('heading', { level: 2, name }).closest('section')!;
+const section = (name: string | RegExp) =>
+  screen.getByRole('heading', { level: 2, name }).closest('section')!;
+/** Waits for /insights to answer: the per-shop sections render after it. */
+const ready = (name: string = en.insights.stock.title) => screen.findByRole('heading', { level: 2, name });
+/** One of the value, size-step and discount cards, by its title. */
+const card = (name: string) => screen.getByRole('heading', { level: 3, name }).closest('article')!;
+const barWidth = (el: HTMLElement, shop: string) =>
+  Number.parseFloat(
+    (el.querySelector<HTMLElement>(`[data-shop="${shop}"]`)?.style.width ?? '').replace('%', ''),
+  );
+const hrefOf = (el: HTMLElement) => decodeURIComponent(el.closest('a')!.getAttribute('href')!);
+const s = en.insights;
 
 describe('InsightsView', () => {
-  it('leads with ready evidence and keeps supporting cards after the stable primary cards', async () => {
-    asked.length = 0;
+  it('shows the sections in the mock order, with no report banner or method panel', async () => {
     view(rich);
-    await screen.findByText('Shop B undercuts most at 100 ml: median ⁦-11.5%⁩ on 9 matched products.');
-    await screen.findByText('6 decision signals are ready');
-    expect(screen.getByRole('navigation', { name: en.insights.report.toc })).toBeTruthy();
-    expect(screen.getByText(en.insights.report.cohortValue)).toBeTruthy();
-    expect(screen.getByText('1 proposed match excluded')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /Size traps/ }).getAttribute('href')).toBe('#finding-traps');
-    expect(screen.getByRole('heading', { name: en.insights.report.testedTitle })).toBeTruthy();
-    expect(screen.getByText(en.insights.report.tested.history.body)).toBeTruthy();
-    const decisions = [
-      en.insights.stock.title,
-      en.insights.traps.title,
-      en.insights.size.title,
-      en.insights.policy.title,
-      en.insights.promo.title,
-      en.insights.space.title,
-    ];
-    const titles = screen
-      .getAllByRole('heading', { level: 2 })
-      .map((h) => h.textContent)
-      .filter((title): title is string => !!title && decisions.includes(title));
-    expect(titles).toEqual(decisions);
-    expect(screen.getByText(/1 unreviewed match: not counted/)).toBeTruthy();
-    expect(asked.map((a) => a.path).sort()).toEqual([
-      '/api/v1/assortment-gaps',
-      '/api/v1/compare',
-      '/api/v1/insights',
-      '/api/v1/promotions',
+    await screen.findByRole('heading', { level: 2, name: s.stock.title });
+    const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(titles).toEqual([
+      s.glance.title,
+      s.prices.title,
+      s.stock.title,
+      'Shop A: value, size steps and discounts',
     ]);
-    expect(asked.find((a) => a.path === '/api/v1/compare')?.query).toEqual({
-      retailers: 'shop_a,shop_b',
-      limit: 1,
-    });
-    expect(asked.find((a) => a.path === '/api/v1/assortment-gaps')?.query).toEqual({
-      presentAt: 'shop_b',
-      missingAt: 'shop_a',
-    });
-    expect(asked.find((a) => a.path === '/api/v1/promotions')?.query).toEqual({
-      retailer: ['shop_a', 'shop_b'],
-      limit: 4,
-    });
+    const cards = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(cards.slice(-3)).toEqual([s.value.title, s.ladder.title, s.promo.title]);
+    expect(screen.queryByText(/tested, not promoted/i)).toBeNull();
   });
 
-  it('stock-outs are counts with the partial-crawl label, never a share or a ranking', async () => {
+  it('glance tiles count what Products counts, each number opening its list', async () => {
     view(rich);
-    await screen.findByRole('heading', { level: 2, name: en.insights.stock.title });
-    const c = card(en.insights.stock.title);
-    expect(
-      within(c).getByText(
-        'Balmain at Shop B: 113 observed out-of-stock listings among 113 observed listings in a partial crawl.',
-      ),
-    ).toBeTruthy();
-    expect(within(c).getByText('6 out of stock / 12 observed')).toBeTruthy();
-    expect(within(c).getByText(en.insights.stock.partial)).toBeTruthy();
-    expect(c.textContent).not.toMatch(/%/);
-    expect(within(c).getByRole('link', { name: 'Balmain' }).getAttribute('href')).toMatch(
-      /^\/en\/explore\/?\?brand=Balmain&retailer=shop_b$/,
+    await ready();
+    const glance = section(s.glance.title);
+    const total = await within(glance).findAllByRole('link', { name: String(products.data!.total) });
+    expect(hrefOf(total[0]!)).toContain('/en/explore');
+    expect(hrefOf(total[0]!)).toContain('retailer=shop_a');
+    expect(within(glance).getAllByText(/As of/).length).toBe(2);
+    const priced = asked.find(
+      (a) => a.path === '/api/v1/products' && (a.query as { priceMin?: string }).priceMin,
     );
+    expect(priced?.query).toMatchObject({ priceMin: '0', retailer: ['shop_a'], limit: 1 });
   });
 
-  it('a fully crawled shop is not called partial', async () => {
-    status = { shop_a: 'supported', shop_b: 'supported' };
+  it('waits for reviewed matches and lists each pair, never a sum or a price number', async () => {
+    status = { shop_a: 'supported', shop_b: 'partial', shop_c: 'partial' };
     view(rich);
-    await screen.findByRole('heading', { level: 2, name: en.insights.stock.title });
-    expect(screen.getByText(/113 observed listings in the latest crawl\.$/)).toBeTruthy();
-    expect(screen.queryByText(en.insights.stock.partial)).toBeNull();
-    status = { shop_a: 'supported', shop_b: 'partial' };
+    await ready();
+    const prices = section(s.prices.title);
+    expect(await within(prices).findByText(s.prices.waiting)).toBeTruthy();
+    const pairs = within(prices).getAllByRole('link');
+    expect(pairs).toHaveLength(3);
+    expect(hrefOf(pairs[0]!)).toContain('/en/compare?');
+    expect(asked.filter((a) => a.path === '/api/v1/insights').map((a) => a.query)).toEqual([
+      { retailers: 'shop_a,shop_b' },
+      { retailers: 'shop_a,shop_c' },
+      { retailers: 'shop_b,shop_c' },
+    ]);
+    expect(asked.some((a) => a.path === '/api/v1/compare')).toBe(false);
   });
 
-  it('uses retailer coverage metadata even when a partial shop has no qualifying stockout brands', async () => {
-    const noStockoutBrands = {
+  it('shows the price cards for a pair with reviewed matches', async () => {
+    view(base);
+    await screen.findByRole('heading', { level: 2, name: s.stock.title });
+    expect(within(section(s.prices.title)).queryByText(s.prices.waiting)).toBeNull();
+    expect(await screen.findByRole('heading', { level: 3, name: /Shop A.*×.*Shop B/ })).toBeTruthy();
+  });
+
+  it('stock: counts only, the headline opens out-of-stock without unavailable brands', async () => {
+    view(rich);
+    await ready();
+    const stock = section(s.stock.title);
+    const head = await within(stock).findByRole('link', { name: '37' });
+    const href = hrefOf(head);
+    expect(href).toContain('retailer=shop_b');
+    expect(href).toContain('availability=out_of_stock');
+    expect(href).toContain('unavailableBrands=exclude');
+    expect(stock.textContent).not.toMatch(/%/);
+    expect(stock.textContent).not.toMatch(/sold out/i);
+    expect(within(stock).getByText(/Source reports unavailable/)).toBeTruthy();
+    expect(hrefOf(within(stock).getByRole('link', { name: '113' }))).toContain('unavailableBrands=only');
+    expect(hrefOf(within(stock).getByRole('link', { name: 'Half' }))).toContain('brand=Half');
+    expect(within(stock).getByText('6 of 12 out')).toBeTruthy();
+  });
+
+  it('stock: says when a shop collects none', async () => {
+    const off: Env = {
       ...rich,
       data: {
         ...rich.data!,
-        stockouts: rich.data!.stockouts.map((row) =>
-          row.retailer === 'shop_b' ? { ...row, brands: [], qualifying: 0, suppressed: 0 } : row,
+        stockouts: rich.data!.stockouts.map((r) =>
+          r.retailer === 'shop_a' ? { ...r, reason: 'capability_off' } : r,
         ),
       },
     };
-    status = { shop_a: 'supported', shop_b: 'partial' };
-    view(noStockoutBrands);
-    await screen.findByText(en.insights.report.partial);
-    expect(screen.getByText(en.insights.report.partial)).toBeTruthy();
-  });
-
-  it('brands sit in their policy column and link to their counted pairs', async () => {
-    view(rich);
-    await screen.findByRole('heading', { level: 2, name: en.insights.policy.title });
-    const c = card(en.insights.policy.title);
+    view(off);
+    await ready();
     expect(
-      within(c).getByText('1 brand is consistently cheaper at Shop B; 1 holds price parity.'),
+      await within(section(s.stock.title)).findByText('Stock is not collected for Shop A.'),
     ).toBeTruthy();
-    expect(within(c).getByRole('link', { name: 'Undercut' }).getAttribute('href')).toMatch(
-      /^\/en\/compare\/?\?retailers=shop_a%2Cshop_b&brand=Undercut$/,
-    );
-    expect(within(c).queryByRole('link', { name: 'Mixed' })).toBeNull();
   });
 
-  it('size traps link both sizes to their products', async () => {
+  it('stock: "+N more brands" counts every qualifying brand, not only the ones the API lists', async () => {
+    const many: Env = {
+      ...rich,
+      data: {
+        ...rich.data!,
+        stockouts: rich.data!.stockouts.map((r) =>
+          r.retailer === 'shop_b'
+            ? {
+                ...r,
+                qualifying: 30,
+                brands: Array.from({ length: 12 }, (_, i) => ({
+                  brand: `B${i}`,
+                  observed: 20,
+                  outOfStock: 10,
+                })),
+              }
+            : r,
+        ),
+      },
+    };
+    view(many);
+    await ready();
+    const stock = section(s.stock.title);
+    expect(await within(stock).findByText('+25 more brands')).toBeTruthy();
+  });
+
+  it('an answer that stopped early says its reason for each shop, never "not collected"', async () => {
+    const early: Env = {
+      ...rich,
+      status: 'not_enough_data',
+      reason: 'not_applicable',
+      data: { ...rich.data!, stockouts: [], value: [] },
+    };
+    view(early);
+    await ready();
+    const stock = section(s.stock.title);
+    expect(await within(stock).findAllByText(en.reasons.not_applicable)).toHaveLength(2);
+    expect(stock.textContent).not.toContain('not collected');
+    const value = card(s.value.title);
+    expect(within(value).getAllByText(en.reasons.not_applicable).length).toBeGreaterThan(0);
+    expect(value.textContent).not.toContain(en.insights.value.off);
+  });
+
+  it('a missing row in an answer with no reason reads "not in this answer"', async () => {
+    view({ ...rich, data: { ...rich.data!, stockouts: [] } });
+    await ready();
+    expect(await within(section(s.stock.title)).findAllByText(en.insights.notInAnswer)).toHaveLength(2);
+  });
+
+  it('value: a shop without enough rated products says why in its chart row', async () => {
+    status = { shop_a: 'supported', shop_b: 'partial', shop_c: 'partial' };
     view(rich);
-    await screen.findByRole('heading', { level: 2, name: en.insights.traps.title });
-    const c = card(en.insights.traps.title);
-    expect(within(c).getByText(/1 of 9 size steps/)).toBeTruthy();
-    const links = within(c)
-      .getAllByRole('link')
-      .map((a) => a.getAttribute('href'));
-    expect(links.some((h) => h?.includes('p30'))).toBe(true);
-    expect(links.some((h) => h?.includes('p50'))).toBe(true);
+    await ready();
+    const value = card(s.value.title);
+    expect(await within(value).findByText(en.reasons.cohort_too_small)).toBeTruthy();
   });
 
-  it('promotion evidence is measured, ranked and linked instead of a dead hand-off card', async () => {
-    view(base);
-    await screen.findByText('3 decision signals are ready');
-    const c = card(en.insights.promo.title);
-    expect(within(c).getByText('Product p05 at Shop A has the deepest listed cut: −33.3%.')).toBeTruthy();
-    expect(within(c).getAllByRole('listitem')).toHaveLength(3);
-    expect(within(c).getByRole('link', { name: 'Product p05' }).getAttribute('href')).toMatch(
-      /^\/en\/product\/?\?id=p05#evidence$/,
-    );
-    expect(c.textContent).toMatch(/Save.*AED.*40\.00/);
-    expect(within(c).getByRole('link', { name: en.insights.promo.open }).getAttribute('href')).toMatch(
-      /^\/en\/promotions\/?$/,
-    );
+  it('value: picks as a share of rated listings, category tabs, three rows, notes in the tooltip', async () => {
+    view(rich);
+    await ready();
+    const value = card(s.value.title);
+    // Shop A is the focus (the first shop): 3 + 7 picks of 27 + 70 listings with 20+ ratings.
+    expect(value.textContent).toContain('10value picks at Shop A');
+    expect(value.textContent).toContain('10.3% · 10 of 97');
+    expect(within(value).getByText(s.value.few)).toBeTruthy();
+    const tabs = within(value).getByRole('group', { name: s.value.title });
+    expect(within(tabs).getByRole('button', { name: 'Fragrance' }).getAttribute('aria-pressed')).toBe('true');
+    expect(value.textContent).toMatch(/Typical .*6\.50.* per ml/);
+    expect(within(value).getAllByRole('link', { name: /Daisy/i })).toHaveLength(1);
+    expect(value.textContent).toMatch(/AED.*5\.15.* per ml · .*AED.*60\.00/);
+    fireEvent.click(within(tabs).getByRole('button', { name: 'Lips' }));
+    expect(value.textContent).toMatch(/Typical shelf price .*80\.00/);
+    expect(within(value).getAllByRole('link', { name: /Lip \d$/ })).toHaveLength(3);
+    const all = within(value).getByRole('link', { name: 'See all Lips at Shop A' });
+    expect(hrefOf(all)).toContain('category=lips');
+    expect(hrefOf(all)).toContain('retailer=shop_a');
+    const tip = within(value).getByRole('tooltip').textContent;
+    expect(tip).toContain('Fragrance 27/1426; Lips 70/100');
+    expect(tip).toContain('Left out by the rules: Fragrance 1; Lips 4.');
   });
 
-  it('a measured zero stays a measured zero, never field-not-collected', async () => {
-    const none = {
+  it('size steps: the median saving, the steps not cheaper per ml and the smaller-size-on-sale note', async () => {
+    view(rich);
+    await ready();
+    const ladder = card(s.ladder.title);
+    expect(ladder.textContent).toContain('10.0%median saving per ml or g');
+    expect(ladder.textContent).toContain('10.0% · 9 steps');
+    expect(ladder.textContent).toContain('+10.0% per ml · 30→50 ml · smaller size on sale');
+    expect(hrefOf(within(ladder).getByRole('link', { name: /Fixture Beauty Gel/ }))).toContain('p50');
+  });
+
+  it('discounts: share of priced listings, the deepest once per name, a note where none is published', async () => {
+    const promo = {
       ...promotions,
-      status: 'ok',
-      reason: null,
       data: {
         ...promotions.data!,
-        items: [],
-        total: 0,
-        truncated: false,
-        retailers: promotions.data!.retailers.map((row) =>
-          row.retailer === 'shop_a' || row.retailer === 'shop_b'
-            ? { ...row, share: '0.0', n: 6, onPromo: 0, reason: null }
-            : row,
-        ),
-      },
-    } as Envelope<Schemas['Promotions']>;
-    view(base, 'en', { '/api/v1/promotions': none });
-    await screen.findByText('2 decision signals are ready');
-    expect(screen.getByText(en.insights.readiness.nonePromotions)).toBeTruthy();
-    expect(screen.queryByText(en.reasons.field_not_collected)).toBeNull();
-  });
-
-  it('an unavailable Insights cohort makes only the one primary request', async () => {
-    const withheld: Env = { ...base, status: 'not_enough_data', reason: 'field_not_collected', data: null };
-    asked.length = 0;
-    view(withheld);
-    await screen.findByText(en.reasons.field_not_collected);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(asked.map((a) => a.path)).toEqual(['/api/v1/insights']);
-    expect(screen.queryByText(/decision signals are ready/)).toBeNull();
-  });
-
-  it('the golden leads with its three supported decisions and folds the dead cards away', async () => {
-    view(base);
-    await screen.findByText('3 decision signals are ready');
-    expect(screen.getByRole('heading', { level: 2, name: en.insights.size.title })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: en.insights.promo.title })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: en.insights.space.title })).toBeTruthy();
-    expect(screen.queryByRole('heading', { level: 2, name: en.insights.policy.title })).toBeNull();
-    expect(screen.queryByRole('heading', { level: 2, name: en.insights.stock.title })).toBeNull();
-    expect(screen.queryByRole('heading', { level: 2, name: en.insights.traps.title })).toBeNull();
-    expect(screen.getByText('3 analyses are not ready')).toBeTruthy();
-    expect(screen.getAllByText(en.reasons.cohort_too_small)).toHaveLength(3);
-    // White space: a confirmed absence, worded as missing.
-    expect(screen.getByText('Shop A lists 1 product that Shop B does not carry.')).toBeTruthy();
-  });
-
-  it('only unreviewed matches: no price is compared and the reason says so', async () => {
-    const pending: Env = {
-      ...base,
-      data: {
-        ...base.data!,
-        pricing: {
-          ...base.data!.pricing,
-          status: 'not_enough_data',
-          reason: 'matches_unreviewed',
-          n: 0,
-          sizes: [],
-          brands: [],
-          unreviewed: 6,
-        },
+        items: [
+          promotions.data!.items[0]!,
+          { ...promotions.data!.items[0]!, id: 'dup' },
+          ...promotions.data!.items.slice(1),
+        ],
       },
     };
-    asked.length = 0;
-    view(pending);
-    await screen.findByText('2 decision signals are ready');
-    expect(screen.queryByRole('heading', { level: 2, name: en.insights.size.title })).toBeNull();
-    expect(screen.getAllByText(en.reasons.matches_unreviewed)).toHaveLength(2);
-    expect(screen.getByText('6 unreviewed matches excluded')).toBeTruthy();
-    expect(asked.map((a) => a.path)).not.toContain('/api/v1/compare');
+    status = { shop_a: 'supported', shop_b: 'partial', shop_c: 'partial' };
+    view(rich, 'en', { '/api/v1/promotions': promo });
+    await ready();
+    const promoCard = card(s.promo.title);
+    await waitFor(() => expect(promoCard.textContent).toContain('18.8% · 3 of 16'));
+    expect(promoCard.textContent).toContain('3Shop A listings on discount');
+    expect(promoCard.textContent).toContain(s.promo.noOriginal);
+    expect(within(promoCard).getAllByRole('link', { name: /Product p05/ })).toHaveLength(1);
+    expect(within(promoCard).getAllByRole('listitem')).toHaveLength(3);
+    expect(promoCard.textContent).toContain('Deepest · −33.3%');
+    expect(hrefOf(within(promoCard).getByRole('link', { name: 'See all 3 on discount' }))).toContain(
+      '/en/promotions?retailer=shop_a',
+    );
   });
 
-  it('the follow-ups are named, not filled', async () => {
+  it('discounts: a shop with fewer discounts but a higher share gets the longer bar', async () => {
+    const promo = {
+      ...promotions,
+      data: {
+        ...promotions.data!,
+        retailers: [
+          {
+            ...promotions.data!.retailers[0]!,
+            n: 7200,
+            onPromo: 458,
+            share: null,
+            reason: 'retailer_partial',
+          },
+          {
+            ...promotions.data!.retailers[1]!,
+            n: 107,
+            onPromo: 107,
+            share: null,
+            reason: 'retailer_partial',
+          },
+        ],
+      },
+    };
+    const priced = (q: { retailer?: string[] }) => ({
+      ...products,
+      data: { ...products.data!, total: q.retailer?.[0] === 'shop_a' ? 7200 : 1454 },
+    });
+    view(rich, 'en', { '/api/v1/promotions': promo, '/api/v1/products': priced });
+    await ready();
+    const promoCard = card(s.promo.title);
+    await waitFor(() => expect(promoCard.textContent).toContain('7.4% · 107 of 1,454'));
+    expect(promoCard.textContent).toContain('6.4% · 458 of 7,200');
+    expect(promoCard.textContent).toContain('458Shop A listings on discount');
+    expect(barWidth(promoCard, 'shop_b')).toBe(100);
+    expect(barWidth(promoCard, 'shop_a')).toBeLessThan(barWidth(promoCard, 'shop_b'));
+  });
+
+  it('asks the Findings for the default pair, and for the picked shop against its rival', async () => {
+    apiVersion = '1.24.0'; // FINDINGS_API
     view(rich);
-    await screen.findByText(en.insights.more.later);
-    expect(screen.getByText(/Shop A: the typical step up in size saves ⁦10.0%⁩ per unit/)).toBeTruthy();
+    await ready();
+    const findings = () => asked.filter((a) => a.path === '/api/v1/findings').map((a) => a.query);
+    expect(findings()).toContainEqual({ focus: 'shop_a', rival: 'shop_b' });
+    cleanup();
+    asked.length = 0;
+    search = 'shop=shop_b';
+    view(rich);
+    await ready();
+    expect(findings()).toContainEqual({ focus: 'shop_b', rival: 'shop_a' });
   });
 
-  it('Arabic: the same cards, the stock-out wording in Arabic', async () => {
-    view(rich, 'ar');
+  it('the selector narrows the page to one shop and writes it to the URL', async () => {
+    search = 'shop=shop_b';
+    view(rich);
+    await ready();
+    const stock = section(s.stock.title);
+    await within(stock).findByRole('link', { name: '37' });
+    expect(within(stock).queryByRole('heading', { level: 3, name: 'Shop A' })).toBeNull();
+    const group = screen.getByRole('group', { name: s.shops });
+    expect(
+      within(group)
+        .getByRole('button', { name: /Shop B/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    fireEvent.click(within(group).getByRole('button', { name: /Shop A/ }));
+    expect(push).toHaveBeenCalledWith('/en/insights/?shop=shop_a', { scroll: false });
+    fireEvent.click(within(group).getByRole('button', { name: s.all }));
+    expect(push).toHaveBeenLastCalledWith('/en/insights/', { scroll: false });
+  });
+
+  it('caveats sit in (i) tooltips', async () => {
+    view(rich);
+    await screen.findByRole('heading', { level: 2, name: s.stock.title });
+    const tips = screen.getAllByRole('tooltip').map((t) => t.textContent);
+    expect(tips).toContain(s.stock.tip);
+    expect(tips.some((t) => t?.startsWith('Rated at least 4.5 out of 5 by 20 or more shoppers'))).toBe(true);
+    expect(screen.getAllByRole('img', { name: s.info }).length).toBeGreaterThan(4);
+  });
+
+  it('renders in Arabic with every message present and numbers in left-to-right runs', async () => {
+    const { container } = view(rich, 'ar');
     await screen.findByRole('heading', { level: 2, name: ar.insights.stock.title });
-    await screen.findByText('6 إشارات قرار جاهزة');
-    expect(
-      screen.getByText(
-        /Balmain في Shop B: 113 قائمة مرصودة نافدة من المخزون من بين 113 قائمة مرصودة في رصد جزئي/,
-      ),
-    ).toBeTruthy();
-    const cards = [
-      ar.insights.stock.title,
-      ar.insights.traps.title,
-      ar.insights.size.title,
-      ar.insights.policy.title,
-      ar.insights.promo.title,
-      ar.insights.space.title,
-    ];
-    expect(
-      screen.getAllByRole('heading', { level: 2 }).filter((h) => cards.includes(h.textContent ?? '')),
-    ).toHaveLength(6);
+    expect(screen.getByRole('heading', { level: 3, name: ar.insights.value.title })).toBeTruthy();
+    // A signed percentage keeps its sign before the digits in Arabic: an isolated left-to-right run.
+    const [depth] = await within(card(ar.insights.promo.title)).findAllByText('−33.3%');
+    expect(depth!.closest('bdi')?.getAttribute('dir')).toBe('ltr');
+    const head = within(section(ar.insights.stock.title)).getByRole('link', { name: '37' });
+    expect(head.querySelector('bdi')?.getAttribute('dir')).toBe('ltr');
+    expect(container.textContent).not.toMatch(/[٠-٩]/);
   });
 
-  it('API 1.16.0 (no /insights): says so and asks the API nothing, no card, no number', async () => {
-    apiVersion = '1.16.0';
-    asked.length = 0;
+  it('says so on an older API, and asks /insights nothing', () => {
+    apiVersion = '1.22.0';
     view(rich);
-    await screen.findByText(
-      'Insights is not available yet: it needs data service version 1.18.0 or later, and this site runs 1.16.0. Nothing is shown until the service is updated.',
-    );
-    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0);
-    expect(screen.queryByRole('combobox')).toBeNull();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(asked).toEqual([]);
-    apiVersion = '1.18.0';
+    expect(screen.getByRole('note').textContent).toContain('1.23.0');
+    expect(asked.some((a) => a.path === '/api/v1/insights')).toBe(false);
   });
 
-  it('/insights answers 404 (route not deployed): the honest "not available yet", never an error card', async () => {
-    view(rich, 'en', { '/api/v1/insights': new ApiError('not_found', 404) });
-    await screen.findByText(
-      'Insights is not available yet: the data service does not serve it. Nothing is shown until the service is updated.',
-    );
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0);
-    expect(screen.queryByRole('combobox')).toBeNull();
-  });
-
-  it('any other /insights failure still shows the error card', async () => {
-    view(rich, 'en', { '/api/v1/insights': new ApiError('internal_error', 500) });
-    expect(await screen.findByRole('alert')).toBeTruthy();
+  it('a 404 from /insights reads as not available yet, not an error', async () => {
+    view(new ApiError('not_found', 404));
+    expect(await screen.findByText(s.unavailableRoute)).toBeTruthy();
   });
 });
