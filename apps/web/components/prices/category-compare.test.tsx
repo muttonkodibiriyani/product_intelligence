@@ -278,7 +278,7 @@ describe('CategoryCompareCard', () => {
         locale,
       );
       const head = screen.getByRole('table').querySelector('thead')!;
-      expect(text(head)).toContain(locale === 'ar' ? 'نطاق السعر (د.إ.)' : 'Price range (AED)');
+      expect(text(head)).toContain(locale === 'ar' ? 'نطاق السعر بـد.إ.' : 'Price range in AED');
       // One axis per retailer; each label sits inside the 120px axis, 6px clear of its neighbour.
       const axes = [...head.querySelectorAll('svg')];
       expect(axes).toHaveLength(2);

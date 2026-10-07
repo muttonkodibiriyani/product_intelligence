@@ -178,7 +178,7 @@
     "median": "Median",
     "mean": "mean",
     "range": "Price range",
-    "rangeIn": "Price range ({currency})",
+    "rangeIn": "Price range in {currency}",
     "gapCol": "Median gap",
     "rangeHint": "Middle half of prices as a band, median as a tick, lowest to highest as a thin line; log scale.",
     "tooFew": "too few (n = {n})",
