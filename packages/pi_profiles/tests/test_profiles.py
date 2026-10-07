@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, get_args, get_origin
 
 import pytest
 from pydantic import ValidationError
@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from pi_dataset import AttributeType, committed_profile, committed_profiles
 from pi_profiles import (
     BEAUTY_V1,
+    BEAUTY_V2,
     PROFILES,
     REF_PATTERN,
     Attr,
@@ -94,10 +95,27 @@ def test_non_json_values_are_value_errors(value: object) -> None:
 
 def test_get_profile() -> None:
     assert get_profile("beauty@1") is BEAUTY_V1
-    with pytest.raises(UnknownProfileError, match="no registered profile beauty@2"):
-        get_profile("beauty@2")
+    assert get_profile("beauty@2") is BEAUTY_V2
+    with pytest.raises(UnknownProfileError, match="no registered profile beauty@3"):
+        get_profile("beauty@3")
     with pytest.raises(UnknownProfileError, match="not a profile ref"):
         get_profile("beauty")
+
+
+def _literal_ids(annotation: object) -> set[str]:
+    if get_origin(annotation) is Literal:
+        return {str(a) for a in get_args(annotation)}
+    return {i for arg in get_args(annotation) for i in _literal_ids(arg)}
+
+
+@pytest.mark.parametrize("ref", sorted(PROFILES))
+def test_closed_values_are_the_write_path_literal(ref: str) -> None:
+    """The wire ``values`` and the attribute model's ``Literal`` are one list (ADR-0008 §5)."""
+    model = PROFILES[ref].attributes
+    for name, field in model.model_fields.items():
+        attr = next(m for m in field.metadata if isinstance(m, Attr))
+        if attr.values is not None:
+            assert _literal_ids(field.annotation) == {i for i, _ in attr.values}, name
 
 
 def test_a_field_without_attr_is_a_declaration_error() -> None:
@@ -137,3 +155,54 @@ def test_enum_values_are_declared() -> None:
     assert daypart.values is not None
     assert [v.id for v in daypart.values] == ["breakfast"]
     assert profile.ref == "menu_test@1"
+
+
+@pytest.mark.parametrize(
+    ("raw", "stored"),
+    [
+        ({}, {}),
+        (
+            {"finish": "Matte", "sunProtectionFactor": "50"},
+            {"finish": "Matte", "sunProtectionFactor": "50"},
+        ),
+        (
+            {"skinTypes": ["dry", "oily"], "gender": "unisex"},
+            {"skinTypes": ["dry", "oily"], "gender": "unisex"},
+        ),
+        (
+            {"makeupCoverage": ["light_coverage", "medium_coverage"], "productForm": "cream"},
+            {"makeupCoverage": ["light_coverage", "medium_coverage"], "productForm": "cream"},
+        ),
+        (
+            {"keyIngredients": ["niacinamide"], "giftWithPurchase": ["Free mini mascara"]},
+            {"keyIngredients": ["niacinamide"], "giftWithPurchase": ["Free mini mascara"]},
+        ),
+        ({"skinTypes": [], "keyIngredients": [], "sunProtectionFactor": None}, {}),
+    ],
+)
+def test_beauty_2_write_path(raw: dict[str, Any], stored: dict[str, Any]) -> None:
+    assert BEAUTY_V2.validate_attributes(raw) == stored
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"sunProtectionFactor": 50},  # decimal text, never a number
+        {"sunProtectionFactor": "0"},
+        {"sunProtectionFactor": "SPF 50"},
+        {"sunProtectionFactor": "1000"},
+        {"gender": "female"},  # closed vocabularies
+        {"makeupCoverage": ["buildable"]},
+        {"makeupCoverage": ["full"]},
+        {"makeupCoverage": "full_coverage"},
+        {"skinTypes": ["dry", "acne-prone"]},
+        {"skinTypes": "dry"},
+        {"keyIngredients": [""]},
+        {"giftWithPurchase": [" "]},
+        {"giftWithPurchase": "Free mini mascara"},
+        {"skin_types": ["dry"]},  # the Python name, not the wire key
+    ],
+)
+def test_beauty_2_write_path_rejects(raw: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match=r"validation error|undeclared attribute keys"):
+        BEAUTY_V2.validate_attributes(raw)

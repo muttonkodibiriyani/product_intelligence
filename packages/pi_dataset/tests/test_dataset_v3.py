@@ -565,20 +565,184 @@ def test_meta_profile_matches_the_committed_declaration() -> None:
 
 
 def test_committed_profiles() -> None:
-    assert committed_profiles() == ("beauty@1",)
+    assert committed_profiles() == ("beauty@1", "beauty@2")
     assert BEAUTY.ref == "beauty@1"
     assert (BEAUTY.size_labels_comparable, BEAUTY.size_system_required) == (False, False)
     assert {a.key for a in BEAUTY.attribute_set} == {"finish", "concentration", "shadeFamilies"}
-    assert committed_profile("beauty", 2) is None
+    assert committed_profile("beauty", 3) is None
+
+
+def test_beauty_2_keeps_beauty_1_and_adds_the_extracted_keys() -> None:
+    """ADR-0008 §5: ``beauty@1``'s keys unchanged, then new ones; ``giftWithPurchase`` per offer."""
+    v2 = _beauty2()
+    assert v2.info().model_copy(update={"version": 1}) == BEAUTY.info()
+    assert v2.attribute_set[:3] == BEAUTY.attribute_set
+    assert [(a.key, a.level.value, a.type.value) for a in v2.attribute_set[3:]] == [
+        ("sunProtectionFactor", "product", "decimal"),
+        ("gender", "product", "enum"),
+        ("skinTypes", "product", "text_list"),
+        ("makeupCoverage", "product", "text_list"),
+        ("productForm", "product", "text"),
+        ("keyIngredients", "product", "text_list"),
+        ("giftWithPurchase", "offer", "text_list"),
+    ]
+    assert all(a.capability for a in v2.attribute_set)
+
+
+# ---------------------------------------------------------------- beauty@2 evidence (§5)
+
+
+def _beauty2() -> ProfileDeclaration:
+    profile = committed_profile("beauty", 2)
+    assert profile is not None
+    return profile
+
+
+def _v3_beauty2() -> dict[str, Any]:
+    doc = _v3_doc()
+    v2 = _beauty2()
+    doc["meta"]["profile"]["version"] = 2
+    doc["meta"]["attributeSet"] = [
+        json.loads(a.model_dump_json(by_alias=True)) for a in v2.attribute_set
+    ]
+    for product in doc["products"]:  # the example's beauty@1 values have no evidence
+        product["attributes"] = {}
+    return doc
+
+
+def _ev(source: str = "text_rule", rule: str | None = "spf@1", **extra: Any) -> dict[str, Any]:
+    return {"source": source, "field": "name", "excerpt": "SPF 50", "rule": rule} | extra
+
+
+def test_beauty_2_values_carry_evidence() -> None:
+    doc = _v3_beauty2()
+    product = doc["products"][0]
+    product["attributes"] = {"sunProtectionFactor": "50", "gender": "women"}
+    product["attributeEvidence"] = {"sunProtectionFactor": _ev(), "gender": _ev("page", None)}
+    offer = product["offers"][N]
+    offer["attributes"] = {"giftWithPurchase": ["Free mini mascara"]}
+    offer["attributeEvidence"] = {
+        "giftWithPurchase": _ev("page", None, field="labels.gift_with_purchase")
+    }
+    loaded = _load(doc)
+    assert loaded.products[0].attribute_evidence["sunProtectionFactor"].rule == "spf@1"
+    del product["attributeEvidence"]["gender"]
+    assert "attributes.gender: no attributeEvidence" in _errors(doc)
+    product["attributeEvidence"]["gender"] = _ev("page", None)
+    del offer["attributeEvidence"]
+    assert f"offers.{N}.attributes.giftWithPurchase: no attributeEvidence" in _errors(doc)
+
+
+@pytest.mark.parametrize(
+    ("key", "items"),
+    [("skinTypes", ["dry", "all_skin_types"]), ("makeupCoverage", ["full_coverage"])],
+)
+def test_a_closed_text_list_takes_its_ids(key: str, items: list[str]) -> None:
+    doc = _v3_beauty2()
+    product = doc["products"][0]
+    product["attributes"] = {key: items}
+    product["attributeEvidence"] = {key: _ev(excerpt="for dry skin")}
+    assert load_any(json.dumps(doc), allow_test=True).products[0].attributes[key] == items
+
+
+@pytest.mark.parametrize(
+    ("key", "items"),
+    [
+        ("skinTypes", ["dry", "very dry"]),
+        ("skinTypes", ["Dry"]),
+        ("makeupCoverage", ["full"]),
+        ("makeupCoverage", ["buildable"]),
+    ],
+)
+def test_a_closed_text_list_refuses_other_items(key: str, items: list[str]) -> None:
+    """ADR-0008 §5: the closed list is on the wire, so a producer that skips the write path is
+    still refused, and a facet cannot fragment."""
+    doc = _v3_beauty2()
+    product = doc["products"][0]
+    product["attributes"] = {key: items}
+    product["attributeEvidence"] = {key: _ev()}
+    with pytest.raises(DatasetError, match=rf"attributes\.{key}: .* are not in"):
+        load_any(json.dumps(doc), allow_test=True)
+
+
+def test_closed_lists_carry_en_and_ar_labels() -> None:
+    closed = [a for a in _beauty2().attribute_set if a.values is not None]
+    assert {a.key for a in closed} == {"gender", "skinTypes", "makeupCoverage"}
+    assert all(set(v.label) == {"en", "ar"} for a in closed for v in a.values or ())
+
+
+def test_evidence_names_only_present_keys() -> None:
+    doc = _v3_doc()  # beauty@1: evidence optional, but never for an absent key
+    doc["products"][0]["attributes"] = {"finish": "matte"}
+    _load(doc)
+    doc["products"][0]["attributeEvidence"] = {"finish": _ev("page", None)}
+    _load(doc)
+    doc["products"][0]["attributeEvidence"]["concentration"] = _ev("page", None)
+    assert "attributeEvidence.concentration: no attribute concentration here" in _errors(doc)
+
+
+@pytest.mark.parametrize(
+    ("evidence", "message"),
+    [
+        (_ev("page", "x"), "rule is required exactly when source is not page"),
+        (_ev("text_rule", None), "rule is required exactly when source is not page"),
+        (_ev("model", None), "rule is required exactly when source is not page"),
+        (_ev(source="guess"), "Input should be 'page', 'text_rule' or 'model'"),
+        (_ev(excerpt="x" * 121), "at most 120 characters"),
+        (_ev(excerpt=" "), "String should match pattern"),
+    ],
+)
+def test_evidence_shape(evidence: dict[str, Any], message: str) -> None:
+    doc = _v3_doc()
+    doc["products"][0]["attributes"] = {"finish": "matte"}
+    doc["products"][0]["attributeEvidence"] = {"finish": evidence}
+    assert message in _errors(doc)
+
+
+def test_a_snapshot_may_turn_a_committed_key_off_never_on() -> None:
+    """The precision gate (§5): a key below it is declared not collected, and has no values."""
+    doc = _v3_beauty2()
+    spf = next(a for a in doc["meta"]["attributeSet"] if a["key"] == "sunProtectionFactor")
+    spf["capability"] = False
+    _load(doc)
+    doc["products"][0]["attributes"] = {"sunProtectionFactor": "50"}
+    doc["products"][0]["attributeEvidence"] = {"sunProtectionFactor": _ev()}
+    assert "sunProtectionFactor: declared as not collected (capability false)" in _errors(doc)
+    doc = _v3_beauty2()
+    spf = next(a for a in doc["meta"]["attributeSet"] if a["key"] == "sunProtectionFactor")
+    spf["facet"] = False  # anything else still differs
+    assert "meta.attributeSet differs from the committed beauty@2" in _errors(doc)
+
+
+def test_a_committed_uncollected_key_stays_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    v2 = _beauty2()
+    off = v2.model_copy(
+        update={
+            "attribute_set": tuple(
+                a.model_copy(update={"capability": a.key != "sunProtectionFactor"})
+                for a in v2.attribute_set
+            )
+        }
+    )
+    doc = _v3_beauty2()
+    monkeypatch.setattr("pi_dataset.v3.committed_profile", lambda name, version: off)
+    assert (
+        "meta.attributeSet.sunProtectionFactor: collected, but the committed beauty@2"
+        in _errors(doc)
+    )
 
 
 def test_attribute_declarations() -> None:
-    with pytest.raises(ValidationError, match="values are required exactly for type enum"):
+    with pytest.raises(ValidationError, match="values are required for type enum"):
         AttributeDef.model_validate(_attr("daypart", "enum"))
-    with pytest.raises(ValidationError, match="values are required exactly for type enum"):
-        AttributeDef.model_validate(
-            _attr("daypart", "text", values=[{"id": "a", "label": {"en": "A"}}])
-        )
+    for type_ in ("text", "decimal", "money", "bool", "object"):
+        with pytest.raises(ValidationError, match="only for types enum and text_list"):
+            AttributeDef.model_validate(
+                _attr("daypart", type_, values=[{"id": "a", "label": {"en": "A"}}])
+            )
+    closed = _attr("daypart", "text_list", values=[{"id": "a", "label": {"en": "A"}}])
+    assert AttributeDef.model_validate(closed).values is not None
+    assert AttributeDef.model_validate(_attr("daypart", "text_list")).values is None
     with pytest.raises(ValidationError, match="duplicate enum value ids"):
         AttributeDef.model_validate(
             _attr("dd", "enum", values=[{"id": "a", "label": {"en": "A"}}] * 2)

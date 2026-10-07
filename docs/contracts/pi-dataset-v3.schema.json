@@ -84,12 +84,62 @@
       "title": "AttributeDef",
       "type": "object"
     },
+    "AttributeEvidence": {
+      "additionalProperties": false,
+      "description": "Where one attribute value came from. ``excerpt`` is retailer text: untrusted, plain text.",
+      "properties": {
+        "excerpt": {
+          "maxLength": 120,
+          "pattern": "\\S",
+          "title": "Excerpt",
+          "type": "string"
+        },
+        "field": {
+          "pattern": "\\S",
+          "title": "Field",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule"
+        },
+        "source": {
+          "$ref": "#/$defs/AttributeSource"
+        }
+      },
+      "required": [
+        "source",
+        "field",
+        "excerpt",
+        "rule"
+      ],
+      "title": "AttributeEvidence",
+      "type": "object"
+    },
     "AttributeLevel": {
       "enum": [
         "product",
         "offer"
       ],
       "title": "AttributeLevel",
+      "type": "string"
+    },
+    "AttributeSource": {
+      "description": "How an attribute value was read (ADR-0008 §5).",
+      "enum": [
+        "page",
+        "text_rule",
+        "model"
+      ],
+      "title": "AttributeSource",
       "type": "string"
     },
     "AttributeType": {
@@ -811,6 +861,15 @@
     "OfferV3": {
       "additionalProperties": false,
       "properties": {
+        "attributeEvidence": {
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]{1,62}$": {
+              "$ref": "#/$defs/AttributeEvidence"
+            }
+          },
+          "title": "Attributeevidence",
+          "type": "object"
+        },
         "attributes": {
           "patternProperties": {
             "^[a-z][A-Za-z0-9_]{1,62}$": {
@@ -1017,6 +1076,15 @@
     "ProductV3": {
       "additionalProperties": false,
       "properties": {
+        "attributeEvidence": {
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]{1,62}$": {
+              "$ref": "#/$defs/AttributeEvidence"
+            }
+          },
+          "title": "Attributeevidence",
+          "type": "object"
+        },
         "attributes": {
           "patternProperties": {
             "^[a-z][A-Za-z0-9_]{1,62}$": {

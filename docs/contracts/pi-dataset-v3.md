@@ -32,7 +32,8 @@ uv run pi-dataset schema --v3 > docs/contracts/pi-dataset-v3.schema.json
 
 - **`meta.profile`** `{name, version, sizeLabelsComparable, sizeSystemRequired}`, with
   `meta.vertical` = `meta.profile.name`. For a committed profile, the flags and
-  **`meta.attributeSet`** must equal the declaration exactly.
+  **`meta.attributeSet`** must equal the declaration exactly, except that a key may be turned off
+  (see below). Committed profiles: `beauty@1`, `beauty@2`.
 - **`meta.attributeSet`**: every key in `Product.attributes` and the new `Offer.attributes` is
   declared, at its level, with a value of its type (`text`, `enum`, `decimal`, `money`, `bool`,
   `text_list`, `object`). Money anywhere inside an attribute is checked: offer-level against the
@@ -64,6 +65,17 @@ uv run pi-dataset schema --v3 > docs/contracts/pi-dataset-v3.schema.json
   product family id: offers of one context that share it are sizes of one product. `content`
   absent (every snapshot before 2026-10-03) states nothing, and `pi_api` serves every field as
   `not_captured`.
+- **`Product.attributeEvidence`, `Offer.attributeEvidence`** (optional, additive, 2026-10-06;
+  ADR-0008 §5): per attribute key at that level, where its value was read: `{source, field,
+  excerpt, rule}`. `source` is `page` (a structured page field), `text_rule` (a deterministic
+  rule on free text) or `model`. `rule` names the rule or model, and is null exactly for `page`.
+  `excerpt` is the retailer's text (at most 120 characters): untrusted, so it is shown as plain
+  text only. Evidence for a key that isn't in `attributes` fails validation. From `beauty@2` on,
+  every attribute value has evidence.
+- **Collected or not, per snapshot** (2026-10-06): a snapshot may declare a committed key with
+  `capability: false` (a key below the precision gate is published as not collected, with no
+  values). It never turns on a key that the committed profile declares off, and nothing else in
+  the declaration may differ.
 
 ## Upgrading v2
 
