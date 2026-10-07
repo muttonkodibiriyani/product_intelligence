@@ -13,6 +13,7 @@ import {
   barPct,
   BRANDS_SHOWN,
   deepestUndercut,
+  defaultPair,
   forPair,
   INSIGHTS_API,
   insightsServed,
@@ -33,6 +34,7 @@ import { ApiError } from '@/lib/api/client';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
 import { Card, CardGrid } from '../ui/card';
+import { FindingsSection } from './findings/findings-section';
 import { Known } from '../ui/known';
 import { Money, Pct } from '../ui/money';
 import { PageHeader } from '../ui/page-header';
@@ -71,11 +73,9 @@ export function InsightsView() {
   const parsed = useMemo(() => parseCompare(new URLSearchParams(search)), [search]);
   const [pending, setPending] = useState<{ at: string; state: CompareState } | null>(null);
   const picked = pending?.at === search ? pending.state : parsed;
-  // Until a pair is picked, the first two shops the dataset collects.
-  const state: CompareState =
-    !hasComparePair(picked) && active.length >= 2
-      ? { ...picked, base: active[0]!, other: active[1]! }
-      : picked;
+  // Until a pair is picked, the pilot's Ulta against Sephora, else the first two shops collected.
+  const opening = defaultPair(active);
+  const state: CompareState = !hasComparePair(picked) && opening ? { ...picked, ...opening } : picked;
   const fixed = active.length === 2 && active.includes(state.base) && active.includes(state.other);
   const update = (next: Partial<CompareState>) => {
     const target = { ...state, ...next };
@@ -145,6 +145,7 @@ export function InsightsView() {
         }
       />
       {served && !missing && <PairPicker state={state} update={update} fixed={fixed} grouping={false} />}
+      {ready && <FindingsSection focus={state.base} rival={state.other} />}
       {served === false ? (
         <div role="note" className="panel px-5 py-6 text-sm text-ink-2">
           {t('unavailable', { need: INSIGHTS_API, have: meta.data!.meta.apiVersion })}
