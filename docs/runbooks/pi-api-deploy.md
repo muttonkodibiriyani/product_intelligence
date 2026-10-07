@@ -258,7 +258,11 @@ as it is.
   - **The gate is per file; the 3Gi size is for all served files together.** The exporter checks
     one file at a time, so two files that each pass can still exceed 3Gi. The 600 MiB reserve
     holds the files other than the largest at ~20 MiB per compact MB (the beauty file's measured
-    rate: 201 MiB for 10.1 MB, denser than Ounass's 9.3), which is **30 MB**. Refreshes run one at
+    rate: 201 MiB for 10.1 MB, denser than Ounass's 9.3), which is **30 MB**. That rate comes from
+    the bench's beauty file (the 1 Oct export, 9,529 products, 10.1 MB compact), not from the live
+    `beauty/latest.json` (17.05 MB compact on 2026-10-07). Memory scales with bytes, so the rule
+    holds for the live file, but production RSS is higher than the table above, by about 140 MiB
+    for the larger beauty file plus Faces (1.4 MB). Refreshes run one at
     a time, so only the largest file's second generation counts. Before any revision that adds to
     `PI_API_DATASETS` (or a publish that grows a served file), size **every** served file's
     `latest.json` as **decompressed, compact** bytes and check:
