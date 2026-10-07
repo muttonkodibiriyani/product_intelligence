@@ -53,6 +53,7 @@ from pi_capture.registry import (
     page_sourced,
     type_spec,
 )
+from pi_capture.sephora import readings_from_sephora, readings_from_sephora_details
 
 __all__ = [
     "ATTRIBUTES",
@@ -103,6 +104,8 @@ __all__ = [
     "reading_to_json",
     "readings_from_faces",
     "readings_from_generic",
+    "readings_from_sephora",
+    "readings_from_sephora_details",
     "rsc_chunks",
     "rsc_text",
     "type_spec",

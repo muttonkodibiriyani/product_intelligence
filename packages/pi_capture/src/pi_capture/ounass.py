@@ -25,7 +25,8 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
-from pi_capture.faces import _CONCENTRATIONS, _emit_size
+from pi_capture._size import emit_size
+from pi_capture.faces import _CONCENTRATIONS
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
 from pi_capture.generic import (
     JsonObject,
@@ -142,9 +143,9 @@ def _map_size(em: _Emitter, pdp: Mapping[str, Any], title: str | None) -> None:
     sizes = [s for s in pdp.get("sizes") or [] if isinstance(s, Mapping)]
     codes = [c for s in sizes if (c := _str(s.get("sizeCode"))) not in (None, _NO_SIZE)]
     if len(sizes) == 1 and len(codes) == 1:
-        _emit_size(em, codes[0], f"{_PDP}.sizes[0].sizeCode")
+        emit_size(em, codes[0], f"{_PDP}.sizes[0].sizeCode")
     elif len(sizes) <= 1 and title and (m := _NAME_SIZE.search(title)) is not None:
-        _emit_size(em, m.group(1), f"{_PDP}.nameInEnglish (size at the end of the name)")
+        emit_size(em, m.group(1), f"{_PDP}.nameInEnglish (size at the end of the name)")
 
 
 def _map_merch(em: _Emitter, pdp: Mapping[str, Any]) -> None:
