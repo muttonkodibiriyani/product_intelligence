@@ -107,6 +107,24 @@ _SKIP_PREFIXES = (
 _SKIP_SUFFIXES = ("_parse_error",)
 
 
+def _gift_with_purchase(promotions: Any) -> list[str] | None:
+    """The PRODUCT-class promotion titles: a gift with this product, never a price change.
+
+    ORDER-class ones are the site-wide "spend N AED" banners and are left out. ``None`` when the
+    page carries no promotions list at all (not read), ``[]`` when it carries none of this class.
+    """
+    if not isinstance(promotions, list):
+        return None
+    titles: list[str] = []
+    for p in promotions:
+        if not isinstance(p, dict) or p.get("promotionClass") != "PRODUCT":
+            continue
+        title = p.get("promotionTitle")
+        if isinstance(title, str) and title.strip() and title.strip() not in titles:
+            titles.append(title.strip())
+    return titles
+
+
 def _sha(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
@@ -399,6 +417,7 @@ class Loader:
                     for p in d.get("c_product_promotions") or []
                     if isinstance(p, dict)
                 ],
+                "gift_with_purchase": _gift_with_purchase(d.get("c_product_promotions")),
                 "variants_count": d.get("c_variantsCount"),
                 "evidence_uri": uri,
             }

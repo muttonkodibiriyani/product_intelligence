@@ -368,6 +368,49 @@ def test_a_sephora_only_brand_gets_its_arabic_name_once(db: str, tmp_path: Path)
         assert conn.execute(query).fetchall() == first
 
 
+def _gwp_labels(db: str, tmp_path: Path, d: dict[str, Any]) -> list[Any]:
+    root = _folder(tmp_path / d["id"], {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec(d["id"], "en", d)])
+    with psycopg.connect(db) as conn:
+        _load(conn, root)
+        return [
+            r["gift_with_purchase"]
+            for (r,) in conn.execute(
+                "SELECT c.labels FROM listing_content c JOIN source_listing l"
+                " ON l.id = c.listing_id WHERE l.source_listing_key = %s",
+                (f"{d['id'][1:]}1",),
+            ).fetchall()
+        ]
+
+
+def test_gift_with_purchase_keeps_product_class_titles_only(db: str, tmp_path: Path) -> None:
+    d = details("P810")
+    d["c_product_promotions"] = [
+        {"ID": "o1", "promotionClass": "ORDER", "promotionTitle": "Unlock the exclusive gift!"},
+        {"ID": "p1", "promotionClass": "PRODUCT", "promotionTitle": " Pouch + Mini Gloss "},
+        {"ID": "p2", "promotionClass": "PRODUCT", "promotionTitle": "Pouch + Mini Gloss"},
+        {"ID": "p3", "promotionClass": "PRODUCT", "promotionTitle": ""},
+        {"ID": "p4", "promotionClass": "PRODUCT", "promotionTitle": "Free travel size"},
+        "not a promotion",
+    ]
+    assert _gwp_labels(db, tmp_path, d) == [["Pouch + Mini Gloss", "Free travel size"]]
+    with psycopg.connect(db) as conn:  # the gift never touches the stored prices
+        prices = conn.execute(
+            "SELECT o.price_current, o.price_regular_stated, o.price_promo FROM offer_observation o"
+            " JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key = %s",
+            ("8101",),
+        ).fetchall()
+    assert prices == [(80, 100, 80)]  # the page's own sale, exactly as without the promotions
+
+
+def test_gift_with_purchase_is_empty_or_unread_never_guessed(db: str, tmp_path: Path) -> None:
+    order_only = details("P820")
+    order_only["c_product_promotions"] = [{"promotionClass": "ORDER", "promotionTitle": "Gift"}]
+    assert _gwp_labels(db, tmp_path, order_only) == [[]]
+    assert _gwp_labels(db, tmp_path, details("P830")) == [None]  # no promotions list on the page
+
+
 # ---------------------------------------------------------------- Saudi storefront (--country SA)
 
 
