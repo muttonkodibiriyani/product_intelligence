@@ -313,6 +313,18 @@ def test_an_image_fails_while_its_host_is_unverified(
 
 
 @pytest.mark.usefixtures("owner_token")
+def test_a_verified_host_with_no_image_served_fails(tmp_path: Path) -> None:
+    """pi-api serving image=null for every card (its PI_API_IMAGE_HOSTS lacks the host)."""
+    baseline(tmp_path)
+    fake = with_ounass_and_bloomingdales()
+    for card in fake.cards["ounass_ae"]:
+        card["image"] = None
+    assert run(fake, tmp_path, "check", *ADDED_PAIR) == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert any(p.startswith("S3 ounass_ae: 0 images, all on ounass-ae.atgcdn.ae") for p in problems)
+
+
+@pytest.mark.usefixtures("owner_token")
 def test_a_new_retailer_that_is_not_named_fails(tmp_path: Path) -> None:
     baseline(tmp_path)
     assert run(with_faces(), tmp_path, "check", "--expect-api", "1.7.0") == 1
