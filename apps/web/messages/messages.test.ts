@@ -13,6 +13,54 @@ type Tree = { [k: string]: string | Tree };
 const keys = (t: Tree, p = ''): string[] =>
   Object.entries(t).flatMap(([k, v]) => (typeof v === 'string' ? [p + k] : keys(v, `${p}${k}.`)));
 
+/**
+ * The argument names an ICU message uses, plural and select branches included (their selectors and
+ * branch text are not arguments). A quoted span ('{…}') is literal text.
+ */
+export function argNames(msg: string): Set<string> {
+  const names = new Set<string>();
+  let i = 0;
+  const skipQuote = () => {
+    if (msg[i + 1] === "'") return void (i += 2);
+    const end = msg.indexOf("'", i + 1);
+    i = end < 0 ? msg.length : end + 1;
+  };
+  // Message text up to an unmatched '}' (the end of a branch) or the end.
+  const text = (): void => {
+    while (i < msg.length) {
+      const c = msg[i];
+      if (c === "'" && /['{}#|]/.test(msg[i + 1] ?? '')) skipQuote();
+      else if (c === '{') argument();
+      else if (c === '}') return;
+      else i++;
+    }
+  };
+  const until = (stops: string): string => {
+    const start = i;
+    while (i < msg.length && !stops.includes(msg[i]!)) i++;
+    return msg.slice(start, i).trim();
+  };
+  const argument = (): void => {
+    i++; // {
+    names.add(until(',}'));
+    if (msg[i++] === '}') return;
+    const type = until(',}');
+    if (msg[i++] === '}') return;
+    if (['plural', 'select', 'selectordinal'].includes(type)) {
+      for (;;) {
+        until('{}'); // selector (and offset:n)
+        if (msg[i++] !== '{') return; // the argument's closing brace
+        text();
+        i++; // the branch's closing brace
+      }
+    }
+    for (let depth = 1; i < msg.length && depth > 0; i++)
+      depth += msg[i] === '{' ? 1 : msg[i] === '}' ? -1 : 0;
+  };
+  text();
+  return names;
+}
+
 const REASONS: Schemas['Reason'][] = [
   'capability_off',
   'field_not_collected',
@@ -35,6 +83,30 @@ describe('messages', () => {
   it('the widgets have the same keys in both languages, and no page key is called widgets', () => {
     expect(keys(wAr as Tree).sort()).toEqual(keys(wEn as Tree).sort());
     expect('widgets' in en).toBe(false);
+  });
+
+  // Arabic may add a plural companion (`count`, `…Count`: the number behind a formatted one, for
+  // noun agreement), never drop an argument English shows.
+  it('Arabic uses every argument English uses, key by key, adding only plural counts', () => {
+    const at = (t: Tree, k: string) =>
+      k.split('.').reduce<string | Tree>((o, s) => (o as Tree)[s]!, t) as string;
+    const differ = [...keys(en as Tree), ...keys(wEn as Tree).map((k) => `widgets.${k}`)].flatMap((k) => {
+      const [e, a] = k.startsWith('widgets.')
+        ? [at(wEn as Tree, k.slice(8)), at(wAr as Tree, k.slice(8))]
+        : [at(en as Tree, k), at(ar as Tree, k)];
+      const [ne, na] = [[...argNames(e)].sort(), [...argNames(a)].sort()];
+      const extra = na.filter((n) => !ne.includes(n) && !/^count$|Count$/.test(n));
+      const ok = ne.every((n) => na.includes(n)) && extra.length === 0;
+      return ok ? [] : [`${k}: en {${ne.join(', ')}} ar {${na.join(', ')}}`];
+    });
+    expect(differ).toEqual([]);
+  });
+
+  it('reads arguments, not plural branch text or quoted braces', () => {
+    expect(
+      [...argNames("{n, plural, =0 {no items at {shop}} one {# item} other {# items}} '{x}' {a}")].sort(),
+    ).toEqual(['a', 'n', 'shop']);
+    expect([...argNames('{p, number, ::percent} {d, date, short}')].sort()).toEqual(['d', 'p']);
   });
 
   it('no message is empty', () => {

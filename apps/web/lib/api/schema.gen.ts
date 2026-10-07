@@ -245,6 +245,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Findings
+         * @description Twelve findings for focus against rival, every other context a third shop, in rank order: shown ones first, then those withheld with a reason. Each has the params its headline, decision, evidence and action read (kind count, pct, money, ratio, text, retailer, category, list or missing), a mini chart, up to six product examples with their card image, its threshold, n and of, the match basis (counted_pairs: compare's counted exact pairs, approved or locked, and nothing else; within_shop; brand_level: brand names folded by pi_match; single_shop) and chips for shops left out (too_few_ratings, too_few_pairs, stock_not_collected, discounts_not_shown). Without counted pairs the four matched findings (brand_depth_gaps, brand_price_policy, size_level_gaps, real_discounts) are withheld as no_match or matches_unreviewed. Stock-outs are counts and never rank shops; brands with every listing out are the source reporting them unavailable. Computed once per snapshot generation.
+         */
+        get: operations["get_findings_api_v1_findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/index": {
         parameters: {
             query?: never;
@@ -271,7 +291,7 @@ export interface paths {
         };
         /**
          * Get Insights
-         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut.
+         * @description Decision aggregates for the Insights page. pricing: compare's counted pairs (exact, approved or locked, same size, one currency) between retailers=<base>,<other>, grouped by brand (policy other_cheaper, base_cheaper or parity when at least policySharePct % of a brand's pairs agree, else mixed) and by the base offer's published measure; groups under minCohort are withheld and counted in suppressedBrands / suppressedSizes, and `unreviewed` counts pairs whose edge is still proposed. Gap sign as /compare: (other - base) / base x 100. ladders: per context, consecutive sizes of one family (the retailer's content.family, else the same brand, name, category and unit: basis=name) and how many larger sizes do not cost less per unit; a step more than heldOutPct % dearer per unit is held out as a different product and counted in heldOut. value: per context and top-level category, offers rated at least valueRatingPct % of their own scale by at least valueMinRatings reviewers, not out of stock, and at or below the category median on its basis: per ml or g in fragrance (basis per_unit), else shelf price (basis shelf; minis and travel sizes are never picks). Tools and misfiled body care are left out of the cohort (excluded); the catch-all other is never ranked (unranked). Ranked by rating share shrunk toward the category mean; one pick per brand and name, at most two per brand. Categories under minCohort priced offers have no median and are counted in suppressed. Single-retailer: no shop is compared with another.
          */
         get: operations["get_insights_api_v1_insights_get"];
         put?: never;
@@ -518,7 +538,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.21.0
+             * @default 1.24.0
              */
             apiVersion: string;
             /** Currency */
@@ -540,12 +560,17 @@ export interface components {
             market: string;
             /**
              * Metricversion
-             * @default 2026-10-06.1
+             * @default 2026-10-06.3
              */
             metricVersion: string;
             /** Scope */
             scope: string;
         };
+        /**
+         * Area
+         * @enum {string}
+         */
+        Area: "assortment" | "price" | "availability" | "promotions" | "fragrance" | "value" | "customer_voice" | "trust";
         /** AssortmentGaps */
         AssortmentGaps: {
             /** Bybrand */
@@ -609,6 +634,11 @@ export interface components {
          * @enum {string}
          */
         AvailabilityState: "in_stock" | "low_stock" | "out_of_stock" | "not_deliverable" | "removed" | "not_observed" | "blocked" | "unknown";
+        /**
+         * Basis
+         * @enum {string}
+         */
+        Basis: "selling_price" | "per_unit" | "stated_regular" | "stock_flag" | "rating" | "brand_presence";
         /** Basket */
         Basket: {
             base: components["schemas"]["MoneyValue"];
@@ -906,11 +936,67 @@ export interface components {
          * @enum {string}
          */
         Channel: "online" | "marketplace" | "delivery" | "pickup" | "dine_in_evidenced" | "offline_audit";
+        /** Chart */
+        Chart: {
+            /**
+             * Columns
+             * @default []
+             */
+            columns: string[];
+            kind: components["schemas"]["ChartKind"];
+            /** Rows */
+            rows: components["schemas"]["ChartRow"][];
+            unit: components["schemas"]["ChartUnit"];
+        };
+        /**
+         * ChartKind
+         * @enum {string}
+         */
+        ChartKind: "bars" | "diverging" | "stacked" | "strips" | "matrix";
+        /** ChartRow */
+        ChartRow: {
+            /**
+             * Code
+             * @default false
+             */
+            code: boolean;
+            /** Label */
+            label: string;
+            /** N */
+            n?: number | null;
+            /** Of */
+            of?: number | null;
+            /**
+             * Parts
+             * @default []
+             */
+            parts: string[];
+            /** Retailer */
+            retailer?: string | null;
+            /** Value */
+            value: string;
+        };
+        /**
+         * ChartUnit
+         * @enum {string}
+         */
+        ChartUnit: "pct" | "count";
         /**
          * Cheaper
          * @enum {string}
          */
         Cheaper: "base" | "other" | "equal";
+        /** Chip */
+        Chip: {
+            code: components["schemas"]["ChipCode"];
+            /** Retailer */
+            retailer: string;
+        };
+        /**
+         * ChipCode
+         * @enum {string}
+         */
+        ChipCode: "too_few_ratings" | "too_few_pairs" | "stock_not_collected" | "discounts_not_shown";
         /** Cohort */
         Cohort: {
             /** Description */
@@ -1147,6 +1233,20 @@ export interface components {
             reason?: components["schemas"]["Reason"] | null;
             status: components["schemas"]["Status"];
         };
+        /** Envelope[Findings] */
+        Envelope_Findings_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["Findings"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+        };
         /** Envelope[Insights] */
         Envelope_Insights_: {
             /**
@@ -1308,6 +1408,42 @@ export interface components {
             /** Url */
             url: string | null;
         };
+        /** Example */
+        Example: {
+            /** Brand */
+            brand: string;
+            /** Gappct */
+            gapPct?: string | null;
+            /** Id */
+            id: string;
+            /** Image */
+            image?: string | null;
+            /** Name */
+            name: string;
+            price: components["schemas"]["MoneyValue"] | null;
+            /**
+             * Pricewithheld
+             * @default false
+             */
+            priceWithheld: boolean;
+            /** Rating */
+            rating?: string | null;
+            /** Ratingcount */
+            ratingCount?: number | null;
+            regular?: components["schemas"]["MoneyValue"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Scale */
+            scale?: string | null;
+            stock?: components["schemas"]["AvailabilityState"] | null;
+            /** Versus */
+            versus?: string | null;
+            /** Versusid */
+            versusId?: string | null;
+            /** Versusname */
+            versusName?: string | null;
+            versusPrice?: components["schemas"]["MoneyValue"] | null;
+        };
         /**
          * Excluded
          * @description Why a pair row is not counted. Every excluded row carries exactly one (design §7.2).
@@ -1349,6 +1485,54 @@ export interface components {
          * @enum {string}
          */
         FieldStatus: "ok" | "partial" | "not_collected" | "not_published" | "parse_failure" | "blocked";
+        /** Finding */
+        Finding: {
+            area: components["schemas"]["Area"];
+            basis: components["schemas"]["Basis"];
+            chart: components["schemas"]["Chart"] | null;
+            /**
+             * Chips
+             * @default []
+             */
+            chips: components["schemas"]["Chip"][];
+            /** Examples */
+            examples: components["schemas"]["Example"][];
+            figure: components["schemas"]["Param"] | null;
+            key: components["schemas"]["FindingKey"];
+            match: components["schemas"]["MatchBasis"];
+            /** N */
+            n: number;
+            /** Of */
+            of: number | null;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["Param"];
+            };
+            /** Rank */
+            rank: number;
+            reason: components["schemas"]["Reason"] | null;
+            status: components["schemas"]["Status"];
+            /** Threshold */
+            threshold: number;
+        };
+        /**
+         * FindingKey
+         * @enum {string}
+         */
+        FindingKey: "brand_white_space" | "brand_depth_gaps" | "brand_price_policy" | "size_level_gaps" | "stock" | "promo_strategy" | "real_discounts" | "fragrance_ladder" | "size_traps" | "positioning" | "price_vs_rating" | "pricing_anomalies";
+        /** Findings */
+        Findings: {
+            /** Countedpairs */
+            countedPairs: number;
+            /** Findings */
+            findings: components["schemas"]["Finding"][];
+            /** Focus */
+            focus: string;
+            /** Rival */
+            rival: string;
+            /** Thirds */
+            thirds: string[];
+        };
         /** Freshness */
         Freshness: {
             /** Agedays */
@@ -1535,6 +1719,21 @@ export interface components {
              * @default []
              */
             stockouts: components["schemas"]["Stockouts"][];
+            /**
+             * Value
+             * @default []
+             */
+            value: components["schemas"]["ValuePicks"][];
+            /**
+             * Valueminratings
+             * @default 20
+             */
+            valueMinRatings: number;
+            /**
+             * Valueratingpct
+             * @default 90.0
+             */
+            valueRatingPct: string;
         };
         /** Label */
         Label: {
@@ -1585,6 +1784,11 @@ export interface components {
             family: string;
             /** Largerid */
             largerId: string;
+            /**
+             * Largeronsale
+             * @default false
+             */
+            largerOnSale: boolean;
             largerPrice: components["schemas"]["MoneyValue"];
             /** Largervalue */
             largerValue: string;
@@ -1592,6 +1796,11 @@ export interface components {
             name: string;
             /** Smallerid */
             smallerId: string;
+            /**
+             * Smalleronsale
+             * @default false
+             */
+            smallerOnSale: boolean;
             smallerPrice: components["schemas"]["MoneyValue"];
             /** Smallervalue */
             smallerValue: string;
@@ -1654,6 +1863,11 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /**
+         * MatchBasis
+         * @enum {string}
+         */
+        MatchBasis: "counted_pairs" | "within_shop" | "brand_level" | "single_shop";
         /**
          * MatchClass
          * @description Relationship classes between variants (MAT-01).
@@ -1900,6 +2114,27 @@ export interface components {
             observedOn: string | null;
             price: components["schemas"]["MoneyValue"] | null;
         };
+        /** Param */
+        Param: {
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Items
+             * @default []
+             */
+            items: string[];
+            kind: components["schemas"]["ParamKind"];
+            /**
+             * Value
+             * @default
+             */
+            value: string;
+        };
+        /**
+         * ParamKind
+         * @enum {string}
+         */
+        ParamKind: "count" | "pct" | "money" | "ratio" | "text" | "retailer" | "category" | "list" | "missing";
         /**
          * Policy
          * @enum {string}
@@ -2478,10 +2713,27 @@ export interface components {
          * @enum {string}
          */
         Status: "ok" | "not_enough_data";
+        /**
+         * StockFilter
+         * @description An observed stock state a listing can be filtered on: ``pi_core.AvailabilityState``'s
+         *     observed values. A listing with no state, or an unobserved one, never matches.
+         * @enum {string}
+         */
+        StockFilter: "in_stock" | "low_stock" | "out_of_stock";
         /** Stockouts */
         Stockouts: {
             /** Brands */
             brands: components["schemas"]["BrandStock"][];
+            /**
+             * Listed
+             * @default 0
+             */
+            listed: number;
+            /**
+             * Outofstock
+             * @default 0
+             */
+            outOfStock: number;
             /** Qualifying */
             qualifying: number;
             reason: components["schemas"]["Reason"] | null;
@@ -2489,6 +2741,26 @@ export interface components {
             retailer: string;
             /** Suppressed */
             suppressed: number;
+            /**
+             * Unavailable
+             * @default []
+             */
+            unavailable: components["schemas"]["BrandStock"][];
+            /**
+             * Unavailablebrands
+             * @default 0
+             */
+            unavailableBrands: number;
+            /**
+             * Unavailablelistings
+             * @default 0
+             */
+            unavailableListings: number;
+            /**
+             * Withstock
+             * @default 0
+             */
+            withStock: number;
         };
         /** SuggestionRow */
         SuggestionRow: {
@@ -2576,6 +2848,22 @@ export interface components {
             regular: components["schemas"]["MoneyValue"];
         };
         /**
+         * UnavailableBrands
+         * @description Listings in a brand the source reports unavailable at their context: ``only`` those,
+         *     ``exclude`` them (``pi_metrics.insights.unavailable_brands``).
+         * @enum {string}
+         */
+        UnavailableBrands: "only" | "exclude";
+        /** UnitMedian */
+        UnitMedian: {
+            /** Median */
+            median: string;
+            /** N */
+            n: number;
+            /** Unit */
+            unit: string;
+        };
+        /**
          * Unmapped
          * @enum {string}
          */
@@ -2592,6 +2880,78 @@ export interface components {
             reason: components["schemas"]["Unmapped"];
             /** Retailer */
             retailer: string;
+        };
+        /**
+         * ValueBasis
+         * @enum {string}
+         */
+        ValueBasis: "shelf" | "per_unit";
+        /** ValueCategory */
+        ValueCategory: {
+            /** @default shelf */
+            basis: components["schemas"]["ValueBasis"];
+            /** Category */
+            category: string;
+            /**
+             * Excluded
+             * @default 0
+             */
+            excluded: number;
+            /** Items */
+            items: components["schemas"]["ValuePick"][];
+            median: components["schemas"]["MoneyValue"];
+            /** Picks */
+            picks: number;
+            /** Priced */
+            priced: number;
+            /** Rated */
+            rated: number;
+            /**
+             * Unitmedians
+             * @default []
+             */
+            unitMedians: components["schemas"]["UnitMedian"][];
+        };
+        /** ValuePick */
+        ValuePick: {
+            /** Brand */
+            brand: string;
+            /** Id */
+            id: string;
+            /** Image */
+            image?: string | null;
+            /** Name */
+            name: string;
+            price: components["schemas"]["MoneyValue"];
+            /** Rating */
+            rating: string;
+            /** Ratingcount */
+            ratingCount: number;
+            /** Scale */
+            scale: string;
+            /** Sizeunit */
+            sizeUnit?: string | null;
+            /** Sizevalue */
+            sizeValue?: string | null;
+            /** Unitprice */
+            unitPrice?: string | null;
+        };
+        /** ValuePicks */
+        ValuePicks: {
+            /** Categories */
+            categories: components["schemas"]["ValueCategory"][];
+            /** Qualifying */
+            qualifying: number;
+            reason: components["schemas"]["Reason"] | null;
+            /** Retailer */
+            retailer: string;
+            /** Suppressed */
+            suppressed: number;
+            /**
+             * Unranked
+             * @default 0
+             */
+            unranked: number;
         };
         /**
          * VariantView
@@ -3868,6 +4228,10 @@ export interface operations {
                 location?: string[];
                 /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
                 attr?: string[];
+                /** @description API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
+                availability?: components["schemas"]["StockFilter"][];
+                /** @description API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
             };
             header?: never;
             path?: never;
@@ -3985,6 +4349,106 @@ export interface operations {
                 content: {
                     "application/x-ndjson": unknown;
                     "text/csv": unknown;
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_findings_api_v1_findings_get: {
+        parameters: {
+            query: {
+                market?: string | null;
+                scope?: string | null;
+                /** @description The context the findings advise. */
+                focus: string;
+                /** @description The context it is set against. */
+                rival: string;
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Findings_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
@@ -4688,6 +5152,10 @@ export interface operations {
                 location?: string[];
                 /** @description Repeatable ``<key>:<value>`` on a declared facet attribute. Values of one key are alternatives; different keys must all match. */
                 attr?: string[];
+                /** @description API 1.23.0. Repeatable; keeps products with a listing in one of these stock states on the latest date, at the contexts ``retailer`` names (and ``channel``/``location`` show), else at any. A listing without an observed state never matches. */
+                availability?: components["schemas"]["StockFilter"][];
+                /** @description API 1.23.0. ``only`` keeps products with a listing in a brand the source reports unavailable at that context on the latest date (at least 2 observed listings of the brand, every one out of stock: Insights' ``unavailableListings``); ``exclude`` keeps those with a listing that is not. Applies to the same listings as ``availability``, and with it to the same listing: ``availability=out_of_stock&unavailableBrands=exclude`` is Insights' ``outOfStock``. */
+                unavailableBrands?: components["schemas"]["UnavailableBrands"] | null;
                 limit?: number;
                 cursor?: string | null;
             };
