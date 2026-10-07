@@ -8,7 +8,7 @@ from __future__ import annotations
 import gzip
 import json
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -216,8 +216,15 @@ def test_state_select_and_record() -> None:
     shop = type(FACES)(**{**vars(FACES), "use_lastmod": True})
     assert state.select(shop, DAILY, listed) == [EN[0], EN[1]]
     state.record("2026-10-07", listed, [EN[1]], [EN[0]])
-    assert state.urls[EN[1]] == Entry(read="2026-10-07", lastmod="b", scope=IN)
+    assert state.urls[EN[1]] == Entry(read="2026-10-07", lastmod="b", scope=IN, listed="2026-10-07")
     assert state.urls[EN[0]].scope == OUT
+    gone = f"{BASE}/en/p/gone.html"
+    state.urls[gone] = Entry(read="2026-09-01", scope=IN, listed="2026-09-01")
+    state.record("2026-10-08", {EN[1]: "b"}, [], [])
+    assert state.urls[EN[1]].listed == "2026-10-08"
+    assert state.urls[EN[0]].listed == "2026-10-07"  # not listed today: keeps its last day
+    assert state.known(FACES, "en", "2026-10-01") == {EN[1]}  # in scope and listed since
+    assert state.known(FACES, "en", "2026-09-01") == {EN[1], gone}
     assert State.from_bytes(state.to_bytes()) == state
 
 
@@ -267,6 +274,42 @@ def test_full_pass_with_no_gap_is_complete(tmp_path: Path) -> None:
     code, report = _main(tmp_path, _Client(_site()), MON)
     assert (code, report["outcome"], report["complete_catalogue"]) == (0, run.OK, True)
     assert _mapping(tmp_path, report)["complete_catalogue"] is True
+
+
+def test_full_pass_on_a_shrunken_sitemap_is_not_complete(tmp_path: Path) -> None:
+    code, report = _main(tmp_path, _Client(_site()), MON)
+    assert report["complete_catalogue"] is True
+    # a week on, the sitemap lists one of the three products and every page it lists reads ok
+    short = _urlset({EN[0]: "2026-10-06", AR_URL: None})
+    nxt = MON + timedelta(days=7)
+    code, report = _main(tmp_path, _Client(_site(**{CHILD: (200, short, "application/xml")})), nxt)
+    assert (code, report["outcome"]) == (0, run.OK)
+    assert (report["counts"]["known_in_scope"], report["counts"]["known_unlisted"]) == (3, 2)
+    assert report["complete_catalogue"] is False
+    assert "no longer lists 2 of 3" in report["reason"]
+    assert _mapping(tmp_path, report)["complete_catalogue"] is False
+
+
+def test_full_pass_baseline_forgets_urls_unlisted_for_two_weeks(tmp_path: Path) -> None:
+    _main(tmp_path, _Client(_site()), MON)
+    short = _urlset({EN[0]: "2026-10-06", AR_URL: None})
+    later = MON + timedelta(days=run.BASELINE_DAYS + 7)  # a Monday: full
+    code, report = _main(
+        tmp_path, _Client(_site(**{CHILD: (200, short, "application/xml")})), later
+    )
+    assert (code, report["counts"]["known_unlisted"], report["complete_catalogue"]) == (0, 0, True)
+
+
+@pytest.mark.parametrize(
+    "child", ["http://www.faces.ae/en/sitemap_1.xml", "https://evil.example/en/sitemap_1.xml"]
+)
+def test_sitemap_index_child_off_the_shop_host_is_refused(tmp_path: Path, child: str) -> None:
+    client = _Client(_site(**{INDEX: (200, _index(CHILD, child), "application/xml")}))
+    code, report = _main(tmp_path, client, WED)
+    assert (code, report["outcome"]) == (run.EXIT_FAILED, run.ERROR)
+    assert "off the shop's https host" in report["reason"]
+    assert child not in client.calls
+    assert not [u for u in client.calls if "/p/" in u]
 
 
 def test_block_stops_the_run_and_leaves_unread_pages_unadvanced(tmp_path: Path) -> None:

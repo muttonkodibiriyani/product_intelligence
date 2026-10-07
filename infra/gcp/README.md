@@ -116,7 +116,7 @@ digest; owner steps, cron and budget in `tools/uae_collect/README.md`. Faces fir
 
 | Date | Resource | Settings | Cost |
 |------|----------|----------|------|
-| pending owner run | SA `pi-uae-collect` (no key, no project role) | `roles/storage.objectUser` on `pi-capture-productintelligence-beeb3` only; runtime of the `pi-uae-collect-*` jobs | free |
+| pending owner run | SA `pi-uae-collect` (no key, no project role) | `roles/storage.objectUser` on `pi-capture-productintelligence-beeb3` under an IAM condition limited to `runs/`, `state/` and `feeds/`; runtime of the `pi-uae-collect-*` jobs | free |
 | pending owner run | job `pi-uae-collect-faces` | `SHOP=faces_ae`; 1 vCPU / 1 GiB; task timeout 7 h; no retries; label `pi-collect=uae` | ≈ $0.9/month (≈ $0.08 per full or AR pass, ~10 a month; daily passes ≈ $0.003) |
 | pending owner run | SA `pi-uae-scheduler` (no key, no project role) | `roles/run.invoker` on each `pi-uae-collect-*` job only | free |
 | pending owner run | Scheduler job `pi-uae-collect-faces` (me-central1) | `0 20 * * *` UTC; the job picks daily / full (Mon, Thu) / ar (1st); no retries; **created paused** | free (2nd of the 3 free jobs) |

@@ -17,7 +17,7 @@ shop, no per-run overrides.
 | Pass | Faces | Reads | Fed |
 |------|-------|-------|-----|
 | `daily` | every other day | product URLs no run has read yet (new products, and pages an earlier run did not reach) | yes, `complete_catalogue: false` |
-| `full`  | Monday, Thursday | every in-scope English product URL | yes; `complete_catalogue: true` only when every URL was read (`pi_capture.feed.completeness`) |
+| `full`  | Monday, Thursday | every in-scope English product URL | yes; `complete_catalogue: true` only when every URL was read (`pi_capture.feed.completeness`) and the sitemap still lists all but 5% of the in-scope URLs listed in the last 14 days |
 | `ar`    | the 1st | every in-scope Arabic product URL | no (the importer takes en-AE only); captured and read for later |
 
 Faces' sitemap `<lastmod>` is touched in bulk (940 of the 1,458 products captured on 10-02 carry
@@ -38,6 +38,13 @@ that cannot be read plans nothing. Then:
   shows as failed in Cloud Run
 
 `MAX_ITEMS` (default 5000) caps one run's plan; a longer selection is cut and the run is partial.
+
+A short sitemap is never a complete catalogue: a `full` pass whose sitemap no longer lists more
+than 5% (`MAX_SITEMAP_DROP`) of the in-scope URLs some sitemap listed in the last 14 days
+(`BASELINE_DAYS`) feeds `complete_catalogue: false` with the reason in `collect.json`, so a
+truncated or half-served sitemap cannot read as removals downstream. A product the shop really
+delisted drops out of that baseline 14 days after its last listing. A sitemap index child that is
+not `https` on the shop's own sitemap host is refused, and the run plans nothing.
 
 ## Outputs (capture bucket)
 

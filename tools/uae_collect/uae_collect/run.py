@@ -34,6 +34,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 
 from capture_read import run as capture_read
 from page_capture import robots
@@ -48,6 +49,11 @@ from uae_collect.state import State
 
 OK, CUTOFF, BLOCKED, ERROR, NOTHING = "ok", "cutoff", "blocked", "error", "nothing_to_read"
 EXIT_FAILED = 2
+#: A full pass is never a complete catalogue when its sitemap no longer lists more than this
+#: share of the in-scope URLs a sitemap listed in the last BASELINE_DAYS: a short or truncated
+#: sitemap would otherwise make every product it left out read as removed downstream.
+MAX_SITEMAP_DROP = 0.05
+BASELINE_DAYS = 14
 
 
 @dataclass(frozen=True)
@@ -118,6 +124,7 @@ def read_sitemaps(job: page_capture.Job, shop: Shop, report: Report) -> dict[str
     """Product URLs (-> lastmod) across the shop's sitemaps, through page_capture's own fetch:
     robots-checked, paced, block-detected, raw bodies stored under the run."""
     queue, seen, listed = list(shop.sitemaps), set[str](), dict[str, str | None]()
+    hosts = {urlsplit(s).hostname for s in shop.sitemaps}
     while queue:
         url = queue.pop(0)
         if url in seen:
@@ -141,7 +148,11 @@ def read_sitemaps(job: page_capture.Job, shop: Shop, report: Report) -> dict[str
             doc = parse(body.decode("utf-8", "replace"))
         except ValueError as exc:
             raise SitemapError(f"sitemap {url}: {exc}") from None
-        queue.extend(doc.children)
+        for child in doc.children:
+            parts = urlsplit(child)
+            if parts.scheme != "https" or parts.hostname not in hosts:
+                raise SitemapError(f"sitemap {url}: child {child} is off the shop's https host")
+            queue.append(child)
         for loc, lastmod in doc.urls.items():
             if shop.lang(loc) is not None:
                 listed.setdefault(loc, lastmod)
@@ -221,7 +232,16 @@ def collect(  # noqa: PLR0915 - one linear run, kept in one place on purpose
     selected = state.select(shop, cfg.run_pass, listed)
     planned = selected[: cfg.max_items]
     lang = "ar" if cfg.run_pass == AR else "en"
-    report.counts |= {"listed": len(listed), "selected": len(selected), "planned": len(planned)}
+    since = (cfg.started.date() - timedelta(days=BASELINE_DAYS)).isoformat()
+    known = state.known(shop, lang, since)
+    unlisted = len(known - listed.keys())
+    report.counts |= {
+        "listed": len(listed),
+        "selected": len(selected),
+        "planned": len(planned),
+        "known_in_scope": len(known),
+        "known_unlisted": unlisted,
+    }
     if not planned:
         job.finish()
         report.outcome = NOTHING
@@ -275,6 +295,13 @@ def collect(  # noqa: PLR0915 - one linear run, kept in one place on purpose
             check = pi_feed.completeness(selected, pages, captures, result, feed_shop)
             report.complete_catalogue = check.complete
             summary["catalogue"] = check.report()
+            if known and unlisted > MAX_SITEMAP_DROP * len(known):
+                report.complete_catalogue = False
+                report.reason = (
+                    f"sitemap no longer lists {unlisted} of {len(known)} known in-scope URLs"
+                    f" (> {MAX_SITEMAP_DROP:.0%}): not a complete catalogue"
+                )
+                summary["catalogue_refused"] = report.reason
         if result.rows:
             out = f"feeds/{shop.source}/{cfg.run_id}"
             mapping = pi_feed.mapping_for(feed_shop, complete=report.complete_catalogue)

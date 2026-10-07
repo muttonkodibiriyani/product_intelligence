@@ -2,7 +2,8 @@
 # One-time, idempotent setup of the recurring UAE beauty collection for one shop (task
 # 01a11653-ac7a; tools/uae_collect/README.md):
 #   - runtime service account pi-uae-collect, no key, no project role: roles/storage.objectUser on
-#     the capture bucket only (it writes runs/, state/ and feeds/ there)
+#     the capture bucket under an IAM condition limited to runs/, state/ and feeds/ (all it reads
+#     and writes; every list it makes is under one of them)
 #   - Cloud Run job pi-uae-collect-<shop> on IMAGE (built from main, pinned by digest): SHOP=<shop>,
 #     1 vCPU / 1 GiB, 7 h task timeout (the run's own page cutoff is 6 h), no retries, label
 #     pi-collect=uae for the budget filter
@@ -51,14 +52,24 @@ ensure_sa() {  # name, display name, description
 ula=$(gcloud storage buckets describe "gs://$BUCKET" --project="$PROJECT" \
   --format='value(uniform_bucket_level_access)')
 if [ "$ula" != "True" ]; then
-  echo "gs://$BUCKET needs uniform bucket-level access for the conditional feed-reader binding" >&2
+  echo "gs://$BUCKET needs uniform bucket-level access for the conditional runtime and feed-reader bindings" >&2
   exit 1
 fi
 
+condition=$(mktemp)
+trap 'rm -f "$condition"' EXIT
+
 ensure_sa pi-uae-collect "UAE collection runtime" \
-  "Runs pi-uae-collect-* jobs; objectUser on gs://$BUCKET only; no keys (uae_collect_setup.sh)"
+  "Runs pi-uae-collect-* jobs; objectUser on gs://$BUCKET runs/ state/ feeds/ only (IAM condition); no keys (uae_collect_setup.sh)"
+objects="projects/_/buckets/$BUCKET/objects"
+list='api.getAttribute(\"storage.googleapis.com/objectListPrefix\", \"\")'
+cat >"$condition" <<JSON
+{"title": "collect-prefixes", "description": "read, write and list runs/, state/ and feeds/ only",
+ "expression": "resource.name.startsWith(\"$objects/runs/\") || resource.name.startsWith(\"$objects/state/\") || resource.name.startsWith(\"$objects/feeds/\") || $list.startsWith(\"runs/\") || $list.startsWith(\"state/\") || $list.startsWith(\"feeds/\")"}
+JSON
 gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --project="$PROJECT" \
-  --member="serviceAccount:$RUNNER" --role=roles/storage.objectUser --quiet >/dev/null
+  --member="serviceAccount:$RUNNER" --role=roles/storage.objectUser \
+  --condition-from-file="$condition" --quiet >/dev/null
 
 gcloud run jobs deploy "$JOB" --project="$PROJECT" --region="$REGION" --image="$IMAGE" \
   --service-account="$RUNNER" --cpu=1 --memory=1Gi --tasks=1 --task-timeout=7h --max-retries=0 \
@@ -88,8 +99,6 @@ fi
 
 ensure_sa pi-feed-reader "UAE feed reader" \
   "Reads gs://$BUCKET/feeds/ only (IAM condition); no keys; tokens minted by the host"
-condition=$(mktemp)
-trap 'rm -f "$condition"' EXIT
 cat >"$condition" <<JSON
 {"title": "feeds-only", "description": "read and list feeds/ only",
  "expression": "resource.name.startsWith(\"projects/_/buckets/$BUCKET/objects/feeds/\") || api.getAttribute(\"storage.googleapis.com/objectListPrefix\", \"\").startsWith(\"feeds/\")"}
@@ -102,7 +111,7 @@ gcloud iam service-accounts add-iam-policy-binding "$READER" --project="$PROJECT
 
 state=$(gcloud scheduler jobs describe "$SCHEDULER_JOB" --project="$PROJECT" \
   --location="$REGION" --format='value(state)')
-echo "ok: $JOB on $IMAGE (SHOP=$SHOP) as $RUNNER (objectUser gs://$BUCKET);"
+echo "ok: $JOB on $IMAGE (SHOP=$SHOP) as $RUNNER (objectUser gs://$BUCKET runs/ state/ feeds/);"
 echo "    $INVOKER run.invoker on $JOB; $SCHEDULER_JOB '$SCHEDULE' UTC, $state;"
 echo "    $READER objectViewer on gs://$BUCKET/feeds/ only, tokens minted by $MINTER"
 echo "Go-live, on the coordinator's GO only:"

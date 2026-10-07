@@ -28,6 +28,8 @@ class Entry:
     lastmod: str | None = None
     #: ``in`` / ``out`` of the collection's scope once a reader has seen it (Ounass: beauty)
     scope: str | None = None
+    #: date of the last run whose sitemap listed the page (the baseline of a full pass's check)
+    listed: str | None = None
 
 
 @dataclass
@@ -77,10 +79,31 @@ class State:
         read_ok: Iterable[str],
         out_of_scope: Iterable[str],
     ) -> None:
-        """Advance the URLs this run read; mark the ones a reader put out of scope."""
+        """Advance the URLs this run read; mark the ones a reader put out of scope; note the
+        day on every known URL this run's sitemap listed."""
+        for url in listed.keys() & self.urls.keys():
+            self.urls[url] = replace(self.urls[url], listed=day)
         for url in read_ok:
-            self.urls[url] = Entry(read=day, lastmod=listed.get(url), scope=IN)
+            self.urls[url] = Entry(
+                read=day, lastmod=listed.get(url), scope=IN, listed=day if url in listed else None
+            )
         for url in out_of_scope:
             self.urls[url] = replace(
-                self.urls.get(url, Entry()), read=day, lastmod=listed.get(url), scope=OUT
+                self.urls.get(url, Entry()),
+                read=day,
+                lastmod=listed.get(url),
+                scope=OUT,
+                listed=day if url in listed else None,
             )
+
+    def known(self, shop: Shop, lang: str, since: str) -> set[str]:
+        """The in-scope ``lang`` product URLs a sitemap listed on or after ``since``: what a
+        full pass's sitemap is expected to list again."""
+        return {
+            url
+            for url, e in self.urls.items()
+            if e.scope == IN
+            and e.listed is not None
+            and e.listed >= since
+            and shop.lang(url) == lang
+        }
