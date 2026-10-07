@@ -211,6 +211,12 @@ class Loader:
         )
 
     def _content(self, lid: int, row: ImportRow) -> None:
+        self._content_row(lid, row)
+
+    def _content_row(self, lid: int, row: ImportRow, derived_at: datetime | None = None) -> bool:
+        """One listing_content row. ``derived_at`` (content-only mode) stamps the row with the
+        re-derivation instant, keeps the page's own time in ``labels.page_observed_at`` and adds
+        nothing when the listing already holds a row with the same content hash."""
         t = row.text
         labels: dict[str, Any] = {
             # pi_match export keys: brand/size/shade/gtin.
@@ -238,27 +244,35 @@ class Loader:
             "import_sha256": self.report.sha256,
             "import_row": row.row,
             "evidence_uri": self.uri,
+            "page_observed_at": None if derived_at is None else row.observed_at.isoformat(),
         }
         labels = {k: v for k, v in labels.items() if v is not None}
         description = t.get("description")
         arabic = self.m.locale.lower().startswith("ar")
         badges = list(row.lists.get("badges", ()))
         ingredients = t.get("ingredients")
-        self.c.execute(
+        digest = content_hash(labels, description, badges or None, ingredients)
+        cur = self.c.execute(
             "INSERT INTO listing_content (listing_id, observed_at, description, description_ar,"
             " ingredients, badges, labels, content_hash)"
-            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            " SELECT %s,%s,%s,%s,%s,%s,%s,%s WHERE NOT (%s AND EXISTS ("
+            "SELECT 1 FROM listing_content WHERE listing_id=%s AND content_hash=%s))"
+            " ON CONFLICT DO NOTHING",
             (
                 lid,
-                row.observed_at,
+                row.observed_at if derived_at is None else derived_at,
                 None if arabic else description,
                 description if arabic else None,
                 ingredients,
                 badges,
                 Jsonb(labels),
-                content_hash(labels, description, badges or None, ingredients),
+                digest,
+                derived_at is not None,
+                lid,
+                digest,
             ),
         )
+        return cur.rowcount == 1
 
     def _partition(self, at: datetime) -> None:
         month = at.astimezone(UTC).date().replace(day=1)
@@ -327,6 +341,46 @@ class Loader:
             "evidence_id": evidence,
             "replay": existing is not None,
             "observations_inserted": inserted,
+            "accepted": len(self.report.accepted),
+            "rejected": len(self.report.rejected),
+        }
+
+    def load_content(self) -> dict[str, Any]:
+        """Content-only, append-only: one new listing_content row per accepted row whose listing
+        is already loaded, for a feed re-derived from pages already imported (a new reader on
+        the same saved pages). It writes no crawl_run, evidence, listing or offer row and never
+        updates or deletes one; the prices and availability stay those of the first import.
+
+        The new row is stamped with the re-derivation instant, since the primary key
+        (listing_id, observed_at) holds one row per instant and the page's own time is already
+        taken by the first import's row; the page's time is kept in ``labels.page_observed_at``.
+        A replay of the same feed adds nothing (same content hash). A feed whose bytes were
+        already imported in full is refused: it carries nothing new.
+        """
+        now = datetime.now(UTC)
+        self.c.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('offline_import'), hashtext(%s))",
+            (self.report.sha256,),
+        )
+        if self._existing() is not None:
+            msg = "this feed was already imported in full; content-only needs a re-derived feed"
+            raise ValueError(msg)
+        inserted = unknown = 0
+        for row in self.report.accepted:
+            lid = self._one(
+                "SELECT id FROM source_listing WHERE source_id=%s AND source_listing_key=%s",
+                (self.source_id, row.listing_key),
+            )
+            if lid is None:
+                unknown += 1
+                continue
+            inserted += self._content_row(lid, row, derived_at=now)
+        self.c.commit()
+        return {
+            "content_only": True,
+            "derived_at": now.isoformat(),
+            "content_inserted": inserted,
+            "listings_not_loaded": unknown,
             "accepted": len(self.report.accepted),
             "rejected": len(self.report.rejected),
         }

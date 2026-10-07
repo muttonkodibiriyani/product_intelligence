@@ -406,3 +406,101 @@ def _sha_json(parts: object) -> str:
     return hashlib.sha256(
         json.dumps(parts, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
+
+
+def _attrs_feed(tmp_path: Path, name: str, items: list[dict[str, Any]]) -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps({"items": items}))
+    return path
+
+
+def test_content_only_appends_a_re_derived_feed_and_touches_nothing_else(
+    db: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    columns = ("listing_key", "url", "observed_at", "price_current", "style_id", "ingredients")
+    config = {
+        "source": {"name": "acme_rederive", "kind": "web"},
+        "country": "AE",
+        "locale": "en-AE",
+        "currency": "AED",
+        "time_zone": "Asia/Dubai",
+        "format": "json",
+        "json_items_path": "items",
+        "columns": {c: c for c in (*columns, "finish")},
+    }
+    mapping = ImportMapping.model_validate(config)
+    mapping_path = tmp_path / "rederive_mapping.json"
+    mapping_path.write_text(json.dumps(config))
+    monkeypatch.setenv(DATABASE_URL_ENV, db)
+    page_at = "2026-10-03T10:00:00+00:00"
+    base = [
+        {"listing_key": k, "url": f"https://acme-beauty.example/p/{k}", "observed_at": page_at,
+         "price_current": "120.00"}
+        for k in ("R-1", "R-2")
+    ]  # fmt: skip
+    v1 = _attrs_feed(tmp_path, "v1.json", base)
+    first = _load(db, mapping, v1, "gs://pi-imports-test/acme/v1.json")
+    tables = ("crawl_run", "evidence", "source_listing", "offer_observation")
+    counts = {t: _count(db, t) for t in tables}
+    original = _rows(
+        db,
+        "SELECT c.listing_id, c.observed_at, c.labels, c.content_hash FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id"
+        " WHERE l.source_listing_key LIKE 'R-%%' ORDER BY 1",
+    )
+    assert len(original) == 2
+
+    # The same pages read by a newer reader: a new feed (new bytes) with the new fields, and a
+    # row whose listing was never loaded.
+    attrs = {"style_id": "STYLE-R", "finish": "matte",
+             "ingredients": "Aqua, Glycerin, Parfum, Limonene, Linalool, Citral"}  # fmt: skip
+    v2 = _attrs_feed(
+        tmp_path,
+        "v2.json",
+        [r | attrs for r in base]
+        + [base[0] | {"listing_key": "R-3", "url": "https://acme-beauty.example/p/R-3"}],
+    )
+    report_path = tmp_path / "v2.report.json"
+    v2_uri = "gs://pi-imports-test/acme/v2.json"
+    argv = [str(v2), "--mapping", str(mapping_path), "--content-only", "--uri", v2_uri]
+    assert main([*argv, "--report", str(report_path)]) == 0
+    got = json.loads(report_path.read_text())["load"]
+    report = validate_file(v2, mapping)
+    assert (got["content_inserted"], got["listings_not_loaded"]) == (2, 1)
+
+    # No run, evidence, listing or offer row; the first import's content rows are untouched.
+    assert {t: _count(db, t) for t in tables} == counts
+    for lid, at, labels, digest in original:
+        assert _rows(
+            db,
+            "SELECT labels, content_hash FROM listing_content WHERE listing_id=%s"
+            " AND observed_at=%s",
+            (lid, at),
+        ) == [(labels, digest)]
+    [(observed_at, ingredients, labels)] = _rows(
+        db,
+        "SELECT c.observed_at, c.ingredients, c.labels FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id WHERE l.source_listing_key = 'R-1'"
+        " ORDER BY c.observed_at DESC LIMIT 1",
+    )
+    assert observed_at.isoformat() == got["derived_at"]
+    assert labels["page_observed_at"] == page_at
+    assert labels["master_id"] == "STYLE-R"
+    assert labels["finish"] == "matte"
+    assert labels["import_sha256"] == report.sha256
+    assert ingredients == attrs["ingredients"]
+
+    # A replay of the re-derived feed adds nothing.
+    content = _count(db, "listing_content")
+    with psycopg.connect(db) as conn:
+        again = Loader(conn, mapping, report, v2_uri).load_content()
+    assert again["content_inserted"] == 0
+    assert _count(db, "listing_content") == content
+
+    # The bytes of a full import carry nothing new: refused, from the API and the CLI.
+    with psycopg.connect(db) as conn, pytest.raises(ValueError, match="already imported"):
+        Loader(conn, mapping, validate_file(v1, mapping), "x").load_content()
+    capsys.readouterr()
+    assert main([str(v1), "--mapping", str(mapping_path), "--content-only"]) == 2
+    assert "already imported" in capsys.readouterr().err
+    assert first["replay"] is False
