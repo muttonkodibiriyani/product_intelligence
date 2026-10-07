@@ -68,7 +68,7 @@ export function GalleryDetails({
           imported: formatDate(detail.importedAt, locale),
         })}
       </p>
-      <Images key={row.sku} images={detail.images} />
+      <Images key={row.sku} images={detail.images} retailer={detail.retailer} />
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div>
           <dt className="text-ink-2">{t('type')}</dt>
@@ -105,17 +105,18 @@ export function GalleryDetails({
   );
 }
 
-function Images({ images }: { images: Schemas['GalleryImage'][] }) {
+function Images({ images, retailer }: { images: Schemas['GalleryImage'][]; retailer: string }) {
   const t = useTranslations('catalogue');
   const [selected, setSelected] = useState<string | null>(null);
   const active = images.find((i) => i.assetId === selected) ?? images[0];
   if (!active) return <p className="text-sm text-ink-2">{t('noImages')}</p>;
-  const url = imageSrc(active.url);
+  const url = imageSrc(active.url, retailer);
   return (
     <div className="space-y-3">
       <RowThumb
         url={url}
         label={t('noImages')}
+        retailer={retailer}
         px={420}
         cls="mx-auto block h-80 max-w-full rounded-card bg-white"
       />
@@ -132,6 +133,7 @@ function Images({ images }: { images: Schemas['GalleryImage'][] }) {
             <RowThumb
               url={image.url}
               label={t('noImages')}
+              retailer={retailer}
               px={72}
               cls="block size-18 rounded-ctl bg-white"
             />

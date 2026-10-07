@@ -130,15 +130,9 @@ IMAGE_HOSTS: dict[str, frozenset[str]] = {
     # Verified on a saved Bloomingdale's page (.../on/demandware.static/-/Sites-bloomingdales-
     # master-catalog/...).
     "bloomingdales_ae": frozenset({"prodheadless.atgwasl.com"}),
-    # ounass_ae: no entry while OUNASS_IMAGE_HOST is None (below).
+    # Verified on the 10-03 capture (2026-10-07): all 139,173 image URLs of its 32,810 rows.
+    "ounass_ae": frozenset({"ounass-ae.atgcdn.ae"}),
 }
-#: TODO(ounass image host): not yet verified from a saved page (2026-10-07), so it is never
-#: guessed. While this is None, ``ounass_ae`` has no ``IMAGE_HOSTS`` entry and every Ounass image
-#: is null. Set it to the verified host, and add it to the Hosting CSP img-src and the web's
-#: ``IMAGE_OWNERS``/``HOST_RETAILER``, in one reviewed change.
-OUNASS_IMAGE_HOST: str | None = None
-if OUNASS_IMAGE_HOST is not None:  # pragma: no cover - until the host is verified
-    IMAGE_HOSTS["ounass_ae"] = frozenset({OUNASS_IMAGE_HOST})
 #: The retailer's "no image" placeholder (``.../images/noimagemedium.png``) is not a product image.
 PLACEHOLDER_IMAGE = re.compile(r"/noimage[^/]*$", re.IGNORECASE)
 #: Published prices outside this band are listed in the run log for a manual check (never changed).

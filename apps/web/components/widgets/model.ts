@@ -174,18 +174,17 @@ export function ratingPoints(r: Summary['ratingPrice']) {
 /**
  * Product images are hotlinked, never copied, and only from each retailer's own image host, over
  * https (image decision B; media.alshaya.com only keeps the owner's ulta_ae view live; www.faces.ae serves
- * faces_ae's own pages; prodheadless.atgwasl.com serves bloomingdales_ae's). Each host is credited with
- * a link to its owner's public home page.
- *
- * TODO(ounass image host): Ounass (ounass_ae) has no image host yet: it is unverified, so it is not
- * guessed. Until it is listed here (and in infra/firebase.json img-src and pi-api's
- * PI_API_IMAGE_HOSTS), no Ounass image is shown; every Ounass card is a placeholder.
+ * faces_ae's own pages; prodheadless.atgwasl.com serves bloomingdales_ae's; ounass-ae.atgcdn.ae serves
+ * ounass_ae's, every image of its 10-03 capture). Each host is credited with a link to its owner's
+ * public home page. A host serves one retailer only: a CDN shared by two retailers needs host+path
+ * keys here, not a second entry.
  */
 export const IMAGE_OWNERS = {
   'img-product.sephora.me': { name: 'Sephora', home: 'https://www.sephora.me' },
   'media.alshaya.com': { name: 'Ulta Beauty', home: 'https://www.ulta.ae' },
   'www.faces.ae': { name: 'Faces', home: 'https://www.faces.ae' },
   'prodheadless.atgwasl.com': { name: "Bloomingdale's", home: 'https://bloomingdales.ae' },
+  'ounass-ae.atgcdn.ae': { name: 'Ounass', home: 'https://www.ounass.ae' },
 } as const;
 export type ImageHost = keyof typeof IMAGE_OWNERS;
 /** The retailer each host serves; a URL is shown only for its own retailer. */
@@ -194,6 +193,7 @@ const HOST_RETAILER: Record<ImageHost, string> = {
   'media.alshaya.com': 'ulta_ae',
   'www.faces.ae': 'faces_ae',
   'prodheadless.atgwasl.com': 'bloomingdales_ae',
+  'ounass-ae.atgcdn.ae': 'ounass_ae',
 };
 
 /** The image host of an allowed URL (https, a listed host, no credentials), else null. */

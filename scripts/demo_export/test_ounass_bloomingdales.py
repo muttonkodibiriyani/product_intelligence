@@ -32,7 +32,6 @@ from scripts.demo_export.test_history import NOW as LATER
 from scripts.demo_export.test_v2 import build
 from scripts.demo_export.v2 import (
     IMAGE_HOSTS,
-    OUNASS_IMAGE_HOST,
     RETAILERS,
     build_dataset_v2,
     to_v3,
@@ -46,8 +45,9 @@ BLM_IMAGE = (
     "https://prodheadless.atgwasl.com/on/demandware.static/-/Sites-bloomingdales-master-catalog"
     "/default/dw0a1b2c3d/images/a.jpg"
 )
-#: Any URL, on any host: Ounass has no verified image host yet, so none may be published.
-OUNASS_IMAGE = "https://www.ounass.ae/media/a.jpg"
+OUNASS_IMAGE = (
+    "https://ounass-ae.atgcdn.ae/small_light(dw=240,of=webp)/pub/media/catalog/product/2/1/a.jpg"
+)
 SHOPS = {"o": OUNASS, "b": BLOOMINGDALES}
 
 
@@ -156,14 +156,19 @@ def test_bloomingdales_images_only_from_its_own_host() -> None:
     assert doc([sephora])["products"][0]["image"] is None
 
 
-def test_ounass_has_no_image_host_so_no_image_is_published() -> None:
-    """TODO(ounass image host): the host is not verified, so it is never guessed."""
-    assert OUNASS_IMAGE_HOST is None
-    assert OUNASS not in IMAGE_HOSTS
-    for url in (OUNASS_IMAGE, BLM_IMAGE, "https://img-product.sephora.me/a.jpg"):
-        d = doc([replace(shop_row(OUNASS), image=url)])
+def test_ounass_images_only_from_its_own_host() -> None:
+    assert IMAGE_HOSTS[OUNASS] == frozenset({"ounass-ae.atgcdn.ae"})
+    assert doc([shop_row(OUNASS)])["products"][0]["image"] == OUNASS_IMAGE
+    for foreign in (
+        "https://www.ounass.ae/media/a.jpg",
+        BLM_IMAGE,
+        "https://img-product.sephora.me/a.jpg",
+    ):
+        d = doc([replace(shop_row(OUNASS), image=foreign)])
         assert d["products"][0]["image"] is None
-        assert d["meta"]["fields"]["image"] == "not_collected"
+    # ...and its host is not accepted on another shop's offer
+    blm = replace(shop_row(BLOOMINGDALES), image=OUNASS_IMAGE)
+    assert doc([blm])["products"][0]["image"] is None
 
 
 def test_five_retailers_keep_every_other_product_unchanged() -> None:

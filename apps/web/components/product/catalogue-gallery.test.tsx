@@ -113,4 +113,16 @@ describe('SKU galleries', () => {
     expect(screen.getByText('No captured image available')).toBeTruthy();
     expect(container.querySelector('img')).toBeNull();
   });
+
+  it("shows only the catalogue retailer's own image host", () => {
+    const foreign = { ...image('c'), url: 'https://ounass-ae.atgcdn.ae/c.jpg' };
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
+        <GalleryDetails detail={{ ...detail, images: [foreign, image('a')] }} onSelect={vi.fn()} />
+      </NextIntlClientProvider>,
+    );
+    expect(container.querySelector('img[src*="atgcdn"]')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open image' })).toBeNull();
+    expect(container.querySelector('img[src="https://media.alshaya.com/a.jpg"]')).toBeTruthy();
+  });
 });

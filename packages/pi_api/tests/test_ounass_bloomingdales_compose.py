@@ -4,8 +4,7 @@ The value Infra sets is the Faces value plus two ``source=path`` entries, each p
 assigned to its own retailer. The composed view is one AE/beauty view of five retailers. The
 golden half checks the Ulta/Sephora answers of the composed view equal the whole-file view, so
 the only change is the two new shops themselves. Both are always partial: never a launch, their
-stock is the page's own statement, and images only from a host pi-api lists for them (none yet
-for Ounass).
+stock is the page's own statement, and images only from the host pi-api lists for each.
 """
 
 from __future__ import annotations
@@ -46,13 +45,15 @@ VALUE = (
 PATHS = {FACES: FACES_PATH, OUNASS: OUNASS_PATH, BLOOMINGDALES: BLM_PATH}
 BLM_HOST = "prodheadless.atgwasl.com"
 BLM_IMAGE = f"https://{BLM_HOST}/on/demandware.static/-/Sites-bloomingdales-master-catalog/a.jpg"
-OUNASS_IMAGE = "https://www.ounass.ae/a.jpg"
-#: pi-api's image hosts after the deploy: Bloomingdale's added, Ounass absent (host unverified).
+OUNASS_HOST = "ounass-ae.atgcdn.ae"
+OUNASS_IMAGE = f"https://{OUNASS_HOST}/pub/media/catalog/product/a.jpg"
+#: pi-api's image hosts after the deploy: Bloomingdale's and Ounass added.
 IMAGE_HOSTS = {
     SEPHORA: frozenset({"img-product.sephora.me"}),
     ULTA: frozenset({"media.alshaya.com"}),
     FACES: frozenset({"www.faces.ae"}),
     BLOOMINGDALES: frozenset({BLM_HOST}),
+    OUNASS: frozenset({OUNASS_HOST}),
 }
 # Market-wide questions: equal once the new shops' (and Faces') own rows are taken out.
 WIDE = ("/api/v1/promotions", "/api/v1/launches", "/api/v1/coverage", "/api/v1/meta")
@@ -192,7 +193,7 @@ def test_an_out_of_stock_page_is_served_out_of_stock(tmp_path: Path, shop: str) 
     assert offer["availability"] == "out_of_stock"
 
 
-def test_bloomingdales_image_served_from_its_host_ounass_image_never(tmp_path: Path) -> None:
+def test_each_new_shop_image_served_from_its_own_host(tmp_path: Path) -> None:
     _, new = clients(tmp_path, install(tmp_path, files(beauty_dates())))
     cards = {
         i["id"]: i["image"]
@@ -202,6 +203,6 @@ def test_bloomingdales_image_served_from_its_host_ounass_image_never(tmp_path: P
     assert cards == {
         f"{BLOOMINGDALES}-1": BLM_IMAGE,
         f"{BLOOMINGDALES}-2": None,
-        f"{OUNASS}-1": None,  # TODO(ounass image host): no host listed, so never served
+        f"{OUNASS}-1": OUNASS_IMAGE,
         f"{OUNASS}-2": None,
     }

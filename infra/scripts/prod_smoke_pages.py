@@ -52,12 +52,12 @@ APP_PAGES = [
     for loc in ("en", "ar")
     for view in ("", "compare/", "promotions/", "launches/")
 ]
-#: ``None``: no image host is verified yet (Ounass, 2026-10-07): P3 then expects no thumbnail.
+#: ``None`` would mean no image host is verified yet for a retailer: P3 then expects no thumbnail.
 IMAGE_HOSTS: dict[str, str | None] = {
     "sephora_me": "img-product.sephora.me",
     "ulta_ae": "media.alshaya.com",
     "faces_ae": "www.faces.ae",
-    "ounass_ae": None,
+    "ounass_ae": "ounass-ae.atgcdn.ae",
     "bloomingdales_ae": "prodheadless.atgwasl.com",
 }
 VIEWPORTS = {"desktop": {"width": 1440, "height": 900}, "mobile": {"width": 390, "height": 844}}
