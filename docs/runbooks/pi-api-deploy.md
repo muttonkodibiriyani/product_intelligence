@@ -272,7 +272,15 @@ as it is.
     dataset's refresh peak may use ~1,990 MiB. At 16.3 MiB per compact MB that is ~122 MB,
     rounded down to 120 MB (it was 90 MB at 21.0 before packed content). `test_content_memory.py`
     pins the content-heavy end of the range (text is cheaper per byte than offer rows). The
-    constant follows the memory size: at 2Gi it would be ~59 MB, below today's Ounass.
+    constant follows the memory size (the owner picks it; same reserve, exports and margin):
+
+    | Memory | Left for one refresh peak | Largest file (rule 1) | Today's Ounass, 72.7 MB |
+    |---|---|---|---|
+    | **3Gi** | ~1,990 MiB | **120,000,000** bytes | fits |
+    | 2Gi | ~965 MiB | ~59,000,000 bytes | **does not fit** under this rule |
+
+    At 2Gi today's set still runs with ~265 MiB spare at a refresh peak, but that is a measured
+    fit for these files, not the general rule, and leaves no room for growth.
   - **The gate is per file; the 3Gi size is for all served files together.** The exporter checks
     one file at a time, so two files that each pass can still exceed 3Gi. The 600 MiB reserve
     holds the files other than the largest at ~20 MiB per compact MB (the beauty file's measured
