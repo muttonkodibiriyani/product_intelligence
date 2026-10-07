@@ -33,6 +33,18 @@ const pctText = (v: string) => `\u2066${v.startsWith('-') || Number(v) === 0 ? '
 
 type Pair = { base: string; other: string };
 
+export type PairCard = 'size' | 'policy' | 'space';
+type Half = 6 | 12;
+
+/** The pair's cards that have something to show, in page order. */
+export function pairCards(sizes: boolean, brands: boolean, space: boolean): PairCard[] {
+  return (['size', 'policy', 'space'] as const).filter((_, i) => [sizes, brands, space][i]);
+}
+
+/** Two to a row; an odd last card takes the whole row instead of leaving half of it empty. */
+export const cardSpan = (shown: readonly PairCard[], c: PairCard): Half =>
+  shown.length % 2 === 1 && shown.at(-1) === c ? 12 : 6;
+
 /**
  * Cross-shop prices for one pair, shown only once the pair has reviewed exact matches: the price
  * position, the gap by size, brand price policy and the assortment white space. Numbers come from
@@ -60,6 +72,8 @@ export function PairPrices({
     enabled: !!api,
   });
   const hasSpace = gaps.data?.status === 'ok' && (gaps.data.data?.total ?? 0) > 0;
+  const shown = pairCards(pricing.sizes.length > 0, pricing.brands.length > 0, hasSpace);
+  const span = (c: PairCard) => cardSpan(shown, c);
   return (
     <div className="space-y-3">
       <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -71,11 +85,13 @@ export function PairPrices({
       </h3>
       <Positioning env={summary.data} pricing={pricing} base={base} other={other} />
       <CardGrid>
-        {pricing.sizes.length > 0 && <SizeCard pricing={pricing} base={base} other={other} />}
-        {pricing.brands.length > 0 && (
-          <PolicyCard pricing={pricing} share={share} base={base} other={other} />
+        {shown.includes('size') && (
+          <SizeCard pricing={pricing} base={base} other={other} span={span('size')} />
         )}
-        {hasSpace && <WhiteSpaceCard env={gaps.data} />}
+        {shown.includes('policy') && (
+          <PolicyCard pricing={pricing} share={share} base={base} other={other} span={span('policy')} />
+        )}
+        {shown.includes('space') && <WhiteSpaceCard env={gaps.data} span={span('space')} />}
       </CardGrid>
     </div>
   );
@@ -193,12 +209,12 @@ function Positioning({
 }
 
 /** 1. Gap by size: a diverging bar per size, the other shop's undercut to the left of zero. */
-function SizeCard({ pricing, base, other }: Pair & { pricing: Insights['pricing'] }) {
+function SizeCard({ pricing, base, other, span }: Pair & { pricing: Insights['pricing']; span: Half }) {
   const t = useTranslations('insights.size');
   const locale = useLocale();
   const name = useRetailerName();
   if (pricing.status !== 'ok' || pricing.sizes.length === 0)
-    return <ReasonCard title={t('title')} reason={pricing.reason ?? 'cohort_too_small'} span={6} />;
+    return <ReasonCard title={t('title')} reason={pricing.reason ?? 'cohort_too_small'} span={span} />;
   const sizes = sizesInOrder(pricing.sizes);
   const max = gapScale(sizes.map((s) => s.medianGapPct));
   const deep = deepestUndercut(sizes);
@@ -207,7 +223,7 @@ function SizeCard({ pricing, base, other }: Pair & { pricing: Insights['pricing'
       level={4}
       id="finding-size"
       title={t('title')}
-      span={6}
+      span={span}
       question={
         deep
           ? t('headline', {
@@ -267,12 +283,18 @@ function SizeCard({ pricing, base, other }: Pair & { pricing: Insights['pricing'
 }
 
 /** 2. Brand price policy: brands in three columns by where their counted pairs fall. */
-function PolicyCard({ pricing, share, base, other }: Pair & { pricing: Insights['pricing']; share: string }) {
+function PolicyCard({
+  pricing,
+  share,
+  base,
+  other,
+  span,
+}: Pair & { pricing: Insights['pricing']; share: string; span: Half }) {
   const t = useTranslations('insights.policy');
   const locale = useLocale();
   const name = useRetailerName();
   if (pricing.status !== 'ok' || pricing.brands.length === 0)
-    return <ReasonCard title={t('title')} reason={pricing.reason ?? 'cohort_too_small'} span={6} />;
+    return <ReasonCard title={t('title')} reason={pricing.reason ?? 'cohort_too_small'} span={span} />;
   const cols = policyColumns(pricing.brands);
   const head = {
     other_cheaper: t('colCheaper', { shop: name(other) }),
@@ -285,7 +307,7 @@ function PolicyCard({ pricing, share, base, other }: Pair & { pricing: Insights[
       level={4}
       id="finding-policy"
       title={t('title')}
-      span={6}
+      span={span}
       question={t('headline', {
         k: cols.other_cheaper.length,
         shop: name(other),
@@ -336,14 +358,14 @@ function PolicyCard({ pricing, share, base, other }: Pair & { pricing: Insights[
 }
 
 /** 3. White space: what the other shop lists that the base shop has no match for, by brand. */
-function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | undefined }) {
+function WhiteSpaceCard({ env, span }: { env: Envelope<Schemas['AssortmentGaps']> | undefined; span: Half }) {
   const t = useTranslations('insights.space');
   const locale = useLocale();
   const name = useRetailerName();
-  if (!env) return <Card level={4} title={t('title')} span={6} state="loading" />;
+  if (!env) return <Card level={4} title={t('title')} span={span} state="loading" />;
   const d = env.data;
   if (!d || env.status !== 'ok' || d.total === 0)
-    return <ReasonCard title={t('title')} reason={env.reason ?? 'cohort_too_small'} span={6} />;
+    return <ReasonCard title={t('title')} reason={env.reason ?? 'cohort_too_small'} span={span} />;
   // "Missing" only when every row is a confirmed absence; any unreviewed or omitted row makes
   // the card use the honest "no reviewed match" wording.
   const missing =
@@ -355,7 +377,7 @@ function WhiteSpaceCard({ env }: { env: Envelope<Schemas['AssortmentGaps']> | un
       level={4}
       id="finding-space"
       title={t('title')}
-      span={6}
+      span={span}
       question={t(missing ? 'headlineMissing' : 'headlineUnmatched', {
         n: d.total,
         count: formatCount(d.total, locale),

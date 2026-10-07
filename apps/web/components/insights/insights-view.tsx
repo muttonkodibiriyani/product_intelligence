@@ -420,7 +420,7 @@ function StockCard({
                 {brands.map((b) => (
                   <li
                     key={b.brand}
-                    className="grid grid-cols-[1fr_auto] gap-x-2.5 gap-y-1 border-t border-line py-1.5"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2.5 gap-y-1 border-t border-line py-1.5"
                   >
                     <Link
                       href={exploreHref(locale, {
@@ -428,11 +428,11 @@ function StockCard({
                         brand: [b.brand],
                         availability: ['out_of_stock'],
                       })}
-                      className={`truncate text-sm ${LINK}`}
+                      className={`text-sm break-words ${LINK}`}
                     >
                       {b.brand}
                     </Link>
-                    <span className="text-[13px] text-ink-2 tabular-nums">
+                    <span className="text-[13px] whitespace-nowrap text-ink-2 tabular-nums">
                       <Num>
                         {t('stock.row', {
                           out: formatCount(b.outOfStock, locale),
