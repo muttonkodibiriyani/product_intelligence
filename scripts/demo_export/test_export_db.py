@@ -391,6 +391,19 @@ def test_the_main_image_comes_from_the_latest_content(conn: Conn) -> None:
     assert _row(world, "B")["image"] is None  # no content row at all
 
 
+def test_the_concentration_comes_from_the_latest_content_label(conn: Conn) -> None:
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    for key in "ABC":
+        world.observe(run, key, 1, "80")
+    world.content("A", {"concentration": "edt"}, hour=1)
+    world.content("A", {"concentration": "edp"}, hour=2)
+    world.content("B", {"concentration": ""})
+    assert _row(world, "A")["concentration"] == "edp"
+    assert _row(world, "B")["concentration"] is None  # blank is absent
+    assert _row(world, "C")["concentration"] is None  # no content row at all
+
+
 def test_ulta_rows_in_the_db_stay_out_unless_named_in_sources(conn: Conn) -> None:
     world = World(conn)
     world.observe(world.run("succeeded", 1), "s1", 1, "10")

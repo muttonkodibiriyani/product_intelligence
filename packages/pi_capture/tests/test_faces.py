@@ -6,7 +6,7 @@ from collections.abc import Callable
 from decimal import Decimal
 
 from pi_capture.faces import LOOKED_FOR, FacesFacts, faces_facts, readings_from_faces
-from pi_capture.feed import SHOPS, build_feed
+from pi_capture.feed import SHOPS, Row, build_feed
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
 from pi_capture.model import ProductCapture, Reading
 from pi_capture.registry import ATTRIBUTES
@@ -314,7 +314,7 @@ def test_size_edge_cases() -> None:
 def test_faces_pages_feed_their_own_availability_and_a_contradiction_is_unknown(
     make_capture: CaptureFactory,
 ) -> None:
-    def row(html: str, locale: str, jsonld: str) -> dict[str, str]:
+    def row(html: str, locale: str, jsonld: str) -> Row:
         html = html.replace(
             "</head>", f'<script type="application/ld+json">{jsonld}</script></head>'
         )

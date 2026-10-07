@@ -12,6 +12,10 @@ price is ``not_published``, never 0). Nothing is guessed:
   the shop's settings trust that statement. Every statement on the page must agree (JSON-LD
   ``availability`` and a dataLayer ``item_in_stock`` flag alike); otherwise, or with none, the
   column is absent (``not_observed``). Absence is never read as a stock-out.
+- Page content goes in as the page states it: the description, gender (the page's department),
+  concentration, badges, the gift-with-purchase label as a promotion, and the whole gallery
+  (``image_urls``, page order; ``image_url`` stays its first image). ``badges``, ``promotions``
+  and ``image_urls`` are lists.
 """
 
 from __future__ import annotations
@@ -53,7 +57,26 @@ COLUMNS: tuple[str, ...] = (
     "availability",
     "image_url",
     "observed_at",
+    "description",
+    "gender",
+    "concentration",
+    "badges",
+    "promotions",
+    "image_urls",
 )
+
+#: Feed column -> the reading that fills it, as text.
+_TEXT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("gtin", "gtin"),
+    ("name", "title"),
+    ("brand", "brand"),
+    ("shade", "shade_name"),
+    ("description", "description"),
+    ("gender", "department"),
+    ("concentration", "concentration"),
+)
+
+Row = dict[str, str | list[str]]
 
 #: schema.org availability (the last path segment) to the importer's states. A value outside this
 #: map is never written: the importer would reject the row, and guessing a state is worse.
@@ -125,7 +148,7 @@ SHOPS: dict[str, Shop] = {
 
 @dataclass
 class FeedResult:
-    rows: list[dict[str, str]] = field(default_factory=list)
+    rows: list[Row] = field(default_factory=list)
     excluded: list[dict[str, str]] = field(default_factory=list)
     #: per column: how many rows carry a value
     filled: Counter[str] = field(default_factory=Counter)
@@ -234,9 +257,19 @@ def _price_columns(
     return out
 
 
+def _texts(value: JsonValue) -> list[str]:
+    """A list reading's text items in page order, repeats left out."""
+    out: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        text = _text(item)
+        if text is not None and text not in out:
+            out.append(text)
+    return out
+
+
 def _row(
     capture: ProductCapture, shop: Shop, unmapped: Counter[str], dropped: list[str]
-) -> dict[str, str] | str:
+) -> Row | str:
     by_key = capture.by_key()
     sku = _observed(by_key, "retailer_sku")
     key = _text(sku.value) if sku else None
@@ -245,15 +278,10 @@ def _row(
     prices = _price_columns(by_key, shop.currency, dropped)
     if isinstance(prices, str):
         return prices
-    row: dict[str, str] = {"listing_key": key, "sku": key}
+    row: Row = {"listing_key": key, "sku": key}
     canonical = _observed(by_key, "canonical_url")
     row["url"] = (_text(canonical.value) if canonical else None) or capture.url
-    for column, reading_key in (
-        ("gtin", "gtin"),
-        ("name", "title"),
-        ("brand", "brand"),
-        ("shade", "shade_name"),
-    ):
+    for column, reading_key in _TEXT_COLUMNS:
         reading = _observed(by_key, reading_key)
         if reading is not None and (value := _text(reading.value)) is not None:
             row[column] = value
@@ -266,13 +294,17 @@ def _row(
     if size is not None and (label := _text(size.value)) is not None:
         row["size"] = label
     images = _observed(by_key, "image_urls")
-    first = (
-        _text(images.value[0])
-        if images is not None and isinstance(images.value, list) and images.value
-        else None
-    )
-    if first is not None:
-        row["image_url"] = first
+    gallery = _texts(images.value) if images is not None else []
+    if gallery:
+        row["image_url"] = gallery[0]
+        row["image_urls"] = gallery
+    badges = _observed(by_key, "badges")
+    if badges is not None and (flags := _texts(badges.value)):
+        row["badges"] = flags
+    # the page's gift-with-purchase label (Faces: "Free Gifts"), a promotion, not a price
+    gift = _observed(by_key, "gift_with_purchase")
+    if gift is not None and (label := _text(gift.value)) is not None:
+        row["promotions"] = [label]
     if shop.markup_availability and (state := _availability(by_key, unmapped)) is not None:
         row["availability"] = state
     row |= prices
@@ -298,10 +330,11 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
         if isinstance(row, str):
             result.excluded.append({"url": capture.url, "reason": row})
             continue
-        if row["listing_key"] in seen:
+        key = str(row["listing_key"])
+        if key in seen:
             result.excluded.append({"url": capture.url, "reason": "duplicate retailer_sku"})
             continue
-        seen.add(row["listing_key"])
+        seen.add(key)
         result.regular_price_dropped.update(dropped)
         result.rows.append(row)
         result.filled.update(row.keys())

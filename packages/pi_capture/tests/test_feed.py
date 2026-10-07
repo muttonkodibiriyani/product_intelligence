@@ -320,3 +320,51 @@ def test_a_numeric_key_is_written_as_text_and_an_image_list_of_blanks_is_skipped
     (row,) = build_feed([capture], SHOP).rows
     assert row["listing_key"] == "712845"
     assert "image_url" not in row
+
+
+def _content_page(make_capture: CaptureFactory) -> ProductCapture:
+    return page(
+        make_capture,
+        r("price_minor", 12000, currency="AED"),
+        r("description", "  A warm amber eau de parfum.  "),
+        r("department", "women"),
+        r("concentration", "edp"),
+        r("badges", ["new", " ", "onlineexclusive", "new"]),
+        r("gift_with_purchase", "Free Gifts"),
+        r("image_urls", [" ", "https://img.example/1.jpg", "https://img.example/2.jpg"]),
+    )
+
+
+def test_page_content_columns_come_from_observed_readings(make_capture: CaptureFactory) -> None:
+    result = build_feed([_content_page(make_capture)], SHOP)
+    (row,) = result.rows
+    assert row["description"] == "A warm amber eau de parfum."
+    assert (row["gender"], row["concentration"]) == ("women", "edp")
+    assert row["badges"] == ["new", "onlineexclusive"]
+    assert row["promotions"] == ["Free Gifts"]
+    assert row["image_urls"] == ["https://img.example/1.jpg", "https://img.example/2.jpg"]
+    assert row["image_url"] == "https://img.example/1.jpg"
+    filled = result.report()["filled"]
+    assert (filled["description"], filled["badges"], filled["image_urls"]) == (1, 1, 1)
+
+
+def test_page_content_is_left_out_unless_observed(make_capture: CaptureFactory) -> None:
+    capture = page(
+        make_capture,
+        r("description", state="not_shown"),
+        r("department", state="parse_failed"),
+        r("badges", []),
+        r("image_urls", state="not_shown"),
+    )
+    (row,) = build_feed([capture], SHOP).rows
+    for column in ("description", "gender", "concentration", "badges", "promotions", "image_urls"):
+        assert column not in row
+    assert "image_url" not in row
+
+
+def test_page_content_validates_in_the_importer(
+    tmp_path: Path, make_capture: CaptureFactory
+) -> None:
+    report = _validate(tmp_path, [_content_page(make_capture)])
+    assert (report["rows"], report["accepted"], report["rejected"]) == (1, 1, [])
+    assert [w for w in report["warnings"] if w["listing_key"] is not None] == []

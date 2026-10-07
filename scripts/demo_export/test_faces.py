@@ -210,3 +210,30 @@ def test_faces_history_has_no_complete_day_so_no_launch() -> None:
     found = launches(ds, (), ProductFilter())
     assert found.data.items == ()
     assert found.reason in {Reason.RETAILER_PARTIAL, Reason.CAPABILITY_OFF, None}
+
+
+def test_one_concentration_across_a_products_offers_is_an_attribute() -> None:
+    d = doc([replace(faces(), concentration=" EDP ")], slots=("f",))
+    assert d["products"][0]["attributes"]["concentration"] == "edp"
+    load_any(json.dumps(d))  # beauty@1 declares it
+
+
+def test_conflicting_or_absent_concentrations_publish_none() -> None:
+    sephora = replace(row(family=10, variant=100), concentration="edt")
+    pair = doc([sephora, replace(faces(), concentration="edp")], [match(300, 100, "0.9")])
+    assert len(pair["products"]) == 1
+    assert "concentration" not in pair["products"][0]["attributes"]
+    assert "concentration" not in doc([faces()], slots=("f",))["products"][0]["attributes"]
+    other = doc([replace(faces(), concentration="Eau Fraiche")], slots=("f",))
+    assert "concentration" not in other["products"][0]["attributes"]  # not a pi_core value
+
+
+def test_v3_content_carries_the_faces_description_gallery_and_gtin() -> None:
+    gallery = (IMAGE, "https://www.faces.ae/media/catalog/product/b.jpg")
+    rows = [replace(faces(), description="A warm amber.", images=gallery, gtin="03145891074802")]
+    v2 = build_dataset_v2(rows, [], generated_at=NOW, ulta=BLOCKED, ulta_note=NOTE, slots=("f",))
+    (offer,) = to_v3(v2, rows, []).products[0].offers.values()
+    assert offer.content is not None
+    assert offer.content.description == "A warm amber."
+    assert [str(u) for u in offer.content.images] == list(gallery)
+    assert [v.gtin for v in offer.content.variants] == ["03145891074802"]
