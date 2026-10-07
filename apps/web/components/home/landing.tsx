@@ -83,8 +83,8 @@ function Overview({
 
   const matched = cmp.kind === 'ready' && cmp.data.summary !== null && cmp.data.summary.n > 0;
   // The category card waits for both reads; without a row to show it is not drawn and the basket
-  // takes the whole row.
-  const groups = cmp.kind === 'ready' ? cmp.data.groups : null;
+  // takes the whole row. With no matched product there is no matched column either.
+  const groups = matched ? cmp.data.groups : null;
   const catState = cmp.kind === 'loading' ? ({ kind: 'loading' } as const) : cat;
   const categories = hasCategoryRows(catState, groups);
   return (
