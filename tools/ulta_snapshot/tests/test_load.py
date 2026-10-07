@@ -123,10 +123,12 @@ def test_load_is_idempotent_and_never_invents_stock_or_prices(db: str, tmp_path:
         loader = Loader(conn, snap, "gs://test/ulta")
         assert loader.load() == {"pdp": 26}
         loader.finish()
+        content = conn.execute("SELECT count(*) FROM listing_content").fetchone()
         # Replay: a new loader over the same snapshot adds nothing.
         (tmp_path / f".loaded-{snap.name}.json").unlink()
         Loader(conn, snap, "gs://test/ulta").load()
         q = conn.execute
+        assert q("SELECT count(*) FROM listing_content").fetchone() == content
         assert q("SELECT count(*) FROM offer_observation").fetchone() == (26,)
         assert q("SELECT count(*) FROM source_listing").fetchone() == (19,)
         # Only the selected variant of each page has a price; the rest are NULL + unknown.

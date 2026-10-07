@@ -404,7 +404,12 @@ class Loader:
         en = p.locale == "en"
         self.c.execute(
             "INSERT INTO listing_content (listing_id, observed_at, description, description_ar,"
-            " badges, labels, content_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            " badges, labels, content_hash) SELECT %s,%s,%s,%s,%s,%s,%s"
+            # one content per page time, the first written: an EN and an AR page read at one
+            # time keep the first, on replay too
+            " WHERE NOT EXISTS (SELECT 1 FROM listing_content"
+            " WHERE listing_id=%s AND observed_at=%s)"
+            " ON CONFLICT DO NOTHING",
             (
                 lid,
                 at,
@@ -413,6 +418,8 @@ class Loader:
                 list(v.labels),
                 Jsonb(labels),
                 _sha(content),
+                lid,
+                at,
             ),
         )
 

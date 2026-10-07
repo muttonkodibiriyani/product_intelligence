@@ -443,7 +443,7 @@ LEFT JOIN LATERAL (
   SELECT content.labels, content.description, content.ingredients
   FROM listing_content content
   WHERE content.listing_id = sl.id
-  ORDER BY content.observed_at DESC
+  ORDER BY content.observed_at DESC, content.recorded_at DESC
   LIMIT 1
 ) lc ON true
 WHERE s.name = ANY(%(sources)s)
@@ -470,7 +470,7 @@ WHERE s.name = ANY(%(sources)s)
           SELECT child_content.labels ->> 'aggregate_parent' = 'true'
           FROM listing_content child_content
           WHERE child_content.listing_id = child_listing.id
-          ORDER BY child_content.observed_at DESC
+          ORDER BY child_content.observed_at DESC, child_content.recorded_at DESC
           LIMIT 1
         ),
         false
