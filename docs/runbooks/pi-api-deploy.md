@@ -112,11 +112,13 @@ Deploy by digest, not by tag.
 
 The env vars come from the live service, not from this doc: the served files and retailers move
 (per-source files, the matched file, a new retailer's hosts, the match file), and `--set-env-vars`
-replaces every variable, deleting any it does not list. The deploy below sets exactly seven:
+replaces every variable, deleting any it does not list. The deploy below sets exactly eight:
 `PI_API_FIREBASE_PROJECT`, `PI_API_BUCKET`, `PI_API_DATASETS`, `PI_API_EVIDENCE_HOSTS`,
-`PI_API_IMAGE_HOSTS` (required) and `PI_API_CATALOGUES`, `PI_API_MATCHES` (optional; an empty value
-is left out). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`, `IMAGE_HOSTS`, `CATALOGUES` and
-`MATCHES` to the values you mean to serve (the §2 paths and the hosts below on a first deploy),
+`PI_API_IMAGE_HOSTS` (required) and `PI_API_CATALOGUES`, `PI_API_MATCHES`, `PI_API_ADMITTED`
+(optional; an empty value is left out). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`,
+`IMAGE_HOSTS`, `CATALOGUES` and `MATCHES` to the values you mean to serve, and `ADMITTED` to the
+`PI_API_ADMITTED=` value `infra/scripts/pi_api_admission.py check` prints for that `DATASETS` (§6;
+empty while no served file is over the gate) (the §2 paths and the hosts below on a first deploy),
 then run (bash):
 
 ```sh
@@ -128,7 +130,7 @@ if sys.argv[1] == "--names": print("\n".join(e["name"] for e in env))
 else: print(next((e.get("value", "") for e in env if e["name"] == sys.argv[1]), ""))' \
   "$1" 2>/dev/null; }
 FIREBASE_PROJECT=$PROJECT
-REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS" OPTIONAL="CATALOGUES MATCHES"
+REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS" OPTIONAL="CATALOGUES MATCHES ADMITTED"
 ENV_OK=1 SET_ENV= KNOWN=" "
 test "$FIRST_DEPLOY" = 1 && test -n "$SVC_JSON" \
   && { echo "STOP: FIRST_DEPLOY=1 but pi-api already exists"; ENV_OK=0; }
@@ -151,10 +153,10 @@ test "$ENV_OK" = 1 && echo "ENV OK" || echo "ENV STOP"
 
 On any STOP, do not deploy. Either take the live value (`DATASETS=$(live_env PI_API_DATASETS)`,
 and the same for the others) or treat the difference as a config change with its own approval and
-its own before/after diff. A live variable outside the seven (printed by name only) means this
+its own before/after diff. A live variable outside the eight (printed by name only) means this
 command would delete it: STOP and extend this list in a reviewed change first. Only a first
 deploy (no service yet) sets `FIRST_DEPLOY=1`, and the guard STOPs if the service exists; a failed
-describe otherwise STOPs. The STOP lines print live values: all seven are non-secret config. A
+describe otherwise STOPs. The STOP lines print live values: all eight are non-secret config (`ADMITTED` is sha256 digests). A
 secret never joins this list; it would need `--set-secrets` (not used, see below) and a reviewed
 change that prints its name only. To change one variable on a running service, use `gcloud run
 services update --update-env-vars` with its own approval (it leaves the others alone), not this
@@ -261,44 +263,87 @@ as it is.
     byte; was 9.3), or **~16.3 MiB of refresh peak per compact MB** (was 21.0).
   - **1Gi cannot hold Ounass**, not even at cold start (982 MiB before Faces). 2Gi holds today's
     set (Ounass, beauty, Faces, two exports) with ~265 MiB to spare at a refresh peak, but the
-    general rule below would allow only ~59 MB for the largest file there. **3Gi** is the size for
-    Ounass (decision log 2026-10-07). It needs max-instances 1 (cost bound, ~+$18/mo worst case) and the owner's OK.
+    general rule below would allow only ~27.5 MB for the largest file there. **3Gi** is the size for
+    Ounass (decision log 2026-10-07). It needs max-instances 1 (cost bound, ~+$18/mo worst case). The owner approved it
+    (2026-10-07) for step F's revision only, once Ounass has a passing 3Gi admission record.
     Until that flip is live, `ounass_ae` must not be in `PI_API_DATASETS`; the flip and the env
     change go in one revision.
-  - **The export gate** (`V3_MAX_BYTES` in `scripts/demo_export/export.py`) is 120 MB of
-    **compact** JSON. The exporter and the publisher write compact JSON; whitespace is about a
-    third of an indented file and none of it is resident. At 3Gi, after imports (67 MiB), a
-    reserve for the other sources (600 MiB), two exports (160 MiB) and a 256 MiB margin, one
-    dataset's refresh peak may use ~1,990 MiB. At 16.3 MiB per compact MB that is ~122 MB,
-    rounded down to 120 MB (it was 90 MB at 21.0 before packed content). `test_content_memory.py`
-    pins the content-heavy end of the range (text is cheaper per byte than offer rows). The
-    constant follows the memory size (the owner picks it; same reserve, exports and margin):
+  - **The export gate** (`V3_MAX_BYTES` in `pi_dataset.gate`, imported by the exporter and by
+    pi_api) is **51,000,000** bytes of **compact** JSON. The exporter and the publisher write
+    compact JSON; whitespace is about a third of an indented file and none of it is resident. It
+    comes from a fit, not from one file: the beauty file (the densest per byte measured; Ounass is
+    16.3 MiB per MB) scaled by repeating its products with fresh skus, served alone by
+    `SnapshotSource`, cold start then four refreshes, RSS sampled every 20 ms (2026-10-07):
 
-    | Memory | Left for one refresh peak | Largest file (rule 1) | Today's Ounass, 72.7 MB |
+    | Compact bytes | Products | Cold start peak | Refresh peaks (×4) |
     |---|---|---|---|
-    | **3Gi** | ~1,990 MiB | **120,000,000** bytes | fits |
-    | 2Gi | ~965 MiB | ~59,000,000 bytes | **does not fit** under this rule |
+    | 10,110,000 | 9,529 | 309 MiB | 394 MiB |
+    | 30,451,012 | 28,587 | 770 MiB | 1,018–1,020 MiB |
+    | 60,957,592 | 57,174 | 1,474 MiB | 1,967–1,993 MiB |
 
-    At 2Gi today's set still runs with ~265 MiB spare at a refresh peak, but that is a measured
-    fit for these files, not the general rule, and leaves no room for growth.
-  - **The gate is per file; the 3Gi size is for all served files together.** The exporter checks
-    one file at a time, so two files that each pass can still exceed 3Gi. The 600 MiB reserve
-    holds the files other than the largest at ~20 MiB per compact MB (the beauty file's measured
-    rate: 201 MiB for 10.1 MB, denser than Ounass's 9.3), which is **30 MB**. That rate comes from
-    the bench's beauty file (the 1 Oct export, 9,529 products, 10.1 MB compact), not from the live
-    `beauty/latest.json` (17.05 MB compact on 2026-10-07). Memory scales with bytes, so the rule
-    holds for the live file, but production RSS is higher than the tables above, by about 168 MiB
-    (~140 MiB for the larger beauty file plus ~28 MiB for Faces, 1.4 MB). Refreshes run one at
-    a time, so only the largest file's second generation counts. Before any revision that adds to
-    `PI_API_DATASETS` (or a publish that grows a served file), size **every** served file's
-    `latest.json` as **decompressed, compact** bytes and check:
+    Least squares on the highest refresh peak: **refresh peak ≈ 70.4 MiB + 31.48 MiB per compact
+    MB** (residuals −5, +9, −4 MiB; the intercept is the ~67 MiB of imports). The rule is that the
+    largest file's refresh peak plus the other files' resident memory stays within **75% of the
+    instance memory** (25% for exports, request buffers and allocator slack). With the other files
+    at the 600 MiB reserve (rule 2 below):
 
-    1. the largest file is at most **120,000,000** bytes, and
+    | Memory | 75% | Largest file (rule 1) | Today's Ounass, 72.7 MB |
+    |---|---|---|---|
+    | **3Gi** | 2,304 MiB | (2,304 − 600 − 70.4) / 31.48 = 51.9 MB → **51,000,000** bytes | over the gate: needs an admission record |
+    | 2Gi | 1,536 MiB | (1,536 − 600 − 70.4) / 31.48 = 27.5 MB | over the gate |
+
+    The fit spans 10–61 MB. Nothing smaller than the 10 MB point was measured, so for small files
+    the intercept is extrapolated (the 10 MB point sits 5 MiB under the line, so it is not
+    optimistic there), and nothing above 61 MB is covered: a larger file is only ever served on a
+    record of its own. `test_content_memory.py` loads a 10 MB content-heavy sample (real Ounass
+    text, its zlib ratio pinned) and scales it to the gate, so it pins the content-heavy end.
+    The constant assumes **3Gi**; at 2Gi it would be 27,500,000.
+  - **Over the gate, a file is served on a measured admission record only** (Coordinator,
+    2026-10-07; supersedes the 2026-10-03 "no override" note). `demo_export --allow-over-gate`
+    writes an over-gate body, prints `OVER GATE <file> <bytes> sha256=<hex>` and exits 3; that
+    sha is advisory, because the publisher re-serialises. pi_api enforces the gate at load: a new
+    generation over `V3_MAX_BYTES` whose sha256 is not in `PI_API_ADMITTED` is refused like an
+    invalid file (logged, the last good generation stays served). **The admitted sha256 is of the
+    decompressed `latest.json` body that pi_api parses**: not of the gzip object in the bucket,
+    and not of the exporter's file (the publisher writes `dump_dataset(compact=True)`, then
+    gzips). The publisher prints it: `admission body=<n>B sha256=<hex>`, dry run included.
+
+    The record is `infra/pi-api/admission/<dataset>.json` (schema `pi.admission/v1`: sha256,
+    bytes, memory, every served file's path/bytes/sha256, baseline, cold-start and four refresh
+    peaks, date, bench commit), written by `infra/scripts/pi_api_admission.py measure` with
+    **every** `PI_API_DATASETS` file resident and the largest refreshed four times. It passes only
+    if the highest refresh peak is at most 75% of the memory. `pi_api_admission.py check`, run
+    before the deploy, refuses (`ADMISSION STOP`) when an over-gate body has no record with its
+    sha256, when the record's peak is over 75%, when it was measured at another memory or with
+    another set of files, or when another file grew; otherwise it prints `ADMISSION OK` and the
+    `PI_API_ADMITTED=` value. A new export is a new sha: it is measured again. Order for an
+    over-gate dataset (Ounass):
+
+    1. Export with `--allow-over-gate` (exit 3 is expected for this dataset only).
+    2. Publisher `--dry-run --live-file`: note the `admission … sha256`.
+    3. Bench that exact body: `pi_api_admission.py measure` on a local copy of every served
+       object at its bucket path, with the next revision's `DATASETS` and memory.
+    4. Commit the record through review.
+    5. Publish for real. pi_api does not serve it yet: its log shows one `not loaded: … has no
+       admission record` line for this dataset per refresh, which is expected, not an incident.
+    6. Deploy the revision with `ADMITTED` from `pi_api_admission.py check` (and the memory the
+       record was measured at).
+    7. Verify it is served.
+  - **The gate is per file; the memory is for all served files together.** Refreshes run one at
+    a time, so only the largest file's second generation counts; every other file counts at its
+    resident rate, ~20 MiB per compact MB (the beauty file's measured rate: 201 MiB for 10.1 MB).
+    That rate is lower than the refresh rate, so rule 2 holds only while **the largest file
+    (rule 1) is at least as large as any other single file**: the file that refreshes at 31.48
+    MiB per MB must be the largest. The 600 MiB reserve is **30 MB** at the resident rate. Before
+    any revision that adds to `PI_API_DATASETS` (or a publish that grows a served file), size
+    **every** served file's `latest.json` as **decompressed, compact** bytes and check:
+
+    1. the largest file is at most **51,000,000** bytes (or has a passing admission record), and
     2. all the other files together are at most **30,000,000** bytes.
 
     If either fails, do not deploy that revision: serve the large dataset alone, or keep the new
-    one out until §6 is re-measured with it. A second large catalogue (Bloomingdale's) always
-    fails rule 2 and needs that re-measure. Two traps: the publisher stores objects gzip-encoded,
+    one out until it is measured. A second large catalogue (Bloomingdale's) always fails rule 2
+    and needs a record with both resident. Two traps: the publisher stores objects gzip-encoded,
     so the GCS object size is the gzip size; and a file published before compact output (before
     2026-10-07) is indented, ~1.5× its compact size. The check below handles both (paths from
     `DATASETS`, dropping any `source=` prefix):
@@ -313,11 +358,12 @@ as it is.
     ```
 
     The first line is the largest file (rule 1); the rest must sum to at most 30,000,000 (rule 2).
-    The 120 MB constant and both rules assume **3Gi**. While pi-api runs at 1Gi (until step F's 3Gi
-    revision is live), no dataset larger than the ones served today enters `PI_API_DATASETS`, and
-    the served files stay within the 1Gi sizing: at most **33,000,000** decompressed, compact bytes
-    in total (the old 50 MB indented gate), even though the exporter now accepts up to 120 MB.
-    `ounass_ae` joins only in the 3Gi revision.
+  - **While pi-api runs at 1Gi** (until step F's 3Gi revision is live), the same composition sets
+    the cap: the largest file's refresh peak plus the others' resident memory within 75% of 1Gi,
+    `70.4 + 31.48 × largest_MB + 20 × others_MB ≤ 768 MiB`, with the largest file at least as large
+    as any other. Today's set (beauty 17.05 MB, Faces 1.4 MB) is 635 MiB. With Faces as the only
+    other file, the largest may be at most **21,000,000** bytes. No dataset enters the 1Gi set
+    until it is checked against this; `ounass_ae` joins only in the 3Gi revision, with its record.
   - **Cold start vs `--timeout=30s`.** With Ounass the load takes 26–30 s, and uvicorn opens the
     port only after it, so the default TCP startup probe passes. The first request after scale to
     zero waits that long. Measure it on the first 3Gi revision. `--min-instances=1` would remove

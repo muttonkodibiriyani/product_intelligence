@@ -3,28 +3,33 @@
 from __future__ import annotations
 
 # ruff: noqa: S101
+import hashlib
 import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from pi_dataset import ContentField, DatasetV3, dump_dataset, load_any
+from pi_dataset import V3_MAX_BYTES, ContentField, DatasetV3, dump_dataset, load_any
 from scripts.demo_export.export import (
-    V3_MAX_BYTES,
+    OVER_GATE_EXIT,
     ListingRow,
     MatchRow,
     UltaContext,
     check_v3_size,
+    parser,
     v3_bytes_by_group,
+    write_v3,
 )
 from scripts.demo_export.test_export import row
 from scripts.demo_export.test_v2 import NOTE, NOW
 from scripts.demo_export.v2 import build_dataset_v2, captured_fields, listing_counts, to_v3
 
 SEPHORA, ULTA = "sephora_me", "ulta_ae"
+REQUIRED = ["--database-url", "postgresql://localhost/pi", "--output", "v1.json"]
 #: A v1 early example, as ``parse_ulta_early_fixture`` builds it (invented values).
 EARLY: dict[str, Any] = {
     "id": "u-early-sku-900",
@@ -193,9 +198,37 @@ def test_the_byte_groups_split_the_written_body_exactly() -> None:
     )
 
 
-def test_a_body_over_the_budget_is_refused() -> None:
+def test_a_body_over_the_budget_is_refused_without_the_flag() -> None:
     groups = {"prices": V3_MAX_BYTES, "attributes": 1, "description+ingredients": 0}
-    check_v3_size(V3_MAX_BYTES, groups)
+    assert check_v3_size(V3_MAX_BYTES, groups) is False
     with pytest.raises(SystemExit, match="nothing was written") as refused:
         check_v3_size(V3_MAX_BYTES + 1, groups)
     assert f"prices={V3_MAX_BYTES} attributes=1" in str(refused.value)
+    assert "--allow-over-gate" in str(refused.value)
+    assert parser().parse_args(REQUIRED).allow_over_gate is False
+
+
+def test_with_the_flag_an_over_gate_body_is_written_flagged_and_exits_3(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    groups = {"prices": V3_MAX_BYTES + 1, "attributes": 0, "description+ingredients": 0}
+    assert check_v3_size(V3_MAX_BYTES + 1, groups, over_gate=True) is True
+    path, body = tmp_path / "ounass_ae.v3.json", b'{"schema":"pi.dataset/v3"}\n'
+    with pytest.raises(SystemExit) as stopped:
+        write_v3(path, body, 1, groups, over=True)
+    assert stopped.value.code == OVER_GATE_EXIT == 3
+    assert path.read_bytes() == body
+    out, err = capsys.readouterr()
+    digest = hashlib.sha256(body).hexdigest()
+    assert f"OVER GATE {path} {len(body)} sha256={digest}\n" in out
+    assert "advisory" in err
+    assert parser().parse_args([*REQUIRED, "--allow-over-gate"]).allow_over_gate is True
+
+
+def test_a_body_within_the_gate_is_written_without_a_flag(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path, body = tmp_path / "beauty.v3.json", b"{}\n"
+    write_v3(path, body, 0, {"prices": 3}, over=False)
+    assert path.read_bytes() == body
+    assert "OVER GATE" not in capsys.readouterr().out

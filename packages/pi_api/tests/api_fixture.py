@@ -26,7 +26,7 @@ from pi_api.app import TokenBuckets, create_app
 from pi_api.auth import TokenVerifier
 from pi_api.catalogue import CatalogueSource
 from pi_api.source import LocalStore, SnapshotSource
-from pi_dataset import Dataset, DatasetV3, dump_dataset
+from pi_dataset import V3_MAX_BYTES, Dataset, DatasetV3, dump_dataset
 
 PROJECT = "pi-test-project"
 KID = "test-kid"
@@ -135,6 +135,8 @@ def make_client(
     catalogues: CatalogueSource | None = None,
     matches: str | None = None,
     pack_content: bool = True,
+    admitted: frozenset[str] = frozenset(),
+    gate: int = V3_MAX_BYTES,
 ) -> tuple[Client, SnapshotSource]:
     source = SnapshotSource(
         LocalStore(root),
@@ -143,6 +145,8 @@ def make_client(
         assigned=assigned or {},
         matches=matches,
         pack_content=pack_content,
+        admitted=admitted,
+        gate=gate,
     )
     if load:
         source.load_all()

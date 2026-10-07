@@ -14,6 +14,11 @@ generation; until then the previous view stays live, and with none they are not 
 scope (``pi_api.matches``); views of other scopes are composed without it. A new generation that
 does not validate is ignored (the last good one stays applied; until one validates, the views are
 composed without it), and one whose vertical is not its view's leaves the previous views live.
+
+A body (decompressed) over ``V3_MAX_BYTES`` is not loaded unless its ``admission_sha256`` is in
+``admitted`` (``PI_API_ADMITTED``, baked in at deploy from infra/pi-api/admission/): a refused
+generation fails like one that does not validate, so the last good one stays live (pi-api-deploy
+§6). A new over-gate export therefore needs a re-measure, a new record and a new revision.
 """
 
 from __future__ import annotations
@@ -35,7 +40,14 @@ from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
 from pi_api.ids import ProductIds, product_ids
 from pi_api.matches import apply
-from pi_dataset import DatasetError, DatasetV3, ProductV3, load_any
+from pi_dataset import (
+    V3_MAX_BYTES,
+    DatasetError,
+    DatasetV3,
+    ProductV3,
+    admission_sha256,
+    load_any,
+)
 from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
 from pi_match.matchfile import MatchFile
 from pi_metrics.view import as_v3
@@ -206,6 +218,26 @@ def _gunzip(data: bytes, limit: int) -> bytes:
     return out
 
 
+class NotAdmittedError(ValueError):
+    """A body over ``V3_MAX_BYTES`` whose sha256 has no admission record (``PI_API_ADMITTED``)."""
+
+
+def admitted_body(data: bytes, admitted: frozenset[str], *, gate: int = V3_MAX_BYTES) -> bytes:
+    """The body as parsed (gunzipped if stored gzip), or ``NotAdmittedError`` when it is over
+    ``gate`` bytes and its ``admission_sha256`` is not in ``admitted``."""
+    if data.startswith(_GZIP_MAGIC):
+        data = _gunzip(data, MAX_DATASET_BYTES)
+    if len(data) > gate:
+        digest = admission_sha256(data)
+        if digest not in admitted:
+            msg = (
+                f"{len(data)} bytes is over the {gate}-byte gate and sha256={digest} "
+                "has no admission record"
+            )
+            raise NotAdmittedError(msg)
+    return data
+
+
 def parse(data: bytes, *, allow_test: bool = False, limit: int = MAX_DATASET_BYTES) -> DatasetV3:
     """A validated snapshot as v3: a ``pi.dataset/v3`` document as is, a v2 one upgraded.
 
@@ -231,10 +263,15 @@ class SnapshotSource:
         assigned: Mapping[str, str] = MappingProxyType({}),
         matches: str | None = None,
         pack_content: bool = True,
+        admitted: frozenset[str] = frozenset(),
+        gate: int = V3_MAX_BYTES,
     ) -> None:
         """``paths`` are served whole; ``assigned`` maps a source (retailer id) to its path;
         ``matches`` is the match file applied to the composed views. ``pack_content`` keeps
-        offer content compressed in memory (``pi_api.content``); off only to compare."""
+        offer content compressed in memory (``pi_api.content``); off only to compare.
+        ``admitted``: the sha256s of the bodies over ``gate`` bytes that may be loaded."""
+        self._admitted = admitted
+        self._gate = gate
         self._pack_content = pack_content
         self._matches_path = matches
         #: The latest good match file and its generation.
@@ -282,10 +319,14 @@ class SnapshotSource:
             if current is not None and self._store.generation(path) == current.generation:
                 return None
             data, generation = self._store.read(path)
+            body = admitted_body(data, self._admitted, gate=self._gate)
             # Upgraded here, off the request path; a v2 that can't be is not loaded.
-            dataset = parse(data, allow_test=self._allow_test)
+            dataset = parse(body, allow_test=self._allow_test)
             if self._pack_content:
                 dataset = packed(dataset)
+        except NotAdmittedError as error:
+            log.warning("dataset %s not loaded: %s", path, error)
+            return None
         except (DatasetError, ValueError, OSError, zlib.error) as error:
             log.warning("dataset %s not loaded: %s", path, type(error).__name__)
             return None

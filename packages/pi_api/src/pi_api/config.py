@@ -12,7 +12,17 @@ from pi_core import PiModel
 
 _OBJECT = re.compile(r"^[a-z0-9][a-z0-9_./-]{0,200}\.json$")
 _RETAILER = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def admitted_shas(raw: str) -> frozenset[str]:
+    """``PI_API_ADMITTED``: comma-separated lowercase sha256 hex digests."""
+    shas = frozenset(s.strip() for s in raw.split(",") if s.strip())
+    if bad := sorted(s for s in shas if not _SHA256.fullmatch(s)):
+        msg = f"PI_API_ADMITTED entries {bad} are not lowercase sha256 hex digests"
+        raise ValueError(msg)
+    return shas
 
 
 def evidence_hosts(raw: str, var: str = "PI_API_EVIDENCE_HOSTS") -> dict[str, frozenset[str]]:
@@ -85,6 +95,9 @@ class Settings(PiModel):
     evidence_hosts: Mapping[str, frozenset[str]] = Field(default_factory=dict)
     #: Per retailer, the hosts whose product image URLs are served (same rules); empty nulls all.
     image_hosts: Mapping[str, frozenset[str]] = Field(default_factory=dict)
+    #: ``PI_API_ADMITTED``: sha256s of the bodies over ``V3_MAX_BYTES`` that may be served, each
+    #: with a passing record in infra/pi-api/admission/ (pi-api-deploy.md §6). Empty: none.
+    admitted: frozenset[str] = frozenset()
 
     @model_validator(mode="after")
     def _check_datasets(self) -> Self:
@@ -133,4 +146,5 @@ class Settings(PiModel):
             allow_test=env.get("PI_API_ALLOW_TEST", "") == "1",
             evidence_hosts=evidence_hosts(env.get("PI_API_EVIDENCE_HOSTS", "")),
             image_hosts=evidence_hosts(env.get("PI_API_IMAGE_HOSTS", ""), "PI_API_IMAGE_HOSTS"),
+            admitted=admitted_shas(env.get("PI_API_ADMITTED", "")),
         )

@@ -21,13 +21,14 @@ from pathlib import Path
 from typing import Any
 
 from api_fixture import DATASET_PATH, bearer, make_client, served_dataset
-from pi_dataset import OfferContent
+from pi_dataset import V3_MAX_BYTES, OfferContent
 from pi_metrics import view
 
-BUDGET = 120_000_000  # scripts/demo_export/export.py V3_MAX_BYTES, compact JSON bytes
+BUDGET = V3_MAX_BYTES  # compact JSON bytes
 SAMPLE = 10_000_000
-# pi-api-deploy.md §6: a dataset's steady share at 3Gi (~1,990 MiB refresh peak / 2.68).
-RESIDENT = 740 * 2**20
+# pi-api-deploy.md §6: the gate's steady share at 3Gi (its fitted refresh peak, 70 + 31.48 MiB/MB
+# x 51 MB = 1,676 MiB, / 2.68 the measured peak-to-steady ratio).
+RESIDENT = 625 * 2**20
 CONTENT = Path(__file__).parent / "fixtures" / "ounass_offer_content_sample.json"
 # Real Ounass offer content compresses 2.09x in aggregate (per offer: p1 1.41, p99 3.55).
 RATIO = (1.6, 2.6)

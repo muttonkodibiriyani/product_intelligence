@@ -40,13 +40,16 @@ carries, so a missing field reads *not published* for a retailer that has it els
 captured* for one that never has it. It is re-read with the strict `load_any` before anything is
 written. Publishing v3 instead of v2 is the owner's call at re-export.
 
-v2 and v3 are written as compact JSON. The v3 body has a 120 MB budget (`V3_MAX_BYTES` =
-120,000,000 compact bytes). `pi_api` holds the parsed snapshot in memory, and the budget is sized
-from pi_api's measured resident memory at 3Gi (`docs/runbooks/pi-api-deploy.md` §6,
-`packages/pi_api/tests/test_content_memory.py`). The
+v2 and v3 are written as compact JSON. The v3 body has a 51 MB gate (`V3_MAX_BYTES` =
+51,000,000 compact bytes, in `pi_dataset.gate`, shared with pi_api). `pi_api` holds the parsed
+snapshot in memory, and the gate comes from a fit of pi_api's measured refresh peak at 3Gi
+(`docs/runbooks/pi-api-deploy.md` §6, `packages/pi_api/tests/test_content_memory.py`). The
 exporter prints the written bytes by group (`prices`, `attributes`,
-`description+ingredients`, summing to the total) and refuses, writing nothing, above the budget.
-There is no override flag.
+`description+ingredients`, summing to the total) and refuses, writing nothing, above the gate.
+`--allow-over-gate` (Coordinator, 2026-10-07; supersedes the 2026-10-03 "no override" note)
+writes the body anyway, prints `OVER GATE <file> <bytes> sha256=<hex>` and exits 3. That sha is
+advisory: the publisher re-serialises, and pi_api serves an over-gate body only once a measured
+admission record for the published body's sha is deployed (§6).
 
 By default v2 has one date, the cutoff's calendar day in Dubai. A price (and its regular price) or a stock
 value captured on any other day is published as `null`, never carried forward (contract rule 6),
