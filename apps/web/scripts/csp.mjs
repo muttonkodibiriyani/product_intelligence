@@ -12,7 +12,10 @@
 // Check). Anything else in the committed directive ('unsafe-inline', another host) fails --check.
 //
 // The build id is a hash of the sources (next.config.ts), so the same source gives the same
-// hashes on any machine, and CI's check after `next build` catches a stale list.
+// hashes on any machine, and CI's check after `next build` catches a stale list. That id counts
+// only what git tracks, as it is in the working tree, so --write refuses while any build-id input
+// is untracked or uncommitted: the list it wrote would match that local build and no commit.
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -26,6 +29,36 @@ if (dirs.length === 0) dirs.push('out');
 // CSP_CONFIG lets scripts/csp.test.ts point the check at a fixture; builds use the real file.
 const CONFIG =
     process.env.CSP_CONFIG ?? join(import.meta.dirname, '..', '..', '..', 'infra', 'firebase.json');
+
+// The build-id inputs of next.config.ts (csp.test.ts keeps the two lists equal). infra/firebase.json
+// is not one, so the file --write changes never trips its own guard.
+const INPUTS = [
+    'app',
+    'components',
+    'i18n',
+    'lib',
+    'messages',
+    'public',
+    'next.config.ts',
+    'package-lock.json',
+];
+if (mode === '--write') {
+    // CSP_TREE lets csp.test.ts point the guard at a fixture repo; builds use apps/web.
+    const tree = process.env.CSP_TREE ?? join(import.meta.dirname, '..');
+    const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', ...INPUTS], {
+        cwd: tree,
+        encoding: 'utf8',
+    })
+        .split('\n')
+        .filter((l) => l && !/\.test\.tsx?$/.test(l));
+    if (dirty.length > 0) {
+        console.error(
+            `csp: not writing: these build-id inputs are not committed, so this build's id is one no commit gives.\n` +
+                `Commit (or remove) them, rebuild, then run csp:write again.\n${dirty.join('\n')}`,
+        );
+        process.exit(1);
+    }
+}
 
 const hashes = new Set();
 let inline = 0;

@@ -21,7 +21,21 @@ writeFileSync(
   `<html><script>${SCRIPT}</script><script src="/a.js"></script></html>`,
 );
 
-function run(mode: '--check' | '--write', scriptSrc: string) {
+// A git repo standing in for apps/web, so the --write guard never reads the real working tree.
+const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe' });
+function repo() {
+  const dir = mkdtempSync(join(root, 'tree-'));
+  git(dir, 'init', '-q');
+  mkdirSync(join(dir, 'components'));
+  writeFileSync(join(dir, 'next.config.ts'), 'export default {};\n');
+  writeFileSync(join(dir, 'components', 'a.tsx'), 'export const a = 1;\n');
+  git(dir, 'add', '.');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base');
+  return dir;
+}
+const clean = repo();
+
+function run(mode: '--check' | '--write', scriptSrc: string, tree = clean) {
   const config = join(root, `firebase-${Math.random().toString(36).slice(2)}.json`);
   const value = `default-src 'self'; script-src ${scriptSrc}; base-uri 'none'`;
   writeFileSync(
@@ -29,18 +43,20 @@ function run(mode: '--check' | '--write', scriptSrc: string) {
     JSON.stringify({ hosting: { headers: [{ headers: [{ key: 'Content-Security-Policy', value }] }] } }),
   );
   let status = 0;
+  let stderr = '';
   try {
     execFileSync(process.execPath, [join(import.meta.dirname, 'csp.mjs'), mode, out], {
-      env: { ...process.env, CSP_CONFIG: config },
+      env: { ...process.env, CSP_CONFIG: config, CSP_TREE: tree },
       stdio: 'pipe',
     });
   } catch (e) {
-    status = (e as { status: number }).status;
+    ({ status } = e as { status: number });
+    stderr = String((e as { stderr: Buffer }).stderr);
   }
   const written = JSON.parse(readFileSync(config, 'utf8')) as {
     hosting: { headers: { headers: { value: string }[] }[] };
   };
-  return { status, value: written.hosting.headers[0]?.headers[0]?.value ?? '' };
+  return { status, stderr, value: written.hosting.headers[0]?.headers[0]?.value ?? '' };
 }
 
 describe('csp.mjs', () => {
@@ -63,5 +79,46 @@ describe('csp.mjs', () => {
     const { status, value } = run('--write', `'self' 'unsafe-inline' https://evil.example/`);
     expect(status).toBe(0);
     expect(value).toBe(`default-src 'self'; script-src 'self' ${HOSTS} ${HASH}; base-uri 'none'`);
+  });
+
+  // #282: the hashes were written while three new inputs were untracked, so the local build id
+  // hashed 151 files where the commit has 154, and the list matched a build no commit gives.
+  it('--write refuses while a build-id input is untracked, edited or staged, and names it', () => {
+    const stale = `'self' ${HOSTS}`;
+    const untracked = repo();
+    writeFileSync(join(untracked, 'components', 'new.tsx'), 'export const n = 1;\n');
+    const edited = repo();
+    writeFileSync(join(edited, 'next.config.ts'), 'export default { x: 1 };\n');
+    const staged = repo();
+    writeFileSync(join(staged, 'components', 'b.tsx'), 'export const b = 1;\n');
+    git(staged, 'add', '.');
+    for (const [tree, file] of [
+      [untracked, 'components/new.tsx'],
+      [edited, 'next.config.ts'],
+      [staged, 'components/b.tsx'],
+    ]) {
+      const { status, stderr, value } = run('--write', stale, tree);
+      expect(status).toBe(1);
+      expect(stderr).toContain(file);
+      expect(value).toBe(`default-src 'self'; script-src ${stale}; base-uri 'none'`);
+    }
+  });
+
+  it('--write ignores what is not a build-id input: tests, e2e, other folders', () => {
+    const tree = repo();
+    writeFileSync(join(tree, 'components', 'a.test.tsx'), '\n');
+    mkdirSync(join(tree, 'e2e'));
+    writeFileSync(join(tree, 'e2e', 'x.spec.ts'), '\n');
+    expect(run('--write', `'self' ${HOSTS}`, tree).status).toBe(0);
+  });
+
+  it('guards the same inputs next.config.ts hashes into the build id', () => {
+    const list = (f: string, re: RegExp) =>
+      [
+        ...(readFileSync(join(import.meta.dirname, f), 'utf8').match(re)?.[1] ?? '').matchAll(/'([^']+)'/g),
+      ].map((m) => m[1]);
+    const config = list('../next.config.ts', /const INPUTS = \[([^\]]*)\]/);
+    expect(config).toContain('next.config.ts');
+    expect(list('csp.mjs', /const INPUTS = \[([^\]]*)\]/)).toEqual(config);
   });
 });
