@@ -60,6 +60,12 @@ gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_leve
   With per-source files (API ≥ 1.10.0, ADR-0010), assign each source to its file instead, e.g.
   `sephora_me=datasets/ae/sephora_me/latest.json,ulta_ae=datasets/ae/beauty/latest.json`. Don't
   also list one of those paths bare in the same scope.
+  **Add a source to `PI_API_DATASETS` only after its file is published.** The per-source view is
+  rebuilt only when every assigned file has loaded (`source.py`, `_composed`: "per-source view
+  not rebuilt: no good file yet"). A running revision keeps its old views; a new revision (any env
+  change deploys one) has none, so one missing file takes down every source in that scope, not
+  just the new one. Deploy a new API version with the old value first, publish the new source's
+  `latest.json`, then add it.
 
 ## 3. Artifact Registry
 
