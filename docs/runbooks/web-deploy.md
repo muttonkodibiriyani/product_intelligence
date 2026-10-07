@@ -48,7 +48,8 @@ root, check the root's own files (e.g. its `app.<hash>.js` name) as well.
 
 **Settle window.** For about a minute after a release, Hosting's edge can still serve the old
 release, and the new build's manifest returns 404. A wrong id or a 404 in that window means "too
-early", not "failed". Retry for up to two minutes before you treat it as a failure or roll back.
+early", not "failed", and is never grounds to roll back. Retry the "b" read for up to two
+minutes before you conclude anything.
 
 ## 2. Roll back
 
