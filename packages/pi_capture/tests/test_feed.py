@@ -6,6 +6,7 @@ import gzip
 import json
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -523,3 +524,20 @@ def test_without_a_sitemap_the_cli_never_claims_the_catalogue(
     assert mapping["complete_catalogue"] is False
     with pytest.raises(SystemExit):
         main([SHOP.source, str(readings), str(tmp_path / "x"), "--pages", str(readings)])
+
+
+def test_a_newer_failed_capture_does_not_shadow_an_older_ok_one(
+    make_capture: CaptureFactory,
+) -> None:
+    # Combined feeds go newest first and the first page per key wins: a failed capture has no
+    # key, so it is listed and skipped, and the older OK capture of the same page still fills
+    # the row with its own page time.
+    older = page(make_capture, retrieved_at=datetime(2026, 10, 3, 8, 0, tzinfo=UTC))
+    newer_failed = make_capture(
+        capture_state="blocked", retrieved_at=datetime(2026, 10, 7, 8, 0, tzinfo=UTC)
+    )
+    result = build_feed([newer_failed, older], SHOP)
+    (row,) = result.rows
+    assert row["listing_key"] == "SKU-1"
+    assert row["observed_at"] == "2026-10-03T08:00:00+00:00"
+    assert result.report()["excluded_by_reason"] == {"capture blocked": 1}
