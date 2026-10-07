@@ -82,6 +82,8 @@ const rich: Env = {
                 smallerPrice: money('60.00'),
                 largerPrice: money('110.00'),
                 unitChangePct: '10.0',
+                smallerOnSale: false,
+                largerOnSale: false,
               },
             ],
           }

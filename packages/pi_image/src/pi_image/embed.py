@@ -34,9 +34,14 @@ class Embedder(Protocol):
 
 
 def l2_normalise(vectors: FloatArray) -> FloatArray:
-    """Rows scaled to unit length; an all-zero row stays zero."""
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    return (vectors / np.where(norms == 0, 1, norms)).astype(np.float32)
+    """Rows scaled to unit length; an all-zero row stays zero.
+
+    The norm is taken in float64: in float32 the squares of a tiny row underflow (and of a huge
+    row overflow), so a row like ``[7.27e-23]`` came out with length 0.971, not 1.
+    """
+    wide = vectors.astype(np.float64)
+    norms = np.linalg.norm(wide, axis=1, keepdims=True)
+    return (wide / np.where(norms == 0, 1, norms)).astype(np.float32)
 
 
 class EmbeddingCache:

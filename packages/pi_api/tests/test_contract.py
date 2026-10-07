@@ -25,6 +25,7 @@ from pi_metrics.assortment import AssortmentGaps
 from pi_metrics.availability import Availability
 from pi_metrics.compare import Comparison
 from pi_metrics.coverage import Coverage
+from pi_metrics.findings import Findings
 from pi_metrics.index import PriceIndex
 from pi_metrics.insights import Insights
 from pi_metrics.launches import Launches
@@ -79,6 +80,7 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
     ),
     "index": ("/index?retailers=shop_a,shop_b", Envelope[PriceIndex], {}),
     "insights": ("/insights?retailers=shop_a,shop_b", Envelope[Insights], {}),
+    "findings": ("/findings?focus=shop_a&rival=shop_b", Envelope[Findings], {}),
     "promotions": ("/promotions?minPct=10", Envelope[Promotions], {}),
     "assortment-gaps": (
         "/assortment-gaps?missingAt=shop_b&presentAt=shop_a",
