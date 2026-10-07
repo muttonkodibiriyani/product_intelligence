@@ -51,7 +51,8 @@ OK, CUTOFF, BLOCKED, ERROR, NOTHING = "ok", "cutoff", "blocked", "error", "nothi
 EXIT_FAILED = 2
 #: A full pass is never a complete catalogue when its sitemap no longer lists more than this
 #: share of the in-scope URLs a sitemap listed in the last BASELINE_DAYS: a short or truncated
-#: sitemap would otherwise make every product it left out read as removed downstream.
+#: sitemap would otherwise make every product it left out read as removed downstream. With no
+#: such URLs yet (the first full pass on an empty state) there is no baseline, and it is not either.
 MAX_SITEMAP_DROP = 0.05
 BASELINE_DAYS = 14
 
@@ -245,6 +246,8 @@ def collect(  # noqa: PLR0915 - one linear run, kept in one place on purpose
     if not planned:
         job.finish()
         report.outcome = NOTHING
+        state.record(cfg.day, listed, [], [])  # the sitemap still dates the full-pass baseline
+        bucket.put(state_name, state.to_bytes())
         return report
     plan = Plan(
         source=shop.source,
@@ -295,13 +298,17 @@ def collect(  # noqa: PLR0915 - one linear run, kept in one place on purpose
             check = pi_feed.completeness(selected, pages, captures, result, feed_shop)
             report.complete_catalogue = check.complete
             summary["catalogue"] = check.report()
-            if known and unlisted > MAX_SITEMAP_DROP * len(known):
-                report.complete_catalogue = False
-                report.reason = (
+            refused = None
+            if not known:  # nothing to measure this sitemap against: the next full pass can be
+                refused = "no sitemap baseline yet: not a complete catalogue"
+            elif unlisted > MAX_SITEMAP_DROP * len(known):
+                refused = (
                     f"sitemap no longer lists {unlisted} of {len(known)} known in-scope URLs"
                     f" (> {MAX_SITEMAP_DROP:.0%}): not a complete catalogue"
                 )
-                summary["catalogue_refused"] = report.reason
+            if refused:
+                report.complete_catalogue = False
+                report.reason = summary["catalogue_refused"] = refused
         if result.rows:
             out = f"feeds/{shop.source}/{cfg.run_id}"
             mapping = pi_feed.mapping_for(feed_shop, complete=report.complete_catalogue)

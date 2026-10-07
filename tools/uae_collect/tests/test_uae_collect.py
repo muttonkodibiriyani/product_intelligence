@@ -270,15 +270,20 @@ def test_daily_run_reads_new_urls_and_feeds_them(tmp_path: Path) -> None:
     assert not [u for u in client2.calls if "/p/" in u]
 
 
-def test_full_pass_with_no_gap_is_complete(tmp_path: Path) -> None:
+def test_full_pass_with_no_gap_is_complete_once_there_is_a_baseline(tmp_path: Path) -> None:
+    # the first full pass on an empty state has no sitemap to measure against: never complete
     code, report = _main(tmp_path, _Client(_site()), MON)
+    assert (code, report["outcome"], report["complete_catalogue"]) == (0, run.OK, False)
+    assert "no sitemap baseline" in report["reason"]
+    assert _mapping(tmp_path, report)["complete_catalogue"] is False
+    code, report = _main(tmp_path, _Client(_site()), MON + timedelta(days=7))
     assert (code, report["outcome"], report["complete_catalogue"]) == (0, run.OK, True)
+    assert report["reason"] is None
     assert _mapping(tmp_path, report)["complete_catalogue"] is True
 
 
 def test_full_pass_on_a_shrunken_sitemap_is_not_complete(tmp_path: Path) -> None:
-    code, report = _main(tmp_path, _Client(_site()), MON)
-    assert report["complete_catalogue"] is True
+    _main(tmp_path, _Client(_site()), MON)
     # a week on, the sitemap lists one of the three products and every page it lists reads ok
     short = _urlset({EN[0]: "2026-10-06", AR_URL: None})
     nxt = MON + timedelta(days=7)
@@ -293,11 +298,12 @@ def test_full_pass_on_a_shrunken_sitemap_is_not_complete(tmp_path: Path) -> None
 def test_full_pass_baseline_forgets_urls_unlisted_for_two_weeks(tmp_path: Path) -> None:
     _main(tmp_path, _Client(_site()), MON)
     short = _urlset({EN[0]: "2026-10-06", AR_URL: None})
+    shrunk = _site(**{CHILD: (200, short, "application/xml")})
+    _main(tmp_path, _Client(shrunk), MON + timedelta(days=16))  # a Wednesday: daily, lists EN[0]
     later = MON + timedelta(days=run.BASELINE_DAYS + 7)  # a Monday: full
-    code, report = _main(
-        tmp_path, _Client(_site(**{CHILD: (200, short, "application/xml")})), later
-    )
-    assert (code, report["counts"]["known_unlisted"], report["complete_catalogue"]) == (0, 0, True)
+    code, report = _main(tmp_path, _Client(shrunk), later)
+    assert (report["counts"]["known_in_scope"], report["counts"]["known_unlisted"]) == (1, 0)
+    assert (code, report["complete_catalogue"]) == (0, True)
 
 
 @pytest.mark.parametrize(

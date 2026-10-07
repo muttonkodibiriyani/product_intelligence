@@ -41,7 +41,8 @@ that cannot be read plans nothing. Then:
 
 A short sitemap is never a complete catalogue: a `full` pass whose sitemap no longer lists more
 than 5% (`MAX_SITEMAP_DROP`) of the in-scope URLs some sitemap listed in the last 14 days
-(`BASELINE_DAYS`) feeds `complete_catalogue: false` with the reason in `collect.json`, so a
+(`BASELINE_DAYS`), or that has no such baseline yet (the first full pass on an empty state),
+feeds `complete_catalogue: false` with the reason in `collect.json`, so a
 truncated or half-served sitemap cannot read as removals downstream. A product the shop really
 delisted drops out of that baseline 14 days after its last listing. A sitemap index child that is
 not `https` on the shop's own sitemap host is refused, and the run plans nothing.
