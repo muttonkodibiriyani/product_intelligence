@@ -14,7 +14,7 @@ from typing import Any
 import psycopg
 import pytest
 from alembic import command
-from sephora_snapshot.load import Loader
+from sephora_snapshot.load import MARKETS, BundleCountryError, Loader, market_from_args
 from sephora_synth import details, pdp_rec, trpc_rec, write_part
 from sqlalchemy.engine import make_url
 
@@ -368,6 +368,144 @@ def test_a_sephora_only_brand_gets_its_arabic_name_once(db: str, tmp_path: Path)
         assert conn.execute(query).fetchall() == first
 
 
+# ---------------------------------------------------------------- Saudi storefront (--country SA)
+
+
+def _load_sa(conn: psycopg.Connection[Any], root: Path) -> dict[str, int]:
+    ld = Loader(conn, root, f"gs://test-bucket/{root.name}", MARKETS["SA"])
+    stats = ld.load()
+    ld.finish()
+    return stats
+
+
+def _sar(pid: str, brand: str = "Acme Beauty") -> dict[str, Any]:
+    return details(pid, brand=brand) | {"currency": "SAR"}
+
+
+def test_a_saudi_load_is_its_own_source_and_never_touches_uae_listings(
+    db: str, tmp_path: Path
+) -> None:
+    """The same variant id on both storefronts: two listings, two contexts, UAE rows unchanged."""
+    ae = _folder(tmp_path / "ae", {"stopped": "cutoff"})
+    write_part(ae, "pdp_en", [pdp_rec("P700", "en")])
+    sa = _folder(tmp_path / "sa", {"stopped": "cutoff", "country": "SA"})
+    write_part(sa, "pdp_en", [pdp_rec("P700", "en", _sar("P700"))])
+    with psycopg.connect(db) as conn:
+        _load(conn, ae)
+        conn.commit()
+        uae = (
+            "SELECT l.xmin::text, l.last_seen_at FROM source_listing l JOIN source s"
+            " ON s.id = l.source_id WHERE s.name = 'sephora_me' AND l.source_listing_key = '7001'"
+        )
+        before = conn.execute(uae).fetchall()
+        assert _load_sa(conn, sa)["pdp_en"] == 1  # the shared brand row is a counted clash
+        conn.commit()
+        assert conn.execute(uae).fetchall() == before
+        rows = conn.execute(
+            "SELECT s.name, c.country, c.locale, c.time_zone, o.currency, o.price_current"
+            " FROM offer_observation o JOIN source_context c ON c.id = o.source_context_id"
+            " JOIN source s ON s.id = c.source_id JOIN source_listing l"
+            " ON l.id = o.source_listing_id WHERE l.source_listing_key = '7001' ORDER BY s.name"
+        ).fetchall()
+        assert [r[:5] for r in rows] == [
+            ("sephora_me", "AE", "en-AE", "Asia/Dubai", "AED"),
+            ("sephora_sa", "SA", "en-SA", "Asia/Riyadh", "SAR"),
+        ]
+        (sa.parent / ".loaded-sa.json").unlink()
+        _load_sa(conn, sa)  # replay after the ledger is lost: nothing new
+        n = conn.execute(
+            "SELECT count(*) FROM offer_observation o JOIN source_listing l"
+            " ON l.id = o.source_listing_id WHERE l.source_listing_key = '7001'"
+        ).fetchone()
+        assert n == (2,)
+
+
+def test_a_price_in_another_currency_is_unknown_in_a_saudi_load(db: str, tmp_path: Path) -> None:
+    root = _folder(tmp_path / "sa-aed", {"stopped": "cutoff", "country": "SA"})
+    write_part(root, "pdp_en", [pdp_rec("P710", "en")])  # an AED page
+    with psycopg.connect(db) as conn:
+        assert _load_sa(conn, root)["price_currency_mismatch"] == 1
+        row = conn.execute(
+            "SELECT o.price_current, o.currency, o.field_state ->> 'price_current'"
+            " FROM offer_observation o JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key = '7101'"
+        ).fetchone()
+        assert row == (None, None, "unknown")
+
+
+def test_a_saudi_load_never_writes_a_uae_brand_row(db: str, tmp_path: Path) -> None:
+    """A brand the UAE load created is not the Saudi source's row: counted, never rewritten."""
+    ae = _folder(tmp_path / "bae", {"stopped": "cutoff"})
+    write_part(ae, "pdp_en", [pdp_rec("P720", "en", details("P720", brand="Gulf Brand"))])
+    sa = _folder(tmp_path / "bsa", {"stopped": "cutoff", "country": "SA"})
+    write_part(sa, "pdp_en", [pdp_rec("P720", "en", _sar("P720", brand="Gulf Brand"))])
+    write_part(sa, "pdp_ar", [pdp_rec("P720", "ar", _sar("P720", brand="Gulf Brand"))])
+    with psycopg.connect(db) as conn:
+        _load(conn, ae)
+        conn.commit()
+        query = "SELECT xmin::text, name_ar, aliases FROM brand WHERE name = 'Gulf Brand'"
+        before = conn.execute(query).fetchall()
+        assert _load_sa(conn, sa)["brand_name_clash"] == 1
+        conn.commit()
+        assert conn.execute(query).fetchall() == before
+
+
+def test_a_saudi_only_brand_carries_the_saudi_alias(db: str, tmp_path: Path) -> None:
+    root = _folder(tmp_path / "bsolo", {"stopped": "cutoff", "country": "SA"})
+    write_part(root, "pdp_en", [pdp_rec("P730", "en", _sar("P730", brand="Riyadh Brand"))])
+    with psycopg.connect(db) as conn:
+        stats = _load_sa(conn, root)
+        assert "brand_name_clash" not in stats
+        rows = conn.execute("SELECT aliases FROM brand WHERE name = 'Riyadh Brand'").fetchall()
+        assert rows == [(["sephora_sa:b1"],)]
+
+
+@pytest.mark.parametrize(
+    ("args", "source"),
+    [([], "sephora_me"), (["--finish"], "sephora_me"), (["--country", "sa"], "sephora_sa")],
+)
+def test_country_flag(args: list[str], source: str) -> None:
+    assert market_from_args(args).source == source
+
+
+@pytest.mark.parametrize("args", [["--country"], ["--country", "KW"]])
+def test_an_unknown_country_is_refused(args: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        market_from_args(args)
+
+
+def _sources(conn: psycopg.Connection[Any]) -> int:
+    row = conn.execute("SELECT count(*) FROM source").fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+@pytest.mark.parametrize(
+    ("recorded", "market"),
+    [({"country": "SA"}, "AE"), ({"country": "AE"}, "SA"), ({}, "SA")],
+)
+def test_a_bundle_from_another_storefront_is_refused_before_any_write(
+    db: str, tmp_path: Path, recorded: dict[str, str], market: str
+) -> None:
+    root = _folder(
+        tmp_path / f"mismatch-{market}-{len(recorded)}", {"stopped": "cutoff", **recorded}
+    )
+    write_part(root, "pdp_en", [pdp_rec("P740", "en", _sar("P740"))])
+    with psycopg.connect(db) as conn:
+        before = _sources(conn)
+        with pytest.raises(BundleCountryError, match="nothing was written"):
+            Loader(conn, root, f"gs://test-bucket/{root.name}", MARKETS[market])
+        assert _sources(conn) == before
+        conn.rollback()
+
+
+def test_a_bundle_without_a_recorded_country_still_loads_as_uae(db: str, tmp_path: Path) -> None:
+    root = _folder(tmp_path / "legacy-ae", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec("P750", "en")])
+    with psycopg.connect(db) as conn:
+        assert _load(conn, root)["pdp_en"] == 1
+
+
 def _coverage(conn: psycopg.Connection[Any], locale: str) -> str:
     row = conn.execute(
         "SELECT coverage_status::text FROM source_context sc JOIN source s ON s.id = sc.source_id"
@@ -448,3 +586,88 @@ def test_a_partial_run_after_a_complete_one_keeps_supported_and_is_itself_partia
         _load(conn, _full_folder(tmp_path / short, stopped="cutoff"))
         assert _runs(conn, short) == {"en": "partial"}
         assert _coverage(conn, "en-AE") == "supported"
+
+
+# ---------------------------------------------------------------- price decision (no database)
+
+_D = Decimal
+
+
+@pytest.mark.parametrize(
+    ("market", "variant", "currency", "expected", "counter"),
+    [
+        ("AE", {"c_price": 100}, "AED", (_D(100), _D(100), None, False, None), None),
+        (
+            "AE",
+            {"c_price": 100, "c_salesPrice": 80},
+            "AED",
+            (_D(80), _D(100), _D(80), True, None),
+            None,
+        ),
+        # a sale at or above the regular price is no promotion: the regular price is paid
+        (
+            "AE",
+            {"c_price": 100, "c_salesPrice": 100},
+            "AED",
+            (_D(100), _D(100), _D(100), False, None),
+            None,
+        ),
+        (
+            "AE",
+            {"c_price": 100, "c_salesPrice": "$undefined"},
+            "AED",
+            (_D(100), _D(100), None, False, None),
+            None,
+        ),
+        (
+            "AE",
+            {"c_price": 100, "c_salesPrice": "$83:props:offers"},
+            "AED",
+            (None, None, None, False, "unknown"),
+            "sale_price_unreadable",
+        ),
+        # the unreadable sale wins over a missing currency: one counter per variant
+        (
+            "AE",
+            {"c_price": 100, "c_salesPrice": "$83:props:offers"},
+            None,
+            (None, None, None, False, "unknown"),
+            "sale_price_unreadable",
+        ),
+        (
+            "AE",
+            {"c_price": 100},
+            None,
+            (None, None, None, False, "unknown"),
+            "price_without_currency",
+        ),
+        (
+            "AE",
+            {"c_price": 100},
+            "",
+            (None, None, None, False, "unknown"),
+            "price_without_currency",
+        ),
+        (
+            "SA",
+            {"c_price": 100},
+            "AED",
+            (None, None, None, False, "unknown"),
+            "price_currency_mismatch",
+        ),
+        ("SA", {"c_price": 100}, "SAR", (_D(100), _D(100), None, False, None), None),
+        ("AE", {}, "AED", (None, None, None, False, "not_published"), None),
+        ("AE", {}, None, (None, None, None, False, "not_published"), None),
+    ],
+)
+def test_the_price_decision_stores_no_price_it_is_unsure_of(
+    market: str,
+    variant: dict[str, Any],
+    currency: str | None,
+    expected: tuple[Any, ...],
+    counter: str | None,
+) -> None:
+    loader = Loader.__new__(Loader)  # _prices reads only the market and bumps stats
+    loader.market, loader.stats = MARKETS[market], {}
+    assert loader._prices(variant, currency) == expected
+    assert loader.stats == ({counter: 1} if counter else {})
