@@ -21,7 +21,7 @@ const fmtD=d=>`${d.getUTCDate()} ${(S.lang==='ar'?AR_MON:EN_MON)[d.getUTCMonth()
 const fmtN=(v,dp=0)=>v==null||isNaN(v)?'—':v.toLocaleString('en-US',{minimumFractionDigits:dp,maximumFractionDigits:dp});
 const aed=(v,dp=0)=>v==null?'—':(S.lang==='ar'?`${fmtN(v,dp)} د.إ`:`AED ${fmtN(v,dp)}`);
 const pct=(v,dp=1,sign=true)=>v==null||isNaN(v)?'—':`${sign&&v>0?'+':''}${v.toFixed(dp)}%`;
-const RN=k=>k==='u'?t('ulta'):t('sephora');
+const RN=k=>k==='u'?t('ulta'):k==='s'?t('sephora'):'';
 const RC=k=>k==='u'?C_U:C_S;
 const $=s=>document.querySelector(s);
 const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
@@ -434,8 +434,8 @@ function vExplorer(){const c=ctx();if(DS.real&&!bothOk()&&S.ex.sort==='gap')S.ex
 
 /* ---------- product page ---------- */
 function vProduct(){const p=byId[S.param];if(!p)return pagehead(t('notFound'),'')+`<div class="wempty big"><b>${t('notFoundT')}</b><span>${t('notFoundP')}</span><a class="btn" href="#/explorer">${t('backExplorer')}</a></div>`;
-  const b=DAYS-1;const views=[...(p.img?[['photo',pic(p)]]:[]),['detail',productSVG(p,'','detail')],['card',productSVG(p,'')]];if(p.shades.length)views.push(['shades',productSVG(p,'','shades')]);const gi=Math.min(S.gal,views.length-1);
-  const gal=`<div class="gallery"><div class="gmain">${views[gi][1]}</div><div class="gthumbs" role="tablist" aria-label="${t('images')}">${views.map((v,i)=>`<button role="tab" aria-selected="${i===gi}" data-gal="${i}" aria-label="${t('galN')[v[0]]}">${v[1]}</button>`).join('')}</div><p class="muted xs">${views[gi][0]==='photo'?t('photoNote')(RN(new URL(p.img).hostname===IMG_HOSTS.u?'u':'s')):t('renderNote')}</p></div>`;
+  const b=DAYS-1;const ir=imgRet(p.img);const views=[...(ir?[['photo',pic(p)]]:[]),['detail',productSVG(p,'','detail')],['card',productSVG(p,'')]];if(p.shades.length)views.push(['shades',productSVG(p,'','shades')]);const gi=Math.min(S.gal,views.length-1);
+  const gal=`<div class="gallery"><div class="gmain">${views[gi][1]}</div><div class="gthumbs" role="tablist" aria-label="${t('images')}">${views.map((v,i)=>`<button role="tab" aria-selected="${i===gi}" data-gal="${i}" aria-label="${t('galN')[v[0]]}">${v[1]}</button>`).join('')}</div><p class="muted xs">${views[gi][0]==='photo'?t('photoNote')(RN(ir)):t('renderNote')}</p></div>`;
   const offer=k=>{if(DS.real&&!retOk(k))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><span class="gl"><b>${retShort(k)}</b>${info(retDetail(k))}</span></div>`;
    if(heldAt(p,k,b))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><b>${t('priceReview')}</b></div>`;
    if(!p.listed[k]||!listedAt(p,k,b))return `<div class="offer na"><h3><span class="rdot" style="--c:${RC(k)}">${RN(k)}</span></h3><b>${t('notListedAt')(RN(k))}</b><p class="muted">${p.listed[k]?t('delistedOn')(fmtD(dayDate(p.last[k]+1))):t('notCarried')}</p></div>`;

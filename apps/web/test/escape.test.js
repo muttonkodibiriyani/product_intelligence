@@ -18,7 +18,7 @@ const sandbox = {
 sandbox.window = sandbox; sandbox.self = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(src + `
-;globalThis.__t = { hydrate, sampleContract, fixtureContract, useDS, resetAll, afterData, W, ctx, S, render, SETF_KEYS, PRESETS, viewById, launchesIn, heldAt };`, sandbox, { filename: 'app-bundle.js' });
+;globalThis.__t = { hydrate, sampleContract, fixtureContract, useDS, resetAll, afterData, W, ctx, S, render, SETF_KEYS, PRESETS, viewById, launchesIn, heldAt, imgRet };`, sandbox, { filename: 'app-bundle.js' });
 const T = sandbox.__t;
 
 const EVIL = '<b>x</b><zz>';
@@ -43,6 +43,26 @@ for (const [name, mk] of [['sample', () => T.sampleContract()], ['partial', () =
   assert(!bad(h), `${name} ${r}/${lang}: dataset string reached the DOM as markup near: ` + h.match(/.{0,80}(<zz|<b>x<\/b>).{0,40}/)?.[0]);
   assert(!h.includes('${'), `${name} ${r}/${lang}: an uninterpolated \${...} reached the DOM near: ` + h.match(/.{0,80}\$\{.{0,40}/)?.[0]);
  }
+}
+
+// an image is credited only to the retailer that owns its host; any other host gets no photo and no credit line (fail closed)
+{
+ const DS = T.hydrate(T.fixtureContract('partial'));
+ T.useDS(DS); T.resetAll(); T.afterData();
+ const p = DS.products[0];
+ assert.strictEqual(T.imgRet('https://media.alshaya.com/x.jpg'), 'u');
+ assert.strictEqual(T.imgRet('https://img-product.sephora.me/x.jpg'), 's');
+ for (const v of ['https://www.faces.ae/x.jpg', 'https://media.alshaya.com.evil.example/x.jpg', 'not a url', null]) assert.strictEqual(T.imgRet(v), null, String(v));
+ const page = (img, lang) => { p.img = img; T.S.lang = lang; T.S.route = 'product'; T.S.param = p.id; T.S.gal = 0; root.innerHTML = ''; T.render(); return String(root.innerHTML) };
+ for (const lang of ['en', 'ar']) {
+  const h = page('https://www.faces.ae/x.jpg', lang);
+  assert(!h.includes('faces.ae'), `${lang}: an unknown host's image is shown`);
+  assert(!/Sephora|سيفورا/.test(h.match(/<div class="gallery">[\s\S]*?<\/p><\/div>/)?.[0] ?? ''), `${lang}: an unknown host's image is credited to Sephora`);
+  assert(!h.includes(lang === 'en' ? "'s site, not copied" : 'معروضة من موقع'), `${lang}: an unknown host still gets a credit line`);
+  const u = page('https://media.alshaya.com/x.jpg', lang);
+  assert(u.includes(lang === 'en' ? "Image shown from Ulta's site" : 'الصورة معروضة من موقع ألتا'), `${lang}: an Ulta image is credited to Ulta`);
+ }
+ T.resetAll();
 }
 
 // data-setf only touches whitelisted filter keys
