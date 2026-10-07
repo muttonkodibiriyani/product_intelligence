@@ -76,6 +76,16 @@ def test_merge_keeps_the_newest_read_in_any_order(newest_first: bool) -> None:
     }
 
 
+@pytest.mark.parametrize("newest_first", [True, False])
+def test_merge_keeps_the_newest_failed_attempt_in_any_order(newest_first: bool) -> None:
+    old = {"attempted_en": {"P1": {"at": "2026-09-29T22:00:00+00:00"}}}
+    new = {"attempted_en": {"P1": {"at": "2026-09-30T22:00:00+00:00"}}}
+    runs = [new, old] if newest_first else [old, new]
+    assert cadence.merge_covered(runs) == {
+        "P1": cadence.Seen("2026-09-30T22:00:00+00:00", multi_price=False)
+    }
+
+
 def test_a_failed_page_moves_out_of_the_unread_tier() -> None:
     runs: list[dict[str, Any]] = [
         {"pdp_en": {"P1": {"at": "2026-09-28T22:00:00+00:00", "multi_price": True}}},
