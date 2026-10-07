@@ -191,7 +191,7 @@ def test_p3_covers_every_pinned_retailer_unless_narrowed() -> None:
     }
     assert pages.IMAGE_HOSTS["faces_ae"] == "www.faces.ae"
     assert pages.IMAGE_HOSTS["bloomingdales_ae"] == "prodheadless.atgwasl.com"
-    assert pages.IMAGE_HOSTS["ounass_ae"] is None  # not verified: no thumbnail expected
+    assert pages.IMAGE_HOSTS["ounass_ae"] == "ounass-ae.atgcdn.ae"
     assert pages.parse_args(base).retailer is None
     narrowed = pages.parse_args([*base, "--retailer", "sephora_me", "--retailer", "ulta_ae"])
     assert narrowed.retailer == ["sephora_me", "ulta_ae"]

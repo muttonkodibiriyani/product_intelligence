@@ -51,13 +51,13 @@ BASE = "https://productintelligence-beeb3.web.app/api/v1"
 EXPECTED = {"sephora_me": 9529, "ulta_ae": 7275}
 #: Every retailer the API may serve, with the one host its images / evidence links must be on.
 #: S3 checks each retailer /coverage serves, and FAILs on a served retailer missing from here.
-#: ``None``: no image host is verified yet (Ounass, 2026-10-07), so S3 FAILs on any image it
-#: serves (the export publishes none and pi-api has no host to allow).
+#: ``None`` would mean no image host is verified yet for that retailer, so S3 FAILs on any image
+#: it serves (the export publishes none and pi-api has no host to allow).
 IMAGE_HOSTS: dict[str, str | None] = {
     "sephora_me": "img-product.sephora.me",
     "ulta_ae": "media.alshaya.com",
     "faces_ae": "www.faces.ae",
-    "ounass_ae": None,
+    "ounass_ae": "ounass-ae.atgcdn.ae",
     "bloomingdales_ae": "prodheadless.atgwasl.com",
 }
 EVIDENCE_HOSTS = {

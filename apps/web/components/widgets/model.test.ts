@@ -185,18 +185,24 @@ describe('widget model', () => {
     expect(imageSrc('http://prodheadless.atgwasl.com/a.jpg', 'bloomingdales_ae')).toBeNull();
   });
 
-  it('shows no Ounass image: its host is not listed yet (TODO ounass image host)', () => {
+  it('shows Ounass images only from its own CDN', () => {
+    const ounass = 'https://ounass-ae.atgcdn.ae/small_light(dw=240,of=webp)/pub/media/catalog/product/a.jpg';
+    expect(imageHost(ounass, 'ounass_ae')).toBe('ounass-ae.atgcdn.ae');
+    expect(imageSrc(ounass, 'ounass_ae')).toBe(new URL(ounass).toString());
+    expect(IMAGE_OWNERS['ounass-ae.atgcdn.ae'].name).toBe('Ounass');
+    // Its host is not another shop's, and other hosts are not its own.
+    expect(imageSrc(ounass, 'bloomingdales_ae')).toBeNull();
     for (const url of [
       'https://www.ounass.ae/media/a.jpg',
-      'https://ounass.ae/a.jpg',
       'https://cdn.ounass.ae/a.jpg',
+      'http://ounass-ae.atgcdn.ae/a.jpg',
+      'https://ounass-ae.atgcdn.ae.evil.example/a.jpg',
       'https://prodheadless.atgwasl.com/a.jpg',
       'https://www.faces.ae/media/a.jpg',
     ]) {
       expect(imageHost(url, 'ounass_ae')).toBeNull();
       expect(imageSrc(url, 'ounass_ae')).toBeNull();
     }
-    expect(Object.values(IMAGE_OWNERS).map((o) => o.name)).not.toContain('Ounass');
   });
 
   it('never guesses freshness', () => {

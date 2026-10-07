@@ -270,7 +270,7 @@ def test_a_named_added_retailer_passes_on_top_of_an_unchanged_baseline(tmp_path:
 
 
 def with_ounass_and_bloomingdales(n: int = 20) -> FakeProd:
-    """After a deploy that starts serving retailers 4 and 5 (Ounass with no image host yet)."""
+    """After a deploy that starts serving retailers 4 and 5, each with its own image host."""
     fake = FakeProd()
     for rid, prefix in (("ounass_ae", "o"), ("bloomingdales_ae", "b")):
         fake.cards[rid] = [fake._card(f"{prefix}{i}", rid, "150.00") for i in range(n)]
@@ -284,13 +284,13 @@ ADDED_PAIR = (
 
 
 @pytest.mark.usefixtures("owner_token")
-def test_ounass_and_bloomingdales_added_pass_ounass_with_no_images(tmp_path: Path) -> None:
+def test_ounass_and_bloomingdales_added_pass_with_their_own_images(tmp_path: Path) -> None:
     baseline(tmp_path)
     args = ADDED_PAIR
     assert run(with_ounass_and_bloomingdales(), tmp_path, "check", *args) == 0
     lines = json.loads((tmp_path / "check.json").read_text())["lines"]
     assert any("S2 ounass_ae serves 20 products" in line for line in lines)
-    assert any("S3 ounass_ae: no images (image host not verified" in line for line in lines)
+    assert any("S3 ounass_ae: 20 images, all on ounass-ae.atgcdn.ae" in line for line in lines)
     assert any("S3 ounass_ae evidence on www.ounass.ae" in line for line in lines)
     assert any(
         "S3 bloomingdales_ae: 20 images, all on prodheadless.atgwasl.com" in line for line in lines
@@ -299,8 +299,11 @@ def test_ounass_and_bloomingdales_added_pass_ounass_with_no_images(tmp_path: Pat
 
 
 @pytest.mark.usefixtures("owner_token")
-def test_an_ounass_image_fails_while_its_host_is_unverified(tmp_path: Path) -> None:
+def test_an_image_fails_while_its_host_is_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     baseline(tmp_path)
+    monkeypatch.setitem(smoke.IMAGE_HOSTS, "ounass_ae", None)
     fake = with_ounass_and_bloomingdales()
     fake.cards["ounass_ae"][0]["image"] = {"url": "https://www.ounass.ae/o0.jpg"}
     args = ADDED_PAIR
