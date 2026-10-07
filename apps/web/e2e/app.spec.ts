@@ -48,6 +48,7 @@ for (const locale of ['en', 'ar'] as const) {
         authDown: 'تعذّر تأكيد صلاحيتك الآن',
         pages: [
           'نظرة عامة',
+          'لوحة المتابعة',
           'المنتجات',
           'المقارنة',
           'الرؤى',
@@ -74,6 +75,7 @@ for (const locale of ['en', 'ar'] as const) {
         authDown: "Couldn't confirm your access just now",
         pages: [
           'Overview',
+          'Dashboard',
           'Products',
           'Compare',
           'Insights',

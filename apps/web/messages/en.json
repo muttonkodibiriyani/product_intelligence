@@ -9,6 +9,7 @@
     "signedInAs": "Signed in as {email}",
     "nav": {
       "overview": "Overview",
+      "dashboard": "Dashboard",
       "explore": "Products",
       "compare": "Compare",
       "insights": "Insights",
@@ -1204,6 +1205,32 @@
           "cap": "Listings priced below the floor, latest crawl",
           "threshold": "At least {threshold} listing below the floor"
         }
+      }
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "view": "View",
+    "loading": "Loading the dashboard…",
+    "noRetailers": "No collected retailer to report on.",
+    "numbers": "Headline numbers",
+    "onePair": "Comparisons need two collected retailers.",
+    "views": {
+      "lead": {
+        "name": "Leadership summary",
+        "intro": "Each shop's catalogue, promotions and launches, who is cheaper on the matched products, and how the price gap has moved."
+      },
+      "price": {
+        "name": "Pricing desk",
+        "intro": "The price gap on matched products and by category, the price index over time, and each shop's price bands, category ladder and brand prices."
+      },
+      "promo": {
+        "name": "Promotions desk",
+        "intro": "How much of each catalogue is on promotion, how deep the discounts go, and the deepest discounts today."
+      },
+      "range": {
+        "name": "Range & launches",
+        "intro": "How concentrated each catalogue is by brand, where each brand is priced, and what each shop has launched."
       }
     }
   }
