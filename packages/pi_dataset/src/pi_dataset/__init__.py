@@ -36,6 +36,8 @@ from pi_dataset.profiles import (
 from pi_dataset.upgrade import UpgradeError, upgrade
 from pi_dataset.v3 import (
     SCHEMA_ID_V3,
+    AttributeEvidence,
+    AttributeSource,
     ContentField,
     Context,
     DatasetV3,
@@ -65,7 +67,9 @@ __all__ = [
     "SCHEMA_ID_V3",
     "AttributeBlock",
     "AttributeDef",
+    "AttributeEvidence",
     "AttributeLevel",
+    "AttributeSource",
     "AttributeType",
     "Capabilities",
     "ContentField",

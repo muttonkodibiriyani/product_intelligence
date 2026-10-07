@@ -7,14 +7,16 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 from pi_profiles.base import VerticalProfile
-from pi_profiles.beauty import BEAUTY_V1
+from pi_profiles.beauty import BEAUTY_V1, BEAUTY_V2
 
 #: The ``variant.attributes_schema`` / ``meta.profile`` ref shape; migration 0004 checks the same
 #: literal with PostgreSQL ``~``, so keep it engine-neutral: ASCII classes and bounded repeats only
 #: (no ``\d``, ``\w``, lookarounds or flags, which differ between Python and PostgreSQL).
 REF_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,62}@[1-9][0-9]{0,8}$")
 
-PROFILES: Mapping[str, VerticalProfile] = MappingProxyType({p.ref: p for p in (BEAUTY_V1,)})
+PROFILES: Mapping[str, VerticalProfile] = MappingProxyType(
+    {p.ref: p for p in (BEAUTY_V1, BEAUTY_V2)}
+)
 
 
 class UnknownProfileError(LookupError):
