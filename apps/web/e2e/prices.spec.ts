@@ -205,9 +205,15 @@ for (const locale of ['en', 'ar'] as const) {
       const axes = await head.locator('svg').all();
       expect(axes).toHaveLength(2);
       for (const svg of axes) {
-        const cell = (await svg.locator('xpath=ancestor::th[1]').boundingBox())!;
-        const labels = await svg.locator('text').all();
-        const boxes = (await Promise.all(labels.map((l) => l.boundingBox()))).map((b) => b!);
+        // Measured in the page: WebKit's Playwright boundingBox() puts every SVG <text> at the svg's
+        // left edge (its width is right), which reads as an overlap that is not on screen.
+        const { cell, boxes } = await svg.evaluate((el) => {
+          const box = (r: DOMRect) => ({ x: r.x, width: r.width });
+          return {
+            cell: box(el.closest('th')!.getBoundingClientRect()),
+            boxes: [...el.querySelectorAll('text')].map((t) => box(t.getBoundingClientRect())),
+          };
+        });
         boxes.sort((a, b) => a.x - b.x);
         expect(boxes.length).toBeGreaterThanOrEqual(2);
         for (const b of boxes) {
