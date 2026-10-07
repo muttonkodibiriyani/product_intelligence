@@ -105,6 +105,8 @@ class ListingRow:
     #: The retailer's own gift-with-purchase titles for this product (Sephora: PRODUCT-class
     #: promotions), from the latest content. Not published until the beauty@2 profile declares it.
     gift_with_purchase: tuple[str, ...] = ()
+    #: the fragrance concentration (variant, else the page's label); v2 ``attributes`` (beauty@1)
+    concentration: str | None = None
 
     @property
     def price_capture(self) -> tuple[datetime, int]:
@@ -354,6 +356,7 @@ SELECT
   v.size_unit,
   lc.labels ->> 'size' AS size_label,
   COALESCE(v.gtin, lc.labels ->> 'gtin') AS gtin,
+  COALESCE(v.concentration, NULLIF(lc.labels ->> 'concentration', '')) AS concentration,
   lc.description,
   lc.ingredients,
   latest.price_current AS price,

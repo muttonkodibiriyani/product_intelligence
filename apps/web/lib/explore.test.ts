@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activeFilterCount,
   currentPages,
   EMPTY,
   parseState,
@@ -26,6 +27,23 @@ describe('explorer URL state', () => {
       sort: 'gap_asc',
     });
     expect(parse(toSearch(s).slice(1))).toEqual(s);
+  });
+
+  it('carries the stock filters Insights links with, in a fixed order, dropping unknown values', () => {
+    const s = parse(
+      'availability=out_of_stock&availability=in_stock&availability=gone&unavailableBrands=exclude',
+    );
+    expect(s.availability).toEqual(['in_stock', 'out_of_stock']);
+    expect(s.unavailableBrands).toBe('exclude');
+    expect(parse(toSearch(s).slice(1))).toEqual(s);
+    expect(parse('unavailableBrands=all').unavailableBrands).toBeNull();
+    expect(toQuery(s, null)).toEqual({
+      availability: ['in_stock', 'out_of_stock'],
+      unavailableBrands: 'exclude',
+      sort: 'name',
+      limit: 50,
+    });
+    expect(activeFilterCount(s)).toBe(3);
   });
 
   it('a clean view has a clean URL', () => {

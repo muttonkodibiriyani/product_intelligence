@@ -9,7 +9,13 @@ price is ``not_published``, never 0). Nothing is guessed:
   which the importer never reads as removal; a wrong-currency price is never relabelled.
 - ``observed_at`` is the page's capture time, never the time the feed was built.
 - Availability is only what the page itself stated in its structured product data, and only when
-  the shop's settings trust that statement. Otherwise the column is absent (``not_observed``).
+  the shop's settings trust that statement. Every statement on the page must agree (JSON-LD
+  ``availability`` and a dataLayer ``item_in_stock`` flag alike); otherwise, or with none, the
+  column is absent (``not_observed``). Absence is never read as a stock-out.
+- Page content goes in as the page states it: the description, gender (the page's department),
+  concentration, badges, the gift-with-purchase label as a promotion, and the whole gallery
+  (``image_urls``, page order; ``image_url`` stays its first image). ``badges``, ``promotions``
+  and ``image_urls`` are lists.
 """
 
 from __future__ import annotations
@@ -51,7 +57,26 @@ COLUMNS: tuple[str, ...] = (
     "availability",
     "image_url",
     "observed_at",
+    "description",
+    "gender",
+    "concentration",
+    "badges",
+    "promotions",
+    "image_urls",
 )
+
+#: Feed column -> the reading that fills it, as text.
+_TEXT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("gtin", "gtin"),
+    ("name", "title"),
+    ("brand", "brand"),
+    ("shade", "shade_name"),
+    ("description", "description"),
+    ("gender", "department"),
+    ("concentration", "concentration"),
+)
+
+Row = dict[str, str | list[str]]
 
 #: schema.org availability (the last path segment) to the importer's states. A value outside this
 #: map is never written: the importer would reject the row, and guessing a state is worse.
@@ -61,6 +86,9 @@ AVAILABILITY_MAP: dict[str, str] = {
     "outofstock": "out_of_stock",
     "soldout": "out_of_stock",
 }
+
+#: A dataLayer ``item_in_stock`` flag in the same tokens as schema.org availability.
+_STOCK_FLAG = {True: "instock", False: "outofstock"}
 
 
 @dataclass(frozen=True)
@@ -87,13 +115,16 @@ SHOPS: dict[str, Shop] = {
         currency="AED",
         time_zone="Asia/Dubai",
         notes="Faces UAE (Chalhoub), product pages captured by pi_capture (task 01a0fc6d)",
+        # per page, from the page's own JSON-LD and dataLayer only (coordinator ruling
+        # 2026-10-06); the catalogue stays partial, so a missing page is never a stock-out
+        markup_availability=True,
     ),
 }
 
 
 @dataclass
 class FeedResult:
-    rows: list[dict[str, str]] = field(default_factory=list)
+    rows: list[Row] = field(default_factory=list)
     excluded: list[dict[str, str]] = field(default_factory=list)
     #: per column: how many rows carry a value
     filled: Counter[str] = field(default_factory=Counter)
@@ -135,7 +166,13 @@ def _major(minor: JsonValue, currency: str) -> str | None:
 
 
 def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[str]) -> str | None:
-    """The single availability the structured data states; two different ones -> None."""
+    """The single availability the structured data states; two different ones -> None.
+
+    Read from schema.org ``availability`` values and from ``item_in_stock`` flags (the page's own
+    stock flag), so a page whose JSON-LD and flag disagree states nothing usable. A flag that is
+    present but not a boolean adds a token no map holds, so the page's stock is unknown and the
+    token is counted in ``unmapped``.
+    """
     found: set[str] = set()
 
     def walk(node: JsonValue) -> None:
@@ -143,6 +180,11 @@ def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[s
             value = node.get("availability")
             if isinstance(value, str) and value.strip():
                 found.add(value.strip().rstrip("/").rsplit("/", 1)[-1].lower())
+            if "item_in_stock" in node:
+                flag = node["item_in_stock"]
+                found.add(
+                    _STOCK_FLAG[flag] if isinstance(flag, bool) else f"item_in_stock={flag!r}"
+                )
             for child in node.values():
                 walk(child)
         elif isinstance(node, list):
@@ -152,13 +194,12 @@ def _availability(by_key: Mapping[str, tuple[Reading, ...]], unmapped: Counter[s
     for reading in by_key.get("structured_data", ()):
         if reading.state == "observed":
             walk(reading.value)
+    for token in found - AVAILABILITY_MAP.keys():
+        unmapped[token] += 1
     if len(found) != 1:
         return None
     (token,) = found
-    if token not in AVAILABILITY_MAP:
-        unmapped[token] += 1
-        return None
-    return token
+    return token if token in AVAILABILITY_MAP else None
 
 
 def _price_columns(
@@ -192,9 +233,19 @@ def _price_columns(
     return out
 
 
+def _texts(value: JsonValue) -> list[str]:
+    """A list reading's text items in page order, repeats left out."""
+    out: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        text = _text(item)
+        if text is not None and text not in out:
+            out.append(text)
+    return out
+
+
 def _row(
     capture: ProductCapture, shop: Shop, unmapped: Counter[str], dropped: list[str]
-) -> dict[str, str] | str:
+) -> Row | str:
     by_key = capture.by_key()
     sku = _observed(by_key, "retailer_sku")
     key = _text(sku.value) if sku else None
@@ -203,15 +254,10 @@ def _row(
     prices = _price_columns(by_key, shop.currency, dropped)
     if isinstance(prices, str):
         return prices
-    row: dict[str, str] = {"listing_key": key, "sku": key}
+    row: Row = {"listing_key": key, "sku": key}
     canonical = _observed(by_key, "canonical_url")
     row["url"] = (_text(canonical.value) if canonical else None) or capture.url
-    for column, reading_key in (
-        ("gtin", "gtin"),
-        ("name", "title"),
-        ("brand", "brand"),
-        ("shade", "shade_name"),
-    ):
+    for column, reading_key in _TEXT_COLUMNS:
         reading = _observed(by_key, reading_key)
         if reading is not None and (value := _text(reading.value)) is not None:
             row[column] = value
@@ -224,13 +270,17 @@ def _row(
     if size is not None and (label := _text(size.value)) is not None:
         row["size"] = label
     images = _observed(by_key, "image_urls")
-    first = (
-        _text(images.value[0])
-        if images is not None and isinstance(images.value, list) and images.value
-        else None
-    )
-    if first is not None:
-        row["image_url"] = first
+    gallery = _texts(images.value) if images is not None else []
+    if gallery:
+        row["image_url"] = gallery[0]
+        row["image_urls"] = gallery
+    badges = _observed(by_key, "badges")
+    if badges is not None and (flags := _texts(badges.value)):
+        row["badges"] = flags
+    # the page's gift-with-purchase label (Faces: "Free Gifts"), a promotion, not a price
+    gift = _observed(by_key, "gift_with_purchase")
+    if gift is not None and (label := _text(gift.value)) is not None:
+        row["promotions"] = [label]
     if shop.markup_availability and (state := _availability(by_key, unmapped)) is not None:
         row["availability"] = state
     row |= prices
@@ -256,10 +306,11 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
         if isinstance(row, str):
             result.excluded.append({"url": capture.url, "reason": row})
             continue
-        if row["listing_key"] in seen:
+        key = str(row["listing_key"])
+        if key in seen:
             result.excluded.append({"url": capture.url, "reason": "duplicate retailer_sku"})
             continue
-        seen.add(row["listing_key"])
+        seen.add(key)
         result.regular_price_dropped.update(dropped)
         result.rows.append(row)
         result.filled.update(row.keys())
