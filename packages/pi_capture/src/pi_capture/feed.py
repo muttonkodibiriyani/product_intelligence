@@ -16,15 +16,20 @@ price is ``not_published``, never 0). Nothing is guessed:
   concentration, badges, the gift-with-purchase label as a promotion, and the whole gallery
   (``image_urls``, page order; ``image_url`` stays its first image). ``badges``, ``promotions``
   and ``image_urls`` are lists.
+- The feed claims the whole catalogue (``complete_catalogue``) only when :func:`completeness`
+  says one capture run fetched and read every product URL its sitemap lists. Anything less, or
+  no sitemap, stays partial, so the importer records the run as ``partial``.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from pi_capture.model import JsonValue, ProductCapture, Reading
@@ -34,9 +39,11 @@ __all__ = [
     "AVAILABILITY_MAP",
     "COLUMNS",
     "SHOPS",
+    "Completeness",
     "FeedResult",
     "Shop",
     "build_feed",
+    "completeness",
     "mapping_for",
 ]
 
@@ -312,13 +319,20 @@ def _row(
     return row
 
 
+#: :func:`build_feed` exclusion reasons that :func:`completeness` treats as read elsewhere
+_OTHER_LOCALE = "locale "
+_DUPLICATE_SKU = "duplicate retailer_sku"
+
+
 def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
     """Feed rows for one shop and country, in capture order; the first page per key wins."""
     result = FeedResult()
     seen: set[str] = set()
     for capture in captures:
         if capture.locale != shop.locale:
-            result.excluded.append({"url": capture.url, "reason": f"locale {capture.locale}"})
+            result.excluded.append(
+                {"url": capture.url, "reason": f"{_OTHER_LOCALE}{capture.locale}"}
+            )
             continue
         if capture.capture_state != "ok":
             result.excluded.append(
@@ -332,7 +346,7 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
             continue
         key = str(row["listing_key"])
         if key in seen:
-            result.excluded.append({"url": capture.url, "reason": "duplicate retailer_sku"})
+            result.excluded.append({"url": capture.url, "reason": _DUPLICATE_SKU})
             continue
         seen.add(key)
         result.regular_price_dropped.update(dropped)
@@ -341,8 +355,82 @@ def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
     return result
 
 
-def mapping_for(shop: Shop) -> dict[str, Any]:
-    """The ``offline_import`` mapping for a feed built by :func:`build_feed`."""
+#: Feed exclusions that still leave the product read: the same page in another locale (the
+#: shop's own locale is the one read) and a second URL of a SKU already in the feed.
+#: :func:`build_feed` writes these reasons and :func:`completeness` reads them.
+_READ_ELSEWHERE = (_OTHER_LOCALE, _DUPLICATE_SKU)
+
+
+@dataclass(frozen=True)
+class Completeness:
+    """Did one capture run read the whole catalogue its sitemap lists?"""
+
+    sitemap_urls: int
+    #: why a sitemap product URL was not read, and how many: ``not_observed`` (no page row),
+    #: a page state (``blocked``, ``rate_limited``, …), ``not_read`` (fetched, no readings) or
+    #: a feed exclusion reason
+    gaps: Mapping[str, int]
+
+    @property
+    def complete(self) -> bool:
+        return self.sitemap_urls > 0 and not self.gaps
+
+    def report(self) -> dict[str, Any]:
+        return {
+            "complete": self.complete,
+            "sitemap_urls": self.sitemap_urls,
+            "gaps": dict(sorted(self.gaps.items())),
+        }
+
+
+def completeness(
+    sitemap_urls: Iterable[str],
+    pages: Iterable[Mapping[str, Any]],
+    captures: Iterable[ProductCapture],
+    result: FeedResult,
+    shop: Shop,
+) -> Completeness:
+    """Complete only if every product URL of the measured sitemap was fetched ``ok`` in this one
+    capture run (``pages``: the run's page rows), with none blocked or not observed, and each
+    page in the shop's locale was read into the feed or left out only as a second URL of a SKU
+    already in it (coordinator ruling 2026-10-06). The caller passes one run's page rows, i.e.
+    one dated plan; the sitemap is the measured one, not the plan."""
+    states: dict[str, set[str]] = {}
+    fetched: dict[str, tuple[str, str]] = {}  # sitemap URL -> (URL read, page locale)
+    for row in pages:
+        url = str(row["url"])
+        states.setdefault(url, set()).add(str(row.get("state")))
+        if row.get("state") == "ok":
+            fetched[url] = (str(row.get("final_url") or url), str(row.get("locale")))
+    read = {c.url for c in captures if c.locale == shop.locale}
+    gap_reasons: dict[str, set[str]] = {}  # URL -> every reason that leaves the product unread
+    for e in result.excluded:
+        reasons = gap_reasons.setdefault(e["url"], set())
+        if not e["reason"].startswith(_READ_ELSEWHERE):
+            reasons.add(e["reason"])
+    gaps: Counter[str] = Counter()
+    wanted = set(sitemap_urls)
+    for url in wanted:
+        if url not in states:
+            gaps["not_observed"] += 1
+            continue
+        if url not in fetched:
+            gaps[min(states[url])] += 1  # a stable name when one URL has several states
+            continue
+        final, locale = fetched[url]
+        if locale != shop.locale:
+            continue  # another locale's copy of a product: fetched is all it owes
+        unread = gap_reasons.get(final)
+        if unread:  # any real exclusion is a gap, whatever else the URL was excluded for
+            gaps[min(unread)] += 1
+        elif unread is None and final not in read:
+            gaps["not_read"] += 1
+    return Completeness(sitemap_urls=len(wanted), gaps=dict(gaps))
+
+
+def mapping_for(shop: Shop, *, complete: bool = False) -> dict[str, Any]:
+    """The ``offline_import`` mapping for a feed built by :func:`build_feed`; ``complete`` only
+    from a :func:`completeness` that says so."""
     mapping: dict[str, Any] = {
         "source": {
             "name": shop.source,
@@ -354,7 +442,7 @@ def mapping_for(shop: Shop) -> dict[str, Any]:
         "locale": shop.locale,
         "currency": shop.currency,
         "time_zone": shop.time_zone,
-        "complete_catalogue": False,
+        "complete_catalogue": complete,
         "format": "json",
         "json_items_path": "items",
         "columns": {c: c for c in COLUMNS},
@@ -373,10 +461,19 @@ def dump_feed(result: FeedResult, shop: Shop) -> str:
     )
 
 
+def _page_rows(path: Path) -> list[dict[str, Any]]:
+    """A page_capture ``pages/part-*.jsonl[.gz]`` file's rows."""
+    raw = path.read_bytes()
+    text = (gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw).decode("utf-8")
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """``python -m pi_capture.feed <shop> <readings.jsonl> <out_dir>``: feed, mapping, report."""
+    """``python -m pi_capture.feed <shop> <readings.jsonl> <out_dir>``: feed, mapping, report.
+
+    ``--sitemap-urls <file> --pages <part>...`` (one capture run's page rows) checks the run
+    against the measured sitemap; only a complete one writes ``complete_catalogue: true``."""
     import argparse  # noqa: PLC0415 - CLI only
-    from pathlib import Path  # noqa: PLC0415 - CLI only
 
     from pi_capture.model import loads  # noqa: PLC0415 - CLI only
 
@@ -384,18 +481,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("shop", choices=sorted(SHOPS))
     parser.add_argument("readings", type=Path)
     parser.add_argument("out_dir", type=Path)
+    parser.add_argument("--sitemap-urls", type=Path, help="product URLs, one per line")
+    parser.add_argument("--pages", type=Path, nargs="+", help="one run's page rows")
     args = parser.parse_args(argv)
+    if (args.sitemap_urls is None) != (args.pages is None):
+        parser.error("--sitemap-urls and --pages go together")
     shop = SHOPS[args.shop]
     with args.readings.open(encoding="utf-8") as fh:
-        result = build_feed((loads(line) for line in fh if line.strip()), shop)
+        captures = [loads(line) for line in fh if line.strip()]
+    result = build_feed(captures, shop)
+    summary = result.report()
+    complete = False
+    if args.sitemap_urls is not None:
+        urls = [u.strip() for u in args.sitemap_urls.read_text("utf-8").splitlines() if u.strip()]
+        pages = [row for part in args.pages for row in _page_rows(part)]
+        check = completeness(urls, pages, captures, result, shop)
+        complete = check.complete
+        summary["catalogue"] = check.report()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / f"{shop.source}.feed.json").write_text(dump_feed(result, shop), "utf-8")
     (args.out_dir / f"{shop.source}.mapping.json").write_text(
-        json.dumps(mapping_for(shop), indent=1, sort_keys=True), "utf-8"
+        json.dumps(mapping_for(shop, complete=complete), indent=1, sort_keys=True), "utf-8"
     )
-    report = result.report() | {"excluded_rows": result.excluded}
+    report = summary | {"excluded_rows": result.excluded}
     (args.out_dir / f"{shop.source}.feed-report.json").write_text(
         json.dumps(report, indent=1, ensure_ascii=False), "utf-8"
     )
-    print(json.dumps(result.report()))
+    print(json.dumps(summary))
     return 0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 from collections.abc import Callable
 from dataclasses import replace
@@ -12,7 +13,7 @@ import pytest
 
 from offline_import.mapping import ImportMapping
 from offline_import.validate import validate_file
-from pi_capture.feed import SHOPS, Shop, _major, build_feed, main, mapping_for
+from pi_capture.feed import SHOPS, Shop, _major, build_feed, completeness, main, mapping_for
 from pi_capture.generic import readings_from_generic
 from pi_capture.model import JsonValue, ProductCapture, Reading, ReadingState, dumps
 from pi_capture.registry import get
@@ -368,3 +369,157 @@ def test_page_content_validates_in_the_importer(
     report = _validate(tmp_path, [_content_page(make_capture)])
     assert (report["rows"], report["accepted"], report["rejected"]) == (1, 1, [])
     assert [w for w in report["warnings"] if w["listing_key"] is not None] == []
+
+
+# ------------------------------------------- the whole catalogue: one run, every sitemap URL read
+
+EN, AR = "https://shop.example/en/p/a", "https://shop.example/ar/p/a"
+EN_B = "https://shop.example/en/p/b"
+
+
+def fetched(url: str, state: str = "ok", locale: str | None = None) -> dict[str, object]:
+    """A page_capture page row (only the fields the check reads)."""
+    return {"url": url, "final_url": url, "state": state, "locale": locale or _locale(url)}
+
+
+def _locale(url: str) -> str:
+    return "ar-AE" if "/ar/" in url else "en-AE"
+
+
+def sku(make_capture: CaptureFactory, url: str, key: str) -> ProductCapture:
+    readings = (r("retailer_sku", key), r("title", "Glow Serum"), r("brand", "Glow"))
+    return make_capture(readings=readings, url=url)
+
+
+def check(
+    make_capture: CaptureFactory,
+    pages: list[dict[str, object]],
+    captures: list[ProductCapture] | None = None,
+    sitemap: tuple[str, ...] = (EN, AR, EN_B),
+) -> dict[str, object]:
+    if captures is None:
+        captures = [sku(make_capture, EN, "A"), sku(make_capture, EN_B, "B")]
+    result = build_feed(captures, SHOP)
+    return completeness(sitemap, pages, captures, result, SHOP).report()
+
+
+def test_a_run_that_read_every_sitemap_url_is_complete(make_capture: CaptureFactory) -> None:
+    report = check(make_capture, [fetched(EN), fetched(AR), fetched(EN_B)])
+    assert report == {"complete": True, "sitemap_urls": 3, "gaps": {}}
+
+
+@pytest.mark.parametrize("state", ["blocked", "rate_limited", "transport_error", "http_error"])
+def test_one_page_not_fetched_ok_leaves_the_run_partial(
+    make_capture: CaptureFactory, state: str
+) -> None:
+    report = check(make_capture, [fetched(EN), fetched(AR, state), fetched(EN_B)])
+    assert report == {"complete": False, "sitemap_urls": 3, "gaps": {state: 1}}
+
+
+def test_a_sitemap_url_the_run_never_fetched_is_not_observed(make_capture: CaptureFactory) -> None:
+    report = check(make_capture, [fetched(EN), fetched(EN_B)])
+    assert report["gaps"] == {"not_observed": 1}
+    assert report["complete"] is False
+
+
+def test_a_fetched_page_without_readings_is_not_read(make_capture: CaptureFactory) -> None:
+    pages = [fetched(EN), fetched(AR), fetched(EN_B)]
+    report = check(make_capture, pages, [sku(make_capture, EN, "A")])
+    assert report["gaps"] == {"not_read": 1}
+
+
+def test_a_page_left_out_of_the_feed_is_a_gap_but_a_second_url_of_a_sku_is_not(
+    make_capture: CaptureFactory,
+) -> None:
+    pages = [fetched(EN), fetched(AR), fetched(EN_B)]
+    keyless = make_capture(readings=(r("title", "No Key"),), url=EN_B)
+    assert check(make_capture, pages, [sku(make_capture, EN, "A"), keyless])["gaps"] == {
+        "no retailer_sku on the page": 1
+    }
+    again = [sku(make_capture, EN, "A"), sku(make_capture, EN_B, "A")]
+    assert check(make_capture, pages, again)["complete"] is True
+
+
+def test_a_redirected_page_is_matched_by_where_it_was_read(make_capture: CaptureFactory) -> None:
+    moved = "https://shop.example/en/p/b-new"
+    pages = [fetched(EN), fetched(AR), {**fetched(EN_B), "final_url": moved}]
+    captures = [sku(make_capture, EN, "A"), sku(make_capture, moved, "B")]
+    assert check(make_capture, pages, captures)["complete"] is True
+
+
+def test_a_redirected_page_left_out_of_the_feed_is_a_gap_under_its_own_reason(
+    make_capture: CaptureFactory,
+) -> None:
+    moved = "https://shop.example/en/p/b-new"
+    pages = [fetched(EN), fetched(AR), {**fetched(EN_B), "final_url": moved}]
+    keyless = make_capture(readings=(r("title", "No Key"),), url=moved)
+    report = check(make_capture, pages, [sku(make_capture, EN, "A"), keyless])
+    assert report["gaps"] == {"no retailer_sku on the page": 1}
+
+
+@pytest.mark.parametrize("keyless_first", [True, False])
+def test_a_real_exclusion_is_a_gap_even_beside_a_duplicate_sku(
+    make_capture: CaptureFactory, keyless_first: bool
+) -> None:
+    pages = [fetched(EN), fetched(AR), fetched(EN_B)]
+    keyless = make_capture(readings=(r("title", "No Key"),), url=EN_B)
+    again = sku(make_capture, EN_B, "A")  # a second URL of SKU A: alone, read elsewhere
+    tail = [keyless, again] if keyless_first else [again, keyless]
+    report = check(make_capture, pages, [sku(make_capture, EN, "A"), *tail])
+    assert report["gaps"] == {"no retailer_sku on the page": 1}
+
+
+def test_no_sitemap_is_never_complete(make_capture: CaptureFactory) -> None:
+    assert check(make_capture, [fetched(EN)], sitemap=())["complete"] is False
+
+
+def test_a_retried_page_that_ended_ok_counts_once(make_capture: CaptureFactory) -> None:
+    pages = [fetched(EN, "rate_limited"), fetched(EN), fetched(AR), fetched(EN_B)]
+    assert check(make_capture, pages)["complete"] is True
+
+
+def _run_cli(
+    tmp_path: Path, captures: list[ProductCapture], pages: list[dict[str, object]]
+) -> dict:  # type: ignore[type-arg]
+    tmp_path.mkdir()
+    readings = tmp_path / "readings.jsonl"
+    readings.write_text("".join(dumps(c) + "\n" for c in captures), "utf-8")
+    sitemap = tmp_path / "sitemap.txt"
+    sitemap.write_text(f"{EN}\n{AR}\n\n{EN_B}\n", "utf-8")
+    part = tmp_path / "part-0000.jsonl.gz"
+    part.write_bytes(gzip.compress("".join(json.dumps(p) + "\n" for p in pages).encode()))
+    out = tmp_path / "out"
+    args = [*_shop_args(SHOP), str(readings), str(out), "--sitemap-urls", str(sitemap)]
+    assert main([*args, "--pages", str(part)]) == 0
+    mapping: dict = json.loads((out / f"{SHOP.source}.mapping.json").read_text("utf-8"))  # type: ignore[type-arg]
+    report = json.loads((out / f"{SHOP.source}.feed-report.json").read_text("utf-8"))
+    assert (
+        ImportMapping.model_validate(mapping).complete_catalogue is report["catalogue"]["complete"]
+    )
+    return report["catalogue"]  # type: ignore[no-any-return]
+
+
+def test_only_a_complete_run_writes_complete_catalogue(
+    tmp_path: Path, make_capture: CaptureFactory
+) -> None:
+    captures = [sku(make_capture, EN, "A"), sku(make_capture, EN_B, "B")]
+    ok = _run_cli(tmp_path / "ok", captures, [fetched(EN), fetched(AR), fetched(EN_B)])
+    assert ok["complete"] is True
+    blocked = [fetched(EN), fetched(AR), fetched(EN_B, "blocked")]
+    assert _run_cli(tmp_path / "blocked", captures[:1], blocked) == {
+        "complete": False,
+        "sitemap_urls": 3,
+        "gaps": {"blocked": 1},
+    }
+
+
+def test_without_a_sitemap_the_cli_never_claims_the_catalogue(
+    tmp_path: Path, make_capture: CaptureFactory
+) -> None:
+    readings = tmp_path / "readings.jsonl"
+    readings.write_text(dumps(sku(make_capture, EN, "A")) + "\n", "utf-8")
+    assert main([*_shop_args(SHOP), str(readings), str(tmp_path / "out")]) == 0
+    mapping = json.loads((tmp_path / "out" / f"{SHOP.source}.mapping.json").read_text("utf-8"))
+    assert mapping["complete_catalogue"] is False
+    with pytest.raises(SystemExit):
+        main([SHOP.source, str(readings), str(tmp_path / "x"), "--pages", str(readings)])
