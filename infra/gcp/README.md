@@ -10,7 +10,7 @@ Budget: $25/month. The billing account ID is kept out of this public repo; get i
 |------------|----------------------------------|---------------------------------------|------|
 | 2026-09-30 | `cloudbilling.googleapis.com`    | read project billing link             | free |
 | 2026-09-30 | `billingbudgets.googleapis.com`  | list/create budget alert thresholds   | free |
-| pending owner run | `cloudscheduler.googleapis.com` | ADR-0009 Sephora variant pass (`sephora_schedule_setup.sh`) | free (1 job of the 3 free) |
+| 2026-10-07 | `cloudscheduler.googleapis.com` | ADR-0009 Sephora variant pass (`sephora_schedule_setup.sh`) | free (1 job of the 3 free) |
 
 ## Budget alerts
 
@@ -86,16 +86,24 @@ Revert: `--lifecycle-file` with `{"rule": [{"action": {"type": "Delete"}, "condi
 ## Sephora schedule (ADR-0009)
 
 Owner OK 2026-10-06 (~$4.5/month, decision log). Created by `infra/gcp/sephora_schedule_setup.sh`
-(idempotent), from an `IMAGE` built from main and pinned by digest. The image deployed on
-2026-10-01 predates AUTO mode (#147), so the job needs the rebuild.
+(idempotent), from an `IMAGE` built from main and pinned by digest. The owner ran it on 2026-10-07
+with `snapshot:150d6dbf7dee` (main 150d6dbf) `@sha256:64fca3a70e4651ad523d963c6bc2061a57b07cf9b61e9628637b9b8fe31ea23d`, built by Cloud Build
+(build `1bbd6d01`, free tier). Enabled the same day; first run Monday 2026-10-12 18:00Z.
+
+**Build from Cloud Shell with Cloud Build, not `docker push`.** On 2026-10-07 Cloud Shell's
+`docker push` to `me-central1-docker.pkg.dev` failed with `connection refused` three times;
+`gcloud builds submit --tag <image> --project productintelligence-beeb3` built and pushed the same
+image (free tier: 120 build-minutes/day). Pin the digest it prints.
 
 | Date | Resource | Settings | Cost |
 |------|----------|----------|------|
-| pending owner run | job `pi-sephora-snapshot` (existing) | image from main by digest; `AUTO=1`, `PACE=2.0`, `TRPC=1`; one-off `PREFIX`/`CUTOFF`/`PLAN`/`LIMIT` removed; task timeout 8 h (was 7 h); no retries | the runs: ~$0.7 per weekly pass |
-| pending owner run | SA `pi-sephora-scheduler` (no key, no project role) | `roles/run.invoker` on `pi-sephora-snapshot` only | free |
-| pending owner run | Scheduler job `pi-sephora-variant-pass` (me-central1) | `0 18 * * 1,2` UTC: Monday and Tuesday 18:00Z, two consecutive nights; POSTs the job's `:run` as the SA above; no retries; **created paused** | free |
+| 2026-10-07 | job `pi-sephora-snapshot` (existing) | image `snapshot:150d6dbf7dee@sha256:64fca3a…` (above); `AUTO=1`, `PACE=2.0`, `TRPC=1`; one-off `PREFIX`/`CUTOFF`/`PLAN`/`LIMIT` removed; task timeout 8 h (was 7 h); no retries | the runs: ~$0.7 per weekly pass |
+| 2026-10-07 | SA `pi-sephora-scheduler` (no key, no project role) | `roles/run.invoker` on `pi-sephora-snapshot` only | free |
+| 2026-10-07 | Scheduler job `pi-sephora-variant-pass` (me-central1) | `0 18 * * 1,2` UTC: Monday and Tuesday 18:00Z, two consecutive nights; POSTs the job's `:run` as the SA above; no retries; created paused, **resumed 2026-10-07** (owner YES via coordinator), `describe` = `ENABLED` | free |
 
 Go-live is a separate step, on the coordinator's GO: `gcloud scheduler jobs resume
-pi-sephora-variant-pass --location=me-central1 --project=productintelligence-beeb3`. `pause`
+pi-sephora-variant-pass --location=me-central1 --project=productintelligence-beeb3`. The first
+`resume` right after the Scheduler API was enabled failed with an internal `NOT_FOUND` (`parent
+resource not found … retryPolicies`); most likely API propagation; a retry worked. `pause`
 stops everything (ADR-0009, Guards). A one-off manual run now has to override the job's `AUTO=1`:
 `gcloud run jobs execute pi-sephora-snapshot --update-env-vars=AUTO=0,PREFIX=…,CUTOFF=…`.
