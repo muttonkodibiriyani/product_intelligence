@@ -58,6 +58,7 @@ from pi_api.analytics import (
     capped_suggestions,
     matches,
     promotion_images,
+    value_images,
     with_images,
 )
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
@@ -91,6 +92,7 @@ from pi_api.catalogue import CatalogueDetail, CatalogueSource, CatalogueSummary,
 from pi_api.catalogue import detail as catalogue_detail
 from pi_api.catalogue import summary as catalogue_summary
 from pi_api.config import Settings
+from pi_api.findings import FindingsCache, FindingsQuery
 from pi_api.ids import resolve
 from pi_api.source import (
     AmbiguousDatasetError,
@@ -137,6 +139,7 @@ from pi_metrics import (
     reviews_summary,
 )
 from pi_metrics.coverage import Coverage, coverage
+from pi_metrics.findings import Findings
 from pi_metrics.insights import Insights, insights
 from pi_metrics.pair_pricing import PriceSuggestions, price_suggestions
 from pi_metrics.summary import Summary
@@ -493,7 +496,7 @@ def respond[T](
     selected = _selected(query, metric.data)
     owed = (
         *dq.caveats(loaded.imported, endpoint, selected),
-        *floor.caveats(loaded.floor, endpoint, selected),
+        *floor.caveats(loaded.current_floor, endpoint, selected),
     )
     if owed:
         metric = metric.model_copy(update={"caveats": (*metric.caveats, *owed)})
@@ -542,16 +545,6 @@ def find(loaded: Loaded, product_id: str) -> tuple[ProductV3, ResolvedFrom | Non
 def resolved[T](answer: Envelope[T], resolved_from: ResolvedFrom | None) -> ProductEnvelope[T]:
     fields = {name: getattr(answer, name) for name in Envelope.model_fields}
     return ProductEnvelope[T](**fields, resolved_from=resolved_from)
-
-
-def as_of(loaded: Loaded, product: ProductV3) -> ProductV3:
-    """``product`` in the latest-date view: each stale source at its own last date (ADR-0010).
-
-    ``pi_dataset.compose.latest`` keeps every product, so the id found in the view is there.
-    """
-    if loaded.latest is None:
-        return product
-    return next(p for p in loaded.latest.products if p.id == product.id)
 
 
 def utc_now() -> datetime:
@@ -626,7 +619,7 @@ def build_api(
     ) -> ProductEnvelope[ProductDetail]:
         loaded = source.select(query.market, query.scope)
         found, resolved_from = find(loaded, product_id)
-        product = as_of(loaded, found)
+        product = loaded.as_of(found)
         detail = product_detail(
             loaded.current,
             product,
@@ -649,7 +642,7 @@ def build_api(
     ) -> ProductEnvelope[AdminProductDetail]:
         loaded = source.select(query.market, query.scope)
         found, resolved_from = find(loaded, product_id)
-        product = as_of(loaded, found)
+        product = loaded.as_of(found)
         detail = admin_product_detail(
             loaded.current,
             product,
@@ -680,7 +673,8 @@ def build_api(
         return respond(loaded, "coverage", query, coverage(loaded.dataset, query.retailer))
 
     _metric_routes(api, source, images)
-    _insights_route(api, source)
+    _insights_route(api, source, images)
+    _findings_route(api, source, FindingsCache(images))
     _summary_route(api, source, SummaryCache(images), clock)
     _export_routes(api, source, images)
     _catalogue_routes(api, source, catalogues, images)
@@ -770,7 +764,10 @@ def _metric_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) 
     ) -> Envelope[CategoryComparison]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
-        metric = category_compare(loaded.dataset, base, other, query.level)
+        # Always the latest date: each stale source at its own last date (ADR-0010 §6).
+        metric = stale_first(
+            loaded, category_compare(loaded.current, base, other, query.level), (base, other)
+        )
         return respond(loaded, "category_compare", query, metric)
 
     @api.get(f"{PREFIX}/index", response_model=Envelope[PriceIndex])
@@ -967,7 +964,7 @@ def _download(  # noqa: PLR0913 -- the view's answer plus who asked, all keyword
         raise
 
 
-def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
+def _insights_route(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:
     """S3: the Insights page aggregates (``pi_metrics.insights``)."""
 
     @api.get(
@@ -984,16 +981,56 @@ def _insights_route(api: FastAPI, source: SnapshotSource) -> None:
             "context, consecutive sizes of one family (the retailer's content.family, else "
             "the same brand, name, category and unit: basis=name) and how many larger sizes "
             "do not cost less per unit; a step more than heldOutPct % dearer per unit is "
-            "held out as a different product and counted in heldOut."
+            "held out as a different product and counted in heldOut. value: per context and "
+            "top-level category, offers rated at least valueRatingPct % of their own scale by "
+            "at least valueMinRatings reviewers, not out of stock, and at or below the "
+            "category median on its basis: per ml or g in fragrance (basis per_unit), else "
+            "shelf price (basis shelf; minis and travel sizes are never picks). Tools and "
+            "misfiled body care are left out of the cohort (excluded); the catch-all other is "
+            "never ranked (unranked). Ranked by rating share shrunk toward the category mean; "
+            "one pick per brand and name, at most two per brand. Categories under minCohort "
+            "priced offers have no median and are counted in suppressed. Single-retailer: no "
+            "shop is compared with another."
         ),
     )
     def get_insights(query: Annotated[InsightsQuery, Query()], _: Viewer) -> Envelope[Insights]:
         loaded = source.select(query.market, query.scope)
         base, other = query.pair()
-        metric = insights(loaded.dataset, base, other, on=query.on)
+        ds = read_at(loaded, query.on)
+        metric = value_images(ds, insights(ds, base, other, on=query.on), images)
         if query.on is None:
             metric = stale_first(loaded, metric, (base, other))
         return respond(loaded, "insights", query, metric)
+
+
+def _findings_route(api: FastAPI, source: SnapshotSource, cache: FindingsCache) -> None:
+    """The twelve findings at the top of the Insights page (``pi_metrics.findings``)."""
+
+    @api.get(
+        f"{PREFIX}/findings",
+        response_model=Envelope[Findings],
+        description=(
+            "Twelve findings for focus against rival, every other context a third shop, in "
+            "rank order: shown ones first, then those withheld with a reason. Each has the "
+            "params its headline, decision, evidence and action read (kind count, pct, money, "
+            "ratio, text, retailer, category, list or missing), a mini chart, up to six "
+            "product examples with their card image, its threshold, n and of, the match "
+            "basis (counted_pairs: compare's counted exact pairs, approved or locked, and "
+            "nothing else; within_shop; brand_level: brand names folded by pi_match; "
+            "single_shop) and chips for shops left out (too_few_ratings, too_few_pairs, "
+            "stock_not_collected, discounts_not_shown). Without counted pairs the four "
+            "matched findings (brand_depth_gaps, brand_price_policy, size_level_gaps, "
+            "real_discounts) are withheld as no_match or matches_unreviewed. Stock-outs are "
+            "counts and never rank shops; brands with every listing out are the source "
+            "reporting them unavailable. Computed once per snapshot generation."
+        ),
+    )
+    def get_findings(query: Annotated[FindingsQuery, Query()], _: Viewer) -> Envelope[Findings]:
+        loaded = source.select(query.market, query.scope)
+        metric = cache.get(loaded, read_at(loaded, query.on), query)
+        if query.on is None:
+            metric = stale_first(loaded, metric)
+        return respond(loaded, "findings", query, metric)
 
 
 def _export_routes(api: FastAPI, source: SnapshotSource, images: EvidenceHosts) -> None:

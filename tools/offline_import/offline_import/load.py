@@ -36,6 +36,13 @@ def _sha(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
+def content_hash(labels: dict[str, Any], description: str | None, badges: list[str] | None) -> str:
+    """A listing_content row's hash; unchanged for a row with only labels, as before content."""
+    if description is None and badges is None:
+        return _sha(json.dumps(labels, sort_keys=True))
+    return _sha(json.dumps([labels, description, badges], sort_keys=True, ensure_ascii=False))
+
+
 def idempotency_key(source: str, file_sha256: str, listing_key: str) -> str:
     return _sha(source, file_sha256, listing_key)
 
@@ -183,15 +190,35 @@ class Loader:
             "sku": t.get("sku"),
             "image_url": t.get("image_url"),
             "stock_qty": row.stock_qty,
+            "gender": t.get("gender"),
+            "concentration": t.get("concentration"),
+            "promotions": list(row.lists["promotions"]) if row.lists.get("promotions") else None,
+            # the shape the Sephora load writes and the export reads: the first image is main
+            "images": [
+                {"role": "main" if i == 0 else "alt", "position": i, "url": url}
+                for i, url in enumerate(row.lists.get("image_urls", ()))
+            ]
+            or None,
             "import_sha256": self.report.sha256,
             "import_row": row.row,
             "evidence_uri": self.uri,
         }
         labels = {k: v for k, v in labels.items() if v is not None}
+        description = t.get("description")
+        arabic = self.m.locale.lower().startswith("ar")
+        badges = list(row.lists.get("badges", ()))
         self.c.execute(
-            "INSERT INTO listing_content (listing_id, observed_at, labels, content_hash)"
-            " VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-            (lid, row.observed_at, Jsonb(labels), _sha(json.dumps(labels, sort_keys=True))),
+            "INSERT INTO listing_content (listing_id, observed_at, description, description_ar,"
+            " badges, labels, content_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            (
+                lid,
+                row.observed_at,
+                None if arabic else description,
+                description if arabic else None,
+                badges,
+                Jsonb(labels),
+                content_hash(labels, description, badges or None),
+            ),
         )
 
     def _partition(self, at: datetime) -> None:
@@ -211,8 +238,8 @@ class Loader:
             "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
             " source_listing_id, observed_at, ingested_at, price_current, price_regular_stated,"
             " price_promo, price_type, currency, availability_state, low_stock_flag,"
-            " field_state, evidence_id)"
-            " VALUES (%s,%s,%s,%s,%s,now(),%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+            " badges_at_time, field_state, evidence_id)"
+            " VALUES (%s,%s,%s,%s,%s,now(),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
             " ON CONFLICT DO NOTHING",
             (
                 idempotency_key(self.m.source.name, self.report.sha256, row.listing_key),
@@ -227,6 +254,7 @@ class Loader:
                 self.m.currency if any_price else None,
                 row.availability.value,
                 True if low else None,
+                list(row.lists.get("badges", ())),
                 Jsonb(_field_state(row, self.m.prices_mapped)),
                 evidence,
             ),

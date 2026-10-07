@@ -1,7 +1,12 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
-import { THIN, categoryCompareBody, categoryCompareData } from '@/e2e/category-compare-fixture';
+import {
+  THIN,
+  categoryCompareBody,
+  categoryCompareData,
+  wideCategoryCompareBody,
+} from '@/e2e/category-compare-fixture';
 import { BUCKETS, parseCategoryCompare, type CategoryCompare } from '@/lib/api/category-compare';
 import { ApiError } from '@/lib/api/client';
 import type { Envelope } from '@/lib/api/types';
@@ -10,7 +15,7 @@ import pagesEn from '@/messages/en.json';
 import widgetsAr from '@/messages/widgets.ar.json';
 import widgetsEn from '@/messages/widgets.en.json';
 import { pairState } from '../widgets/model';
-import { CategoryCompareCard } from './category-compare';
+import { CategoryCompareCard, axisTicks } from './category-compare';
 
 const en = { ...pagesEn, widgets: widgetsEn };
 const ar = { ...pagesAr, widgets: widgetsAr };
@@ -261,6 +266,62 @@ describe('CategoryCompareCard', () => {
     expect(screen.getAllByText('Shop B أغلى من Shop A بنسبة 7.4\u200e%\u200e').length).toBeGreaterThan(0);
     const table = screen.getByRole('table');
     expect(text(within(table).getAllByRole('rowheader')[0])).toContain('العطور');
+  });
+
+  it.each(['en', 'ar'] as const)(
+    'draws the Price range axis over four decades without two labels touching, the currency said once in the head (%s)',
+    (locale) => {
+      const body = wideCategoryCompareBody();
+      const env = { ...body, data: parseCategoryCompare(body.data) } as unknown as Envelope<CategoryCompare>;
+      show(
+        pairState(ready(env), (d) => d.buckets.length > 0),
+        locale,
+      );
+      const head = screen.getByRole('table').querySelector('thead')!;
+      expect(text(head)).toContain(locale === 'ar' ? 'نطاق السعر بـد.إ.' : 'Price range in AED');
+      // One axis per retailer; each label sits inside the 120px axis, 6px clear of its neighbour.
+      const axes = [...head.querySelectorAll('svg')];
+      expect(axes).toHaveLength(2);
+      for (const svg of axes) {
+        const ticks = [...svg.querySelectorAll('text')].map((el) => ({
+          x: Number(el.getAttribute('x')),
+          w: text(el).length * 5.5,
+          label: text(el),
+        }));
+        expect(ticks.length).toBeGreaterThanOrEqual(2);
+        expect(ticks.every((k) => !/AED|د\.إ/.test(k.label))).toBe(true);
+        for (const k of ticks) {
+          expect(k.x - k.w / 2).toBeGreaterThanOrEqual(0);
+          expect(k.x + k.w / 2).toBeLessThanOrEqual(120);
+        }
+        const byX = [...ticks].sort((a, b) => a.x - b.x);
+        for (let i = 1; i < byX.length; i++)
+          expect(byX[i]!.x - byX[i - 1]!.x).toBeGreaterThanOrEqual((byX[i]!.w + byX[i - 1]!.w) / 2 + 6);
+      }
+    },
+  );
+
+  it('thins the axis labels when decades sit closer than a label is wide, and mirrors them in Arabic', () => {
+    // Six decades on 120px: 10 to 10M, about 19px a decade.
+    const x = (v: number, rtl: boolean) => {
+      const px = 4 + ((Math.log10(v) - 1) / 6) * 112;
+      return rtl ? 120 - px : px;
+    };
+    const ticks = [10, 100, 1e3, 1e4, 1e5, 1e6, 1e7];
+    const en = axisTicks({ ticks, x }, false, 'en');
+    expect(en.map((k) => k.label)).toEqual(['10', '1K', '100K', '10M']);
+    const ar = axisTicks({ ticks, x }, true, 'ar');
+    // Arabic words are wider ('1 ألف'), so fewer survive; the low end is on the right.
+    expect(ar.map((k) => k.label)).toEqual(['10', '1\u00a0ألف', '1\u00a0مليون']);
+    expect(ar.map((k) => k.x)).toEqual([...ar.map((k) => k.x)].sort((a, b) => b - a));
+    // Three decades fit whole: every label kept.
+    const three = (v: number, rtl: boolean) => x(v, rtl) * 2 - 4;
+    expect(axisTicks({ ticks: [10, 100, 1e3, 1e4], x: three }, false, 'en').map((k) => k.label)).toEqual([
+      '10',
+      '100',
+      '1K',
+      '10K',
+    ]);
   });
 
   it('shows the blocked side as withheld, in the reason wording, not as too few', () => {

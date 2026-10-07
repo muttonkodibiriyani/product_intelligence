@@ -20,6 +20,7 @@ members = [
     "pi-match",
     "pi-metrics",
     "pi-profiles",
+    "pi-similar",
     "product-intelligence",
 ]
 
@@ -1463,6 +1464,27 @@ requires-dist = [
 ]
 
 [[package]]
+name = "pi-similar"
+version = "0.1.0"
+source = { editable = "packages/pi_similar" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pi-core" },
+    { name = "pi-dataset" },
+    { name = "pi-match" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pi-dataset", editable = "packages/pi_dataset" },
+    { name = "pi-match", editable = "packages/pi_match" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1577,6 +1599,7 @@ dependencies = [
     { name = "pi-match" },
     { name = "pi-metrics" },
     { name = "pi-profiles" },
+    { name = "pi-similar" },
 ]
 
 [package.dev-dependencies]
@@ -1601,6 +1624,7 @@ requires-dist = [
     { name = "pi-match", editable = "packages/pi_match" },
     { name = "pi-metrics", editable = "packages/pi_metrics" },
     { name = "pi-profiles", editable = "packages/pi_profiles" },
+    { name = "pi-similar", editable = "packages/pi_similar" },
 ]
 
 [package.metadata.requires-dev]

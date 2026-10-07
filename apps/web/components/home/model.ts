@@ -5,7 +5,7 @@
  * the Compare page's helpers (components/compare/model.ts) so the two can be folded into one
  * module. A shop's colour comes from components/ui/retailer-dot.tsx, the one table the whole app uses.
  */
-import type { Bucket } from '@/lib/api/category-compare';
+import { BUCKETS, type Bucket, type BucketKey } from '@/lib/api/category-compare';
 import type { CaveatView, Money, Schemas } from '@/lib/api/types';
 
 type CompareSummary = Schemas['CompareSummary'];
@@ -42,27 +42,72 @@ export function verdict(s: CompareSummary, base: string, other: string): Verdict
     : { kind: 'lead', leader: 'other', k: b, trailing: a, equal, n: s.n };
 }
 
+type Group = Schemas['Group'];
+
+/** One category on the Overview's table: its whole-range row and its matched group, either missing. */
+export interface CategoryLine {
+  key: BucketKey;
+  bucket: Bucket | null;
+  group: Group | null;
+}
+
+/** A matched group the API summarised: at or above its cohort minimum, with counts to read. */
+export const groupOk = (g: Group | null): g is Group & { summary: CompareSummary } =>
+  g !== null && g.status === 'ok' && g.summary !== null;
+
+/**
+ * The categories the Overview's table shows, and the ones it folds into one "not enough data"
+ * row: a category shows when the API computed its range gap or summarised its matched pairs.
+ * Shown rows rank by the range gap, widest first; the rest keep the fixed bucket order. Group
+ * keys are /compare's top-level category codes, the same nine as the buckets; any other is ignored.
+ */
+export function categoryLines(
+  buckets: readonly Bucket[],
+  groups: readonly Group[],
+): { shown: CategoryLine[]; thin: CategoryLine[] } {
+  const byKey = new Map(groups.map((g) => [g.key, g]));
+  const lines = BUCKETS.map((key) => ({
+    key,
+    bucket: buckets.find((b) => b.key === key) ?? null,
+    group: byKey.get(key) ?? null,
+  }));
+  const gap = (l: CategoryLine) =>
+    l.bucket?.status === 'ok' && l.bucket.gapPct !== null ? Math.abs(Number(l.bucket.gapPct)) : -1;
+  const shown = lines
+    .filter((l) => gap(l) >= 0 || groupOk(l.group))
+    .map((l, i) => ({ l, i, g: gap(l) }))
+    .sort((x, y) => (y.g === x.g ? x.i - y.i : y.g - x.g))
+    .map((x) => x.l);
+  return { shown, thin: lines.filter((l) => !shown.includes(l)) };
+}
+
+/** A matched group's leader: the shop cheaper on more of its pairs, or 'even' on a tie. */
+export function groupLeader(g: Group & { summary: CompareSummary }, base: string, other: string) {
+  const a = g.summary.cheaperCounts[base] ?? 0;
+  const b = g.summary.cheaperCounts[other] ?? 0;
+  return { a, b, e: g.summary.equalCount, n: g.summary.n, who: a === b ? 'even' : a > b ? base : other };
+}
+
 export interface CategoryRead {
-  /** Buckets with a gap the API computed. */
+  /** Categories whose matched pairs the API summarised. */
   compared: number;
   base: number;
   other: number;
-  same: number;
 }
 
 /**
- * The category read behind the headline when no products are matched yet: in how many of the
- * compared buckets each shop's median is the lower one, as the API's `cheaper` says.
+ * The finding behind the category card's title: in how many categories the same product is
+ * cheaper at each shop more often, from the API's per-category matched counts. The whole-range
+ * medians never decide it: a lower median reflects the range a shop stocks, not its prices.
  */
-export function categoryRead(buckets: readonly Bucket[], base: string, other: string): CategoryRead {
-  const read: CategoryRead = { compared: 0, base: 0, other: 0, same: 0 };
-  for (const b of buckets) {
-    if (b.status !== 'ok' || b.gapPct === null) continue;
+export function matchedRead(lines: readonly CategoryLine[], base: string, other: string): CategoryRead {
+  const read: CategoryRead = { compared: 0, base: 0, other: 0 };
+  for (const l of lines) {
+    if (!groupOk(l.group)) continue;
     read.compared++;
-    const who = bucketCheaper(b, base, other);
+    const { who } = groupLeader(l.group, base, other);
     if (who === base) read.base++;
     else if (who === other) read.other++;
-    else read.same++;
   }
   return read;
 }

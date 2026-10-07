@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { THIN, categoryCompareData } from '@/e2e/category-compare-fixture';
+import { THIN, categoryCompareData, compareGroups } from '@/e2e/category-compare-fixture';
 import { parseCategoryCompare } from '@/lib/api/category-compare';
 import { golden } from '@/lib/api/golden';
 import type { CaveatView, Schemas } from '@/lib/api/types';
 import {
   abs,
   bucketCheaper,
-  categoryRead,
+  categoryLines,
   deepestCut,
   depthBands,
   earlyExcluded,
   launchTotals,
   leadingBand,
+  matchedRead,
   gapWidth,
   minus,
   peakDay,
@@ -43,10 +44,28 @@ describe('verdict', () => {
   });
 });
 
-describe('categoryRead', () => {
-  it('counts the compared buckets by the cheaper side, the too-few one left out', () => {
-    expect(categoryRead(buckets, 'shop_a', 'shop_b')).toEqual({ compared: 8, base: 2, other: 5, same: 1 });
+describe('categoryLines and matchedRead', () => {
+  const groups = compareGroups('shop_a', 'shop_b', {
+    concealer: [4, 3, 0],
+    lips: [2, 6, 0],
+    cheek: 2,
+  }) as Schemas['Group'][];
+  it('shows a category with a range gap or a summarised matched group, ranked by the gap', () => {
+    const { shown, thin } = categoryLines(buckets, groups);
+    // Concealer has no gap (too few) but its matched pairs are summarised, so it shows, last.
+    expect(shown.map((l) => l.key)).toHaveLength(9);
+    expect(shown[shown.length - 1]!.key).toBe('concealer');
+    expect(thin).toEqual([]);
+    const lone = categoryLines(buckets, []);
+    expect(lone.thin.map((l) => l.key)).toEqual(['concealer']);
+    expect(categoryLines([], groups).shown.map((l) => l.key)).toEqual(['lips', 'concealer']);
+    expect(categoryLines([], [{ ...groups[0]!, key: 'shoes' }]).shown).toEqual([]);
   });
+  it('the title read counts categories by the shop cheaper on more matched pairs; thin groups left out', () => {
+    const { shown } = categoryLines(buckets, groups);
+    expect(matchedRead(shown, 'shop_a', 'shop_b')).toEqual({ compared: 2, base: 1, other: 1 });
+  });
+
   it('a bucket the API called same is same even with a non-zero gap; otherwise the sign decides', () => {
     const eyes = buckets.find((b) => b.key === 'eyes')!;
     expect(bucketCheaper(eyes, 'shop_a', 'shop_b')).toBe('same');

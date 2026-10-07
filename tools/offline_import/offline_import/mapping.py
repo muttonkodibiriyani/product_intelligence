@@ -33,6 +33,9 @@ FEED_AVAILABILITY: frozenset[AvailabilityState] = frozenset(
 Format = Literal["csv", "xlsx", "json"]
 FORMAT_BY_SUFFIX: dict[str, Format] = {".csv": "csv", ".xlsx": "xlsx", ".json": "json"}
 
+# Fields that hold a list: a JSON array of strings, or one string as a one-item list (CSV/XLSX).
+LIST_FIELDS: tuple[str, ...] = ("badges", "promotions", "image_urls")
+
 
 class SourceSpec(PiModel):
     """The ``source`` row the feed belongs to (matched by name, created when missing)."""
@@ -63,6 +66,15 @@ class Columns(PiModel):
     stock_qty: str | None = None
     image_url: str | None = None
     observed_at: str | None = None
+    # Page content, stored where the Sephora and Ulta loads put it: the description on
+    # listing_content; gender, concentration, promotions and the gallery in its labels; badges
+    # on listing_content and on the offer.
+    description: str | None = None
+    gender: str | None = None
+    concentration: str | None = None
+    badges: str | None = None
+    promotions: str | None = None
+    image_urls: str | None = None
 
     def mapped(self) -> dict[str, str]:
         """Field -> column for every mapped field."""

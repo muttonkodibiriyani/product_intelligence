@@ -77,3 +77,28 @@ def test_emit_size_observes_value_and_unit_on_a_clean_label() -> None:
         "comma read as a thousands separator",
     )
     assert (r["size_unit"].value, r["size_unit"].note) == ("ml", None)
+
+
+@pytest.mark.parametrize(
+    ("label", "value", "unit", "note"),
+    [
+        ("100_ml", Decimal(100), "ml", "underscore read as a space"),
+        ("'180g", Decimal(180), "g", "leading apostrophe dropped"),
+        ("3 count", Decimal(3), "count", None),
+    ],
+)
+def test_a_template_slug_or_text_prefix_is_cleaned_and_noted(
+    label: str, value: Decimal, unit: str, note: str | None
+) -> None:
+    assert read_size(label) == Size(value, unit, note, note)
+    r = _emit(label)
+    assert (r["size_label"].value, r["size_value"].note, r["size_unit"].note) == (label, note, note)
+
+
+def test_cleaning_and_the_thousands_note_are_both_kept() -> None:
+    assert read_size("'1,500 ml") == Size(
+        Decimal(1500),
+        "ml",
+        "leading apostrophe dropped; comma read as a thousands separator",
+        "leading apostrophe dropped",
+    )

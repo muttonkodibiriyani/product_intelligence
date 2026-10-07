@@ -7,7 +7,8 @@ adds, per ADR-0008 §4:
 * ``meta.profile``, ``meta.attributeSet`` and ``meta.contexts``;
 * ``Size.label`` and ``Size.system``, with ``value``/``unit`` now nullable together;
 * offers keyed by **context** id, with ``Offer.attributes`` and ``evidence.itemKey``;
-* ``notObserved[].context``.
+* ``notObserved[].context``;
+* ``attributeEvidence`` on products and offers: where each attribute value was read (§5).
 
 The cross-field rules (the context-id rule, identity rules (a)-(c), declared attributes, money
 currencies inside attributes, the profile's size rules) are the ``DatasetV3`` validator below.
@@ -203,6 +204,39 @@ class OfferContent(ContractModel):
         return self
 
 
+class AttributeSource(StrEnum):
+    """How an attribute value was read (ADR-0008 §5)."""
+
+    #: A structured page field states it (JSON-LD, a spec table).
+    PAGE = "page"
+    #: A deterministic rule read it from free text (name, description).
+    TEXT_RULE = "text_rule"
+    #: A language model read it: gaps only, never a hard match rule.
+    MODEL = "model"
+
+
+#: The longest ``excerpt`` published: enough to check a value, never a page copy.
+EXCERPT_MAX = 120
+
+
+class AttributeEvidence(ContractModel):
+    """Where one attribute value came from. ``excerpt`` is retailer text: untrusted, plain text."""
+
+    source: AttributeSource
+    #: Where it was read: ``name``, ``description``, ``jsonld.additionalProperty`` ...
+    field: NonEmptyStr
+    excerpt: Annotated[NonEmptyStr, Field(max_length=EXCERPT_MAX)]
+    #: The rule id (``text_rule``) or model id (``model``); ``null`` for ``page``.
+    rule: NonEmptyStr | None
+
+    @model_validator(mode="after")
+    def _check_rule(self) -> Self:
+        if (self.source is AttributeSource.PAGE) != (self.rule is None):
+            msg = f"attribute evidence: rule is required exactly when source is not page ({self})"
+            raise ValueError(msg)
+        return self
+
+
 class OfferV3(Offer):
     size: SizeV3 | None  # type: ignore[assignment]  # v3 widens Size (ADR-0008 §1)
     evidence: EvidenceV3  # v3 adds itemKey (ADR-0008 §2)
@@ -214,6 +248,8 @@ class OfferV3(Offer):
     #: Page content (description, ingredients, gallery, variants); ``null`` or absent when the
     #: producer doesn't state it. Optional and additive (2026-10-03).
     content: OfferContent | None = None
+    #: Per key of ``attributes``: where its value was read (§5). Optional and additive.
+    attribute_evidence: dict[AttributeKey, AttributeEvidence] = Field(default_factory=dict)
 
 
 class ProductV3(ContractModel):
@@ -230,6 +266,8 @@ class ProductV3(ContractModel):
     #: Declared product-level keys only.
     attributes: dict[AttributeKey, JsonValue] = Field(default_factory=dict)
     image: HttpUrl | None = None
+    #: Per key of ``attributes``: where its value was read (§5). Optional and additive.
+    attribute_evidence: dict[AttributeKey, AttributeEvidence] = Field(default_factory=dict)
 
 
 class NotObservedV3(NotObserved):
@@ -291,13 +329,27 @@ def _profile_errors(ds: DatasetV3) -> list[str]:
         return errors
     if meta.profile != committed.info():
         errors.append(f"meta.profile: size flags differ from the committed {ref}")
-    if meta.attribute_set != committed.attribute_set:
+    if [_uncollected(a) for a in meta.attribute_set] != [
+        _uncollected(a) for a in committed.attribute_set
+    ]:
         extra = sorted(
             {a.key for a in meta.attribute_set} - {a.key for a in committed.attribute_set}
         )
         detail = f" (undeclared keys {extra})" if extra else ""
         errors.append(f"meta.attributeSet differs from the committed {ref}{detail}")
+    committed_off = {a.key for a in committed.attribute_set if not a.capability}
+    errors += [
+        f"meta.attributeSet.{a.key}: collected, but the committed {ref} declares it not collected"
+        for a in meta.attribute_set
+        if a.capability and a.key in committed_off
+    ]
     return errors
+
+
+def _uncollected(spec: AttributeDef) -> AttributeDef:
+    """``spec`` as not collected. A snapshot may turn a committed key's capability off (a key
+    below the precision gate, ADR-0008 §5), never on, and may change nothing else."""
+    return spec.model_copy(update={"capability": False})
 
 
 def _context_errors(ds: DatasetV3) -> list[str]:
@@ -444,23 +496,61 @@ def _identity_errors(ds: DatasetV3) -> list[str]:
     return errors
 
 
+#: From this ``beauty`` version on, every attribute value carries its evidence (§5).
+BEAUTY_EVIDENCE_FROM = 2
+
+
 def _attribute_errors(ds: DatasetV3) -> list[str]:
     declared = {a.key: a for a in ds.meta.attribute_set}
     market_currencies = frozenset(m.currency for m in ds.meta.markets)
+    profile = ds.meta.profile
+    evidence_required = profile.name == BEAUTY and profile.version >= BEAUTY_EVIDENCE_FROM
     errors: list[str] = []
     for product in ds.products:
-        where = f"products.{product.id}.attributes"
+        where = f"products.{product.id}"
         errors += _values_errors(
-            where, product.attributes, AttributeLevel.PRODUCT, declared, market_currencies
+            f"{where}.attributes",
+            product.attributes,
+            AttributeLevel.PRODUCT,
+            declared,
+            market_currencies,
+        )
+        errors += _evidence_errors(
+            where, product.attributes, product.attribute_evidence, evidence_required
         )
         for cid, offer in product.offers.items():
             errors += _values_errors(
-                f"products.{product.id}.offers.{cid}.attributes",
+                f"{where}.offers.{cid}.attributes",
                 offer.attributes,
                 AttributeLevel.OFFER,
                 declared,
                 frozenset({offer.currency}),
             )
+            errors += _evidence_errors(
+                f"{where}.offers.{cid}",
+                offer.attributes,
+                offer.attribute_evidence,
+                evidence_required,
+            )
+    return errors
+
+
+def _evidence_errors(
+    where: str,
+    values: Mapping[str, JsonValue],
+    evidence: Mapping[str, AttributeEvidence],
+    required: bool,
+) -> list[str]:
+    """Evidence names only keys present here; when ``required``, every value has evidence."""
+    errors = [
+        f"{where}.attributeEvidence.{key}: no attribute {key} here"
+        for key in sorted(set(evidence) - set(values))
+    ]
+    if required:
+        errors += [
+            f"{where}.attributes.{key}: no attributeEvidence"
+            for key in sorted(set(values) - set(evidence))
+        ]
     return errors
 
 
@@ -497,9 +587,8 @@ def _type_problem(spec: AttributeDef, value: JsonValue) -> str | None:
         case AttributeType.TEXT:
             ok = isinstance(value, str) and value.strip() != ""
         case AttributeType.ENUM:
-            allowed = {v.id for v in spec.values or ()}
-            if not isinstance(value, str) or value not in allowed:
-                return f"{value!r} is not one of {sorted(allowed)}"
+            if not isinstance(value, str) or value not in _ids(spec):
+                return f"{value!r} is not one of {sorted(_ids(spec))}"
             return None
         case AttributeType.DECIMAL:
             ok = isinstance(value, str) and _DECIMAL.fullmatch(value) is not None
@@ -508,10 +597,20 @@ def _type_problem(spec: AttributeDef, value: JsonValue) -> str | None:
         case AttributeType.BOOL:
             ok = isinstance(value, bool)
         case AttributeType.TEXT_LIST:
-            ok = isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value)
+            if not isinstance(value, list):
+                return f"value is not of type {spec.type}"
+            items = [v for v in value if isinstance(v, str) and v.strip()]
+            ok = len(items) == len(value)
+            outside = sorted({v for v in items if v not in _ids(spec)})
+            if ok and spec.values is not None and outside:
+                return f"{outside} are not in {sorted(_ids(spec))}"
         case AttributeType.OBJECT:
             ok = isinstance(value, dict)
     return None if ok else f"value is not of type {spec.type}"
+
+
+def _ids(spec: AttributeDef) -> frozenset[str]:
+    return frozenset(v.id for v in spec.values or ())
 
 
 def _is_money(value: JsonValue) -> bool:

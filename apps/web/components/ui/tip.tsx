@@ -11,12 +11,15 @@ import { useId, type KeyboardEvent, type ReactNode } from 'react';
 export function Tip({
   text,
   at = 'start',
+  side = 'below',
   className = '',
   children,
 }: {
   text: ReactNode;
   /** Which edge the bubble hangs from, so one near the end of a card stays on screen. */
   at?: 'start' | 'end';
+  /** Above the trigger near the bottom of a box that clips (a scrolling table's last rows). */
+  side?: 'below' | 'above';
   className?: string;
   children: ReactNode;
 }) {
@@ -35,7 +38,13 @@ export function Tip({
       >
         {children}
       </span>
-      <span role="tooltip" id={id} data-at={at} className="tip">
+      <span
+        role="tooltip"
+        id={id}
+        data-at={at}
+        data-side={side === 'above' ? side : undefined}
+        className="tip"
+      >
         {text}
       </span>
     </span>

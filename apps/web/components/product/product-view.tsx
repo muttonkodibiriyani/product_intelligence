@@ -49,6 +49,11 @@ const BACKS: Record<
 > = {
   explore: { path: 'explore', search: (sp) => toSearch(parseState(sp)), label: 'back' },
   compare: { path: 'compare', search: (sp) => toCompareSearch(parseCompare(sp)), label: 'backCompare' },
+  overlap: {
+    path: 'compare/overlap',
+    search: (sp) => toCompareSearch(parseCompare(sp)),
+    label: 'backOverlap',
+  },
   promotions: {
     path: 'promotions',
     search: (sp) => toPromotionsSearch(parsePromotions(sp)),

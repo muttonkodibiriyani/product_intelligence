@@ -141,15 +141,20 @@ export function ProductCard({
  */
 export function MatchReviewLabel({
   review,
+  hint,
+  side,
   className = '',
 }: {
   review: Schemas['MatchReview'] | null | undefined;
+  /** Where the page counts unreviewed matches differently, it says so here. */
+  hint?: string;
+  side?: 'below' | 'above';
   className?: string;
 }) {
   const t = useTranslations('productCard');
   if (review !== 'unreviewed') return null;
   return (
-    <Tip text={t('unreviewedMatchHint')} className={`w-fit ${className}`}>
+    <Tip text={hint ?? t('unreviewedMatchHint')} side={side} className={`w-fit ${className}`}>
       <span className="inline-block rounded-[4px] bg-butter px-1.5 py-px text-[11px] font-medium text-warn">
         {t('unreviewedMatch')}
       </span>

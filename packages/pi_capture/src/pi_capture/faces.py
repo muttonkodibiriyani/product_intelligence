@@ -37,6 +37,7 @@ from pi_capture.generic import (
     readings_from_generic,
 )
 from pi_capture.model import Reading
+from pi_capture.registry import get as get_attribute
 
 __all__ = ["LOOKED_FOR", "FacesFacts", "faces_facts", "readings_from_faces"]
 
@@ -510,6 +511,34 @@ def _map_content(em: _Emitter, els: list[_El]) -> None:
         em.observed("spf", m.group(0), int(m.group(1)), "span.js-name|#collapseDescription")
 
 
+def _datalayer_stock(item: Mapping[str, Any] | None) -> Reading | None:
+    """The ``view_item`` stock flag as a second structured-data block beside the JSON-LD.
+
+    It is the page's other machine-readable stock statement; the feed takes availability only
+    when every such statement on the page agrees, so a JSON-LD ``InStock`` beside a ``false`` flag
+    is unknown, not in stock.
+    """
+    if item is None or "item_in_stock" not in item:
+        return None
+    flag = item["item_in_stock"]
+    if isinstance(flag, bool):
+        raw, note = ("true" if flag else "false"), "dataLayer stock flag"
+    else:
+        # present but not a boolean (0, "false", null): kept as stated, so the feed reads the
+        # page's stock as unknown instead of letting the JSON-LD speak alone
+        raw = "null" if flag is None else str(flag)
+        note = "dataLayer stock flag is not a boolean; the page's stock is unknown"
+    return Reading(
+        "structured_data",
+        get_attribute("structured_data").level,
+        "observed",
+        raw,
+        {"item_in_stock": flag},
+        f"{_DL}.item_in_stock",
+        f"{note}; cross-checked with the JSON-LD availability",
+    )
+
+
 def _faces_readings(html: str) -> _Emitter:
     els = _scan(html)
     item = _view_item(html)
@@ -576,9 +605,14 @@ LOOKED_FOR: frozenset[str] = _FACES_KEYS | GENERIC_LOOKED_FOR
 
 def readings_from_faces(html: str, *, locale: str, url: str | None = None) -> list[Reading]:
     """Faces-specific readings first, then the generic extractors fill every key still unread,
-    then the client-side blocks are marked ``not_shown`` if nothing read them."""
+    then the client-side blocks are marked ``not_shown`` if nothing read them. The dataLayer
+    stock flag is the one key read twice: a second ``structured_data`` block (see
+    :func:`_datalayer_stock`)."""
     em = _faces_readings(html)
     em.extend(readings_from_generic(html, locale=locale, url=url))
     for key, note in _CLIENT_SIDE:
         em.not_shown(key, note)
+    # appended past the emitter: the JSON-LD block keeps its own structured_data reading
+    if (stock := _datalayer_stock(_view_item(html))) is not None:
+        em.readings.append(stock)
     return em.readings

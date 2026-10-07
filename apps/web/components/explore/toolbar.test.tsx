@@ -1,10 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EMPTY, type ExploreState } from '@/lib/explore';
 import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
-import { Toolbar } from './toolbar';
+import { ActiveChips, Toolbar } from './toolbar';
 
 const name = (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B' })[id] ?? id;
 
@@ -49,5 +49,33 @@ describe('Toolbar: the gap sorts', () => {
       'الفرق، الأغلى أولًا (اختر متجرين)',
       'الفرق، الأرخص أولًا (اختر متجرين)',
     ]);
+  });
+});
+
+describe('ActiveChips: the stock filters Insights links with', () => {
+  it('names each one, and removing one keeps the rest', () => {
+    const calls: Partial<ExploreState>[] = [];
+    const state: ExploreState = {
+      ...EMPTY,
+      availability: ['low_stock', 'out_of_stock'],
+      unavailableBrands: 'exclude',
+    };
+    render(
+      <NextIntlClientProvider
+        locale="en"
+        messages={en}
+        onError={(e) => {
+          throw e;
+        }}
+      >
+        <ActiveChips state={state} name={name} update={(n) => calls.push(n)} />
+      </NextIntlClientProvider>,
+    );
+    const list = screen.getByRole('list');
+    expect(list.textContent).toContain('Low stock');
+    expect(list.textContent).toContain('Out of stock');
+    expect(list.textContent).toContain('Without brands the source reports unavailable');
+    fireEvent.click(within(list).getAllByRole('button')[0]!);
+    expect(calls[0]).toEqual({ availability: ['out_of_stock'] });
   });
 });

@@ -258,6 +258,41 @@ def test_a_faces_file_dated_after_the_beauty_file_moves_the_cutoff_and_ages_ulta
     assert {r["subject"]["ageDays"] for r in rows["data"]["rows"]} == {1}
 
 
+@pytest.mark.parametrize(
+    "route",
+    [
+        f"/api/v1/category-compare?retailers={ULTA},{SEPHORA}",
+        f"/api/v1/insights?retailers={ULTA},{SEPHORA}",
+    ],
+)
+def test_latest_category_and_insight_reads_take_a_stale_source_at_its_own_last_date(
+    tmp_path: Path, route: str
+) -> None:
+    """The live Overview card (2026-10-06): an Ulta import a day older than Faces read n=0 on
+    the Faces day. Like /compare, these read each stale source at its own last date (ADR-0010
+    §6), so the answer is the beauty file's own, with ``stale_source`` caveats first."""
+    beauty = beauty_doc()
+    last = str(load_any(beauty).meta.dates[-1])
+    faces = dump_dataset(faces_file([last, "2026-10-01"]))
+    whole, composed = clients(tmp_path, install(tmp_path, beauty, faces))
+    before, after = answer(whole, route), answer(composed, route)
+    assert before["status"] == "ok"
+    assert after["status"] == "ok"
+    # Faces adds only its own ladder and stockout rows to /insights.
+    assert without_faces(after["data"]) == before["data"]
+    stale = [c for c in after["caveats"] if c["code"] == "stale_source"]
+    assert after["caveats"][: len(stale)] == stale
+    assert [(c["params"]["retailer"], c["params"]["asOf"]) for c in stale] == [
+        (SEPHORA, last),
+        (ULTA, last),
+    ]
+    # An explicit date reads the view itself: neither shop was collected on the Faces day.
+    if "insights" in route:
+        dated = answer(composed, f"{route}&date=2026-10-01")
+        assert dated["data"]["pricing"]["n"] == 0
+        assert not [c for c in dated["caveats"] if c["code"] == "stale_source"]
+
+
 # ---------------------------------------------------------------- the same check on real files
 
 

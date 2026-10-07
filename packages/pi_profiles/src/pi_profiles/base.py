@@ -36,8 +36,8 @@ from pi_dataset import (
 class Attr:
     """How one attribute-model field is declared: ``Annotated[T, Attr(...)]``.
 
-    The wire key is the field's alias, else its name. ``values`` lists ``(id, label)`` pairs and
-    is set exactly for ``enum``.
+    The wire key is the field's alias, else its name. ``values`` lists ``(id, label)`` pairs:
+    required for ``enum``, optional for ``text_list`` (a closed list), refused for other types.
     """
 
     type: AttributeType
