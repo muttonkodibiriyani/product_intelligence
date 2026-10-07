@@ -69,7 +69,9 @@ if (mode === '--id') {
 }
 
 if (mode === '--write') {
-    // Friendlier than the id check below: names the files. -z keeps non-ASCII paths unquoted.
+    // Both checks are needed: the id check below catches untracked inputs (contentBuildId ignores
+    // them); this dirty guard catches uncommitted edits to tracked inputs (both ids read the working
+    // tree and agree). Removing either reopens one hole. -z keeps non-ASCII paths unquoted.
     const dirty = git('status', '--porcelain', '-z', '--untracked-files=all', '--', ...INPUTS)
         .split('\0')
         .filter((l) => /^.. /.test(l) && !/\.test\.tsx?$/.test(l));
@@ -112,6 +114,7 @@ const buildId = built[0].ids[0];
 const other = built.find((b) => b.ids[0] !== buildId);
 if (other) fail(`${built[0].dir} was built as ${buildId} but ${other.dir} as ${other.ids[0]}.`);
 if (mode === '--write') {
+    // Not redundant with the dirty guard above; see the note there.
     const treeId = treeBuildId();
     if (treeId !== buildId)
         fail(`${dirs.join(', ')} were built as ${buildId}, but this tree builds as ${treeId}.`);
