@@ -86,9 +86,11 @@ RETAILERS = {
     "s": ("sephora_me", "Sephora UAE"),
     "f": ("faces_ae", "Faces UAE"),
 }
-#: Slots whose crawl is not a complete catalogue (Faces: ``complete_catalogue=false``). Such a
-#: retailer is ``partial`` whatever its runs say, never has a complete day (so it backs no launch,
-#: removal or stock-out), and its availability is not published (``null``, not observed).
+#: Slots whose crawl is not known to be a complete catalogue (Faces). Such a retailer's snapshot
+#: is ``partial`` whatever its runs say and its availability is not published (``null``, not
+#: observed). In history, a day is complete only on an import run recorded ``succeeded``, which
+#: the feed claims only when the run read every product URL of the measured sitemap
+#: (``pi_capture.feed.completeness``); every other day backs no launch, removal or stock-out.
 INCOMPLETE_CATALOGUE = frozenset({"f"})
 STATUS = {
     "ok": RetailerStatus.SUPPORTED,
