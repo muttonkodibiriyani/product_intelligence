@@ -72,7 +72,7 @@ def test_a_v2_file_still_packages_byte_identically() -> None:
     dataset, errors = publish_dataset.validate_v2(sephora_only(), allow_test=True)
     assert errors == []
     body, _, summary, _ = publish_dataset.package_v2(dataset)
-    assert gzip.decompress(body) == dump_dataset(dataset)
+    assert gzip.decompress(body) == dump_dataset(dataset, compact=True)
     assert summary["schema"] == "pi.dataset/v2"
     assert publish_dataset.by_source(json.loads(gzip.decompress(body))) == json.loads(
         gzip.decompress(body)

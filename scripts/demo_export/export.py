@@ -1042,10 +1042,13 @@ def build_dataset(
     return dataset
 
 
-#: The largest v3 file this exporter writes: pi_api's measured memory budget for one dataset
-#: (docs/runbooks/pi-api-deploy.md, "Memory 1Gi": <= 50 MB JSON). No override (Reviewer,
-#: 2026-10-03): a snapshot over it waits for the content to move to its own file.
-V3_MAX_BYTES = 50_000_000
+#: The largest v3 file this exporter writes, in compact JSON bytes: pi_api's measured memory
+#: budget for one dataset at 3Gi (docs/runbooks/pi-api-deploy.md §6). Calibrated on the real
+#: Ounass snapshot (72.7 MB compact): ~1,530 MiB of refresh peak above the other sources, so
+#: 90 MB keeps one refresh inside the ~1,990 MiB left after imports, the other sources, two CSV
+#: exports and a 256 MiB margin. No override (Reviewer, 2026-10-03): a snapshot over it waits
+#: for the content to move to its own file.
+V3_MAX_BYTES = 90_000_000
 
 
 def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:
@@ -1074,7 +1077,7 @@ def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:
             )
             for p in v3.products
         )
-        return len(dump_dataset(v3.model_copy(update={"products": products})))
+        return len(dump_dataset(v3.model_copy(update={"products": products}), compact=True))
 
     prices, mid = without(True), without(False)
     return {
@@ -1304,11 +1307,11 @@ def main() -> None:
                 producer_commit=args.producer_commit,
                 slots=slots,
             )
-        body = dump_dataset(v2)
+        body = dump_dataset(v2, compact=True)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
             v3 = to_v3(v2, v2_rows, matches)
-            body_v3 = dump_dataset(v3)
+            body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
             v3_groups = v3_bytes_by_group(v3, len(body_v3))
             check_v3_size(len(body_v3), v3_groups)

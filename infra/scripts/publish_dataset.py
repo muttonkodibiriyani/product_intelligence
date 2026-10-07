@@ -302,7 +302,7 @@ def package_v2(
     if len(meta.markets) != 1:
         raise ValueError("a multi-market dataset needs a layout decision first (ADR-0007 §6)")
     country = meta.markets[0].country.lower()
-    dumped = dump_dataset(dataset)
+    dumped = dump_dataset(dataset, compact=True)
     doc = json.loads(dumped)
     source, errors = publishing_source(by_source(doc), allowed)
     if source is None:

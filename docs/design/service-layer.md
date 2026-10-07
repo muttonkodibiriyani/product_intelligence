@@ -109,9 +109,10 @@ versioned snapshots.
 - **No HTTP caching (S2, superseding the ETag plan).** Every `/api` response, errors included,
   is `Cache-Control: private, no-store` (hosting requirement 2), so there is no `ETag`/`304` and no
   `max-age`. Paging stays consistent through cursors bound to the generation (`409 stale_cursor`).
-- **Size.** Today's pilot dataset is a few MB. The budget is ≤ 50 MB of JSON per instance; beyond
-  that, history moves to the fact extracts and is read lazily per product. The instance has
-  1 GiB (§6 exports, §9).
+- **Size.** Today's pilot dataset is a few MB. The budget was ≤ 50 MB of JSON per instance. Since
+  2026-10-07 it is ≤ 90 MB of compact v3 JSON per dataset, sized for 3 GiB from measured RSS
+  (`docs/runbooks/pi-api-deploy.md` §6). Beyond that, content and history move out and are read
+  lazily (§6 exports, §9).
 - **Transition.** Until the producers emit v2 (PR-B defines it, and Infra then switches
   `demo_export`/`publish_dataset`), `SnapshotSource` reads `datasets/uae/latest.json` (v1)
   through the read adapter in `pi_dataset`. The adapter maps the fixed `u`/`s` slots to register
