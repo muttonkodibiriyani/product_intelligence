@@ -153,3 +153,13 @@ def test_admitted_entries_come_from_the_environment() -> None:
             admitted_entries(bad)
     assert Settings.from_env(ENV).admitted == {}
     assert Settings.from_env({**ENV, "PI_API_ADMITTED": f"{sha}:0"}).admitted == {sha: 0}
+
+
+@pytest.mark.parametrize("others", ["1,{sha}:2", "1,{sha}:1"])
+def test_a_sha_admitted_twice_is_refused_at_startup(others: str) -> None:
+    sha = admission_sha256(b"x")
+    raw = f"{sha}:" + others.format(sha=sha)
+    with pytest.raises(ValueError, match=f"PI_API_ADMITTED lists {sha} more than once"):
+        admitted_entries(raw)
+    with pytest.raises(ValueError, match="more than once"):
+        Settings.from_env({**ENV, "PI_API_ADMITTED": raw})

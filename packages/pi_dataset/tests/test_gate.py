@@ -57,6 +57,8 @@ def test_an_admitted_largest_body_passes_while_the_others_are_within_its_record(
     files = {"o": (72_700_000, SHA), "f": (FACES, "b" * 64)}
     assert refusal(files, {}, 3072) is not None
     assert refusal(files, {SHA: FACES}, 3072) is None
+    assert refusal(files, {SHA: FACES + 1}, 3072) is None
+    assert refusal(files, {"b" * 64: FACES}, 3072) is not None
     grown = {**files, "f": (FACES + 1, "c" * 64)}
     why = refusal(grown, {SHA: FACES}, 3072)
     assert why is not None

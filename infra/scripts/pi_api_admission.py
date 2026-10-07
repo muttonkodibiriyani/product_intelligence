@@ -9,7 +9,8 @@ pi_api parses (never the gzip object, never the exporter's file), measured with 
 ``PI_API_DATASETS`` file resident together the way pi_api serves them: a cold start, then four
 refreshes of the largest file, RSS sampled every 20 ms, content packed as deployed. It passes only
 if the highest refresh peak is at most 75% of the memory and the other files total at most
-``OTHERS_MAX_BYTES``. A new export is a new sha: nothing carries over, it is measured again.
+``ADMISSION_OTHERS_MAX_BYTES``, which only governs issuing a record: pi_api serves against the
+record's own measured total. A new export is a new sha: nothing carries over, it is measured again.
 
 ``measure`` writes a record. ``check`` (the deploy) refuses unless the served set is within the
 fit or its largest body has a passing record measured at this memory with these files, and prints
@@ -150,10 +151,9 @@ def problems(
             f"refresh peak {record.peak_mib} MiB is over 75% of {record.memory_mib} MiB "
             f"({record.limit_mib} MiB)"
         )
-    if record.others_bytes > rule.OTHERS_MAX_BYTES:
-        out.append(
-            f"the other files total {record.others_bytes} bytes, over {rule.OTHERS_MAX_BYTES}"
-        )
+    cap = rule.ADMISSION_OTHERS_MAX_BYTES
+    if record.others_bytes > cap:
+        out.append(f"the other files total {record.others_bytes} bytes, over {cap}")
     if {s.path for s in record.served} != set(now):
         out.append(f"measured with {sorted(s.path for s in record.served)}, serving {sorted(now)}")
     for then in record.served:

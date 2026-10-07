@@ -26,11 +26,16 @@ SHARE = 0.75
 MB = 1_000_000
 #: The memory pi_api assumes when ``PI_API_MEMORY_MIB`` is missing or unreadable: the smallest.
 DEFAULT_MEMORY_MIB = 1024
-#: Rule 2 at 3Gi: the files other than the largest, in total (600 MiB at the resident rate).
+#: The exporter's derivation only: the others total ``V3_MAX_BYTES`` is sized beside at 3Gi
+#: (600 MiB at the resident rate). It never decides what is served or admitted.
 OTHERS_MAX_BYTES = 30_000_000
 #: The exporter's gate: the largest file allowed at 3Gi beside ``OTHERS_MAX_BYTES`` of others
 #: (step F's memory; ``largest_allowed(OTHERS_MAX_BYTES, 3072)``, pinned by a test).
 V3_MAX_BYTES = 51_000_000
+#: The most the other files may total in an admission record ``pi_api_admission.py`` issues.
+#: It only governs issuing a record: serving checks the others against the record's own
+#: measured total (``refusal``), never against this.
+ADMISSION_OTHERS_MAX_BYTES = 50_000_000
 
 
 def peak_mib(sizes: Iterable[int]) -> float:

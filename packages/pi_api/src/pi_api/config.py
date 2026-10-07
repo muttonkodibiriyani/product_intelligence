@@ -23,7 +23,8 @@ _HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{
 def admitted_entries(raw: str) -> dict[str, int]:
     """``PI_API_ADMITTED``: comma-separated ``sha256:others_bytes``, as ``pi_api_admission.py
     check`` prints them: a body's lowercase sha256 hex digest and the total bytes of the other
-    files its admission record measured beside it."""
+    files its admission record measured beside it. A sha listed twice is refused: which bound
+    applies would otherwise depend on the order of the list."""
     out: dict[str, int] = {}
     for entry in (e.strip() for e in raw.split(",")):
         if not entry:
@@ -31,6 +32,9 @@ def admitted_entries(raw: str) -> dict[str, int]:
         sha, _, others = entry.partition(":")
         if not _SHA256.fullmatch(sha) or not others.isdigit():
             msg = f"PI_API_ADMITTED entry {entry!r} is not sha256:others_bytes"
+            raise ValueError(msg)
+        if sha in out:
+            msg = f"PI_API_ADMITTED lists {sha} more than once"
             raise ValueError(msg)
         out[sha] = int(others)
     return out

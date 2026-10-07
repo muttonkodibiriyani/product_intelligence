@@ -19,7 +19,7 @@ from api_fixture import served_dataset, write
 from pi_api.app import app_from_env
 from pi_dataset import V3_MAX_BYTES, admission_sha256, dump_dataset
 from pi_dataset import gate as rule
-from pi_dataset.gate import OTHERS_MAX_BYTES
+from pi_dataset.gate import ADMISSION_OTHERS_MAX_BYTES
 
 BIG = "datasets/ae/ounass_ae/latest.json"
 SMALL = "datasets/ae/faces/latest.json"
@@ -107,13 +107,20 @@ def test_deployed_pi_api_packs_content() -> None:
     assert "pack_content" not in inspect.getsource(app_from_env)
 
 
-def test_others_over_30_mb_are_refused_even_when_measured() -> None:
-    others = OTHERS_MAX_BYTES + 1
+def test_others_at_the_admission_cap_are_admitted() -> None:
+    others = ADMISSION_OTHERS_MAX_BYTES
+    big = record(served=[served(BIG, OUNASS, "a" * 64), served(SMALL, others, "b" * 64)])
+    now = {**NOW, SMALL: served(SMALL, others, "b" * 64)}
+    assert admission.check([big], 3072, now) == ({"a" * 64: 50_000_000}, [])
+
+
+def test_others_over_the_admission_cap_are_refused_even_when_measured() -> None:
+    others = ADMISSION_OTHERS_MAX_BYTES + 1
     big = record(served=[served(BIG, OUNASS, "a" * 64), served(SMALL, others, "b" * 64)])
     now = {**NOW, SMALL: served(SMALL, others, "b" * 64)}
     _, refused = admission.check([big], 3072, now)
     assert refused == [
-        f"REFUSED {BIG} sha256={'a' * 64}: the other files total {others} bytes, over 30000000"
+        f"REFUSED {BIG} sha256={'a' * 64}: the other files total {others} bytes, over 50000000"
     ]
 
 
