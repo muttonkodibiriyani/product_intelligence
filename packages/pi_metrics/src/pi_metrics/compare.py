@@ -95,6 +95,9 @@ class PairRow(ContractModel):
     excluded_reason: Excluded | None
     #: ``/compare`` and its export (API 1.19.0, ``matches=True``): the retailers' edge, else null.
     match: RowMatch | None = None
+    #: ``/compare`` and its export (API 1.21.0): the product's card image over the pair's two
+    #: contexts (``pi_api.catalog.card_image``: an allowlisted https URL), else null.
+    image: str | None = None
 
 
 class Basket(ContractModel):
@@ -214,6 +217,16 @@ def _identity(  # noqa: PLR0911 -- one ordered decision ladder, first match wins
     if edge.match_class is not MatchClass.EXACT:
         return Excluded.MATCH_NOT_EXACT
     return None
+
+
+def same_item(ds: DatasetV3, product: ProductV3, base: str, other: str) -> bool:
+    """Both contexts offer the product and their offers are known to be one item: the identity
+    rules a counted pair passes (exact, approved or locked; ADR-0008 §2), before size and price."""
+    return (
+        base in product.offers
+        and other in product.offers
+        and _identity(ds, product, base, other) is None
+    )
 
 
 def _exclusion(  # noqa: PLR0911, PLR0913 -- one ordered decision ladder, first match wins

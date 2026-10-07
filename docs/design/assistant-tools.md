@@ -6,7 +6,7 @@ are defined in code (`apps/assistant/src/tools/definitions.ts`) and never genera
 `apps/assistant/test/endpoint-map.test.ts` fails when a new `/api/v1` operation has neither a
 tool nor an exclusion below, or when this page misses a tool or an operation.
 
-Contract: `docs/contracts/pi-api.openapi.json` (API 1.20.0). All operations are GET.
+Contract: `docs/contracts/pi-api.openapi.json` (API 1.23.0). All operations are GET.
 
 ## Tools
 
@@ -49,6 +49,7 @@ no view yet: promotions are answered by `promotions`, and ratings by `reviews_su
 | `/matches` | The match review queue (an operator workflow); `compare` covers approved matches |
 | `/meta` | Page bootstrap (attribute sets, labels, dates); `coverage_status` covers retailers and freshness |
 | `/insights` | Insights page aggregates (brand price policy, size ladders) built from `compare`'s counted pairs; `compare` answers the same questions. A tool can follow once the page settles |
+| `/findings` | The Insights page's twelve ranked findings, worded by the page from structured numbers and built from the catalogues and `compare`'s counted pairs. A tool can follow once the page settles |
 | `/catalogues/{retailer}`, `/catalogues/{retailer}/skus/{sku}` | SKU galleries and identity links for the product page (display only); no prices or counts to answer with (coordinator ruling 2026-10-01) |
 
 ## Planned

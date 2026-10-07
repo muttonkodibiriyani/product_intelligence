@@ -55,7 +55,8 @@ gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_leve
 - **Hosting → Cloud Run in me-central1** is supported (Infra confirmed; design §11 Q1). If a
   Hosting deploy still rejects the rewrite, stop and report it (stop rule).
 - Note the datasets to serve: the object paths `publish_dataset.py` writes under `datasets/`
-  (e.g. `datasets/ae/beauty/latest.json`). They become `PI_API_DATASETS`.
+  (e.g. `datasets/ae/beauty/latest.json`). They become `PI_API_DATASETS` on a first deploy; later
+  deploys take the live value (§6).
   With per-source files (API ≥ 1.10.0, ADR-0010), assign each source to its file instead, e.g.
   `sephora_me=datasets/ae/sephora_me/latest.json,ulta_ae=datasets/ae/beauty/latest.json`. Don't
   also list one of those paths bare in the same scope.
@@ -103,18 +104,68 @@ Deploy by digest, not by tag.
 
 ## 6. Deploy
 
+The env vars come from the live service, not from this doc: the served files and retailers move
+(per-source files, the matched file, a new retailer's hosts, the match file), and `--set-env-vars`
+replaces every variable, deleting any it does not list. The deploy below sets exactly seven:
+`PI_API_FIREBASE_PROJECT`, `PI_API_BUCKET`, `PI_API_DATASETS`, `PI_API_EVIDENCE_HOSTS`,
+`PI_API_IMAGE_HOSTS` (required) and `PI_API_CATALOGUES`, `PI_API_MATCHES` (optional; an empty value
+is left out). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`, `IMAGE_HOSTS`, `CATALOGUES` and
+`MATCHES` to the values you mean to serve (the §2 paths and the hosts below on a first deploy),
+then run (bash):
+
 ```sh
-gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
+SVC_JSON=$(gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
+  --format=json 2>/dev/null)
+live_env() { printf '%s' "$SVC_JSON" | python3 -c 'import json,sys
+env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", [])
+if sys.argv[1] == "--names": print("\n".join(e["name"] for e in env))
+else: print(next((e.get("value", "") for e in env if e["name"] == sys.argv[1]), ""))' \
+  "$1" 2>/dev/null; }
+FIREBASE_PROJECT=$PROJECT
+REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS" OPTIONAL="CATALOGUES MATCHES"
+ENV_OK=1 SET_ENV= KNOWN=" "
+test "$FIRST_DEPLOY" = 1 && test -n "$SVC_JSON" \
+  && { echo "STOP: FIRST_DEPLOY=1 but pi-api already exists"; ENV_OK=0; }
+for v in $REQUIRED $OPTIONAL; do
+  want=${!v}; have=$(live_env "PI_API_$v"); KNOWN="$KNOWN PI_API_$v "
+  case " $OPTIONAL " in *" $v "*) opt=1;; *) opt=0;; esac
+  if { test -n "$want" || { test $opt = 1 && test -z "$have"; }; } \
+    && { test "$want" = "$have" || { test "$FIRST_DEPLOY" = 1 && test -z "$have"; }; } \
+    && case "$want" in *@*) false;; esac
+  then echo "PI_API_$v ok: [$want]"; test -z "$want" || SET_ENV="$SET_ENV@PI_API_$v=$want"
+  else echo "STOP: PI_API_$v live=[$have] wanted=[$want] (no '@' allowed)"; ENV_OK=0
+  fi
+done
+EXTRA=$(live_env --names | while read -r n; do
+  case "$KNOWN" in *" $n "*) ;; *) printf '%s ' "$n";; esac; done)
+test -z "$EXTRA" || { echo "STOP: live env vars this deploy would delete: $EXTRA"; ENV_OK=0; }
+SET_ENV="^@^${SET_ENV#@}"
+test "$ENV_OK" = 1 && echo "ENV OK" || echo "ENV STOP"
+```
+
+On any STOP, do not deploy. Either take the live value (`DATASETS=$(live_env PI_API_DATASETS)`,
+and the same for the others) or treat the difference as a config change with its own approval and
+its own before/after diff. A live variable outside the seven (printed by name only) means this
+command would delete it: STOP and extend this list in a reviewed change first. Only a first
+deploy (no service yet) sets `FIRST_DEPLOY=1`, and the guard STOPs if the service exists; a failed
+describe otherwise STOPs. The STOP lines print live values: all seven are non-secret config. A
+secret never joins this list; it would need `--set-secrets` (not used, see below) and a reviewed
+change that prints its name only. To change one variable on a running service, use `gcloud run
+services update --update-env-vars` with its own approval (it leaves the others alone), not this
+command.
+
+```sh
+test "$ENV_OK" = 1 && gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
   --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
   --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
-  --set-env-vars="^@^PI_API_FIREBASE_PROJECT=$PROJECT@PI_API_BUCKET=$BUCKET@PI_API_DATASETS=<paths from §2>@PI_API_EVIDENCE_HOSTS=sephora_me=www.sephora.me,ulta_ae=www.ulta.ae@PI_API_IMAGE_HOSTS=sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com"
+  --set-env-vars="$SET_ENV"
 ```
 
-This full form is for a first deploy or a deliberate config change only. The values above are the
-live ones on `pi-api-00004-9b6` (2026-10-01). An image-only redeploy passes `--image` and nothing
-else, so every env var stays as it is.
+This full form is for a first deploy or a deliberate config change only, in the same shell right
+after `ENV OK`. An image-only redeploy passes `--image` and nothing else, so every env var stays
+as it is.
 
 - **No `--concurrency`** (default), no `--add-cloudsql-instances`, no `--vpc-connector`, no
   `--set-secrets`. Never set `PI_API_ALLOW_TEST` in production.
@@ -122,16 +173,21 @@ else, so every env var stays as it is.
   `<source_key>=<host>,<source_key>=<host>`, the exact hosts the connectors fetch). Without
   it the service runs, but every offer's `evidence.url` is null. A host the API should not link
   to is simply left out; there are no wildcards.
-  Today's value (set on `pi-api-00004-9b6`, 2026-10-01) is
-  `sephora_me=www.sephora.me,ulta_ae=www.ulta.ae`. A redeploy that changes only the image keeps
-  it: never pass `--set-env-vars` for an image-only deploy. A typo nulls every link without an
-  error, which is why §8 checks one. For two or more pairs, the commas clash with
-  `--set-env-vars`. Switch the delimiter:
+  The first value (set on `pi-api-00004-9b6`, 2026-10-01) was
+  `sephora_me=www.sephora.me,ulta_ae=www.ulta.ae`; read today's from the service (§6). A
+  redeploy that changes only the image keeps it: never pass `--set-env-vars` for an image-only
+  deploy. A typo nulls every link without an error, which is why §8 checks one. For two or more
+  pairs, the commas clash with `--set-env-vars`. Switch the delimiter:
   `--set-env-vars="^@^PI_API_EVIDENCE_HOSTS=a=x.example,b=y.example@PI_API_BUCKET=..."`.
 - **Card thumbnails** (API 1.3.0) need `PI_API_IMAGE_HOSTS`, in the same format: the hosts the
-  dashboard may hotlink images from. Today's value is
-  `sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com`, the two external hosts in the
-  Hosting CSP `img-src` (decision log, 2026-10-01). Without it every `ProductCard.image` is null.
+  dashboard may hotlink images from. The 2026-10-01 value was
+  `sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com` (read today's from the service,
+  §6), the two external hosts in the Hosting CSP `img-src` (decision log, 2026-10-01). Without it
+  every `ProductCard.image` is null.
+- **Match edges** (ADR-0012 §6) optionally use `PI_API_MATCHES`, one `pi.matches/v1` object path
+  applied to the per-source views (it needs `source=path` entries in `PI_API_DATASETS`). Setting or
+  changing it is its own deploy with the owner's go. Once it is live, §6 carries it: a redeploy
+  with a different or empty `MATCHES` STOPs.
 - **SKU galleries and identities** (API 1.7.0) optionally use `PI_API_CATALOGUES`, a comma-separated
   list of `pi.catalogue/v1` objects, for example
   `datasets/ae/beauty/catalogues/ulta_ae/latest.json`. These stay under the runtime identity's
@@ -173,9 +229,9 @@ else, so every env var stays as it is.
 
 ## 7. Hosting rewrite
 
-`infra/firebase.json` already routes `/api/**` to `{serviceId: "pi-api", region: "me-central1"}`
-**before** the SPA catch-all `**`. `test_hosting_routes_api_before_the_spa_catch_all` guards the
-order and the region. Deploy Hosting only after the service exists:
+`infra/firebase.json` routes `/api/**` to `{serviceId: "pi-api", region: "me-central1"}` as its
+first rewrite, with no catch-all after it. `test_hosting_routes_api_first_and_unknown_paths_404`
+guards the order, the region and the missing catch-all. Deploy Hosting only after the service exists:
 
 ```sh
 npx -y firebase-tools@14.27.0 deploy --only hosting --project $PROJECT

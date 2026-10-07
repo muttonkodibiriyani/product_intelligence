@@ -52,6 +52,7 @@ from pi_dataset.profiles import AttributeDef, ProfileInfo
 from pi_dataset.text import SourceText
 from pi_metrics import COUNTED_STATES, Excluded, Metric, ProductFilter, Reason, Status, view
 from pi_metrics.compare import Gap, pair_with_labels
+from pi_metrics.insights import unavailable_brands
 from pi_metrics.promotions import depth
 from pi_metrics.view import AmbiguousContext, context, price_on, regular_on
 
@@ -197,6 +198,23 @@ def meta_view(
 # ---------------------------------------------------------------- products
 
 
+class StockFilter(StrEnum):
+    """An observed stock state a listing can be filtered on: ``pi_core.AvailabilityState``'s
+    observed values. A listing with no state, or an unobserved one, never matches."""
+
+    IN_STOCK = AvailabilityState.IN_STOCK.value
+    LOW_STOCK = AvailabilityState.LOW_STOCK.value
+    OUT_OF_STOCK = AvailabilityState.OUT_OF_STOCK.value
+
+
+class UnavailableBrands(StrEnum):
+    """Listings in a brand the source reports unavailable at their context: ``only`` those,
+    ``exclude`` them (``pi_metrics.insights.unavailable_brands``)."""
+
+    ONLY = "only"
+    EXCLUDE = "exclude"
+
+
 class ProductSort(StrEnum):
     NAME = "name"
     PRICE_ASC = "price_asc"
@@ -264,6 +282,32 @@ class ProductFilters(ContractModel):
             ),
         ),
     ] = ()
+    availability: Annotated[
+        tuple[StockFilter, ...],
+        Field(
+            max_length=MAX_VALUES,
+            description=(
+                "API 1.23.0. Repeatable; keeps products with a listing in one of these stock "
+                "states on the latest date, at the contexts ``retailer`` names (and ``channel``/"
+                "``location`` show), else at any. A listing without an observed state never "
+                "matches."
+            ),
+        ),
+    ] = ()
+    unavailable_brands: Annotated[
+        UnavailableBrands | None,
+        Field(
+            description=(
+                "API 1.23.0. ``only`` keeps products with a listing in a brand the source reports "
+                "unavailable at that context on the latest date (at least 2 observed listings of "
+                "the brand, every one out of stock: Insights' ``unavailableListings``); "
+                "``exclude`` keeps those with a listing that is not. Applies to the same "
+                "listings as ``availability``, and with it to the same listing: "
+                "``availability=out_of_stock&"
+                "unavailableBrands=exclude`` is Insights' ``outOfStock``."
+            )
+        ),
+    ] = None
 
 
 class ProductQuery(ProductFilters):
@@ -608,7 +652,31 @@ def _predicates(ds: DatasetV3, query: ProductFilters) -> dict[str, Check]:
         checks["price"] = priced
     for key, values in wanted.items():  # one check per key, so its facet can drop it
         checks[f"attr:{key}"] = partial(_has_attr, shown=shown, key=key, values=values)
+    if query.availability or query.unavailable_brands is not None:
+        checks["availability"] = _stock_check(ds, query, priced_in)
     return checks
+
+
+def _stock_check(ds: DatasetV3, query: ProductFilters, contexts: Shown) -> Check:
+    """``availability`` and ``unavailableBrands`` on one listing at a time, latest date."""
+    i = len(ds.meta.dates) - 1
+    wanted = {AvailabilityState(s) for s in query.availability}
+    mode = query.unavailable_brands
+    scope = [c.id for c in ds.meta.contexts if contexts is None or c.id in contexts]
+    # Only the unavailableBrands mode needs the per-brand scan.
+    gone = {} if mode is None else {c: unavailable_brands(ds, c, i) for c in scope}
+
+    def keeps(product: ProductV3, context: str, offer: OfferV3) -> bool:
+        states = offer.series.availability
+        state = None if states is None else states[i]
+        if wanted and state not in wanted:
+            return False
+        if mode is None:
+            return True
+        unavailable = state is not None and state.is_known and product.brand in gone[context]
+        return unavailable is (mode is UnavailableBrands.ONLY)
+
+    return lambda p: any(keeps(p, c, o) for c, o in p.offers.items() if c in scope and not o.early)
 
 
 def _passes(product: ProductV3, checks: dict[str, Check], skip: str) -> bool:
