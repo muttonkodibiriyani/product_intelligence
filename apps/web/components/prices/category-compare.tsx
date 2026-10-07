@@ -134,22 +134,25 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
           </colgroup>
           <thead>
             <tr>
-              <th scope="col" rowSpan={2} className="th text-start">
-                {t('category')}
-              </th>
+              <td />
               {ids.map((id, i) => (
                 <th key={id} scope="colgroup" colSpan={3} className="th text-start">
                   <span className={`pill ${TONE[i]}`}>{pair.name(id)}</span>
                 </th>
               ))}
-              <th scope="col" rowSpan={2} className="th text-start">
-                {t('gapCol')}
-              </th>
+              <td />
             </tr>
-            <tr>
+            {/* Every column title on one line, top-aligned; the range axis hangs under its title. */}
+            <tr className="align-top">
+              <th scope="col" className="th text-start">
+                {t('category')}
+              </th>
               {ids.map((id) => (
                 <SideHead key={id} scale={scale} rtl={rtl} locale={locale} currency={scale.currency} />
               ))}
+              <th scope="col" className="th text-start">
+                {t('gapCol')}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -314,7 +317,9 @@ function SideHead({
         {t('median')}
       </th>
       <th scope="col" className="th text-start">
-        <span className="block">{t('range')}</span>
+        <span className="block">
+          {scale.ok ? t('rangeIn', { currency: currencySign(currency, locale) }) : t('range')}
+        </span>
         {scale.ticks.length > 0 && (
           <svg
             aria-hidden="true"
@@ -323,15 +328,15 @@ function SideHead({
             height={12}
             className="mt-0.5 block overflow-visible"
           >
-            {scale.ticks.map((v) => (
+            {axisTicks(scale, rtl, locale).map((k) => (
               <text
-                key={v}
-                x={scale.x(v, rtl)}
+                key={k.v}
+                x={k.x}
                 y={10}
                 textAnchor="middle"
                 className="fill-ink-2 text-[9px] tabular-nums"
               >
-                {whole(v, currency, locale)}
+                {k.label}
               </text>
             ))}
           </svg>
@@ -407,13 +412,46 @@ function logScale(buckets: readonly Bucket[], ids: readonly string[]): LogScale 
   return { ok: true, currency, ticks, x };
 }
 
-/** A whole-unit price for the axis, in Latin digits. */
-function whole(v: number, currency: string, locale: string) {
-  return new Intl.NumberFormat(locale === 'ar' ? 'ar-AE' : 'en-AE', {
-    style: 'currency',
-    currency: currency || 'AED',
+/** Estimated width of a 9px tick label: about 5.5px a character, tabular digits included. */
+const tickWidth = (label: string) => label.length * 5.5;
+/** Clear space kept between two neighbouring tick labels. */
+const TICK_GAP = 6;
+
+/**
+ * The axis labels: compact numbers (the currency is said once, in the column head), kept inside the
+ * SVG, and thinned from the low end so no two collide when decades sit close on a narrow axis.
+ */
+export function axisTicks(
+  scale: Pick<LogScale, 'ticks' | 'x'>,
+  rtl: boolean,
+  locale: string,
+): { v: number; x: number; label: string }[] {
+  const fmt = new Intl.NumberFormat(locale === 'ar' ? 'ar-AE' : 'en-AE', {
+    notation: 'compact',
     numberingSystem: 'latn',
     maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
-  }).format(v);
+  });
+  const out: { v: number; x: number; label: string; w: number }[] = [];
+  for (const v of scale.ticks) {
+    const label = fmt.format(v);
+    const w = tickWidth(label);
+    const x = Math.min(W - w / 2, Math.max(w / 2, scale.x(v, rtl)));
+    const prev = out[out.length - 1];
+    if (prev && Math.abs(x - prev.x) < (prev.w + w) / 2 + TICK_GAP) continue;
+    out.push({ v, x, label, w });
+  }
+  return out.map(({ v, x, label }) => ({ v, x, label }));
+}
+
+/** The currency as the locale writes it on its own: AED in English, د.إ. in Arabic. */
+function currencySign(currency: string, locale: string) {
+  return (
+    new Intl.NumberFormat(locale === 'ar' ? 'ar-AE' : 'en-AE', {
+      style: 'currency',
+      currency: currency || 'AED',
+    })
+      .formatToParts(0)
+      .find((p) => p.type === 'currency')
+      ?.value.replace(/\u200f/g, '') ?? currency
+  );
 }

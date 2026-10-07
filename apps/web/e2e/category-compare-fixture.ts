@@ -155,6 +155,14 @@ export function categoryCompareBody(base = 'shop_a', other = 'shop_b', counts: C
   };
 }
 
+/** Prices from AED 4 to AED 40,000: four decades on the shared axis, as the live Faces and Ulta pair has. */
+export function wideCategoryCompareBody(base = 'shop_a', other = 'shop_b') {
+  const body = categoryCompareBody(base, other);
+  const fragrance = body.data.rows.find((r) => r.key === 'fragrance')!;
+  Object.assign(fragrance.base, { min: aed(4), max: aed(40000) });
+  return body;
+}
+
 /**
  * /compare's `groups` with `groupBy=category`, in the wire shape. SAMPLE DATA: per category, how
  * many matched pairs each shop is cheaper on and how many are the same price, or a bare count
