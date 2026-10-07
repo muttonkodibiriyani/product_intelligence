@@ -291,8 +291,10 @@ as it is.
     set (Ounass, beauty, Faces, two exports) with ~265 MiB to spare at a refresh peak, but the
     general rule below would allow only ~27.5 MB for the largest file there. **3Gi** is the size for
     Ounass (decision log 2026-10-07), with max-instances 1 on the revision and the service
-    (`infra/pi-api/service.env`). Step F's revision (`f3gi`, 2026-10-07) went first, on the
-    image from before the load rule, after a bench of the live set on that image's code
+    (`infra/pi-api/service.env`). Cost at me-central1 (Tier 2, request-based CPU): about $3-7 a
+    month expected; one instance serving every second of a month would be about $107 (the cost
+    row and the budget alerts are in step F's runbook change). Step F's revision (`f3gi`,
+    2026-10-07) went first, on the image from before the load rule, after a bench of the live set on that image's code
     (export sha256 `8963cbed…`, beauty and Faces as served: refresh peak 1,757 MiB ≤ 2,304).
     The first revision on an image with the load rule must carry the record
     `infra/pi-api/admission/ounass_ae.json` (the same four files, packed: refresh peak 1,661 MiB)
