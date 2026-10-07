@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toggle } from '@/lib/explore';
 import { retailerName } from '@/lib/retailers';
 import { useMeta } from '../use-meta';
@@ -17,6 +17,7 @@ export function RetailerChecks({
   onChange: (next: string[]) => void;
 }) {
   const t = useTranslations('retailerChecks');
+  const locale = useLocale();
   const retailers = useMeta().data?.data?.retailers ?? [];
   return (
     <fieldset className="min-w-0">
@@ -30,7 +31,7 @@ export function RetailerChecks({
               onChange={() => onChange(toggle(value, r.id))}
               className="focus-visible:outline-2"
             />
-            {retailerName(r.id, r.name)}
+            {retailerName(r.id, r.name, locale)}
           </label>
         ))}
       </div>

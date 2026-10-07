@@ -364,6 +364,10 @@ for (const locale of ['en', 'ar'] as const) {
       ['img-product.sephora.me', IMG],
       ['media.alshaya.com', IMG_ULTA],
       ['www.faces.ae', 'https://www.faces.ae/media/catalog/product/cache/1/image/f1.jpg'],
+      [
+        'prodheadless.atgwasl.com',
+        'https://prodheadless.atgwasl.com/on/demandware.static/-/Sites-bloomingdales/b1.jpg',
+      ],
     ] as const)
       test(`product page: the ${host} image beside the name; a failing one is a placeholder`, async ({
         page,

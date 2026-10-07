@@ -20,6 +20,7 @@ import {
   hasParents,
   heatCells,
   histBins,
+  IMAGE_OWNERS,
   imageHost,
   imageSrc,
   importedOn,
@@ -177,6 +178,25 @@ describe('widget model', () => {
     expect(imageSrc(faces, 'ulta_ae')).toBeNull();
     expect(imageSrc('https://faces.ae/media/1.jpg', 'faces_ae')).toBeNull();
     expect(imageSrc('https://www.faces.ae.evil.example/1.jpg')).toBeNull();
+    const blm = 'https://prodheadless.atgwasl.com/on/demandware.static/-/Sites-bloomingdales/a.jpg';
+    expect(imageHost(blm, 'bloomingdales_ae')).toBe('prodheadless.atgwasl.com');
+    expect(IMAGE_OWNERS['prodheadless.atgwasl.com'].name).toBe("Bloomingdale's");
+    expect(imageSrc(blm, 'faces_ae')).toBeNull();
+    expect(imageSrc('http://prodheadless.atgwasl.com/a.jpg', 'bloomingdales_ae')).toBeNull();
+  });
+
+  it('shows no Ounass image: its host is not listed yet (TODO ounass image host)', () => {
+    for (const url of [
+      'https://www.ounass.ae/media/a.jpg',
+      'https://ounass.ae/a.jpg',
+      'https://cdn.ounass.ae/a.jpg',
+      'https://prodheadless.atgwasl.com/a.jpg',
+      'https://www.faces.ae/media/a.jpg',
+    ]) {
+      expect(imageHost(url, 'ounass_ae')).toBeNull();
+      expect(imageSrc(url, 'ounass_ae')).toBeNull();
+    }
+    expect(Object.values(IMAGE_OWNERS).map((o) => o.name)).not.toContain('Ounass');
   });
 
   it('never guesses freshness', () => {

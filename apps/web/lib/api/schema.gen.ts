@@ -538,7 +538,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.24.0
+             * @default 1.25.0
              */
             apiVersion: string;
             /** Currency */

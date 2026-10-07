@@ -8,6 +8,17 @@ describe('retailerName', () => {
     expect(retailerName('sephora_me')).toBe('Sephora');
     expect(retailerName('sephora_me', null)).toBe('Sephora');
     expect(retailerName('faces_ae', 'Faces UAE')).toBe('Faces');
+    expect(retailerName('ounass_ae', 'Ounass UAE')).toBe('Ounass');
+    expect(retailerName('bloomingdales_ae', "Bloomingdale's UAE")).toBe("Bloomingdale's");
+    expect(hasRetailerName('ounass_ae') && hasRetailerName('bloomingdales_ae')).toBe(true);
+  });
+
+  it("names Ounass and Bloomingdale's in Arabic, and keeps the other known names as they are", () => {
+    expect(retailerName('ounass_ae', 'Ounass UAE', 'ar')).toBe('أناس');
+    expect(retailerName('bloomingdales_ae', null, 'ar')).toBe('بلومينغديلز');
+    expect(retailerName('bloomingdales_ae', null, 'en')).toBe("Bloomingdale's");
+    expect(retailerName('faces_ae', 'Faces UAE', 'ar')).toBe('Faces');
+    expect(retailerName('shop_a', 'Shop A', 'ar')).toBe('Shop A');
   });
 
   it('takes the /meta name for any other id, and the id only without one', () => {
@@ -29,6 +40,10 @@ describe('withRetailerNames', () => {
       "Ulta's was-prices are unverified.",
     );
     expect(withRetailerNames('بيانات sephora_me مجمّعة جزئياً.', name)).toBe('بيانات Sephora مجمّعة جزئياً.');
+    const ar = (id: string) => retailerName(id, null, 'ar');
+    expect(withRetailerNames('بيانات ounass_ae و bloomingdales_ae جزئية.', ar)).toBe(
+      'بيانات أناس و بلومينغديلز جزئية.',
+    );
   });
   it('keeps an id nobody can name, and words that merely contain an underscore pattern it cannot name', () => {
     expect(withRetailerNames('shop_x is only partly collected.', name)).toBe(
