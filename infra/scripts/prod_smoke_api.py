@@ -51,15 +51,21 @@ BASE = "https://productintelligence-beeb3.web.app/api/v1"
 EXPECTED = {"sephora_me": 9529, "ulta_ae": 7275}
 #: Every retailer the API may serve, with the one host its images / evidence links must be on.
 #: S3 checks each retailer /coverage serves, and FAILs on a served retailer missing from here.
-IMAGE_HOSTS = {
+#: ``None``: no image host is verified yet (Ounass, 2026-10-07), so S3 FAILs on any image it
+#: serves (the export publishes none and pi-api has no host to allow).
+IMAGE_HOSTS: dict[str, str | None] = {
     "sephora_me": "img-product.sephora.me",
     "ulta_ae": "media.alshaya.com",
     "faces_ae": "www.faces.ae",
+    "ounass_ae": None,
+    "bloomingdales_ae": "prodheadless.atgwasl.com",
 }
 EVIDENCE_HOSTS = {
     "sephora_me": "www.sephora.me",
     "ulta_ae": "www.ulta.ae",
     "faces_ae": "www.faces.ae",
+    "ounass_ae": "www.ounass.ae",
+    "bloomingdales_ae": "bloomingdales.ae",
 }
 #: The live Ulta catalogue object, as described in the runbook's baselines.
 CATALOGUE_GENERATION = "1790852220300614"
@@ -307,17 +313,24 @@ def s2_matched(api: Api, rep: Report, baseline: Mapping[str, Any], expect: int) 
 
 def s3_images(api: Api, rep: Report) -> None:
     for rid in sorted(coverage(api)):
-        host = IMAGE_HOSTS.get(rid)
-        if host is None:
+        if rid not in IMAGE_HOSTS:
             rep.expect(False, f"S3 {rid}: served but has no pinned image host")
             continue
+        host = IMAGE_HOSTS[rid]
         r = api.get("/products", {"retailer": rid, "limit": "50"})
         items = r.data.get("items") or []
         urls = [u for u in map(image_url, items) if u]
-        bad = [u for u in urls if not u.startswith(f"https://{host}/")]
-        rep.expect(
-            bool(items) and not bad, f"S3 {rid}: {len(urls)} images, all on {host} (bad {bad[:2]})"
-        )
+        if host is None:
+            rep.expect(
+                bool(items) and not urls,
+                f"S3 {rid}: no images (image host not verified; served {urls[:2]})",
+            )
+        else:
+            bad = [u for u in urls if not u.startswith(f"https://{host}/")]
+            rep.expect(
+                bool(items) and not bad,
+                f"S3 {rid}: {len(urls)} images, all on {host} (bad {bad[:2]})",
+            )
         if rid == "ulta_ae" and urls:
             img = api.fetch(urls[0])
             rep.expect(

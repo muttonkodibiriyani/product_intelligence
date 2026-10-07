@@ -160,16 +160,18 @@ class MatchRow:
     human: bool = False
 
 
-#: Source-name prefix -> v1 slot. ``f`` (Faces, 2026-10-03) is v2/v3 only: v1 stays u/s.
-SLOTS = {"sephora": "s", "ulta": "u", "faces": "f"}
-#: Pair naming preference: a matched pair is named by its first slot here (Sephora, as before).
-NAMING_ORDER = ("s", "f", "u")
+#: Source-name prefix -> v1 slot. ``f`` (Faces, 2026-10-03), ``o`` (Ounass) and ``b``
+#: (Bloomingdale's, 2026-10-07) are v2/v3 only: v1 stays u/s.
+SLOTS = {"sephora": "s", "ulta": "u", "faces": "f", "ounass": "o", "bloomingdales": "b"}
+#: Pair naming preference: a matched pair is named by its first slot here (Sephora, as before;
+#: each later retailer after those already named, Ulta always last).
+NAMING_ORDER = ("s", "f", "o", "b", "u")
 #: ``meta.retailers`` order (v2's ``RETAILERS``).
-SLOT_ORDER = ("u", "s", "f")
+SLOT_ORDER = ("u", "s", "f", "o", "b")
 
 
 def slot(source_name: str) -> str:
-    """The slot (``u``/``s``/``f``) of a source name."""
+    """The slot (``u``/``s``/``f``/``o``/``b``) of a source name."""
     for prefix, key in SLOTS.items():
         if source_name.startswith(prefix):
             return key
@@ -1208,8 +1210,9 @@ def build_v1(
     early: Sequence[dict[str, Any]],
     generated_at: datetime,
 ) -> dict[str, Any] | None:
-    """The v1 dataset, or ``None`` for a Faces-only export (an ADR-0010 per-source file): v1 is
-    Ulta/Sephora only, and such an export must then write v2 or v3."""
+    """The v1 dataset, or ``None`` for a Faces-, Ounass- or Bloomingdale's-only export (an
+    ADR-0010 per-source file): v1 is Ulta/Sephora only, and such an export must then write v2
+    or v3."""
     if not v1_rows(rows) and not early:
         if args.output_v2 is None and args.output_v3 is None:
             raise SystemExit(f"--sources {','.join(args.sources)} has no v1: pass --output-v2/v3")

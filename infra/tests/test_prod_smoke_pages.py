@@ -182,10 +182,32 @@ def test_the_category_section_fails_when_empty_or_wrong(
 
 def test_p3_covers_every_pinned_retailer_unless_narrowed() -> None:
     base = ["--phase", "before", "--out", "o", "--browser", "firefox", "--viewport", "desktop"]
-    assert set(pages.IMAGE_HOSTS) == {"sephora_me", "ulta_ae", "faces_ae"}
+    assert set(pages.IMAGE_HOSTS) == {
+        "sephora_me",
+        "ulta_ae",
+        "faces_ae",
+        "ounass_ae",
+        "bloomingdales_ae",
+    }
     assert pages.IMAGE_HOSTS["faces_ae"] == "www.faces.ae"
+    assert pages.IMAGE_HOSTS["bloomingdales_ae"] == "prodheadless.atgwasl.com"
+    assert pages.IMAGE_HOSTS["ounass_ae"] is None  # not verified: no thumbnail expected
     assert pages.parse_args(base).retailer is None
     narrowed = pages.parse_args([*base, "--retailer", "sephora_me", "--retailer", "ulta_ae"])
     assert narrowed.retailer == ["sephora_me", "ulta_ae"]
     with pytest.raises(SystemExit):
         pages.parse_args([*base, "--retailer", "noon_ae"])
+
+
+def test_p3_thumbnails_need_the_shops_own_host_or_none_when_it_is_unverified() -> None:
+    blm = {"src": "https://prodheadless.atgwasl.com/a.jpg", "ok": True}
+    own = {"src": f"{pages.BASE}/app/logo.png", "ok": True}
+    host = "prodheadless.atgwasl.com"
+    assert pages.thumbnail_problems([blm, own], host) == []
+    assert pages.thumbnail_problems([own], host) == [f"no {host} thumbnail loaded"]
+    assert pages.thumbnail_problems([{**blm, "ok": False}], host) == [f"no {host} thumbnail loaded"]
+    assert pages.thumbnail_problems([own], None) == []
+    ounass = {"src": "https://www.ounass.ae/a.jpg", "ok": True}
+    assert pages.thumbnail_problems([own, ounass], None) == [
+        "image with no verified host: https://www.ounass.ae/a.jpg"
+    ]

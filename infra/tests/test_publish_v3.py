@@ -146,7 +146,9 @@ def test_a_ulta_v3_file_is_refused() -> None:
         c["retailer"] = "ulta_ae"
     source, errors = publish_dataset.publishing_source(publish_dataset.by_source(doc))
     assert source is None
-    assert errors == ["ulta_ae is not a source PI publishes (sephora_me, faces_ae)"]
+    assert errors == [
+        "ulta_ae is not a source PI publishes (sephora_me, faces_ae, ounass_ae, bloomingdales_ae)"
+    ]
 
 
 # ------------------------------------------------------------------ the live-source guard
