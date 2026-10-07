@@ -198,4 +198,4 @@ def test_a_body_over_the_budget_is_refused() -> None:
     check_v3_size(V3_MAX_BYTES, groups)
     with pytest.raises(SystemExit, match="nothing was written") as refused:
         check_v3_size(V3_MAX_BYTES + 1, groups)
-    assert "prices=90000000 attributes=1" in str(refused.value)
+    assert f"prices={V3_MAX_BYTES} attributes=1" in str(refused.value)

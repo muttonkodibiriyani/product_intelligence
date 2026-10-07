@@ -236,38 +236,56 @@ as it is.
   | CSV export of all products (6.7 MB) | 15–16 s | ~1,030 MiB | ~1,000 MiB |
   | **Refresh: a new Ounass generation** (×4) | 22–31 s | **1,739–1,795 MiB** | 1,409–1,596 MiB |
 
+  Re-measured on the same files once offer content is packed on load and the dataset is
+  validated from bytes (tm8 01a11763-dc85). These are the numbers the gate below uses:
+
+  | Phase | Time | Peak RSS | RSS after (trimmed) |
+  |---|---|---|---|
+  | Cold start, beauty only | 5 s | 308 MiB | 272 MiB |
+  | Cold start, + Ounass | 32 s | **982 MiB** | 712 MiB |
+  | CSV export of all products | 15 s | 752 MiB | 747 MiB |
+  | `GET /products/{id}` (unpacks one product's content) | 0.2 s | 749 MiB | 747 MiB |
+  | **Refresh: a new Ounass generation** (×4) | 30–43 s | **1,450–1,455 MiB** | 1,059–1,138 MiB |
+
+  Most of the old peak was the parse, not the resident data: validating a decoded `str` held the
+  text (~2× the file) plus a UTF-8 copy for pydantic-core. Validating the bytes removes both.
+  Packing keeps description, ingredients, images and variants zlib-compressed per offer and
+  unpacks them for the detail view only; card, list and search fields stay resident.
+
   - **No leak.** Allocated blocks stay flat across refreshes. The RSS that remains after a refresh
     is glibc keeping freed arenas: `malloc_trim` brings it back to ~1,050 MiB, and the next
     refresh's peak does not grow.
   - **A refresh holds two generations.** The old file and its composed view stay live while the
-    new file is parsed and composed. For Ounass that is ~1,530 MiB above the other sources at
-    peak, about 2.27 × its steady ~674 MiB (~9.3 bytes resident per compact JSON byte).
-  - **1Gi cannot hold Ounass**, not even at cold start. 2Gi leaves 0–100 MiB at a refresh peak
-    once Faces and two exports are added. **3Gi** is the size for Ounass (decision log
-    2026-10-07). It needs max-instances 1 (cost bound, ~+$18/mo worst case) and the owner's OK.
+    new file is parsed and composed. For Ounass that is now ~1,180 MiB above the other sources at
+    peak (was ~1,530), about 2.68 × its steady ~440 MiB (~6.3 bytes resident per compact JSON
+    byte; was 9.3), or **~16.3 MiB of refresh peak per compact MB** (was 21.0).
+  - **1Gi cannot hold Ounass**, not even at cold start (982 MiB before Faces). 2Gi holds today's
+    set (Ounass, beauty, Faces, two exports) with ~265 MiB to spare at a refresh peak, but the
+    general rule below would allow only ~59 MB for the largest file there. **3Gi** is the size for
+    Ounass (decision log 2026-10-07). It needs max-instances 1 (cost bound, ~+$18/mo worst case) and the owner's OK.
     Until that flip is live, `ounass_ae` must not be in `PI_API_DATASETS`; the flip and the env
     change go in one revision.
-  - **The export gate** (`V3_MAX_BYTES` in `scripts/demo_export/export.py`) is 90 MB of
+  - **The export gate** (`V3_MAX_BYTES` in `scripts/demo_export/export.py`) is 120 MB of
     **compact** JSON. The exporter and the publisher write compact JSON; whitespace is about a
     third of an indented file and none of it is resident. At 3Gi, after imports (67 MiB), a
     reserve for the other sources (600 MiB), two exports (160 MiB) and a 256 MiB margin, one
-    dataset's refresh peak may use ~1,990 MiB. Scaled from Ounass that is ~95 MB, rounded down to
-    90 MB. `test_content_memory.py` pins the content-heavy end of the range (text is cheaper per
-    byte than offer rows). The fix that lowers the peak itself is lazy per-source content
-    (tm8 task 01a11763-dc85). Re-measure when it lands; it may allow 2Gi.
+    dataset's refresh peak may use ~1,990 MiB. At 16.3 MiB per compact MB that is ~122 MB,
+    rounded down to 120 MB (it was 90 MB at 21.0 before packed content). `test_content_memory.py`
+    pins the content-heavy end of the range (text is cheaper per byte than offer rows). The
+    constant follows the memory size: at 2Gi it would be ~59 MB, below today's Ounass.
   - **The gate is per file; the 3Gi size is for all served files together.** The exporter checks
     one file at a time, so two files that each pass can still exceed 3Gi. The 600 MiB reserve
     holds the files other than the largest at ~20 MiB per compact MB (the beauty file's measured
     rate: 201 MiB for 10.1 MB, denser than Ounass's 9.3), which is **30 MB**. That rate comes from
     the bench's beauty file (the 1 Oct export, 9,529 products, 10.1 MB compact), not from the live
     `beauty/latest.json` (17.05 MB compact on 2026-10-07). Memory scales with bytes, so the rule
-    holds for the live file, but production RSS is higher than the table above, by about 140 MiB
-    for the larger beauty file plus Faces (1.4 MB). Refreshes run one at
+    holds for the live file, but production RSS is higher than the tables above, by about 168 MiB
+    (~140 MiB for the larger beauty file plus ~28 MiB for Faces, 1.4 MB). Refreshes run one at
     a time, so only the largest file's second generation counts. Before any revision that adds to
     `PI_API_DATASETS` (or a publish that grows a served file), size **every** served file's
     `latest.json` as **decompressed, compact** bytes and check:
 
-    1. the largest file is at most **90,000,000** bytes, and
+    1. the largest file is at most **120,000,000** bytes, and
     2. all the other files together are at most **30,000,000** bytes.
 
     If either fails, do not deploy that revision: serve the large dataset alone, or keep the new
@@ -287,10 +305,10 @@ as it is.
     ```
 
     The first line is the largest file (rule 1); the rest must sum to at most 30,000,000 (rule 2).
-    The 90 MB constant and both rules assume **3Gi**. While pi-api runs at 1Gi (until step F's 3Gi
+    The 120 MB constant and both rules assume **3Gi**. While pi-api runs at 1Gi (until step F's 3Gi
     revision is live), no dataset larger than the ones served today enters `PI_API_DATASETS`, and
     the served files stay within the 1Gi sizing: at most **33,000,000** decompressed, compact bytes
-    in total (the old 50 MB indented gate), even though the exporter now accepts up to 90 MB.
+    in total (the old 50 MB indented gate), even though the exporter now accepts up to 120 MB.
     `ounass_ae` joins only in the 3Gi revision.
   - **Cold start vs `--timeout=30s`.** With Ounass the load takes 26–30 s, and uvicorn opens the
     port only after it, so the default TCP startup probe passes. The first request after scale to

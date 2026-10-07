@@ -1,5 +1,5 @@
 """A ``pi.dataset/v3`` snapshot with ``Offer.content`` at realistic sizes, scaled to the export's
-90 MB compact budget, stays inside the resident share the deploy runbook gives one dataset at
+120 MB compact budget, stays inside the resident share the deploy runbook gives one dataset at
 3Gi (pi-api-deploy.md §6).
 
 Text is cheaper per byte than the many small objects of a price-only product, so a snapshot
@@ -21,10 +21,10 @@ from typing import Any
 from api_fixture import DATASET_PATH, bearer, make_client, served_dataset
 from pi_metrics import view
 
-BUDGET = 90_000_000  # scripts/demo_export/export.py V3_MAX_BYTES, compact JSON bytes
+BUDGET = 120_000_000  # scripts/demo_export/export.py V3_MAX_BYTES, compact JSON bytes
 SAMPLE = 10_000_000
-# pi-api-deploy.md §6: a dataset's steady share at 3Gi (~1,990 MiB refresh peak / 2.27).
-RESIDENT = 875 * 2**20
+# pi-api-deploy.md §6: a dataset's steady share at 3Gi (~1,990 MiB refresh peak / 2.68).
+RESIDENT = 740 * 2**20
 CAPTURED = ["description", "ingredients", "images", "shade", "gtin"]
 WORDS = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 30
 

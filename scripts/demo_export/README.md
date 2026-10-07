@@ -40,8 +40,8 @@ carries, so a missing field reads *not published* for a retailer that has it els
 captured* for one that never has it. It is re-read with the strict `load_any` before anything is
 written. Publishing v3 instead of v2 is the owner's call at re-export.
 
-v2 and v3 are written as compact JSON. The v3 body has a 90 MB budget (`V3_MAX_BYTES` =
-90,000,000 compact bytes). `pi_api` holds the parsed snapshot in memory, and the budget is sized
+v2 and v3 are written as compact JSON. The v3 body has a 120 MB budget (`V3_MAX_BYTES` =
+120,000,000 compact bytes). `pi_api` holds the parsed snapshot in memory, and the budget is sized
 from pi_api's measured resident memory at 3Gi (`docs/runbooks/pi-api-deploy.md` §6,
 `packages/pi_api/tests/test_content_memory.py`). The
 exporter prints the written bytes by group (`prices`, `attributes`,
