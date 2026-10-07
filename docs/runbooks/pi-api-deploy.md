@@ -290,10 +290,18 @@ as it is.
   - **1Gi cannot hold Ounass**, not even at cold start (982 MiB before Faces). 2Gi holds today's
     set (Ounass, beauty, Faces, two exports) with ~265 MiB to spare at a refresh peak, but the
     general rule below would allow only ~27.5 MB for the largest file there. **3Gi** is the size for
-    Ounass (decision log 2026-10-07). It needs max-instances 1 (cost bound, ~+$18/mo worst case). The owner approved it
-    (2026-10-07) for step F's revision only, once Ounass has a passing 3Gi admission record.
-    Until that flip is live, `ounass_ae` must not be in `PI_API_DATASETS`; the flip and the env
-    change go in one revision.
+    Ounass (decision log 2026-10-07), with max-instances 1 on the revision and the service
+    (`infra/pi-api/service.env`). Step F's revision (`f3gi`, 2026-10-07) went first, on the
+    image from before the load rule, after a bench of the live set on that image's code
+    (export sha256 `8963cbed…`, beauty and Faces as served: refresh peak 1,757 MiB ≤ 2,304).
+    The first revision on an image with the load rule must carry the record
+    `infra/pi-api/admission/ounass_ae.json` (the same four files, packed: refresh peak 1,661 MiB)
+    as `PI_API_ADMITTED=8963cbedf30bdcd6247de077296a7d5421c4462589182951c64ea463e8933eed:28937955`
+    (others: beauty 26,712,113 counted once for `sephora_me` and `ulta_ae`, Faces 2,225,842).
+    Without it pi_api refuses Ounass (`UNAVAILABLE`): the set is 2,938 MiB on the fit. Others
+    are 1.06 MB under the 30 MB reserve, so no beauty, Faces or Ounass publish goes out until
+    that revision is live (Coordinator, 2026-10-07); any later publish of one of them is a new
+    record.
   - **The export gate** (`V3_MAX_BYTES` in `pi_dataset.gate`, imported by the exporter and by
     pi_api) is **51,000,000** bytes of **compact** JSON. The exporter and the publisher write
     compact JSON; whitespace is about a third of an indented file and none of it is resident. It
