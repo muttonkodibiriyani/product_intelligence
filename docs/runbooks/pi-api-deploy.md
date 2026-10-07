@@ -255,6 +255,39 @@ as it is.
     90 MB. `test_content_memory.py` pins the content-heavy end of the range (text is cheaper per
     byte than offer rows). The fix that lowers the peak itself is lazy per-source content
     (tm8 task 01a11763-dc85). Re-measure when it lands; it may allow 2Gi.
+  - **The gate is per file; the 3Gi size is for all served files together.** The exporter checks
+    one file at a time, so two files that each pass can still exceed 3Gi. The 600 MiB reserve
+    holds the files other than the largest at ~20 MiB per compact MB (the beauty file's measured
+    rate: 201 MiB for 10.1 MB, denser than Ounass's 9.3), which is **30 MB**. Refreshes run one at
+    a time, so only the largest file's second generation counts. Before any revision that adds to
+    `PI_API_DATASETS` (or a publish that grows a served file), size **every** served file's
+    `latest.json` as **decompressed, compact** bytes and check:
+
+    1. the largest file is at most **90,000,000** bytes, and
+    2. all the other files together are at most **30,000,000** bytes.
+
+    If either fails, do not deploy that revision: serve the large dataset alone, or keep the new
+    one out until §6 is re-measured with it. A second large catalogue (Bloomingdale's) always
+    fails rule 2 and needs that re-measure. Two traps: the publisher stores objects gzip-encoded,
+    so the GCS object size is the gzip size; and a file published before compact output (before
+    2026-10-07) is indented, ~1.5× its compact size. The check below handles both (paths from
+    `DATASETS`, dropping any `source=` prefix):
+
+    ```sh
+    for p in $(printf '%s' "$DATASETS" | tr ',' '\n' | sed 's/^[^=]*=//' | sort -u); do
+      gcloud storage cat "gs://$BUCKET/$p" | python3 -c 'import gzip,json,sys
+    b = sys.stdin.buffer.read()
+    b = gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
+    print(len(json.dumps(json.loads(b), separators=(",", ":"), ensure_ascii=False).encode()), sys.argv[1])' "$p"
+    done | sort -rn
+    ```
+
+    The first line is the largest file (rule 1); the rest must sum to at most 30,000,000 (rule 2).
+    The 90 MB constant and both rules assume **3Gi**. While pi-api runs at 1Gi (until step F's 3Gi
+    revision is live), no dataset larger than the ones served today enters `PI_API_DATASETS`, and
+    the served files stay within the 1Gi sizing: at most **33,000,000** decompressed, compact bytes
+    in total (the old 50 MB indented gate), even though the exporter now accepts up to 90 MB.
+    `ounass_ae` joins only in the 3Gi revision.
   - **Cold start vs `--timeout=30s`.** With Ounass the load takes 26–30 s, and uvicorn opens the
     port only after it, so the default TCP startup probe passes. The first request after scale to
     zero waits that long. Measure it on the first 3Gi revision. `--min-instances=1` would remove

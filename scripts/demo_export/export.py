@@ -1047,7 +1047,9 @@ def build_dataset(
 #: Ounass snapshot (72.7 MB compact): ~1,530 MiB of refresh peak above the other sources, so
 #: 90 MB keeps one refresh inside the ~1,990 MiB left after imports, the other sources, two CSV
 #: exports and a 256 MiB margin. No override (Reviewer, 2026-10-03): a snapshot over it waits
-#: for the content to move to its own file.
+#: for the content to move to its own file. The gate is per file, but the size is for every served
+#: file together: the other files' reserve is 30 MB compact in total, so a second large catalogue
+#: passes here and still does not fit. §6 states the deploy-time byte check over all served files.
 V3_MAX_BYTES = 90_000_000
 
 
