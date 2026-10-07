@@ -35,8 +35,9 @@ There is no `/build-id` path. The id is the `"b"` key in the `/app` page payload
 for l in en ar; do curl -s https://productintelligence-beeb3.web.app/app/$l/ | grep -o '\\"b\\":\\"[0-9a-f]*\\"' | sort -u; done
 ```
 
-Each line must show the expected id, e.g. `\"b\":\"40fef057c352a191899f\"`. To cross-check, the build's
-manifest answers 200 only for the build being served:
+Each line must show the expected id, e.g. `\"b\":\"40fef057c352a191899f\"`. This read *discovers*
+which id is live, so it is the one to record. The manifest only *confirms* an id you already know
+(it answers 200 only for the build being served), so use it as corroboration, never on its own:
 
 ```sh
 curl -s -o /dev/null -w '%{http_code}\n' https://productintelligence-beeb3.web.app/app/_next/static/<build id>/_buildManifest.js
@@ -44,6 +45,10 @@ curl -s -o /dev/null -w '%{http_code}\n' https://productintelligence-beeb3.web.a
 
 Both reads cover `/app` only. The root shell is not covered by this id. If a publish changes the
 root, check the root's own files (e.g. its `app.<hash>.js` name) as well.
+
+**Settle window.** For about a minute after a release, Hosting's edge can still serve the old
+release, and the new build's manifest returns 404. A wrong id or a 404 in that window means "too
+early", not "failed". Retry for up to two minutes before you treat it as a failure or roll back.
 
 ## 2. Roll back
 
