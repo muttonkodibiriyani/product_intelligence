@@ -25,7 +25,8 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
-from pi_capture.faces import _CONCENTRATIONS, _emit_size
+from pi_capture._size import emit_size
+from pi_capture.faces import _CONCENTRATIONS
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
 from pi_capture.generic import (
     JsonObject,
@@ -136,7 +137,7 @@ def _map_prices(em: _Emitter, pd: Mapping[str, Any]) -> None:
 def _map_content(em: _Emitter, pd: Mapping[str, Any]) -> None:
     for key in ("c_size", "c_liquidSize"):
         if (size := _str(pd.get(key))) is not None:
-            _emit_size(em, size, f"{_PD}.{key}")
+            emit_size(em, size, f"{_PD}.{key}")
             break
     images = pd.get("c_images")
     xlarge = images.get("xlarge") if isinstance(images, Mapping) else None
