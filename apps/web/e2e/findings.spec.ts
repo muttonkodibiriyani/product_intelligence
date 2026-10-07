@@ -1,6 +1,6 @@
 import type { Route } from '@playwright/test';
 import fixture from './findings-fixture.json';
-import { expect, golden, mockBackend, noHorizontalScroll, servingMeta, signIn, test } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, servingMeta, signedIn, test } from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -40,8 +40,7 @@ for (const locale of ['en', 'ar'] as const) {
   test.describe(`${locale} insights findings`, () => {
     test('twelve tiles lead to twelve cards grouped by theme, each keeping its rank', async ({ page }) => {
       const mock = await mockBackend(page, { onApi: api });
-      await signIn(page, locale);
-      await expect(page.getByRole('navigation').first()).toBeVisible();
+      await signedIn(page, locale);
       await page.goto(`/app/${locale}/insights/`);
       const findings = page.locator('section[aria-labelledby="findings-title"]');
       await expect(findings.getByRole('heading', { level: 2, name: T.title })).toBeVisible();

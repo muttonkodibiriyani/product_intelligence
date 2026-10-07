@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { apiAtLeast, INSIGHTS_API } from '../lib/insights';
 import { summaryBody } from './summary-fixture';
-import { test as base, expect, type Locator, type Page, type Route } from '@playwright/test';
+import { test as base, expect, type Locator, type Page, type Request, type Route } from '@playwright/test';
 
 export const golden = (name: string): unknown =>
   JSON.parse(readFileSync(join(__dirname, '../../../docs/contracts/golden/pi-api', `${name}.json`), 'utf8'));
@@ -145,6 +145,55 @@ export async function signIn(page: Page, locale: 'en' | 'ar', password = PASSWOR
   await page.locator('input[name=email]').fill(EMAIL);
   await page.locator('input[name=password]').fill(password);
   await page.locator('button[type=submit]').click();
+}
+
+/** How long the page must start and end no request to count as settled. */
+const QUIET_MS = 250;
+
+/**
+ * Signed in and settled, ready for a `page.goto`. The shell shows once the session is stored, but
+ * the Overview it lands on is still loading: its /api calls and its nav links' prefetches are in
+ * flight. A goto that starts then cancels them, and WebKit now and then stalls that navigation until
+ * the test times out or aborts it ("WebKit encountered an internal error"). So this waits until no
+ * request the page made is open and none has started or ended for QUIET_MS (a prefetch's HEAD ends
+ * and its GET starts): the goto then starts from a quiet page, and a log cleared now holds only what
+ * the next page asks. It counts requests, not connections (unlike `networkidle`), so a request that
+ * never ends fails here by its URL. Use `signIn` alone to test sign-in itself.
+ */
+export async function signedIn(page: Page, locale: 'en' | 'ar') {
+  const open = new Set<Request>();
+  let last = Date.now();
+  const start = (r: Request) => {
+    open.add(r);
+    last = Date.now();
+  };
+  const end = (r: Request) => {
+    open.delete(r);
+    last = Date.now();
+  };
+  page.on('request', start);
+  page.on('requestfinished', end);
+  page.on('requestfailed', end);
+  try {
+    await signIn(page, locale);
+    await expect(page.getByRole('navigation').first()).toBeVisible();
+    await page.waitForURL((u) => !/\/sign-in\/?$/.test(u.pathname));
+    await expect
+      .poll(
+        () =>
+          open.size > 0
+            ? [...open].map((r) => r.url())
+            : Date.now() - last < QUIET_MS
+              ? [`a request ended under ${QUIET_MS} ms ago`]
+              : [],
+        { message: 'requests the signed-in Overview left open', intervals: [QUIET_MS / 5] },
+      )
+      .toEqual([]);
+  } finally {
+    page.off('request', start);
+    page.off('requestfinished', end);
+    page.off('requestfailed', end);
+  }
 }
 
 /** The main navigation: the sidebar on wide screens, the bottom tab bar on phones. */

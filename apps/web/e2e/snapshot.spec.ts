@@ -1,6 +1,15 @@
 import type { Route } from '@playwright/test';
 import { categoryCompareBody, THIN } from './category-compare-fixture';
-import { expect, golden, mockBackend, noCardOverflow, noHorizontalScroll, signIn, test } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  noCardOverflow,
+  noHorizontalScroll,
+  signedIn,
+  signIn,
+  test,
+} from './fixtures';
 import { summaryBody } from './summary-fixture';
 
 /*
@@ -230,8 +239,7 @@ for (const locale of ['en', 'ar'] as const) {
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBody) });
-      await signIn(page, locale);
-      await expect(page.getByRole('navigation')).toBeVisible();
+      await signedIn(page, locale);
       await page.goto(`/app/${locale}/product/?id=${productMixed.data.card.id}`);
       await expect(page.getByRole('heading', { name: T.offers, exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: T.offersOn })).toHaveCount(0);
@@ -254,8 +262,7 @@ for (const locale of ['en', 'ar'] as const) {
       page,
     }) => {
       const mock = await mockBackend(page, { onApi: api(summaryBody, goldenProduct) });
-      await signIn(page, locale);
-      await expect(page.getByRole('navigation')).toBeVisible();
+      await signedIn(page, locale);
       await page.goto(`/app/${locale}/product/?id=${goldenProduct.data.card.id}`);
       await expect(page.getByRole('heading', { name: T.offersOn })).toBeVisible();
       const offers = page.locator('article table').first();

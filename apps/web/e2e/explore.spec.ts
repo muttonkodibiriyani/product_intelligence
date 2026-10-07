@@ -4,6 +4,7 @@ import {
   golden,
   mockBackend,
   noHorizontalScroll,
+  signedIn,
   signIn,
   test,
   withSummary,
@@ -58,17 +59,6 @@ function api(over: { products?: (u: URL) => Json; product?: Json; history?: Json
     if (/^\/api\/v1\/products\/[^/]+$/.test(p)) return route.fulfill({ json: over.product ?? product });
     return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
   };
-}
-
-/**
- * Signs in and waits until the session is live and sign-in's own redirect and prefetches have
- * settled, so a following goto doesn't race them (a goto fired into them can hang WebKit).
- */
-async function signedIn(page: Page, locale: 'en' | 'ar') {
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation')).toBeVisible();
-  await page.waitForURL((u) => !/\/sign-in\/?$/.test(u.pathname));
-  await page.waitForLoadState('networkidle');
 }
 
 const productCalls = (mock: Mock) =>
@@ -568,8 +558,7 @@ test('S2: an unknown retailer status renders as sent, not as a key path', async 
   m.data.retailers[0].status = 'paused';
   // The Dataset page's table lists the retailers (the Overview no longer does); /summary gets its own fixture.
   await mockBackend(page, { onApi: withSummary((r) => r.fulfill({ json: m })) });
-  await signIn(page, 'ar');
-  await expect(page).not.toHaveURL(/\/sign-in\/?$/);
+  await signedIn(page, 'ar');
   await page.goto('/app/ar/dataset/');
   await expect(page.getByRole('cell', { name: 'paused', exact: true })).toBeVisible();
   await expect(page.getByText('status.paused')).toHaveCount(0);
