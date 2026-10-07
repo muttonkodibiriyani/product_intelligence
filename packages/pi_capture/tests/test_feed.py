@@ -333,6 +333,20 @@ def _content_page(make_capture: CaptureFactory) -> ProductCapture:
         r("badges", ["new", " ", "onlineexclusive", "new"]),
         r("gift_with_purchase", "Free Gifts"),
         r("image_urls", [" ", "https://img.example/1.jpg", "https://img.example/2.jpg"]),
+        r("style_id", "STYLE-1"),
+        r("inci_list", "Aqua, Glycerin, Parfum, Linalool, Limonene, Citral"),
+        r("mpn", "VPN-9"),
+        r("colour_code", "14981"),
+        r("colour_hex", "#3B1D14"),
+        r("shade_name", "Cocoa"),
+        r("finish", "matte"),
+        r("lifecycle_class", "core"),
+        r("loyalty_points", 458),
+        r("installment_amount_minor", 3375, currency="AED"),
+        r("bullets", ["12-hour wear", " ", "Vegan"]),
+        r("skin_type", ["All Skin Types"]),
+        r("concern", ["Dry Skin", "Dry Skin"]),
+        r("installment_provider", ["tabby", "tamara"]),
     )
 
 
@@ -342,11 +356,38 @@ def test_page_content_columns_come_from_observed_readings(make_capture: CaptureF
     assert row["description"] == "A warm amber eau de parfum."
     assert (row["gender"], row["concentration"]) == ("women", "edp")
     assert row["badges"] == ["new", "onlineexclusive"]
-    assert row["promotions"] == ["Free Gifts"]
+    assert row["gift_with_purchase"] == ["Free Gifts"]
+    assert "promotions" not in row  # a page's GWP label is not a generic promotion
     assert row["image_urls"] == ["https://img.example/1.jpg", "https://img.example/2.jpg"]
     assert row["image_url"] == "https://img.example/1.jpg"
     filled = result.report()["filled"]
     assert (filled["description"], filled["badges"], filled["image_urls"]) == (1, 1, 1)
+
+
+def test_page_attribute_columns_come_from_observed_readings(
+    make_capture: CaptureFactory,
+) -> None:
+    (row,) = build_feed([_content_page(make_capture)], SHOP).rows
+    assert row["style_id"] == "STYLE-1"
+    assert row["ingredients"] == "Aqua, Glycerin, Parfum, Linalool, Limonene, Citral"
+    assert (row["mpn"], row["colour_code"], row["colour_hex"]) == ("VPN-9", "14981", "#3B1D14")
+    assert (row["shade"], row["finish"], row["lifecycle_class"]) == ("Cocoa", "matte", "core")
+    assert (row["loyalty_points"], row["installment_amount_minor"]) == ("458", "3375")
+    assert row["bullets"] == ["12-hour wear", "Vegan"]
+    assert (row["skin_type"], row["concern"]) == (["All Skin Types"], ["Dry Skin"])
+    assert row["installment_provider"] == ["tabby", "tamara"]
+
+
+def test_page_attributes_are_left_out_unless_observed(make_capture: CaptureFactory) -> None:
+    capture = page(
+        make_capture,
+        r("inci_list", state="parse_failed"),
+        r("finish", state="parse_failed"),
+        r("bullets", []),
+    )
+    (row,) = build_feed([capture], SHOP).rows
+    for column in ("ingredients", "finish", "bullets"):
+        assert column not in row
 
 
 def test_page_content_is_left_out_unless_observed(make_capture: CaptureFactory) -> None:
@@ -358,7 +399,14 @@ def test_page_content_is_left_out_unless_observed(make_capture: CaptureFactory) 
         r("image_urls", state="not_shown"),
     )
     (row,) = build_feed([capture], SHOP).rows
-    for column in ("description", "gender", "concentration", "badges", "promotions", "image_urls"):
+    for column in (
+        "description",
+        "gender",
+        "concentration",
+        "badges",
+        "gift_with_purchase",
+        "image_urls",
+    ):
         assert column not in row
     assert "image_url" not in row
 

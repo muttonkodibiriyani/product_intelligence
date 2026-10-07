@@ -25,6 +25,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
+from pi_capture._page_attrs import emit_bullets, emit_hex, emit_inci
 from pi_capture._size import emit_size
 from pi_capture.faces import _CONCENTRATIONS
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
@@ -157,6 +158,73 @@ def _map_merch(em: _Emitter, pdp: Mapping[str, Any]) -> None:
             em.observed("gift_with_purchase", label, label, f"{_PDP}.badge.valueEn")
 
 
+def _map_colour(em: _Emitter, pdp: Mapping[str, Any]) -> None:
+    """Shade name, swatch colour and colour id of the page's own colour; only on a product sold
+    in colours (``colors`` listed), where ``colorId`` is the page's colour and not the single
+    no-colour id every other product carries."""
+    selected = pdp.get("selectedColor")
+    if not pdp.get("colors") or not isinstance(selected, Mapping):
+        return
+    if (label := _str(selected.get("label"))) is not None:
+        em.observed("shade_name", label, label, f"{_PDP}.selectedColor.label")
+    emit_hex(em, selected.get("hex"), f"{_PDP}.selectedColor.hex")
+    if (code := _str(pdp.get("colorId"))) is not None:
+        em.observed("colour_code", code, code, f"{_PDP}.colorId")
+
+
+def _map_tabs(em: _Emitter, pdp: Mapping[str, Any]) -> None:
+    for tab in pdp.get("contentTabs") or []:
+        if not isinstance(tab, Mapping) or not isinstance(body := tab.get("html"), str):
+            continue
+        tab_id = tab.get("tabId")
+        if tab_id == "ingredients":
+            emit_inci(em, body, f"{_PDP}.contentTabs[ingredients].html")
+        elif tab_id == "keyDetails":
+            emit_bullets(em, body, f"{_PDP}.contentTabs[keyDetails].html")
+
+
+def _flag(value: Any) -> bool | None:
+    if value in (1, "1", True):
+        return True
+    if value in (0, "0", False):
+        return False
+    return None
+
+
+def _map_offer(em: _Emitter, pdp: Mapping[str, Any]) -> None:
+    """Merchandising class and the shopper-facing offer extras: loyalty points and instalments.
+    Shipping and returns are site policy (the same delivery tab on every page), not read here."""
+    if _flag(pdp.get("isClearance")):
+        em.observed("lifecycle_class", "isClearance=1", "clearance", f"{_PDP}.isClearance")
+    elif (season := _str(pdp.get("season"))) is not None:
+        if season.lower() == "continuity":
+            em.observed("lifecycle_class", season, "core", f"{_PDP}.season", "Continuity = core")
+        else:
+            em.failed("lifecycle_class", season, f"{_PDP}.season", "season not mapped")
+    if _flag(pdp.get("exclusive")):
+        em.observed("exclusivity", "exclusive=1", "exclusive", f"{_PDP}.exclusive")
+    points = pdp.get("amberPoints")
+    if isinstance(points, int) and not isinstance(points, bool) and points >= 0:
+        em.observed("loyalty_points", str(points), points, f"{_PDP}.amberPoints", "Amber points")
+    banner = pdp.get("bnplPromoBanner")
+    options = banner.get("options") if isinstance(banner, Mapping) else None
+    providers = [
+        key
+        for o in options or []
+        if isinstance(o, Mapping)
+        and o.get("isAmountWithinLimits") is True
+        and (key := _str(o.get("key"))) is not None
+    ]
+    if providers:
+        em.observed(
+            "installment_provider",
+            ", ".join(providers),
+            providers,
+            f"{_PDP}.bnplPromoBanner.options[].key",
+            "providers whose limits cover this price",
+        )
+
+
 def _map_content(em: _Emitter, pdp: Mapping[str, Any], title: str | None) -> None:
     gallery: list[str] = []
     for image in pdp.get("images") or []:
@@ -192,6 +260,9 @@ def readings_from_ounass(html: str, *, locale: str, url: str | None = None) -> l
     _map_size(em, pdp, title)
     _map_merch(em, pdp)
     _map_content(em, pdp, title)
+    _map_colour(em, pdp)
+    _map_tabs(em, pdp)
+    _map_offer(em, pdp)
     em.extend(readings_from_generic(html, locale=locale, url=url))
     for key in ("rating_value", "rating_count"):
         em.not_shown(key, "Ounass product pages show no ratings")
@@ -212,11 +283,20 @@ LOOKED_FOR: frozenset[str] = (
         {
             "badges",
             "breadcrumb",
+            "bullets",
             "category_l1..l4",
+            "colour_code",
+            "colour_hex",
             "concentration",
             "department",
+            "exclusivity",
             "gift_with_purchase",
+            "inci_list",
+            "installment_provider",
+            "lifecycle_class",
+            "loyalty_points",
             "product_type",
+            "shade_name",
             "size_label",
             "size_unit",
             "size_value",

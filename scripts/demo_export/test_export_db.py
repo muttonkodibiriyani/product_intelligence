@@ -7,8 +7,10 @@ import json
 import os
 import uuid
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -16,6 +18,12 @@ from alembic import command
 from psycopg.rows import dict_row
 from sqlalchemy.engine import make_url
 
+from offline_import.load import Loader
+from offline_import.mapping import ImportMapping
+from offline_import.validate import validate_file
+from pi_capture.bloomingdales import readings_from_bloomingdales
+from pi_capture.feed import SHOPS, build_feed, dump_feed, mapping_for
+from pi_capture.model import ProductCapture
 from pi_db import DATABASE_URL_ENV, alembic_config
 from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow, latest_params
 from scripts.demo_export.history import RunSpan, read_history
@@ -649,3 +657,45 @@ def test_gift_with_purchase_titles_come_from_the_latest_content_in_order(conn: C
     assert _row(world, "A")["gift_with_purchase"] == ["Free pouch", "A mini", "Zip bag"]
     assert _row(world, "B")["gift_with_purchase"] == []
     assert _row(world, "C")["gift_with_purchase"] == []  # no content row at all
+
+
+def test_a_captured_gift_with_purchase_and_style_reach_the_export_row(
+    conn: Conn, migrated_db: str, tmp_path: Path
+) -> None:
+    """Page -> pi_capture feed -> offline_import load -> export row: the gift-with-purchase
+    label and the style id (the family the export groups by) survive every hop."""
+    product = {
+        "id": "900000101",
+        "master": {"masterId": "BEA900000100"},
+        "name": "Hydra Gel Cleanser",
+        "c_brand": "Synthetic Lab",
+        "c_rms_div": "Beauty",
+        "c_rms_dept": "Skincare",
+        "c_price": {"sales": {"value": 140, "currency": "AED"}},
+        "c_ingredients": "Aqua, Glycerin, Propanediol, Xanthan Gum, Phenoxyethanol, Citric Acid",
+        "c_product_promotions": [
+            {"promotionId": "GWP-Synthetic", "calloutMsgText": "<b>Beauty Treats</b>, free"}
+        ],
+    }
+    query = json.dumps({"queries": [{"state": {"data": {"productData": product}}}]})
+    page = f"<html><body><script>window.__Q__={query}</script></body></html>"
+    shop = replace(SHOPS["bloomingdales_ae"], source="blm_export_e2e")
+    capture = ProductCapture(
+        source="test",
+        retailer="bloomingdales",
+        url="https://bloomingdales.ae/p/900000101",
+        locale="en-AE",
+        retrieved_at=datetime(2026, 10, 2, 9, 0, tzinfo=UTC),
+        egress="direct",
+        page_sha256="0" * 64,
+        readings=tuple(readings_from_bloomingdales(page, locale="en-AE")),
+    )
+    feed = tmp_path / "feed.json"
+    feed.write_text(dump_feed(build_feed([capture], shop), shop), "utf-8")
+    mapping = ImportMapping.model_validate(mapping_for(shop))
+    with psycopg.connect(_libpq(migrated_db)) as load_conn:
+        Loader(load_conn, mapping, validate_file(feed, mapping), "gs://pi-test/blm.json").load()
+    rows = conn.execute(LATEST_LISTINGS_SQL, latest_params([shop.source])).fetchall()
+    (got,) = [dict(r) for r in rows]
+    assert got["gift_with_purchase"] == ["Beauty Treats, free"]
+    assert got["family_id"] == "BEA900000100"

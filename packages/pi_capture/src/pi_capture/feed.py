@@ -13,9 +13,14 @@ price is ``not_published``, never 0). Nothing is guessed:
   ``availability`` and a dataLayer ``item_in_stock`` flag alike); otherwise, or with none, the
   column is absent (``not_observed``). Absence is never read as a stock-out.
 - Page content goes in as the page states it: the description, gender (the page's department),
-  concentration, badges, the gift-with-purchase label as a promotion, and the whole gallery
-  (``image_urls``, page order; ``image_url`` stays its first image). ``badges``, ``promotions``
-  and ``image_urls`` are lists.
+  concentration, badges, the gift-with-purchase label, and the whole gallery (``image_urls``,
+  page order; ``image_url`` stays its first image). Page attributes follow, one column per
+  registry reading: the style id (the product family), the INCI list (``ingredients``), mpn,
+  colour, collection, fragrance family, finish, formulation, lifecycle class, exclusivity, loyalty
+  points, instalments, bullets, skin types and concerns. The columns are a fixed list: a page
+  field no reader names (unit cost, merchandising scores, payment-widget keys) never reaches the
+  feed. ``badges``, ``gift_with_purchase``, ``image_urls``, ``bullets``, ``skin_type``,
+  ``concern`` and ``installment_provider`` are lists.
 - The feed claims the whole catalogue (``complete_catalogue``) only when :func:`completeness`
   says one capture run fetched and read every product URL its sitemap lists. Anything less, or
   no sitemap, stays partial, so the importer records the run as ``partial``.
@@ -68,8 +73,26 @@ COLUMNS: tuple[str, ...] = (
     "gender",
     "concentration",
     "badges",
-    "promotions",
+    "gift_with_purchase",
     "image_urls",
+    # page attributes, each one reading (the ``_TEXT_COLUMNS`` / ``_LIST_COLUMNS`` below)
+    "style_id",
+    "ingredients",
+    "mpn",
+    "colour_code",
+    "colour_hex",
+    "collection",
+    "fragrance_family",
+    "finish",
+    "formulation",
+    "lifecycle_class",
+    "exclusivity",
+    "loyalty_points",
+    "installment_amount_minor",
+    "bullets",
+    "skin_type",
+    "concern",
+    "installment_provider",
 )
 
 #: Feed column -> the reading that fills it, as text.
@@ -81,6 +104,28 @@ _TEXT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("description", "description"),
     ("gender", "department"),
     ("concentration", "concentration"),
+    ("style_id", "style_id"),
+    ("ingredients", "inci_list"),
+    ("mpn", "mpn"),
+    ("colour_code", "colour_code"),
+    ("colour_hex", "colour_hex"),
+    ("collection", "collection"),
+    ("fragrance_family", "fragrance_family"),
+    ("finish", "finish"),
+    ("formulation", "formulation"),
+    ("lifecycle_class", "lifecycle_class"),
+    ("exclusivity", "exclusivity"),
+    ("loyalty_points", "loyalty_points"),
+    ("installment_amount_minor", "installment_amount_minor"),
+)
+
+#: Feed column -> the ``text[]`` reading that fills it, as a list.
+_LIST_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("badges", "badges"),
+    ("bullets", "bullets"),
+    ("skin_type", "skin_type"),
+    ("concern", "concern"),
+    ("installment_provider", "installment_provider"),
 )
 
 Row = dict[str, str | list[str]]
@@ -305,13 +350,15 @@ def _row(
     if gallery:
         row["image_url"] = gallery[0]
         row["image_urls"] = gallery
-    badges = _observed(by_key, "badges")
-    if badges is not None and (flags := _texts(badges.value)):
-        row["badges"] = flags
-    # the page's gift-with-purchase label (Faces: "Free Gifts"), a promotion, not a price
+    for column, reading_key in _LIST_COLUMNS:
+        reading = _observed(by_key, reading_key)
+        if reading is not None and (items := _texts(reading.value)):
+            row[column] = items
+    # the page's gift-with-purchase label or callout (Faces: "Free Gifts"), not a price; its own
+    # column, so the load stores it where the export reads it (labels.gift_with_purchase)
     gift = _observed(by_key, "gift_with_purchase")
     if gift is not None and (label := _text(gift.value)) is not None:
-        row["promotions"] = [label]
+        row["gift_with_purchase"] = [label]
     if shop.markup_availability and (state := _availability(by_key, unmapped)) is not None:
         row["availability"] = state
     row |= prices
