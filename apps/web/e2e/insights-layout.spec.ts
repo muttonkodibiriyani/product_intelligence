@@ -6,12 +6,22 @@ type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 
 const meta = servingMeta(golden('meta') as Json);
 
+// The golden lists no stock-out brands; long names and five-digit counts are the case that used
+// to truncate the name and wrap the count in a third-of-the-page card.
+const LONG_BRANDS = [
+  { brand: 'Maison Francis Kurkdjian Paris', outOfStock: 1234, observed: 12345 },
+  { brand: 'Dolce & Gabbana Beauty', outOfStock: 987, observed: 10234 },
+  { brand: 'Estée Lauder', outOfStock: 12, observed: 140 },
+];
+const insights = golden('insights') as Json;
+insights.data.stockouts[0].brands = LONG_BRANDS;
+
 async function api(route: Route) {
   const p = new URL(route.request().url()).pathname;
   const json = {
     '/api/v1/meta': meta,
     '/api/v1/findings': fixture,
-    '/api/v1/insights': golden('insights'),
+    '/api/v1/insights': insights,
     '/api/v1/compare': golden('compare'),
     '/api/v1/assortment-gaps': golden('assortment-gaps'),
     '/api/v1/promotions': golden('promotions'),
@@ -66,6 +76,16 @@ for (const locale of ['en', 'ar'] as const)
       expect(insights.left).toBe(insights.right);
       expect(insights).toEqual(prices);
       expect(await halfRows(page)).toEqual([]);
+      for (const { brand } of LONG_BRANDS) {
+        const name = page.getByRole('link', { name: brand, exact: true });
+        await expect(name).toHaveText(brand);
+        // The whole name is on screen (it may wrap, never clip) and its count is one line.
+        expect(await name.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+        const count = name.locator('xpath=following-sibling::span[1]');
+        expect(await count.evaluate((e) => e.getClientRects().length)).toBe(1);
+        const box = (await count.boundingBox())!;
+        expect(box.height).toBeLessThan(24);
+      }
       await info.attach(`insights-${locale}-${width}`, {
         body: await page.screenshot({ fullPage: true }),
         contentType: 'image/png',
