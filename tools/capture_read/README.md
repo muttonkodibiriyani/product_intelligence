@@ -34,3 +34,21 @@ bucket, so it runs in the bucket's region to avoid egress charges.
 Centrepoint, Splash, Babyshop, Home Centre and Max use `pi_capture.landmark`. Faces uses
 `pi_capture.faces`. Ounass and Bloomingdale's use `pi_capture.ounass` and `pi_capture.bloomingdales`
 (beauty only). Every other retailer uses the generic readers.
+
+## Combining passes over one shop (`capture_read.combine`)
+
+When a shop is read in passes (a first wave, a tail, a gap pass), `combine` keeps one capture per
+page: the newest one whose capture ended `ok`. A newer failed capture, such as a block or a 404,
+never shadows an older good one. A page that no pass read well is left out.
+
+```
+python -m capture_read.combine --wave1 <captures.jsonl> --tail <readings dir> [--gap <readings dir>] --out <new file>
+```
+
+- Pages are matched on the URL without its query, fragment, trailing slash or `www.`, lowercased. If
+  one key covers more than one distinct URL among the `ok` captures, the run STOPs with exit 2 and
+  writes nothing.
+- Captures of a page made at the same instant are ranked gap, then tail, then wave1.
+- Each readings directory given must hold `part-*.jsonl.gz` files. The output must not exist yet.
+- The summary is printed to stdout as JSON: counts per pass and state, `pages_after_dedupe`, and
+  `kept_from`.
