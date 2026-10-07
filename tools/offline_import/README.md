@@ -27,8 +27,8 @@ python -m offline_import <file> --mapping <mapping.json> [--uri gs://bucket/arch
 | `crawl_run` | one per import, rung 0. Status is `partial`, or `succeeded` only with `complete_catalogue: true`, at least one row and no rejected row |
 | `evidence` | one for the file: `content_hash` = the file's sha256, `fetch_method` = `offline_import` (rung 0) |
 | `source_listing` | one per `listing_key` (the feed's SKU or variant key), upserted |
-| `listing_content` | one per row. `labels` holds brand, size, shade, gtin, product_name, sku, image_url, stock_qty and import provenance |
-| `offer_observation` | one per row: `price_current`, `price_regular_stated`, `price_promo`, `currency`, `availability_state`, `field_state` |
+| `listing_content` | one per row. `description` (`description_ar` for an `ar` locale) and `badges`; `labels` holds brand, size, shade, gtin, product_name, sku, image_url, stock_qty, gender, concentration, promotions, the gallery as `images` (`{role, position, url}`, first is `main`, the shape the Sephora load writes) and import provenance |
+| `offer_observation` | one per row: `price_current`, `price_regular_stated`, `price_promo`, `currency`, `availability_state`, `badges_at_time`, `field_state` |
 
 ## Rules
 
@@ -68,9 +68,12 @@ The fixture `tests/fixtures/acme_mapping.json` shows every option. Extra keys ar
 - `observed_at`, and/or `columns.observed_at`.
 - `columns`: maps our field to the feed column. `listing_key` is required. The optional fields
   are `sku`, `gtin`, `url`, `name`, `name_ar`, `brand`, `category_path`, `size`, `shade`,
-  `price_current`, `price_regular`, `price_promo`, `availability`, `stock_qty`, `image_url` and
-  `observed_at`. Without `price_current`, the current price is the promo price, else the regular
-  price.
+  `price_current`, `price_regular`, `price_promo`, `availability`, `stock_qty`, `image_url`,
+  `observed_at`, `description`, `gender`, `concentration`, `badges`, `promotions` and
+  `image_urls`. Without `price_current`, the current price is the promo price, else the regular
+  price. `badges`, `promotions` and `image_urls` are lists: a JSON array of strings, or one value
+  as a one-item list. Blanks and repeats are left out, and an image URL that is not http(s) is
+  dropped with a warning.
 - Readers: `format` (default: from the file suffix), `csv.delimiter`, `csv.encoding`,
   `json_items_path` (e.g. `data.items`), `xlsx_sheet`, `decimal_separator` (`.` or `,`).
 - `availability_map` (case-insensitive) and `url_template` (`{listing_key}`, `{sku}`). With no
