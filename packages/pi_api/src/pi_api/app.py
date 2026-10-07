@@ -1199,6 +1199,8 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         allow_test=settings.allow_test,
         assigned=settings.sources,
         matches=settings.matches,
+        admitted=settings.admitted,
+        memory_mib=settings.memory_mib,
     )
     source.load_all()
     catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,35 @@ def test_load_accepts_bytes_and_text() -> None:
     raw = dump_dataset(ae_pilot())
     assert load_dataset(raw, allow_test=True) == ae_pilot()
     assert load_dataset(raw.decode(), allow_test=True) == ae_pilot()
+
+
+def test_bytes_that_are_not_utf8_are_refused_before_validation() -> None:
+    raw = dump_dataset(ae_pilot()).replace(b'"AE"', b'"A\xff"', 1)
+    with pytest.raises(UnicodeDecodeError):
+        load_dataset(raw, allow_test=True)
+
+
+def _float_doc() -> str:
+    return _text().replace('"generatedAt"', '"x": 1.5, "generatedAt"', 1)
+
+
+@pytest.mark.parametrize(
+    ("doc", "message"),
+    [
+        (lambda: _text(note="x-algolia-api-key"), "forbidden credential-like content"),
+        (_float_doc, "JSON float 1.5 is not allowed"),
+        (lambda: _text().replace("pi.dataset/v2", "pi.dataset/v9", 1), "unsupported schema"),
+        (lambda: _text(test="true"), r"meta\.test"),
+    ],
+    ids=["credential", "float", "schema", "strict"],
+)
+def test_bytes_are_refused_exactly_like_text(doc: Callable[[], str], message: str) -> None:
+    text = doc()
+    with pytest.raises(DatasetError, match=message) as from_text:
+        load_dataset(text, allow_test=True)
+    with pytest.raises(DatasetError, match=message) as from_bytes:
+        load_dataset(text.encode(), allow_test=True)
+    assert from_bytes.value.errors == from_text.value.errors
 
 
 def test_test_data_is_refused_unless_allowed() -> None:
