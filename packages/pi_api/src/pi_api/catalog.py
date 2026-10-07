@@ -29,6 +29,7 @@ from urllib.parse import urlsplit
 
 from pydantic import Field
 
+from pi_api.content import unpacked
 from pi_api.floor import PriceFlag
 from pi_core import AvailabilityState, Channel, MatchClass, ReviewState
 from pi_dataset import (
@@ -1059,7 +1060,7 @@ def offer_content(  # noqa: PLR0913 - the offer plus the three lookups it may ne
     """The offer's content with every field's state (API 1.12.0). A snapshot without
     ``Offer.content`` serves every field ``not_captured``; the catalogue gallery is used only
     when the page gallery is not observed."""
-    content = offer.content
+    content = unpacked(offer.content)
     captured = frozenset(content.captured) if content is not None else frozenset()
     urls: tuple[str, ...] = ()
     if content is not None:

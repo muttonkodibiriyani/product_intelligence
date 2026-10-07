@@ -134,9 +134,15 @@ def make_client(
     assigned: Mapping[str, str] | None = None,
     catalogues: CatalogueSource | None = None,
     matches: str | None = None,
+    pack_content: bool = True,
 ) -> tuple[Client, SnapshotSource]:
     source = SnapshotSource(
-        LocalStore(root), paths, refresh_seconds=3600, assigned=assigned or {}, matches=matches
+        LocalStore(root),
+        paths,
+        refresh_seconds=3600,
+        assigned=assigned or {},
+        matches=matches,
+        pack_content=pack_content,
     )
     if load:
         source.load_all()

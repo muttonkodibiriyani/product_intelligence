@@ -30,6 +30,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
+from pi_api.content import packed
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
 from pi_api.ids import ProductIds, product_ids
@@ -215,7 +216,7 @@ def parse(data: bytes, *, allow_test: bool = False, limit: int = MAX_DATASET_BYT
     if len(data) > limit:
         msg = f"dataset is larger than {limit} bytes"
         raise ValueError(msg)
-    return as_v3(load_any(data.decode("utf-8"), allow_test=allow_test))
+    return as_v3(load_any(data, allow_test=allow_test))
 
 
 class SnapshotSource:
@@ -229,9 +230,12 @@ class SnapshotSource:
         allow_test: bool = False,
         assigned: Mapping[str, str] = MappingProxyType({}),
         matches: str | None = None,
+        pack_content: bool = True,
     ) -> None:
         """``paths`` are served whole; ``assigned`` maps a source (retailer id) to its path;
-        ``matches`` is the match file applied to the composed views."""
+        ``matches`` is the match file applied to the composed views. ``pack_content`` keeps
+        offer content compressed in memory (``pi_api.content``); off only to compare."""
+        self._pack_content = pack_content
         self._matches_path = matches
         #: The latest good match file and its generation.
         self._matches: tuple[MatchFile, str] | None = None
@@ -280,6 +284,8 @@ class SnapshotSource:
             data, generation = self._store.read(path)
             # Upgraded here, off the request path; a v2 that can't be is not loaded.
             dataset = parse(data, allow_test=self._allow_test)
+            if self._pack_content:
+                dataset = packed(dataset)
         except (DatasetError, ValueError, OSError, zlib.error) as error:
             log.warning("dataset %s not loaded: %s", path, type(error).__name__)
             return None
