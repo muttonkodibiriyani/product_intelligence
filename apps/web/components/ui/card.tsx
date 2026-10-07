@@ -28,6 +28,7 @@ export function Card({
   flush = false,
   skeleton = 'lines',
   id,
+  level = 2,
   children,
 }: {
   title: ReactNode;
@@ -44,9 +45,12 @@ export function Card({
   /** The shape shown while loading, so the card keeps its size when the data arrives. */
   skeleton?: 'lines' | 'chart' | 'table';
   id?: string;
+  /** The title's heading level: 2 on a page of cards, deeper when the card sits under a section. */
+  level?: 2 | 3 | 4;
   children?: ReactNode;
 }) {
   const t = useTranslations('card');
+  const H = `h${level}` as const;
   const headingId = id ? `${id}-title` : undefined;
   return (
     <section
@@ -57,9 +61,9 @@ export function Card({
     >
       <header className="flex flex-wrap items-start gap-x-3 gap-y-2 px-5 pt-4">
         <div className="min-w-0 flex-1">
-          <h2 id={headingId} className="text-base font-semibold">
+          <H id={headingId} className="text-base font-semibold">
             {title}
-          </h2>
+          </H>
           {question && <p className="mt-0.5 text-sm text-ink-2">{question}</p>}
           {meta && <p className="mt-1 text-xs font-medium text-ink-2 tabular-nums">{meta}</p>}
         </div>

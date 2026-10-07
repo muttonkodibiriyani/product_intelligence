@@ -20,7 +20,7 @@ from alembic import command
 from sqlalchemy.engine import make_url
 
 from offline_import.__main__ import main
-from offline_import.load import Loader, idempotency_key
+from offline_import.load import Loader, content_hash, idempotency_key
 from offline_import.mapping import ImportMapping, load_mapping
 from offline_import.validate import validate_file
 from pi_db import DATABASE_URL_ENV, alembic_config
@@ -243,6 +243,92 @@ def test_feed_without_price_columns_records_price_unknown(db: str, tmp_path: Pat
         )
     }
     assert states == {"unknown"}
+
+
+def _content_feed(tmp_path: Path, name: str, locale: str = "en-AE") -> tuple[ImportMapping, Path]:
+    columns = (
+        "listing_key", "url", "name", "price_current", "observed_at", "description", "gender",
+        "concentration", "badges", "promotions", "image_urls",
+    )  # fmt: skip
+    mapping = ImportMapping.model_validate(
+        {
+            "source": {"name": name, "kind": "web"},
+            "country": "AE",
+            "locale": locale,
+            "currency": "AED",
+            "time_zone": "Asia/Dubai",
+            "format": "json",
+            "json_items_path": "items",
+            "columns": {c: c for c in columns},
+        }
+    )
+    item = {
+        "listing_key": "C-1",
+        "url": "https://acme-beauty.example/p/c-1",
+        "name": "Amber Night",
+        "price_current": "120.00",
+        "observed_at": "2026-10-02T09:00:00+00:00",
+        "description": "A warm amber eau de parfum.",
+        "gender": "women",
+        "concentration": "edp",
+        "badges": ["new", "onlineexclusive"],
+        "promotions": "Free Gifts",
+        "image_urls": [
+            "https://img.example/1.jpg",
+            "file:///etc/x.jpg",
+            "https://img.example/2.jpg",
+        ],
+    }
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps({"items": [item]}))
+    return mapping, path
+
+
+def test_page_content_is_stored_where_the_sephora_load_puts_it(db: str, tmp_path: Path) -> None:
+    mapping, path = _content_feed(tmp_path, "acme_content")
+    report = validate_file(path, mapping)
+    assert [w.message for w in report.warnings] == ["1 image URL(s) not http(s); dropped"]
+    out = _load(db, mapping, path, "gs://pi-imports-test/acme/content.json")
+    [(description, description_ar, badges, labels)] = _rows(
+        db,
+        "SELECT c.description, c.description_ar, c.badges, c.labels FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id WHERE l.source_listing_key = 'C-1'",
+    )
+    assert (description, description_ar) == ("A warm amber eau de parfum.", None)
+    assert badges == ["new", "onlineexclusive"]
+    assert (labels["gender"], labels["concentration"]) == ("women", "edp")
+    assert labels["promotions"] == ["Free Gifts"]
+    assert labels["images"] == [
+        {"role": "main", "position": 0, "url": "https://img.example/1.jpg"},
+        {"role": "alt", "position": 1, "url": "https://img.example/2.jpg"},
+    ]
+    [(at_time,)] = _rows(
+        db,
+        "SELECT badges_at_time FROM offer_observation WHERE crawl_run_id=%s",
+        (out["crawl_run_id"],),
+    )
+    assert at_time == ["new", "onlineexclusive"]
+
+
+def test_an_arabic_feed_stores_the_description_as_arabic(db: str, tmp_path: Path) -> None:
+    mapping, path = _content_feed(tmp_path, "acme_content_ar", locale="ar-AE")
+    _load(db, mapping, path, "gs://pi-imports-test/acme/content_ar.json")
+    [(description, description_ar)] = _rows(
+        db,
+        "SELECT c.description, c.description_ar FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id JOIN source s ON s.id = l.source_id"
+        " WHERE s.name = 'acme_content_ar'",
+    )
+    assert (description, description_ar) == (None, "A warm amber eau de parfum.")
+
+
+def test_a_row_without_page_content_keeps_its_earlier_content_hash() -> None:
+    labels = {"brand": "Acme", "import_row": 2}
+    assert (
+        content_hash(labels, None, None)
+        == hashlib.sha256(json.dumps(labels, sort_keys=True).encode()).hexdigest()
+    )
+    assert content_hash(labels, "text", None) != content_hash(labels, None, None)
 
 
 def test_url_template_encodes_the_key() -> None:

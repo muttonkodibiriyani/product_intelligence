@@ -276,6 +276,15 @@
       "soldOne": "Sold at one shop",
       "priceMin": "Min {value}",
       "priceMax": "Max {value}",
+      "stock": {
+        "in_stock": "In stock",
+        "low_stock": "Low stock",
+        "out_of_stock": "Out of stock"
+      },
+      "unavailable": {
+        "only": "Source reports unavailable",
+        "exclude": "Without brands the source reports unavailable"
+      },
       "remove": "Remove"
     }
   },
@@ -851,58 +860,113 @@
     }
   },
   "insights": {
+    "notInAnswer": "Not in this answer.",
     "title": "Insights",
-    "intro": "What the latest data supports deciding, one card per decision. Each number opens the products it was counted from.",
-    "p1Link": "Open three-retailer report",
-    "pickPair": "Pick two shops to see what the data says about them.",
+    "intro": "What the latest crawl of each shop shows. Shops are shown side by side, never ranked.",
+    "shops": "Shops",
+    "all": "All shops",
+    "needTwo": "Insights needs at least two collected shops.",
     "loading": "Loading the insights…",
     "unavailable": "Insights is not available yet: it needs data service version {need} or later, and this site runs {have}. Nothing is shown until the service is updated.",
     "unavailableRoute": "Insights is not available yet: the data service does not serve it. Nothing is shown until the service is updated.",
+    "info": "About this number",
+    "glance": {
+      "title": "At a glance",
+      "products": "{count, plural, one {product} other {products}}",
+      "brands": "<b>{num}</b> {count, plural, one {brand} other {brands}}",
+      "priced": "<l>{num}</l> with a price",
+      "asOf": "As of {date}",
+      "tip": "Everything collected from {shop} in its latest crawl. The crawl may be partial, so the shop may list more. The same count as Products."
+    },
+    "prices": {
+      "title": "Prices across shops",
+      "waiting": "Comparing prices across shops starts once product matches are reviewed.",
+      "sofar": "Reviewed matches so far:",
+      "pair": "{a} × {b}: <l>{num}</l>",
+      "tip": "A price is compared only on products a person has confirmed are the same item, size and shade. Proposed matches are never counted."
+    },
+    "stock": {
+      "title": "Stock today",
+      "tip": "Counts from the latest crawl, not percentages. Each brand line counts only that brand's listings with a stock status. Shops are not compared.",
+      "out": "<l>{num}</l> {count, plural, one {listing} other {listings}} out of stock",
+      "status": "<b>{num}</b> of {listed} listings show a stock status",
+      "brands": "Brands with the most listings out of stock",
+      "row": "{out} of {observed} out",
+      "more": "{count, plural, one {+{num} more brand} other {+{num} more brands}}",
+      "unavailable": "Source reports unavailable: <l>{num}</l> {count, plural, one {listing} other {listings}} in {brands} {brandCount, plural, one {brand} other {brands}}",
+      "unavailableTip": "Every listing of these brands is marked unavailable by the shop's own feed, likely not sold online in the UAE. They are not counted as out of stock.",
+      "off": "Stock is not collected for {shop}.",
+      "noStatus": "No listing at {shop} shows a stock status in the latest crawl."
+    },
+    "value": {
+      "title": "Value",
+      "few": "Few rated",
+      "unit": "value picks at {shop}",
+      "sentence": "Rated {top} or more by {min}+ shoppers and priced at or below the typical price of their category.",
+      "bar": "<n>{pct}%</n> · <n>{num}</n> of <n>{rated}</n>",
+      "off": "ratings not collected",
+      "none": "no value picks yet",
+      "tip": "Rated at least {top} out of 5 by {min} or more shoppers, in stock, and priced at or below the category's typical shelf price. Fragrance is compared per ml. Tools, body care filed under fragrance or skincare, minis and travel sizes, and the shop's catch-all \"other\" category are left out. At most 2 picks per brand; one row per product name. Bars: picks as a share of each shop's listings with {min}+ ratings in its listed categories. Listings with {min}+ ratings, of priced: {few}. Left out by the rules: {excluded}.",
+      "fewTip": "Few of {shop}'s listings carry {min} or more ratings in: {few}.",
+      "typicalShelf": "Typical shelf price {median}",
+      "typicalUnit": "Typical {median} per {unit}",
+      "per": "{price} per {unit}",
+      "ratings": "{count, plural, one {{num} rating} other {{num} ratings}}",
+      "nothing": "none",
+      "see": "See all {category} at {shop}"
+    },
+    "ladder": {
+      "title": "Size steps",
+      "unit": {
+        "ml": "ml",
+        "g": "g"
+      },
+      "sentence": "{steps, plural, one {<n>{num}</n> size step} other {<n>{num}</n> size steps}}; <n>{k}</n> not cheaper per ml or g.",
+      "headline": "median saving per ml or g going up a size at {shop}",
+      "bar": "<n>{pct}%</n> · {count, plural, one {<n>{num}</n> step} other {<n>{num}</n> steps}}",
+      "none": "no size steps yet",
+      "head": "Not cheaper per ml or g",
+      "headCount": "<n>{shown}</n> of <n>{total}</n>",
+      "more": "<n>+{pct}%</n> per {unit}",
+      "onSale": "smaller size on sale",
+      "tip": "A size step compares one product with its next larger size at the same shop, per ml or g. A larger size costing more than {held}% more per unit is held out as a likely data error ({heldOut} held out). {shop}: {steps} steps, {k} not cheaper, {listed} listed. Bars: each shop's median saving per step.",
+      "seeAll": "See all {count} listed",
+      "seeFewer": "Show fewer"
+    },
+    "promo": {
+      "title": "Discounts",
+      "unit": "{shop} listings on discount",
+      "sentence": "<n>{pct}%</n> of <n>{priced}</n> priced listings in the latest crawl.",
+      "sentenceCount": "Listed below the shop's own original price in the latest crawl.",
+      "bar": "<n>{pct}%</n> · <n>{num}</n> of <n>{priced}</n>",
+      "count": "{count, plural, one {<n>{num}</n> on discount} other {<n>{num}</n> on discount}}",
+      "noOriginal": "no original prices published",
+      "notCollected": "original prices not collected",
+      "none": "no discounts in the latest crawl",
+      "deepest": "Deepest",
+      "depth": "<n>−{pct}%</n>",
+      "was": "was {price}",
+      "tip": "The shop's own listed price against its own listed original price, latest crawl. Bars: listings on discount as a share of each shop's listings with a price (its Products count with any price), so a large catalogue does not read as more discounting by size alone. A shop that publishes no original prices shows a note, not zero. The crawl may be partial, so other discounts may exist. One row per brand and product name.",
+      "see": "See all {num} on discount"
+    },
+    "cat": {
+      "skincare": "Skincare",
+      "fragrance": "Fragrance",
+      "lips": "Lips",
+      "eyes": "Eyes",
+      "body": "Body",
+      "cheek": "Cheek",
+      "foundation": "Foundation",
+      "hair": "Hair",
+      "makeup": "Makeup",
+      "nails": "Nails",
+      "tools": "Tools",
+      "men": "Men",
+      "concealer": "Concealer"
+    },
     "soWhat": "So what:",
     "evidence": "See the evidence",
     "unreviewed": "{n, plural, one {# unreviewed match} other {# unreviewed matches}}: not counted",
-    "report": {
-      "toc": "Decision findings",
-      "method": "How to read this report",
-      "n": "n",
-      "cohort": "Cohort",
-      "cohortValue": "Counted exact pairs, approved or locked",
-      "matches": "Match basis",
-      "reviewed": "Reviewed exact matches",
-      "unreviewed": "{n, plural, one {# proposed match excluded} other {# proposed matches excluded}}",
-      "coverage": "Coverage",
-      "partial": "Partial snapshots; absence may mean not collected",
-      "complete": "Latest collected snapshot",
-      "testedTitle": "Tested, not promoted",
-      "testedIntro": "These questions stay out of the ranked findings until the published data can support them. No proposed match becomes a fact.",
-      "tested": {
-        "history": {
-          "title": "Launches and price changes:",
-          "body": "need repeated complete collections."
-        },
-        "gwp": {
-          "title": "Gift-with-purchase:",
-          "body": "not exported in the current promotions contract."
-        },
-        "rating": {
-          "title": "Price versus rating:",
-          "body": "needs enough reviewed pairs with ratings."
-        }
-      }
-    },
-    "readiness": {
-      "eyebrow": "Decision readiness",
-      "title": "{n, plural, =0 {No decision signals are ready yet} one {# decision signal is ready} other {# decision signals are ready}}",
-      "body": "Only evidence supported by this retailer pair appears as a card. Withheld and unavailable analyses are grouped below; missing is never treated as zero.",
-      "ready": "{n, plural, =0 {Nothing ready} one {{count} ready signal} other {{count} ready signals}}",
-      "unreviewed": "{n, plural, one {{count} unreviewed match excluded} other {{count} unreviewed matches excluded}}",
-      "checking": "Checking supporting evidence…",
-      "deferred": "{n, plural, one {# analysis is not ready} other {# analyses are not ready}}",
-      "deferredBody": "Open this only to see what the current data cannot support. No withheld value is shown as zero.",
-      "noneSpace": "No governed assortment gap was observed for this pair.",
-      "nonePromotions": "No listed price cut was observed for this pair.",
-      "failed": "Supporting evidence could not be loaded."
-    },
     "positioning": {
       "title": "Price position",
       "none": "No reviewed exact matches between these shops yet, so no price is compared.",
@@ -939,65 +1003,9 @@
       "tip": "\"No reviewed match\" is not proof that {absent} lacks the product: it may be unmatched or not yet crawled. A product counts as missing only after a complete crawl and a reviewed match.",
       "action": "Review the top brands for listing gaps before treating them as range opportunities."
     },
-    "promo": {
-      "title": "Promotion strategy",
-      "headline": "{product} at {shop} has the deepest listed cut: −{pct}%.",
-      "meta": "{n, plural, one {{count} listed discount} other {Top {count} listed discounts}}, deepest first",
-      "saved": "Save",
-      "action": "Check the evidence before using a discount in a pricing decision.",
-      "open": "Open Promotions"
-    },
-    "stock": {
-      "title": "Brand stock-outs",
-      "headline": "{brand} at {shop}: {out} observed out-of-stock listings among {observed} observed listings {crawl, select, partial {in a partial crawl} other {in the latest crawl}}.",
-      "headlineSome": "Brands with at least {min} listings observed out of stock.",
-      "meta": "Observed counts, not shares",
-      "tip": "Listings observed out of stock at {date}, per brand. These are minimum counts from what was observed, not a share of the brand's range, and shops are not ranked by them. Brands with fewer than {min} out-of-stock listings are hidden ({hidden}).",
-      "partial": "partial crawl",
-      "none": "No brand has {min} or more listings observed out of stock.",
-      "row": "{out} out of stock / {observed} observed",
-      "more": "+{n} more brands",
-      "action": "Check supply for the brands at the top: shoppers who cannot buy there may go elsewhere."
-    },
-    "traps": {
-      "title": "Size traps",
-      "headline": "{k} of {n} size steps cost the same or more per unit at the larger size.",
-      "meta": "Same product, next size up, same shop",
-      "tip": "Each step compares a product with its next larger size at one shop, per ml or g. Steps that change by more than {held}% are held out as likely data errors ({heldOut}).",
-      "shop": "{shop}: {k} of {n} steps",
-      "perUnit": "Change in price per {unit} (sizes grouped by {basis, select, family {the shop's product family} other {product name}})",
-      "action": "Fix the larger sizes priced above their per-unit value: they read as a trap to shoppers."
-    },
-    "more": {
-      "title": "More",
-      "saving": "{shop}: the typical step up in size saves {pct} per unit ({n} steps).",
-      "method": "Price cards count reviewed exact matches only. A brand needs {share}% of its matches on one side to be placed. Size steps beyond {held}% are held out. Any cohort under {min} is hidden.",
-      "later": "Not shown yet, for lack of a backed aggregate: the EDP vs EDT price ladder, price against rating, and verified real discounts."
-    },
-    "p1": {
-      "title": "Three-retailer decision report",
-      "intro": "A governed view of Ulta, Sephora and Faces. Pair evidence is shown separately; no three-way number is invented.",
-      "basisTitle": "How to read this report",
-      "basis": "Every number comes directly from a reviewed pair response. Proposed matches are withheld from counts, and partial or pending retailers are never presented as complete.",
-      "imageNote": "Product images are shown only when the governed API supplies an approved image reference. This release exposes source links, not guessed or copied image URLs.",
-      "coverageTitle": "Collection coverage",
-      "coverageQuestion": "Coverage status is reported per retailer and controls which evidence can be interpreted.",
-      "status": {
-        "supported": "Complete coverage",
-        "partial": "Partial coverage — interpret as a lower bound",
-        "pending": "Not collected yet"
-      },
-      "pairQuestion": "Reviewed pair evidence only; this is not a three-way aggregate.",
-      "matched": "Reviewed matches",
-      "unreviewed": "Proposed matches withheld",
-      "statusLabel": "Evidence status",
-      "notAvailable": "Not available",
-      "counted": "Counted pair evidence",
-      "withheld": "Withheld — insufficient governed data",
-      "openEvidence": "Open pair evidence",
-      "loading": "Loading governed pair evidence…",
-      "notEnough": "The three-retailer report appears when three retailers are collected.",
-      "unavailable": "This report needs data service version {need} or later."
+    "vsd": {
+      "title": "{shop}: value, size steps and discounts",
+      "sub": "{shop} first; the other shops for context."
     },
     "findings": {
       "title": "Findings",

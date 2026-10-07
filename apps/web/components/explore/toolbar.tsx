@@ -136,6 +136,20 @@ export function ActiveChips({
     ...(state.priceMax
       ? [{ key: 'max', label: t('priceMax', { value: state.priceMax }), remove: { priceMax: '' } }]
       : []),
+    ...state.availability.map((v) => ({
+      key: `availability:${v}`,
+      label: t(`stock.${v}`),
+      remove: { availability: state.availability.filter((x) => x !== v) },
+    })),
+    ...(state.unavailableBrands
+      ? [
+          {
+            key: 'unavailableBrands',
+            label: t(`unavailable.${state.unavailableBrands}`),
+            remove: { unavailableBrands: null },
+          },
+        ]
+      : []),
   ];
   return (
     <ul aria-label={t('label')} className="flex flex-wrap items-center gap-1.5">

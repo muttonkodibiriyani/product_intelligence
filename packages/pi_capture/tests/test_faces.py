@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 
 from pi_capture.faces import LOOKED_FOR, FacesFacts, faces_facts, readings_from_faces
+from pi_capture.feed import SHOPS, Row, build_feed
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
-from pi_capture.model import Reading
+from pi_capture.model import ProductCapture, Reading
 from pi_capture.registry import ATTRIBUTES
+
+CaptureFactory = Callable[..., ProductCapture]
 
 _DATALAYER = """
 <script>
@@ -136,10 +140,42 @@ def test_looked_for_names_registry_keys_and_covers_every_reading() -> None:
     assert {"shade_name", "installment_amount_minor", "vat_statement", "price_minor"} <= LOOKED_FOR
 
 
-def test_one_reading_per_key() -> None:
+def test_one_reading_per_key_except_the_datalayer_stock_block() -> None:
     readings = readings_from_faces(FACES_HTML, locale="en-AE", url="https://shop.example/x")
-    keys = [r.key for r in readings]
+    keys = [r.key for r in readings if r.key != "structured_data"]
     assert len(keys) == len(set(keys))
+    blocks = [r for r in readings if r.key == "structured_data"]
+    assert [r.source_path for r in blocks] == [
+        "jsonld",
+        "dataLayer.view_item.items[0].item_in_stock",
+    ]
+
+
+def test_the_datalayer_stock_flag_is_its_own_structured_data_block() -> None:
+    def stock(html: str) -> list[Reading]:
+        return [
+            r
+            for r in readings_from_faces(html, locale="en-AE")
+            if r.source_path == "dataLayer.view_item.items[0].item_in_stock"
+        ]
+
+    (in_stock,) = stock(FACES_HTML)
+    assert (in_stock.state, in_stock.raw_text, in_stock.value) == (
+        "observed",
+        "true",
+        {"item_in_stock": True},
+    )
+    (out,) = stock(FACES_AR_HTML)
+    assert out.value == {"item_in_stock": False}
+    # a flag that is not a boolean is kept as stated (the feed then reads the stock as unknown)
+    (odd,) = stock(FACES_HTML.replace('"item_in_stock":true', '"item_in_stock":"yes"'))
+    assert (odd.raw_text, odd.value) == ("yes", {"item_in_stock": "yes"})
+    assert "not a boolean" in (odd.note or "")
+    (null,) = stock(FACES_HTML.replace('"item_in_stock":true', '"item_in_stock":null'))
+    assert (null.raw_text, null.value) == ("null", {"item_in_stock": None})
+    # no flag, or no dataLayer at all, states nothing
+    assert stock(FACES_HTML.replace('"item_in_stock":true,', "")) == []
+    assert stock(FACES_HTML.replace(_DATALAYER, "")) == []
 
 
 def test_identity_comes_from_the_datalayer_and_data_attributes() -> None:
@@ -273,6 +309,53 @@ def test_size_edge_cases() -> None:
     assert arabic["size_value"].value == Decimal("50")
     pieces = size("2 pcs")
     assert pieces["size_unit"].value == "count"
+
+
+def test_faces_pages_feed_their_own_availability_and_a_contradiction_is_unknown(
+    make_capture: CaptureFactory,
+) -> None:
+    def row(html: str, locale: str, jsonld: str) -> Row:
+        html = html.replace(
+            "</head>", f'<script type="application/ld+json">{jsonld}</script></head>'
+        )
+        capture = make_capture(readings=tuple(readings_from_faces(html, locale=locale)))
+        (out,) = build_feed([capture], SHOPS["faces_ae"]).rows
+        return out
+
+    out_of_stock = '{"@type":"Product","offers":{"availability":"https://schema.org/OutOfStock"}}'
+    in_stock = '{"@type":"Product","offers":{"availability":"https://schema.org/InStock"}}'
+    assert row(FACES_HTML, "en-AE", "{}")["availability"] == "instock"  # the flag alone
+    assert row(FACES_AR_HTML, "ar-AE", out_of_stock)["availability"] == "outofstock"
+    assert "availability" not in row(FACES_AR_HTML, "ar-AE", in_stock)  # flag false: unknown
+
+
+def test_template_leftovers_around_a_size_are_read_and_noted() -> None:
+    def size(label: str) -> dict[str, Reading]:
+        html = FACES_AR_HTML.replace("(100 ML)", f"({label})")
+        return _by_key(readings_from_faces(html, locale="ar-AE"))
+
+    for label, value, unit, note in (
+        ("100_ml", "100", "ml", "underscore read as a space"),
+        ("2500_ml", "2500", "ml", "underscore read as a space"),
+        ("60_piece", "60", "count", "underscore read as a space"),
+        ("90_pieces", "90", "count", "underscore read as a space"),
+        ("'180g", "180", "g", "leading apostrophe dropped"),
+    ):
+        r = size(label)
+        assert r["size_label"].value == label, label
+        assert r["size_value"].value == Decimal(value), label
+        assert r["size_value"].raw_text == label, label
+        assert r["size_value"].note == note, label
+        assert (r["size_unit"].value, r["size_unit"].note) == (unit, note), label
+    # a thousand behind an underscore keeps both notes
+    both = size("1,000_ml")
+    assert both["size_value"].value == Decimal("1000")
+    assert both["size_value"].note == (
+        "underscore read as a space; comma read as a thousands separator"
+    )
+    # multipacks, sets, two numbers and shade names in the size slot are still not a size
+    for label in ("3_20ml", "3__20", "100ml+30ml", "5x20ml", "13g_refill", "N1", "03 Medium"):
+        assert size(label)["size_value"].state == "parse_failed", label
 
 
 def test_thousands_separator_in_a_size_is_not_a_decimal_point() -> None:

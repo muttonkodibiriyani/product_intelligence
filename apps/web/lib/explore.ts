@@ -2,6 +2,12 @@ import type { QueryOf, Schemas } from './api/types';
 
 export type ProductSort = Schemas['ProductSort'];
 export type ProductsQuery = QueryOf<'/api/v1/products'>;
+export type StockFilter = Schemas['StockFilter'];
+export type UnavailableBrands = Schemas['UnavailableBrands'];
+
+/** The observed stock states a list can be narrowed to (API 1.22.0), in reading order. */
+export const STOCK_FILTERS: readonly StockFilter[] = ['in_stock', 'low_stock', 'out_of_stock'];
+const UNAVAILABLE: readonly UnavailableBrands[] = ['only', 'exclude'];
 
 export const SORTS: readonly ProductSort[] = ['name', 'price_asc', 'price_desc', 'gap', 'gap_asc'];
 const GAP_SORTS: readonly ProductSort[] = ['gap', 'gap_asc'];
@@ -24,6 +30,10 @@ export interface ExploreState {
   priceMin: string;
   priceMax: string;
   sort: ProductSort;
+  /** Listings in these observed stock states; Insights links here, the panel does not set it. */
+  availability: StockFilter[];
+  /** Brands the source reports unavailable: only those, or without them. */
+  unavailableBrands: UnavailableBrands | null;
 }
 
 export const EMPTY: ExploreState = {
@@ -35,6 +45,8 @@ export const EMPTY: ExploreState = {
   priceMin: '',
   priceMax: '',
   sort: 'name',
+  availability: [],
+  unavailableBrands: null,
 };
 
 const text = (v: string | null) => (v ?? '').trim().slice(0, MAX_LEN);
@@ -48,6 +60,7 @@ export const hasPair = (s: Pick<ExploreState, 'retailer'>) => s.retailer.length 
 export function parseState(sp: URLSearchParams): ExploreState {
   const sort = sp.get('sort') as ProductSort | null;
   const matched = sp.get('matched');
+  const unavailable = sp.get('unavailableBrands') as UnavailableBrands | null;
   const s: ExploreState = {
     q: text(sp.get('q')),
     brand: list(sp.getAll('brand')),
@@ -57,6 +70,8 @@ export function parseState(sp: URLSearchParams): ExploreState {
     priceMin: PRICE.test(sp.get('priceMin') ?? '') ? sp.get('priceMin')! : '',
     priceMax: PRICE.test(sp.get('priceMax') ?? '') ? sp.get('priceMax')! : '',
     sort: sort && SORTS.includes(sort) ? sort : 'name',
+    availability: STOCK_FILTERS.filter((f) => sp.getAll('availability').includes(f)),
+    unavailableBrands: unavailable && UNAVAILABLE.includes(unavailable) ? unavailable : null,
   };
   return withValidSort(s);
 }
@@ -77,6 +92,8 @@ export function toSearch(s: ExploreState): string {
   if (s.priceMin) p.set('priceMin', s.priceMin);
   if (s.priceMax) p.set('priceMax', s.priceMax);
   if (s.sort !== 'name') p.set('sort', s.sort);
+  for (const v of s.availability) p.append('availability', v);
+  if (s.unavailableBrands) p.set('unavailableBrands', s.unavailableBrands);
   const out = p.toString();
   return out ? `?${out}` : '';
 }
@@ -90,6 +107,8 @@ export function toQuery(s: ExploreState, cursor: string | null): ProductsQuery {
     ...(s.matched !== 'any' ? { matched: s.matched === 'yes' } : {}),
     ...(s.priceMin ? { priceMin: s.priceMin } : {}),
     ...(s.priceMax ? { priceMax: s.priceMax } : {}),
+    ...(s.availability.length ? { availability: s.availability } : {}),
+    ...(s.unavailableBrands ? { unavailableBrands: s.unavailableBrands } : {}),
     sort: s.sort,
     limit: PAGE_SIZE,
     ...(cursor ? { cursor } : {}),
@@ -118,7 +137,9 @@ export const activeFilterCount = (s: ExploreState) =>
   s.retailer.length +
   (s.matched !== 'any' ? 1 : 0) +
   (s.priceMin ? 1 : 0) +
-  (s.priceMax ? 1 : 0);
+  (s.priceMax ? 1 : 0) +
+  s.availability.length +
+  (s.unavailableBrands ? 1 : 0);
 
 /**
  * Pages as loaded. A page fetched after the data changed under its cursor starts over, so only
