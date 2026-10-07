@@ -155,6 +155,17 @@ def test_admitted_entries_come_from_the_environment() -> None:
     assert Settings.from_env({**ENV, "PI_API_ADMITTED": f"{sha}:0"}).admitted == {sha: 0}
 
 
+def test_two_admitted_bodies_are_both_kept_for_a_publish_window() -> None:
+    # The publish window bakes the old and the new body's entries in together (runbook §6).
+    old, new = admission_sha256(b"old"), admission_sha256(b"new")
+    raw = f"{old}:28937955,{new}:30000000"
+    assert admitted_entries(raw) == {old: 28_937_955, new: 30_000_000}
+    assert Settings.from_env({**ENV, "PI_API_ADMITTED": raw}).admitted == {
+        old: 28_937_955,
+        new: 30_000_000,
+    }
+
+
 @pytest.mark.parametrize("others", ["1,{sha}:2", "1,{sha}:1"])
 def test_a_sha_admitted_twice_is_refused_at_startup(others: str) -> None:
     sha = admission_sha256(b"x")
