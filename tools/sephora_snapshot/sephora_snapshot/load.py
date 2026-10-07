@@ -388,12 +388,20 @@ class Loader:
                 ),
             )
             regular = _money(v.get("c_price"))
-            sale = _money(v.get("c_salesPrice"))
+            raw_sale = v.get("c_salesPrice")
+            sale = _money(raw_sale)
             promo = sale is not None and regular is not None and sale < regular
             fs: dict[str, str] = {}
             price = sale if promo else regular
             currency = d.get("currency")
-            if price is not None and not currency:  # never assume AED
+            if raw_sale is not None and raw_sale != "$undefined" and sale is None:
+                # an RSC reference ("$83:props:offers") or other unreadable reduced price: the
+                # variant may be on sale, so c_price is not known to be the price paid
+                price = regular = sale = None
+                promo = False
+                fs["price_current"] = "unknown"
+                self.bump("sale_price_unreadable")
+            elif price is not None and not currency:  # never assume AED
                 price = regular = sale = None
                 promo = False
                 fs["price_current"] = "unknown"
@@ -549,6 +557,12 @@ class Loader:
 
         A PLAN continuation run covers a subset of products by design, so it is always
         'partial': absence from it must never read as removal.
+
+        A complete full run also sets its contexts' ``coverage_status`` to ``supported``: the
+        whole sitemap was read with nothing blocked or skipped, so absence on that day can back
+        a launch or removal claim. Any other run leaves the context as it is and is ``partial``
+        itself, which already keeps its day from counting as complete (history.py reads a day
+        as complete only for a ``succeeded`` run on a ``supported`` context).
         """
         counts = self.progress.get("counts", {})
         status = "succeeded" if self.complete_full_run() else "partial"
@@ -571,6 +585,11 @@ class Loader:
                     rid,
                 ),
             )
+            if status == "succeeded":
+                self.c.execute(
+                    "UPDATE source_context SET coverage_status='supported' WHERE id=%s",
+                    (self.ctx[lang],),
+                )
         self.c.commit()
 
 

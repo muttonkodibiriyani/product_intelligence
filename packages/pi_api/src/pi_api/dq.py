@@ -53,6 +53,7 @@ PRICED = frozenset(
         "history",
         "compare",
         "category_compare",
+        "findings",
         "insights",
         "price_suggestions",
         "promotions",

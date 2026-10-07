@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,37 @@ def test_price_without_currency_is_unknown_not_aed(db: str, tmp_path: Path) -> N
             " WHERE l.source_listing_key = '5001'"
         ).fetchone()
         assert row == (None, None, "unknown")
+
+
+@pytest.mark.parametrize(
+    ("pid", "sale", "expected"),
+    [
+        ("P701", "$undefined", (Decimal("99.95"), None, "full", "AED", None)),
+        ("P702", "$83:props:offers", (None, None, None, None, "unknown")),
+        ("P703", "on sale", (None, None, None, None, "unknown")),
+        ("P704", {"value": 80}, (None, None, None, None, "unknown")),
+        ("P705", [80], (None, None, None, None, "unknown")),
+    ],
+)
+def test_a_reduced_price_left_as_a_reference_makes_the_price_unknown(
+    db: str, tmp_path: Path, pid: str, sale: Any, expected: tuple[Any, ...]
+) -> None:
+    d = details(pid)
+    d["currency"] = "AED"
+    d["c_variantsInfo"][0] |= {"c_price": 99.95, "c_salesPrice": sale}
+    root = _folder(tmp_path / "ref", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", [pdp_rec(pid, "en", d)])
+    with psycopg.connect(db) as conn:
+        stats = _load(conn, root)
+        assert stats.get("sale_price_unreadable", 0) == (0 if expected[4] is None else 1)
+        row = conn.execute(
+            "SELECT o.price_current, o.price_promo, o.price_type, o.currency,"
+            " o.field_state ->> 'price_current'"
+            " FROM offer_observation o JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key = %s",
+            (f"{pid[1:]}1",),
+        ).fetchone()
+        assert row == expected
 
 
 def test_prices_are_read_as_exact_decimals(db: str, tmp_path: Path) -> None:
@@ -377,3 +409,85 @@ def test_gift_with_purchase_is_empty_or_unread_never_guessed(db: str, tmp_path: 
     order_only["c_product_promotions"] = [{"promotionClass": "ORDER", "promotionTitle": "Gift"}]
     assert _gwp_labels(db, tmp_path, order_only) == [[]]
     assert _gwp_labels(db, tmp_path, details("P830")) == [None]  # no promotions list on the page
+
+
+def _coverage(conn: psycopg.Connection[Any], locale: str) -> str:
+    row = conn.execute(
+        "SELECT coverage_status::text FROM source_context sc JOIN source s ON s.id = sc.source_id"
+        " WHERE s.name = 'sephora_me' AND sc.country = 'AE' AND sc.locale = %s"
+        " AND sc.valid_to IS NULL",
+        (locale,),
+    ).fetchone()
+    assert row is not None
+    return str(row[0])
+
+
+def _reset_coverage(conn: psycopg.Connection[Any]) -> None:
+    """The module shares one database, so each coverage test starts from 'partial'."""
+    conn.execute(
+        "UPDATE source_context SET coverage_status = 'partial' WHERE source_id ="
+        " (SELECT id FROM source WHERE name = 'sephora_me')"
+    )
+    conn.commit()
+
+
+def test_a_complete_full_run_makes_its_context_supported(db: str, tmp_path: Path) -> None:
+    name = f"cov-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name)
+    with psycopg.connect(db) as conn:
+        _load(conn, root, finish=False)  # creates the contexts
+        _reset_coverage(conn)
+        Loader(conn, root, f"gs://test-bucket/{name}").finish()
+        assert _runs(conn, name) == {"en": "succeeded"}
+        assert _coverage(conn, "en-AE") == "supported"
+        assert _coverage(conn, "ar-AE") == "partial"  # no AR run in this folder
+
+
+def test_a_complete_full_run_with_arabic_pages_supports_both_contexts(
+    db: str, tmp_path: Path
+) -> None:
+    name = f"cov-ar-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name, counts={"seed_ar": 1, "pdp_ar_ok": 1})
+    write_part(root, "pdp_ar", [pdp_rec("P100", "ar")])
+    with psycopg.connect(db) as conn:
+        _load(conn, root, finish=False)
+        _reset_coverage(conn)
+        Loader(conn, root, f"gs://test-bucket/{name}").finish()
+        assert _runs(conn, name) == {"en": "succeeded", "ar": "succeeded"}
+        assert (_coverage(conn, "en-AE"), _coverage(conn, "ar-AE")) == ("supported", "supported")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"counts": {"block_challenge": 1}, "stopped": "challenge: marker at x"},  # blocked
+        {"counts": {"seed_en": 3}},  # part of the sitemap never fetched
+        {"stopped": "cutoff"},  # cut short
+        {"limit": 50},  # a sample, not the whole sitemap
+    ],
+)
+def test_a_run_short_of_the_full_sitemap_leaves_coverage_partial(
+    db: str, tmp_path: Path, changes: dict[str, Any]
+) -> None:
+    name = f"cov-short-{uuid.uuid4().hex[:8]}"
+    root = _full_folder(tmp_path / name, **changes)
+    with psycopg.connect(db) as conn:
+        _load(conn, root, finish=False)
+        _reset_coverage(conn)
+        Loader(conn, root, f"gs://test-bucket/{name}").finish()
+        assert _runs(conn, name) == {"en": "partial"}
+        assert _coverage(conn, "en-AE") == "partial"
+
+
+def test_a_partial_run_after_a_complete_one_keeps_supported_and_is_itself_partial(
+    db: str, tmp_path: Path
+) -> None:
+    full, short = f"cov-a-{uuid.uuid4().hex[:8]}", f"cov-b-{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(db) as conn:
+        _load(conn, _full_folder(tmp_path / full), finish=False)
+        _reset_coverage(conn)
+        _load(conn, tmp_path / full)
+        assert _coverage(conn, "en-AE") == "supported"
+        _load(conn, _full_folder(tmp_path / short, stopped="cutoff"))
+        assert _runs(conn, short) == {"en": "partial"}
+        assert _coverage(conn, "en-AE") == "supported"
