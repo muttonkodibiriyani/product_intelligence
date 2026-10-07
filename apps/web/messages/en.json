@@ -400,6 +400,7 @@
     "backPromotions": "Back to promotions",
     "backLaunches": "Back to launches",
     "noImage": "No image",
+    "backOverlap": "Back to every match",
     "groupPrice": "Price",
     "groupListing": "Listing",
     "lastSeen": "Last seen",
@@ -567,6 +568,48 @@
       "cheaper": "Who's cheaper",
       "tooFewSide": "Too few products"
     }
+  },
+  "overlap": {
+    "title": "Every match",
+    "intro": "Every product sold at both shops, with both prices and the gap. Biggest gap first.",
+    "toSummary": "Summary",
+    "toOverlap": "Every match",
+    "views": "Comparison views",
+    "brand": "Brand",
+    "category": "Category",
+    "all": "All",
+    "loading": "Loading matches…",
+    "count": "{count, plural, one {{n} product at both shops} other {{n} products at both shops}}",
+    "split": "Confirmed by a reviewer: {reviewed}. Not reviewed yet: {unreviewed}.",
+    "hint": "Unreviewed matches are listed so you can check them. The Summary's figures count confirmed matches only.",
+    "unreviewedHint": "Matched to the same product at another shop, but a reviewer has not confirmed it yet. Its gap is listed here so you can check it; the Summary leaves it out.",
+    "shown": "The {shown} biggest gaps of {total} are listed. Pick a brand or category to see the rest.",
+    "match": "Match",
+    "class": {
+      "exact": "Exact",
+      "family": "Same line",
+      "size_normalized": "Other size",
+      "substitute": "Substitute"
+    },
+    "review": {
+      "locked": "Locked",
+      "approved": "Approved",
+      "proposed": "Not reviewed",
+      "rejected": "Rejected"
+    },
+    "evidence": {
+      "class": "Match: {v}",
+      "review": "Review: {v}",
+      "human": "Decided by a reviewer",
+      "auto": "Decided by an automatic rule",
+      "method": "Method: {v}",
+      "confidence": "Confidence: {v}"
+    },
+    "empty": "No product is matched between {base} and {other} yet.",
+    "emptyHint": "A product shows here once matching pairs it at both shops. Until then, Prices compares the two shops by category, which needs no matching.",
+    "emptyLink": "Compare by category",
+    "emptyFiltered": "No matched product in this brand or category.",
+    "clear": "Clear filters"
   },
   "chips": {
     "label": "Active filters",
