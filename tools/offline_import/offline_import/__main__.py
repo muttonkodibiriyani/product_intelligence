@@ -1,7 +1,11 @@
 """CLI: ``python -m offline_import <file> --mapping <cfg> [--dry-run] [--report out.json]``.
 
+``--content-only`` loads a feed re-derived from pages already imported: page content only,
+append-only (see ``Loader.load_content``).
+
 The dry run reads and validates only; it never reads PI_DATABASE_URL or opens a connection.
-Exit codes: 0 done (rejected rows are listed in the report), 2 unusable mapping or file.
+Exit codes: 0 done (rejected rows are listed in the report), 2 unusable mapping or file, or a
+content-only load of a feed already imported in full.
 """
 
 import argparse
@@ -27,7 +31,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--mapping", type=Path, required=True, help="column-mapping config (.json/.yaml)"
     )
-    p.add_argument("--dry-run", action="store_true", help="validate only; no database access")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="validate only; no database access")
+    mode.add_argument(
+        "--content-only",
+        action="store_true",
+        help="append page content for listings already loaded (a re-derived feed); no run,"
+        " listing or offer rows",
+    )
     p.add_argument("--report", type=Path, help="write the JSON validation report here")
     p.add_argument(
         "--uri",
@@ -53,7 +64,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.dry_run:
         uri = args.uri or args.file.resolve().as_uri()
         with psycopg.connect(_libpq(database_url())) as conn:
-            out["load"] = Loader(conn, mapping, report, uri).load()
+            loader = Loader(conn, mapping, report, uri)
+            try:
+                out["load"] = loader.load_content() if args.content_only else loader.load()
+            except ValueError as exc:
+                print(f"offline_import: {exc}", file=sys.stderr)
+                return 2
     out["dry_run"] = bool(args.dry_run)
     if args.report:
         args.report.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n")
