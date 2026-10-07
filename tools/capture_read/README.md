@@ -48,7 +48,9 @@ python -m capture_read.combine --wave1 <captures.jsonl> --tail <readings dir> [-
 - Pages are matched on the URL without its query, fragment, trailing slash or `www.`, lowercased. If
   one key covers more than one distinct URL among the `ok` captures, the run STOPs with exit 2 and
   writes nothing.
-- Captures of a page made at the same instant are ranked gap, then tail, then wave1.
+- Captures of a page made at the same instant are ranked gap, then tail, then wave1. Two from one
+  pass keep file order and are counted in `same_instant_same_pass`.
+- Every `retrieved_at` must carry a UTC offset; one without is a STOP (exit 2, nothing written).
 - Each readings directory given must hold `part-*.jsonl.gz` files. The output must not exist yet.
-- The summary is printed to stdout as JSON: counts per pass and state, `pages_after_dedupe`, and
-  `kept_from`.
+- The summary is printed to stdout as JSON: counts per pass and state, `pages_after_dedupe`,
+  `kept_from` and `same_instant_same_pass`.

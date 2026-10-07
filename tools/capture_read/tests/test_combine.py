@@ -131,7 +131,31 @@ def test_the_summary_counts_each_pass_by_state(
         "ok_observations": 2,
         "pages_after_dedupe": 2,
         "kept_from": {"tail": 1, "wave1": 1},
+        "same_instant_same_pass": 0,
     }
+
+
+def test_two_readings_of_a_page_at_one_instant_from_one_pass_keep_file_order_and_are_counted(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    at = "2026-10-03T08:00:00+00:00"
+    wave1 = _wave1(
+        tmp_path, _row(f"{SHOP}/1", at, mark="first"), _row(f"{SHOP}/1", at, mark="second")
+    )
+    tail = _readings(tmp_path, "tail", _row(f"{SHOP}/2", at))
+    rc, kept = _run(tmp_path, "--wave1", str(wave1), "--tail", str(tail))
+    assert (rc, {r["url"]: r["mark"] for r in kept}[f"{SHOP}/1"]) == (0, "first")
+    assert json.loads(capsys.readouterr().out)["same_instant_same_pass"] == 1
+
+
+def test_a_reading_time_without_an_offset_stops_and_writes_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wave1 = _wave1(tmp_path, _row(f"{SHOP}/1", "2026-10-03T08:00:00+00:00"))
+    tail = _readings(tmp_path, "tail", _row(f"{SHOP}/1", "2026-10-04T08:00:00"))
+    rc, kept = _run(tmp_path, "--wave1", str(wave1), "--tail", str(tail))
+    assert (rc, kept) == (2, [])
+    assert "has no offset" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("problem", ["out_exists", "empty_gap", "no_wave1"])

@@ -8,7 +8,8 @@ older good one, and a page no pass read well is left out, never inferred.
 Pages are matched on the URL without query, fragment, trailing slash or ``www.``, lowercased.
 That match must never join two different addresses: if one key covers more than one distinct
 URL among the OK readings, it STOPs (exit 2) and writes nothing. Two readings of a page at the
-same instant are broken by pass, gap over tail over wave1.
+same instant are broken by pass, gap over tail over wave1; two from one pass are kept in file order
+and counted. A reading time without a UTC offset is a STOP: it cannot be ordered against the others.
 
 Local files only; nothing here fetches anything::
 
@@ -82,8 +83,13 @@ def read(source: str, files: Sequence[Path]) -> Iterator[Observation]:
             if not line.strip():
                 continue
             row = json.loads(line)
+            at = datetime.fromisoformat(row["retrieved_at"])
+            if at.tzinfo is None:
+                raise CombineStopError(
+                    f"{path}: retrieved_at {row['retrieved_at']!r} has no offset"
+                )
             yield Observation(
-                at=datetime.fromisoformat(row["retrieved_at"]),
+                at=at,
                 source=source,
                 line=line if line.endswith("\n") else line + "\n",
                 url=row["url"],
@@ -112,16 +118,19 @@ def combine(
         )
     ok.sort(key=lambda o: o.order, reverse=True)
     best: dict[str, Observation] = {}
+    same_instant_same_pass = 0
     for obs in ok:
-        best.setdefault(page_key(obs.url), obs)
-    kept = sorted(best.values(), key=lambda o: o.order, reverse=True)
+        kept = best.setdefault(page_key(obs.url), obs)
+        same_instant_same_pass += kept is not obs and kept.order == obs.order
+    newest = sorted(best.values(), key=lambda o: o.order, reverse=True)
     summary = {
         "by_source_state": {f"{s}:{st}": n for (s, st), n in sorted(states.items(), key=str)},
         "ok_observations": len(ok),
-        "pages_after_dedupe": len(kept),
-        "kept_from": dict(Counter(o.source for o in kept)),
+        "pages_after_dedupe": len(newest),
+        "kept_from": dict(Counter(o.source for o in newest)),
+        "same_instant_same_pass": same_instant_same_pass,
     }
-    return kept, summary
+    return newest, summary
 
 
 def main(argv: Sequence[str] | None = None) -> int:
