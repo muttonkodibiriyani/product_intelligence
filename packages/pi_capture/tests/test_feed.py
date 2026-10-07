@@ -29,6 +29,15 @@ SHOP = Shop(
     time_zone="Asia/Dubai",
     notes="synthetic",
 )
+#: a shop that carries the page attributes, as Ounass and Bloomingdale's do
+ATTR_SHOP = replace(SHOP, source="example_attrs_ae", page_attributes=True)
+
+#: main's feed columns before page attributes (2255f20e): a shop without them keeps exactly these
+MAIN_COLUMNS = (
+    "listing_key", "sku", "gtin", "url", "name", "brand", "category_path", "size", "shade",
+    "price_current", "price_regular", "price_promo", "availability", "image_url", "observed_at",
+    "description", "gender", "concentration", "badges", "promotions", "image_urls",
+)  # fmt: skip
 
 
 def r(
@@ -356,18 +365,47 @@ def test_page_content_columns_come_from_observed_readings(make_capture: CaptureF
     assert row["description"] == "A warm amber eau de parfum."
     assert (row["gender"], row["concentration"]) == ("women", "edp")
     assert row["badges"] == ["new", "onlineexclusive"]
-    assert row["gift_with_purchase"] == ["Free Gifts"]
-    assert "promotions" not in row  # a page's GWP label is not a generic promotion
+    assert row["promotions"] == ["Free Gifts"]
     assert row["image_urls"] == ["https://img.example/1.jpg", "https://img.example/2.jpg"]
     assert row["image_url"] == "https://img.example/1.jpg"
     filled = result.report()["filled"]
     assert (filled["description"], filled["badges"], filled["image_urls"]) == (1, 1, 1)
 
 
+@pytest.mark.parametrize("shop", [SHOP, SHOPS["faces_ae"]], ids=["generic", "faces_ae"])
+def test_a_shop_without_page_attributes_keeps_mains_feed_and_mapping(
+    make_capture: CaptureFactory, shop: Shop
+) -> None:
+    """The style id would re-key a published dataset's product ids (the export groups by
+    labels.master_id): a shop without page attributes gets main's columns, its rows only main's
+    keys, and its GWP label stays a promotion, whatever the page states."""
+    mapping = mapping_for(shop)
+    expected = [c for c in MAIN_COLUMNS if shop.markup_availability or c != "availability"]
+    assert list(mapping["columns"]) == expected
+    assert all(k == v for k, v in mapping["columns"].items())
+    result = build_feed([_content_page(make_capture)], shop)
+    (row,) = result.rows
+    assert set(row) <= set(MAIN_COLUMNS)
+    assert row["promotions"] == ["Free Gifts"]
+    assert list(result.report()["filled"]) == list(MAIN_COLUMNS)
+
+
+@pytest.mark.parametrize("key", ["ounass_ae", "bloomingdales_ae"])
+def test_ounass_and_bloomingdales_carry_the_page_attributes(key: str) -> None:
+    shop = SHOPS[key]
+    assert shop.page_attributes
+    columns = mapping_for(shop)["columns"]
+    assert {"style_id", "gift_with_purchase", "ingredients"} <= set(columns)
+    assert "promotions" not in columns
+    assert [k for k, s in SHOPS.items() if s.page_attributes] == ["ounass_ae", "bloomingdales_ae"]
+
+
 def test_page_attribute_columns_come_from_observed_readings(
     make_capture: CaptureFactory,
 ) -> None:
-    (row,) = build_feed([_content_page(make_capture)], SHOP).rows
+    (row,) = build_feed([_content_page(make_capture)], ATTR_SHOP).rows
+    assert row["gift_with_purchase"] == ["Free Gifts"]
+    assert "promotions" not in row  # a page's GWP label is not a generic promotion
     assert row["style_id"] == "STYLE-1"
     assert row["ingredients"] == "Aqua, Glycerin, Parfum, Linalool, Limonene, Citral"
     assert (row["mpn"], row["colour_code"], row["colour_hex"]) == ("VPN-9", "14981", "#3B1D14")
@@ -385,7 +423,7 @@ def test_page_attributes_are_left_out_unless_observed(make_capture: CaptureFacto
         r("finish", state="parse_failed"),
         r("bullets", []),
     )
-    (row,) = build_feed([capture], SHOP).rows
+    (row,) = build_feed([capture], ATTR_SHOP).rows
     for column in ("ingredients", "finish", "bullets"):
         assert column not in row
 
@@ -404,7 +442,7 @@ def test_page_content_is_left_out_unless_observed(make_capture: CaptureFactory) 
         "gender",
         "concentration",
         "badges",
-        "gift_with_purchase",
+        "promotions",
         "image_urls",
     ):
         assert column not in row
