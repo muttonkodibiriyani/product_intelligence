@@ -22,6 +22,9 @@ const engines = [
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
+  // Playwright's default is half the cores, which left 2 of the CI runner's 4 idle and E2E at 19-28
+  // of the Web job's 35 minutes. Every test mocks its own backend, so one worker per core is safe.
+  workers: process.env.CI ? '100%' : undefined,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
