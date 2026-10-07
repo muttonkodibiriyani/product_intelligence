@@ -29,6 +29,15 @@ SHOP = Shop(
     time_zone="Asia/Dubai",
     notes="synthetic",
 )
+#: a shop that carries the page attributes, as Ounass and Bloomingdale's do
+ATTR_SHOP = replace(SHOP, source="example_attrs_ae", page_attributes=True, style_family=True)
+
+#: main's feed columns before page attributes (2255f20e): a shop without them keeps exactly these
+MAIN_COLUMNS = (
+    "listing_key", "sku", "gtin", "url", "name", "brand", "category_path", "size", "shade",
+    "price_current", "price_regular", "price_promo", "availability", "image_url", "observed_at",
+    "description", "gender", "concentration", "badges", "promotions", "image_urls",
+)  # fmt: skip
 
 
 def r(
@@ -333,6 +342,20 @@ def _content_page(make_capture: CaptureFactory) -> ProductCapture:
         r("badges", ["new", " ", "onlineexclusive", "new"]),
         r("gift_with_purchase", "Free Gifts"),
         r("image_urls", [" ", "https://img.example/1.jpg", "https://img.example/2.jpg"]),
+        r("style_id", "STYLE-1"),
+        r("inci_list", "Aqua, Glycerin, Parfum, Linalool, Limonene, Citral"),
+        r("mpn", "VPN-9"),
+        r("colour_code", "14981"),
+        r("colour_hex", "#3B1D14"),
+        r("shade_name", "Cocoa"),
+        r("finish", "matte"),
+        r("lifecycle_class", "core"),
+        r("loyalty_points", 458),
+        r("installment_amount_minor", 3375, currency="AED"),
+        r("bullets", ["12-hour wear", " ", "Vegan"]),
+        r("skin_type", ["All Skin Types"]),
+        r("concern", ["Dry Skin", "Dry Skin"]),
+        r("installment_provider", ["tabby", "tamara"]),
     )
 
 
@@ -349,6 +372,82 @@ def test_page_content_columns_come_from_observed_readings(make_capture: CaptureF
     assert (filled["description"], filled["badges"], filled["image_urls"]) == (1, 1, 1)
 
 
+@pytest.mark.parametrize("shop", [SHOP, SHOPS["faces_ae"]], ids=["generic", "faces_ae"])
+def test_a_shop_without_page_attributes_keeps_mains_feed_and_mapping(
+    make_capture: CaptureFactory, shop: Shop
+) -> None:
+    """The style id would re-key a published dataset's product ids (the export groups by
+    labels.master_id): a shop without page attributes gets main's columns, its rows only main's
+    keys, and its GWP label stays a promotion, whatever the page states."""
+    mapping = mapping_for(shop)
+    expected = [c for c in MAIN_COLUMNS if shop.markup_availability or c != "availability"]
+    assert list(mapping["columns"]) == expected
+    assert all(k == v for k, v in mapping["columns"].items())
+    result = build_feed([_content_page(make_capture)], shop)
+    (row,) = result.rows
+    assert set(row) <= set(MAIN_COLUMNS)
+    assert row["promotions"] == ["Free Gifts"]
+    assert list(result.report()["filled"]) == list(MAIN_COLUMNS)
+
+
+@pytest.mark.parametrize("key", ["ounass_ae", "bloomingdales_ae"])
+def test_ounass_and_bloomingdales_carry_the_page_attributes(key: str) -> None:
+    shop = SHOPS[key]
+    assert shop.page_attributes
+    columns = mapping_for(shop)["columns"]
+    assert {"gift_with_purchase", "ingredients"} <= set(columns)
+    assert "promotions" not in columns
+    assert [k for k, s in SHOPS.items() if s.page_attributes] == ["ounass_ae", "bloomingdales_ae"]
+
+
+def test_only_bloomingdales_carries_the_style_id_as_its_product_family() -> None:
+    """Ounass stays at sku grain: a style there can join unrelated products, so its feed and
+    mapping never carry the style id the export groups by (labels.master_id)."""
+    assert [k for k, s in SHOPS.items() if s.style_family] == ["bloomingdales_ae"]
+    assert "style_id" in mapping_for(SHOPS["bloomingdales_ae"])["columns"]
+    assert "style_id" not in mapping_for(SHOPS["ounass_ae"])["columns"]
+
+
+def test_a_page_attributes_shop_without_style_family_leaves_the_style_id_out(
+    make_capture: CaptureFactory,
+) -> None:
+    shop = replace(ATTR_SHOP, style_family=False)
+    result = build_feed([_content_page(make_capture)], shop)
+    (row,) = result.rows
+    assert "style_id" not in row
+    assert row["ingredients"] == "Aqua, Glycerin, Parfum, Linalool, Limonene, Citral"
+    assert row["gift_with_purchase"] == ["Free Gifts"]
+    assert "style_id" not in result.report()["filled"]
+
+
+def test_page_attribute_columns_come_from_observed_readings(
+    make_capture: CaptureFactory,
+) -> None:
+    (row,) = build_feed([_content_page(make_capture)], ATTR_SHOP).rows
+    assert row["gift_with_purchase"] == ["Free Gifts"]
+    assert "promotions" not in row  # a page's GWP label is not a generic promotion
+    assert row["style_id"] == "STYLE-1"
+    assert row["ingredients"] == "Aqua, Glycerin, Parfum, Linalool, Limonene, Citral"
+    assert (row["mpn"], row["colour_code"], row["colour_hex"]) == ("VPN-9", "14981", "#3B1D14")
+    assert (row["shade"], row["finish"], row["lifecycle_class"]) == ("Cocoa", "matte", "core")
+    assert (row["loyalty_points"], row["installment_amount_minor"]) == ("458", "3375")
+    assert row["bullets"] == ["12-hour wear", "Vegan"]
+    assert (row["skin_type"], row["concern"]) == (["All Skin Types"], ["Dry Skin"])
+    assert row["installment_provider"] == ["tabby", "tamara"]
+
+
+def test_page_attributes_are_left_out_unless_observed(make_capture: CaptureFactory) -> None:
+    capture = page(
+        make_capture,
+        r("inci_list", state="parse_failed"),
+        r("finish", state="parse_failed"),
+        r("bullets", []),
+    )
+    (row,) = build_feed([capture], ATTR_SHOP).rows
+    for column in ("ingredients", "finish", "bullets"):
+        assert column not in row
+
+
 def test_page_content_is_left_out_unless_observed(make_capture: CaptureFactory) -> None:
     capture = page(
         make_capture,
@@ -358,7 +457,14 @@ def test_page_content_is_left_out_unless_observed(make_capture: CaptureFactory) 
         r("image_urls", state="not_shown"),
     )
     (row,) = build_feed([capture], SHOP).rows
-    for column in ("description", "gender", "concentration", "badges", "promotions", "image_urls"):
+    for column in (
+        "description",
+        "gender",
+        "concentration",
+        "badges",
+        "promotions",
+        "image_urls",
+    ):
         assert column not in row
     assert "image_url" not in row
 

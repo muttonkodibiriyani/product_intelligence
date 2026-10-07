@@ -13,9 +13,14 @@ price is ``not_published``, never 0). Nothing is guessed:
   ``availability`` and a dataLayer ``item_in_stock`` flag alike); otherwise, or with none, the
   column is absent (``not_observed``). Absence is never read as a stock-out.
 - Page content goes in as the page states it: the description, gender (the page's department),
-  concentration, badges, the gift-with-purchase label as a promotion, and the whole gallery
-  (``image_urls``, page order; ``image_url`` stays its first image). ``badges``, ``promotions``
-  and ``image_urls`` are lists.
+  concentration, badges, the gift-with-purchase label, and the whole gallery (``image_urls``,
+  page order; ``image_url`` stays its first image). Page attributes follow, one column per
+  registry reading: the style id (the product family), the INCI list (``ingredients``), mpn,
+  colour, collection, fragrance family, finish, formulation, lifecycle class, exclusivity, loyalty
+  points, instalments, bullets, skin types and concerns. The columns are a fixed list: a page
+  field no reader names (unit cost, merchandising scores, payment-widget keys) never reaches the
+  feed. ``badges``, ``gift_with_purchase``, ``image_urls``, ``bullets``, ``skin_type``,
+  ``concern`` and ``installment_provider`` are lists.
 - The feed claims the whole catalogue (``complete_catalogue``) only when :func:`completeness`
   says one capture run fetched and read every product URL its sitemap lists. Anything less, or
   no sitemap, stays partial, so the importer records the run as ``partial``.
@@ -37,19 +42,23 @@ from pi_capture.model import JsonValue, ProductCapture, Reading
 from pi_core.money import CURRENCY_EXPONENTS
 
 __all__ = [
+    "ATTRIBUTE_COLUMNS",
     "AVAILABILITY_MAP",
-    "COLUMNS",
+    "BASE_COLUMNS",
     "SHOPS",
     "Completeness",
     "FeedResult",
     "Shop",
     "build_feed",
+    "columns",
     "completeness",
     "mapping_for",
 ]
 
-#: The feed's column names; each is also the ``offline_import`` field it maps to.
-COLUMNS: tuple[str, ...] = (
+#: The feed's column names for every shop; each is also the ``offline_import`` field it maps to.
+#: The gift-with-purchase label is ``promotions`` here (``gift_with_purchase`` with page
+#: attributes).
+BASE_COLUMNS: tuple[str, ...] = (
     "listing_key",
     "sku",
     "gtin",
@@ -73,6 +82,31 @@ COLUMNS: tuple[str, ...] = (
     "image_urls",
 )
 
+#: The columns a shop with ``page_attributes`` adds: each one reading (the
+#: ``_ATTRIBUTE_TEXT`` / ``_ATTRIBUTE_LISTS`` below). ``style_id`` becomes the product family
+#: (``labels.master_id``) the export groups by, so only a shop with ``style_family`` carries it;
+#: it must never reach a shop whose published product ids are keyed otherwise.
+ATTRIBUTE_COLUMNS: tuple[str, ...] = (
+    "gift_with_purchase",
+    "style_id",
+    "ingredients",
+    "mpn",
+    "colour_code",
+    "colour_hex",
+    "collection",
+    "fragrance_family",
+    "finish",
+    "formulation",
+    "lifecycle_class",
+    "exclusivity",
+    "loyalty_points",
+    "installment_amount_minor",
+    "bullets",
+    "skin_type",
+    "concern",
+    "installment_provider",
+)
+
 #: Feed column -> the reading that fills it, as text.
 _TEXT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("gtin", "gtin"),
@@ -82,6 +116,31 @@ _TEXT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("description", "description"),
     ("gender", "department"),
     ("concentration", "concentration"),
+)
+
+#: Page-attribute column -> the reading that fills it, as text.
+_ATTRIBUTE_TEXT: tuple[tuple[str, str], ...] = (
+    ("style_id", "style_id"),
+    ("ingredients", "inci_list"),
+    ("mpn", "mpn"),
+    ("colour_code", "colour_code"),
+    ("colour_hex", "colour_hex"),
+    ("collection", "collection"),
+    ("fragrance_family", "fragrance_family"),
+    ("finish", "finish"),
+    ("formulation", "formulation"),
+    ("lifecycle_class", "lifecycle_class"),
+    ("exclusivity", "exclusivity"),
+    ("loyalty_points", "loyalty_points"),
+    ("installment_amount_minor", "installment_amount_minor"),
+)
+
+#: Page-attribute column -> the ``text[]`` reading that fills it, as a list.
+_ATTRIBUTE_LISTS: tuple[tuple[str, str], ...] = (
+    ("bullets", "bullets"),
+    ("skin_type", "skin_type"),
+    ("concern", "concern"),
+    ("installment_provider", "installment_provider"),
 )
 
 Row = dict[str, str | list[str]]
@@ -112,6 +171,21 @@ class Shop:
     notes: str
     #: Use the availability the page states in its structured data.
     markup_availability: bool = False
+    #: Carry the page attributes (:data:`ATTRIBUTE_COLUMNS`); the style id among them only with
+    #: ``style_family``. Off for Faces, whose feed stays main's.
+    page_attributes: bool = False
+    #: With page attributes, also carry the style id, so the export groups this shop's listings
+    #: into one product per style. Off where a style can join unrelated products (Ounass: one
+    #: style covers three different eyeshadows), so those product ids stay keyed by sku.
+    style_family: bool = False
+
+
+def columns(shop: Shop) -> tuple[str, ...]:
+    """The feed's columns for ``shop``."""
+    if not shop.page_attributes:
+        return BASE_COLUMNS
+    base = tuple(c for c in BASE_COLUMNS if c != "promotions")
+    return base + tuple(c for c in ATTRIBUTE_COLUMNS if shop.style_family or c != "style_id")
 
 
 SHOPS: dict[str, Shop] = {
@@ -139,6 +213,7 @@ SHOPS: dict[str, Shop] = {
         notes="Ounass UAE (Al Tayer), beauty product pages read from the 2026-10-03 capture; "
         "partial: the run stopped before every planned page was fetched",
         markup_availability=True,
+        page_attributes=True,
     ),
     "bloomingdales_ae": Shop(
         source="bloomingdales_ae",
@@ -150,12 +225,16 @@ SHOPS: dict[str, Shop] = {
         notes="Bloomingdale's UAE (Al Tayer), beauty product pages read from the 2026-10-03 "
         "capture",
         markup_availability=True,
+        page_attributes=True,
+        style_family=True,
     ),
 }
 
 
 @dataclass
 class FeedResult:
+    #: the shop's columns (:func:`columns`)
+    columns: tuple[str, ...] = BASE_COLUMNS
     rows: list[Row] = field(default_factory=list)
     excluded: list[dict[str, str]] = field(default_factory=list)
     #: per column: how many rows carry a value
@@ -171,7 +250,7 @@ class FeedResult:
             "rows": len(self.rows),
             "excluded": len(self.excluded),
             "excluded_by_reason": dict(sorted(reasons.items())),
-            "filled": {c: self.filled.get(c, 0) for c in COLUMNS},
+            "filled": {c: self.filled.get(c, 0) for c in self.columns},
             "unmapped_availability": dict(sorted(self.unmapped_availability.items())),
             "regular_price_dropped": dict(sorted(self.regular_price_dropped.items())),
         }
@@ -275,6 +354,23 @@ def _texts(value: JsonValue) -> list[str]:
     return out
 
 
+def _attributes(by_key: Mapping[str, tuple[Reading, ...]], shop: Shop) -> Row:
+    """The page-attribute columns a page observed (shops with ``page_attributes`` only), the
+    style id only for a shop with ``style_family``."""
+    row: Row = {}
+    for column, reading_key in _ATTRIBUTE_TEXT:
+        if column == "style_id" and not shop.style_family:
+            continue
+        reading = _observed(by_key, reading_key)
+        if reading is not None and (value := _text(reading.value)) is not None:
+            row[column] = value
+    for column, reading_key in _ATTRIBUTE_LISTS:
+        reading = _observed(by_key, reading_key)
+        if reading is not None and (items := _texts(reading.value)):
+            row[column] = items
+    return row
+
+
 def _row(
     capture: ProductCapture, shop: Shop, unmapped: Counter[str], dropped: list[str]
 ) -> Row | str:
@@ -309,10 +405,14 @@ def _row(
     badges = _observed(by_key, "badges")
     if badges is not None and (flags := _texts(badges.value)):
         row["badges"] = flags
-    # the page's gift-with-purchase label (Faces: "Free Gifts"), a promotion, not a price
+    if shop.page_attributes:
+        row |= _attributes(by_key, shop)
+    # the page's gift-with-purchase label or callout (Faces: "Free Gifts"), not a price; with
+    # page attributes its own column, so the load stores it where the export reads it
+    # (labels.gift_with_purchase); otherwise a promotion, as before
     gift = _observed(by_key, "gift_with_purchase")
     if gift is not None and (label := _text(gift.value)) is not None:
-        row["promotions"] = [label]
+        row["gift_with_purchase" if shop.page_attributes else "promotions"] = [label]
     if shop.markup_availability and (state := _availability(by_key, unmapped)) is not None:
         row["availability"] = state
     row |= prices
@@ -344,7 +444,7 @@ _DUPLICATE_SKU = "duplicate retailer_sku"
 
 def build_feed(captures: Iterable[ProductCapture], shop: Shop) -> FeedResult:
     """Feed rows for one shop and country, in capture order; the first page per key wins."""
-    result = FeedResult()
+    result = FeedResult(columns=columns(shop))
     seen: set[str] = set()
     for capture in captures:
         if capture.locale != shop.locale:
@@ -463,7 +563,7 @@ def mapping_for(shop: Shop, *, complete: bool = False) -> dict[str, Any]:
         "complete_catalogue": complete,
         "format": "json",
         "json_items_path": "items",
-        "columns": {c: c for c in COLUMNS},
+        "columns": {c: c for c in columns(shop)},
     }
     if shop.markup_availability:
         mapping["availability_map"] = dict(AVAILABILITY_MAP)
@@ -527,3 +627,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(json.dumps(summary))
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

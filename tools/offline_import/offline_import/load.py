@@ -36,11 +36,43 @@ def _sha(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
-def content_hash(labels: dict[str, Any], description: str | None, badges: list[str] | None) -> str:
-    """A listing_content row's hash; unchanged for a row with only labels, as before content."""
-    if description is None and badges is None:
+def content_hash(
+    labels: dict[str, Any],
+    description: str | None,
+    badges: list[str] | None,
+    ingredients: str | None = None,
+) -> str:
+    """A listing_content row's hash; unchanged for a row with only labels, as before content, and
+    for a row without ingredients, as before they were loaded."""
+    if description is None and badges is None and ingredients is None:
         return _sha(json.dumps(labels, sort_keys=True))
-    return _sha(json.dumps([labels, description, badges], sort_keys=True, ensure_ascii=False))
+    parts: list[Any] = [labels, description, badges]
+    if ingredients is not None:
+        parts.append(ingredients)
+    return _sha(json.dumps(parts, sort_keys=True, ensure_ascii=False))
+
+
+# Page attributes stored in labels under their own names (the reader's spec keys).
+_ATTRIBUTE_TEXT: tuple[str, ...] = (
+    "mpn",
+    "colour_code",
+    "colour_hex",
+    "collection",
+    "fragrance_family",
+    "finish",
+    "formulation",
+    "lifecycle_class",
+    "exclusivity",
+    "loyalty_points",
+    "installment_amount_minor",
+)
+_ATTRIBUTE_LISTS: tuple[str, ...] = (
+    "gift_with_purchase",
+    "bullets",
+    "skin_type",
+    "concern",
+    "installment_provider",
+)
 
 
 def idempotency_key(source: str, file_sha256: str, listing_key: str) -> str:
@@ -179,6 +211,15 @@ class Loader:
         )
 
     def _content(self, lid: int, row: ImportRow) -> None:
+        self._content_row(lid, row)
+
+    def _content_row(self, lid: int, row: ImportRow, *, rederived: bool = False) -> bool:
+        """One listing_content row at the page's own time. A normal load keeps one content per
+        page time, the first written. A re-derived row (content-only mode) is added beside the
+        first import's row at the same page time, its ``recorded_at`` (now()) making it the latest
+        there; the same content at the same page time is one row (the UNIQUE
+        (listing_id, observed_at, content_hash) index), and its hash leaves out ``evidence_uri``
+        so a replay from another ``--uri`` adds nothing."""
         t = row.text
         labels: dict[str, Any] = {
             # pi_match export keys: brand/size/shade/gtin.
@@ -193,6 +234,10 @@ class Loader:
             "gender": t.get("gender"),
             "concentration": t.get("concentration"),
             "promotions": list(row.lists["promotions"]) if row.lists.get("promotions") else None,
+            # the export groups listings by master_id (one product per style)
+            "master_id": t.get("style_id"),
+            **{f: t.get(f) for f in _ATTRIBUTE_TEXT},
+            **{f: list(row.lists[f]) for f in _ATTRIBUTE_LISTS if row.lists.get(f)},
             # the shape the Sephora load writes and the export reads: the first image is main
             "images": [
                 {"role": "main" if i == 0 else "alt", "position": i, "url": url}
@@ -207,25 +252,38 @@ class Loader:
         description = t.get("description")
         arabic = self.m.locale.lower().startswith("ar")
         badges = list(row.lists.get("badges", ()))
-        self.c.execute(
-            "INSERT INTO listing_content (listing_id, observed_at, description, description_ar,"
-            " badges, labels, content_hash) SELECT %s,%s,%s,%s,%s,%s,%s"
-            # one content per page time, the first written, on replay too
-            " WHERE NOT EXISTS (SELECT 1 FROM listing_content"
-            " WHERE listing_id=%s AND observed_at=%s)"
-            " ON CONFLICT DO NOTHING",
-            (
-                lid,
-                row.observed_at,
-                None if arabic else description,
-                description if arabic else None,
-                badges,
-                Jsonb(labels),
-                content_hash(labels, description, badges or None),
-                lid,
-                row.observed_at,
-            ),
+        ingredients = t.get("ingredients")
+        hashed = {k: v for k, v in labels.items() if k != "evidence_uri"} if rederived else labels
+        values = (
+            lid,
+            row.observed_at,
+            None if arabic else description,
+            description if arabic else None,
+            ingredients,
+            badges,
+            Jsonb(labels),
+            content_hash(hashed, description, badges or None, ingredients),
         )
+        if rederived:
+            cur = self.c.execute(
+                "INSERT INTO listing_content (listing_id, observed_at, description,"
+                " description_ar, ingredients, badges, labels, content_hash)"
+                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)"
+                " ON CONFLICT (listing_id, observed_at, content_hash) DO NOTHING",
+                values,
+            )
+        else:
+            cur = self.c.execute(
+                "INSERT INTO listing_content (listing_id, observed_at, description,"
+                " description_ar, ingredients, badges, labels, content_hash)"
+                " SELECT %s,%s,%s,%s,%s,%s,%s,%s"
+                # one content per page time, the first written, on replay too
+                " WHERE NOT EXISTS (SELECT 1 FROM listing_content"
+                " WHERE listing_id=%s AND observed_at=%s)"
+                " ON CONFLICT DO NOTHING",
+                (*values, lid, row.observed_at),
+            )
+        return cur.rowcount == 1
 
     def _partition(self, at: datetime) -> None:
         month = at.astimezone(UTC).date().replace(day=1)
@@ -294,6 +352,56 @@ class Loader:
             "evidence_id": evidence,
             "replay": existing is not None,
             "observations_inserted": inserted,
+            "accepted": len(self.report.accepted),
+            "rejected": len(self.report.rejected),
+        }
+
+    def load_content(self) -> dict[str, Any]:
+        """Content-only, append-only: one new listing_content row per accepted row whose listing
+        is already loaded, for a feed re-derived from pages already imported (a new reader on
+        the same saved pages). It writes no crawl_run, evidence, listing or offer row and never
+        updates or deletes one; the prices and availability stay those of the first import.
+
+        The row keeps the page's own time as ``observed_at`` and is told apart from the first
+        import's row by ``recorded_at``; readers take ``observed_at DESC, recorded_at DESC``, so
+        it is the latest content at that page time and never outranks a later page. A listing
+        that already holds content from a later page is skipped and counted (``superseded``).
+        A replay of the same feed adds nothing. A feed whose bytes were already imported in full
+        is refused: it carries nothing new.
+
+        Precondition: no crawl or load of this source is in flight. A later page loaded after
+        the superseded check would still win on ``observed_at``; one loaded before it is
+        skipped, so the precondition only keeps the counts exact.
+        """
+        self.c.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('offline_import'), hashtext(%s))",
+            (self.report.sha256,),
+        )
+        if self._existing() is not None:
+            msg = "this feed was already imported in full; content-only needs a re-derived feed"
+            raise ValueError(msg)
+        inserted = unknown = superseded = 0
+        for row in self.report.accepted:
+            lid = self._one(
+                "SELECT id FROM source_listing WHERE source_id=%s AND source_listing_key=%s",
+                (self.source_id, row.listing_key),
+            )
+            if lid is None:
+                unknown += 1
+                continue
+            if self._one(
+                "SELECT 1 FROM listing_content WHERE listing_id=%s AND observed_at > %s LIMIT 1",
+                (lid, row.observed_at),
+            ):
+                superseded += 1
+                continue
+            inserted += self._content_row(lid, row, rederived=True)
+        self.c.commit()
+        return {
+            "content_only": True,
+            "content_inserted": inserted,
+            "listings_not_loaded": unknown,
+            "superseded": superseded,
             "accepted": len(self.report.accepted),
             "rejected": len(self.report.rejected),
         }
