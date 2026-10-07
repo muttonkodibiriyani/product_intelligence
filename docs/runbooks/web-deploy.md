@@ -21,11 +21,29 @@ curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
 
 Every publish report states:
 
-- the build id served before and after (`/build-id` on live);
+- the build id served before and after (§1a);
 - the version id before and after, with the release times;
 - the rollback command for this publish (§2), with the *before* id filled in.
 
 Copy the record into the decision-log row for that publish.
+
+### 1a. Read the live build id
+
+There is no `/build-id` path. The id is the `"b"` key in the `/app` page payload:
+
+```sh
+for l in en ar; do curl -s https://productintelligence-beeb3.web.app/app/$l/ | grep -o '\\"b\\":\\"[0-9a-f]*\\"' | sort -u; done
+```
+
+Each line must show the expected id, e.g. `\"b\":\"40fef057c352a191899f\"`. To cross-check, the build's
+manifest answers 200 only for the build being served:
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' https://productintelligence-beeb3.web.app/app/_next/static/<build id>/_buildManifest.js
+```
+
+Both reads cover `/app` only. The root shell is not covered by this id. If a publish changes the
+root, check the root's own files (e.g. its `app.<hash>.js` name) as well.
 
 ## 2. Roll back
 
@@ -46,7 +64,8 @@ flips the root and `/app` together; neither half can be rolled back alone. If a 
 and a change to `/app` must stay separately revertible, publish them as two releases, one after
 the other.
 
-After rolling back, check that live `/build-id` equals the *before* build id, then report it.
+After rolling back, read the live build id (§1a) on both `/app/en/` and `/app/ar/`, check that it
+equals the *before* build id, and report it.
 
 Fallbacks:
 - the previous release in the Firebase console (Hosting → release history → Rollback);
