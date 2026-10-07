@@ -28,7 +28,7 @@ binds whoever deploys it by hand. If Hosting must ship earlier, remove the rewri
 | Service account `pi-api@productintelligence-beeb3.iam.gserviceaccount.com` | **no keys**; never the default compute SA | the runtime identity |
 | Custom role `piApiObjectReader` | `storage.objects.get` only | reads, never lists (design §9) |
 | Bucket IAM binding | `pi-api@` → `piApiObjectReader` on the datasets bucket, conditioned on the `datasets/` prefix | read-only, that prefix only |
-| Cloud Run service `pi-api` | **me-central1**, min 0, **max 3**, default concurrency (80), 1 vCPU, **1Gi**, timeout 30 s, request-based CPU | design §9 |
+| Cloud Run service `pi-api` | **me-central1**, min 0, **max 1** (revision `--max-instances=1` and service `--max=1`), default concurrency (80), 1 vCPU, **3Gi**, timeout 30 s, request-based CPU | design §9; 3Gi for Ounass, owner-approved 2026-10-07 (msg 01a117b0-9712). me-central1 is Tier 2 (request-based $0.0000336/vCPU-s, $0.0000035/GiB-s): ≈ $3–7/month expected; one instance serving every second of a month would cost about $26 memory + $81 CPU = $107, over the $100 budget; the budget alerts at 50%, 90% and 100% are the backstop |
 
 **Not created:** no Cloud SQL, no VPC connector, no Secret Manager secret, no Firebase admin role,
 no `min-instances=1`. The service needs no secret: ID tokens are checked against Google's public
@@ -164,10 +164,22 @@ command.
 test "$ENV_OK" = 1 && gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
-  --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
+  --min-instances=0 --max-instances=1 --cpu=1 --memory=3Gi --timeout=30s \
   --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
   --set-env-vars="$SET_ENV"
 ```
+
+The service-level cap is separate from the revision's `--max-instances` and does not deploy a
+revision. Set it once the new revision has all the traffic, after checking that your gcloud has
+the flag (`gcloud run services update --help | grep -A3 -- '--max='`; if it's missing, STOP):
+
+```sh
+gcloud run services update pi-api --project=$PROJECT --region=$REGION --max=1
+gcloud run services describe pi-api --project=$PROJECT --region=$REGION --format='value(spec.template.spec.containers[0].resources.limits.memory,spec.template.metadata.annotations."autoscaling.knative.dev/maxScale",metadata.annotations."run.googleapis.com/maxScale")'
+```
+
+It must print `3Gi`, `1`, `1` (tab-separated). Anything else is a STOP. At 3Gi the cost quote
+(msg 01a117b0-9712) holds only at one instance, so raising either cap needs a new cost quote first.
 
 This full form is for a first deploy or a deliberate config change only, in the same shell right
 after `ENV OK`. An image-only redeploy passes `--image` and nothing else, so every env var stays
