@@ -23,11 +23,11 @@ from pi_api.catalogue import LoadedCatalogue, summary
 from pi_dataset.catalogue import CatalogueDataset, CatalogueImage, CatalogueRecord, SkuReference
 
 LATEST = """
-SELECT sl.id, sl.source_listing_key, lc.observed_at, lc.labels
+SELECT sl.id, sl.source_listing_key, lc.observed_at, lc.labels, lc.recorded_at
 FROM source_listing sl JOIN source s ON s.id=sl.source_id
 JOIN LATERAL (
-  SELECT observed_at, labels FROM listing_content c
-  WHERE c.listing_id=sl.id ORDER BY observed_at DESC LIMIT 1
+  SELECT observed_at, recorded_at, labels FROM listing_content c
+  WHERE c.listing_id=sl.id ORDER BY observed_at DESC, recorded_at DESC LIMIT 1
 ) lc ON true
 WHERE s.name='ulta_ae' ORDER BY sl.source_listing_key
 """
@@ -127,7 +127,7 @@ def enrich(
             conn.execute("SELECT pg_advisory_xact_lock(hashtext('ulta-catalogue-import'))")
         with conn.cursor(name="catalogue_source") as cursor:
             cursor.execute(LATEST)
-            for lid, sku, captured, labels in cursor:
+            for lid, sku, captured, labels, recorded in cursor:
                 if sku not in audited:
                     raise ValueError(f"stored SKU absent from audit: {sku}")
                 item = record(audited[sku], labels, captured, assets)
@@ -141,7 +141,7 @@ def enrich(
                 if all(labels.get(k) == v for k, v in payload.items()):
                     continue
                 payload["catalogue_imported_at"] = now.isoformat()
-                pending.append((lid, captured, payload))
+                pending.append((lid, captured, recorded, payload))
         if records.keys() != audited.keys():
             raise ValueError("audit and database SKU sets differ")
         candidate = CatalogueDataset(
@@ -155,7 +155,7 @@ def enrich(
             assets=assets,
         )
         if apply:
-            for lid, previous_at, payload in pending:
+            for lid, previous_at, previous_recorded, payload in pending:
                 content_hash = hashlib.sha256(encoded(payload).encode()).hexdigest()
                 conn.execute(
                     "INSERT INTO listing_content "
@@ -163,8 +163,9 @@ def enrich(
                     "benefits,claims,badges,labels,content_hash) "
                     "SELECT listing_id,%s,description,description_ar,ingredients,how_to_use,"
                     "benefits,claims,badges,labels || %s,%s FROM listing_content "
-                    "WHERE listing_id=%s AND observed_at=%s",
-                    (now, Jsonb(payload), content_hash, lid, previous_at),
+                    "WHERE listing_id=%s AND observed_at=%s AND recorded_at=%s "
+                    "ON CONFLICT DO NOTHING",
+                    (now, Jsonb(payload), content_hash, lid, previous_at, previous_recorded),
                 )
     return {
         "mode": "append" if apply else "dry_run",
@@ -184,7 +185,7 @@ def export(database_url: str, destination: Path) -> dict[str, Any]:
     imports: list[datetime] = []
     with psycopg.connect(database_url) as conn, conn.cursor(name="catalogue_export") as cursor:
         cursor.execute(LATEST)
-        for _, sku, _, labels in cursor:
+        for _, sku, _, labels, _ in cursor:
             if "catalogue_record" not in labels:
                 raise ValueError(f"SKU has no audited catalogue metadata: {sku}")
             records[sku] = CatalogueRecord.model_validate(labels["catalogue_record"])

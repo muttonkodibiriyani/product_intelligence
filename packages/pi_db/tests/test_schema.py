@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -833,3 +834,68 @@ def test_plain_dump_restores_into_a_fresh_database(empty_db: str, server_url: st
     finally:
         with psycopg.connect(_libpq(server_url), autocommit=True) as admin:
             admin.execute(f'DROP DATABASE "{target}" WITH (FORCE)')
+
+
+# ------------------------------------------------------------------ listing_content times (0005)
+
+
+def test_listing_content_rederive_adds_one_row_and_replay_adds_none(conn: Conn) -> None:
+    """Same listing and page time with a new hash, recorded later, is a new row and the latest;
+    the same hash again adds nothing, whenever it is recorded."""
+    seed = _seed(conn)
+    at = datetime(2026, 10, 1, tzinfo=UTC)
+    insert = (
+        "INSERT INTO listing_content (listing_id, observed_at, content_hash, recorded_at)"
+        " VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING"
+    )
+    loaded, rederived, replayed = (datetime(2026, 10, d, tzinfo=UTC) for d in (2, 7, 8))
+    assert conn.execute(insert, (seed["listing"], at, "v1", loaded)).rowcount == 1
+    assert conn.execute(insert, (seed["listing"], at, "v2", rederived)).rowcount == 1
+    assert conn.execute(insert, (seed["listing"], at, "v2", replayed)).rowcount == 0
+    assert conn.execute(insert, (seed["listing"], at, "v1", replayed)).rowcount == 0
+    latest = _one(
+        conn,
+        "SELECT content_hash FROM listing_content WHERE listing_id = %s"
+        " ORDER BY observed_at DESC, recorded_at DESC LIMIT 1",
+        (seed["listing"],),
+    )
+    assert latest == "v2"
+    _rejected(
+        conn,
+        errors.UniqueViolation,
+        "INSERT INTO listing_content (listing_id, observed_at, content_hash, recorded_at)"
+        " VALUES (%s, %s, 'v1', %s)",
+        (seed["listing"], at, replayed),
+    )
+
+
+def test_listing_content_first_content_wins_within_one_transaction(conn: Conn) -> None:
+    """recorded_at is now(), fixed for the transaction: a second content for one (listing,
+    observed_at) in the same load is skipped by the key, exactly as under the 0004 key."""
+    seed = _seed(conn)
+    at = datetime(2026, 10, 1, tzinfo=UTC)
+    insert = (
+        "INSERT INTO listing_content (listing_id, observed_at, content_hash) VALUES (%s, %s, %s)"
+        " ON CONFLICT DO NOTHING"
+    )
+    added = [conn.execute(insert, (seed["listing"], at, h)).rowcount for h in ("en", "ar")]
+    assert added == [1, 0]
+    assert _one(conn, "SELECT content_hash FROM listing_content") == "en"
+
+
+EXPORT_SNAPSHOT_SQL = Path(__file__).parents[2] / "pi_match" / "sql" / "export_snapshot.sql"
+
+
+def test_export_snapshot_takes_the_latest_recorded_content_at_one_page_time(conn: Conn) -> None:
+    """pi_match's export reads the latest content: at one observed_at, the latest recorded_at."""
+    seed = _seed(conn)
+    at = datetime(2026, 10, 1, tzinfo=UTC)
+    for brand, day in (("Loaded", 2), ("Rederived", 8)):
+        conn.execute(
+            "INSERT INTO listing_content (listing_id, observed_at, recorded_at, labels,"
+            " content_hash) VALUES (%s, %s, %s, jsonb_build_object('brand', %s::text), %s)",
+            (seed["listing"], at, datetime(2026, 10, day, tzinfo=UTC), brand, brand),
+        )
+    sql = EXPORT_SNAPSHOT_SQL.read_text().replace(":'source'", "%s")
+    rows = conn.execute(sql, ("Sephora ME",)).fetchall()
+    assert [r[0]["brand"] for r in rows] == ["Rederived"]  # type: ignore[index]

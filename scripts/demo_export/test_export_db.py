@@ -145,6 +145,20 @@ class World:
             (self.listings[key], T0.replace(hour=hour), json.dumps(labels), f"{key}-{hour}"),
         )
 
+    def rederived(self, key: str, labels: dict[str, object], recorded_day: int) -> None:
+        """Content at page time 01:00, recorded on 1 Oct + ``recorded_day`` (a re-derivation)."""
+        self.conn.execute(
+            "INSERT INTO listing_content (listing_id, observed_at, recorded_at, labels,"
+            " content_hash) VALUES (%s, %s, %s, %s::jsonb, %s)",
+            (
+                self.listings[key],
+                T0.replace(hour=1),
+                T0.replace(day=recorded_day),
+                json.dumps(labels),
+                f"{key}-r{recorded_day}",
+            ),
+        )
+
     def latest(self) -> dict[str, tuple[object, object]]:
         rows = self.conn.execute(LATEST_LISTINGS_SQL, latest_params([self.name])).fetchall()
         return {str(r["source_listing_key"]): (r["run_id"], r["price"]) for r in rows}
@@ -404,6 +418,14 @@ def test_the_concentration_comes_from_the_latest_content_label(conn: Conn) -> No
     assert _row(world, "C")["concentration"] is None  # no content row at all
 
 
+def test_at_one_page_time_the_latest_recorded_content_wins(conn: Conn) -> None:
+    world = World(conn)
+    world.observe(world.run("succeeded", 1), "A", 1, "80")
+    world.rederived("A", {"concentration": "edt"}, recorded_day=2)  # first in table order
+    world.rederived("A", {"concentration": "edp"}, recorded_day=8)
+    assert _row(world, "A")["concentration"] == "edp"
+
+
 def test_ulta_rows_in_the_db_stay_out_unless_named_in_sources(conn: Conn) -> None:
     world = World(conn)
     world.observe(world.run("succeeded", 1), "s1", 1, "10")
@@ -462,6 +484,17 @@ def test_only_the_latest_content_decides_who_is_a_parent(conn: Conn) -> None:
     world.content("C", {"aggregate_parent": True}, hour=1)
     world.content("C", {"aggregate_parent": False}, hour=2)
     assert sorted(world.latest()) == ["C", "P"]
+
+
+def test_at_one_page_time_the_latest_recorded_child_content_decides(conn: Conn) -> None:
+    world = World(conn, "ulta_ae")
+    run = world.run("succeeded", 1)
+    for key in ("P", "C"):
+        world.observe(run, key, 1, "50")
+    world.content("P", _parent("C"))
+    world.rederived("C", {"aggregate_parent": True}, recorded_day=2)  # first in table order
+    world.rederived("C", {"aggregate_parent": False}, recorded_day=8)  # a child now: P dropped
+    assert sorted(world.latest()) == ["C"]
 
 
 def test_sephora_listings_are_never_deduplicated(conn: Conn) -> None:

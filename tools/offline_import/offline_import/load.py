@@ -209,7 +209,11 @@ class Loader:
         badges = list(row.lists.get("badges", ()))
         self.c.execute(
             "INSERT INTO listing_content (listing_id, observed_at, description, description_ar,"
-            " badges, labels, content_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            " badges, labels, content_hash) SELECT %s,%s,%s,%s,%s,%s,%s"
+            # one content per page time, the first written, on replay too
+            " WHERE NOT EXISTS (SELECT 1 FROM listing_content"
+            " WHERE listing_id=%s AND observed_at=%s)"
+            " ON CONFLICT DO NOTHING",
             (
                 lid,
                 row.observed_at,
@@ -218,6 +222,8 @@ class Loader:
                 badges,
                 Jsonb(labels),
                 content_hash(labels, description, badges or None),
+                lid,
+                row.observed_at,
             ),
         )
 

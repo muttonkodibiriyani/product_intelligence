@@ -115,11 +115,14 @@ def test_full_run_loads_prices_then_stock_and_replays_idempotently(db: str, tmp_
         assert price is not None
         assert (float(price[0]), float(price[1]), price[2]) == (80.0, 100.0, "not_observed")
         assert _runs(conn, "full") == {"en": "succeeded"}  # no AR rows: no AR crawl_run
+        content = conn.execute("SELECT count(*) FROM listing_content").fetchone()
+        assert content == (2,)
         # replay after the ledger is lost: nothing is duplicated
         (root.parent / ".loaded-full.json").unlink()
         _load(conn, root)
         n = conn.execute("SELECT count(*) FROM offer_observation").fetchone()
         assert n == (4,)
+        assert conn.execute("SELECT count(*) FROM listing_content").fetchone() == content
 
 
 @pytest.mark.parametrize(
