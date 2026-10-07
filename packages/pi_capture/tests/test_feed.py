@@ -523,3 +523,56 @@ def test_without_a_sitemap_the_cli_never_claims_the_catalogue(
     assert mapping["complete_catalogue"] is False
     with pytest.raises(SystemExit):
         main([SHOP.source, str(readings), str(tmp_path / "x"), "--pages", str(readings)])
+
+
+@pytest.mark.parametrize(
+    ("canonical", "url"),
+    [
+        # synthetic copies of the four Bloomingdale's pages the dataset refused (ids only)
+        *[
+            (
+                f"https://shop.example/en/brand-bright-plus-[advanced]-serum-{n}.html",
+                f"https://shop.example/en/brand-bright-plus-%5Badvanced%5D-serum-{n}.html",
+            )
+            for n in ("219564137", "219564138", "218555514", "218555523")
+        ],
+        (
+            'https://shop.example/en/a b|c{d}.html?q="x"',
+            "https://shop.example/en/a%20b%7Cc%7Bd%7D.html?q=%22x%22",
+        ),
+        (
+            "https://shop.example/en/100%-pure-%zz.html",
+            "https://shop.example/en/100%25-pure-%25zz.html",
+        ),
+        (
+            "https://shop.example/en/plus-%2B-%5B-%20.html",
+            "https://shop.example/en/plus-%2B-%5B-%20.html",
+        ),
+        # non-ASCII text a strict http URL accepts today stays as it is (TM, en dash, degree, NBSP)
+        *[
+            (
+                f"https://shop.example/en/n{c}1-serum.html",
+                f"https://shop.example/en/n{c}1-serum.html",
+            )
+            for c in ("\u2122", "\u2013", "\u00b0", "\u00a0")
+        ],
+        ("https://shop.example/en/p/x?sku=1&c=a,b;d=e:f@g!h*i'j(k)l$m~n.o_p#top",) * 2,
+        ("https://[2001:db8::1]:8443/en/p/x.html",) * 2,
+    ],
+)
+def test_the_feed_url_is_a_valid_http_url_and_encoding_is_idempotent(
+    make_capture: CaptureFactory, canonical: str, url: str
+) -> None:
+    from pydantic import HttpUrl, TypeAdapter  # noqa: PLC0415 - the dataset's own URL check
+
+    (row,) = build_feed([page(make_capture, r("canonical_url", canonical))], SHOP).rows
+    assert row["url"] == url
+    TypeAdapter(HttpUrl).validate_json(json.dumps(url), strict=True)
+    (again,) = build_feed([page(make_capture, r("canonical_url", url))], SHOP).rows
+    assert again["url"] == url
+
+
+def test_a_page_url_needing_no_escape_is_kept_byte_for_byte(make_capture: CaptureFactory) -> None:
+    capture = page(make_capture, url="https://shop.example/en/p/glow-serum-1.html")
+    (row,) = build_feed([capture], SHOP).rows
+    assert row["url"] == "https://shop.example/en/p/glow-serum-1.html"
