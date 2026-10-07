@@ -74,6 +74,31 @@ def test_a_faces_file_goes_to_datasets_ae_faces_ae_never_the_beauty_file() -> No
     assert "datasets/ae/beauty/latest.json" not in paths
 
 
+@pytest.mark.parametrize("source", ["ounass_ae", "bloomingdales_ae"])
+def test_an_ounass_or_bloomingdales_file_goes_under_its_own_prefix(source: str) -> None:
+    dataset, errors = publish_dataset.validate_v2(
+        sephora_only().replace("sephora_me", source), allow_test=True
+    )
+    assert errors == []
+    _, paths, summary, meta_doc = publish_dataset.package_v2(dataset)
+    assert paths == [
+        f"datasets/ae/{source}/20260930T000000Z.json",
+        f"datasets/ae/{source}/latest.json",
+    ]
+    assert publish_dataset.outside_prefixes(paths) == []
+    assert meta_doc == f"v2_ae_{source}"
+    assert summary["storagePath"] == f"datasets/ae/{source}/latest.json"
+    assert "datasets/ae/beauty/latest.json" not in paths
+    assert publish_dataset.publishing_source(catalog(**{source: 2})) == (source, [])
+
+
+def test_v1_stays_sephora_only() -> None:
+    assert publish_dataset.V1_SOURCE == "sephora_me"
+    for source in ("faces_ae", "ounass_ae", "bloomingdales_ae"):
+        paths = [f"datasets/ae/{source}/latest.json"]
+        assert publish_dataset.outside_prefixes(paths, v1=True) == paths
+
+
 def test_packaging_is_deterministic() -> None:
     one, _ = publish_dataset.validate_v2(sephora_only(), allow_test=True)
     two, _ = publish_dataset.validate_v2(sephora_only(), allow_test=True)
@@ -94,12 +119,19 @@ def test_a_file_with_two_sources_is_refused() -> None:
 
 
 def test_only_sources_pi_publishes_are_accepted() -> None:
-    assert publish_dataset.PUBLISH_SOURCES == ("sephora_me", "faces_ae")
+    assert publish_dataset.PUBLISH_SOURCES == (
+        "sephora_me",
+        "faces_ae",
+        "ounass_ae",
+        "bloomingdales_ae",
+    )
     assert publish_dataset.publishing_source(catalog(sephora_me=2)) == ("sephora_me", [])
     assert publish_dataset.publishing_source(catalog(faces_ae=2)) == ("faces_ae", [])
     source, errors = publish_dataset.publishing_source(catalog(ulta_ae=2))
     assert source is None
-    assert errors == ["ulta_ae is not a source PI publishes (sephora_me, faces_ae)"]
+    assert errors == [
+        "ulta_ae is not a source PI publishes (sephora_me, faces_ae, ounass_ae, bloomingdales_ae)"
+    ]
     assert publish_dataset.publishing_source(catalog())[0] is None
 
 

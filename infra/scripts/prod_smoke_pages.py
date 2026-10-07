@@ -38,7 +38,7 @@ import argparse
 import json
 import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -52,10 +52,13 @@ APP_PAGES = [
     for loc in ("en", "ar")
     for view in ("", "compare/", "promotions/", "launches/")
 ]
-IMAGE_HOSTS = {
+#: ``None``: no image host is verified yet (Ounass, 2026-10-07): P3 then expects no thumbnail.
+IMAGE_HOSTS: dict[str, str | None] = {
     "sephora_me": "img-product.sephora.me",
     "ulta_ae": "media.alshaya.com",
     "faces_ae": "www.faces.ae",
+    "ounass_ae": None,
+    "bloomingdales_ae": "prodheadless.atgwasl.com",
 }
 VIEWPORTS = {"desktop": {"width": 1440, "height": 900}, "mobile": {"width": 390, "height": 844}}
 BROWSERS = ("firefox", "webkit")
@@ -233,7 +236,7 @@ def p1_root(page: Page, rep: Report, out: Callable[[str], Path]) -> None:
         "() => !location.hash.startsWith('#/signin')"
         " && !document.querySelector('form[data-signin]')",
     )
-    allowed = list(IMAGE_HOSTS.values())
+    allowed = [host for host in IMAGE_HOSTS.values() if host]
     for lang in ("en", "ar"):
         page.evaluate(f"() => localStorage.setItem('pi.lang', '{lang}')")
         status, w = visit(
@@ -256,17 +259,31 @@ def p1_root(page: Page, rep: Report, out: Callable[[str], Path]) -> None:
     page.evaluate("() => localStorage.setItem('pi.lang', 'en')")
 
 
+def thumbnail_problems(imgs: Sequence[Mapping[str, Any]], host: str | None) -> list[str]:
+    """P3's image check over the page's https images (``IMAGES_JS``): >= 1 thumbnail loaded
+    from ``host``; with no verified host (``None``), no image from outside the app at all."""
+    if host is None:
+        return [
+            f"image with no verified host: {str(i['src'])[:100]}"
+            for i in imgs
+            if not str(i["src"]).startswith(BASE)
+        ]
+    mine = [i for i in imgs if str(i["src"]).startswith(f"https://{host}/")]
+    return [] if any(i["ok"] for i in mine) else [f"no {host} thumbnail loaded"]
+
+
 def p3_to_p5(page: Page, rep: Report, out: Callable[[str], Path], retailers: Sequence[str]) -> None:
     after = rep.phase == "after"
     for rid in retailers:
         host = IMAGE_HOSTS[rid]
         status, w = visit(page, f"{BASE}/app/en/explore/?retailer={rid}", out(f"explore-{rid}"))
         rows = page.locator("tbody tr").count()
-        imgs = page.eval_on_selector_all(f'img[src^="https://{host}/"]', IMAGES_JS)
         csp = [e for e in w.errors if "CSP blocked" in e]
         bad = [] if status == 200 else [f"document {status}"]
         bad += [] if rows else ["no rows"]
-        bad += [] if any(i["ok"] for i in imgs) else [f"no {host} thumbnail loaded"]
+        bad += thumbnail_problems(
+            page.eval_on_selector_all('img[src^="https://"]', IMAGES_JS), host
+        )
         rep.check(
             f"P3 explore {rid}", bad + [f"csp: {c}" for c in csp] + [f"api {a}" for a in w.api]
         )
@@ -275,7 +292,7 @@ def p3_to_p5(page: Page, rep: Report, out: Callable[[str], Path], retailers: Seq
             [f"rendered {p}" for p in low_prices(page.inner_text("body"))],
             enforced=after,
         )
-        if rid != "ulta_ae":
+        if rid != "ulta_ae" or host is None:
             continue
         href = page.eval_on_selector_all(
             "tbody tr a[href*='/product']", "els => els.length ? els[0].getAttribute('href') : null"

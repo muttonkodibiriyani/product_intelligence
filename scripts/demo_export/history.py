@@ -66,6 +66,7 @@ from scripts.demo_export.v2 import (
     INCOMPLETE_CATALOGUE,
     MARKET,
     RETAILERS,
+    SITEMAP_ATTESTED,
     Stale,
     build_dataset_v2,
     edge,
@@ -163,8 +164,9 @@ class RunSpan:
 @dataclass(frozen=True)
 class Coverage:
     """Per slot: the market days it was observed on, and those it was completely observed. An
-    ``INCOMPLETE_CATALOGUE`` slot (Faces) is complete only on a ``succeeded`` import run's day
-    (:attr:`RunSpan.complete_import_day`)."""
+    ``INCOMPLETE_CATALOGUE`` slot is complete only on a ``succeeded`` import run's day
+    (:attr:`RunSpan.complete_import_day`) when it is ``SITEMAP_ATTESTED`` (Faces), and never
+    otherwise (Ounass, Bloomingdale's)."""
 
     observed: Mapping[str, frozenset[date]] = field(default_factory=dict)
     complete: Mapping[str, frozenset[date]] = field(default_factory=dict)
@@ -178,7 +180,12 @@ class Coverage:
             shop = slot(span.source_name)
             observed.setdefault(shop, set()).update(span.days)
             contexts.setdefault(shop, set()).add(span.context_id)
-            day = span.complete_import_day if shop in INCOMPLETE_CATALOGUE else span.complete_day
+            if shop not in INCOMPLETE_CATALOGUE:
+                day = span.complete_day
+            elif shop in SITEMAP_ATTESTED:
+                day = span.complete_import_day
+            else:  # Ounass, Bloomingdale's: no measured catalogue, never a complete day
+                day = None
             if day is not None:
                 complete.setdefault((shop, span.context_id), set()).add(day)
         return cls(
