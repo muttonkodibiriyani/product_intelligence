@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from PIL import Image
@@ -27,13 +27,16 @@ from pi_image.embed import (
     arrays(
         np.float32,
         st.tuples(st.integers(1, 5), st.integers(1, 8)),
-        elements=st.floats(-1e3, 1e3, width=32),
+        elements=st.floats(width=32, allow_nan=False, allow_infinity=False),
     )
 )
+@example(np.array([[7.27e-23]], dtype=np.float32))  # float32 norm underflowed: length 0.971
+@example(np.array([[1.46e-22]], dtype=np.float32))  # falsified the old property in CI
+@example(np.array([[3e38, 3e38]], dtype=np.float32))  # float32 norm overflows to inf
 def test_l2_normalise_gives_unit_or_zero_rows(vectors: FloatArray) -> None:
     norms = np.linalg.norm(l2_normalise(vectors), axis=1)
-    for raw, norm in zip(np.linalg.norm(vectors, axis=1), norms, strict=True):
-        assert norm == 0 if raw == 0 else np.isclose(norm, 1.0, atol=1e-4)
+    for row, norm in zip(vectors, norms, strict=True):
+        assert norm == 0 if not row.any() else np.isclose(norm, 1.0, atol=1e-4)
 
 
 def test_embed_all_batches_dedupes_and_caches(tmp_path: Path) -> None:

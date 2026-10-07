@@ -11,7 +11,8 @@ Output, under ``<SRC_PREFIX>/<OUT>/``:
   been read, so an interrupted run resumes by skipping parts already present. New parts that a
   still-running capture adds later are picked up by the next run.
 - ``errors/<part>`` — one JSON line per page that produced no readings, with its reason
-  (hash mismatch, not a product page, reader error). Written only when there is one.
+  (hash mismatch, not a product page, a product outside the reader's scope such as a
+  non-beauty Ounass page, reader error). Written only when there is one.
 - ``status.t<N>.json`` — this task's counts.
 
 Parts are split across Cloud Run tasks by a stable hash of their name, so the split does not
@@ -33,6 +34,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from pi_capture.bloomingdales import LOOKED_FOR as BLOOMINGDALES_LOOKED_FOR
+from pi_capture.bloomingdales import readings_from_bloomingdales
 from pi_capture.faces import LOOKED_FOR as FACES_LOOKED_FOR
 from pi_capture.faces import readings_from_faces
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
@@ -40,6 +43,9 @@ from pi_capture.generic import readings_from_generic
 from pi_capture.landmark import LOOKED_FOR as LANDMARK_LOOKED_FOR
 from pi_capture.landmark import LandmarkPageError, readings_from_landmark
 from pi_capture.model import ProductCapture, Reading, dumps
+from pi_capture.ounass import LOOKED_FOR as OUNASS_LOOKED_FOR
+from pi_capture.ounass import readings_from_ounass
+from pi_capture.page_json import NoProductObject, OutOfScopePage
 
 ReadFn = Callable[[str, str, str | None], list[list[Reading]]]
 
@@ -59,12 +65,22 @@ def _faces(html: str, locale: str, url: str | None) -> list[list[Reading]]:
     return [readings_from_faces(html, locale=locale, url=url)]
 
 
+def _ounass(html: str, locale: str, url: str | None) -> list[list[Reading]]:
+    return [readings_from_ounass(html, locale=locale, url=url)]
+
+
+def _bloomingdales(html: str, locale: str, url: str | None) -> list[list[Reading]]:
+    return [readings_from_bloomingdales(html, locale=locale, url=url)]
+
+
 def _generic(html: str, locale: str, url: str | None) -> list[list[Reading]]:
     return [readings_from_generic(html, locale=locale, url=url)]
 
 
 LANDMARK = Reader("landmark", _landmark, LANDMARK_LOOKED_FOR)
 FACES = Reader("faces", _faces, FACES_LOOKED_FOR)
+OUNASS = Reader("ounass", _ounass, OUNASS_LOOKED_FOR)
+BLOOMINGDALES = Reader("bloomingdales", _bloomingdales, BLOOMINGDALES_LOOKED_FOR)
 GENERIC = Reader("generic", _generic, GENERIC_LOOKED_FOR)
 
 #: Retailer (the ``ref.retailer`` a capture plan gave the page) to its reader. Every other
@@ -76,6 +92,8 @@ READERS: Mapping[str, Reader] = {
     "home_centre": LANDMARK,
     "max_fashion": LANDMARK,
     "faces": FACES,
+    "ounass": OUNASS,
+    "bloomingdales": BLOOMINGDALES,
 }
 
 
@@ -166,8 +184,10 @@ def read_page(rec: Mapping[str, Any], body: bytes, egress: str) -> PageResult:
             )
             for readings in lists
         ]
-    except LandmarkPageError as exc:
+    except (LandmarkPageError, NoProductObject) as exc:
         return PageResult("not_product", reason=str(exc))
+    except OutOfScopePage as exc:  # a product, just not one this capture is for
+        return PageResult("out_of_scope", reason=str(exc))
     except Exception as exc:  # counted and written to errors/, never silent
         return PageResult("reader_error", reason=f"{type(exc).__name__}: {str(exc)[:300]}")
     if not lines:

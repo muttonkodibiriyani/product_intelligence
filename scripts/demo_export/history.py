@@ -148,11 +148,23 @@ class RunSpan:
             return first
         return None
 
+    @property
+    def complete_import_day(self) -> date | None:
+        """The one day an ``INCOMPLETE_CATALOGUE`` import run covers completely, if it does.
+
+        The importer records such a run ``succeeded`` only when the feed claimed the whole
+        catalogue, i.e. one capture run read every product URL of the measured sitemap with none
+        blocked or not observed (coordinator ruling 2026-10-06). Its context's coverage stays the
+        importer's ``partial``, so the run status is the whole test; a ``partial`` run never is."""
+        first, last = market_day(self.first_at), market_day(self.last_at)
+        return first if self.status == "succeeded" and first == last else None
+
 
 @dataclass(frozen=True)
 class Coverage:
     """Per slot: the market days it was observed on, and those it was completely observed. An
-    ``INCOMPLETE_CATALOGUE`` slot (Faces) is never complete, whatever its runs say."""
+    ``INCOMPLETE_CATALOGUE`` slot (Faces) is complete only on a ``succeeded`` import run's day
+    (:attr:`RunSpan.complete_import_day`)."""
 
     observed: Mapping[str, frozenset[date]] = field(default_factory=dict)
     complete: Mapping[str, frozenset[date]] = field(default_factory=dict)
@@ -166,7 +178,7 @@ class Coverage:
             shop = slot(span.source_name)
             observed.setdefault(shop, set()).update(span.days)
             contexts.setdefault(shop, set()).add(span.context_id)
-            day = None if shop in INCOMPLETE_CATALOGUE else span.complete_day
+            day = span.complete_import_day if shop in INCOMPLETE_CATALOGUE else span.complete_day
             if day is not None:
                 complete.setdefault((shop, span.context_id), set()).add(day)
         return cls(

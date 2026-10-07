@@ -15,7 +15,7 @@ loader treats as `not_observed`.
 | `plan.py` | Builds a continuation plan from a finished snapshot folder: `--phase stock` (EN seeds, skips stock already read) or `--phase ar` (AR seeds, skips AR pages already fetched; run with `TRPC=0`). `--done` adds earlier continuation folders. |
 | `cadence.py` | Pure rules for unattended runs: the window and cutoff, the gap-first plan, the run outcome and the unloaded-run check. |
 | `stale.py` | Host side, read-only: lists runs still unloaded at day 10 (exit 1 if any), for the host timer or monitoring. |
-| `load.py` | Idempotent load of a synced folder into `pi_db`. It keeps a part ledger, creates one `crawl_run` per language only once that language has rows, and `--finish` closes them. `succeeded` is strict: `mode=full`, `limit=0`, `trpc=true`, `stopped=complete`, every seeded page and stock read done with no block, 429, transport, HTTP or parse skip. Everything else, including every PLAN run, is `partial`. Prices are parsed as exact decimals, and a price without a currency is stored as `unknown`, never AED. |
+| `load.py` | Idempotent load of a synced folder into `pi_db`. It keeps a part ledger, creates one `crawl_run` per language only once that language has rows, and `--finish` closes them. `succeeded` is strict: `mode=full`, `limit=0`, `trpc=true`, `stopped=complete`, every seeded page and stock read done with no block, 429, transport, HTTP or parse skip. Everything else, including every PLAN run, is `partial`. Prices are parsed as exact decimals, a price without a currency is stored as `unknown`, never AED, and so is the price of a variant whose `c_salesPrice` is an RSC reference other than `$undefined` (or any other unreadable value), because it may be on sale (`sale_price_unreadable`). `--country SA` loads a Saudi (`COUNTRY=SA`) snapshot as its own source, `sephora_sa`, with `en-SA`/`ar-SA` contexts on Asia/Riyadh time: it never upserts or re-dates a `sephora_me` listing, never writes a brand row it did not create (a name another source owns is counted as `brand_name_clash`), and stores a price in any currency other than SAR as `unknown` (`price_currency_mismatch`). AE stays the default with the same source, contexts and keys; it now also stores a price in any currency other than AED as `unknown`. Before any write the loader checks the `country` the folder's `progress.json` recorded (missing means AE, so older UAE folders still load) and refuses a folder from the other storefront (`BundleCountryError`). Against a database where `sephora_me` already owns the brand names, expect `brand_name_clash` to be about the number of distinct Saudi brands: that is expected, not a failure. |
 
 Env for `run.py`:
 - `BUCKET` (`file:<dir>` for local tests);
@@ -60,6 +60,10 @@ Unattended runs (`AUTO=1`, ADR-0009 variant pass):
 - How often it runs is the Scheduler's setting. ADR-0009 makes the variant pass weekly, over two
   consecutive nights (the second night picks up where the first stopped, because the plan reads
   the first night's `covered.json.gz`). The nightly listing sweep is a separate build.
+- Schedule: `infra/gcp/sephora_schedule_setup.sh` sets the job to `AUTO=1` with an 8 h task
+  timeout, and creates the Scheduler job `pi-sephora-variant-pass` (Monday and Tuesday 18:00Z)
+  **paused**. It runs only once resumed, on the coordinator's GO; pausing it stops every run. See
+  `infra/gcp/README.md`, Sephora schedule.
 - Every AUTO run is `partial` in pi_db (it covers a subset by design).
 
 Every run, in every mode, ends by writing two files under its prefix:

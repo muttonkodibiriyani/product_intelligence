@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,7 @@ import pytest
 from api_fixture import bearer, make_client, write
 from pi_api import dq
 from pi_api.config import Settings, dataset_entries
-from pi_api.source import LocalStore, SnapshotSource
+from pi_api.source import AsOfViewError, LocalStore, SnapshotSource
 from pi_dataset import DatasetV3
 from sources_fixture import SEPHORA, ULTA, days, snapshot, snapshot_doc
 
@@ -317,6 +318,8 @@ def test_the_latest_comparison_reads_a_stale_source_at_its_own_last_date(tmp_pat
     "url",
     [
         f"index?retailers={ULTA},{SEPHORA}",
+        f"category-compare?retailers={ULTA},{SEPHORA}",
+        f"insights?retailers={ULTA},{SEPHORA}",
         f"promotions?retailer={ULTA}",
         f"availability?retailer={ULTA}",
         f"summary?retailer={ULTA}",
@@ -473,6 +476,52 @@ def test_the_products_export_reads_a_stale_source_as_of_and_flags_withheld_price
     assert rows["p2"]["priceFlags"] == {ULTA: "invalid_low"}
     assert rows["p1"]["prices"][ULTA]["minor"] == 10_000  # as of Ulta's own last date
     cards = {c["id"]: c for c in get(client, "products")["data"]["items"]}
+    assert cards["p2"]["priceFlags"] == {ULTA: "invalid_low"}
+
+
+def stale_floored(root: Path) -> None:
+    """Two files; Ulta (stale) has p2 at 0.01 on its own last date."""
+    combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
+    for product in combined["products"]:
+        if product["id"] == "p2":
+            price = product["offers"][ULTA]["series"]["price"]
+            price[-1] = {"amount": "0.01", "minor": 1, "currency": "AED"}
+    write(root, DatasetV3.model_validate(combined), COMBINED)
+    write(root, snapshot({"p1": (SEPHORA,), "p3": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
+
+
+def test_the_latest_date_index_is_built_at_load_and_a_missing_product_is_an_error(
+    tmp_path: Path,
+) -> None:
+    """Reviewer N1 (#126): ``Loaded.as_of`` reads an index built at load, and a product missing
+    from the latest-date view raises ``AsOfViewError``, never a guess or a not-found."""
+    stale_floored(tmp_path)
+    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
+    source.load_all()
+    (loaded,) = source.datasets()
+    assert loaded.latest is not None
+    assert "latest_products" in vars(loaded)
+    p1 = next(p for p in loaded.dataset.products if p.id == "p1")
+    assert loaded.as_of(p1) is loaded.latest_products["p1"]
+    assert loaded.as_of(p1) != p1  # Ulta read at its own last date
+    broken = replace(loaded, latest=loaded.latest.model_copy(update={"products": ()}))
+    with pytest.raises(AsOfViewError, match="'p1'"):
+        broken.as_of(p1)
+
+
+def test_the_withheld_price_count_matches_the_flags_of_latest_date_reads(tmp_path: Path) -> None:
+    """Reviewer N2 (#126): the ``invalid_price_excluded`` count comes from the same floor as the
+    flags (``current_floor``). The floor counts offers, and ``latest`` only restamps a stale
+    source's last value, so both floors count the same offers; this pins that they agree."""
+    stale_floored(tmp_path)
+    client, source = make_client(tmp_path, paths=(), assigned=ASSIGNED)
+    (loaded,) = source.datasets()
+    assert loaded.latest_floor is not None
+    assert loaded.current_floor.floored == loaded.floor.floored
+    body = get(client, f"products?retailer={ULTA}")
+    (excluded,) = (c for c in body["caveats"] if c["code"] == "invalid_price_excluded")
+    assert excluded["params"] == {"retailer": ULTA, "count": "1"}
+    cards = {c["id"]: c for c in body["data"]["items"]}
     assert cards["p2"]["priceFlags"] == {ULTA: "invalid_low"}
 
 

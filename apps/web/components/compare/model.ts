@@ -111,3 +111,38 @@ export function gapShare(pct: string, rows: readonly { gap: { pct: string } }[])
   const max = rows.reduce((m, r) => Math.max(m, abs(r.gap.pct)), 0);
   return max > 0 ? Math.min(1, abs(pct) / max) : 0;
 }
+
+/** A row with its gap: every `rows=overlap` row has one, but the page only trusts what it checks. */
+export const overlapRows = (rows: readonly PairRow[]) =>
+  rows.filter((r): r is PairRow & { gap: Schemas['Gap'] } => !!r.gap);
+
+/** A pair counted nowhere yet because no reviewer has confirmed the match. */
+export const isUnreviewed = (r: Pick<PairRow, 'counted' | 'excludedReason'>) =>
+  !r.counted && r.excludedReason === 'match_unreviewed';
+
+export interface Option {
+  key: string;
+  n: number;
+}
+
+/**
+ * The brands and top-level categories (the code the API filters on) of the pair's overlap rows,
+ * most products first, then by name, so each filter menu shows what it would leave.
+ */
+export function overlapOptions(rows: readonly Pick<PairRow, 'brand' | 'category'>[]): {
+  brand: Option[];
+  category: Option[];
+} {
+  const tally = (keys: (string | undefined)[]) => {
+    const m = new Map<string, number>();
+    for (const k of keys) if (k) m.set(k, (m.get(k) ?? 0) + 1);
+    return [...m].map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+  };
+  return { brand: tally(rows.map((r) => r.brand)), category: tally(rows.map((r) => r.category[0])) };
+}
+
+/** A confidence the API sends as a 0…1 decimal string, as a whole percent; null stays null. */
+export function confidencePct(v: string | null | undefined): string | null {
+  if (!v || !/^\d+(\.\d+)?$/.test(v)) return null;
+  return (Math.round(Number(v) * 1000) / 10).toString();
+}

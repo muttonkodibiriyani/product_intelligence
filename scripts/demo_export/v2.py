@@ -37,7 +37,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import HttpUrl
 
-from pi_core import AvailabilityState, MatchClass, ReviewState, is_valid_gtin
+from pi_core import AvailabilityState, Concentration, MatchClass, ReviewState, is_valid_gtin
 from pi_dataset import (
     Capabilities,
     ContentField,
@@ -86,9 +86,11 @@ RETAILERS = {
     "s": ("sephora_me", "Sephora UAE"),
     "f": ("faces_ae", "Faces UAE"),
 }
-#: Slots whose crawl is not a complete catalogue (Faces: ``complete_catalogue=false``). Such a
-#: retailer is ``partial`` whatever its runs say, never has a complete day (so it backs no launch,
-#: removal or stock-out), and its availability is not published (``null``, not observed).
+#: Slots whose crawl is not known to be a complete catalogue (Faces). Such a retailer's snapshot
+#: is ``partial`` whatever its runs say and its availability is not published (``null``, not
+#: observed). In history, a day is complete only on an import run recorded ``succeeded``, which
+#: the feed claims only when the run read every product URL of the measured sitemap
+#: (``pi_capture.feed.completeness``); every other day backs no launch, removal or stock-out.
 INCOMPLETE_CATALOGUE = frozenset({"f"})
 STATUS = {
     "ok": RetailerStatus.SUPPORTED,
@@ -315,6 +317,14 @@ def product(
     rows = groups[keys[0]]
     rep = choose_representative(rows)
     shade_families = sorted({row.shade_family for row in rows if row.shade_family})
+    attributes: dict[str, Any] = {"shadeFamilies": shade_families} if shade_families else {}
+    # one concentration across every offer's rows, or none: a conflict is never resolved here,
+    # and a value outside pi_core's Concentration (e.g. "eau fraiche") is never published
+    concentrations = {
+        c.lower() for key in keys for row in groups[key] if (c := _text(row.concentration))
+    }
+    if len(concentrations) == 1 and concentrations <= {c.value for c in Concentration}:
+        attributes["concentration"] = concentrations.pop()
     offers = {
         RETAILERS[key.retailer][0]: offer(groups[key], MARKET.currency, stale) for key in keys
     }
@@ -327,7 +337,7 @@ def product(
         offers=offers,
         matches=tuple(matches),
         shades=tuple(sorted({row.shade_hex.lower() for row in rows if row.shade_hex})[:12]),
-        attributes={"shadeFamilies": list(shade_families)} if shade_families else {},
+        attributes=attributes,
         # the naming offer's thumbnail, else the first other offer that has one
         image=next((o.image for o in offers.values() if o.image is not None), None),
     )

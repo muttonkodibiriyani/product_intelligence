@@ -35,9 +35,13 @@ export function pct(v: string | null | undefined, locale: string): string {
 export const exploreHref = (locale: string, s: Partial<ExploreState>) =>
   `/${locale}/explore/${toSearch({ ...EMPTY, ...s })}`;
 
-export const promotionsHref = (locale: string, s: { category?: string; minPct?: string }) =>
+export const promotionsHref = (
+  locale: string,
+  s: { category?: string; minPct?: string; retailer?: string },
+) =>
   `/${locale}/promotions/${toPromotionsSearch({
     ...EMPTY_PROMOTIONS,
+    retailer: s.retailer ? [s.retailer] : [],
     category: s.category ? [s.category] : [],
     minPct: (MIN_PCTS as readonly string[]).includes(s.minPct ?? '') ? (s.minPct as MinPct) : '',
   })}`;

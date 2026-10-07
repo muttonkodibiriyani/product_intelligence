@@ -10,6 +10,7 @@ Budget: $25/month. The billing account ID is kept out of this public repo; get i
 |------------|----------------------------------|---------------------------------------|------|
 | 2026-09-30 | `cloudbilling.googleapis.com`    | read project billing link             | free |
 | 2026-09-30 | `billingbudgets.googleapis.com`  | list/create budget alert thresholds   | free |
+| pending owner run | `cloudscheduler.googleapis.com` | ADR-0009 Sephora variant pass (`sephora_schedule_setup.sh`) | free (1 job of the 3 free) |
 
 ## Budget alerts
 
@@ -81,3 +82,20 @@ gcloud storage buckets describe gs://pi-sephora-e631eaba --format='json(lifecycl
 ```
 
 Revert: `--lifecycle-file` with `{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 1}}]}`.
+
+## Sephora schedule (ADR-0009)
+
+Owner OK 2026-10-06 (~$4.5/month, decision log). Created by `infra/gcp/sephora_schedule_setup.sh`
+(idempotent), from an `IMAGE` built from main and pinned by digest. The image deployed on
+2026-10-01 predates AUTO mode (#147), so the job needs the rebuild.
+
+| Date | Resource | Settings | Cost |
+|------|----------|----------|------|
+| pending owner run | job `pi-sephora-snapshot` (existing) | image from main by digest; `AUTO=1`, `PACE=2.0`, `TRPC=1`; one-off `PREFIX`/`CUTOFF`/`PLAN`/`LIMIT` removed; task timeout 8 h (was 7 h); no retries | the runs: ~$0.7 per weekly pass |
+| pending owner run | SA `pi-sephora-scheduler` (no key, no project role) | `roles/run.invoker` on `pi-sephora-snapshot` only | free |
+| pending owner run | Scheduler job `pi-sephora-variant-pass` (me-central1) | `0 18 * * 1,2` UTC: Monday and Tuesday 18:00Z, two consecutive nights; POSTs the job's `:run` as the SA above; no retries; **created paused** | free |
+
+Go-live is a separate step, on the coordinator's GO: `gcloud scheduler jobs resume
+pi-sephora-variant-pass --location=me-central1 --project=productintelligence-beeb3`. `pause`
+stops everything (ADR-0009, Guards). A one-off manual run now has to override the job's `AUTO=1`:
+`gcloud run jobs execute pi-sephora-snapshot --update-env-vars=AUTO=0,PREFIX=…,CUTOFF=…`.
