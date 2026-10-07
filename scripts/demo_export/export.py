@@ -102,6 +102,9 @@ class ListingRow:
     description: str | None = None
     ingredients: str | None = None
     images: tuple[str, ...] = ()
+    #: The retailer's own gift-with-purchase titles for this product (Sephora: PRODUCT-class
+    #: promotions), from the latest content. Not published until the beauty@2 profile declares it.
+    gift_with_purchase: tuple[str, ...] = ()
     #: the fragrance concentration (variant, else the page's label); v2 ``attributes`` (beauty@1)
     concentration: str | None = None
 
@@ -414,7 +417,19 @@ SELECT
     ORDER BY
       CASE WHEN img ->> 'position' ~ '^[0-9]+$' THEN (img ->> 'position')::int END NULLS LAST,
       COALESCE(img ->> 'url', img ->> 'download_url')
-  ), '{}'), ARRAY_REMOVE(ARRAY[NULLIF(lc.labels ->> 'image_url', '')], NULL)) AS images
+  ), '{}'), ARRAY_REMOVE(ARRAY[NULLIF(lc.labels ->> 'image_url', '')], NULL)) AS images,
+  -- Gift-with-purchase titles (labels.gift_with_purchase, a JSON array of strings), in order.
+  ARRAY(
+    SELECT title
+    FROM jsonb_array_elements_text(
+      CASE
+        WHEN jsonb_typeof(lc.labels -> 'gift_with_purchase') = 'array'
+        THEN lc.labels -> 'gift_with_purchase'
+      END
+    ) WITH ORDINALITY AS gwp(title, n)
+    WHERE btrim(title) <> ''
+    ORDER BY n
+  ) AS gift_with_purchase
 FROM latest
 JOIN source_listing sl ON sl.id = latest.source_listing_id
 JOIN source s ON s.id = sl.source_id
@@ -765,6 +780,7 @@ def load_rows(
             match_dicts = cursor.fetchall()
     for row in listing_dicts:
         row["images"] = tuple(row.get("images") or ())
+        row["gift_with_purchase"] = tuple(row.get("gift_with_purchase") or ())
     return (
         in_sources([ListingRow(**row) for row in listing_dicts], sources),
         [MatchRow(**row) for row in match_dicts],

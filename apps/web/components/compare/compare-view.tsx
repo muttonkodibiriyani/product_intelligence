@@ -1,31 +1,23 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
-import {
-  hasComparePair,
-  LIMITS,
-  parseCompare,
-  toCompareQuery,
-  toCompareSearch,
-  type CompareState,
-} from '@/lib/compare';
+import { LIMITS, toCompareQuery } from '@/lib/compare';
 import { formatCount, formatDate } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { FilterChips } from '../ui/filter-chips';
 import { PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
-import { useMeta, useRetailerName } from '../use-meta';
-import { activeRetailers } from '../widgets/model';
+import { useRetailerName } from '../use-meta';
 import { useCategoryCompare } from '../widgets/use-category';
 import { CompareEmpty } from './compare-empty';
 import { CompareRows, ShownOfTotal } from './compare-rows';
 import { About, Coverage, Groups, Verdict } from './compare-summary';
+import { CompareViews } from './compare-views';
 import { ExportMatched } from './export-matched';
 import { PairPicker } from './pair-picker';
+import { useCompareState } from './use-compare-state';
 
 /**
  * Two shops' prices on the same products: the answer first (who is cheaper on how many), the
@@ -37,32 +29,9 @@ export function CompareView() {
   const t = useTranslations('compare');
   const ts = useTranslations('state');
   const locale = useLocale();
-  const sp = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
   const { api } = useAuth();
   const name = useRetailerName();
-  const meta = useMeta();
-  const active = useMemo(() => activeRetailers(meta.data?.data), [meta.data]);
-
-  const search = sp.toString();
-  const parsed = useMemo(() => parseCompare(new URLSearchParams(search)), [search]);
-  // As in the explorer: show a picked value at once, until the URL catches up.
-  const [pending, setPending] = useState<{ at: string; state: CompareState } | null>(null);
-  const picked = pending?.at === search ? pending.state : parsed;
-  // The dataset's only pair needs no picking.
-  const fixed =
-    active.length === 2 &&
-    (!hasComparePair(picked) || (active.includes(picked.base) && active.includes(picked.other)));
-  const state: CompareState =
-    fixed && !hasComparePair(picked) ? { ...picked, base: active[0]!, other: active[1]! } : picked;
-  const key = toCompareSearch(state);
-  const update = (next: Partial<CompareState>) => {
-    const target = { ...state, ...next };
-    setPending({ at: search, state: target });
-    router.push(pathname + toCompareSearch(target), { scroll: false });
-  };
-  const ready = hasComparePair(state);
+  const { state, update, fixed, ready, key, meta } = useCompareState();
 
   const q = useQuery({
     queryKey: ['compare', key],
@@ -86,6 +55,8 @@ export function CompareView() {
         asOf={env && ts('asOf', { date: formatDate(env.meta.cutoff, locale) })}
         tools={summary && <ExportMatched state={state} />}
       />
+
+      <CompareViews current="summary" search={key} />
 
       <PairPicker state={state} update={update} fixed={fixed} />
 

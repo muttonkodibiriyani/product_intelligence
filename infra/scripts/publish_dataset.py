@@ -39,6 +39,12 @@ the original cutoff copy is never replaced.
   upgrades it to v3). pi-api skips a dataset it can't load, so uploading one would leave the API
   with no data: such a file is held, never uploaded (decision 2026-10-01, after the v3 upgrade
   refused shared-url size variants).
+- v3 (ADR-0008, additive): published exactly like v2, to the same per-source prefix and meta doc
+  (demo_meta/v2_<country>_<source>, whose summary carries the schema), so Offer.content
+  (description, images, variants with gtin) reaches the API. A v3 offer is keyed by context;
+  meta.contexts maps it to its source, and the one-source rule and the guard judge sources. The
+  first switch of a live per-source file from v2 to v3 is run by Exec Eng/owner after the
+  Reviewer has read its ``--dry-run --live-file`` output (coordinator, 2026-10-06).
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
         --project productintelligence-beeb3 dataset.json [--dry-run] [--allow-test]
@@ -57,6 +63,8 @@ from typing import Any
 
 SCHEMA = "pi.dataset/v1"
 SCHEMA_V2 = "pi.dataset/v2"
+SCHEMA_V3 = "pi.dataset/v3"
+PER_SOURCE_SCHEMAS = (SCHEMA_V2, SCHEMA_V3)
 # The only sources PI publishes; any other source's data is protected (owner, 2026-10-01).
 PUBLISH_SOURCES = ("sephora_me", "faces_ae")
 PROTECTED_SOURCES = ("ulta_ae",)  # owner hard rule: never dropped, not even with --drop-source
@@ -112,6 +120,20 @@ def validate_v2(raw: str, *, allow_test: bool) -> tuple[Any, list[str]]:
     return (None, errors) if errors else (dataset, [])
 
 
+def validate_v3(raw: str, *, allow_test: bool) -> tuple[Any, list[str]]:
+    """As ``validate_v2``, with the v3 model: the contract's strict load, then pi-api's own."""
+    from pi_dataset import DatasetError, DatasetV3, load_any  # noqa: PLC0415 (v1 runs without it)
+
+    try:
+        dataset = load_any(raw, allow_test=allow_test)
+    except DatasetError as exc:
+        return None, list(exc.errors)
+    if not isinstance(dataset, DatasetV3):
+        return None, [f"schema must be {SCHEMA_V3!r}"]
+    errors = serve_check(raw, allow_test=allow_test)
+    return (None, errors) if errors else (dataset, [])
+
+
 def serve_check(raw: str, *, allow_test: bool) -> list[str]:
     """pi-api's own load of the file (v2 upgraded to v3); empty when the API can serve it."""
     from pi_api.source import parse  # noqa: PLC0415 (v1 runs without it)
@@ -124,8 +146,35 @@ def serve_check(raw: str, *, allow_test: bool) -> list[str]:
     return []
 
 
+def v3_by_source(doc: dict[str, Any]) -> dict[str, Any]:
+    """A v3 document's products with offers grouped by source: ``{source: {context: offer}}``.
+
+    meta.contexts maps each context to its retailer (the source). Every other product field is
+    kept, so ``source_hash`` still covers the whole product. A v2 product hashes differently, so
+    a source PI is not publishing never passes the guard across a v2/v3 switch (it HOLDs).
+    """
+    owner = {c.get("id"): c.get("retailer") for c in (doc.get("meta") or {}).get("contexts") or []}
+    products = []
+    for product in doc.get("products") or []:
+        grouped: dict[str, dict[str, Any]] = {}
+        for context, offer in (product.get("offers") or {}).items():
+            grouped.setdefault(str(owner.get(context, context)), {})[context] = offer
+        products.append(product | {"offers": grouped})
+    return {"schema": SCHEMA_V3, "products": products}
+
+
+def by_source(doc: dict[str, Any]) -> dict[str, Any]:
+    """Any schema's document with offers keyed by source, the shape the guard compares."""
+    schema = doc.get("schema")
+    if schema == SCHEMA_V2:
+        return doc
+    if schema == SCHEMA_V3:
+        return v3_by_source(doc)
+    return v1_by_source(doc)
+
+
 def offer_counts(doc: dict[str, Any]) -> dict[str, int]:
-    """Offers per source (retailer id) in a v2 document."""
+    """Products with an offer per source, in a document keyed by source (see ``by_source``)."""
     counts: dict[str, int] = {}
     for product in doc.get("products") or []:
         for source in product.get("offers") or {}:
@@ -146,7 +195,7 @@ def source_hash(doc: dict[str, Any], source: str) -> str:
 def publishing_source(
     doc: dict[str, Any], allowed: tuple[str, ...] = PUBLISH_SOURCES
 ) -> tuple[str | None, list[str]]:
-    """The one source a v2 file publishes, or the reasons it can't be published."""
+    """The one source a by-source document publishes, or the reasons it can't be published."""
     sources = sorted(offer_counts(doc))
     if len(sources) != 1:
         return None, [f"one source per file: offers come from {sources or 'no source'}"]
@@ -201,8 +250,8 @@ def guard(
 ) -> list[str]:
     """source_guard for either schema; a live v1 with another source's data is never replaced."""
     drop = unprotected(drop)
-    if live is None or live.get("schema") == SCHEMA_V2:
-        return source_guard(live, new, publishing, drop)
+    if live is None or live.get("schema") in PER_SOURCE_SCHEMAS:
+        return source_guard(None if live is None else by_source(live), new, publishing, drop)
     live = v1_by_source(live)
     foreign = [
         f"HOLD, live v1 carries {source} data ({n} offers): not PI's to replace"
@@ -244,7 +293,8 @@ def source_guard(
 def package_v2(
     dataset: Any, allowed: tuple[str, ...] = PUBLISH_SOURCES
 ) -> tuple[bytes, list[str], dict[str, Any], str]:
-    """v2 body (canonical dump), paths under datasets/<country>/<source>, summary, Firestore doc."""
+    """v2 or v3 body (canonical dump), paths under datasets/<country>/<source>, summary, and
+    the Firestore doc (``v2_<country>_<source>`` for both: the summary says which schema)."""
     from pi_dataset import dump_dataset  # noqa: PLC0415
 
     meta = dataset.meta
@@ -252,7 +302,8 @@ def package_v2(
         raise ValueError("a multi-market dataset needs a layout decision first (ADR-0007 §6)")
     country = meta.markets[0].country.lower()
     dumped = dump_dataset(dataset)
-    source, errors = publishing_source(json.loads(dumped), allowed)
+    doc = json.loads(dumped)
+    source, errors = publishing_source(by_source(doc), allowed)
     if source is None:
         raise ValueError(errors[0])
     prefix = f"datasets/{country}/{source}"
@@ -261,7 +312,7 @@ def package_v2(
     stamp = re.sub(r"[^0-9TZ]", "", cutoff)
     paths = [f"{prefix}/{stamp}.json", f"{prefix}/latest.json"]
     summary = {
-        "schema": SCHEMA_V2,
+        "schema": doc["schema"],
         "kind": meta.kind,
         "test": meta.test,
         "cutoff": cutoff,
@@ -445,14 +496,15 @@ def main() -> int:
 
     raw = args.path.read_text(encoding="utf-8")
     doc = json.loads(raw)
-    v1 = not (isinstance(doc, dict) and doc.get("schema") == SCHEMA_V2)
+    v1 = not (isinstance(doc, dict) and doc.get("schema") in PER_SOURCE_SCHEMAS)
     if not isinstance(doc, dict):
         errors = ["not a JSON object"]
     elif v1:
         errors = validate(doc, raw, allow_test=args.allow_test) + v1_source_errors(doc)
     else:
-        dataset, errors = validate_v2(raw, allow_test=args.allow_test)
-        errors += publishing_source(doc)[1]
+        check = validate_v3 if doc["schema"] == SCHEMA_V3 else validate_v2
+        dataset, errors = check(raw, allow_test=args.allow_test)
+        errors += publishing_source(by_source(doc))[1]
     if errors:
         for err in errors[:50]:
             print(f"INVALID: {err}", file=sys.stderr)
@@ -464,7 +516,8 @@ def main() -> int:
     else:
         body, paths, summary, meta_doc = package_v2(dataset)
         source = str(summary["source"])
-        packaged = json.loads(gzip.decompress(body))  # the guard judges exactly what is uploaded
+        # The guard judges exactly what is uploaded.
+        packaged = by_source(json.loads(gzip.decompress(body)))
     if outside := outside_prefixes(paths, v1=v1):  # belt and braces: the packagers build these
         print(f"refusing: writes outside the source prefixes: {outside}", file=sys.stderr)
         return 1
