@@ -83,8 +83,8 @@ BASE_COLUMNS: tuple[str, ...] = (
 
 #: The columns a shop with ``page_attributes`` adds: each one reading (the
 #: ``_ATTRIBUTE_TEXT`` / ``_ATTRIBUTE_LISTS`` below). ``style_id`` becomes the product family
-#: (``labels.master_id``) the export groups by, so it must never reach a shop whose published
-#: product ids are keyed otherwise.
+#: (``labels.master_id``) the export groups by, so only a shop with ``style_family`` carries it;
+#: it must never reach a shop whose published product ids are keyed otherwise.
 ATTRIBUTE_COLUMNS: tuple[str, ...] = (
     "gift_with_purchase",
     "style_id",
@@ -170,10 +170,13 @@ class Shop:
     notes: str
     #: Use the availability the page states in its structured data.
     markup_availability: bool = False
-    #: Carry the page attributes (:data:`ATTRIBUTE_COLUMNS`), the style id among them as the
-    #: product family. Off for a shop whose published product ids are keyed by sku (Faces):
-    #: turning it on re-keys that dataset, an owner-visible change of its own.
+    #: Carry the page attributes (:data:`ATTRIBUTE_COLUMNS`); the style id among them only with
+    #: ``style_family``. Off for Faces, whose feed stays main's.
     page_attributes: bool = False
+    #: With page attributes, also carry the style id, so the export groups this shop's listings
+    #: into one product per style. Off where a style can join unrelated products (Ounass: one
+    #: style covers three different eyeshadows), so those product ids stay keyed by sku.
+    style_family: bool = False
 
 
 def columns(shop: Shop) -> tuple[str, ...]:
@@ -181,7 +184,7 @@ def columns(shop: Shop) -> tuple[str, ...]:
     if not shop.page_attributes:
         return BASE_COLUMNS
     base = tuple(c for c in BASE_COLUMNS if c != "promotions")
-    return base + ATTRIBUTE_COLUMNS
+    return base + tuple(c for c in ATTRIBUTE_COLUMNS if shop.style_family or c != "style_id")
 
 
 SHOPS: dict[str, Shop] = {
@@ -222,6 +225,7 @@ SHOPS: dict[str, Shop] = {
         "capture",
         markup_availability=True,
         page_attributes=True,
+        style_family=True,
     ),
 }
 
@@ -349,10 +353,13 @@ def _texts(value: JsonValue) -> list[str]:
     return out
 
 
-def _attributes(by_key: Mapping[str, tuple[Reading, ...]]) -> Row:
-    """The page-attribute columns a page observed (shops with ``page_attributes`` only)."""
+def _attributes(by_key: Mapping[str, tuple[Reading, ...]], shop: Shop) -> Row:
+    """The page-attribute columns a page observed (shops with ``page_attributes`` only), the
+    style id only for a shop with ``style_family``."""
     row: Row = {}
     for column, reading_key in _ATTRIBUTE_TEXT:
+        if column == "style_id" and not shop.style_family:
+            continue
         reading = _observed(by_key, reading_key)
         if reading is not None and (value := _text(reading.value)) is not None:
             row[column] = value
@@ -398,7 +405,7 @@ def _row(
     if badges is not None and (flags := _texts(badges.value)):
         row["badges"] = flags
     if shop.page_attributes:
-        row |= _attributes(by_key)
+        row |= _attributes(by_key, shop)
     # the page's gift-with-purchase label or callout (Faces: "Free Gifts"), not a price; with
     # page attributes its own column, so the load stores it where the export reads it
     # (labels.gift_with_purchase); otherwise a promotion, as before

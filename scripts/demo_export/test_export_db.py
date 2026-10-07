@@ -728,3 +728,17 @@ def test_without_page_attributes_the_same_page_keeps_its_sku_family(
     assert "master_id" not in got["labels"]
     assert got["family_id"] == got["source_listing_key"] == "900000101"
     assert got["gift_with_purchase"] == []  # a promotion here, as on main
+
+
+def test_an_ounass_page_keeps_its_sku_family_and_product_id(
+    conn: Conn, migrated_db: str, tmp_path: Path
+) -> None:
+    """Ounass stays at sku grain: the same page, with a style id on it, through Ounass's shop
+    settings never reaches labels.master_id, so the family (and the product id derived from it)
+    is the listing key, as in the Ounass body already served; the other page attributes still
+    arrive."""
+    shop = replace(SHOPS["ounass_ae"], source="ounass_sku_e2e")
+    got = _feed_load_export(conn, migrated_db, tmp_path, shop)
+    assert "master_id" not in got["labels"]
+    assert got["family_id"] == got["source_listing_key"] == "900000101"
+    assert got["gift_with_purchase"] == ["Beauty Treats, free"]

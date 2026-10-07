@@ -30,7 +30,7 @@ SHOP = Shop(
     notes="synthetic",
 )
 #: a shop that carries the page attributes, as Ounass and Bloomingdale's do
-ATTR_SHOP = replace(SHOP, source="example_attrs_ae", page_attributes=True)
+ATTR_SHOP = replace(SHOP, source="example_attrs_ae", page_attributes=True, style_family=True)
 
 #: main's feed columns before page attributes (2255f20e): a shop without them keeps exactly these
 MAIN_COLUMNS = (
@@ -395,9 +395,29 @@ def test_ounass_and_bloomingdales_carry_the_page_attributes(key: str) -> None:
     shop = SHOPS[key]
     assert shop.page_attributes
     columns = mapping_for(shop)["columns"]
-    assert {"style_id", "gift_with_purchase", "ingredients"} <= set(columns)
+    assert {"gift_with_purchase", "ingredients"} <= set(columns)
     assert "promotions" not in columns
     assert [k for k, s in SHOPS.items() if s.page_attributes] == ["ounass_ae", "bloomingdales_ae"]
+
+
+def test_only_bloomingdales_carries_the_style_id_as_its_product_family() -> None:
+    """Ounass stays at sku grain: a style there can join unrelated products, so its feed and
+    mapping never carry the style id the export groups by (labels.master_id)."""
+    assert [k for k, s in SHOPS.items() if s.style_family] == ["bloomingdales_ae"]
+    assert "style_id" in mapping_for(SHOPS["bloomingdales_ae"])["columns"]
+    assert "style_id" not in mapping_for(SHOPS["ounass_ae"])["columns"]
+
+
+def test_a_page_attributes_shop_without_style_family_leaves_the_style_id_out(
+    make_capture: CaptureFactory,
+) -> None:
+    shop = replace(ATTR_SHOP, style_family=False)
+    result = build_feed([_content_page(make_capture)], shop)
+    (row,) = result.rows
+    assert "style_id" not in row
+    assert row["ingredients"] == "Aqua, Glycerin, Parfum, Linalool, Limonene, Citral"
+    assert row["gift_with_purchase"] == ["Free Gifts"]
+    assert "style_id" not in result.report()["filled"]
 
 
 def test_page_attribute_columns_come_from_observed_readings(
