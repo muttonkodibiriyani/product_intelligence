@@ -4,6 +4,7 @@
  */
 export const NAV_KEYS = [
   'overview',
+  'dashboard',
   'explore',
   'compare',
   'insights',
@@ -23,6 +24,7 @@ export const NAV_SECTION_BREAK: NavKey = 'dataset';
 
 const PATH: Record<NavKey, string> = {
   overview: '',
+  dashboard: 'dashboard/',
   explore: 'explore/',
   compare: 'compare/',
   insights: 'insights/',
@@ -43,6 +45,7 @@ export const aboutDataHref = (locale: string): string => `${datasetHref(locale)}
 
 const MATCH: Record<NavKey, RegExp | null> = {
   overview: /^\/(en|ar)\/?$/,
+  dashboard: /^\/(en|ar)\/dashboard\//,
   explore: /^\/(en|ar)\/(explore|product)\//,
   compare: /^\/(en|ar)\/compare\//,
   insights: /^\/(en|ar)\/insights\//,
