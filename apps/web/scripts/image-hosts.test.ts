@@ -38,6 +38,11 @@ describe('/app image hosts', () => {
     expect(csps.length).toBeGreaterThan(0);
   });
 
+  // it.each over an empty table registers no test, so the cases below would vanish rather than fail.
+  it('IMAGE_OWNERS lists at least one host', () => {
+    expect(Object.keys(IMAGE_OWNERS).length).toBeGreaterThan(0);
+  });
+
   it.each(Object.keys(IMAGE_OWNERS))('%s is allowed by every img-src in infra/firebase.json', (host) => {
     for (const csp of csps) expect(csp.hosts, `img-src for ${csp.source}`).toContain(host);
   });
