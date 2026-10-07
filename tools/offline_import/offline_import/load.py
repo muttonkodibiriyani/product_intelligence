@@ -36,11 +36,43 @@ def _sha(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
-def content_hash(labels: dict[str, Any], description: str | None, badges: list[str] | None) -> str:
-    """A listing_content row's hash; unchanged for a row with only labels, as before content."""
-    if description is None and badges is None:
+def content_hash(
+    labels: dict[str, Any],
+    description: str | None,
+    badges: list[str] | None,
+    ingredients: str | None = None,
+) -> str:
+    """A listing_content row's hash; unchanged for a row with only labels, as before content, and
+    for a row without ingredients, as before they were loaded."""
+    if description is None and badges is None and ingredients is None:
         return _sha(json.dumps(labels, sort_keys=True))
-    return _sha(json.dumps([labels, description, badges], sort_keys=True, ensure_ascii=False))
+    parts: list[Any] = [labels, description, badges]
+    if ingredients is not None:
+        parts.append(ingredients)
+    return _sha(json.dumps(parts, sort_keys=True, ensure_ascii=False))
+
+
+# Page attributes stored in labels under their own names (the reader's spec keys).
+_ATTRIBUTE_TEXT: tuple[str, ...] = (
+    "mpn",
+    "colour_code",
+    "colour_hex",
+    "collection",
+    "fragrance_family",
+    "finish",
+    "formulation",
+    "lifecycle_class",
+    "exclusivity",
+    "loyalty_points",
+    "installment_amount_minor",
+)
+_ATTRIBUTE_LISTS: tuple[str, ...] = (
+    "gift_with_purchase",
+    "bullets",
+    "skin_type",
+    "concern",
+    "installment_provider",
+)
 
 
 def idempotency_key(source: str, file_sha256: str, listing_key: str) -> str:
@@ -193,6 +225,10 @@ class Loader:
             "gender": t.get("gender"),
             "concentration": t.get("concentration"),
             "promotions": list(row.lists["promotions"]) if row.lists.get("promotions") else None,
+            # the export groups listings by master_id (one product per style)
+            "master_id": t.get("style_id"),
+            **{f: t.get(f) for f in _ATTRIBUTE_TEXT},
+            **{f: list(row.lists[f]) for f in _ATTRIBUTE_LISTS if row.lists.get(f)},
             # the shape the Sephora load writes and the export reads: the first image is main
             "images": [
                 {"role": "main" if i == 0 else "alt", "position": i, "url": url}
@@ -207,17 +243,20 @@ class Loader:
         description = t.get("description")
         arabic = self.m.locale.lower().startswith("ar")
         badges = list(row.lists.get("badges", ()))
+        ingredients = t.get("ingredients")
         self.c.execute(
             "INSERT INTO listing_content (listing_id, observed_at, description, description_ar,"
-            " badges, labels, content_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            " ingredients, badges, labels, content_hash)"
+            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
             (
                 lid,
                 row.observed_at,
                 None if arabic else description,
                 description if arabic else None,
+                ingredients,
                 badges,
                 Jsonb(labels),
-                content_hash(labels, description, badges or None),
+                content_hash(labels, description, badges or None, ingredients),
             ),
         )
 

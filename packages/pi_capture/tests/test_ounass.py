@@ -172,3 +172,87 @@ def test_ounass_rows_carry_the_stock_the_page_states(
     (row,) = result.rows
     assert row.get("availability") == expected
     assert (row["listing_key"], row["price_current"]) == ("900000001_242", "450.00")
+
+
+# The page-attribute fields, shaped like the storefront's (values synthetic), with a payment
+# widget's key and an internal score that must never be read.
+_WIDGET_KEY = "pk_synthetic-ounass-key"
+_ATTRIBUTES: dict[str, Any] = {
+    "colors": [{"colorId": "242"}, {"colorId": "243"}],
+    "selectedColor": {"label": "Rose Petal", "hex": "#c4a1a0", "styleColorId": "900000001_242"},
+    "colorId": "242",
+    "contentTabs": [
+        {
+            "tabId": "ingredients",
+            "html": "<p>Alcohol Denat., Parfum, Aqua, Limonene, Linalool, Citral</p>",
+        },
+        {"tabId": "keyDetails", "html": "<ul><li>Long wear</li><li>Made in France</li></ul>"},
+        {"tabId": "delivery", "html": "<p>Free delivery over AED 400</p>"},
+    ],
+    "season": "Continuity",
+    "exclusive": 1,
+    "amberPoints": 45,
+    "bnplPromoBanner": {
+        "apiKey": _WIDGET_KEY,
+        "options": [
+            {"key": "tabby", "isAmountWithinLimits": True},
+            {"key": "tamara", "isAmountWithinLimits": False},
+        ],
+    },
+    "merchScore": "secret-rank",
+}
+
+
+def test_page_attributes_are_read_from_the_named_fields() -> None:
+    got = _by_key(readings_from_ounass(_page(_pdp(**_ATTRIBUTES)), locale="en-AE"))
+    assert got["shade_name"].value == "Rose Petal"
+    assert got["colour_hex"].value == "#C4A1A0"
+    assert got["colour_code"].value == "242"
+    assert str(got["inci_list"].value).startswith("Alcohol Denat., Parfum, Aqua")
+    assert got["bullets"].value == ["Long wear", "Made in France"]
+    assert got["lifecycle_class"].value == "core"
+    assert got["exclusivity"].value == "exclusive"
+    assert got["loyalty_points"].value == 45
+    assert got["installment_provider"].value == ["tabby"]
+    assert set(got) <= LOOKED_FOR
+
+
+def test_a_single_colour_product_reads_no_colour_and_odd_values_are_parse_failed() -> None:
+    pdp = _pdp(
+        **_ATTRIBUTES
+        | {
+            "colors": [],
+            "season": "SS26",
+            "contentTabs": [{"tabId": "ingredients", "html": "<p>Notes: cedar, vetiver</p>"}],
+        }
+    )
+    got = _by_key(readings_from_ounass(_page(pdp), locale="en-AE"))
+    assert not {"shade_name", "colour_hex", "colour_code"} & set(got)
+    assert got["lifecycle_class"].state == "parse_failed"
+    assert got["inci_list"].state == "parse_failed"
+    bad_hex = _pdp(**_ATTRIBUTES | {"selectedColor": {"label": "Rose", "hex": "pink"}})
+    got = _by_key(readings_from_ounass(_page(bad_hex), locale="en-AE"))
+    assert got["colour_hex"].state == "parse_failed"
+
+
+def test_clearance_wins_over_the_season() -> None:
+    got = _by_key(
+        readings_from_ounass(_page(_pdp(**_ATTRIBUTES | {"isClearance": 1})), locale="en-AE")
+    )
+    assert got["lifecycle_class"].value == "clearance"
+
+
+def test_widget_keys_and_internal_scores_never_reach_readings_or_the_feed(
+    make_capture: CaptureFactory,
+) -> None:
+    readings = readings_from_ounass(_page(_pdp(**_ATTRIBUTES)), locale="en-AE")
+    capture = make_capture(readings=tuple(readings), url="https://ounass.ae/p/x")
+    feed = build_feed([capture], SHOPS["ounass_ae"])
+    rows_text = json.dumps(feed.rows, default=str)
+    readings_text = json.dumps(
+        [(r.key, r.raw_text, r.value, r.source_path, r.note) for r in _by_key(readings).values()],
+        default=str,
+    )
+    for forbidden in (_WIDGET_KEY, "apiKey", "merchScore", "secret-rank"):
+        assert forbidden not in rows_text
+        assert forbidden not in readings_text

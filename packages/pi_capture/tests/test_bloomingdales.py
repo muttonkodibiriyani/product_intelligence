@@ -95,7 +95,8 @@ def test_a_beauty_page_reads_identity_price_taxonomy_size_and_images() -> None:
     assert got["description"].value == "Cleans without drying."  # from the JSON-LD
     assert "badges" not in got  # promotion ids are not shopper-facing labels
     assert "gift_with_purchase" not in got
-    assert got["rating_count"].state == "not_shown"
+    assert "rating_value" not in got  # no c_ratings on this page: unread, not "not shown"
+    assert "rating_count" not in got
     assert set(got) <= LOOKED_FOR
 
 
@@ -164,3 +165,126 @@ def test_bloomingdales_rows_carry_the_stock_the_page_states(
     (row,) = build_feed([capture], SHOPS["bloomingdales_ae"]).rows
     assert row.get("availability") == expected
     assert (row["listing_key"], row["price_current"]) == ("900000101", "140.00")
+
+
+# The page-attribute fields, shaped like the storefront's (values synthetic). The record also
+# carries the fields that must never be read: the retailer's unit cost, merchandising scores and a
+# payment widget's key.
+_UNIT_COST = "77.123"
+_WIDGET_KEY = "pk_synthetic-0000-key"
+_ATTRIBUTES: dict[str, Any] = {
+    "c_vpn": "VPN-0001",
+    "c_ingredients": (
+        "Water\\Aqua\\Eau, Glycerin, Propanediol, Xanthan Gum, Phenoxyethanol, Citric Acid"
+    ),
+    "longDescription": "<li>Fragrance-Free</li>\n<li>Vegan </li>\n<li>Vegan</li>",
+    "c_howToUse": "<li>Massage onto damp skin.</li>",
+    "c_skintype": "All Skin Types",
+    "c_skinConcern": ["Dry Skin", "Dullness"],
+    "c_scent": "Citrus",
+    "c_collection": "Velvet Oud",
+    "c_npm_finish": ["matte"],
+    "c_npm_formulation": ["gel___cream"],
+    "c_colors": [
+        {"text": "Clear", "id": "900000101", "value": "clear"},
+        {"text": "Rose", "id": "900000102", "value": "rose"},
+    ],
+    "c_badges": ["Online Only", " ", "Online Only"],
+    "c_product_promotions": [
+        {"promotionId": "PLPOOSItems", "calloutMsgText": "Not a gift"},
+        {
+            "promotionId": "GWP-PDPMessage-V4-Synthetic",
+            "calloutMsgText": "<b>Beauty Treats</b>, Complimentary gift over AED 500.",
+            "calloutMsgImage": "https://img.example/gift.jpg",
+        },
+    ],
+    "c_ratings": "4.38",
+    "c_amberPointsAmount": 129,
+    "c_tabbyPromo": {
+        "currency": "AED",
+        "apiKey": _WIDGET_KEY,
+        "monthlyPrice": "35",
+        "tabbyPromoApplicable": True,
+    },
+    "c_tamaraPromo": {"currency": "AED", "monthlyPrice": 35, "tamaraPromoApplicable": True},
+    "c_unitcost": _UNIT_COST,
+    "c_fe_score": 0.91,
+    "c_fe_rank_hint": "secret-rank",
+}
+
+
+def test_page_attributes_are_read_from_the_named_fields() -> None:
+    got = _by_key(readings_from_bloomingdales(_page(_product(**_ATTRIBUTES)), locale="en-AE"))
+    assert got["mpn"].value == "VPN-0001"
+    assert str(got["inci_list"].value).startswith("Water\\Aqua\\Eau, Glycerin")
+    assert got["bullets"].value == ["Fragrance-Free", "Vegan"]
+    assert got["skin_type"].value == ["All Skin Types"]
+    assert got["concern"].value == ["Dry Skin", "Dullness"]
+    assert (got["fragrance_family"].value, got["collection"].value) == ("Citrus", "Velvet Oud")
+    assert got["finish"].value == "matte"
+    assert got["shade_name"].value == "Clear"  # the entry whose id is this product's
+    assert got["badges"].value == ["Online Only"]
+    assert got["gift_with_purchase"].value == "Beauty Treats, Complimentary gift over AED 500."
+    assert got["rating_value"].value == Decimal("4.38")
+    assert got["loyalty_points"].value == 129
+    assert got["installment_provider"].value == ["tabby", "tamara"]
+    assert (got["installment_amount_minor"].value, got["installment_amount_minor"].currency) == (
+        3500,
+        "AED",
+    )
+
+
+def test_attribute_values_outside_the_spec_are_parse_failed_not_stretched() -> None:
+    product = _product(
+        **_ATTRIBUTES
+        | {
+            "c_npm_finish": ["matte", "natural"],
+            "c_ingredients": "The list of ingredients is on all of our product packaging.",
+            "c_ratings": "9.5",
+        }
+    )
+    got = _by_key(readings_from_bloomingdales(_page(product), locale="en-AE"))
+    assert got["finish"].state == "parse_failed"
+    assert got["formulation"].state == "parse_failed"  # "gel___cream" is no single formulation
+    assert got["inci_list"].state == "parse_failed"
+    assert got["rating_value"].state == "parse_failed"
+
+
+def test_fragrance_notes_are_not_an_ingredient_list() -> None:
+    notes = "Ingredients: Top: Pink Pepper, Rose Petals, Heart: Raspberry, Rose, Base: Amber, Musk"
+    got = _by_key(readings_from_bloomingdales(_page(_product(c_ingredients=notes)), locale="en-AE"))
+    assert got["inci_list"].state == "parse_failed"
+
+
+def test_the_nocolor_entry_and_unequal_instalments_are_not_read_as_values() -> None:
+    product = _product(
+        **_ATTRIBUTES
+        | {
+            "c_colors": [{"text": "No Color", "id": "900000101", "value": "nocolor"}],
+            "c_tamaraPromo": {"currency": "AED", "monthlyPrice": 36, "tamaraPromoApplicable": True},
+        }
+    )
+    got = _by_key(readings_from_bloomingdales(_page(product), locale="en-AE"))
+    assert "shade_name" not in got
+    assert got["installment_amount_minor"].state == "parse_failed"
+
+
+def test_unit_cost_merchandising_scores_and_keys_never_reach_readings_or_the_feed(
+    make_capture: CaptureFactory,
+) -> None:
+    readings = readings_from_bloomingdales(_page(_product(**_ATTRIBUTES)), locale="en-AE")
+    capture = make_capture(readings=tuple(readings), url="https://bloomingdales.ae/p/x")
+    feed = build_feed([capture], SHOPS["bloomingdales_ae"])
+    rows_text = json.dumps(feed.rows, default=str)
+    readings_text = json.dumps(
+        [
+            (r.key, r.raw_text, r.value, r.source_path, r.note)
+            for r in readings
+            if r.key != "structured_data"  # the JSON-LD block, which carries no productData
+        ],
+        default=str,
+    )
+    for forbidden in (_UNIT_COST, _WIDGET_KEY, "c_unitcost", "c_fe_", "secret-rank", "apiKey"):
+        assert forbidden not in rows_text
+        assert forbidden not in readings_text
+    assert not any("cost" in key for key in feed.rows[0])

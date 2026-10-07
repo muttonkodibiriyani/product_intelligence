@@ -34,7 +34,16 @@ Format = Literal["csv", "xlsx", "json"]
 FORMAT_BY_SUFFIX: dict[str, Format] = {".csv": "csv", ".xlsx": "xlsx", ".json": "json"}
 
 # Fields that hold a list: a JSON array of strings, or one string as a one-item list (CSV/XLSX).
-LIST_FIELDS: tuple[str, ...] = ("badges", "promotions", "image_urls")
+LIST_FIELDS: tuple[str, ...] = (
+    "badges",
+    "promotions",
+    "gift_with_purchase",
+    "image_urls",
+    "bullets",
+    "skin_type",
+    "concern",
+    "installment_provider",
+)
 
 
 class SourceSpec(PiModel):
@@ -74,7 +83,28 @@ class Columns(PiModel):
     concentration: str | None = None
     badges: str | None = None
     promotions: str | None = None
+    gift_with_purchase: str | None = None
     image_urls: str | None = None
+    # Page attributes (pi_capture's reader keys): the style id becomes labels.master_id (the
+    # product family the export groups by), the INCI list goes to listing_content.ingredients,
+    # the rest are labels under their own names.
+    style_id: str | None = None
+    ingredients: str | None = None
+    mpn: str | None = None
+    colour_code: str | None = None
+    colour_hex: str | None = None
+    collection: str | None = None
+    fragrance_family: str | None = None
+    finish: str | None = None
+    formulation: str | None = None
+    lifecycle_class: str | None = None
+    exclusivity: str | None = None
+    loyalty_points: str | None = None
+    installment_amount_minor: str | None = None
+    bullets: str | None = None
+    skin_type: str | None = None
+    concern: str | None = None
+    installment_provider: str | None = None
 
     def mapped(self) -> dict[str, str]:
         """Field -> column for every mapped field."""

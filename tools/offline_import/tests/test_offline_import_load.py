@@ -336,3 +336,73 @@ def test_url_template_encodes_the_key() -> None:
     ld.m = load_mapping(MAPPING)
     row = SimpleNamespace(listing_key="AB/10 01?x#y", text={})
     assert ld._url(row) == "https://acme-beauty.example/p/AB%2F10%2001%3Fx%23y"  # type: ignore[arg-type]
+
+
+def test_page_attributes_go_to_labels_the_style_id_to_master_id_and_inci_to_ingredients(
+    db: str, tmp_path: Path
+) -> None:
+    attributes = {
+        "style_id": "STYLE-9",
+        "ingredients": "Aqua, Glycerin, Parfum, Limonene, Linalool, Citral",
+        "gift_with_purchase": ["Beauty Treats, Complimentary"],
+        "mpn": "VPN-1",
+        "colour_code": "242",
+        "colour_hex": "#C4A1A0",
+        "finish": "matte",
+        "lifecycle_class": "core",
+        "exclusivity": "exclusive",
+        "loyalty_points": "45",
+        "installment_amount_minor": "3500",
+        "bullets": ["Long wear", "Vegan"],
+        "skin_type": ["All Skin Types"],
+        "concern": ["Dryness"],
+        "installment_provider": ["tabby", "tamara"],
+    }
+    mapping = ImportMapping.model_validate(
+        {
+            "source": {"name": "acme_attrs", "kind": "web"},
+            "country": "AE",
+            "locale": "en-AE",
+            "currency": "AED",
+            "time_zone": "Asia/Dubai",
+            "format": "json",
+            "json_items_path": "items",
+            "columns": {c: c for c in ("listing_key", "url", "observed_at", *attributes)},
+        }
+    )
+    item = {
+        "listing_key": "A-1",
+        "url": "https://acme-beauty.example/p/a-1",
+        "observed_at": "2026-10-02T09:00:00+00:00",
+        **attributes,
+    }
+    path = tmp_path / "attrs.json"
+    path.write_text(json.dumps({"items": [item]}))
+    _load(db, mapping, path, "gs://pi-imports-test/acme/attrs.json")
+    [(ingredients, labels)] = _rows(
+        db,
+        "SELECT c.ingredients, c.labels FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id WHERE l.source_listing_key = 'A-1'",
+    )
+    assert ingredients == attributes["ingredients"]
+    assert labels["master_id"] == "STYLE-9"
+    assert "style_id" not in labels
+    assert "ingredients" not in labels
+    for key, value in attributes.items():
+        if key not in {"style_id", "ingredients"}:
+            assert labels[key] == value, key
+
+
+def test_the_content_hash_of_a_row_without_ingredients_is_unchanged() -> None:
+    labels = {"brand": "Acme"}
+    before = _sha_json([labels, "desc", ["new"]])
+    assert content_hash(labels, "desc", ["new"]) == before
+    assert content_hash(labels, "desc", ["new"], None) == before
+    assert content_hash(labels, "desc", ["new"], "Aqua") != before
+    assert content_hash(labels, None, None, "Aqua") != content_hash(labels, None, None)
+
+
+def _sha_json(parts: object) -> str:
+    return hashlib.sha256(
+        json.dumps(parts, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
