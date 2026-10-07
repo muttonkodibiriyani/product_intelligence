@@ -107,3 +107,18 @@ pi-sephora-variant-pass --location=me-central1 --project=productintelligence-bee
 resource not found … retryPolicies`); most likely API propagation; a retry worked. `pause`
 stops everything (ADR-0009, Guards). A one-off manual run now has to override the job's `AUTO=1`:
 `gcloud run jobs execute pi-sephora-snapshot --update-env-vars=AUTO=0,PREFIX=…,CUTOFF=…`.
+
+## UAE collection (task 01a11653-ac7a)
+
+Coordinator-approved plan (~$5/month cap for Faces, Bloomingdale's and Ounass together). Created
+by `infra/gcp/uae_collect_setup.sh` (idempotent) from an `IMAGE` built from main and pinned by
+digest; owner steps, cron and budget in `tools/uae_collect/README.md`. Faces first.
+
+| Date | Resource | Settings | Cost |
+|------|----------|----------|------|
+| pending owner run | SA `pi-uae-collect` (no key, no project role) | `roles/storage.objectUser` on `pi-capture-productintelligence-beeb3` only; runtime of the `pi-uae-collect-*` jobs | free |
+| pending owner run | job `pi-uae-collect-faces` | `SHOP=faces_ae`; 1 vCPU / 1 GiB; task timeout 7 h; no retries; label `pi-collect=uae` | ≈ $0.9/month (≈ $0.08 per full or AR pass, ~10 a month; daily passes ≈ $0.003) |
+| pending owner run | SA `pi-uae-scheduler` (no key, no project role) | `roles/run.invoker` on each `pi-uae-collect-*` job only | free |
+| pending owner run | Scheduler job `pi-uae-collect-faces` (me-central1) | `0 20 * * *` UTC; the job picks daily / full (Mon, Thu) / ar (1st); no retries; **created paused** | free (2nd of the 3 free jobs) |
+| pending owner run | SA `pi-feed-reader` (no key, no project role) | `roles/storage.objectViewer` on the capture bucket under IAM condition `feeds-only` (objects under `feeds/`, lists with prefix `feeds/`); `firebase-adminsdk-fbsvc` has `roles/iam.serviceAccountTokenCreator` on this SA only | free |
+| pending owner run | budget `pi-uae-collect-5usd` | $5/month on label `pi-collect=uae`, alerts at 50/90/100% | free |
