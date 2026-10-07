@@ -1,15 +1,8 @@
 import { setRequestLocale } from 'next-intl/server';
-import { Suspense } from 'react';
-import { RequireAuth } from '@/components/require-auth';
-import { ThreeRetailerReport } from '@/components/insights/three-retailer-report';
+import { ThreeRedirect } from '@/components/insights/three-redirect';
 
+/** The former three-shop report: Insights with all shops selected. */
 export default async function ThreeRetailerPage({ params }: { params: Promise<{ locale: string }> }) {
   setRequestLocale((await params).locale);
-  return (
-    <RequireAuth>
-      <Suspense>
-        <ThreeRetailerReport />
-      </Suspense>
-    </RequireAuth>
-  );
+  return <ThreeRedirect />;
 }

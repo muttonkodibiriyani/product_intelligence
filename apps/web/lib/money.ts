@@ -59,6 +59,14 @@ export type AppLocale = 'en' | 'ar';
  * float). Latin digits in both languages, so numbers line up in tables and match the evidence.
  */
 export function formatMoney(m: Money, locale: AppLocale): string {
+  return formatAmount(m, locale);
+}
+
+/**
+ * The same, for an amount that is not a priced Money: a price per ml or g, whose decimals need
+ * not match the currency's. Shown at the currency's decimals; the string is never a float.
+ */
+export function formatAmount(m: Pick<Money, 'amount' | 'currency'>, locale: AppLocale): string {
   const fmt = new Intl.NumberFormat(locale === 'ar' ? 'ar-AE' : 'en-AE', {
     style: 'currency',
     currency: m.currency,
