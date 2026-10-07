@@ -2,10 +2,13 @@
 compact budget, stays inside the resident share the deploy runbook gives one dataset at 3Gi
 (pi-api-deploy.md §6).
 
-The content is real: 200 offers' content taken at a fixed stride from the Ounass snapshot the
-budget was calibrated on (``fixtures/ounass_offer_content_sample.json``). Its per-offer zlib ratio
-is pinned to the range of real data, because packed content's memory is its compressed size and
-repetitive filler text compresses ~10x better than real descriptions. A 10 MB sample is loaded and
+The content is synthetic with a real shape: ``fixtures/ounass_offer_content_sample.json`` is
+written by ``make_offer_content_sample.py`` from a profile of 200 real Ounass offers taken at a
+fixed stride from the snapshot the budget was calibrated on (each description's length, UTF-8
+size and character width; each offer's images, ids and what repeats inside it), with no retailer
+text. Its per-offer zlib ratio is pinned to the range of real data, because packed content's
+memory is its compressed size and repetitive filler text compresses ~10x better than real
+descriptions. A 10 MB sample is loaded and
 scaled linearly (resident memory grows with product count), so CI does not have to hold a
 full-budget snapshot.
 """
@@ -21,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from api_fixture import DATASET_PATH, bearer, make_client, served_dataset
+from make_offer_content_sample import sample
 from pi_dataset import V3_MAX_BYTES, OfferContent
 from pi_metrics import view
 
@@ -30,7 +34,8 @@ SAMPLE = 10_000_000
 # x 51 MB = 1,676 MiB, / 2.68 the measured peak-to-steady ratio).
 RESIDENT = 625 * 2**20
 CONTENT = Path(__file__).parent / "fixtures" / "ounass_offer_content_sample.json"
-# Real Ounass offer content compresses 2.09x in aggregate (per offer: p1 1.41, p99 3.55).
+# Real Ounass offer content compresses 2.09x in aggregate (per offer: p1 1.41, p99 3.55); the
+# synthetic sample 2.14x (p1 1.44, p99 3.72).
 RATIO = (1.6, 2.6)
 
 
@@ -65,6 +70,14 @@ def compact(value: object) -> str:
 def zlib_ratio(sample: list[dict[str, Any]]) -> float:
     bodies = [OfferContent.model_validate(c).model_dump_json().encode() for c in sample]
     return sum(map(len, bodies)) / sum(len(zlib.compress(b)) for b in bodies)
+
+
+def test_the_sample_is_what_its_generator_writes() -> None:
+    assert contents() == sample()
+
+
+def test_the_sample_carries_no_retailer_host() -> None:
+    assert "ounass" not in CONTENT.read_text(encoding="utf-8").lower()
 
 
 def test_the_sample_compresses_like_real_offer_content() -> None:
