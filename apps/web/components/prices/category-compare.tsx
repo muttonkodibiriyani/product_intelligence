@@ -412,8 +412,13 @@ function logScale(buckets: readonly Bucket[], ids: readonly string[]): LogScale 
   return { ok: true, currency, ticks, x };
 }
 
-/** Estimated width of a 9px tick label: about 5.5px a character, tabular digits included. */
-const tickWidth = (label: string) => label.length * 5.5;
+/**
+ * Upper bound on a 9px tick label's width, used both to keep the end labels inside the cell and to
+ * thin labels that would touch. Measured with getBBox: a digit is 5.4 to 5.7px in WebKit and Firefox
+ * here and 6.3px with CI's fallback font, and Arabic letters are narrower, so 6.5px a character
+ * holds on every engine and font we have seen.
+ */
+const tickWidth = (label: string) => label.length * 6.5;
 /** Clear space kept between two neighbouring tick labels. */
 const TICK_GAP = 6;
 
