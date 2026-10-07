@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { categoryCompareBody, THIN, type Counts } from './category-compare-fixture';
+import { categoryCompareBody, THIN, wideCategoryCompareBody, type Counts } from './category-compare-fixture';
 import { summaryBlocked, summaryBody } from './summary-fixture';
 import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
 
@@ -12,7 +12,7 @@ const compare = golden('compare') as Json;
 const blockedB = { ...summaryBlocked, data: { ...summaryBlocked.data, retailer: 'shop_b' } };
 
 /** /prices for shop_a vs shop_b: the summaries, the matched pairs and the category comparison. */
-function api(counts: Counts = {}, withheld = false) {
+function api(counts: Counts = {}, withheld = false, wide = false) {
   return async (route: Route) => {
     const u = new URL(route.request().url());
     const p = u.pathname;
@@ -24,14 +24,22 @@ function api(counts: Counts = {}, withheld = false) {
     if (p === '/api/v1/compare') return route.fulfill({ json: compare });
     if (p === '/api/v1/category-compare') {
       const [base, other] = (u.searchParams.get('retailers') ?? '').split(',');
-      return route.fulfill({ json: categoryCompareBody(base, other, counts) });
+      return route.fulfill({
+        json: wide ? wideCategoryCompareBody(base, other) : categoryCompareBody(base, other, counts),
+      });
     }
     return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
   };
 }
 
-async function open(page: Page, locale: 'en' | 'ar', counts: Counts = {}, withheld = false): Promise<Mock> {
-  const mock = await mockBackend(page, { onApi: api(counts, withheld) });
+async function open(
+  page: Page,
+  locale: 'en' | 'ar',
+  counts: Counts = {},
+  withheld = false,
+  wide = false,
+): Promise<Mock> {
+  const mock = await mockBackend(page, { onApi: api(counts, withheld, wide) });
   await signIn(page, locale);
   await expect(page.getByRole('navigation')).toBeVisible();
   await page.goto(`/app/${locale}/prices/`);
@@ -185,6 +193,45 @@ for (const locale of ['en', 'ar'] as const) {
       if (isPhone()) await noHorizontalScroll(page);
       expect(mock.errors).toEqual([]);
       expect(mock.external).toEqual([]);
+    });
+
+    test('the Price range axis reads across four decades: no two labels overlap, each stays in its column', async ({
+      page,
+    }) => {
+      test.skip(isPhone(), 'the phone shows stacked cards with no shared axis');
+      const mock = await open(page, locale, {}, false, true);
+      const head = page.locator('#p-buckets thead');
+      await expect(head.locator('svg text').first()).toBeVisible();
+      const axes = await head.locator('svg').all();
+      expect(axes).toHaveLength(2);
+      for (const svg of axes) {
+        const cell = (await svg.locator('xpath=ancestor::th[1]').boundingBox())!;
+        const labels = await svg.locator('text').all();
+        const boxes = (await Promise.all(labels.map((l) => l.boundingBox()))).map((b) => b!);
+        boxes.sort((a, b) => a.x - b.x);
+        expect(boxes.length).toBeGreaterThanOrEqual(2);
+        for (const b of boxes) {
+          expect(b.x).toBeGreaterThanOrEqual(cell.x);
+          expect(b.x + b.width).toBeLessThanOrEqual(cell.x + cell.width);
+        }
+        for (let i = 1; i < boxes.length; i++)
+          expect(boxes[i]!.x).toBeGreaterThan(boxes[i - 1]!.x + boxes[i - 1]!.width);
+      }
+      // Every column title sits on one line: Category, n, Median, Price range, Median gap.
+      const tops = await head
+        .locator('tr')
+        .nth(1)
+        .locator('th')
+        .evaluateAll((ths) =>
+          ths.map((th) => {
+            const r = document.createRange();
+            r.selectNodeContents(th.querySelector('span') ?? th);
+            return Math.round(r.getClientRects()[0]!.top);
+          }),
+        );
+      expect(tops).toHaveLength(8);
+      expect(new Set(tops).size).toBe(1);
+      expect(mock.errors).toEqual([]);
     });
 
     test('a side with too few products says so with its n and its row has no gap', async ({ page }) => {
