@@ -35,6 +35,8 @@ function validateDataset(j){const e=[];if(!j||j.schema!=='pi.dataset/v1')e.push(
   return e.slice(0,5)}
 /* Product images are hotlinked from the retailer's own CDN, never copied: an https URL on that retailer's host only, else none. */
 const IMG_HOSTS={s:'img-product.sephora.me',u:'media.alshaya.com'};
+/* host -> retailer key; a host not listed has no owner, so its image is neither shown nor credited (fail closed) */
+function imgRet(v){try{const h=new URL(v).hostname;return Object.keys(IMG_HOSTS).find(k=>IMG_HOSTS[k]===h)||null}catch(e){return null}}
 function imgUrl(v,k){if(typeof v!=='string')return null;try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password&&(k?u.hostname===IMG_HOSTS[k]:Object.values(IMG_HOSTS).includes(u.hostname))?u.href:null}catch(e){return null}}
 /* A price of 0.01 or less is a feed error, not a price (owner rule): it is read as no price, so it
    is never shown and never enters an aggregate. */
