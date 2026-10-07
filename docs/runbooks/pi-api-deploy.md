@@ -37,8 +37,9 @@ certificates, and GCS reads use the service account.
 ## 2. Pre-checks (read-only)
 
 ```sh
-PROJECT=productintelligence-beeb3
-REGION=me-central1
+set -a; . infra/pi-api/service.env; set +a   # the live settings (memory, maxScale), in git
+PROJECT=$PI_API_PROJECT
+REGION=$PI_API_REGION
 BUCKET=productintelligence-beeb3.firebasestorage.app   # confirm: the bucket publish_dataset.py writes
 gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_level_access,location)'
 ```
@@ -112,13 +113,14 @@ Deploy by digest, not by tag.
 
 The env vars come from the live service, not from this doc: the served files and retailers move
 (per-source files, the matched file, a new retailer's hosts, the match file), and `--set-env-vars`
-replaces every variable, deleting any it does not list. The deploy below sets exactly eight:
+replaces every variable, deleting any it does not list. The deploy below sets exactly nine:
 `PI_API_FIREBASE_PROJECT`, `PI_API_BUCKET`, `PI_API_DATASETS`, `PI_API_EVIDENCE_HOSTS`,
-`PI_API_IMAGE_HOSTS` (required) and `PI_API_CATALOGUES`, `PI_API_MATCHES`, `PI_API_ADMITTED`
+`PI_API_IMAGE_HOSTS`, `PI_API_MEMORY_MIB` (required; `MEMORY_MIB` is `infra/pi-api/service.env`'s,
+and an empty live value is adopted, since services deployed before it have none) and `PI_API_CATALOGUES`, `PI_API_MATCHES`, `PI_API_ADMITTED`
 (optional; an empty value is left out). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`,
 `IMAGE_HOSTS`, `CATALOGUES` and `MATCHES` to the values you mean to serve, and `ADMITTED` to the
 `PI_API_ADMITTED=` value `infra/scripts/pi_api_admission.py check` prints for that `DATASETS` (§6;
-empty while no served file is over the gate) (the §2 paths and the hosts below on a first deploy),
+empty while the served set is within the fit) (the §2 paths and the hosts below on a first deploy),
 then run (bash):
 
 ```sh
@@ -129,8 +131,8 @@ env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env
 if sys.argv[1] == "--names": print("\n".join(e["name"] for e in env))
 else: print(next((e.get("value", "") for e in env if e["name"] == sys.argv[1]), ""))' \
   "$1" 2>/dev/null; }
-FIREBASE_PROJECT=$PROJECT
-REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS" OPTIONAL="CATALOGUES MATCHES ADMITTED"
+FIREBASE_PROJECT=$PROJECT MEMORY_MIB=$PI_API_MEMORY_MIB
+REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS MEMORY_MIB" OPTIONAL="CATALOGUES MATCHES ADMITTED"
 ENV_OK=1 SET_ENV= KNOWN=" "
 test "$FIRST_DEPLOY" = 1 && test -n "$SVC_JSON" \
   && { echo "STOP: FIRST_DEPLOY=1 but pi-api already exists"; ENV_OK=0; }
@@ -138,7 +140,8 @@ for v in $REQUIRED $OPTIONAL; do
   want=${!v}; have=$(live_env "PI_API_$v"); KNOWN="$KNOWN PI_API_$v "
   case " $OPTIONAL " in *" $v "*) opt=1;; *) opt=0;; esac
   if { test -n "$want" || { test $opt = 1 && test -z "$have"; }; } \
-    && { test "$want" = "$have" || { test "$FIRST_DEPLOY" = 1 && test -z "$have"; }; } \
+    && { test "$want" = "$have" || { test -z "$have" \
+      && { test "$FIRST_DEPLOY" = 1 || test $v = MEMORY_MIB; }; }; } \
     && case "$want" in *@*) false;; esac
   then echo "PI_API_$v ok: [$want]"; test -z "$want" || SET_ENV="$SET_ENV@PI_API_$v=$want"
   else echo "STOP: PI_API_$v live=[$have] wanted=[$want] (no '@' allowed)"; ENV_OK=0
@@ -153,20 +156,33 @@ test "$ENV_OK" = 1 && echo "ENV OK" || echo "ENV STOP"
 
 On any STOP, do not deploy. Either take the live value (`DATASETS=$(live_env PI_API_DATASETS)`,
 and the same for the others) or treat the difference as a config change with its own approval and
-its own before/after diff. A live variable outside the eight (printed by name only) means this
+its own before/after diff. A live variable outside the nine (printed by name only) means this
 command would delete it: STOP and extend this list in a reviewed change first. Only a first
 deploy (no service yet) sets `FIRST_DEPLOY=1`, and the guard STOPs if the service exists; a failed
-describe otherwise STOPs. The STOP lines print live values: all eight are non-secret config (`ADMITTED` is sha256 digests). A
+describe otherwise STOPs. The STOP lines print live values: all nine are non-secret config (`ADMITTED` is sha256 digests). A
 secret never joins this list; it would need `--set-secrets` (not used, see below) and a reviewed
 change that prints its name only. To change one variable on a running service, use `gcloud run
 services update --update-env-vars` with its own approval (it leaves the others alone), not this
 command.
 
+Then check the live memory and maxScale against `infra/pi-api/service.env` (the deploy below sets
+the revision's from it; a STOP means the file and the service disagree, so the memory rule would be
+evaluated against the wrong instance size):
+
+```sh
+gcloud run services describe pi-api --project=$PROJECT --region=$REGION --format=json \
+  | uv run python infra/scripts/pi_api_admission.py service   # → SERVICE OK, or no deploy
+```
+
+Skip it on a first deploy (no service yet), and in the revision that changes `service.env` itself:
+there it STOPs on exactly the changed lines, which the PR's reviewed diff covers.
+
 ```sh
 test "$ENV_OK" = 1 && gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
-  --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
+  --min-instances=0 --max-instances=$PI_API_MAX_SCALE_REVISION --cpu=1 \
+  --memory=${PI_API_MEMORY_MIB}Mi --timeout=30s \
   --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
   --set-env-vars="$SET_ENV"
 ```
@@ -214,6 +230,16 @@ as it is.
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
   (for example domain-restricted sharing) refuses the binding, stop (stop rule).
 - The startup probe is the default TCP probe. There are no health routes, by design.
+- **Checks after a revision that changes the served files or the memory** (there is no
+  `/healthz`; every route needs a Firebase token):
+  1. The revision's logs from container start carry no `MEMORY RULE: … REFUSED` ERROR and no
+     `PI_API_MEMORY_MIB is …: assuming 1024 MiB` ERROR, and one `dataset <path> loaded at
+     generation <n>` line per `DATASETS` path (a path shared by several sources loads once).
+  2. One signed-in product request per dataset key in `DATASETS` (for example `ounass_ae`,
+     `sephora_me`, `ulta_ae`, `faces_ae`) returns 200 (`infra/scripts/prod_smoke_api.py`, run by
+     the owner with their token; until then the report says "signed-in smoke NOT run").
+  3. The loaded product count per new source matches the export's (for Ounass, the export's
+     `products` count; 32,810 on 2026-10-07).
 - **`--cpu-boost`**: the gcloud default (startup-only), passed explicitly so redeploys match live; accepted 2026-10-01.
 - **Memory 1Gi** (decision log, 2026-10-01; was 512Mi). Measured locally (RSS, Python 3.12):
 
@@ -301,9 +327,19 @@ as it is.
   - **Over the gate, a file is served on a measured admission record only** (Coordinator,
     2026-10-07; supersedes the 2026-10-03 "no override" note). `demo_export --allow-over-gate`
     writes an over-gate body, prints `OVER GATE <file> <bytes> sha256=<hex>` and exits 3; that
-    sha is advisory, because the publisher re-serialises. pi_api enforces the gate at load: a new
-    generation over `V3_MAX_BYTES` whose sha256 is not in `PI_API_ADMITTED` is refused like an
-    invalid file (logged, the last good generation stays served). **The admitted sha256 is of the
+    sha is advisory, because the publisher re-serialises. **pi_api enforces the composed rule at
+    load** (`pi_dataset.gate.refusal`), not the per-file byte gate: before parsing a new
+    generation it sums every served body with the new one (a path shared by several sources,
+    such as `sephora_me` and `ulta_ae` on the beauty file, is read, parsed and counted once) and
+    evaluates `70.4 + 31.48 × largest_MB + 20 × others_MB` against 75% of `PI_API_MEMORY_MIB`.
+    Over it, the set loads only if the largest body's sha256 is in `PI_API_ADMITTED` and the
+    other files total at most that entry's measured bytes. Otherwise it logs ERROR `MEMORY RULE:
+    dataset <path> generation <n> REFUSED, …` with the reason and does not parse it: at cold
+    start the path is `UNAVAILABLE` (its sources serve nothing), on a refresh it is `kept at
+    <generation>` (the last good one stays served). A missing or unreadable `PI_API_MEMORY_MIB`
+    logs an ERROR and assumes 1024 MiB, the smallest instance (fail closed). `PI_API_ADMITTED`
+    entries are `sha256:others_bytes`, as `pi_api_admission.py check` prints them; the record also
+    pins whether offer content was packed (`packContent`; pi_api packs by default). **The admitted sha256 is of the
     decompressed `latest.json` body that pi_api parses**: not of the gzip object in the bucket,
     and not of the exporter's file (the publisher writes `dump_dataset(compact=True)`, then
     gzips). The publisher prints it: `admission body=<n>B sha256=<hex>`, dry run included.
@@ -324,8 +360,9 @@ as it is.
     3. Bench that exact body: `pi_api_admission.py measure` on a local copy of every served
        object at its bucket path, with the next revision's `DATASETS` and memory.
     4. Commit the record through review.
-    5. Publish for real. pi_api does not serve it yet: its log shows one `not loaded: … has no
-       admission record` line for this dataset per refresh, which is expected, not an incident.
+    5. Publish for real. pi_api does not serve it yet: its log shows one `MEMORY RULE: … REFUSED,
+       kept at …` (or `UNAVAILABLE`) ERROR for this dataset per refresh, `… has no admission
+       record`, which is expected until step 6, not an incident.
     6. Deploy the revision with `ADMITTED` from `pi_api_admission.py check` (and the memory the
        record was measured at).
     7. Verify it is served.
@@ -334,7 +371,8 @@ as it is.
     resident rate, ~20 MiB per compact MB (the beauty file's measured rate: 201 MiB for 10.1 MB).
     That rate is lower than the refresh rate, so rule 2 holds only while **the largest file
     (rule 1) is at least as large as any other single file**: the file that refreshes at 31.48
-    MiB per MB must be the largest. The 600 MiB reserve is **30 MB** at the resident rate. Before
+    MiB per MB must be the largest. The 600 MiB reserve is **30 MB** at the resident rate
+    (`OTHERS_MAX_BYTES`); an admission record over it does not pass. Before
     any revision that adds to `PI_API_DATASETS` (or a publish that grows a served file), size
     **every** served file's `latest.json` as **decompressed, compact** bytes and check:
 
@@ -362,8 +400,8 @@ as it is.
     the cap: the largest file's refresh peak plus the others' resident memory within 75% of 1Gi,
     `70.4 + 31.48 × largest_MB + 20 × others_MB ≤ 768 MiB`, with the largest file at least as large
     as any other. Today's set (beauty 17.05 MB, Faces 1.4 MB) is 635 MiB. With Faces as the only
-    other file, the largest may be at most **21,000,000** bytes. No dataset enters the 1Gi set
-    until it is checked against this; `ounass_ae` joins only in the 3Gi revision, with its record.
+    other file, the largest may be at most **21,000,000** bytes. pi_api applies this at load with
+    `PI_API_MEMORY_MIB=1024`: a file that would break it is refused, not served into an OOM.
   - **Cold start vs `--timeout=30s`.** With Ounass the load takes 26–30 s, and uvicorn opens the
     port only after it, so the default TCP startup probe passes. The first request after scale to
     zero waits that long. Measure it on the first 3Gi revision. `--min-instances=1` would remove
