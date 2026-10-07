@@ -327,8 +327,10 @@ def s3_images(api: Api, rep: Report) -> None:
             )
         else:
             bad = [u for u in urls if not u.startswith(f"https://{host}/")]
+            # At least one image: a pi-api without this host in PI_API_IMAGE_HOSTS serves
+            # image=null on every card, which must fail here, not read as "all on <host>".
             rep.expect(
-                bool(items) and not bad,
+                bool(items) and bool(urls) and not bad,
                 f"S3 {rid}: {len(urls)} images, all on {host} (bad {bad[:2]})",
             )
         if rid == "ulta_ae" and urls:
