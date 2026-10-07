@@ -222,13 +222,83 @@ as it is.
   | One export, per row (CSV: rows + encode peak; JSONL less) | ~4.4 KiB (50 k rows ≈ 220 MiB) |
   | **Peak, 20 000 products loaded + 2 concurrent CSV exports of all of them** | **800 MiB** |
 
-  So at the dataset budget (≤ 50 MB JSON) the measured peak is ~800 MiB, inside 1Gi with
-  ~200 MiB headroom. A 50 k-row export would need a 50 k-product dataset, which by itself exceeds
-  the budget, so the 2 × ~220 MiB worst case never adds to a full dataset. 512Mi does not fit a
-  budget-size dataset at all. The app allows two exports at once per instance; a third gets
-  `429 rate_limited` (`Retry-After: 5`). If Cloud Run logs a memory-limit restart, report it;
-  change nothing without a decision. The first lever is less concurrency (a lower
-  `--concurrency`, or `MAX_CONCURRENT_EXPORTS` in `pi_api/export.py`), not more memory.
+  That table predates content and the Ounass/Bloomingdale's catalogues. Re-measured 2026-10-07 on
+  main `67496647`: pi_api's own `SnapshotSource` on the real Ounass v3 (32,810 products,
+  107.4 MB indented = **72.7 MB compact**) plus the 9,529-product beauty file, composed as
+  `sephora_me`, `ulta_ae` and `ounass_ae`. Faces is not included, so production is somewhat higher.
+
+  | Phase | Time | Peak RSS | RSS after |
+  |---|---|---|---|
+  | Imports | | | 67 MiB |
+  | Cold start, beauty only | 5 s | 308 MiB | 268 MiB |
+  | Cold start, + Ounass (42,339 products) | 26–30 s | 1,185 MiB | 942 MiB |
+  | `GET /products?q=…` | 4.5 s | 947 MiB | 947 MiB |
+  | CSV export of all products (6.7 MB) | 15–16 s | ~1,030 MiB | ~1,000 MiB |
+  | **Refresh: a new Ounass generation** (×4) | 22–31 s | **1,739–1,795 MiB** | 1,409–1,596 MiB |
+
+  - **No leak.** Allocated blocks stay flat across refreshes. The RSS that remains after a refresh
+    is glibc keeping freed arenas: `malloc_trim` brings it back to ~1,050 MiB, and the next
+    refresh's peak does not grow.
+  - **A refresh holds two generations.** The old file and its composed view stay live while the
+    new file is parsed and composed. For Ounass that is ~1,530 MiB above the other sources at
+    peak, about 2.27 × its steady ~674 MiB (~9.3 bytes resident per compact JSON byte).
+  - **1Gi cannot hold Ounass**, not even at cold start. 2Gi leaves 0–100 MiB at a refresh peak
+    once Faces and two exports are added. **3Gi** is the size for Ounass (decision log
+    2026-10-07). It needs max-instances 1 (cost bound, ~+$18/mo worst case) and the owner's OK.
+    Until that flip is live, `ounass_ae` must not be in `PI_API_DATASETS`; the flip and the env
+    change go in one revision.
+  - **The export gate** (`V3_MAX_BYTES` in `scripts/demo_export/export.py`) is 90 MB of
+    **compact** JSON. The exporter and the publisher write compact JSON; whitespace is about a
+    third of an indented file and none of it is resident. At 3Gi, after imports (67 MiB), a
+    reserve for the other sources (600 MiB), two exports (160 MiB) and a 256 MiB margin, one
+    dataset's refresh peak may use ~1,990 MiB. Scaled from Ounass that is ~95 MB, rounded down to
+    90 MB. `test_content_memory.py` pins the content-heavy end of the range (text is cheaper per
+    byte than offer rows). The fix that lowers the peak itself is lazy per-source content
+    (tm8 task 01a11763-dc85). Re-measure when it lands; it may allow 2Gi.
+  - **The gate is per file; the 3Gi size is for all served files together.** The exporter checks
+    one file at a time, so two files that each pass can still exceed 3Gi. The 600 MiB reserve
+    holds the files other than the largest at ~20 MiB per compact MB (the beauty file's measured
+    rate: 201 MiB for 10.1 MB, denser than Ounass's 9.3), which is **30 MB**. That rate comes from
+    the bench's beauty file (the 1 Oct export, 9,529 products, 10.1 MB compact), not from the live
+    `beauty/latest.json` (17.05 MB compact on 2026-10-07). Memory scales with bytes, so the rule
+    holds for the live file, but production RSS is higher than the table above, by about 140 MiB
+    for the larger beauty file plus Faces (1.4 MB). Refreshes run one at
+    a time, so only the largest file's second generation counts. Before any revision that adds to
+    `PI_API_DATASETS` (or a publish that grows a served file), size **every** served file's
+    `latest.json` as **decompressed, compact** bytes and check:
+
+    1. the largest file is at most **90,000,000** bytes, and
+    2. all the other files together are at most **30,000,000** bytes.
+
+    If either fails, do not deploy that revision: serve the large dataset alone, or keep the new
+    one out until §6 is re-measured with it. A second large catalogue (Bloomingdale's) always
+    fails rule 2 and needs that re-measure. Two traps: the publisher stores objects gzip-encoded,
+    so the GCS object size is the gzip size; and a file published before compact output (before
+    2026-10-07) is indented, ~1.5× its compact size. The check below handles both (paths from
+    `DATASETS`, dropping any `source=` prefix):
+
+    ```sh
+    for p in $(printf '%s' "$DATASETS" | tr ',' '\n' | sed 's/^[^=]*=//' | sort -u); do
+      gcloud storage cat "gs://$BUCKET/$p" | python3 -c 'import gzip,json,sys
+    b = sys.stdin.buffer.read()
+    b = gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
+    print(len(json.dumps(json.loads(b), separators=(",", ":"), ensure_ascii=False).encode()), sys.argv[1])' "$p"
+    done | sort -rn
+    ```
+
+    The first line is the largest file (rule 1); the rest must sum to at most 30,000,000 (rule 2).
+    The 90 MB constant and both rules assume **3Gi**. While pi-api runs at 1Gi (until step F's 3Gi
+    revision is live), no dataset larger than the ones served today enters `PI_API_DATASETS`, and
+    the served files stay within the 1Gi sizing: at most **33,000,000** decompressed, compact bytes
+    in total (the old 50 MB indented gate), even though the exporter now accepts up to 90 MB.
+    `ounass_ae` joins only in the 3Gi revision.
+  - **Cold start vs `--timeout=30s`.** With Ounass the load takes 26–30 s, and uvicorn opens the
+    port only after it, so the default TCP startup probe passes. The first request after scale to
+    zero waits that long. Measure it on the first 3Gi revision. `--min-instances=1` would remove
+    the wait, but it is new spend and needs the owner's OK.
+  - The app allows two exports at once per instance; a third gets `429 rate_limited`
+    (`Retry-After: 5`). If Cloud Run logs a memory-limit restart, report it; change nothing
+    without a decision.
 - **`--timeout=30s`, `--cpu-throttling` (request-based CPU).** The slowest route is a 50 k-row CSV
   export, ~4 s measured locally (~1.3 s JSONL); even several times slower on 1 vCPU it is well
   inside 30 s.

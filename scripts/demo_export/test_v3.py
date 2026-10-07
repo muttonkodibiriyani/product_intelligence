@@ -180,12 +180,17 @@ def test_every_collected_offer_has_content_and_early_has_none() -> None:
 
 def test_the_byte_groups_split_the_written_body_exactly() -> None:
     ds = build(listing=content_rows())
-    body = dump_dataset(ds)
+    body = dump_dataset(ds, compact=True)
     groups = v3_bytes_by_group(ds, len(body))
     assert list(groups) == ["prices", "attributes", "description+ingredients"]
     assert sum(groups.values()) == len(body)
     assert all(n > 0 for n in groups.values())
-    assert v3_bytes_by_group(build(), len(dump_dataset(build())))["description+ingredients"] == 0
+    assert (
+        v3_bytes_by_group(build(), len(dump_dataset(build(), compact=True)))[
+            "description+ingredients"
+        ]
+        == 0
+    )
 
 
 def test_a_body_over_the_budget_is_refused() -> None:
@@ -193,4 +198,4 @@ def test_a_body_over_the_budget_is_refused() -> None:
     check_v3_size(V3_MAX_BYTES, groups)
     with pytest.raises(SystemExit, match="nothing was written") as refused:
         check_v3_size(V3_MAX_BYTES + 1, groups)
-    assert "prices=50000000 attributes=1" in str(refused.value)
+    assert "prices=90000000 attributes=1" in str(refused.value)

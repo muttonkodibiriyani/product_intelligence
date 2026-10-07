@@ -1,9 +1,12 @@
-"""A ``pi.dataset/v3`` snapshot at the export's 50 MB budget, with ``Offer.content`` at realistic
-sizes, loads inside the memory headroom the deploy runbook leaves (pi-api-deploy.md §6).
+"""A ``pi.dataset/v3`` snapshot with ``Offer.content`` at realistic sizes, scaled to the export's
+90 MB compact budget, stays inside the resident share the deploy runbook gives one dataset at
+3Gi (pi-api-deploy.md §6).
 
-Text is cheaper per byte than the many small objects of a price-only product, so a budget-size
-snapshot heavy with description/ingredients holds *less* than a price-only one; this pins that
-the content fields do not change the arithmetic the 1Gi limit rests on.
+Text is cheaper per byte than the many small objects of a price-only product, so a snapshot
+heavy with description/ingredients holds *less* per byte than the real Ounass mix the budget was
+calibrated on; this pins that the content fields do not change that arithmetic. A 10 MB sample
+is loaded and scaled linearly (resident memory grows with product count), so CI does not have
+to hold a full-budget snapshot.
 """
 
 from __future__ import annotations
@@ -18,8 +21,10 @@ from typing import Any
 from api_fixture import DATASET_PATH, bearer, make_client, served_dataset
 from pi_metrics import view
 
-BUDGET = 50_000_000  # scripts/demo_export/export.py V3_MAX_BYTES
-HEADROOM = 200 * 2**20  # pi-api-deploy.md §6: ~200 MiB left inside 1Gi at the budget
+BUDGET = 90_000_000  # scripts/demo_export/export.py V3_MAX_BYTES, compact JSON bytes
+SAMPLE = 10_000_000
+# pi-api-deploy.md §6: a dataset's steady share at 3Gi (~1,990 MiB refresh peak / 2.27).
+RESIDENT = 875 * 2**20
 CAPTURED = ["description", "ingredients", "images", "shade", "gtin"]
 WORDS = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 30
 
@@ -45,14 +50,21 @@ def product(template: dict[str, Any], i: int) -> dict[str, Any]:
 def budget_doc() -> bytes:
     doc: dict[str, Any] = view.as_v3(served_dataset()).model_dump(mode="json", by_alias=True)
     template = next(p for p in doc["products"] if p["id"] == "p01")
-    count = BUDGET // len(json.dumps(product(template, 0)))
+    count = SAMPLE // len(compact(product(template, 0)))
     doc["products"] = [product(template, i) for i in range(count)]
-    return json.dumps(doc).encode()
+    return compact(doc).encode()
 
 
-def test_a_budget_size_snapshot_with_content_loads_inside_the_headroom(tmp_path: Path) -> None:
+def compact(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def test_a_budget_size_snapshot_with_content_stays_inside_its_resident_share(
+    tmp_path: Path,
+) -> None:
     body = budget_doc()
-    assert BUDGET * 0.98 < len(body) <= BUDGET * 1.02
+    assert SAMPLE * 0.98 < len(body) <= SAMPLE * 1.02
+    scale = BUDGET / len(body)
     target = tmp_path / DATASET_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(body)
@@ -70,4 +82,5 @@ def test_a_budget_size_snapshot_with_content_loads_inside_the_headroom(tmp_path:
         retained = tracemalloc.get_traced_memory()[0] - before
     finally:
         tracemalloc.stop()
-    assert retained < HEADROOM, f"{retained / 2**20:.0f} MiB retained"
+    at_budget = retained * scale
+    assert at_budget < RESIDENT, f"{at_budget / 2**20:.0f} MiB at the budget"

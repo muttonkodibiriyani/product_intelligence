@@ -91,9 +91,12 @@ def load_any(raw: bytes | str, *, allow_test: bool = False) -> Dataset | Dataset
     return _validate(Dataset, text, allow_test)
 
 
-def dump_dataset(dataset: Dataset | DatasetV3) -> bytes:
-    """Canonical UTF-8 JSON: aliases, explicit nulls, no floats (there are none to emit)."""
-    return (dataset.model_dump_json(indent=2) + "\n").encode("utf-8")
+def dump_dataset(dataset: Dataset | DatasetV3, *, compact: bool = False) -> bytes:
+    """Canonical UTF-8 JSON: aliases, explicit nulls, no floats (there are none to emit).
+
+    ``compact`` drops the indentation: the form the exporter writes and the publisher uploads,
+    since whitespace is a third of an indented snapshot and none of it is data."""
+    return (dataset.model_dump_json(indent=None if compact else 2) + "\n").encode("utf-8")
 
 
 def json_schema() -> dict[str, Any]:

@@ -113,6 +113,16 @@ def test_every_validation_problem_is_listed_with_its_path() -> None:
     assert "products.0.brand" in paths
 
 
+def test_the_compact_dump_is_the_same_document_without_whitespace() -> None:
+    indented = dump_dataset(ae_pilot())
+    compact = dump_dataset(ae_pilot(), compact=True)
+    assert json.loads(compact) == json.loads(indented)
+    assert compact.endswith(b"}\n")
+    assert b"\n" not in compact[:-1]
+    assert len(compact) < len(indented)
+    assert dump_dataset(load_dataset(compact, allow_test=True), compact=True) == compact
+
+
 def test_dump_is_canonical_utf8() -> None:
     raw = dump_dataset(ae_pilot())
     assert raw.endswith(b"}\n")
