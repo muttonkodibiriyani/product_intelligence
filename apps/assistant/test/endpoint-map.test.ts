@@ -38,6 +38,11 @@ export const EXCLUDED: readonly { readonly pattern: RegExp; readonly reason: str
       "Insights page aggregates (brand price policy, size ladders) built from compare's counted pairs; compare answers the same questions",
   },
   {
+    pattern: /^\/api\/v1\/findings$/,
+    reason:
+      "Insights page findings (ranked, worded by the page) built from the catalogues and compare's counted pairs; a tool can follow once the page settles",
+  },
+  {
     pattern: /^\/api\/v1\/catalogues\//,
     reason:
       "SKU galleries and identity links for the product page (display only); no prices or counts to answer with",

@@ -68,8 +68,8 @@ which touches Ulta, or serve two overlapping files of one scope, which `select()
      `notObserved` windows covering that date with them. It is computed once per generation.
      The API uses it for reads with no explicit date that report levels: `/compare`,
      `/promotions`, `/availability`, `/summary`, `/products` and `/products/{id}`, and their
-     exports. So a comparison sets Sephora's latest price beside Ulta's latest, not beside
-     nothing.
+     exports; since 1.22.0 also `/category-compare` and `/insights`. So a comparison sets
+     Sephora's latest price beside Ulta's latest, not beside nothing.
    - **Always labelled.** Each such response, and `/index` with no `to` and `/assortment-gaps`
      with no `date`, starts its caveats with one `stale_source` per stale source it reads
      (`retailer`, `asOf`). They come before the metric's own caveats, so a client that shows
