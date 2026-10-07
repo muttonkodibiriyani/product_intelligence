@@ -356,8 +356,12 @@ def _map_size(em: _Emitter, els: list[_El], item: Mapping[str, Any] | None) -> N
         label, path = s, f"{_DL}.item_size"
     elif (sel := _first(els, "js-selected-value")) is not None and sel.text:
         label, path = sel.text.strip("()").strip(), "span.js-selected-value"
-    if label is None:
-        return
+    if label is not None:
+        _emit_size(em, label, path)
+
+
+def _emit_size(em: _Emitter, label: str, path: str) -> None:
+    """``size_label`` as shown, then its number and unit, or why they could not be read."""
     em.observed("size_label", label, label, path)
     cleaned, cleaning = _clean_size_label(label)
     m = _SIZE.match(cleaned)

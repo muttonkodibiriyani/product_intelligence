@@ -119,6 +119,30 @@ SHOPS: dict[str, Shop] = {
         # 2026-10-06); the catalogue stays partial, so a missing page is never a stock-out
         markup_availability=True,
     ),
+    # beauty only (the reader leaves other divisions and Home out); stock per page from the
+    # page's own JSON-LD and stock flag, which must agree; partial, so absence infers nothing
+    "ounass_ae": Shop(
+        source="ounass_ae",
+        base_url="https://www.ounass.ae",
+        country="AE",
+        locale="en-AE",
+        currency="AED",
+        time_zone="Asia/Dubai",
+        notes="Ounass UAE (Al Tayer), beauty product pages read from the 2026-10-03 capture; "
+        "partial: the run stopped before every planned page was fetched",
+        markup_availability=True,
+    ),
+    "bloomingdales_ae": Shop(
+        source="bloomingdales_ae",
+        base_url="https://bloomingdales.ae",
+        country="AE",
+        locale="en-AE",
+        currency="AED",
+        time_zone="Asia/Dubai",
+        notes="Bloomingdale's UAE (Al Tayer), beauty product pages read from the 2026-10-03 "
+        "capture",
+        markup_availability=True,
+    ),
 }
 
 

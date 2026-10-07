@@ -25,10 +25,12 @@ bucket, so it runs in the bucket's region to avoid egress charges.
 - `<part>.jsonl.gz` holds the readings for one input part. It is written only after the whole part is
   read, so a rerun skips parts already present and picks up parts a running capture added later.
 - `errors/<part>.jsonl.gz` lists each page that gave no readings, with its state and reason:
-  `sha_mismatch`, `not_product`, `reader_error` or `no_rows`.
+  `sha_mismatch`, `not_product`, `out_of_scope`, `reader_error` or `no_rows`. `out_of_scope` is a
+  readable product page outside the capture's scope (Ounass or Bloomingdale's, not beauty or in Home).
 - `status.t<N>.json` holds the task's counts.
 
 ## Readers
 
 Centrepoint, Splash, Babyshop, Home Centre and Max use `pi_capture.landmark`. Faces uses
-`pi_capture.faces`. Every other retailer uses the generic readers.
+`pi_capture.faces`. Ounass and Bloomingdale's use `pi_capture.ounass` and `pi_capture.bloomingdales`
+(beauty only). Every other retailer uses the generic readers.
