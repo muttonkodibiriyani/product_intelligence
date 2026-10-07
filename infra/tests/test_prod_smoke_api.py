@@ -114,7 +114,7 @@ class FakeProd:
         return {
             "id": pid,
             "prices": {ctx: money(price)},
-            "image": {"url": f"https://{host}/{pid}.jpg"},
+            "image": {"url": f"https://{host}/{pid}.jpg"} if host else None,
         }
 
     def served(self, card: dict[str, Any]) -> dict[str, Any]:
@@ -267,6 +267,46 @@ def test_a_named_added_retailer_passes_on_top_of_an_unchanged_baseline(tmp_path:
     assert any("S2 faces_ae serves 30 products" in line for line in lines)
     assert any("S3 faces_ae: 30 images, all on www.faces.ae" in line for line in lines)
     assert any("S3 faces_ae evidence on www.faces.ae" in line for line in lines)
+
+
+def with_ounass_and_bloomingdales(n: int = 20) -> FakeProd:
+    """After a deploy that starts serving retailers 4 and 5 (Ounass with no image host yet)."""
+    fake = FakeProd()
+    for rid, prefix in (("ounass_ae", "o"), ("bloomingdales_ae", "b")):
+        fake.cards[rid] = [fake._card(f"{prefix}{i}", rid, "150.00") for i in range(n)]
+    return fake
+
+
+ADDED_PAIR = (
+    *("--expect-api", "1.7.0"),
+    *("--added-retailer", "ounass_ae", "--added-retailer", "bloomingdales_ae"),
+)
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_ounass_and_bloomingdales_added_pass_ounass_with_no_images(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    args = ADDED_PAIR
+    assert run(with_ounass_and_bloomingdales(), tmp_path, "check", *args) == 0
+    lines = json.loads((tmp_path / "check.json").read_text())["lines"]
+    assert any("S2 ounass_ae serves 20 products" in line for line in lines)
+    assert any("S3 ounass_ae: no images (image host not verified" in line for line in lines)
+    assert any("S3 ounass_ae evidence on www.ounass.ae" in line for line in lines)
+    assert any(
+        "S3 bloomingdales_ae: 20 images, all on prodheadless.atgwasl.com" in line for line in lines
+    )
+    assert any("S3 bloomingdales_ae evidence on bloomingdales.ae" in line for line in lines)
+
+
+@pytest.mark.usefixtures("owner_token")
+def test_an_ounass_image_fails_while_its_host_is_unverified(tmp_path: Path) -> None:
+    baseline(tmp_path)
+    fake = with_ounass_and_bloomingdales()
+    fake.cards["ounass_ae"][0]["image"] = {"url": "https://www.ounass.ae/o0.jpg"}
+    args = ADDED_PAIR
+    assert run(fake, tmp_path, "check", *args) == 1
+    problems = json.loads((tmp_path / "check.json").read_text())["problems"]
+    assert any(p.startswith("S3 ounass_ae: no images") for p in problems)
 
 
 @pytest.mark.usefixtures("owner_token")

@@ -80,7 +80,7 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
                   return (
                     <tr key={r.id} className="border-t border-line">
                       <th scope="row" className="py-2 pe-6 text-start font-medium whitespace-nowrap">
-                        {retailerName(r.id, r.name)}
+                        {retailerName(r.id, r.name, locale)}
                       </th>
                       <td className="py-2 pe-6">
                         <Known t={t} k="status" v={r.status} />

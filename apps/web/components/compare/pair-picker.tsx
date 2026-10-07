@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useId, type ReactNode } from 'react';
 import { pick, type CompareState, type GroupBy } from '@/lib/compare';
 import { retailerName } from '@/lib/retailers';
@@ -40,12 +40,13 @@ export function PairPicker({
   grouping?: boolean;
 }) {
   const t = useTranslations('compare');
+  const locale = useLocale();
   const retailers = useMeta().data?.data?.retailers ?? [];
   const id = useId();
   const nameOf = (rid: string) => retailers.find((r) => r.id === rid)?.name ?? rid;
   const option = (r: (typeof retailers)[number]) => (
     <option key={r.id} value={r.id}>
-      {retailerName(r.id, r.name)}
+      {retailerName(r.id, r.name, locale)}
     </option>
   );
   const side = (s: 'base' | 'other', i: 0 | 1) => (

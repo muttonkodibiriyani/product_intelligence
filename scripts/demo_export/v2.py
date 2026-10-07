@@ -80,18 +80,31 @@ from scripts.demo_export.export import (
 from scripts.demo_export.tidy import tidy_rows
 
 MARKET = MarketInfo(country="AE", currency="AED", time_zone="Asia/Dubai", locales=("en", "ar"))
-#: Slot -> (source-register key, display name). Faces (2026-10-03) is v2/v3 only.
+#: Slot -> (source-register key, display name). Faces (2026-10-03), Ounass and Bloomingdale's
+#: (2026-10-07, beauty only, EN only) are v2/v3 only.
 RETAILERS = {
     "u": ("ulta_ae", "Ulta UAE"),
     "s": ("sephora_me", "Sephora UAE"),
     "f": ("faces_ae", "Faces UAE"),
+    "o": ("ounass_ae", "Ounass UAE"),
+    "b": ("bloomingdales_ae", "Bloomingdale's UAE"),
 }
-#: Slots whose crawl is not known to be a complete catalogue (Faces). Such a retailer's snapshot
-#: is ``partial`` whatever its runs say and its availability is not published (``null``, not
-#: observed). In history, a day is complete only on an import run recorded ``succeeded``, which
-#: the feed claims only when the run read every product URL of the measured sitemap
-#: (``pi_capture.feed.completeness``); every other day backs no launch, removal or stock-out.
-INCOMPLETE_CATALOGUE = frozenset({"f"})
+#: Slots whose crawl is not known to be a complete catalogue (Faces, Ounass, Bloomingdale's).
+#: Such a retailer's snapshot is ``partial`` whatever its runs say.
+INCOMPLETE_CATALOGUE = frozenset({"f", "o", "b"})
+#: The ``INCOMPLETE_CATALOGUE`` slots whose import run can attest a complete day (Faces only). In
+#: history, a Faces day is complete only on an import run recorded ``succeeded``, which the feed
+#: claims only when the run read every product URL of the measured sitemap
+#: (``pi_capture.feed.completeness``; decision log 2026-10-06). Ounass and Bloomingdale's have no
+#: measured denominator: no day of theirs is ever complete, so their absence infers nothing (no
+#: launch, removal or stock-out from a page not seen; decision log 2026-10-06).
+SITEMAP_ATTESTED = frozenset({"f"})
+#: Slots whose per-page stock is not published (``null``, not observed). Faces' page stock is
+#: loaded (decision log 2026-10-06) but its export side is a separate Faces exporter PR, so it
+#: stays unpublished here. Ounass and Bloomingdale's publish the stock their own page states (the
+#: JSON-LD offer and the page flag agree, else the feed leaves it unknown): an out-of-stock page
+#: is an offer published out of stock, never dropped or read as removed.
+STOCK_NOT_PUBLISHED = frozenset({"f"})
 STATUS = {
     "ok": RetailerStatus.SUPPORTED,
     "partial": RetailerStatus.PARTIAL,
@@ -114,7 +127,18 @@ IMAGE_HOSTS: dict[str, frozenset[str]] = {
     "sephora_me": frozenset({"img-product.sephora.me"}),
     "ulta_ae": frozenset({"media.alshaya.com"}),
     "faces_ae": frozenset({"www.faces.ae"}),
+    # Verified on a saved Bloomingdale's page (.../on/demandware.static/-/Sites-bloomingdales-
+    # master-catalog/...).
+    "bloomingdales_ae": frozenset({"prodheadless.atgwasl.com"}),
+    # ounass_ae: no entry while OUNASS_IMAGE_HOST is None (below).
 }
+#: TODO(ounass image host): not yet verified from a saved page (2026-10-07), so it is never
+#: guessed. While this is None, ``ounass_ae`` has no ``IMAGE_HOSTS`` entry and every Ounass image
+#: is null. Set it to the verified host, and add it to the Hosting CSP img-src and the web's
+#: ``IMAGE_OWNERS``/``HOST_RETAILER``, in one reviewed change.
+OUNASS_IMAGE_HOST: str | None = None
+if OUNASS_IMAGE_HOST is not None:  # pragma: no cover - until the host is verified
+    IMAGE_HOSTS["ounass_ae"] = frozenset({OUNASS_IMAGE_HOST})
 #: The retailer's "no image" placeholder (``.../images/noimagemedium.png``) is not a product image.
 PLACEHOLDER_IMAGE = re.compile(r"/noimage[^/]*$", re.IGNORECASE)
 #: Published prices outside this band are listed in the run log for a manual check (never changed).
@@ -247,7 +271,7 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
         stale.prices += 1
         stale.regulars += money(rep.regular, currency) is not None
     regular = money(rep.regular, currency) if price is not None else None
-    stock = None if rep.retailer in INCOMPLETE_CATALOGUE else availability(rep.availability)
+    stock = None if rep.retailer in STOCK_NOT_PUBLISHED else availability(rep.availability)
     if stock is not None and not stale.on_day(stock_at):
         stock = None
         stale.stock += 1
@@ -478,14 +502,18 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
             since=None,
             note=None,
         ),
+    ]
+    candidates += [
         Retailer(
-            id=RETAILERS["f"][0],
-            name=RETAILERS["f"][1],
+            id=RETAILERS[shop][0],
+            name=RETAILERS[shop][1],
             country=MARKET.country,
-            status=incomplete_status(rows, "f"),
+            status=incomplete_status(rows, shop),
             since=None,
             note=None,
-        ),
+        )
+        for shop in RETAILERS
+        if shop in INCOMPLETE_CATALOGUE
     ]
     by_id = {r.id: r for r in candidates}
     retailers = [by_id[RETAILERS[shop][0]] for shop in RETAILERS if shop in listed]
