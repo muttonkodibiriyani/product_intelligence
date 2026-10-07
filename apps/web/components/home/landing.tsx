@@ -21,7 +21,7 @@ import { useSummaries } from '../widgets/use-summaries';
 import { compareHref, promotions, promotionsHref } from '../widgets/model';
 import { AsOf } from './as-of';
 import { Band } from './band';
-import { CategoryHeadToHead } from './category-head-to-head';
+import { CategoryHeadToHead, hasCategoryRows } from './category-head-to-head';
 import { Insights } from './insights';
 import { earlyExcluded, verdict } from './model';
 import { useLaunchCounts, usePromoShares } from './use-overview-data';
@@ -64,8 +64,9 @@ function Overview({
 }) {
   const t = useTranslations('home.landing');
   const tc = useTranslations('card');
-  // The pair's matched set and category medians; neither is asked for without a second retailer.
-  const cmp = useCompareData(pair);
+  // The pair's matched set (with its per-category groups) and category medians; neither is asked
+  // for without a second retailer.
+  const cmp = useCompareData(pair, 'category');
   const cat = useCategoryCompare(pair);
   const promo = usePromoShares();
   const launches = useLaunchCounts(ids);
@@ -81,6 +82,11 @@ function Overview({
     );
 
   const matched = cmp.kind === 'ready' && cmp.data.summary !== null && cmp.data.summary.n > 0;
+  // The category card waits for both reads; without a row to show it is not drawn and the basket
+  // takes the whole row.
+  const groups = cmp.kind === 'ready' ? cmp.data.groups : null;
+  const catState = cmp.kind === 'loading' ? ({ kind: 'loading' } as const) : cat;
+  const categories = hasCategoryRows(catState, groups);
   return (
     <div className="space-y-6">
       <section id="kpi-band" aria-labelledby="kpi-band-title">
@@ -92,8 +98,8 @@ function Overview({
       {pair && <Headline pair={pair} cmp={cmp} />}
       {pair && (
         <div className="grid grid-cols-12 items-start gap-5">
-          <CategoryHeadToHead state={cat} pair={pair} span={matched ? 8 : 12} />
-          {matched && <MatchedBasket pair={pair} data={cmp.data} />}
+          <CategoryHeadToHead state={catState} groups={groups} pair={pair} span={matched ? 8 : 12} />
+          {matched && <MatchedBasket pair={pair} data={cmp.data} span={categories ? 4 : 12} />}
         </div>
       )}
       <Insights rows={s.rows} pair={pair} cat={cat} launches={launches} />
@@ -244,7 +250,7 @@ export function NoMatch({
  * The matched basket head to head: what the same products cost at each shop, the API's median
  * gap, and a tally of who is cheaper how often, out of the products either shop sells.
  */
-export function MatchedBasket({ pair, data }: { pair: Pair; data: Comparison }) {
+export function MatchedBasket({ pair, data, span = 4 }: { pair: Pair; data: Comparison; span?: 4 | 12 }) {
   const t = useTranslations('widgets.basket');
   const locale = useLocale();
   const s = data.summary!;
@@ -275,7 +281,7 @@ export function MatchedBasket({ pair, data }: { pair: Pair; data: Comparison }) 
     <Card
       id="w-basket"
       title={t('title')}
-      span={4}
+      span={span}
       flush
       tools={
         <Link href={compareHref(locale, pair)} className="btn text-sm focus-visible:outline-2">

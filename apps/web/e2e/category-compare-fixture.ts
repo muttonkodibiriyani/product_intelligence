@@ -154,3 +154,38 @@ export function categoryCompareBody(base = 'shop_a', other = 'shop_b', counts: C
     detail: null,
   };
 }
+
+/**
+ * /compare's `groups` with `groupBy=category`, in the wire shape. SAMPLE DATA: per category, how
+ * many matched pairs each shop is cheaper on and how many are the same price, or a bare count
+ * below the cohort minimum (the API then sends no summary).
+ */
+export type GroupCounts = Partial<Record<BucketKey, [number, number, number] | number>>;
+
+export function compareGroups(base = 'shop_a', other = 'shop_b', counts: GroupCounts) {
+  return BUCKETS.flatMap((key): Record<string, unknown>[] => {
+    const c = counts[key];
+    if (c === undefined) return [];
+    if (typeof c === 'number')
+      return [{ key, n: c, status: 'not_enough_data', reason: 'cohort_too_small', summary: null }];
+    const [a, b, e] = c;
+    const n = a + b + e;
+    return [
+      {
+        key,
+        n,
+        status: 'ok',
+        reason: null,
+        summary: {
+          n,
+          medianGapPct: '0.0',
+          meanGapPct: '0.0',
+          cheaperCounts: { [base]: a, [other]: b },
+          equalCount: e,
+          basket: { base: aed(100 * n), other: aed(100 * n) },
+          gapHist: { edges: ['-10', '0', '10'], counts: [0, 0, 0, 0] },
+        },
+      },
+    ];
+  });
+}
