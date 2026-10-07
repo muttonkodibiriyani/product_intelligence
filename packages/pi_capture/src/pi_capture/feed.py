@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -287,7 +288,7 @@ def _row(
         return prices
     row: Row = {"listing_key": key, "sku": key}
     canonical = _observed(by_key, "canonical_url")
-    row["url"] = (_text(canonical.value) if canonical else None) or capture.url
+    row["url"] = _uri((_text(canonical.value) if canonical else None) or capture.url)
     for column, reading_key in _TEXT_COLUMNS:
         reading = _observed(by_key, reading_key)
         if reading is not None and (value := _text(reading.value)) is not None:
@@ -317,6 +318,23 @@ def _row(
     row |= prices
     row["observed_at"] = capture.retrieved_at.isoformat()
     return row
+
+
+#: scheme and authority, which :func:`_uri` never touches
+_AUTHORITY = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^/?#]*")
+#: ASCII a strict http URL refuses after the authority (space, controls, brackets, ``"<>\\^`{|}``)
+#: and a ``%`` that starts no escape; non-ASCII text is valid there and stays as it is
+_UNSAFE = re.compile(r"%(?![0-9A-Fa-f]{2})|[\x00-\x20\x7f\"<>\[\]\\^`{|}]")
+
+
+def _uri(url: str) -> str:
+    """``url`` with :data:`_UNSAFE` characters percent-encoded after the authority: a page URL
+    such as ``.../bright-plus-[advanced]-serum.html`` is not a valid http URL until its brackets
+    are escaped, and the dataset refuses the whole body over one. Idempotent; a URL with none of
+    them comes back byte for byte."""
+    head = _AUTHORITY.match(url)
+    cut = head.end() if head else 0
+    return url[:cut] + _UNSAFE.sub(lambda m: f"%{ord(m.group()):02X}", url[cut:])
 
 
 #: :func:`build_feed` exclusion reasons that :func:`completeness` treats as read elsewhere
