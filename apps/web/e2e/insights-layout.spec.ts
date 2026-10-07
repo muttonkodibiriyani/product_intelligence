@@ -53,13 +53,14 @@ for (const locale of ['en', 'ar'] as const)
       await page.setViewportSize({ width, height: 900 });
       const mock = await mockBackend(page, { onApi: api });
       await signIn(page, locale);
+      await expect(page.getByRole('navigation').first()).toBeVisible();
       await page.goto(`/app/${locale}/prices/`);
       await expect(page.locator('main h1')).toBeVisible();
       const prices = await gutters(page);
 
       await page.goto(`/app/${locale}/insights/`);
       await expect(page.locator('article[data-finding]').first()).toBeVisible();
-      await expect(page.locator('#finding-space')).toBeVisible();
+      await expect(page.locator('[id^="finding-space-"]').first()).toBeVisible();
       const insights = await gutters(page);
       expect(insights.left).toBe(insights.right);
       expect(insights).toEqual(prices);

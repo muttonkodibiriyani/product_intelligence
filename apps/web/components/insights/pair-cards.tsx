@@ -91,7 +91,9 @@ export function PairPrices({
         {shown.includes('policy') && (
           <PolicyCard pricing={pricing} share={share} base={base} other={other} span={span('policy')} />
         )}
-        {shown.includes('space') && <WhiteSpaceCard env={gaps.data} span={span('space')} />}
+        {shown.includes('space') && (
+          <WhiteSpaceCard env={gaps.data} span={span('space')} id={`finding-space-${base}-${other}`} />
+        )}
       </CardGrid>
     </div>
   );
@@ -358,7 +360,16 @@ function PolicyCard({
 }
 
 /** 3. White space: what the other shop lists that the base shop has no match for, by brand. */
-function WhiteSpaceCard({ env, span }: { env: Envelope<Schemas['AssortmentGaps']> | undefined; span: Half }) {
+// One per shop pair on the page, so the id (and the title it labels the section with) names the pair.
+function WhiteSpaceCard({
+  env,
+  span,
+  id,
+}: {
+  env: Envelope<Schemas['AssortmentGaps']> | undefined;
+  span: Half;
+  id: string;
+}) {
   const t = useTranslations('insights.space');
   const locale = useLocale();
   const name = useRetailerName();
@@ -375,7 +386,7 @@ function WhiteSpaceCard({ env, span }: { env: Envelope<Schemas['AssortmentGaps']
   return (
     <Card
       level={4}
-      id="finding-space"
+      id={id}
       title={t('title')}
       span={span}
       question={t(missing ? 'headlineMissing' : 'headlineUnmatched', {
