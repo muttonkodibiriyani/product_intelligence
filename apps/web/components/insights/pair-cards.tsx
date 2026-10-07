@@ -223,7 +223,7 @@ function SizeCard({ pricing, base, other, span }: Pair & { pricing: Insights['pr
   return (
     <Card
       level={4}
-      id="finding-size"
+      id={`finding-size-${base}-${other}`}
       title={t('title')}
       span={span}
       question={
@@ -307,7 +307,7 @@ function PolicyCard({
   return (
     <Card
       level={4}
-      id="finding-policy"
+      id={`finding-policy-${base}-${other}`}
       title={t('title')}
       span={span}
       question={t('headline', {

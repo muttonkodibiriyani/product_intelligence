@@ -54,6 +54,23 @@ async function halfRows(page: Page) {
   );
 }
 
+/** Ids used more than once, and aria-labelledby references that miss or point outside their own element. */
+async function idProblems(page: Page) {
+  return page.evaluate(() => {
+    const seen = new Map<string, number>();
+    for (const e of document.querySelectorAll('[id]')) seen.set(e.id, (seen.get(e.id) ?? 0) + 1);
+    const repeated = [...seen].filter(([, n]) => n > 1).map(([id, n]) => `${id} ×${n}`);
+    const unlabelled = [...document.querySelectorAll('[aria-labelledby]')].flatMap((e) =>
+      e
+        .getAttribute('aria-labelledby')!
+        .split(/\s+/)
+        .filter((id) => !e.contains(document.getElementById(id)))
+        .map((id) => `${e.id || e.tagName} -> ${id}`),
+    );
+    return { repeated, unlabelled };
+  });
+}
+
 for (const locale of ['en', 'ar'] as const)
   for (const width of [1280, 1440, 1920])
     test(`${locale} ${width}: Insights gutters match Prices and every card row is full`, async ({
@@ -76,6 +93,9 @@ for (const locale of ['en', 'ar'] as const)
       expect(insights.left).toBe(insights.right);
       expect(insights).toEqual(prices);
       expect(await halfRows(page)).toEqual([]);
+      // Every ready shop pair renders its own cards, so their ids and labels must name the pair.
+      expect(await page.locator('[id^="finding-size-"]').count()).toBeGreaterThanOrEqual(2);
+      expect(await idProblems(page)).toEqual({ repeated: [], unlabelled: [] });
       for (const { brand } of LONG_BRANDS) {
         const name = page.getByRole('link', { name: brand, exact: true });
         await expect(name).toHaveText(brand);
