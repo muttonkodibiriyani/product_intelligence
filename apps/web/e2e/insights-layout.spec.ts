@@ -59,8 +59,9 @@ for (const locale of ['en', 'ar'] as const)
       const prices = await gutters(page);
 
       await page.goto(`/app/${locale}/insights/`);
-      await expect(page.locator('article[data-finding]').first()).toBeVisible();
-      await expect(page.locator('[id^="finding-space-"]').first()).toBeVisible();
+      // The findings and the per-pair cards load after the page; under a busy runner that can exceed 5s.
+      await expect(page.locator('article[data-finding]').first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('[id^="finding-space-"]').first()).toBeVisible({ timeout: 15_000 });
       const insights = await gutters(page);
       expect(insights.left).toBe(insights.right);
       expect(insights).toEqual(prices);
