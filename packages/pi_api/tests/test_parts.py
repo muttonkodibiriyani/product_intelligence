@@ -124,10 +124,25 @@ def test_a_missing_file_is_logged_not_raised(tmp_path: Path) -> None:
 
 def test_a_v2_dataset_metrics_cannot_read_is_not_loaded(tmp_path: Path) -> None:
     ds = served_dataset()
-    write(tmp_path, ds.model_copy(update={"meta": ds.meta.model_copy(update={"vertical": "toys"})}))
+    toys = ds.model_copy(update={"meta": ds.meta.model_copy(update={"vertical": "toys"})})
+    write(tmp_path, toys, legacy=True)
     source = SnapshotSource(LocalStore(tmp_path), (DATASET_PATH,))
     source.load_all()  # no committed toys@1 profile to upgrade it by
     assert source.datasets() == ()
+
+
+def test_a_file_of_several_retailers_from_before_their_own_keys_is_refused_at_load(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ADR-0013: its meta.fields merge all four shops, so no shop may be served by them."""
+    write(tmp_path, served_dataset(), legacy=True)
+    source = SnapshotSource(LocalStore(tmp_path), (DATASET_PATH,))
+    source.load_all()
+    assert source.datasets() == ()
+    assert f"dataset {DATASET_PATH} not loaded: CompositionError" in caplog.text
+    write(tmp_path, served_dataset())  # re-exported with each shop's own keys
+    source.load_all()
+    assert [d.path for d in source.datasets()] == [DATASET_PATH]
 
 
 def test_a_replaced_generation_and_its_upgrade_are_freed(tmp_path: Path) -> None:

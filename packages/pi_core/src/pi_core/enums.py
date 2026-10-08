@@ -277,3 +277,16 @@ class PromotionMechanic(StrEnum):
     FREE_SHIPPING = "free_shipping"
     COUPON = "coupon"
     UNCLASSIFIED = "unclassified"
+
+
+class NotObservedReason(StrEnum):
+    """Why a published offer has no observation in its retailer's crawl window (ADR-0013).
+
+    The offer keeps its original ``capturedAt`` and a null in-window series; the reason is what
+    exempts it from the window rule. Closed set (Coordinator ruling, 2026-10-08)."""
+
+    RETAINED = "retained"  # U1 retention (MODE=retain): kept from an earlier run
+    BLOCKED = "blocked"  # a 403, a challenge or a block page stopped the capture
+    RATE_LIMITED = "rate_limited"  # a 429 stopped the capture
+    CAPTURE_IN_PROGRESS = "capture_in_progress"  # the run was still going at the publish cutoff
+    PLANNED_NOT_CAPTURED = "planned_not_captured"  # planned this run, not captured, not removed
