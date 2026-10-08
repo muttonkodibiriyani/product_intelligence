@@ -11,15 +11,17 @@ const compare = golden('compare') as Json;
 /** Shop B's summary withheld: status not ok, a reason, counts null, no section drawn. */
 const blockedB = { ...summaryBlocked, data: { ...summaryBlocked.data, retailer: 'shop_b' } };
 
-/** /prices for shop_a vs shop_b: the summaries, the matched pairs and the category comparison. */
-function api(counts: Counts = {}, withheld = false, wide = false) {
+/** /prices for shop_a vs shop_b: the summaries, the matched pairs and the category comparison.
+ * `withheld` withholds shop_b's summary; a string withholds it with that reason code instead. */
+function api(counts: Counts = {}, withheld: boolean | string = false, wide = false) {
+  const b = typeof withheld === 'string' ? { ...blockedB, reason: withheld } : blockedB;
   return async (route: Route) => {
     const u = new URL(route.request().url());
     const p = u.pathname;
     if (p === '/api/v1/meta') return route.fulfill({ json: meta });
     if (p === '/api/v1/summary')
       return route.fulfill({
-        json: withheld && u.searchParams.get('retailer') === 'shop_b' ? blockedB : summaryBody,
+        json: withheld && u.searchParams.get('retailer') === 'shop_b' ? b : summaryBody,
       });
     if (p === '/api/v1/compare') return route.fulfill({ json: compare });
     if (p === '/api/v1/category-compare') {
@@ -36,7 +38,7 @@ async function open(
   page: Page,
   locale: 'en' | 'ar',
   counts: Counts = {},
-  withheld = false,
+  withheld: boolean | string = false,
   wide = false,
 ): Promise<Mock> {
   const mock = await mockBackend(page, { onApi: api(counts, withheld, wide) });
@@ -82,6 +84,8 @@ for (const locale of ['en', 'ar'] as const) {
             /Shop B أغلى في 50\u200e?%\u200e? من 6 أزواج مطابقة وأرخص في 33\.3\u200e?%\u200e?؛ و16\.7\u200e?%\u200e? في النطاق المحيط بالصفر\./,
           retailer: 'المتجر',
           noSummary: 'لا يوجد ملخص أسعار لـShop B بعد. هذا المتجر يمنع الجمع.',
+          unknownReason: 'لا يوجد ملخص أسعار لـShop B بعد. محجوب: window_unknown',
+          withheldLabel: 'محجوب:',
         }
       : {
           title: 'Prices by category',
@@ -111,6 +115,8 @@ for (const locale of ['en', 'ar'] as const) {
             'Shop B is dearer on 50% of 6 matched pairs and cheaper on 33.3%; 16.7% sit in the band around zero.',
           retailer: 'Retailer',
           noSummary: 'No price summary for Shop B yet. This retailer blocks collection.',
+          unknownReason: 'No price summary for Shop B yet. Withheld: window_unknown',
+          withheldLabel: 'Withheld:',
         };
 
   test.describe(`${locale} prices`, () => {
@@ -272,6 +278,39 @@ for (const locale of ['en', 'ar'] as const) {
       // The pair's own charts are untouched by one side's summary.
       await expect(page.locator('#p-gap-hist [data-takeaway]')).toBeVisible();
       if (isPhone()) await noHorizontalScroll(page);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('a reason code this build has no label for reads as withheld, the code as sent, left-to-right', async ({
+      page,
+    }) => {
+      const mock = await open(page, locale, {}, 'window_unknown');
+      await expect(page.locator('#p-hist [data-takeaway]')).toBeVisible();
+      await page.getByRole('group', { name: T.retailer }).getByRole('button', { name: 'Shop B' }).click();
+      const status = page.locator('section[aria-labelledby="per-retailer"]').getByRole('status');
+      await expect(status).toHaveText(T.unknownReason);
+      const code = status.locator('bdi');
+      await expect(code).toHaveText('window_unknown');
+      await expect(code).toHaveAttribute('dir', 'ltr');
+      await expect(code).toHaveAttribute('lang', 'en');
+      // Visual order: the label is read first, then the code. Measured on the label's own text, not
+      // the paragraph that holds both: in Arabic the code sits to the label's left, in English to its right.
+      const [label, run] = await code.evaluate((bdi, word) => {
+        const text = bdi.previousSibling!;
+        const range = document.createRange();
+        const at = text.textContent!.lastIndexOf(word);
+        range.setStart(text, at);
+        range.setEnd(text, at + word.length);
+        const a = range.getBoundingClientRect();
+        const b = bdi.getBoundingClientRect();
+        return [
+          { left: a.left, right: a.right, top: a.top },
+          { left: b.left, right: b.right, top: b.top },
+        ];
+      }, T.withheldLabel);
+      expect(Math.abs(label.top - run.top)).toBeLessThan(4);
+      if (locale === 'ar') expect(run.right).toBeLessThanOrEqual(label.left + 1);
+      else expect(run.left).toBeGreaterThanOrEqual(label.right - 1);
       expect(mock.errors).toEqual([]);
     });
 
