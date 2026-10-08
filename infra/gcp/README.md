@@ -79,7 +79,7 @@ smoke. Rollback target: `pi-api-00001-jpx`.
 
 | Date       | Resource | Settings | Cost |
 |------------|----------|----------|------|
-| 2026-09-30 | bucket `pi-sephora-e631eaba` (created outside the repo) | me-central1, soft delete 7 days, lifecycle `{Delete, age: 1}` on every object | < $0.01/month |
+| 2026-09-30 | bucket `pi-sephora-e631eaba` (created outside the repo) | me-central1, soft delete 7 days, lifecycle `{Delete, age: 1}` on every object (**superseded 2026-10-01**, next row: only `dev-`, `recon-`, `ulta-test/` delete at 1 day; everything else at 14) | < $0.01/month |
 | 2026-10-01 (applied 08:25Z, coordinator-approved) | lifecycle → `infra/gcp/pi-runs-lifecycle.json` | `dev-*`, `recon-*`, `ulta-test/` still delete at 1 day; everything else (run outputs: `snap-*`, `stock-*`, `price-*`, planner prefixes) at 14 days, matching pg-backups | < $0.01/month |
 
 Why 14 days: a run must outlive a HELD load until it is cleared, and the ADR-0009 planner reads
@@ -141,11 +141,14 @@ A read-only identity for loading capture outputs on the host, so the Firebase Ad
 with one holder. Created by `infra/gcp/capture_reader_setup.sh` (idempotent), which creates no key
 and STOPs if the account has any project role. Applying it and minting its one key both need the
 owner's explicit OK; the key goes to `~/.config/pi-capture-reader/key.json` (mode 600), never into
-a repo or an image. `pi-sephora-e631eaba` deletes every object after 1 day, so a Sephora output
-must be read within a day of the run, or held first under `sephora-hold/` in the capture bucket
-(same region, no egress; that path must carry no age rule).
+a repo or an image. `pi-sephora-e631eaba` runs `pi-runs-lifecycle.json`: `dev-`, `recon-` and `ulta-test/` delete at
+1 day, every other prefix (run outputs such as `p0-20261008-sephora`) at 14 days, with 7 days of
+soft delete after that. Read the live rules before relying on either (`gcloud storage buckets
+describe gs://pi-sephora-e631eaba --format='value(lifecycle_config)'`). RAW is the one artefact
+that cannot be re-fetched, so each output is also held under `sephora-hold/` in the capture
+bucket (same region, no egress; that bucket has no lifecycle rule).
 
 | Date | Resource | Settings | Cost |
 |------|----------|----------|------|
 | pending owner OK | SA `pi-capture-reader` (no project role) | `roles/storage.objectViewer` on `pi-sephora-e631eaba` and `pi-capture-productintelligence-beeb3` only; one user-managed key, minted on the owner's OK | free |
-| 2026-10-08 | prefix `gs://pi-capture-productintelligence-beeb3/sephora-hold/` | in-GCS hold copy of each Sephora output (RAW included) before the 1-day lifecycle; `gcloud storage cp -r gs://pi-sephora-e631eaba/<PREFIX> gs://pi-capture-productintelligence-beeb3/sephora-hold/` by the key holder; first: `p0-20261008-sephora` (Coordinator 01a11c97-bac8). Capture data is evidence: never deleted | ~0.02–0.03 USD/GB-month |
+| 2026-10-08 | prefix `gs://pi-capture-productintelligence-beeb3/sephora-hold/` | in-GCS hold copy of each Sephora output (RAW included), run once after the execution finishes and checked by `du -s` bytes and object count on both prefixes, before the 14-day rule; `gcloud storage cp -r gs://pi-sephora-e631eaba/<PREFIX> gs://pi-capture-productintelligence-beeb3/sephora-hold/` by the key holder; first: `p0-20261008-sephora` (Coordinator 01a11c97-bac8, 01a11c9a-4b08). Capture data is evidence: never deleted | ~0.02–0.03 USD/GB-month |
