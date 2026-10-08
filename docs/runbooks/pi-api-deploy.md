@@ -478,13 +478,15 @@ revision serves it, and rollback is routing traffic back to the previous revisio
      A retailer that cannot be refreshed (tonight ulta_ae, blocked: Coordinator 01a11cc0-86a1)
      is WITHHELD, not refused, only when its body gives it no window and carries a
      `notObserved[]` entry for the whole retailer (`context` and `categories` null) that starts
-     no later than the day after its `since` and whose `end` reaches the served set's cutoff day:
-     the latest `meta.cutoff` across ALL the `NEW_DATASETS` bodies, as a date in the market's
-     time zone (Asia/Dubai; 20:00Z is already the next day), as `compose` takes it (Coordinator
-     01a11d05-862f). Set that `end` at roll time, from the final set, never from the body's own
+     no later than the day after its `since` and whose `end` reaches its scope's cutoff day: the
+     latest `meta.cutoff` across the `NEW_DATASETS` bodies of the retailer's scope (for ulta_ae,
+     the beauty-scope bodies), as a date in the market's time zone (Asia/Dubai; 20:00Z is already
+     the next day), as the API's per-scope `compose` takes it (Coordinator 01a11d05-862f,
+     01a11d19-9686). Set that `end` at roll time, from the final set, never from the body's own
      window. The guard prints `<body>: <retailer> withheld, not observed until <date>: <why>`
-     and leaves it out of the gap. Never give it a window to pass: a retailer with a window is
-     always counted. A windowless retailer with no offers serves nothing and is skipped.
+     and leaves it out of the gap, which is still counted over the whole set. Never give it a
+     window to pass: a retailer with a window is always counted. A windowless retailer with no
+     offers serves nothing and is skipped.
      **Required pre-roll step** (Coordinator 01a11d14-184d): run this on the full final set and
      paste its output verbatim into the pre-roll report. It must print `withheld` for ulta_ae
      and no refusal; any refusal stops the roll. Only a value that prints
