@@ -305,3 +305,39 @@ def test_without_a_window_the_rule_does_not_apply() -> None:
     d = _doc_with(None)
     _not_observed(d, None, cover=False)
     DatasetV3.model_validate(d)
+
+
+def test_a_retailer_without_a_window_keeps_its_old_values_beside_a_windowed_one() -> None:
+    """The withheld shape (Coordinator 01a11cc6-57aa): one retailer windowed, another with no
+    window and a whole-retailer ``notObserved`` entry. The rules hold the windowed retailer only:
+    the other's values from before the window (e.g. Ulta's U1 captures) stay legal, unmarked."""
+    d = _doc_with(FOUR)
+    windowed, other = (r["id"] for r in d["meta"]["retailers"][:2])
+    contexts = {c["id"]: c["retailer"] for c in d["meta"]["contexts"]}
+    old = [
+        o
+        for p in d["products"]
+        for cid, o in p["offers"].items()
+        if contexts[cid] == other and any(v is not None for v in o["series"]["price"])
+    ]
+    assert old, "the fixture needs a valued offer of the second retailer"
+    for o in old:
+        o["evidence"] |= {"capturedAt": "2026-09-30T18:00:00Z", "runId": "1"}
+    d["notObserved"] = [
+        {
+            "retailer": other,
+            "context": None,
+            "start": "2026-09-30",
+            "end": "2026-10-06",
+            "categories": None,
+            "why": WHY,
+        }
+    ]
+    ds = DatasetV3.model_validate(d)
+    shops = {r.id: r for r in ds.meta.retailers}
+    assert shops[windowed].window is not None
+    assert shops[other].window is None
+    # the same old capture on the windowed retailer is refused
+    _first_offer(d)["evidence"]["capturedAt"] = "2026-09-30T18:00:00Z"
+    with pytest.raises(ValidationError, match="outside its retailer's window"):
+        DatasetV3.model_validate(d)
