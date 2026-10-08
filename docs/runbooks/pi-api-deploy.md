@@ -192,12 +192,17 @@ revision. Set it once the new revision has all the traffic, after checking that 
 the flag (`gcloud run services update --help | grep -A3 -- '--max='`; if it's missing, STOP):
 
 ```sh
-gcloud run services update pi-api --project=$PROJECT --region=$REGION --max=1
+gcloud run services update pi-api --project=$PROJECT --region=$REGION --max=$PI_API_MAX_SCALE_SERVICE
 gcloud run services describe pi-api --project=$PROJECT --region=$REGION --format='value(spec.template.spec.containers[0].resources.limits.memory,spec.template.metadata.annotations."autoscaling.knative.dev/maxScale",metadata.annotations."run.googleapis.com/maxScale")'
+gcloud run services describe pi-api --project=$PROJECT --region=$REGION --format=json \
+  | uv run python infra/scripts/pi_api_admission.py service   # → SERVICE OK
 ```
 
-It must print `3Gi`, `1`, `1` (tab-separated). Anything else is a STOP. At 3Gi the cost quote
-(msg 01a117b0-9712) holds only at one instance, so raising either cap needs a new cost quote first.
+The describe prints memory, revision maxScale and service maxScale, tab-separated: today `3Gi`
+(or `3072Mi` after a deploy from this section), `1`, `1`. The admission check must then print
+`SERVICE OK`. It compares all three with `service.env` and normalises memory to MiB. Anything
+else is a STOP. At 3Gi the cost quote (msg 01a117b0-9712) holds only at one instance, so raising
+either cap in `service.env` needs a new cost quote first.
 
 This full form is for a first deploy or a deliberate config change only, in the same shell right
 after `ENV OK`. An image-only redeploy passes `--image` and nothing else, so every env var stays
@@ -475,13 +480,32 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
   is on another host, must have `evidence.url: null`. Both live retailers (`sephora_me`,
   `ulta_ae`) are listed, so this is covered by the pi_api tests from #72. Before adding a new
   retailer's host, run the same `GET` on one of its ids and expect null.
-- Check the describe output: `autoscaling.knative.dev/maxScale: '3'`, no `minScale` (or 0), no
-  Cloud SQL or VPC annotations, the `pi-api@` account, memory 1Gi, timeout 30.
+- Check the describe output: `autoscaling.knative.dev/maxScale` equal to
+  `PI_API_MAX_SCALE_REVISION` (today `'1'`), no `minScale` (or 0), no Cloud SQL or VPC
+  annotations, the `pi-api@` account, memory `3Gi` or `3072Mi` (`PI_API_MEMORY_MIB`), timeout 30.
+  The §6 admission check (`SERVICE OK`) is the binding form of the memory and maxScale part.
 
 ## 9. Record, roll back, tear down
 
 - Append the resources to `infra/gcp/README.md` (date, settings, cost), as for the backup bucket.
 - **Roll back:** `gcloud run services update-traffic pi-api --region=$REGION --to-revisions=<previous>=100`.
+- **Before every dataset publish** (Deployer, standard step since 2026-10-07): copy the live
+  `datasets/<path>/latest.json` to `prev-<generation>.json` in the same folder. `<generation>` is
+  the live object's generation. Check the copy's sha256 against the live object's, and put the
+  path, the generation and the restore command in the publish report. The bucket has no object
+  versioning, so this copy is the rollback.
+- **Roll back a publish:** run `gcloud storage cp --if-generation-match=<bad generation>
+  gs://$BUCKET/datasets/<path>/prev-<generation>.json gs://$BUCKET/datasets/<path>/latest.json`.
+  `<bad generation>` is `latest.json`'s generation after the publish being undone, and the path
+  comes from that publish's report. The pin means a later publish is never overwritten: if
+  `latest.json` has moved on, the copy fails, and that is a STOP to resolve with the Coordinator,
+  not a reason to retry without the pin. First check that your gcloud has the flag
+  (`gcloud storage cp --help | grep -- '--if-generation-match'`; if it's missing, STOP). Then read
+  the sha256 back and check that pi_api logs `dataset <path> loaded at generation <new>`. If there is no
+  `prev-` copy, the bucket's 7-day soft delete is the only route, and it is **untested**: STOP and
+  tell the Coordinator rather than restoring that way. A source's first-ever publish has no
+  earlier body to restore. Its rollback is to take the source out of the API: route traffic back
+  to the revision before it was added (§9 Roll back), or remove its entries from `PI_API_DATASETS`.
 - **Tear down** (reverse order): `firebase.json` rewrite removed and Hosting redeployed; `gcloud run
   services delete pi-api`; remove the bucket binding; `gcloud iam roles delete piApiObjectReader`;
   `gcloud iam service-accounts delete pi-api@…`; `gcloud artifacts repositories delete pi-api`.
