@@ -25,9 +25,11 @@ from offline_import.validate import validate_file
 from pi_capture.bloomingdales import readings_from_bloomingdales
 from pi_capture.feed import SHOPS, Shop, build_feed, dump_feed, mapping_for
 from pi_capture.model import ProductCapture
+from pi_dataset import dump_dataset
 from pi_db import DATABASE_URL_ENV, alembic_config
-from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow, latest_params
+from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow, UltaContext, latest_params
 from scripts.demo_export.history import RunSpan, read_history
+from scripts.demo_export.v2 import build_dataset_v2
 
 pytestmark = pytest.mark.db
 
@@ -119,6 +121,7 @@ class World:
         context: object = None,
         price_type: str | None = "full",
         regular: str | None = None,
+        evidence: object = None,
     ) -> None:
         if key not in self.listings:
             self.listings[key] = _id(
@@ -130,8 +133,8 @@ class World:
         self.conn.execute(
             "INSERT INTO offer_observation (idempotency_key, crawl_run_id, source_context_id,"
             " source_listing_id, observed_at, ingested_at, price_current, price_regular_stated,"
-            " price_type, currency, availability_state, field_state, quality_status)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted')",
+            " price_type, currency, availability_state, field_state, quality_status, evidence_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted', %s)",
             (
                 f"{run}-{key}",
                 run,
@@ -144,6 +147,7 @@ class World:
                 price_type if price is not None else None,
                 availability,
                 field_state,
+                evidence,
             ),
         )
 
@@ -742,3 +746,114 @@ def test_an_ounass_page_keeps_its_sku_family_and_product_id(
     assert "master_id" not in got["labels"]
     assert got["family_id"] == got["source_listing_key"] == "900000101"
     assert got["gift_with_purchase"] == ["Beauty Treats, free"]
+
+
+# ------------------------------------------- capture time and the regular-price declaration
+CAPTURED = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)  # _blm_capture's retrieved_at
+
+
+def _v2(rows: list[dict[str, Any]], slots: tuple[str, ...]) -> dict[str, Any]:
+    """The v2 body of these export rows (World's rows carry no brand: a test one is given)."""
+    listing = [ListingRow(**(r | {"brand": r["brand"] or "Test Brand"})) for r in rows]
+    dataset = build_dataset_v2(
+        listing,
+        [],
+        generated_at=datetime(2026, 12, 1, tzinfo=UTC),
+        ulta=UltaContext(blocked_since=datetime(2026, 9, 30, 20, 55, tzinfo=UTC)),
+        ulta_note={},
+        slots=slots,
+    )
+    loaded: dict[str, Any] = json.loads(dump_dataset(dataset))
+    return loaded
+
+
+def _offers(d: dict[str, Any]) -> list[dict[str, Any]]:
+    return [o for p in d["products"] for o in p["offers"].values()]
+
+
+def test_an_imported_page_is_dated_by_its_capture_not_the_import(
+    conn: Conn, migrated_db: str, tmp_path: Path
+) -> None:
+    """Page (2 Oct) -> feed -> offline_import load (now) -> v2: capturedAt is the page's time.
+    The file's evidence row holds the import time; it never reaches the export as a capture."""
+    shop = replace(SHOPS["bloomingdales_ae"], source="bloomingdales_capture_e2e")
+    got = _feed_load_export(conn, migrated_db, tmp_path, shop)
+    assert got["evidence_retrieved_at"] is None
+    assert got["price_evidence_retrieved_at"] is None
+    assert got["observed_at"] == got["price_observed_at"] == CAPTURED
+    assert got["file_received_at"] is not None
+    assert got["file_received_at"] > CAPTURED  # the import, days later
+    got.pop("labels")
+    d = _v2([got], ("b",))
+    (offer,) = _offers(d)
+    assert offer["evidence"]["capturedAt"] == "2026-10-02T09:00:00Z"
+    assert d["meta"]["dates"] == ["2026-10-02"]
+    # ...and Bloomingdale's (regular_stated not_collected) publishes no regular price
+    assert got["price_type"] is None
+    assert offer["series"]["regular"] is None
+    assert d["meta"]["fields"]["regular"] == "not_collected"
+    assert d["meta"]["capabilities"]["promotions"] is False
+
+
+def test_rows_loaded_full_before_the_declaration_export_regular_not_collected(
+    conn: Conn,
+) -> None:
+    """Run 8's 7,694 rows are stored price_type 'full' with no regular (append-only, and a replay
+    of the same feed is a no-op). The query still gives them regular = price; the export reads
+    the declaration per source and publishes none: not_collected, promotions off."""
+    world = World(conn, "bloomingdales_ae")
+    run = world.run("partial", 1)
+    for key in ("B1", "B2"):
+        world.observe(run, key, 1, "90")  # price_type 'full', price_regular_stated NULL
+    rows = conn.execute(LATEST_LISTINGS_SQL, latest_params([world.name])).fetchall()
+    assert {r["regular"] for r in rows} == {Decimal("90")}  # what made the 0% discount
+    d = _v2([dict(r) for r in rows], ("b",))
+    assert [o["series"]["regular"] for o in _offers(d)] == [None, None]
+    assert d["meta"]["fields"]["regular"] == "not_collected"
+    assert d["meta"]["capabilities"]["promotions"] is False
+
+
+def test_sephora_with_no_promotion_keeps_regular_ok(conn: Conn) -> None:
+    """Sephora states a regular only on promotional rows: a day with none is a 0% share, not
+    'not collected'. The declaration, not the day's row counts, decides."""
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    for key in ("S1", "S2"):
+        world.observe(run, key, 1, "80")
+    rows = conn.execute(LATEST_LISTINGS_SQL, latest_params([world.name])).fetchall()
+    d = _v2([dict(r) for r in rows], ("s",))
+    assert all(o["series"]["regular"] == o["series"]["price"] for o in _offers(d))
+    assert d["meta"]["fields"]["regular"] == "ok"
+    assert d["meta"]["capabilities"]["promotions"] is True
+
+
+@pytest.mark.parametrize(
+    ("method", "rung", "dated_by_evidence"),
+    [("plain_http", 1, True), ("offline_import", 0, False)],
+)
+def test_only_offline_import_evidence_gives_way_to_the_rows_own_time(
+    conn: Conn, method: str, rung: int, dated_by_evidence: bool
+) -> None:
+    """Crawled evidence still dates a row by its retrieved_at (the fetch); a feed file's does
+    not (keyed on the stored evidence.fetch_method, never on a URI)."""
+    world = World(conn)
+    run = world.run("succeeded", 1)
+    retrieved = T0.replace(hour=5)
+    evidence = _id(
+        conn,
+        "INSERT INTO evidence (crawl_run_id, url, content_hash, storage_uri, retrieved_at,"
+        " ladder_rung_used, fetch_method, retention_until)"
+        " VALUES (%s, 'https://example.test/E', 'h', 'gs://pi-test/e', %s, %s, %s, %s)"
+        " RETURNING id",
+        (run, retrieved, rung, method, T0.replace(month=12)),
+    )
+    world.observe(run, "E", 1, "80", evidence=evidence)
+    got = _row(world, "E")
+    fields: dict[str, Any] = got
+    assert got["observed_at"] == T0.replace(hour=1)
+    if dated_by_evidence:
+        assert (got["evidence_retrieved_at"], got["file_received_at"]) == (retrieved, None)
+    else:
+        assert (got["evidence_retrieved_at"], got["file_received_at"]) == (None, retrieved)
+    captured, _ = ListingRow(**fields).price_capture
+    assert captured == (retrieved if dated_by_evidence else T0.replace(hour=1))

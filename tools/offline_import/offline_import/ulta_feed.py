@@ -263,6 +263,8 @@ def prepare(  # noqa: PLR0912, PLR0915 - source transformation
         "currency": "AED",
         "time_zone": "Asia/Dubai",
         "complete_catalogue": False,
+        # The scrape states a regular price on promotional rows (Sephora's shape).
+        "regular_stated": "on_promotion",
         "format": "json",
         "columns": {k: k for k in columns},
         "availability_map": {k: k for k in ["in_stock", "out_of_stock", "low_stock", "unknown"]},
