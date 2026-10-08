@@ -11,6 +11,7 @@ import {
   type NavSignals,
   type NavState,
 } from '@/lib/nav';
+import { gapsServed } from '@/lib/brand-gaps';
 import { insightsServed } from '@/lib/insights';
 import { launchReadiness } from './launches/readiness';
 import { useMeta } from './use-meta';
@@ -42,6 +43,7 @@ export function useNav(): NavItem[] {
   if (meta.data) {
     signals.launchesReady = launchReadiness(meta.data).allReady;
     signals.insightsServed = insightsServed(meta.data);
+    signals.gapsServed = gapsServed(meta.data);
   }
   if (ids.length > 0 && !loading && !error) {
     signals.priced = rows.map((r) => r.data.priced);
