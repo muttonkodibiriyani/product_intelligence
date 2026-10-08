@@ -134,3 +134,16 @@ digest; owner steps, cron and budget in `tools/uae_collect/README.md`. Faces fir
 | pending owner run | Scheduler job `pi-uae-collect-faces` (me-central1) | `0 20 * * *` UTC; the job picks daily / full (Mon, Thu) / ar (1st); no retries; **created paused** | free (2nd of the 3 free jobs) |
 | pending owner run | SA `pi-feed-reader` (no key, no project role) | `roles/storage.objectViewer` on the capture bucket under IAM condition `feeds-only` (objects under `feeds/`, lists with prefix `feeds/`); `firebase-adminsdk-fbsvc` has `roles/iam.serviceAccountTokenCreator` on this SA only | free |
 | pending owner run | budget `pi-uae-collect-5usd` | $5/month on label `pi-collect=uae`, alerts at 50/90/100% | free |
+
+## Capture reader (Coordinator 01a11c92-591d)
+
+A read-only identity for loading capture outputs on the host, so the Firebase Admin SDK key stays
+with one holder. Created by `infra/gcp/capture_reader_setup.sh` (idempotent), which creates no key
+and STOPs if the account has any project role. Applying it and minting its one key both need the
+owner's explicit OK; the key goes to `~/.config/pi-capture-reader/key.json` (mode 600), never into
+a repo or an image. `pi-sephora-e631eaba` deletes every object after 1 day, so a Sephora output
+must be read within a day of the run.
+
+| Date | Resource | Settings | Cost |
+|------|----------|----------|------|
+| pending owner OK | SA `pi-capture-reader` (no project role) | `roles/storage.objectViewer` on `pi-sephora-e631eaba` and `pi-capture-productintelligence-beeb3` only; one user-managed key, minted on the owner's OK | free |
