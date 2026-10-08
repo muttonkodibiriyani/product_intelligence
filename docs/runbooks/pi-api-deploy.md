@@ -221,10 +221,14 @@ as it is.
   pairs, the commas clash with `--set-env-vars`. Switch the delimiter:
   `--set-env-vars="^@^PI_API_EVIDENCE_HOSTS=a=x.example,b=y.example@PI_API_BUCKET=..."`.
 - **Card thumbnails** (API 1.3.0) need `PI_API_IMAGE_HOSTS`, in the same format: the hosts the
-  dashboard may hotlink images from. The 2026-10-01 value was
-  `sephora_me=img-product.sephora.me,ulta_ae=media.alshaya.com` (read today's from the service,
-  §6), the two external hosts in the Hosting CSP `img-src` (decision log, 2026-10-01). Without it
-  every `ProductCard.image` is null.
+  dashboard may hotlink images from (read today's from the service, §6). Without it every
+  `ProductCard.image` is null. A host listed here must also be in the Hosting CSP `img-src`
+  (`infra/firebase.json`), or the browser blocks the image. The `/app` half allows all five image
+  hosts; the root shell allows two (Sephora and alshaya), by design, and must not render a
+  non-Sephora retailer without a `build.sh` change (`apps/web/build.sh:46`; guarded by
+  `apps/web/scripts/image-hosts.test.ts:59`, and every `IMAGE_OWNERS` key is checked against
+  `infra/firebase.json` in the same file). Adding a dataset checks both `PI_API_IMAGE_HOSTS` and
+  the `firebase.json` `img-src`.
 - **Match edges** (ADR-0012 §6) optionally use `PI_API_MATCHES`, one `pi.matches/v1` object path
   applied to the per-source views (it needs `source=path` entries in `PI_API_DATASETS`). Setting or
   changing it is its own deploy with the owner's go. Once it is live, §6 carries it: a redeploy
@@ -489,6 +493,11 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
 
 - Append the resources to `infra/gcp/README.md` (date, settings, cost), as for the backup bucket.
 - **Roll back:** `gcloud run services update-traffic pi-api --region=$REGION --to-revisions=<previous>=100`.
+  This pins traffic: every later `services update` or deploy creates a revision with **0%**
+  traffic until `gcloud run services update-traffic pi-api --project=$PROJECT --region=$REGION
+  --to-latest` is run (after that change's read-back passes). While pinned, `describe`'s template
+  env and SERVICE OK show the newest revision, not the serving one: read back `status.traffic`
+  (the previous revision at 100) and `gcloud run revisions describe <previous>` for its env.
 - **Before every dataset publish** (Deployer, standard step since 2026-10-07): copy the live
   `datasets/<path>/latest.json` to `prev-<generation>.json` in the same folder. `<generation>` is
   the live object's generation. Check the copy's sha256 against the live object's, and put the
@@ -506,6 +515,82 @@ gcloud run services describe pi-api --project=$PROJECT --region=$REGION \
   tell the Coordinator rather than restoring that way. A source's first-ever publish has no
   earlier body to restore. Its rollback is to take the source out of the API: route traffic back
   to the revision before it was added (§9 Roll back), or remove its entries from `PI_API_DATASETS`.
+- **First publish on the 3Gi service with the load rule** (the first `ounass_ae`, beauty or Faces
+  publish after the image carrying `infra/pi-api/service.env` is live): for 5 minutes after pi_api
+  logs the new generation as loaded, read Cloud Run's memory utilisation
+  (`run.googleapis.com/container/memory/utilizations`, the max across instances). The gate is
+  **0.75** of `PI_API_MEMORY_MIB`. Over it: roll the publish back as above, and the publish freeze
+  returns until a new bench says otherwise (Coordinator, 2026-10-07).
+- **Publish window when an over-gate body or its others change** (Coordinator, 2026-10-07): an
+  admitted entry is `sha256:others_bytes`, so a new Ounass body *and* any growth in beauty or faces
+  needs one. Never republish beauty or faces alone while Ounass is admitted unless Ounass is
+  re-measured against the new others first. The load rule (`pi_dataset.gate.refusal`) looks up
+  the entry by the **largest** served body's sha only and passes when the others total ≤ the
+  entry's bytes (equal passes). Check which body is largest in the final set before the window:
+  if another body becomes the largest, the entry must be for that body's sha instead.
+  1. Measure the new Ounass body's admission record with the **final** beauty and faces bodies
+     resident (§6 order, steps 1–4).
+  2. Make the `prev-<generation>.json` copy of all three (above).
+  3. Env update with **both** entries, old and new, so a cold start mid-window still admits the
+     live body. `PI_API_ADMITTED` is comma-separated, which clashes with gcloud's own list syntax,
+     so switch the delimiter (`gcloud topic escaping`) and touch only that variable:
+     `gcloud run services update pi-api --project=$PROJECT --region=$REGION
+     --update-env-vars='^@^PI_API_ADMITTED=<old sha>:<old others>,<new sha>:<new others>'`.
+  4. Read it back two ways; anything else is a STOP and the old env goes back:
+     `gcloud run services describe pi-api --project=$PROJECT --region=$REGION --format=json`
+     shows the value verbatim with both entries, and the same describe piped to
+     `uv run python infra/scripts/pi_api_admission.py service` prints SERVICE OK (3Gi and max 1/1
+     kept by the new revision), and `status.latestReadyRevisionName` equals
+     `status.latestCreatedRevisionName`. A bad `PI_API_ADMITTED` (malformed or a duplicate sha)
+     fails the new revision at startup (`app_from_env` parses it before the port opens), so the
+     `gcloud run services update` itself exits non-zero (revision not ready) and traffic stays
+     on the old revision with the old env: STOP, fix the value, re-run.
+  5. Publish **ounass → beauty → faces**. With Ounass first, every state in between is admitted by
+     the new entry: the others only grow towards the final set it was measured with.
+  6. Memory read as above (5 minutes, gate 0.75).
+  7. Drop the old entry (step 3's form, new entry only) and read back as in step 4.
+  Rollback: restore in reverse (faces → beauty → ounass), each with the pinned copy above, then put
+  back the old `PI_API_ADMITTED` (if step 7 already ran, add the old entry back *before* restoring
+  Ounass). Record every generation, sha and the env values in the publish report.
+- **Adding a dataset to a live service** (e.g. Bloomingdale's; Coordinator 01a1181d-1d6f,
+  2026-10-07). Object first, then one env revision, so nothing ever names an absent object, and
+  the admission change rolls back separately from the dataset:
+  1. A revision that changes only `PI_API_ADMITTED` (and the image, if one is going out) goes to
+     100% first, with SERVICE OK. When the new dataset only joins an admitted body's others, that
+     body's sha is unchanged, so its entry is *replaced* with `sha:new_others`, measured with the
+     new dataset resident. Under "≤" the new entry admits the set both before and after.
+  2. Re-assert the new body: the same sha as the measured dry-run, and smaller than the admitted
+     (largest) body, so `PI_API_ADMITTED` stays keyed on that body's sha.
+  3. Create-only write of `datasets/<path>/latest.json` (`if-generation-match: 0`). A create
+     conflict is a STOP. There is no `prev-` copy, since the path is new; read the generation
+     back. The publisher also writes Firestore `demo_meta/v2_<country>_<source>` and a create-only
+     cutoff copy `datasets/<path>/<cutoff>.json`. Nothing on the live site reads either, so no
+     tile can show before step 5 (Frontend and Coordinator, 2026-10-07; re-check with
+     `git grep demo_meta` if the web app starts reading Firestore).
+  4. `uv run python infra/scripts/pi_api_admission.py check --admission-dir <temp copy of
+     infra/pi-api/admission/ + the new record>` over the live bodies plus the new one at its
+     actual generation → ADMISSION OK. Its `PI_API_ADMITTED=` line must be byte-equal to the env
+     of step 1's revision at 100%; anything else is a STOP. The check can't print that line until
+     the new object exists, which is why the object comes before the DATASETS change. Don't
+     re-measure against the live revision here.
+  5. One `gcloud run services update pi-api --project=$PROJECT --region=$REGION
+     --update-env-vars='^@^PI_API_DATASETS=…'` (plus `@PI_API_IMAGE_HOSTS=…` if the retailer's
+     image host is missing; `PI_API_ADMITTED` is not touched) with `--no-traffic --tag=<name>`.
+     Never `--set-env-vars` here: it deletes every variable it doesn't list (§6). Read back:
+     `status.latestReadyRevisionName` equals `status.latestCreatedRevisionName`, the revision is
+     new, the env differs from the 100% revision only in the variables named, the values are
+     verbatim, and SERVICE OK.
+  6. Before any traffic moves, read the new revision's logs (`gcloud logging read` with
+     `--freshness=60m`): no `MEMORY RULE`, a `dataset <path> loaded at generation <gen>` line for
+     every path including the new one at step 3's generation, and no `not loaded`, `storage error`
+     or `assuming 1024`. A tagged revision with no traffic starts and becomes Ready even with the
+     service capped at one instance, so the tag URL is enough for this. Run it straight after
+     step 5: if it STOPs only because a startup line fell outside the 60-minute window, make one
+     GET to the tag URL's health path, wait 60 s and read again once; any other STOP is a STOP.
+  7. Traffic in one jump: `update-traffic --to-revisions=<new>=100` (never a split: with one
+     instance a split can starve a revision), read back, print the rollback, then the memory read
+     above.
+  Rollback: traffic back to the step-1 revision, and step 1 back to the revision before it.
 - **Tear down** (reverse order): `firebase.json` rewrite removed and Hosting redeployed; `gcloud run
   services delete pi-api`; remove the bucket binding; `gcloud iam roles delete piApiObjectReader`;
   `gcloud iam service-accounts delete pi-api@…`; `gcloud artifacts repositories delete pi-api`.
