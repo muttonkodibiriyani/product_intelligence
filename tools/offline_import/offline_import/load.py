@@ -79,16 +79,22 @@ def idempotency_key(source: str, file_sha256: str, listing_key: str) -> str:
     return _sha(source, file_sha256, listing_key)
 
 
-def _field_state(row: ImportRow, prices_mapped: bool) -> dict[str, str]:
+def _field_state(row: ImportRow, mapping: ImportMapping) -> dict[str, str]:
     """Why each price is null, and how availability was determined (DQ-02, DAT-06).
 
     A feed with no price column says nothing about price: 'unknown', which the export skips,
     so a stock-only import never blanks a crawled price. A mapped but blank price is
-    'not_published'.
+    'not_published'. A feed that never captured a regular or promotional price
+    (``regular_stated`` 'not_collected') says nothing about either: 'unknown'.
     """
     fs: dict[str, str] = {}
     if row.price_current is None:
-        fs["price_current"] = FieldState.NOT_PUBLISHED if prices_mapped else FieldState.UNKNOWN
+        fs["price_current"] = (
+            FieldState.NOT_PUBLISHED if mapping.prices_mapped else FieldState.UNKNOWN
+        )
+    if mapping.regular_stated == "not_collected":
+        fs["price_regular_stated"] = FieldState.UNKNOWN
+        fs["price_promo"] = FieldState.UNKNOWN
     if row.availability_observed:
         fs["availability_state"] = FieldState.OBSERVED
     elif row.availability is AvailabilityState.UNKNOWN:
@@ -294,7 +300,16 @@ class Loader:
     def _offer(self, lid: int, row: ImportRow, run: int, evidence: int) -> bool:
         price = row.price_current
         promo = row.price_promo is not None and price == row.price_promo
-        price_type = None if price is None else PriceType.PROMOTIONAL if promo else PriceType.FULL
+        # Not 'full' when the feed never captured a regular price: the export would read a
+        # full-price row as its own regular price, a 0% discount nobody observed.
+        uncaptured = self.m.regular_stated == "not_collected"
+        price_type = (
+            None
+            if price is None or uncaptured
+            else PriceType.PROMOTIONAL
+            if promo
+            else PriceType.FULL
+        )
         any_price = any(p is not None for p in (price, row.price_regular, row.price_promo))
         low = row.availability is AvailabilityState.LOW_STOCK
         self._partition(row.observed_at)
@@ -319,7 +334,7 @@ class Loader:
                 row.availability.value,
                 True if low else None,
                 list(row.lists.get("badges", ())),
-                Jsonb(_field_state(row, self.m.prices_mapped)),
+                Jsonb(_field_state(row, self.m)),
                 evidence,
             ),
         )
