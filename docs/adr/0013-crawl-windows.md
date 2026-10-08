@@ -81,8 +81,10 @@ regular price and the other did not, the other was shown as `ok` / `true` becaus
    a window is refused. Validation holds the same in the body (Coordinator 01a11cd9-48b1): beside
    a windowed retailer, a windowless retailer with offers states `since` (the last day it was
    seen) and has a whole-retailer `notObserved` entry (no context, no categories) that starts no
-   later than the day after `since` and ends no earlier than the set's last window day, in the
-   market's time zone. A composed view that breaks this is refused at load.
+   later than the day after `since` and ends no earlier than the local day of `meta.cutoff`, in
+   the market's time zone (Coordinator 01a11cee-6a77: the cutoff wins; it is never before the
+   set's last window day and can be a day after it, e.g. a 20:00Z cutoff is the next Dubai day). A
+   composed view that breaks this is refused at load; its cutoff is the latest of its files'.
 9. **Window gap across retailers (`WINDOW_GAP`).** A cross-retailer metric is computed only when the
    two sides' window **end** days are at most **7 Dubai days** apart (`compose.window_gap_days`;
    two windows ending on the same local day are 0 apart). Beyond that the metric is withheld with

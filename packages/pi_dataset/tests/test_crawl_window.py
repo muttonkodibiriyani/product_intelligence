@@ -55,12 +55,14 @@ def test_window_gap_days_is_the_distance_between_the_dubai_end_dates() -> None:
     assert window_gap_days(seven, a, DUBAI) == 7
 
 
-def _doc_with(window_doc: dict[str, Any] | None) -> dict[str, Any]:
+def _doc_with(
+    window_doc: dict[str, Any] | None, cutoff: str = "2026-10-06T20:00:00Z"
+) -> dict[str, Any]:
     profile = committed_profile("beauty", 1)
     assert profile is not None
     d: dict[str, Any] = json.loads(dump_dataset(upgrade(ae_pilot(), profile)))
-    d["meta"]["cutoff"] = "2026-10-06T20:00:00Z"
-    d["meta"]["generatedAt"] = "2026-10-06T21:00:00Z"
+    d["meta"]["cutoff"] = cutoff
+    d["meta"]["generatedAt"] = "2026-10-07T21:00:00Z"
     if window_doc is not None:
         for retailer in d["meta"]["retailers"]:
             retailer["window"] = dict(window_doc)
@@ -102,6 +104,8 @@ def test_the_keys_are_optional_and_camel_case_on_the_wire() -> None:
 # Reviewer (a)-(c), segments and marker => covered).
 
 FOUR = {"start": "2026-10-02T20:00:00Z", "end": "2026-10-06T19:59:00Z", "runId": "7"}
+# a cutoff on the window's last Dubai day (10-06); 20:00Z would already be 10-07 in Dubai
+ON_THE_LAST_DAY = FOUR["end"]
 REASONS = [r.value for r in NotObservedReason]
 WHY = {"en": "Not captured in this run.", "ar": "لم تُلتقط في هذه الجولة."}
 
@@ -360,9 +364,9 @@ def _withheld(d: dict[str, Any], start: str | None, end: str = "2026-10-06") -> 
 def test_a_retailer_without_a_window_keeps_its_old_values_beside_a_windowed_one() -> None:
     """The withheld shape (Coordinator 01a11cc6-57aa, 01a11cd9-48b1): one retailer windowed,
     another with no window and a whole-retailer ``notObserved`` entry from the day after its
-    ``since`` to the window's last day. The rules hold the windowed retailer only: the other's
+    ``since`` to the cutoff's day. The rules hold the windowed retailer only: the other's
     values from before the window (e.g. Ulta's U1 captures) stay legal, unmarked."""
-    d = _doc_with(FOUR)
+    d = _doc_with(FOUR, cutoff=ON_THE_LAST_DAY)
     other = _withheld(d, "2026-10-02")
     contexts = {c["id"]: c["retailer"] for c in d["meta"]["contexts"]}
     assert any(
@@ -385,13 +389,13 @@ def test_a_retailer_without_a_window_keeps_its_old_values_beside_a_windowed_one(
     [
         (None, "2026-10-06", "no entry"),
         ("2026-10-03", "2026-10-06", "a day's gap after since"),
-        ("2026-10-02", "2026-10-05", "ends before the window's last day"),
+        ("2026-10-02", "2026-10-05", "ends before the cutoff's day"),
     ],
 )
 def test_a_withheld_retailer_needs_an_entry_from_the_day_after_since_to_the_end(
     start: str | None, end: str, why: str
 ) -> None:
-    d = _doc_with(FOUR)
+    d = _doc_with(FOUR, cutoff=ON_THE_LAST_DAY)
     _withheld(d, start, end)
     with pytest.raises(
         ValidationError,
@@ -400,8 +404,22 @@ def test_a_withheld_retailer_needs_an_entry_from_the_day_after_since_to_the_end(
         DatasetV3.model_validate(d)
 
 
+def test_a_withheld_retailer_entry_reaches_the_cutoffs_day_not_the_windows_last_day() -> None:
+    """Coordinator 01a11cf3-5ffd: the window ends on Dubai 10-06, the cutoff 2026-10-07T19:00Z
+    is Dubai 10-07, so the cutoff wins: an entry ending 10-06 is refused, 10-07 accepted."""
+    d = _doc_with(FOUR, cutoff="2026-10-07T19:00:00Z")
+    _withheld(d, "2026-10-02", "2026-10-06")
+    with pytest.raises(
+        ValidationError,
+        match=r"no whole-retailer notObserved entry covering 2026-10-02\.\.2026-10-07",
+    ):
+        DatasetV3.model_validate(d)
+    d["notObserved"][0]["end"] = "2026-10-07"
+    DatasetV3.model_validate(d)
+
+
 def test_a_withheld_retailer_entry_must_be_for_the_whole_retailer() -> None:
-    d = _doc_with(FOUR)
+    d = _doc_with(FOUR, cutoff=ON_THE_LAST_DAY)
     _withheld(d, "2026-10-02")
     d["notObserved"][0]["categories"] = ["skincare"]
     with pytest.raises(ValidationError, match="no whole-retailer notObserved entry"):
@@ -409,7 +427,7 @@ def test_a_withheld_retailer_entry_must_be_for_the_whole_retailer() -> None:
 
 
 def test_a_withheld_retailer_with_offers_states_since() -> None:
-    d = _doc_with(FOUR)
+    d = _doc_with(FOUR, cutoff=ON_THE_LAST_DAY)
     _withheld(d, "2026-09-01")
     d["meta"]["retailers"][1]["since"] = None
     with pytest.raises(ValidationError, match=r"withheld \(no window\) with offers but no since"):
