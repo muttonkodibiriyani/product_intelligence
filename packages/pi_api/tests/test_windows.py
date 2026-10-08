@@ -13,6 +13,7 @@ import pytest
 from pi_api.app import app_from_env
 from pi_api.windows import MAX_GAP_DAYS, check_windows, window_problems
 from pi_dataset import DatasetV3, committed_profile, dump_dataset, upgrade
+from pi_dataset.compose import compose
 from pi_dataset.examples import ae_pilot
 from pi_dataset.v3 import NotObservedV3
 
@@ -68,8 +69,8 @@ def disclosed(ds: DatasetV3, **entry: Any) -> DatasetV3:
 
 def covering(name: str, first: str, cutoff: str) -> str:
     return (
-        f"{name}: {SOUTH}: withheld (no window) but no whole-retailer notObserved entry "
-        f"covering {first}..{cutoff}"
+        f"{name}: {SOUTH}: withheld (no window) with offers but no whole-retailer notObserved "
+        f"entry covering {first}..{cutoff}"
     )
 
 
@@ -191,7 +192,8 @@ def test_a_set_with_no_window_at_all_is_refused_whatever_it_discloses() -> None:
     # The same disclosures beside one fresh window are judged against its day: too old.
     problems = window_problems([("pre", both), ("fresh", windowed(FRESH["end"]))])
     assert problems == [
-        f"pre: {r}: withheld (no window) but no whole-retailer notObserved entry covering "
+        f"pre: {r}: withheld (no window) with offers but no whole-retailer notObserved entry "
+        "covering "
         "2026-09-02..2026-10-08"
         for r in (NORTH, SOUTH)
     ]
@@ -209,7 +211,9 @@ def test_a_withheld_retailer_is_disclosed_from_the_day_after_its_last_capture() 
     unknown = known.model_copy(
         update={"meta": known.meta.model_copy(update={"retailers": retailers})}
     )
-    assert window_problems([("b", unknown)]) == [f"b: {SOUTH}: withheld (no window) but no since"]
+    assert window_problems([("b", unknown)]) == [
+        f"b: {SOUTH}: withheld (no window) with offers but no since"
+    ]
 
 
 def test_a_withheld_entry_reaches_the_cutoffs_day_not_the_windows_last_day() -> None:
@@ -225,3 +229,45 @@ def test_a_withheld_entry_reaches_the_cutoffs_day_not_the_windows_last_day() -> 
     ]
     short = disclosed(ok, end="2026-10-06")
     assert window_problems([("b", short)]) == [covering("b", "2026-10-02", "2026-10-07")]
+
+
+def test_a_withheld_entry_reaches_the_served_sets_latest_cutoff() -> None:
+    """Review 01a11d05-231d: the guard judges the served set as ``compose`` does, against the
+    latest of its files' cutoffs (ADR-0013 §8). The withheld body's own cutoff is on 10-06 and
+    its entry ends 10-06, which passes alone; beside a body cut off on 10-07 it is refused, and
+    an entry to 10-07 passes."""
+    early = windowed(
+        "2026-10-06T10:00:00Z", cutoff="2026-10-06T19:00:00Z", withheld={"end": "2026-10-06"}
+    )
+    late = ("late", windowed("2026-10-07T10:00:00Z", cutoff="2026-10-07T19:00:00Z"))
+    assert window_problems([("x", early)]) == []
+    assert window_problems([("x", early), late]) == [covering("x", "2026-10-02", "2026-10-07")]
+    assert window_problems([late, ("x", early)]) == [covering("x", "2026-10-02", "2026-10-07")]
+    reaches = disclosed(early, end="2026-10-07")
+    check = check_windows([("x", reaches), late])
+    assert check.problems == []
+    assert check.withheld == [
+        f"x: {SOUTH} withheld, not observed until 2026-10-07: Blocked (p0-20261008-ulta-probe)."
+    ]
+
+
+def test_a_windowless_retailer_without_offers_is_skipped_as_compose_skips_it() -> None:
+    """Coordinator 01a11d06-293f, review 01a11d06-19db: parity with ``pi_dataset.v3``, which
+    judges only a windowless retailer with offers. One with no offers and no entry, beside a
+    windowed one, passes the guard, and the same set loads in compose."""
+    d = json.loads(dump_dataset(windowed(FRESH["end"])))
+    south = next(r for r in d["meta"]["retailers"] if r["id"] == SOUTH)
+    del south["window"]
+    contexts = {c["id"] for c in d["meta"]["contexts"] if c["retailer"] == SOUTH}
+    for product in d["products"]:
+        product["offers"] = {c: o for c, o in product["offers"].items() if c not in contexts}
+        product["matches"] = [m for m in product["matches"] if not {m["a"], m["b"]} & contexts]
+    d["products"] = [p for p in d["products"] if p["offers"]]
+    empty = DatasetV3.model_validate(d)
+    assert not any(c in contexts for p in empty.products for c in p.offers)
+    check = check_windows([("b", empty)])
+    assert check.problems == []
+    assert check.withheld == []
+    assert compose([empty]) is not None
+    # The same retailer with an offer is judged: no window and no entry is refused.
+    assert window_problems([("b", windowed(None))])  # control: offers, no window, no entry
