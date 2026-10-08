@@ -464,18 +464,13 @@ def _window_offer_errors(ds: DatasetV3) -> list[str]:
 def _withheld_errors(ds: DatasetV3) -> list[str]:
     """A retailer without a window beside a windowed one is withheld (ADR-0013 §8): if it still
     has offers, one whole-retailer ``notObserved`` entry (no context, no categories) covers the
-    gap: from the day after ``since`` (its last observed day) or earlier, to the set's last
-    window day or later, in market days, as the publish guard (``pi_api.windows``) reads it. A body
-    where no retailer has a window (an upgraded v2 body) is not checked."""
+    gap: from the day after ``since`` (its last observed day) or earlier, to the cutoff's day or
+    later, in the retailer's market days (Coordinator 01a11cee-6a77: the cutoff, which is never
+    before the set's last window day the publish guard ``pi_api.windows`` reads). A body where no
+    retailer has a window (an upgraded v2 body) is not checked."""
     zones = {m.country: m.time_zone for m in ds.meta.markets}
-    ends = [
-        local_date(r.window.end, zones[r.country])
-        for r in ds.meta.retailers
-        if r.window is not None and r.country in zones
-    ]
-    if not ends:
+    if all(r.window is None for r in ds.meta.retailers):
         return []
-    last = max(ends)
     retailer_of = _retailer_of(ds)
     stocked = {retailer_of.get(cid) for p in ds.products for cid in p.offers}
     errors: list[str] = []
@@ -487,6 +482,7 @@ def _withheld_errors(ds: DatasetV3) -> list[str]:
             errors.append(f"{where}: withheld (no window) with offers but no since")
             continue
         first = r.since + timedelta(days=1)
+        last = local_date(ds.meta.cutoff, zones[r.country])
         if not any(
             w.retailer == r.id
             and w.context is None

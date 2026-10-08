@@ -308,3 +308,42 @@ def test_the_composed_view_carries_each_sources_window_fields_and_capabilities()
     assert ulta.end.date() == date(2026, 9, 22)
     assert seph.end.date() == date(2026, 9, 30)
     assert all(r.fields is not None and r.capabilities is not None for r in view.meta.retailers)
+
+
+def _withheld_ulta(end: str | None) -> DatasetV3:
+    """Ulta without a window, last seen 22 Sep, and (unless ``end`` is None) its whole-retailer
+    ``notObserved`` entry from the day after to ``end``."""
+    d = snapshot_doc({"p2": (ULTA,)}, dates=OLD, windows=False)
+    d["meta"]["retailers"][0]["since"] = "2026-09-22"
+    if end is not None:
+        d["notObserved"] = [
+            {
+                "retailer": ULTA,
+                "context": None,
+                "start": "2026-09-23",
+                "end": end,
+                "categories": None,
+                "why": {"en": "Blocked by the site, not removed.", "ar": "محجوب من الموقع."},
+            }
+        ]
+    return DatasetV3.model_validate(d)
+
+
+def test_a_windowed_source_composes_beside_a_withheld_one_with_its_entry() -> None:
+    """ADR-0013 §8 at the view: windowed Sephora beside window-less Ulta is served when Ulta's
+    whole-retailer entry runs from the day after ``since`` to the cutoff's day (30 Sep)."""
+    view = compose([_withheld_ulta("2026-09-30"), only(sephora(), [SEPHORA])]).dataset
+    assert view.meta.cutoff.date() == date(2026, 9, 30)
+    windows = {r.id: r.window for r in view.meta.retailers}
+    assert windows[ULTA] is None
+    assert windows[SEPHORA] is not None
+
+
+@pytest.mark.parametrize("end", [None, "2026-09-29"])
+def test_a_withheld_source_without_its_entry_to_the_cutoff_is_refused_at_compose(
+    end: str | None,
+) -> None:
+    with pytest.raises(
+        ValueError, match=r"no whole-retailer notObserved entry covering 2026-09-23\.\.2026-09-30"
+    ):
+        compose([_withheld_ulta(end), only(sephora(), [SEPHORA])])
