@@ -22,7 +22,7 @@ import {
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { FindingsSection } from './findings/findings-section';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { Loading } from '../ui/skeleton';
@@ -365,14 +365,13 @@ function StockCard({
   answer: string | null;
 }) {
   const t = useTranslations('insights');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   if (!row)
     return (
       <Panel>
         <ShopHead id={shop} />
-        <Off>{answer ? <Known t={tr} v={answer} /> : t('notInAnswer')}</Off>
+        <Off>{answer ? <Reason v={answer} /> : t('notInAnswer')}</Off>
       </Panel>
     );
   if (notCollected(row.reason))
@@ -393,7 +392,7 @@ function StockCard({
       <ShopHead id={shop} />
       {row.reason ? (
         <Off>
-          <Known t={tr} v={row.reason} />
+          <Reason v={row.reason} />
         </Off>
       ) : row.withStock === 0 ? (
         <Off>{t('stock.noStatus', { shop: name(shop) })}</Off>

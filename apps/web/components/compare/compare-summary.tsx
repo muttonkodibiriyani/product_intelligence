@@ -6,7 +6,7 @@ import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
 import { formatMoney, isValidMoney } from '@/lib/money';
 import { Card } from '../ui/card';
-import { Known } from '../ui/known';
+import { Known, Reason } from '../ui/known';
 import { Money, Pct } from '../ui/money';
 import { minus, retailerTone, sign, verdict as whoWins } from './model';
 import { RetailerDot } from './pair-picker';
@@ -173,7 +173,6 @@ function Fact({ label, value, note }: { label: string; value: ReactNode; note: R
 export function Coverage({ data, name }: { data: Comparison; name: Name }) {
   const t = useTranslations('compare.coverage');
   const th = useTranslations('home');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const sides = [data.sides.base, data.sides.other] as const;
   return (
@@ -206,7 +205,7 @@ export function Coverage({ data, name }: { data: Comparison; name: Name }) {
                   {s.reason && (
                     <>
                       {' '}
-                      <Known t={tr} v={s.reason} />
+                      <Reason v={s.reason} />
                     </>
                   )}
                 </p>
@@ -248,7 +247,6 @@ export function Groups({
   onPick: (key: string) => void;
 }) {
   const t = useTranslations('compare');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const by = data.groupBy === 'category' ? 'category' : 'brand';
   return (
@@ -304,7 +302,7 @@ export function Groups({
                   </>
                 ) : (
                   <td colSpan={3} className={`${TD} min-w-48 text-ink-2`}>
-                    {g.reason ? <Known t={tr} v={g.reason} /> : '–'}
+                    {g.reason ? <Reason v={g.reason} /> : '–'}
                   </td>
                 )}
               </tr>

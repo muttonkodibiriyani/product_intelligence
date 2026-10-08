@@ -92,7 +92,8 @@
     "snapshotOneOff": "{retailer}: لقطة لمرة واحدة مستوردة في {date}",
     "summaryTooFew": "المنتجات المطابَقة قليلة جدًا لعرض ملخص بعد.",
     "asOf": "البيانات حتى {date}",
-    "asOfRetailer": "{retailer}: البيانات حتى {date}"
+    "asOfRetailer": "{retailer}: البيانات حتى {date}",
+    "withheldCode": "محجوب: <c>{code}</c>"
   },
   "home": {
     "title": "مجموعة البيانات الحالية",

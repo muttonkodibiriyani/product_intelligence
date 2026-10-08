@@ -9,7 +9,7 @@ import { formatCount } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
 import { ErrorNotice } from '../error-notice';
 import { Card, CardGrid } from '../ui/card';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { Segmented } from '../ui/segmented';
 import { Loading, Skeleton } from '../ui/skeleton';
@@ -57,7 +57,6 @@ export function PricesView() {
   const tw = useTranslations('widgets');
   const locale = useLocale();
   const sp = useSearchParams();
-  const tr = useTranslations('reasons');
   const name = useRetailerName();
   const { ids, pair, loading, error } = useRetailers();
   const s = useSummaries(ids);
@@ -120,7 +119,7 @@ export function PricesView() {
             {missing && (
               <p role="status" className="text-sm text-ink-2">
                 {t('noSummary', { retailer: name(missing.retailer) })}{' '}
-                {missing.env.reason && <Known t={tr} v={missing.env.reason} />}
+                {missing.env.reason && <Reason v={missing.env.reason} />}
               </p>
             )}
             {row && (
@@ -196,7 +195,6 @@ function RetailerSection({
   const t = useTranslations('prices');
   const tw = useTranslations('widgets');
   const tk = useTranslations('widgets.kpi');
-  const tr = useTranslations('reasons');
   const lc = locale === 'ar' ? 'ar' : 'en';
   const d = row.data;
   const p = { currency: d.currency, locale };
@@ -218,7 +216,7 @@ function RetailerSection({
           {withheld.map((w, i) => (
             <span key={w.section}>
               {i > 0 && ' · '}
-              {tw(`withheld.${w.section as 'prices' | 'ratings'}`)} <Known t={tr} v={w.reason} />
+              {tw(`withheld.${w.section as 'prices' | 'ratings'}`)} <Reason v={w.reason} />
             </span>
           ))}
         </p>
@@ -348,7 +346,6 @@ export function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
   const t = useTranslations('prices');
   const tw = useTranslations('widgets');
   const tc = useTranslations('card');
-  const tr = useTranslations('reasons');
   const cmp = useCompareData(pair);
   const names = { base: pair.name(pair.base), other: pair.name(pair.other) };
   const href = compareHref(locale, pair);
@@ -395,7 +392,7 @@ export function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
       <section aria-labelledby="head-to-head" className="space-y-4">
         {head}
         <p className="text-sm text-ink-2">
-          {t('noPairs')} {cmp.env?.reason && <Known t={tr} v={cmp.env.reason} />}
+          {t('noPairs')} {cmp.env?.reason && <Reason v={cmp.env.reason} />}
         </p>
       </section>
     );
@@ -416,7 +413,7 @@ export function HeadToHead({ pair, locale }: { pair: Pair; locale: string }) {
             question={tw('gapHist.question', { other: names.other })}
             span={12}
             state={gap ? 'ready' : 'empty'}
-            reason={cmp.env.reason ? <Known t={tr} v={cmp.env.reason} /> : undefined}
+            reason={cmp.env.reason ? <Reason v={cmp.env.reason} /> : undefined}
           >
             {gap && (
               <>

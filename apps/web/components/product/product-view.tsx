@@ -18,7 +18,7 @@ import type { BackTo } from '../explore/product-table';
 import { Card } from '../ui/card';
 import { Size } from '../explore/product-table';
 import { RowThumb } from '../explore/row-thumb';
-import { Known } from '../ui/known';
+import { Known, Reason } from '../ui/known';
 import { Price } from '../ui/money';
 import { MatchReviewLabel } from '../ui/product-card';
 import { GapView, MatchLabel } from '../ui/pair';
@@ -573,7 +573,6 @@ function Matches({ matches, name }: { matches: Schemas['CardMatch'][]; name: (id
 
 function History({ id, name }: { id: string; name: (id: string) => string }) {
   const t = useTranslations('product');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const { api } = useAuth();
   const q = useQuery({
@@ -596,7 +595,7 @@ function History({ id, name }: { id: string; name: (id: string) => string }) {
   if (!env.data)
     return (
       <p className="text-ink-2">
-        {(env.reason && (loc(env.detail, locale) || <Known t={tr} v={env.reason} />)) || t('historyEmpty')}
+        {(env.reason && (loc(env.detail, locale) || <Reason v={env.reason} />)) || t('historyEmpty')}
       </p>
     );
   return <HistoryChart series={env.data.series} name={name} />;

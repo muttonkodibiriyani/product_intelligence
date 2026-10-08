@@ -7,7 +7,7 @@ import type { Bucket, CategoryCompare } from '@/lib/api/category-compare';
 import type { Envelope, Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
 import { formatMoney, isValidPrice } from '@/lib/money';
-import { Known } from '../ui/known';
+import { Known, Reason } from '../ui/known';
 import { Pct } from '../ui/money';
 import { Skeleton } from '../ui/skeleton';
 import { exploreHref, type PairState } from '../widgets/model';
@@ -39,7 +39,6 @@ export function CompareEmpty({
 }) {
   const t = useTranslations('compare.empty');
   const th = useTranslations('home');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const base = name(pair.base);
   const other = name(pair.other);
@@ -82,7 +81,7 @@ export function CompareEmpty({
         </span>
         <h2 id="empty-title" className="text-lg font-semibold tracking-tight text-balance">
           {withheld ? (
-            <Known t={tr} v={withheld} />
+            <Reason v={withheld} />
           ) : matched > 0 ? (
             t('tooFew', { n: formatCount(matched, locale), count: matched, base, other })
           ) : (
@@ -97,7 +96,7 @@ export function CompareEmpty({
             </>
           ) : env.reason ? (
             <>
-              <Known t={tr} v={env.reason} />
+              <Reason v={env.reason} />
               {detail && ` ${detail}`}
             </>
           ) : (
@@ -120,7 +119,7 @@ export function CompareEmpty({
                   {s.reason && (
                     <>
                       {' '}
-                      <Known t={tr} v={s.reason} />
+                      <Reason v={s.reason} />
                     </>
                   )}
                 </span>

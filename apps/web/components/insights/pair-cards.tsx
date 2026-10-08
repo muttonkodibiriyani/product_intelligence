@@ -18,7 +18,7 @@ import {
 } from '@/lib/insights';
 import { useAuth } from '../auth-provider';
 import { Card, CardGrid } from '../ui/card';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { Pct } from '../ui/money';
 import { RetailerDot } from '../ui/retailer-dot';
 import { Tip } from '../ui/tip';
@@ -135,14 +135,13 @@ function ReasonCard({
   reason: string | null | undefined;
   span?: 6 | 12;
 }) {
-  const tr = useTranslations('reasons');
   return (
     <Card
       level={4}
       title={title}
       span={span}
       state="empty"
-      reason={reason ? <Known t={tr} v={reason} /> : undefined}
+      reason={reason ? <Reason v={reason} /> : undefined}
     />
   );
 }
@@ -166,7 +165,6 @@ function Positioning({
   other,
 }: Pair & { env: Envelope<Schemas['Comparison']> | undefined; pricing: Insights['pricing'] }) {
   const t = useTranslations('insights.positioning');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   const s = env?.data?.summary;
@@ -175,7 +173,7 @@ function Positioning({
     return (
       <div role="note" className="panel px-5 py-3 text-sm">
         <b className="me-2 font-semibold">{t('title')}</b>
-        {pricing.reason ? <Known t={tr} v={pricing.reason} /> : t('none')}
+        {pricing.reason ? <Reason v={pricing.reason} /> : t('none')}
         <Unreviewed n={pricing.unreviewed} />
       </div>
     );

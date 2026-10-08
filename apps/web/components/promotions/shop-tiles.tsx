@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
 import { deepestCut, listable, shareWidth } from '@/lib/promotions';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { RetailerDot, retailerTone } from '../ui/retailer-dot';
 
 /**
@@ -139,7 +139,6 @@ function Tile({
   cut: string | null;
 }) {
   const t = useTranslations('promotions');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const width = shareWidth(r.share);
   const who = (
@@ -169,7 +168,7 @@ function Tile({
                 </b>
               ),
             })}{' '}
-          {t('shareWithheld')} {r.reason && <Known t={tr} v={r.reason} />}
+          {t('shareWithheld')} {r.reason && <Reason v={r.reason} />}
         </p>
         <PromoBreakdown r={r} index={index} />
       </div>
@@ -182,7 +181,7 @@ function Tile({
         <p className="text-[13px] text-ink-2">{who}</p>
         <p className="mt-2 text-lg leading-snug font-semibold">{t('notMeasuredShop')}</p>
         <p className="mt-2 text-sm text-ink-2">
-          {r.reason ? <Known t={tr} v={r.reason} /> : t('noShare')}{' '}
+          {r.reason ? <Reason v={r.reason} /> : t('noShare')}{' '}
           {t.rich('pricesIn', {
             shop: label,
             link: (chunks) => (

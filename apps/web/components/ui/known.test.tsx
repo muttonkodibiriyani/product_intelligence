@@ -2,7 +2,8 @@ import { cleanup, render } from '@testing-library/react';
 import { NextIntlClientProvider, useTranslations } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
 import ar from '@/messages/ar.json';
-import { Known } from './known';
+import en from '@/messages/en.json';
+import { Known, Reason } from './known';
 
 afterEach(cleanup);
 
@@ -49,5 +50,41 @@ describe('Known', () => {
       ['Partial', 'status'],
     ] as const)
       expect(show('home', v, k).textContent).toBe(v);
+  });
+});
+
+const reason = (v: string, locale: 'en' | 'ar' = 'ar') =>
+  render(
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === 'ar' ? ar : en}
+      onError={(e) => {
+        throw e;
+      }}
+    >
+      <Reason v={v} />
+    </NextIntlClientProvider>,
+  ).container;
+
+describe('Reason', () => {
+  it('shows the label for a reason this build knows', () => {
+    expect(reason('no_match').textContent).toBe(ar.reasons.no_match);
+    expect(reason('no_match', 'en').textContent).toBe(en.reasons.no_match);
+    expect(reason('no_match').querySelector('bdi')).toBeNull();
+  });
+
+  it('says withheld, with the code as sent, for a reason this build has no label for', () => {
+    expect(reason('window_unknown', 'en').textContent).toBe('Withheld: window_unknown');
+    const c = reason('window_unknown');
+    expect(c.textContent).toBe('محجوب: window_unknown');
+    const bdi = c.querySelector('bdi')!;
+    expect(bdi.textContent).toBe('window_unknown');
+    expect(bdi.getAttribute('dir')).toBe('ltr');
+    expect(bdi.getAttribute('lang')).toBe('en');
+  });
+
+  it('never resolves a code that is not enum-shaped as a key path', () => {
+    for (const v of ['no_match.x', 'NO_MATCH', 'status'])
+      expect(reason(v, 'en').textContent).toBe(`Withheld: ${v}`);
   });
 });

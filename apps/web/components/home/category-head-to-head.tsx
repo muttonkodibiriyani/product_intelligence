@@ -9,7 +9,7 @@ import { isValidPrice } from '@/lib/money';
 import { navHref } from '@/lib/nav';
 import { errorText } from '../error-notice';
 import { Card } from '../ui/card';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { Money, Pct } from '../ui/money';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { Tip } from '../ui/tip';
@@ -161,7 +161,6 @@ function Body({
   pair: Pair;
 }) {
   const t = useTranslations('widgets.categories');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const lc = locale === 'ar' ? 'ar' : 'en';
   const base = pair.name(pair.base);
@@ -195,7 +194,7 @@ function Body({
     if (s?.status === 'blocked')
       return (
         <span className="text-xs text-ink-2">
-          <Known t={tr} v={s.reason ?? 'retailer_blocked'} />
+          <Reason v={s.reason ?? 'retailer_blocked'} />
         </span>
       );
     return dash(s ? t('tooFew', { n: s.n, min }) : t('sideMissing'));
@@ -210,7 +209,7 @@ function Body({
     if (!b || who === null)
       return (
         <span className="text-xs text-ink-2">
-          {b?.status === 'no_gap' && b.gapReason ? <Known t={tr} v={b.gapReason} /> : '–'}
+          {b?.status === 'no_gap' && b.gapReason ? <Reason v={b.gapReason} /> : '–'}
         </span>
       );
     if (who === 'same')

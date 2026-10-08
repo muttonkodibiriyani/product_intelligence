@@ -92,7 +92,8 @@
     "snapshotOneOff": "{retailer}: one-off snapshot imported {date}",
     "summaryTooFew": "Too few matched products for a summary yet.",
     "asOf": "Data as of {date}",
-    "asOfRetailer": "{retailer}: data as of {date}"
+    "asOfRetailer": "{retailer}: data as of {date}",
+    "withheldCode": "Withheld: <c>{code}</c>"
   },
   "home": {
     "title": "Current dataset",

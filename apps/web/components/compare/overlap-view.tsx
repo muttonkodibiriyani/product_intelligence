@@ -11,7 +11,7 @@ import { navHref } from '@/lib/nav';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { FilterChips } from '../ui/filter-chips';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
@@ -206,7 +206,6 @@ function OverlapEmpty({
 }) {
   const t = useTranslations('overlap');
   const ts = useTranslations('state');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   if (env.status !== 'ok')
     return (
@@ -214,7 +213,7 @@ function OverlapEmpty({
         <p className="font-medium">{ts('notAvailable')}</p>
         {env.reason && (
           <p className="mt-1 text-sm text-ink-2">
-            <Known t={tr} v={env.reason} />
+            <Reason v={env.reason} />
           </p>
         )}
       </div>

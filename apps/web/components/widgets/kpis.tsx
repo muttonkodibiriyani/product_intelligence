@@ -8,6 +8,7 @@ import { num } from '@/lib/api/summary';
 import type { Schemas } from '@/lib/api/types';
 import { formatCount } from '@/lib/format';
 import type { CaveatView } from '@/lib/api/types';
+import { Reason } from '../ui/known';
 import { pct } from './model';
 
 /** One retailer's /summary, fetched with an explicit `?retailer=`, and the caveats scoped to it. */
@@ -35,12 +36,11 @@ export function PairKpis({
   href: string;
 }) {
   const t = useTranslations('widgets.kpi');
-  const tr = useTranslations('reasons');
   const s = data.summary;
   const base = pair.name(pair.base);
   const other = pair.name(pair.other);
   const reason = data.sides.base.reason ?? data.sides.other.reason;
-  const none = <None>{reason && tr.has(reason) ? tr(reason) : t('none')}</None>;
+  const none = <None>{reason ? <Reason v={reason} /> : t('none')}</None>;
   const gap = s ? num(s.medianGapPct) : NaN;
   return (
     <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
