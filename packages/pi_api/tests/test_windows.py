@@ -11,18 +11,33 @@ from typing import Any
 import pytest
 
 from pi_api.app import app_from_env
-from pi_api.windows import MAX_GAP_DAYS, window_problems
+from pi_api.windows import MAX_GAP_DAYS, check_windows, window_problems
 from pi_dataset import DatasetV3, committed_profile, dump_dataset, upgrade
 from pi_dataset.examples import ae_pilot
 
+NORTH, SOUTH = "example_north_ae", "example_south_ae"
+#: ulta_ae tonight (Coordinator 01a11cc0-86a1): the whole retailer, blocked.
+BLOCKED = {
+    "retailer": SOUTH,
+    "context": None,
+    "categories": None,
+    "start": "2026-10-01",
+    "end": "2026-10-08",
+    "why": {"en": "Blocked (p0-20261008-ulta-probe).", "ar": "محجوب."},
+}
 FRESH = {"start": "2026-10-08T00:00:00Z", "end": "2026-10-08T10:00:00Z", "runId": "fresh"}
 
 
 def windowed(
-    end: str | None, *, cutoff: str = "2026-10-08T20:00:00Z", zone: str = "Asia/Dubai"
+    end: str | None,
+    *,
+    cutoff: str = "2026-10-08T20:00:00Z",
+    zone: str = "Asia/Dubai",
+    withheld: dict[str, Any] | None = None,
 ) -> DatasetV3:
     """The ae-pilot example as the exporter writes it: each retailer with its own keys and
-    (unless ``end`` is None) a one-day window ending at ``end``; its AE market in ``zone``."""
+    (unless ``end`` is None) a one-day window ending at ``end``; its AE market in ``zone``.
+    ``withheld`` is a notObserved entry for ``SOUTH``, which then has no window."""
     profile = committed_profile("beauty", 1)
     assert profile is not None
     d: dict[str, Any] = json.loads(dump_dataset(upgrade(ae_pilot(), profile)))
@@ -31,8 +46,10 @@ def windowed(
     meta["markets"][0]["timeZone"] = zone
     for r in meta["retailers"]:
         r["fields"], r["capabilities"] = dict(meta["fields"]), dict(meta["capabilities"])
-        if end is not None:
+        if end is not None and not (withheld is not None and r["id"] == SOUTH):
             r["window"] = {"start": end, "end": end, "runId": f"run-{end}"}
+    if withheld is not None:
+        d["notObserved"] = [{**BLOCKED, **withheld}]
     return DatasetV3.model_validate(d)
 
 
@@ -72,7 +89,8 @@ def test_a_set_in_more_than_one_time_zone_is_refused() -> None:
 def test_a_retailer_without_a_window_is_refused() -> None:
     problems = window_problems([("old", windowed(None)), ("fresh", windowed(FRESH["end"]))])
     assert problems == [
-        f"old: {r} has no crawl window (ADR-0013): re-export it"
+        f"old: {r} has no crawl window (ADR-0013): re-export it, or withhold it with a "
+        "notObserved entry for the whole retailer"
         for r in ("example_north_ae", "example_south_ae")
     ]
     assert window_problems([]) == []
@@ -94,3 +112,36 @@ def test_require_all_refuses_a_cold_start_over_the_gap(tmp_path: Path) -> None:
         app_from_env({**served, "PI_API_REQUIRE_ALL": "1"})
     (tmp_path / b).write_bytes(dump_dataset(windowed("2026-09-30T20:00:00Z")))
     assert app_from_env({**served, "PI_API_REQUIRE_ALL": "1"}) is not None
+
+
+def test_a_withheld_retailer_passes_and_the_others_keep_the_gap() -> None:
+    """Coordinator 01a11cc0-86a1: a retailer disclosed as not observed for the whole retailer
+    to the set's last window day, with no window, is withheld; the rest are still checked."""
+    fresh = windowed(FRESH["end"], withheld={})
+    check = check_windows([("beauty", fresh)])
+    assert check.problems == []
+    assert check.withheld == [
+        f"beauty: {SOUTH} withheld, not observed until 2026-10-08: "
+        "Blocked (p0-20261008-ulta-probe)."
+    ]
+    # The other retailers keep the 7-day rule: north 8 days stale in another body is refused.
+    eight = ("old", windowed("2026-09-30T19:59:00Z"))
+    [problem] = window_problems([("beauty", fresh), eight])
+    assert problem.startswith("window gap 8 days in Asia/Dubai, more than 7")
+
+
+def test_withholding_never_excuses_a_window_or_a_stale_disclosure() -> None:
+    # A retailer that has a window is counted, disclosure or not: a stale window is refused.
+    stale = windowed("2026-09-30T19:59:00Z")
+    stale = stale.model_copy(update={"not_observed": windowed(None, withheld={}).not_observed})
+    [problem] = window_problems([("fresh", windowed(FRESH["end"])), ("stale", stale)])
+    assert problem.startswith("window gap 8 days")
+    # Disclosed only until 10-07 while the set runs to 10-08: refused.
+    short = windowed(FRESH["end"], withheld={"end": "2026-10-07"})
+    assert window_problems([("b", short)]) == [
+        f"b: {SOUTH} is withheld only until 2026-10-07, before the set's last window day 2026-10-08"
+    ]
+    # Part of the retailer (a category) is not the whole retailer: no window is refused.
+    part = windowed(FRESH["end"], withheld={"categories": ["skincare"]})
+    [problem] = window_problems([("b", part)])
+    assert problem.startswith(f"b: {SOUTH} has no crawl window (ADR-0013)")

@@ -371,8 +371,9 @@ def test_retention_fresh_allows_only_reconciled_removals() -> None:
 
 
 # ------------------------------------------------------------------ check-served: the windows
-def windowed_body(end: str | None) -> bytes:
-    """The ae-pilot example as v3 with each retailer's own keys and a window ending at ``end``."""
+def windowed_body(end: str | None, *, blocked: str | None = None) -> bytes:
+    """The ae-pilot example as v3 with each retailer's own keys and a window ending at ``end``;
+    ``blocked``: that retailer has no window and is disclosed not observed (withheld)."""
     from pi_dataset import committed_profile, dump_dataset, upgrade  # noqa: PLC0415
     from pi_dataset.examples import ae_pilot  # noqa: PLC0415
 
@@ -383,8 +384,14 @@ def windowed_body(end: str | None) -> bytes:
     meta["cutoff"] = meta["generatedAt"] = "2026-10-08T20:00:00Z"
     for r in meta["retailers"]:
         r["fields"], r["capabilities"] = dict(meta["fields"]), dict(meta["capabilities"])
-        if end is not None:
+        if end is not None and r["id"] != blocked:
             r["window"] = {"start": end, "end": end, "runId": f"run-{end}"}
+    if blocked is not None:
+        why = {"en": "Blocked (p0-20261008-ulta-probe).", "ar": "محجوب."}
+        d["notObserved"] = [
+            {"retailer": blocked, "context": None, "categories": None, "why": why}
+            | {"start": "2026-10-01", "end": "2026-10-08"}
+        ]
     return gzip.compress(json.dumps(d).encode(), mtime=0)
 
 
@@ -424,3 +431,14 @@ def test_check_served_holds_no_window_and_a_missing_body(
     argv = ["--project", "p", "--allow-test", "--check-served", "s=d/a,t=d/a"]
     assert run([*argv, "--served-root", str(tmp_path)], monkeypatch) == 0
     assert "window guard: 1 bodies, ok" in capsys.readouterr().out
+
+
+def test_check_served_lists_a_withheld_retailer_and_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Coordinator 01a11cc0-86a1: ulta_ae withheld as blocked is not a refusal; it is printed."""
+    fresh = windowed_body("2026-10-08T10:00:00Z", blocked="example_south_ae")
+    assert check(tmp_path, monkeypatch, a=fresh) == 0
+    out = capsys.readouterr().out
+    assert "d/a: example_south_ae withheld, not observed until 2026-10-08: Blocked" in out
+    assert "window guard: 1 bodies, ok" in out

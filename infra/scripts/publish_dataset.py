@@ -618,7 +618,7 @@ def check_served(datasets: str, read: Any, *, allow_test: bool = False) -> int:
     """The window guard over every body ``datasets`` (a PI_API_DATASETS value) serves, each
     read with ``read(path) -> bytes | None`` and parsed as pi-api parses it."""
     from pi_api.source import parse  # noqa: PLC0415 (v1 runs without it)
-    from pi_api.windows import window_problems  # noqa: PLC0415
+    from pi_api.windows import check_windows  # noqa: PLC0415
 
     paths = dict.fromkeys(e.strip().partition("=")[2] or e.strip() for e in datasets.split(","))
     paths.pop("", None)
@@ -633,7 +633,10 @@ def check_served(datasets: str, read: Any, *, allow_test: bool = False) -> int:
             loaded.append((path, parse(raw, allow_test=allow_test)))
         except ValueError as exc:
             problems.append(f"{path}: pi-api cannot serve it: {exc}")
-    problems += window_problems(loaded)
+    check = check_windows(loaded)
+    problems += check.problems
+    for line in check.withheld:
+        print(line)
     for problem in problems:
         print(f"HOLD, {problem}", file=sys.stderr)
     print(f"window guard: {len(paths)} bodies,", "HOLD" if problems else "ok")
