@@ -61,8 +61,12 @@ the original cutoff copy is never replaced.
   ``--reconciled-removals FILE`` (fresh Ulta only), the offer of a product id listed there may be
   absent. FILE is the capture lane's removal_evidence.csv; every ulta_ae row must carry removal
   evidence from ``REMOVAL_EVIDENCE``, and any other value (a not-observed reason, a variant drop)
-  refuses the publish. The sephora_me offers in the file are held by the source guard against
-  the body the live PI_API_DATASETS serves sephora_me from.
+  refuses the publish. Each ulta_ae row must also come from this roll: its run_id in the new
+  body's ulta_ae window (``runId`` and ``segments``) and its evidence_time on a day of that
+  window in the market's time zone, as the window guard counts days; a (retailer, product_id,
+  sku) key may appear once. A body that gives ulta_ae no window (withheld, or v2) reconciles
+  nothing. The sephora_me offers in the file are held by the source guard against the body the
+  live PI_API_DATASETS serves sephora_me from.
 - ``--check-served <PI_API_DATASETS>`` (no body; read-only): the window guard over every body
   that value serves (``pi_api.windows``, the check ``PI_API_REQUIRE_ALL=1`` repeats at start):
   each retailer has a crawl window, all windows are in one market time zone, and no two end
@@ -81,9 +85,10 @@ import hashlib
 import json
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 SCHEMA = "pi.dataset/v1"
 SCHEMA_V2 = "pi.dataset/v2"
@@ -101,6 +106,8 @@ GUARDED = "sephora_me"  # --allow-beauty-versioned: held by the source guard (no
 # offer, so it never excuses an absent offer, and no notObservedReason is removal evidence.
 REMOVAL_EVIDENCE = ("pdp-404", "pdp-410", "sitemap-absent", "search-absent")
 REMOVAL_FIELDS = ("product_id", "evidence_type", "evidence_time", "run_id")
+#: (the run ids of the new body's ulta_ae window, its first and last day in the market's zone)
+RemovalWindow = tuple[frozenset[str], date, date, str]
 V1_PREFIX = "datasets/uae"
 V1_SOURCE = "sephora_me"
 V1_META_DOC = "current"  # demo_meta/current: the legacy dashboard and smoke_demo read it
@@ -577,30 +584,76 @@ def retention_problems(
     return problems
 
 
-def read_removals(path: Path) -> tuple[frozenset[str], list[str]]:
+def removal_window(doc: dict[str, Any]) -> RemovalWindow | None:
+    """The new body's ``RETAINED`` window, which removal evidence must come from (Coordinator
+    01a11cd6-a407): ``None`` when the body gives it none (withheld, or a v2 body)."""
+    meta = doc.get("meta") or {}
+    zones = {m.get("country"): m.get("timeZone") for m in meta.get("markets") or []}
+    for r in meta.get("retailers") or []:
+        window, zone = r.get("window"), zones.get(r.get("country"))
+        if r.get("id") != RETAINED or not window or not zone:
+            continue
+        runs = frozenset([window["runId"], *(window.get("segments") or [])])
+        first, last = (_local_day(window[k], zone) for k in ("start", "end"))
+        if first is not None and last is not None:
+            return runs, first, last, zone
+    return None
+
+
+def _local_day(moment: str, zone: str) -> date | None:
+    try:
+        when = datetime.fromisoformat(moment)
+    except ValueError:
+        return None
+    return when.astimezone(ZoneInfo(zone)).date() if when.tzinfo else None
+
+
+def read_removals(path: Path, window: RemovalWindow | None) -> tuple[frozenset[str], list[str]]:
     """The ulta_ae product ids removal_evidence.csv (the capture lane's reconciliation) shows
-    removed, and why the file is refused: a missing column or value, or an ulta_ae row whose
-    evidence is not in ``REMOVAL_EVIDENCE``. One bad row refuses the whole file."""
+    removed in this roll, and why the file is refused: a missing column or value, or an ulta_ae
+    row whose evidence is not in ``REMOVAL_EVIDENCE``, whose run is not in ``window``, whose
+    evidence_time is not on one of its days, or whose key repeats. One bad row refuses the whole
+    file, and with no ``window`` every ulta_ae row is refused."""
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         rows = list(reader)
         header = reader.fieldnames or []
-    if missing := [f for f in ("retailer", *REMOVAL_FIELDS) if f not in header]:
+    if missing := [f for f in ("retailer", "sku", *REMOVAL_FIELDS) if f not in header]:
         return frozenset(), [f"{path.name}: missing columns {missing}"]
-    ids, errors = set(), []
+    ids, errors, seen = set(), [], set()
     for line, row in enumerate(rows, start=2):
         if row["retailer"] != RETAINED:
             continue
+        where, pid = f"{path.name}:{line}", row["product_id"]
+        key = (row["retailer"], pid, row["sku"])
         if empty := [f for f in REMOVAL_FIELDS if not (row[f] or "").strip()]:
-            errors.append(f"{path.name}:{line}: empty {empty}")
+            errors.append(f"{where}: empty {empty}")
         elif row["evidence_type"] not in REMOVAL_EVIDENCE:
             errors.append(
-                f"{path.name}:{line}: {row['evidence_type']!r} is not removal evidence "
-                f"({', '.join(REMOVAL_EVIDENCE)}): {row['product_id']} stays retained"
+                f"{where}: {row['evidence_type']!r} is not removal evidence "
+                f"({', '.join(REMOVAL_EVIDENCE)}): {pid} stays retained"
             )
+        elif key in seen:
+            errors.append(f"{where}: duplicate key {key}")
+        elif problem := _outside(row, window):
+            errors.append(f"{where}: {problem}: {pid} stays retained")
         else:
-            ids.add(row["product_id"])
+            ids.add(pid)
+        seen.add(key)
     return frozenset(ids), errors
+
+
+def _outside(row: dict[str, str], window: RemovalWindow | None) -> str | None:
+    """Why a row's evidence is not from the new body's ``RETAINED`` window, or ``None``."""
+    if window is None:
+        return f"the new body gives {RETAINED} no crawl window, so no evidence is from this roll"
+    runs, first, last, zone = window
+    if row["run_id"] not in runs:
+        return f"run {row['run_id']!r} is not in the {RETAINED} window ({', '.join(sorted(runs))})"
+    day = _local_day(row["evidence_time"], zone)
+    if day is None or not first <= day <= last:
+        return f"evidence_time {row['evidence_time']!r} is not on a window day ({first}..{last})"
+    return None
 
 
 def only(doc: dict[str, Any], source: str) -> dict[str, Any]:
@@ -763,16 +816,16 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
         parser.error("--allow-beauty-versioned needs --versioned")
     if args.reconciled_removals and not beauty:
         parser.error("--reconciled-removals needs --allow-beauty-versioned")
+    raw = args.path.read_text(encoding="utf-8")
+    doc = json.loads(raw)
     removals: frozenset[str] = frozenset()
     if args.reconciled_removals:
-        removals, refused = read_removals(args.reconciled_removals)
+        window = removal_window(doc) if isinstance(doc, dict) else None
+        removals, refused = read_removals(args.reconciled_removals, window)
         if refused:
             for err in refused[:50]:
                 print(f"refusing: {err}", file=sys.stderr)
             return 1
-
-    raw = args.path.read_text(encoding="utf-8")
-    doc = json.loads(raw)
     v1 = not (isinstance(doc, dict) and doc.get("schema") in PER_SOURCE_SCHEMAS)
     if args.versioned and v1:
         parser.error("--versioned publishes v2/v3 files only")

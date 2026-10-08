@@ -10,6 +10,7 @@ import hashlib
 import json
 import sys
 import types
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,13 @@ def beauty_raw() -> str:
     """The ae-pilot example as the owner's combined file: north = sephora_me, south = ulta_ae."""
     raw = EXAMPLE.read_text(encoding="utf-8")
     return raw.replace("example_north_ae", "sephora_me").replace("example_south_ae", "ulta_ae")
+
+
+def as_beauty(doc: dict[str, Any]) -> dict[str, Any]:
+    """An example document as the owner's combined file (north = sephora_me, south = ulta_ae)."""
+    text = json.dumps(doc).replace("example_north_ae", "sephora_me")
+    renamed: dict[str, Any] = json.loads(text.replace("example_south_ae", "ulta_ae"))
+    return renamed
 
 
 def beauty_doc() -> dict[str, Any]:
@@ -248,12 +256,22 @@ def test_retention_keys_only_is_exact() -> None:
     ]
 
 
-def removals_csv(tmp_path: Path, *rows: tuple[str, str, str]) -> Path:
-    """removal_evidence.csv as the capture lane writes it: (retailer, product_id, evidence_type)."""
+FRESH_END = "2026-10-08T10:00:00Z"
+#: The new body's ulta_ae window: run-1 (and its segment run-1b) on 2026-10-08 in Dubai.
+WINDOW = (frozenset({"run-1", "run-1b"}), date(2026, 10, 8), date(2026, 10, 8), "Asia/Dubai")
+
+
+def removals_csv(
+    tmp_path: Path,
+    *rows: tuple[str, str, str],
+    at: str = "2026-10-08T10:00:00Z",
+    run: str = "run-1",
+) -> Path:
+    """removal_evidence.csv as the capture lane writes it: (retailer, product_id, evidence_type),
+    each row's evidence from run ``run`` at ``at``."""
     header = "retailer,product_id,sku,url,last_captured_at,evidence_type,evidence_time,run_id"
     lines = [header] + [
-        f"{retailer},{pid},S1,https://x/{pid},2026-10-01T00:00:00Z,{evidence},"
-        "2026-10-08T10:00:00Z,run-1"
+        f"{retailer},{pid},S1,https://x/{pid},2026-10-01T00:00:00Z,{evidence},{at},{run}"
         for retailer, pid, evidence in rows
     ]
     file = tmp_path / "removal_evidence.csv"
@@ -264,7 +282,73 @@ def removals_csv(tmp_path: Path, *rows: tuple[str, str, str]) -> Path:
 @pytest.mark.parametrize("evidence", publish_dataset.REMOVAL_EVIDENCE)
 def test_removal_evidence_is_read_from_the_capture_lane_csv(tmp_path: Path, evidence: str) -> None:
     file = removals_csv(tmp_path, ("ulta_ae", "p1", evidence), ("faces_ae", "p2", "blocked"))
-    assert publish_dataset.read_removals(file) == (frozenset({"p1"}), [])  # other shops: ignored
+    assert publish_dataset.read_removals(file, WINDOW) == (frozenset({"p1"}), [])  # others: ignored
+
+
+def test_removal_evidence_must_come_from_the_new_window_run(tmp_path: Path) -> None:
+    """Coordinator 01a11cd6-a407: the row's run_id is the window's runId or one of its segments;
+    old evidence does not reconcile a removal in this roll."""
+    segment = removals_csv(tmp_path, ("ulta_ae", "p1", "pdp-404"), run="run-1b")
+    assert publish_dataset.read_removals(segment, WINDOW) == (frozenset({"p1"}), [])
+    old = removals_csv(tmp_path, ("ulta_ae", "p1", "pdp-404"), run="run-0")
+    assert publish_dataset.read_removals(old, WINDOW) == (
+        frozenset(),
+        [
+            "removal_evidence.csv:2: run 'run-0' is not in the ulta_ae window (run-1, run-1b): "
+            "p1 stays retained"
+        ],
+    )
+
+
+def test_removal_evidence_time_is_on_a_window_day_in_the_market_zone(tmp_path: Path) -> None:
+    # 2026-10-07T20:00Z is already 10-08 in Dubai, as the window guard counts days; a minute
+    # earlier is 10-07, and so is no evidence from this window.
+    on = removals_csv(tmp_path, ("ulta_ae", "p1", "pdp-410"), at="2026-10-07T20:00:00Z")
+    assert publish_dataset.read_removals(on, WINDOW) == (frozenset({"p1"}), [])
+    for at in ("2026-10-07T19:59:00Z", "2026-10-08T20:00:00Z", "yesterday"):
+        off = removals_csv(tmp_path, ("ulta_ae", "p1", "pdp-410"), at=at)
+        ids, [error] = publish_dataset.read_removals(off, WINDOW)
+        assert ids == frozenset()
+        assert error == (
+            f"removal_evidence.csv:2: evidence_time {at!r} is not on a window day "
+            "(2026-10-08..2026-10-08): p1 stays retained"
+        )
+
+
+def test_a_repeated_removal_key_refuses_the_file(tmp_path: Path) -> None:
+    file = removals_csv(tmp_path, ("ulta_ae", "p1", "pdp-404"), ("ulta_ae", "p1", "sitemap-absent"))
+    assert publish_dataset.read_removals(file, WINDOW)[1] == [
+        "removal_evidence.csv:3: duplicate key ('ulta_ae', 'p1', 'S1')"
+    ]
+
+
+def test_with_no_ulta_window_no_removal_is_reconciled(tmp_path: Path) -> None:
+    """Withheld ulta_ae (window null), or a v2 body: nothing in it is from this roll."""
+    file = removals_csv(tmp_path, ("ulta_ae", "p1", "pdp-404"), ("faces_ae", "p2", "pdp-404"))
+    assert publish_dataset.read_removals(file, None) == (
+        frozenset(),
+        [
+            "removal_evidence.csv:2: the new body gives ulta_ae no crawl window, so no evidence "
+            "is from this roll: p1 stays retained"
+        ],
+    )
+    assert publish_dataset.removal_window(beauty_doc()) is None  # v2: no windows
+    withheld = json.loads(
+        gzip.decompress(windowed_body("2026-10-08T10:00:00Z", blocked="example_south_ae"))
+    )
+    assert publish_dataset.removal_window(as_beauty(withheld)) is None
+
+
+def test_the_removal_window_is_read_from_the_new_body() -> None:
+    doc = as_beauty(json.loads(gzip.decompress(windowed_body("2026-10-08T10:00:00Z"))))
+    ulta = next(r for r in doc["meta"]["retailers"] if r["id"] == "ulta_ae")
+    ulta["window"] |= {"start": "2026-10-06T21:00:00Z", "segments": ["run-x"]}
+    assert publish_dataset.removal_window(doc) == (
+        frozenset({"run-2026-10-08T10:00:00Z", "run-x"}),
+        date(2026, 10, 7),
+        date(2026, 10, 8),
+        "Asia/Dubai",
+    )
 
 
 @pytest.mark.parametrize(
@@ -281,7 +365,7 @@ def test_removal_evidence_is_read_from_the_capture_lane_csv(tmp_path: Path, evid
 )
 def test_anything_but_removal_evidence_refuses_the_file(tmp_path: Path, evidence: str) -> None:
     file = removals_csv(tmp_path, ("ulta_ae", "p0", "pdp-404"), ("ulta_ae", "p1", evidence))
-    _, errors = publish_dataset.read_removals(file)
+    _, errors = publish_dataset.read_removals(file, WINDOW)
     assert len(errors) == 1
     assert errors[0].startswith("removal_evidence.csv:3: ")
 
@@ -289,7 +373,7 @@ def test_anything_but_removal_evidence_refuses_the_file(tmp_path: Path, evidence
 def test_a_removals_file_without_the_columns_is_refused(tmp_path: Path) -> None:
     file = tmp_path / "ids.json"
     file.write_text('["p1"]', encoding="utf-8")
-    assert publish_dataset.read_removals(file)[1][0].startswith("ids.json: missing columns")
+    assert publish_dataset.read_removals(file, WINDOW)[1][0].startswith("ids.json: missing columns")
 
 
 def test_an_absent_offer_listed_with_pdp_variant_absent_holds(
@@ -307,7 +391,14 @@ def test_an_absent_offer_listed_with_pdp_variant_absent_holds(
     variant = removals_csv(tmp_path, ("ulta_ae", pid, "pdp-variant-absent"))
     assert run([*argv, "--reconciled-removals", str(variant)], monkeypatch) == 1
     assert "'pdp-variant-absent' is not removal evidence" in capsys.readouterr().err
-    gone = removals_csv(tmp_path, ("ulta_ae", pid, "pdp-404"))
+    gone = removals_csv(tmp_path, ("ulta_ae", pid, "pdp-404"), run=f"run-{FRESH_END}")
+    # A v2 body gives ulta_ae no window, so no evidence is from this roll: the offer holds.
+    assert run([*argv, "--reconciled-removals", str(gone)], monkeypatch) == 1
+    assert "the new body gives ulta_ae no crawl window" in capsys.readouterr().err
+    # The same evidence beside a v3 body whose ulta_ae window is that run reconciles it.
+    fresh = as_beauty(json.loads(gzip.decompress(windowed_body(FRESH_END))))
+    drop_ulta_offer(fresh)
+    new.write_text(json.dumps(fresh), encoding="utf-8")
     assert run([*argv, "--reconciled-removals", str(gone)], monkeypatch) == 0
     assert "retention ulta_ae: live 2 new 1 reconciled 1" in capsys.readouterr().out
 
@@ -386,11 +477,13 @@ def windowed_body(end: str | None, *, blocked: str | None = None) -> bytes:
         r["fields"], r["capabilities"] = dict(meta["fields"]), dict(meta["capabilities"])
         if end is not None and r["id"] != blocked:
             r["window"] = {"start": end, "end": end, "runId": f"run-{end}"}
+        if r["id"] == blocked:
+            r["since"] = "2026-10-01"  # its last capture: the entry runs from the day after
     if blocked is not None:
         why = {"en": "Blocked (p0-20261008-ulta-probe).", "ar": "محجوب."}
         d["notObserved"] = [
             {"retailer": blocked, "context": None, "categories": None, "why": why}
-            | {"start": "2026-10-01", "end": "2026-10-08"}
+            | {"start": "2026-10-02", "end": "2026-10-08"}
         ]
     return gzip.compress(json.dumps(d).encode(), mtime=0)
 

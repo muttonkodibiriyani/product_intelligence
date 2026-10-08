@@ -7,8 +7,9 @@ they were one snapshot. A set whose windows are in more than one time zone has n
 count in, so it is refused.
 
 A retailer is WITHHELD, not refused, when it has no window and its body discloses it as not
-observed: a ``notObserved[]`` entry for the whole retailer (no context, no categories) that runs
-to the set's last window day (Coordinator 01a11cc0-86a1: ulta_ae, blocked). It takes no part in
+observed: a ``notObserved[]`` entry for the whole retailer (no context, no categories) that starts
+no later than the day after its ``since`` (its last capture) and runs to the set's last window
+day (Coordinator 01a11cc0-86a1, 01a11cd9-48b1: ulta_ae, blocked). It takes no part in
 the gap. A retailer with a window is always counted, so a stale window is refused, never
 excused, and nothing here widens ``MAX_GAP_DAYS``. A set where no retailer has a window is
 refused: there is no fresh window to withhold beside, and an old disclosure must not pass for one
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from pi_dataset import DatasetV3
 from pi_dataset.compose import window_gap_days
@@ -55,7 +56,7 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
     apart."""
     check = WindowCheck()
     windows: list[tuple[str, CrawlWindow, str]] = []
-    bare: list[tuple[str, tuple[NotObservedV3, ...]]] = []
+    bare: list[tuple[str, date | None, tuple[NotObservedV3, ...]]] = []
     for name, dataset in datasets:
         zones = {m.country: m.time_zone for m in dataset.meta.markets}
         for retailer in dataset.meta.retailers:
@@ -68,7 +69,7 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
                     for n in dataset.not_observed
                     if n.retailer == retailer.id and n.context is None and n.categories is None
                 )
-                bare.append((label, whole))
+                bare.append((label, retailer.since, whole))
             else:
                 windows.append((label, retailer.window, zones[retailer.country]))
     found = sorted({zone for _, _, zone in windows})
@@ -95,11 +96,14 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
 
 
 def _judge_withheld(
-    check: WindowCheck, bare: list[tuple[str, tuple[NotObservedV3, ...]]], last: date | None
+    check: WindowCheck,
+    bare: list[tuple[str, date | None, tuple[NotObservedV3, ...]]],
+    last: date | None,
 ) -> None:
-    """Each windowless retailer: withheld when disclosed for the whole retailer to ``last``,
-    the set's last window day; refused otherwise, and never withheld when there is none."""
-    for label, whole in bare:
+    """Each windowless retailer: withheld when disclosed for the whole retailer from the day
+    after its ``since`` (its last capture) to ``last``, the set's last window day; refused
+    otherwise, and never withheld when there is none (Coordinator 01a11cd9-48b1)."""
+    for label, since, whole in bare:
         if not whole:
             check.problems.append(
                 f"{label} has no crawl window (ADR-0013): re-export it, or withhold it with a "
@@ -114,7 +118,14 @@ def _judge_withheld(
                 f"{label} is withheld only until {until}, before the set's last window day {last}"
             )
             continue
-        why = next(n for n in whole if n.end == until).why
+        entry = next(n for n in whole if n.end == until)
+        if since is None or entry.start > since + timedelta(days=1):
+            check.problems.append(
+                f"{label} is withheld from {entry.start}, not from the day after its last "
+                f"capture (since {since})"
+            )
+            continue
+        why = entry.why
         text = why.get("en") or next(iter(why.values()))
         check.withheld.append(f"{label} withheld, not observed until {until}: {text}")
 

@@ -16,12 +16,14 @@ from pi_dataset import DatasetV3, committed_profile, dump_dataset, upgrade
 from pi_dataset.examples import ae_pilot
 
 NORTH, SOUTH = "example_north_ae", "example_south_ae"
-#: ulta_ae tonight (Coordinator 01a11cc0-86a1): the whole retailer, blocked.
+#: ulta_ae tonight (Coordinator 01a11cc0-86a1, 01a11cd9-48b1): the whole retailer, blocked from
+#: the day after its last capture (``since`` 2026-10-01).
+SINCE = "2026-10-01"
 BLOCKED = {
     "retailer": SOUTH,
     "context": None,
     "categories": None,
-    "start": "2026-10-01",
+    "start": "2026-10-02",
     "end": "2026-10-08",
     "why": {"en": "Blocked (p0-20261008-ulta-probe).", "ar": "محجوب."},
 }
@@ -48,6 +50,8 @@ def windowed(
         r["fields"], r["capabilities"] = dict(meta["fields"]), dict(meta["capabilities"])
         if end is not None and not (withheld is not None and r["id"] == SOUTH):
             r["window"] = {"start": end, "end": end, "runId": f"run-{end}"}
+        if withheld is not None and r["id"] == SOUTH:
+            r["since"] = SINCE
     if withheld is not None:
         d["notObserved"] = [{**BLOCKED, **withheld}]
     return DatasetV3.model_validate(d)
@@ -167,3 +171,22 @@ def test_a_set_with_no_window_at_all_is_refused_whatever_it_discloses() -> None:
         f"pre: {r} is withheld only until 2026-09-02, before the set's last window day 2026-10-08"
         for r in (NORTH, SOUTH)
     ]
+
+
+def test_a_withheld_retailer_is_disclosed_from_the_day_after_its_last_capture() -> None:
+    """Coordinator 01a11cd9-48b1: the entry starts no later than ``since`` + 1 day, so it is
+    contiguous with the last capture; since 10-01 and an entry from 10-02 is tonight's shape."""
+    assert window_problems([("b", windowed(FRESH["end"], withheld={}))]) == []
+    assert window_problems([("b", windowed(FRESH["end"], withheld={"start": SINCE}))]) == []
+    gap = windowed(FRESH["end"], withheld={"start": "2026-10-03"})
+    assert window_problems([("b", gap)]) == [
+        f"b: {SOUTH} is withheld from 2026-10-03, not from the day after its last capture "
+        "(since 2026-10-01)"
+    ]
+    known = windowed(FRESH["end"], withheld={})
+    retailers = [r.model_copy(update={"since": None}) for r in known.meta.retailers]
+    unknown = known.model_copy(
+        update={"meta": known.meta.model_copy(update={"retailers": retailers})}
+    )
+    [problem] = window_problems([("b", unknown)])
+    assert problem.endswith("not from the day after its last capture (since None)")
