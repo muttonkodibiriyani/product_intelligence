@@ -65,7 +65,8 @@ the original cutoff copy is never replaced.
   the body the live PI_API_DATASETS serves sephora_me from.
 - ``--check-served <PI_API_DATASETS>`` (no body; read-only): the window guard over every body
   that value serves (``pi_api.windows``, the check ``PI_API_REQUIRE_ALL=1`` repeats at start):
-  each retailer has a crawl window and no two windows end more than 7 Dubai days apart. Run it on
+  each retailer has a crawl window, all windows are in one market time zone, and no two end
+  more than 7 calendar days apart in it (Asia/Dubai for AE). Run it on
   the value a roll will deploy, before the roll (pi-api-deploy.md §6).
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
@@ -823,9 +824,10 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     live_path = paths[-1]
     if args.versioned:
         live_path = served_path(args.live_datasets, RETAINED if beauty else source) or live_path
-        if beauty and served_path(args.live_datasets, RETAINED) is None:
-            print(f"refusing: the live PI_API_DATASETS serves no {RETAINED}", file=sys.stderr)
-            return 1
+        for guarded in (RETAINED, GUARDED) if beauty else ():
+            if served_path(args.live_datasets, guarded) is None:
+                print(f"refusing: the live PI_API_DATASETS serves no {guarded}", file=sys.stderr)
+                return 1
 
     # beauty: sephora_me is held by the source guard against the body it is served from.
     sephora_path = served_path(args.live_datasets or "", GUARDED) if beauty else None
@@ -862,6 +864,9 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     sephora = None
     if sephora_path:
         sephora = live if sephora_path == live_path else read_live(bucket, sephora_path)[0]
+        if sephora is None:  # never skip the guard: no body to hold against is a refusal
+            print(f"refusing: no live {GUARDED} body at {sephora_path}", file=sys.stderr)
+            return 1
     held = judge(live, sephora)
     if args.versioned:  # latest.json and Firestore stay as the live revision reads them
         if held or publish_versioned(bucket, target, body):

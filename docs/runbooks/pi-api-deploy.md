@@ -471,9 +471,10 @@ revision serves it, and rollback is routing traffic back to the previous revisio
      uv run python infra/scripts/publish_dataset.py --project=$PROJECT --check-served="$NEW_DATASETS"
      ```
 
-     It reads every body the value serves and HOLDs if any retailer has no crawl window, or if two
-     windows' ENDs are more than 7 Dubai days apart (8 is refused, 7 passes; Dubai days turn at
-     20:00Z). Only a value that prints `window guard: N bodies, ok` is rolled. The new revision
+     It reads every body the value serves and HOLDs if any retailer has no crawl window (or no
+     market for its country), if the windows are in more than one market time zone, or if two
+     windows' ENDs are more than 7 calendar days apart in that zone (`meta.markets` by country;
+     for AE, Asia/Dubai: 8 is refused, 7 passes, and days turn at 20:00Z). Only a value that prints `window guard: N bodies, ok` is rolled. The new revision
      repeats the same check (`pi_api.windows`) at start under `PI_API_REQUIRE_ALL=1`, so a value
      that skipped this step never becomes Ready.
 2. **Deploy a new revision without traffic.** Only `PI_API_DATASETS` changes (and

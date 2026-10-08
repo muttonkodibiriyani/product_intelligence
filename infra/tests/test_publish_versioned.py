@@ -338,6 +338,28 @@ def test_a_beauty_publish_holds_a_lost_sephora_offer(
     assert "source guard: ok" in capsys.readouterr().out
 
 
+def test_a_beauty_publish_refuses_without_a_sephora_body_to_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review 5461045335 item 2: the sephora_me guard is never skipped. (a) The live value
+    points sephora_me at a body that is not there; (b) the live value has no sephora_me."""
+    new = tmp_path / "new.json"
+    new.write_text(beauty_raw(), encoding="utf-8")
+    bucket = Bucket()
+    stored(bucket, LIVE_BEAUTY, beauty_doc())
+    fake_firebase(monkeypatch, bucket)
+    argv = [str(new), "--project", "p", "--allow-test", "--versioned", "--allow-beauty-versioned"]
+    missing = LIVE.replace("sephora_me=datasets/ae/beauty/latest.json", "sephora_me=s/v/none.json")
+    assert run([*argv, "--live-datasets", missing], monkeypatch) == 1
+    assert "refusing: no live sephora_me body at s/v/none.json" in capsys.readouterr().err
+    absent = LIVE.replace("sephora_me=datasets/ae/beauty/latest.json,", "")
+    assert run([*argv, "--live-datasets", absent], monkeypatch) == 1
+    assert "refusing: the live PI_API_DATASETS serves no sephora_me" in capsys.readouterr().err
+    assert bucket.uploads == []
+    # The same file with sephora_me served passes, so the refusals are the guard's.
+    assert run([*argv, "--live-datasets", LIVE], monkeypatch) == 0
+
+
 def test_retention_fresh_allows_only_reconciled_removals() -> None:
     live = beauty_doc()
     fresh = copy.deepcopy(live)
@@ -385,7 +407,7 @@ def test_check_served_passes_seven_dubai_days_and_holds_eight(
     eight = windowed_body("2026-09-30T19:59:00Z")  # 09-30 in Dubai
     assert check(tmp_path, monkeypatch, a=fresh, b=eight) == 1
     captured = capsys.readouterr()
-    assert "HOLD, window gap 8 Dubai days, more than 7" in captured.err
+    assert "HOLD, window gap 8 days in Asia/Dubai, more than 7" in captured.err
     assert "window guard: 2 bodies, HOLD" in captured.out
 
 
