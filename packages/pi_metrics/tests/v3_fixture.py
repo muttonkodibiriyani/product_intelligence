@@ -25,6 +25,16 @@ def doc() -> Doc:
     return copy.deepcopy(upgraded)
 
 
+def own_keys(d: Doc) -> Doc:
+    """Each retailer with its own fields and capabilities (the file's), as the exporter writes
+    them (ADR-0013), so a file of several retailers can be loaded by the API."""
+    meta = d["meta"]
+    for r in meta["retailers"]:
+        r["fields"] = dict(meta["fields"])
+        r["capabilities"] = dict(meta["capabilities"])
+    return d
+
+
 def load(d: Doc) -> DatasetV3:
     return DatasetV3.model_validate(d)
 

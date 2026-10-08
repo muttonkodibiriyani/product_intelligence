@@ -15,7 +15,7 @@ import pi_api_admission as admission
 import publish_dataset
 import pytest
 
-from api_fixture import served_dataset, write
+from api_fixture import own_keys, served_dataset, write
 from pi_api.app import app_from_env
 from pi_dataset import V3_MAX_BYTES, admission_sha256, dump_dataset
 from pi_dataset import gate as rule
@@ -162,7 +162,7 @@ def nothing_fits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("nothing_fits")
 def test_measure_serves_every_file_and_writes_a_record_check_accepts(tmp_path: Path) -> None:
-    dataset = served_dataset()
+    dataset = own_keys(served_dataset())  # each shop with its own keys (ADR-0013)
     small = dump_dataset(dataset, compact=True)
     (tmp_path / SMALL).parent.mkdir(parents=True)
     (tmp_path / SMALL).write_bytes(small)

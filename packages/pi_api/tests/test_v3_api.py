@@ -17,7 +17,7 @@ from api_fixture import Client, bearer, make_client, served_dataset, write
 from metrics_fixture import B
 from pi_api import catalog
 from pi_dataset import DatasetV3
-from v3_fixture import APP, APP_PRODUCTS, WEB, offer, profile, size, split_shop_a
+from v3_fixture import APP, APP_PRODUCTS, WEB, offer, own_keys, profile, size, split_shop_a
 from v3_fixture import doc as base_doc
 
 API = "/api/v1"
@@ -25,7 +25,7 @@ PLACE = "dxb_marina"
 
 
 def split_doc() -> dict[str, Any]:
-    d = split_shop_a(profile(base_doc(), "food_menu"))
+    d = own_keys(split_shop_a(profile(base_doc(), "food_menu")))
     d["meta"]["test"] = False
     app = next(c for c in d["meta"]["contexts"] if c["id"] == APP)
     app["location"] = {"id": PLACE, "label": {"en": "Dubai Marina"}, "city": "Dubai", "area": None}

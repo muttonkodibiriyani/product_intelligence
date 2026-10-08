@@ -329,6 +329,8 @@ class SnapshotSource:
             dataset = parse(body, allow_test=self._allow_test)
             if self._pack_content:
                 dataset = packed(dataset)
+            # A file of several retailers without their own keys is refused (ADR-0013).
+            infos = source_infos(dataset)
         except (DatasetError, ValueError, OSError, zlib.error) as error:
             log.warning("dataset %s not loaded: %s", path, type(error).__name__)
             return None
@@ -337,7 +339,7 @@ class SnapshotSource:
             return None
         log.info("dataset %s loaded at generation %s", path, generation)
         self._bodies[path] = stats
-        return Loaded(path, dataset, generation, source_infos(dataset))
+        return Loaded(path, dataset, generation, infos)
 
     def _load_matches(self, path: str) -> bool:
         """Whether a new good generation of the match file was loaded."""

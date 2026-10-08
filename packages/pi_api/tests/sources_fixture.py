@@ -2,7 +2,9 @@
 
 ``snapshot({"p1": (ULTA, SEPHORA)}, ...)`` is one same-scope ``pi.dataset/v3`` file whose
 products have an offer per listed retailer, priced ``price`` on every date. A product offered by
-both gets an exact match edge. Invented ids and prices; nothing here is real data.
+both gets an exact match edge. Each retailer carries its own window, fields and capabilities, as
+the exporter writes them (ADR-0013), unless ``per_retailer=False`` (a file from before them).
+Invented ids and prices; nothing here is real data.
 """
 
 from __future__ import annotations
@@ -67,6 +69,7 @@ def snapshot_doc(
     scope: str = "beauty",
     stage: str = "reviewed",
     fields: Mapping[str, str] | None = None,
+    per_retailer: bool = True,
 ) -> Doc:
     d = doc()
     meta = d["meta"]
@@ -88,6 +91,17 @@ def snapshot_doc(
     }
     if fields is not None:
         meta["fields"] = dict(fields)
+    if per_retailer:
+        window = {"start": f"{dates[-1]}T00:00:00Z", "end": cutoff}
+        meta["retailers"] = [
+            r
+            | {
+                "window": window | {"runId": f"run-{r['id']}"},
+                "fields": dict(meta["fields"]),
+                "capabilities": dict(meta["capabilities"]),
+            }
+            for r in meta["retailers"]
+        ]
     d["notObserved"] = []
     d["products"] = [
         {
