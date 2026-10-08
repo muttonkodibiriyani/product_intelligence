@@ -107,9 +107,12 @@ def resolved_retailers(ds: DatasetV3) -> tuple[RetailerV3, ...]:
         )
         raise CompositionError(msg)
     return tuple(
-        r
-        if r.fields is not None and r.capabilities is not None
-        else r.model_copy(update={"fields": dict(m.fields), "capabilities": m.capabilities})
+        r.model_copy(
+            update={
+                "fields": dict(m.fields) if r.fields is None else r.fields,
+                "capabilities": m.capabilities if r.capabilities is None else r.capabilities,
+            }
+        )
         for r in m.retailers
     )
 
@@ -129,19 +132,24 @@ def source_infos(ds: DatasetV3) -> tuple[SourceInfo, ...]:
             at, retailer = offer.evidence.captured_at, retailer_of[cid]
             latest[retailer] = max(latest.get(retailer, at), at)
     m = ds.meta
-    return tuple(
-        SourceInfo(
-            source=r.id,
-            cutoff=latest.get(r.id, m.cutoff),
-            generated_at=m.generated_at,
-            last_date=m.dates[-1],
-            match_stage=m.match_stage,
-            capabilities=r.capabilities or m.capabilities,
-            fields=dict(r.fields or m.fields),
-            products=products[r.id],
+    infos: list[SourceInfo] = []
+    for r in resolved_retailers(ds):
+        # Resolved, so both are set; an empty ``fields`` is "nothing declared", never the file's.
+        if r.fields is None or r.capabilities is None:  # pragma: no cover - resolved above
+            raise CompositionError(f"retailer {r.id}: unresolved fields or capabilities")
+        infos.append(
+            SourceInfo(
+                source=r.id,
+                cutoff=latest.get(r.id, m.cutoff),
+                generated_at=m.generated_at,
+                last_date=m.dates[-1],
+                match_stage=m.match_stage,
+                capabilities=r.capabilities,
+                fields=dict(r.fields),
+                products=products[r.id],
+            )
         )
-        for r in resolved_retailers(ds)
-    )
+    return tuple(infos)
 
 
 def only(ds: DatasetV3, sources: Iterable[str]) -> DatasetV3:
