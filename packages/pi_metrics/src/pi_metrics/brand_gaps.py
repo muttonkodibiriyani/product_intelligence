@@ -90,15 +90,17 @@ LINK_SIDE = {
 
 
 class CrossLink(ContractModel):
-    """A match-file edge between a focus product and a product the view did not merge into it.
+    """A match-file edge between two listings, as the products of the view that hold them.
 
     pi-api builds these from the match file's listing tokens; the metric never reads the file.
+    Unordered: an edge counts only when one side is the focus retailer's, so an edge between two
+    other shops never links either of them to the focus.
     """
 
-    focus_product: str
-    other_product: str
-    #: The other listing's retailer.
-    retailer: str
+    a_product: str
+    a_retailer: str
+    b_product: str
+    b_retailer: str
     match_class: MatchClass
     review_state: ReviewState
 
@@ -238,6 +240,16 @@ def _gap_row(
     )
 
 
+def _oriented(link: CrossLink, focus: str) -> tuple[str, str, str] | None:
+    """``(focus product, other product, other retailer)``; ``None`` when neither side is the
+    focus retailer's."""
+    if link.a_retailer == focus:
+        return link.a_product, link.b_product, link.b_retailer
+    if link.b_retailer == focus:
+        return link.b_product, link.a_product, link.a_retailer
+    return None
+
+
 def _cross(link: CrossLink) -> _Link:
     if link.review_state is ReviewState.REJECTED or link.match_class is MatchClass.SUBSTITUTE:
         return _Link.NONE
@@ -330,11 +342,13 @@ def brand_gaps(  # noqa: PLR0913 -- the query's inputs
     from_focus: dict[tuple[str, str], _Link] = defaultdict(lambda: _Link.NONE)
     to_focus: dict[tuple[str, str], _Link] = defaultdict(lambda: _Link.NONE)
     for link in links:
+        oriented = _oriented(link, focus)
+        if oriented is None:
+            continue
+        own, other, retailer_id = oriented
         evidence = _cross(link)
-        key = (link.focus_product, link.retailer)
-        from_focus[key] = max(from_focus[key], evidence)
-        other_key = (link.other_product, link.retailer)
-        to_focus[other_key] = max(to_focus[other_key], evidence)
+        from_focus[own, retailer_id] = max(from_focus[own, retailer_id], evidence)
+        to_focus[other, retailer_id] = max(to_focus[other, retailer_id], evidence)
 
     items: list[GapRow] = []
     listings: Counter[str] = Counter()

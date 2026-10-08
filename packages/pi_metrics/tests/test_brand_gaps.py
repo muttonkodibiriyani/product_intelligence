@@ -155,23 +155,26 @@ def test_an_unobserved_focus_catalogue_is_not_an_absence(ds: Dataset) -> None:
 def test_cross_links_from_the_match_file_are_evidence_never_both(ds: Dataset) -> None:
     links = (
         CrossLink(
-            focus_product="p12",
-            other_product="p14",
-            retailer=B,
+            a_product="p12",
+            a_retailer=A,
+            b_product="p14",
+            b_retailer=B,
             match_class=MatchClass.EXACT,
             review_state=ReviewState.APPROVED,  # not merged by the view: not a clique
         ),
         CrossLink(
-            focus_product="p08",
-            other_product="p15",
-            retailer=C,
+            a_product="p15",
+            a_retailer=C,
+            b_product="p08",
+            b_retailer=A,
             match_class=MatchClass.FAMILY,
             review_state=ReviewState.PROPOSED,
         ),
         CrossLink(
-            focus_product="p08",
-            other_product="p14",
-            retailer=B,
+            a_product="p08",
+            a_retailer=A,
+            b_product="p14",
+            b_retailer=B,
             match_class=MatchClass.EXACT,
             review_state=ReviewState.REJECTED,
         ),
@@ -243,3 +246,17 @@ def test_a_profile_it_does_not_apply_to_is_not_applicable() -> None:
     assert (result.status, result.reason) == (Status.NOT_ENOUGH_DATA, Reason.NOT_APPLICABLE)
     assert (result.data.items, result.data.by_brand) == ((), ())
     assert result.data.totals.not_at == (ShopCount(retailer=B, n=0),)
+
+
+def test_an_edge_between_two_other_shops_never_links_them_to_the_focus(ds: Dataset) -> None:
+    """B's p14 and C's p15 matched to each other: both are still not at A."""
+    link = CrossLink(
+        a_product="p14",
+        a_retailer=B,
+        b_product="p15",
+        b_retailer=C,
+        match_class=MatchClass.EXACT,
+        review_state=ReviewState.APPROVED,
+    )
+    found = sides(brand_gaps(ds, A, EVERYTHING, links=(link,)).data)
+    assert found[Side.OTHERS_ONLY] == [(B, "p08"), (B, "p14"), (C, "p15")]
