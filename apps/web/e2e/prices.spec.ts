@@ -84,7 +84,7 @@ for (const locale of ['en', 'ar'] as const) {
             /Shop B أغلى في 50\u200e?%\u200e? من 6 أزواج مطابقة وأرخص في 33\.3\u200e?%\u200e?؛ و16\.7\u200e?%\u200e? في النطاق المحيط بالصفر\./,
           retailer: 'المتجر',
           noSummary: 'لا يوجد ملخص أسعار لـShop B بعد. هذا المتجر يمنع الجمع.',
-          unknownReason: 'لا يوجد ملخص أسعار لـShop B بعد. محجوب: window_unknown',
+          noSummaryLead: 'لا يوجد ملخص أسعار لـShop B بعد.',
           withheldLabel: 'محجوب:',
         }
       : {
@@ -115,7 +115,7 @@ for (const locale of ['en', 'ar'] as const) {
             'Shop B is dearer on 50% of 6 matched pairs and cheaper on 33.3%; 16.7% sit in the band around zero.',
           retailer: 'Retailer',
           noSummary: 'No price summary for Shop B yet. This retailer blocks collection.',
-          unknownReason: 'No price summary for Shop B yet. Withheld: window_unknown',
+          noSummaryLead: 'No price summary for Shop B yet.',
           withheldLabel: 'Withheld:',
         };
 
@@ -281,38 +281,41 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors).toEqual([]);
     });
 
-    test('a reason code this build has no label for reads as withheld, the code as sent, left-to-right', async ({
-      page,
-    }) => {
-      const mock = await open(page, locale, {}, 'window_unknown');
-      await expect(page.locator('#p-hist [data-takeaway]')).toBeVisible();
-      await page.getByRole('group', { name: T.retailer }).getByRole('button', { name: 'Shop B' }).click();
-      const status = page.locator('section[aria-labelledby="per-retailer"]').getByRole('status');
-      await expect(status).toHaveText(T.unknownReason);
-      const code = status.locator('bdi');
-      await expect(code).toHaveText('window_unknown');
-      await expect(code).toHaveAttribute('dir', 'ltr');
-      await expect(code).toHaveAttribute('lang', 'en');
-      // Visual order: the label is read first, then the code. Measured on the label's own text, not
-      // the paragraph that holds both: in Arabic the code sits to the label's left, in English to its right.
-      const [label, run] = await code.evaluate((bdi, word) => {
-        const text = bdi.previousSibling!;
-        const range = document.createRange();
-        const at = text.textContent!.lastIndexOf(word);
-        range.setStart(text, at);
-        range.setEnd(text, at + word.length);
-        const a = range.getBoundingClientRect();
-        const b = bdi.getBoundingClientRect();
-        return [
-          { left: a.left, right: a.right, top: a.top },
-          { left: b.left, right: b.right, top: b.top },
-        ];
-      }, T.withheldLabel);
-      expect(Math.abs(label.top - run.top)).toBeLessThan(4);
-      if (locale === 'ar') expect(run.right).toBeLessThanOrEqual(label.left + 1);
-      else expect(run.left).toBeGreaterThanOrEqual(label.right - 1);
-      expect(mock.errors).toEqual([]);
-    });
+    // future_reason is outside the API's enum for good; window_unknown is a real code that 1218b
+    // labels, and flips here when it does.
+    for (const code of ['future_reason', 'window_unknown'])
+      test(`a reason code this build has no label for reads as withheld, the code as sent, left-to-right (${code})`, async ({
+        page,
+      }) => {
+        const mock = await open(page, locale, {}, code);
+        await expect(page.locator('#p-hist [data-takeaway]')).toBeVisible();
+        await page.getByRole('group', { name: T.retailer }).getByRole('button', { name: 'Shop B' }).click();
+        const status = page.locator('section[aria-labelledby="per-retailer"]').getByRole('status');
+        await expect(status).toHaveText(`${T.noSummaryLead} ${T.withheldLabel} ${code}`);
+        const run = status.locator('bdi');
+        await expect(run).toHaveText(code);
+        await expect(run).toHaveAttribute('dir', 'ltr');
+        await expect(run).toHaveAttribute('lang', 'en');
+        // Visual order: the label is read first, then the code. Measured on the label's own text, not
+        // the paragraph that holds both: in Arabic the code sits to the label's left, in English to its right.
+        const [label, box] = await run.evaluate((bdi, word) => {
+          const text = bdi.previousSibling!;
+          const range = document.createRange();
+          const at = text.textContent!.lastIndexOf(word);
+          range.setStart(text, at);
+          range.setEnd(text, at + word.length);
+          const a = range.getBoundingClientRect();
+          const b = bdi.getBoundingClientRect();
+          return [
+            { left: a.left, right: a.right, top: a.top },
+            { left: b.left, right: b.right, top: b.top },
+          ];
+        }, T.withheldLabel);
+        expect(Math.abs(label.top - box.top)).toBeLessThan(4);
+        if (locale === 'ar') expect(box.right).toBeLessThanOrEqual(label.left + 1);
+        else expect(box.left).toBeGreaterThanOrEqual(label.right - 1);
+        expect(mock.errors).toEqual([]);
+      });
 
     test('the spread of price gaps: every band of the served histogram, its split in one line, n beside it, under exact matches', async ({
       page,
