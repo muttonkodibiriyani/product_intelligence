@@ -24,6 +24,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // 3, not 4: CI's 4 vCPU at 4 workers starved WebKit (#298, review 5448660102); 2 is the
+  // default and leaves the E2E step seconds short of the job limit (01a11cca-c9a0).
+  workers: process.env.CI ? 3 : undefined,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL: `http://127.0.0.1:${port}`, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: engines
