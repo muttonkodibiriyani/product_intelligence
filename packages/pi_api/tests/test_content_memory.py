@@ -23,10 +23,9 @@ import zlib
 from pathlib import Path
 from typing import Any
 
-from api_fixture import DATASET_PATH, bearer, make_client, served_dataset
+from api_fixture import DATASET_PATH, bearer, make_client, own_keys, served_dataset
 from make_offer_content_sample import sample
 from pi_dataset import V3_MAX_BYTES, OfferContent
-from pi_metrics import view
 
 BUDGET = V3_MAX_BYTES  # compact JSON bytes
 SAMPLE = 10_000_000
@@ -54,7 +53,7 @@ def product(template: dict[str, Any], content: dict[str, Any], i: int) -> dict[s
 
 
 def budget_doc() -> bytes:
-    doc: dict[str, Any] = view.as_v3(served_dataset()).model_dump(mode="json", by_alias=True)
+    doc: dict[str, Any] = own_keys(served_dataset()).model_dump(mode="json", by_alias=True)
     template = next(p for p in doc["products"] if p["id"] == "p01")
     sample = contents()
     mean = sum(len(compact(product(template, c, 0))) for c in sample) / len(sample)

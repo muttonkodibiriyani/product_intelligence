@@ -19,7 +19,11 @@ match edges between two of them. :func:`compose` joins those slices into one ``D
   ever made across two files;
 * ``capabilities`` are or-ed, a ``fields`` status that differs between slices is ``partial``,
   ``cutoff`` and ``generatedAt`` are the latest. Each source keeps its own in
-  :class:`SourceInfo`.
+  :class:`SourceInfo` and on its ``meta.retailers`` entry;
+* a source's own ``fields``, ``capabilities`` and crawl ``window`` are its ``meta.retailers``
+  entry's (ADR-0013). Only a file of one retailer may leave them out (they are then the file's
+  meta, and the window is unknown); a file of several without them is refused
+  (:func:`resolved_retailers`), so no retailer is ever given another's states.
 
 Pure functions; nothing here reads or writes storage.
 """
@@ -38,7 +42,16 @@ from pi_dataset.models import (
     MatchEdge,
     Producer,
 )
-from pi_dataset.v3 import DatasetV3, MetaV3, NotObservedV3, OfferV3, ProductV3
+from pi_dataset.v3 import (
+    CrawlWindow,
+    DatasetV3,
+    MetaV3,
+    NotObservedV3,
+    OfferV3,
+    ProductV3,
+    RetailerV3,
+    local_date,
+)
 
 #: The ``meta.producer`` of a composed view; each source's own is in its file.
 PRODUCER = Producer(name="pi_dataset.compose", version="1")
@@ -72,10 +85,40 @@ class Composed:
     merged_ids: tuple[str, ...]
 
 
+def window_gap_days(a: CrawlWindow, b: CrawlWindow, time_zone: str) -> int:
+    """Calendar days between two windows' ends in ``time_zone``: ``|date(a.end) - date(b.end)|``
+    (ADR-0013). Two windows ending on the same local day are 0 apart, whatever their hours."""
+    return abs((local_date(a.end, time_zone) - local_date(b.end, time_zone)).days)
+
+
+def resolved_retailers(ds: DatasetV3) -> tuple[RetailerV3, ...]:
+    """``ds``'s retailers, each with its own ``fields`` and ``capabilities`` (ADR-0013).
+
+    A retailer without them takes the file's meta only when it is the file's one retailer; its
+    ``window`` stays as written (``None`` is unknown, never guessed). In a file of several, a
+    retailer without them would be given states the file's meta merges from all of them, so
+    the file is refused (:class:`CompositionError`)."""
+    m = ds.meta
+    bare = sorted(r.id for r in m.retailers if r.fields is None or r.capabilities is None)
+    if bare and len(m.retailers) > 1:
+        msg = (
+            f"a file of {len(m.retailers)} retailers without per-retailer fields and "
+            f"capabilities for {bare}: re-export it (ADR-0013)"
+        )
+        raise CompositionError(msg)
+    return tuple(
+        r
+        if r.fields is not None and r.capabilities is not None
+        else r.model_copy(update={"fields": dict(m.fields), "capabilities": m.capabilities})
+        for r in m.retailers
+    )
+
+
 def source_infos(ds: DatasetV3) -> tuple[SourceInfo, ...]:
-    """One entry per retailer of ``ds``, each with the file's own meta, except ``cutoff``: the
-    latest ``capturedAt`` of the retailer's own offers (the file's cutoff if it has none), so a
-    file holding several retailers never gives one of them another's later capture."""
+    """One entry per retailer of ``ds``, with its own fields and capabilities
+    (:func:`resolved_retailers`) and the file's other meta, except ``cutoff``: the latest
+    ``capturedAt`` of the retailer's own offers (the file's cutoff if it has none), so a file
+    holding several retailers never gives one of them another's later capture."""
     retailer_of = {c.id: c.retailer for c in ds.meta.contexts}
     products: dict[str, int] = {r.id: 0 for r in ds.meta.retailers}
     latest: dict[str, datetime] = {}
@@ -93,18 +136,19 @@ def source_infos(ds: DatasetV3) -> tuple[SourceInfo, ...]:
             generated_at=m.generated_at,
             last_date=m.dates[-1],
             match_stage=m.match_stage,
-            capabilities=m.capabilities,
-            fields=dict(m.fields),
+            capabilities=r.capabilities or m.capabilities,
+            fields=dict(r.fields or m.fields),
             products=products[r.id],
         )
-        for r in m.retailers
+        for r in resolved_retailers(ds)
     )
 
 
 def only(ds: DatasetV3, sources: Iterable[str]) -> DatasetV3:
     """``ds`` cut down to ``sources``; any other retailer in the file is left out."""
     keep = frozenset(sources)
-    missing = sorted(keep - {r.id for r in ds.meta.retailers})
+    resolved = resolved_retailers(ds)
+    missing = sorted(keep - {r.id for r in resolved})
     if missing:
         msg = f"the file has no retailer {missing}"
         raise CompositionError(msg)
@@ -124,7 +168,7 @@ def only(ds: DatasetV3, sources: Iterable[str]) -> DatasetV3:
         raise CompositionError(msg)
     meta = ds.meta.model_copy(
         update={
-            "retailers": tuple(r for r in ds.meta.retailers if r.id in keep),
+            "retailers": tuple(r for r in resolved if r.id in keep),
             "contexts": contexts,
         }
     )
@@ -145,7 +189,7 @@ def compose(slices: Sequence[DatasetV3]) -> Composed:
     first = slices[0].meta
     for s in slices[1:]:
         _check_same_scope(first, s.meta)
-    retailers = [r for s in slices for r in s.meta.retailers]
+    retailers = [r for s in slices for r in resolved_retailers(s)]
     dup = sorted({r.id for r in retailers if sum(x.id == r.id for x in retailers) > 1})
     if dup:
         msg = f"retailer {dup} is in more than one slice"

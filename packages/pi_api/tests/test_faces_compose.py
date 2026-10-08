@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from api_fixture import Client, bearer, make_client, served_dataset
+from api_fixture import Client, bearer, make_client, own_keys, served_dataset
 from metrics_fixture import rebuild
 from pi_api.config import Settings, dataset_entries
 from pi_api.source import AmbiguousDatasetError
@@ -62,7 +62,7 @@ FACES_TOTALS = {
 
 def beauty_doc() -> bytes:
     """The pi_metrics fixture as an AE/beauty file whose first two shops are Sephora and Ulta."""
-    raw = dump_dataset(rebuild(served_dataset(), scope="beauty"))
+    raw = dump_dataset(own_keys(rebuild(served_dataset(), scope="beauty")))
     # Renames keep the edge order a < b: sephora_me < ulta_ae < vshop_c < wshop_d.
     for old, new in (("shop_a", SEPHORA), ("shop_b", ULTA), ("shop_c", "vshop_c")):
         raw = raw.replace(old.encode(), new.encode())

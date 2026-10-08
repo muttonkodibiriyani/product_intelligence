@@ -238,3 +238,51 @@ def test_latest_keeps_a_window_over_the_sources_own_last_date() -> None:
     )
     makeup = [(str(w.start), str(w.end)) for w in now.not_observed if w.categories]
     assert makeup == [("2026-09-22", "2026-09-22"), ("2026-09-30", "2026-09-30")]
+
+
+# ---------------------------------------------------------------- per-retailer keys (ADR-0013)
+
+
+def test_a_file_of_several_retailers_without_their_own_keys_is_refused_at_load() -> None:
+    """A file from before ADR-0013: its meta.fields merge both retailers, so neither may take it."""
+    old = snapshot({"p1": BOTH}, dates=NEW, per_retailer=False)
+    for load in (source_infos, lambda ds: only(ds, [ULTA]), lambda ds: compose([ds])):
+        with pytest.raises(CompositionError, match="re-export it"):
+            load(old)
+
+
+def test_a_file_of_one_retailer_without_its_own_keys_takes_the_files_meta() -> None:
+    old = snapshot({"p1": (SEPHORA,)}, dates=NEW, per_retailer=False, fields={"stock": "ok"})
+    (info,) = source_infos(old)
+    assert info.fields == {"stock": FieldStatus.OK}
+    assert info.capabilities == old.meta.capabilities
+    (retailer,) = compose([old]).dataset.meta.retailers
+    assert retailer.fields == {"stock": FieldStatus.OK}
+    assert retailer.capabilities == old.meta.capabilities
+    assert retailer.window is None
+
+
+def test_each_source_has_its_own_fields_never_the_files() -> None:
+    d = snapshot_doc({"p1": BOTH}, dates=NEW, fields={"stock": "partial"})
+    for r in d["meta"]["retailers"]:
+        r["fields"] = {"stock": "ok" if r["id"] == ULTA else "not_collected"}
+        r["capabilities"] = d["meta"]["capabilities"] | {"stock": r["id"] == ULTA}
+    ds = DatasetV3.model_validate(d)
+    by_source = {s.source: s for s in source_infos(ds)}
+    assert by_source[ULTA].fields == {"stock": FieldStatus.OK}
+    assert by_source[SEPHORA].fields == {"stock": FieldStatus.NOT_COLLECTED}
+    assert by_source[SEPHORA].capabilities.stock is False
+    seph = only(ds, [SEPHORA]).meta.retailers[0]
+    assert seph.fields == {"stock": FieldStatus.NOT_COLLECTED}
+
+
+def test_the_composed_view_carries_each_sources_window_fields_and_capabilities() -> None:
+    view = compose([only(combined(), [ULTA]), only(sephora(), [SEPHORA])]).dataset
+    windows = {r.id: r.window for r in view.meta.retailers}
+    ulta, seph = windows[ULTA], windows[SEPHORA]
+    assert ulta is not None
+    assert seph is not None
+    assert ulta.run_id == f"run-{ULTA}"
+    assert ulta.end.date() == date(2026, 9, 22)
+    assert seph.end.date() == date(2026, 9, 30)
+    assert all(r.fields is not None and r.capabilities is not None for r in view.meta.retailers)

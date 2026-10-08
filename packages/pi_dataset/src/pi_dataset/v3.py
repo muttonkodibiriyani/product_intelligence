@@ -8,7 +8,9 @@ adds, per ADR-0008 §4:
 * ``Size.label`` and ``Size.system``, with ``value``/``unit`` now nullable together;
 * offers keyed by **context** id, with ``Offer.attributes`` and ``evidence.itemKey``;
 * ``notObserved[].context``;
-* ``attributeEvidence`` on products and offers: where each attribute value was read (§5).
+* ``attributeEvidence`` on products and offers: where each attribute value was read (§5);
+* ``meta.retailers[].window``, ``.fields`` and ``.capabilities``: each retailer's own crawl window
+  and states (ADR-0013), so a file of several retailers never gives one the others' states.
 
 The cross-field rules (the context-id rule, identity rules (a)-(c), declared attributes, money
 currencies inside attributes, the profile's size rules) are the ``DatasetV3`` validator below.
@@ -19,19 +21,23 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal, Self
+from zoneinfo import ZoneInfo
 
 from pydantic import AfterValidator, Field, HttpUrl, JsonValue, ValidationError, model_validator
 
 from pi_core import Channel, CurrencyCode
 from pi_core.listing import is_valid_gtin
-from pi_core.types import NonEmptyStr
+from pi_core.types import NonEmptyStr, UtcDatetime
 from pi_dataset.models import (
     DECIMAL_TEXT,
+    Capabilities,
     ContractModel,
     Evidence,
+    FieldStatus,
     LocalizedText,
     MarketInfo,
     MatchEdge,
@@ -40,6 +46,7 @@ from pi_dataset.models import (
     NotObserved,
     Offer,
     ProductId,
+    Retailer,
     SourceKey,
     UnsignedDecimalText,
     _duplicates,
@@ -109,7 +116,47 @@ class Context(ContractModel):
     label: LocalizedText
 
 
+#: The most market calendar days a crawl window may span, first capture to last, inclusive.
+MAX_WINDOW_DAYS = 4
+
+
+class CrawlWindow(ContractModel):
+    """The one crawl run a retailer's values come from (ADR-0013): its first and last capture
+    in the snapshot. A window never mixes runs and spans at most ``MAX_WINDOW_DAYS`` calendar
+    days of the retailer's market (checked with the meta, which knows the time zone)."""
+
+    start: UtcDatetime
+    end: UtcDatetime
+    run_id: NonEmptyStr
+
+    @model_validator(mode="after")
+    def _check_order(self) -> Self:
+        if self.start > self.end:
+            msg = f"window of run {self.run_id}: start {self.start} is after end {self.end}"
+            raise ValueError(msg)
+        return self
+
+    def days(self, time_zone: str) -> int:
+        """Calendar days in ``time_zone``, first capture to last, inclusive."""
+        return (local_date(self.end, time_zone) - local_date(self.start, time_zone)).days + 1
+
+
+def local_date(moment: datetime, time_zone: str) -> date:
+    return moment.astimezone(ZoneInfo(time_zone)).date()
+
+
+class RetailerV3(Retailer):
+    """A v2 retailer plus its own crawl window, field states and capabilities (ADR-0013). The
+    exporter always writes them; ``None`` is a file from before them, which only a file of one
+    retailer may be (``pi_dataset.compose.resolved_retailers``)."""
+
+    window: CrawlWindow | None = None
+    fields: dict[NonEmptyStr, FieldStatus] | None = None
+    capabilities: Capabilities | None = None
+
+
 class MetaV3(Meta):
+    retailers: Annotated[tuple[RetailerV3, ...], Field(min_length=1)]
     #: Kept from v2 (``vertical``) and must equal ``profile.name``.
     profile: ProfileInfo
     attribute_set: tuple[AttributeDef, ...]
@@ -302,6 +349,7 @@ class DatasetV3(ContractModel):
 def v3_errors(ds: DatasetV3) -> list[str]:
     """Every cross-field problem, each naming its path."""
     errors = _meta_errors(ds.meta)
+    errors += _window_errors(ds.meta)
     errors += _profile_errors(ds)
     errors += _context_errors(ds)
     errors += [f"products: duplicate id {p}" for p in _duplicates([p.id for p in ds.products])]
@@ -309,6 +357,23 @@ def v3_errors(ds: DatasetV3) -> list[str]:
     errors += _identity_errors(ds)
     errors += _attribute_errors(ds)
     errors += _not_observed_errors(ds)
+    return errors
+
+
+def _window_errors(meta: MetaV3) -> list[str]:
+    zones = {m.country: m.time_zone for m in meta.markets}
+    errors = []
+    for r in meta.retailers:
+        if r.window is None or r.country not in zones:
+            continue
+        days = r.window.days(zones[r.country])
+        if days > MAX_WINDOW_DAYS:
+            errors.append(
+                f"meta.retailers.{r.id}.window: run {r.window.run_id} spans {days} days in "
+                f"{zones[r.country]}, more than {MAX_WINDOW_DAYS}"
+            )
+        if r.window.end > meta.cutoff:
+            errors.append(f"meta.retailers.{r.id}.window: end is after meta.cutoff")
     return errors
 
 
