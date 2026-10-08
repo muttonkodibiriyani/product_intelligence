@@ -442,3 +442,18 @@ def test_check_served_lists_a_withheld_retailer_and_passes(
     out = capsys.readouterr().out
     assert "d/a: example_south_ae withheld, not observed until 2026-10-08: Blocked" in out
     assert "window guard: 1 bodies, ok" in out
+
+
+def test_check_served_holds_a_set_with_no_window_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review 5461198455: a pre-ADR-0013 body whose every retailer is disclosed not observed
+    (here until 09-02) has nothing fresh to withhold beside, so it is refused."""
+    d = json.loads(gzip.decompress(windowed_body(None, blocked="example_south_ae")))
+    entry = d["notObserved"][0] | {"start": "2026-09-01", "end": "2026-09-02"}
+    d["notObserved"] = [entry, entry | {"retailer": "example_north_ae"}]
+    old = gzip.compress(json.dumps(d).encode(), mtime=0)
+    assert check(tmp_path, monkeypatch, a=old) == 1
+    captured = capsys.readouterr()
+    assert "HOLD, no retailer in the served set has a crawl window" in captured.err
+    assert "withheld" not in captured.out

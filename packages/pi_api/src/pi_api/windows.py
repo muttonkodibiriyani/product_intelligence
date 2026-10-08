@@ -10,7 +10,9 @@ A retailer is WITHHELD, not refused, when it has no window and its body disclose
 observed: a ``notObserved[]`` entry for the whole retailer (no context, no categories) that runs
 to the set's last window day (Coordinator 01a11cc0-86a1: ulta_ae, blocked). It takes no part in
 the gap. A retailer with a window is always counted, so a stale window is refused, never
-excused, and nothing here widens ``MAX_GAP_DAYS``.
+excused, and nothing here widens ``MAX_GAP_DAYS``. A set where no retailer has a window is
+refused: there is no fresh window to withhold beside, and an old disclosure must not pass for one
+(review 5461198455).
 
 ``PI_API_REQUIRE_ALL=1`` refuses a cold start that breaks this, and ``publish_dataset.py``
 runs the same check before a roll value is used (pi-api-deploy.md §6).
@@ -83,6 +85,20 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
                 f"window gap {gap} days in {zone}, more than {MAX_GAP_DAYS}: {first[0]} ends "
                 f"{first[1].end.isoformat()}, {latest[0]} ends {latest[1].end.isoformat()}"
             )
+    if bare and not windows:
+        check.problems.append(
+            "no retailer in the served set has a crawl window (ADR-0013): a retailer can only "
+            "be withheld beside a windowed one"
+        )
+    _judge_withheld(check, bare, last)
+    return check
+
+
+def _judge_withheld(
+    check: WindowCheck, bare: list[tuple[str, tuple[NotObservedV3, ...]]], last: date | None
+) -> None:
+    """Each windowless retailer: withheld when disclosed for the whole retailer to ``last``,
+    the set's last window day; refused otherwise, and never withheld when there is none."""
     for label, whole in bare:
         if not whole:
             check.problems.append(
@@ -90,8 +106,10 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
                 "notObserved entry for the whole retailer"
             )
             continue
+        if last is None:
+            continue  # refused by the caller (no window, or more than one time zone)
         until = max(n.end for n in whole)
-        if last is not None and until < last:
+        if until < last:
             check.problems.append(
                 f"{label} is withheld only until {until}, before the set's last window day {last}"
             )
@@ -99,7 +117,6 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
         why = next(n for n in whole if n.end == until).why
         text = why.get("en") or next(iter(why.values()))
         check.withheld.append(f"{label} withheld, not observed until {until}: {text}")
-    return check
 
 
 def _end_day(item: tuple[str, CrawlWindow, str]) -> date:

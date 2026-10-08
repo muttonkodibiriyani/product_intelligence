@@ -145,3 +145,25 @@ def test_withholding_never_excuses_a_window_or_a_stale_disclosure() -> None:
     part = windowed(FRESH["end"], withheld={"categories": ["skincare"]})
     [problem] = window_problems([("b", part)])
     assert problem.startswith(f"b: {SOUTH} has no crawl window (ADR-0013)")
+
+
+def test_a_set_with_no_window_at_all_is_refused_whatever_it_discloses() -> None:
+    """Review 5461198455: with no windowed retailer there is no last window day, so an old
+    whole-retailer disclosure would pass for every retailer. Nothing fresh: refused."""
+    old = {"start": "2026-09-01", "end": "2026-09-02"}
+    entries = [{**BLOCKED, **old, "retailer": r} for r in (NORTH, SOUTH)]
+    both = DatasetV3.model_validate(
+        json.loads(dump_dataset(windowed(None))) | {"notObserved": entries}
+    )
+    check = check_windows([("pre", both)])
+    assert check.problems == [
+        "no retailer in the served set has a crawl window (ADR-0013): a retailer can only be "
+        "withheld beside a windowed one"
+    ]
+    assert check.withheld == []
+    # The same disclosures beside one fresh window are judged against its day: too old.
+    problems = window_problems([("pre", both), ("fresh", windowed(FRESH["end"]))])
+    assert problems == [
+        f"pre: {r} is withheld only until 2026-09-02, before the set's last window day 2026-10-08"
+        for r in (NORTH, SOUTH)
+    ]
