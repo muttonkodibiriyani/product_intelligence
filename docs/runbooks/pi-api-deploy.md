@@ -477,10 +477,18 @@ revision serves it, and rollback is routing traffic back to the previous revisio
      for AE, Asia/Dubai: 8 is refused, 7 passes, and days turn at 20:00Z).
      A retailer that cannot be refreshed (tonight ulta_ae, blocked: Coordinator 01a11cc0-86a1)
      is WITHHELD, not refused, only when its body gives it no window and carries a
-     `notObserved[]` entry for the whole retailer (`context` and `categories` null) whose `end`
-     reaches the set's last window day; the guard prints `<body>: <retailer> withheld, not
-     observed until <date>: <why>` and leaves it out of the gap. Never give it a window to pass:
-     a retailer with a window is always counted. Only a value that prints `window guard: N bodies, ok` is rolled. The new revision
+     `notObserved[]` entry for the whole retailer (`context` and `categories` null) that starts
+     no later than the day after its `since` and whose `end` reaches the served set's cutoff day:
+     the latest `meta.cutoff` across ALL the `NEW_DATASETS` bodies, as a date in the market's
+     time zone (Asia/Dubai; 20:00Z is already the next day), as `compose` takes it (Coordinator
+     01a11d05-862f). Set that `end` at roll time, from the final set, never from the body's own
+     window. The guard prints `<body>: <retailer> withheld, not observed until <date>: <why>`
+     and leaves it out of the gap. Never give it a window to pass: a retailer with a window is
+     always counted. A windowless retailer with no offers serves nothing and is skipped.
+     **Required pre-roll step** (Coordinator 01a11d14-184d): run this on the full final set and
+     paste its output verbatim into the pre-roll report. It must print `withheld` for ulta_ae
+     and no refusal; any refusal stops the roll. Only a value that prints
+     `window guard: N bodies, ok` is rolled. The new revision
      repeats the same check (`pi_api.windows`) at start under `PI_API_REQUIRE_ALL=1`, so a value
      that skipped this step never becomes Ready.
 2. **Deploy a new revision without traffic.** Only `PI_API_DATASETS` changes (and
