@@ -129,13 +129,25 @@ class CrawlWindow(ContractModel):
     start: UtcDatetime
     end: UtcDatetime
     run_id: NonEmptyStr
+    #: Continuations of the run (e.g. a run's ``-ar`` and ``-stock`` passes): their captures are
+    #: this window's too, so they hold to the same span and rules.
+    segments: tuple[NonEmptyStr, ...] = ()
 
     @model_validator(mode="after")
     def _check_order(self) -> Self:
         if self.start > self.end:
             msg = f"window of run {self.run_id}: start {self.start} is after end {self.end}"
             raise ValueError(msg)
+        runs = [self.run_id, *self.segments]
+        if len(set(runs)) != len(runs):
+            msg = f"window of run {self.run_id}: segments {list(self.segments)} repeat a run"
+            raise ValueError(msg)
         return self
+
+    @property
+    def run_ids(self) -> frozenset[str]:
+        """The run and its segments: every run whose captures this window holds."""
+        return frozenset((self.run_id, *self.segments))
 
     def days(self, time_zone: str) -> int:
         """Calendar days in ``time_zone``, first capture to last, inclusive."""
@@ -389,32 +401,73 @@ def _observed(offer: OfferV3) -> bool:
 
 
 def _window_offer_errors(ds: DatasetV3) -> list[str]:
-    """Each offer against its retailer's window (ADR-0013). An observed offer was captured in
-    the window. An offer marked ``notObservedReason`` has no value, and its evidence is from
-    another run than the window's (a null run id is another run). A recon (``early``) offer is
-    not an observation of the window and is not held to it."""
-    windows = {r.id: r.window for r in ds.meta.retailers}
+    """Each offer against its retailer's window (ADR-0013); a retailer without one (an upgraded
+    v2 body) is not checked. An observed offer was captured in the window. An offer marked
+    ``notObservedReason`` has no value, is from another run than the window's (a null run id is
+    another run) and is covered by a ``notObserved`` entry, so the coverage disclosure names it.
+    A recon (``early``) offer is never served as an in-window value and is not held to the span,
+    but it is not from the window's run either."""
+    zones = {m.country: m.time_zone for m in ds.meta.markets}
+    retailers = {r.id: r for r in ds.meta.retailers}
     retailer_of = _retailer_of(ds)
     errors: list[str] = []
     for p in ds.products:
         for cid, offer in p.offers.items():
+            shop = retailers.get(retailer_of.get(cid, ""))
+            if shop is None or shop.window is None:
+                continue
+            window = shop.window
             where = f"products.{p.id}.offers.{cid}"
-            window = windows.get(retailer_of.get(cid, ""))
             at = offer.evidence.captured_at
-            if offer.not_observed_reason is not None:
-                reason = offer.not_observed_reason
+            ours = offer.evidence.run_id in window.run_ids
+            reason = offer.not_observed_reason
+            if reason is not None:
                 if _observed(offer):
                     errors.append(f"{where}: marked {reason} but has an in-window value")
-                if window is not None and offer.evidence.run_id == window.run_id:
+                if ours:
                     errors.append(
-                        f"{where}: marked {reason} but captured by the window's run {window.run_id}"
+                        f"{where}: marked {reason} but captured by the window's run "
+                        f"{offer.evidence.run_id}"
                     )
-            elif window is not None and not offer.early and not window.start <= at <= window.end:
+                zone = zones.get(shop.country)
+                days = (
+                    (local_date(window.start, zone), local_date(window.end, zone)) if zone else None
+                )
+                if days is not None and not _covered(ds, (shop.id, cid), p, days):
+                    errors.append(
+                        f"{where}: marked {reason} but no notObserved entry covers it "
+                        "(retailer, context, category and the window's dates)"
+                    )
+            elif offer.early:
+                if ours:
+                    errors.append(
+                        f"{where}: a recon offer captured by the window's run "
+                        f"{offer.evidence.run_id}"
+                    )
+            elif not window.start <= at <= window.end:
                 errors.append(
                     f"{where}: capturedAt {at.isoformat()} is outside its retailer's window "
                     f"{window.start.isoformat()}..{window.end.isoformat()} (run {window.run_id})"
                 )
     return errors
+
+
+def _covered(
+    ds: DatasetV3, where: tuple[str, str], product: ProductV3, days: tuple[date, date]
+) -> bool:
+    """A ``notObserved`` entry for the retailer, the offer's context (or all), the product's
+    category (or all), whose dates overlap the window's ``days`` (first, last). One-directional:
+    values inside an entry stay legal, and reasons are not compared (``why`` is free text)."""
+    (shop, cid), (first, last) = where, days
+    category = product.category[0].casefold()
+    return any(
+        w.retailer == shop
+        and w.context in (None, cid)
+        and (w.categories is None or category in {c.casefold() for c in w.categories})
+        and w.start <= last
+        and first <= w.end
+        for w in ds.not_observed
+    )
 
 
 def _profile_errors(ds: DatasetV3) -> list[str]:

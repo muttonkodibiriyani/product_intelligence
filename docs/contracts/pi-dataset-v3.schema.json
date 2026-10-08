@@ -311,6 +311,15 @@
           "title": "Runid",
           "type": "string"
         },
+        "segments": {
+          "default": [],
+          "items": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "title": "Segments",
+          "type": "array"
+        },
         "start": {
           "format": "date-time",
           "title": "Start",
