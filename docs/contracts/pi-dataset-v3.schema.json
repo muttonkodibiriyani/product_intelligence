@@ -744,6 +744,18 @@
       "title": "MoneyValue",
       "type": "object"
     },
+    "NotObservedReason": {
+      "description": "Why a published offer has no observation in its retailer's crawl window (ADR-0013).\n\nThe offer keeps its original ``capturedAt`` and a null in-window series; the reason is what\nexempts it from the window rule. Closed set (Coordinator ruling, 2026-10-08).",
+      "enum": [
+        "retained",
+        "blocked",
+        "rate_limited",
+        "capture_in_progress",
+        "planned_not_captured"
+      ],
+      "title": "NotObservedReason",
+      "type": "string"
+    },
     "NotObservedV3": {
       "additionalProperties": false,
       "properties": {
@@ -956,6 +968,17 @@
           ],
           "default": null,
           "title": "Listingcount"
+        },
+        "notObservedReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotObservedReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "rating": {
           "anyOf": [

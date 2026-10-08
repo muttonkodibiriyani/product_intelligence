@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 from pydantic import AfterValidator, Field, HttpUrl, JsonValue, ValidationError, model_validator
 
 from pi_core import Channel, CurrencyCode
+from pi_core.enums import NotObservedReason
 from pi_core.listing import is_valid_gtin
 from pi_core.types import NonEmptyStr, UtcDatetime
 from pi_dataset.models import (
@@ -297,6 +298,9 @@ class OfferV3(Offer):
     content: OfferContent | None = None
     #: Per key of ``attributes``: where its value was read (§5). Optional and additive.
     attribute_evidence: dict[AttributeKey, AttributeEvidence] = Field(default_factory=dict)
+    #: Why the offer has no observation in its retailer's crawl window: it keeps its original
+    #: ``capturedAt`` and a null series (ADR-0013). ``null`` for an offer observed in the window.
+    not_observed_reason: NotObservedReason | None = None
 
 
 class ProductV3(ContractModel):
@@ -350,6 +354,7 @@ def v3_errors(ds: DatasetV3) -> list[str]:
     """Every cross-field problem, each naming its path."""
     errors = _meta_errors(ds.meta)
     errors += _window_errors(ds.meta)
+    errors += _window_offer_errors(ds)
     errors += _profile_errors(ds)
     errors += _context_errors(ds)
     errors += [f"products: duplicate id {p}" for p in _duplicates([p.id for p in ds.products])]
@@ -374,6 +379,41 @@ def _window_errors(meta: MetaV3) -> list[str]:
             )
         if r.window.end > meta.cutoff:
             errors.append(f"meta.retailers.{r.id}.window: end is after meta.cutoff")
+    return errors
+
+
+def _observed(offer: OfferV3) -> bool:
+    """The offer has a value in its series: a price, a regular or a stock state."""
+    s = offer.series
+    return any(v is not None for v in (*s.price, *(s.regular or ()), *(s.availability or ())))
+
+
+def _window_offer_errors(ds: DatasetV3) -> list[str]:
+    """Each offer against its retailer's window (ADR-0013). An observed offer was captured in
+    the window. An offer marked ``notObservedReason`` has no value, and its evidence is from
+    another run than the window's (a null run id is another run). A recon (``early``) offer is
+    not an observation of the window and is not held to it."""
+    windows = {r.id: r.window for r in ds.meta.retailers}
+    retailer_of = _retailer_of(ds)
+    errors: list[str] = []
+    for p in ds.products:
+        for cid, offer in p.offers.items():
+            where = f"products.{p.id}.offers.{cid}"
+            window = windows.get(retailer_of.get(cid, ""))
+            at = offer.evidence.captured_at
+            if offer.not_observed_reason is not None:
+                reason = offer.not_observed_reason
+                if _observed(offer):
+                    errors.append(f"{where}: marked {reason} but has an in-window value")
+                if window is not None and offer.evidence.run_id == window.run_id:
+                    errors.append(
+                        f"{where}: marked {reason} but captured by the window's run {window.run_id}"
+                    )
+            elif window is not None and not offer.early and not window.start <= at <= window.end:
+                errors.append(
+                    f"{where}: capturedAt {at.isoformat()} is outside its retailer's window "
+                    f"{window.start.isoformat()}..{window.end.isoformat()} (run {window.run_id})"
+                )
     return errors
 
 

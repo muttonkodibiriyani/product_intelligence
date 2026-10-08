@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from pi_core.enums import NotObservedReason
 from pi_dataset import CrawlWindow, DatasetV3, committed_profile, dump_dataset, upgrade
 from pi_dataset.compose import window_gap_days
 from pi_dataset.examples import ae_pilot
@@ -62,6 +63,9 @@ def _doc_with(window_doc: dict[str, Any] | None) -> dict[str, Any]:
     d["meta"]["generatedAt"] = "2026-10-06T21:00:00Z"
     if window_doc is not None:
         d["meta"]["retailers"][0]["window"] = window_doc
+        for product in d["products"]:  # captured inside every window these tests write
+            for offer in product["offers"].values():
+                offer["evidence"]["capturedAt"] = "2026-10-06T19:00:00Z"
     return d
 
 
@@ -88,3 +92,89 @@ def test_the_keys_are_optional_and_camel_case_on_the_wire() -> None:
         "end": "2026-10-06T00:00:00Z",
         "runId": "8",
     }
+
+
+# The window against its own offers (Coordinator ruling (2), amended; Reviewer (a)-(c)).
+
+FOUR = {"start": "2026-10-02T20:00:00Z", "end": "2026-10-06T19:59:00Z", "runId": "7"}
+REASONS = [r.value for r in NotObservedReason]
+
+
+def _first_offer(d: dict[str, Any]) -> dict[str, Any]:
+    """The first offer of the windowed retailer (the doc's first)."""
+    shop = d["meta"]["retailers"][0]["id"]
+    contexts = {c["id"] for c in d["meta"]["contexts"] if c["retailer"] == shop}
+    return next(o for p in d["products"] for cid, o in p["offers"].items() if cid in contexts)
+
+
+def _not_observed(offer: dict[str, Any], reason: str | None, *, run: str | None = "6") -> None:
+    """``offer`` kept from an earlier capture: original ``capturedAt``, null series."""
+    n = len(offer["series"]["price"])
+    offer["series"] = {"price": [None] * n, "regular": None, "availability": None}
+    offer["evidence"] |= {"capturedAt": "2026-09-30T00:00:00Z", "runId": run}
+    if reason is not None:
+        offer["notObservedReason"] = reason
+
+
+def test_an_observed_offer_one_second_outside_its_window_fails() -> None:
+    d = _doc_with(FOUR)
+    _first_offer(d)["evidence"]["capturedAt"] = "2026-10-06T19:59:01Z"
+    with pytest.raises(ValidationError, match="is outside its retailer's window"):
+        DatasetV3.model_validate(d)
+    _first_offer(d)["evidence"]["capturedAt"] = "2026-10-06T19:59:00Z"  # the end is inside
+    DatasetV3.model_validate(d)
+
+
+@pytest.mark.parametrize("reason", REASONS)
+def test_a_marked_offer_with_no_value_may_keep_its_old_capture(reason: str) -> None:
+    d = _doc_with(FOUR)
+    _not_observed(_first_offer(d), reason)
+    offer = DatasetV3.model_validate(d).products[0].offers
+    assert NotObservedReason(reason) in {o.not_observed_reason for o in offer.values()}
+
+
+@pytest.mark.parametrize("reason", REASONS)
+def test_an_unmarked_offer_with_an_old_capture_fails(reason: str) -> None:
+    d = _doc_with(FOUR)
+    _not_observed(_first_offer(d), None)
+    with pytest.raises(ValidationError, match="is outside its retailer's window"):
+        DatasetV3.model_validate(d)
+
+
+@pytest.mark.parametrize("reason", REASONS)
+def test_a_marker_never_launders_a_value(reason: str) -> None:
+    d = _doc_with(FOUR)
+    offer = _first_offer(d)
+    price = next(p for p in offer["series"]["price"] if p is not None)
+    _not_observed(offer, reason)
+    offer["series"]["price"][-1] = price
+    with pytest.raises(ValidationError, match=f"marked {reason} but has an in-window value"):
+        DatasetV3.model_validate(d)
+
+
+@pytest.mark.parametrize("reason", REASONS)
+def test_an_offer_of_the_windows_own_run_cannot_be_marked(reason: str) -> None:
+    d = _doc_with(FOUR)
+    _not_observed(_first_offer(d), reason, run="7")
+    with pytest.raises(ValidationError, match=f"marked {reason} but captured by the window's run"):
+        DatasetV3.model_validate(d)
+
+
+def test_a_marked_offer_without_a_run_id_is_from_another_run() -> None:
+    d = _doc_with(FOUR)
+    _not_observed(_first_offer(d), "retained", run=None)
+    DatasetV3.model_validate(d)
+
+
+def test_the_reasons_are_the_ruled_closed_set() -> None:
+    assert REASONS == [
+        "retained",
+        "blocked",
+        "rate_limited",
+        "capture_in_progress",
+        "planned_not_captured",
+    ]
+    d = _doc_with(FOUR)
+    _not_observed(_first_offer(d), "not_planned_found")
+    with pytest.raises(ValidationError, match="notObservedReason"):
+        DatasetV3.model_validate(d)
