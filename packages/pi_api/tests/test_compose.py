@@ -276,6 +276,28 @@ def test_each_source_has_its_own_fields_never_the_files() -> None:
     assert seph.fields == {"stock": FieldStatus.NOT_COLLECTED}
 
 
+def test_a_source_that_declares_no_fields_has_none_never_the_files() -> None:
+    """``fields: {}`` is "nothing declared": it is valid, and never the file's merged fields."""
+    d = snapshot_doc({"p1": BOTH}, dates=NEW, fields={"stock": "partial"})
+    for r in d["meta"]["retailers"]:
+        r["fields"] = {} if r["id"] == SEPHORA else {"stock": "ok"}
+    ds = DatasetV3.model_validate(d)
+    by_source = {s.source: s for s in source_infos(ds)}
+    assert by_source[SEPHORA].fields == {}
+    assert by_source[ULTA].fields == {"stock": FieldStatus.OK}
+    assert only(ds, [SEPHORA]).meta.retailers[0].fields == {}
+
+
+def test_a_lone_source_keeps_the_key_it_declares_and_takes_only_the_missing_one() -> None:
+    d = snapshot_doc({"p1": (ULTA,)}, dates=NEW, fields={"stock": "partial"})
+    (r,) = d["meta"]["retailers"]
+    r["fields"] = {"stock": "ok"}
+    del r["capabilities"]
+    (info,) = source_infos(DatasetV3.model_validate(d))
+    assert info.fields == {"stock": FieldStatus.OK}
+    assert info.capabilities == DatasetV3.model_validate(d).meta.capabilities
+
+
 def test_the_composed_view_carries_each_sources_window_fields_and_capabilities() -> None:
     view = compose([only(combined(), [ULTA]), only(sephora(), [SEPHORA])]).dataset
     windows = {r.id: r.window for r in view.meta.retailers}
