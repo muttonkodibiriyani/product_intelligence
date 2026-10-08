@@ -69,6 +69,7 @@ from pi_dataset import (
     upgrade,
 )
 from scripts.demo_export.export import (
+    MARKET_TIME_ZONE,
     GroupKey,
     ListingRow,
     MatchRow,
@@ -83,7 +84,7 @@ from scripts.demo_export.export import (
 )
 from scripts.demo_export.tidy import tidy_rows
 
-MARKET = MarketInfo(country="AE", currency="AED", time_zone="Asia/Dubai", locales=("en", "ar"))
+MARKET = MarketInfo(country="AE", currency="AED", time_zone=MARKET_TIME_ZONE, locales=("en", "ar"))
 #: Slot -> (source-register key, display name). Faces (2026-10-03), Ounass and Bloomingdale's
 #: (2026-10-07, beauty only, EN only) are v2/v3 only.
 RETAILERS = {
@@ -884,11 +885,12 @@ def to_v3(
         for p in v3.products
     )
     slot_of = {rid: slot for slot, (rid, _) in RETAILERS.items()}
+    retailer_of = {c.id: c.retailer for c in v3.meta.contexts}
     marked: dict[tuple[str, str, NotObservedReason], set[str]] = defaultdict(set)
     for p in products:
         for cid, o in p.offers.items():
             if o.not_observed_reason is not None:
-                marked[cid, cid, o.not_observed_reason].add(p.category[0])
+                marked[retailer_of[cid], cid, o.not_observed_reason].add(p.category[0])
     covering = []
     for (rid, cid, reason), categories in sorted(marked.items()):
         window = (windows or {}).get(slot_of[rid])

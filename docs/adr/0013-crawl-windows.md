@@ -49,31 +49,40 @@ regular price and the other did not, the other was shown as `ok` / `true` becaus
    outside the window is never published: an offer with no in-window capture is `null`, not
    "removed" or "out of stock", and an offer missing on a later day of the crawl is not taken as
    out of stock either. Validation (`v3.py`) holds every observed offer's `capturedAt` to
-   `[start, end]`.
+   `[start, end]` and its `runId` to the window's `run_ids` (a null `runId` is refused); a capture
+   inside the span from another run is refused (Coordinator 01a11cd8-1fd5).
 5. **One observation per offer (stock option A).** Price and regular price always come together
-   from the latest real capture in the window. Stock comes only from **the same run and the same
-   Dubai day as `capturedAt`**: the latest real stock read that day. A blocked or `not_observed`
+   from the latest real capture in the window. Stock comes only from **the price capture's run (a run
+   of the window) and the same Dubai day as `capturedAt`**: the latest real stock read that day. A blocked or `not_observed`
    read is skipped, never published as out of stock. With no real read that day, stock is `null`
    and is never borrowed from another day. `capturedAt` stays the price capture's time.
 6. **Per-retailer states.** Every body the exporter writes carries `retailers[i].window`, `.fields`
    and `.capabilities`. One retailer's `regular`, `stock` or `promotions` never shows `ok` / `true`
    because of another. `compose.resolved_retailers` refuses a body of several retailers that lacks
    them; only a single-retailer body may fall back to its `meta`.
-7. **Retained offers are marked and covered.** A listing seen in an earlier succeeded run, but with
-   no capture in the window, is kept in the body with no value and `notObservedReason = retained`,
+7. **Retained offers are marked and covered.** A listing seen by the **retention baseline**, the
+   newest succeeded run of its source started before the window, but with no capture in the
+   window, is kept in the body with no value and `notObservedReason = retained`,
    from the closed set `retained | blocked | rate_limited | capture_in_progress |
    planned_not_captured`. Its `runId` must lie outside the window's `run_ids`. Every marked offer is
    covered by a `notObserved` entry for the same retailer, context, category and dates, and the
    exporter writes those entries. Retained fields roll up as `partial`. A marked offer without a
    window is refused. Early offers (captured before the window, unmarked) are exempt from the span
-   but fail if their `runId` is one of the window's runs.
+   but fail if their `runId` is one of the window's runs. A partial run is never the baseline: when
+   the newest earlier run is partial, the newest succeeded run before it is, and the export logs
+   which run it used and which partial runs it skipped. A listing seen only by an older run, or
+   only by a partial one, is left out (Reviewer 5461503616 item 3, Coordinator 01a11ce2-fd3e).
 8. **A retailer with no window is not checked, and is withheld downstream.** A listed retailer with
    no rows in the export has `window = None`, and its offers keep the plain rule-6 meaning. Bodies
    exported before v3 have no window either. No cross-retailer comparison treats a missing window
    as a gap of 0 or falls back to `meta.asOf`. The stage/publish guard (01a11c71-37ee, Infra's
    deploy PR #304) serves a windowless retailer only as **withheld**, beside at least one windowed
    retailer and with disclosures that reach the set's last window day; a set where no retailer has
-   a window is refused.
+   a window is refused. Validation holds the same in the body (Coordinator 01a11cd9-48b1): beside
+   a windowed retailer, a windowless retailer with offers states `since` (the last day it was
+   seen) and has a whole-retailer `notObserved` entry (no context, no categories) that starts no
+   later than the day after `since` and ends no earlier than the set's last window day, in the
+   market's time zone. A composed view that breaks this is refused at load.
 9. **Window gap across retailers (`WINDOW_GAP`).** A cross-retailer metric is computed only when the
    two sides' window **end** days are at most **7 Dubai days** apart (`compose.window_gap_days`;
    two windows ending on the same local day are 0 apart). Beyond that the metric is withheld with
