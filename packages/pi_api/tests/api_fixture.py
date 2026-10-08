@@ -6,6 +6,7 @@ Nothing here touches the network: certificates come from ``FakeCerts`` and the d
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -110,6 +111,19 @@ def own_keys(ds: Dataset | DatasetV3) -> DatasetV3:
         for r in m.retailers
     )
     return v3.model_copy(update={"meta": m.model_copy(update={"retailers": retailers})})
+
+
+def windowed(ds: Dataset | DatasetV3) -> DatasetV3:
+    """``own_keys(ds)`` with every retailer's crawl window at the cutoff, as a fresh export
+    carries it, so ``PI_API_REQUIRE_ALL`` passes the window guard."""
+    d: dict[str, Any] = json.loads(dump_dataset(own_keys(ds)))
+    cutoff = d["meta"]["cutoff"]
+    for r in d["meta"]["retailers"]:
+        r["window"] = {"start": cutoff, "end": cutoff, "runId": "run-fixture"}
+    for product in d["products"]:
+        for offer in (o for o in product["offers"].values() if not o["early"]):
+            offer["evidence"] |= {"capturedAt": cutoff, "runId": "run-fixture"}  # #302 rule (c)
+    return DatasetV3.model_validate(d)
 
 
 def write(
