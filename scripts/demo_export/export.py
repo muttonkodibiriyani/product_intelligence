@@ -16,7 +16,7 @@ import os
 import re
 import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,6 +44,8 @@ ALLOWED_CATEGORIES = {
 KNOWN_UNITS = {"ml", "g", "pc"}
 IN_STOCK = {"in_stock", "low_stock"}
 UNKNOWN_STOCK = {"unknown", "blocked", "not_observed"}
+#: The AE market's time zone: a crawl window's stock is read on the price capture's day in it.
+MARKET_TIME_ZONE = "Asia/Dubai"
 #: A price at or below this (AED) is not a real offer (owner ruling, 1 Oct 2026). pi_api withholds
 #: and flags it (``priceFlag = "invalid_low"``); the exporter never lets it stand for a variant
 #: group that has a valid price, and v1 shows it as null.
@@ -96,6 +98,9 @@ class ListingRow:
     stock_observed_at: datetime | None = None
     stock_evidence_retrieved_at: datetime | None = None
     stock_run_id: int | None = None
+    #: A listing the crawl window's runs did not see: its latest earlier row, with no values
+    #: (``LATEST_LISTINGS_SQL``). Exported as an offer marked ``retained`` (ADR-0013).
+    retained: bool = False
     #: When an offline_import feed file holding this listing's rows was imported (NULL for
     #: crawled evidence). Never a capture time: v2 refuses an offer dated by it.
     file_received_at: datetime | None = None
@@ -242,24 +247,51 @@ current_runs AS (
 -- History mode (--history) passes one market day as [day_start, day_end): every succeeded or
 -- partial run then counts, and only its observations on that day are read (never carried
 -- forward). With no day (the default), the rules above apply unchanged.
+-- A crawl window (--run, ADR-0013) names its runs instead: only their observations are values,
+-- whatever their status. A listing they did not see keeps its latest earlier row, from a
+-- succeeded or partial run of its source started before the source's first window run, as a
+-- retained row with no values (never carried forward as a value, never read as a removal).
+window_runs AS (
+  SELECT r.id, s.id AS source_id, r.started_at
+  FROM scoped_runs r
+  JOIN source_context sc ON sc.id = r.source_context_id
+  JOIN source s ON s.id = sc.source_id
+  WHERE r.id = ANY(%(runs)s::bigint[])
+),
 eligible_runs AS (
-  SELECT id FROM current_runs WHERE %(day_start)s::timestamptz IS NULL
+  SELECT id FROM window_runs
+  UNION ALL
+  SELECT id FROM current_runs
+  WHERE %(day_start)s::timestamptz IS NULL AND %(runs)s::bigint[] IS NULL
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
   JOIN current_runs c ON c.source_context_id = r.source_context_id
-  WHERE %(day_start)s::timestamptz IS NULL
+  WHERE %(day_start)s::timestamptz IS NULL AND %(runs)s::bigint[] IS NULL
     AND r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
-  WHERE %(day_start)s::timestamptz IS NULL AND NOT EXISTS (
+  WHERE %(day_start)s::timestamptz IS NULL AND %(runs)s::bigint[] IS NULL AND NOT EXISTS (
     SELECT 1 FROM current_runs c WHERE c.source_context_id = r.source_context_id
   )
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
   WHERE %(day_start)s::timestamptz IS NOT NULL AND r.status IN ('succeeded', 'partial')
+),
+prior_runs AS (
+  SELECT r.id
+  FROM scoped_runs r
+  JOIN source_context sc ON sc.id = r.source_context_id
+  WHERE r.status IN ('succeeded', 'partial') AND r.started_at < (
+    SELECT min(w.started_at) FROM window_runs w WHERE w.source_id = sc.source_id
+  )
+),
+read_runs AS (
+  SELECT id, false AS prior FROM eligible_runs
+  UNION ALL
+  SELECT id, true FROM prior_runs WHERE id NOT IN (SELECT id FROM eligible_runs)
 ),
 -- One source may split an offer across rows: a page read carries price and rating with
 -- availability 'not_observed'; a stock read carries availability with price unknown
@@ -283,6 +315,12 @@ obs AS (
     o.observation_id,
     o.field_state,
     o.crawl_run_id,
+    eligible.prior,
+    -- The market day of the capture (evidence time, else the row's own), for same-day stock.
+    (
+      COALESCE(CASE WHEN e.fetch_method <> 'offline_import' THEN e.retrieved_at END, o.observed_at)
+      AT TIME ZONE %(time_zone)s
+    )::date AS capture_day,
     cr.status AS run_status,
     sc.coverage_status::text,
     -- An offline_import evidence row is the feed file: its retrieved_at is when the file was
@@ -295,7 +333,7 @@ obs AS (
       THEN e.retrieved_at
     END AS file_received_at
   FROM offer_observation o
-  JOIN eligible_runs eligible ON eligible.id = o.crawl_run_id
+  JOIN read_runs eligible ON eligible.id = o.crawl_run_id
   JOIN crawl_run cr ON cr.id = o.crawl_run_id
   JOIN source_context sc ON sc.id = o.source_context_id
   LEFT JOIN evidence e ON e.id = o.evidence_id
@@ -308,37 +346,60 @@ obs AS (
 latest_any AS (
   SELECT DISTINCT ON (source_listing_id) *
   FROM obs
-  ORDER BY source_listing_id, observed_at DESC, observation_id DESC
+  -- A window's own row first; an earlier run's only when the window never saw the listing.
+  ORDER BY source_listing_id, prior, observed_at DESC, observation_id DESC
 ),
 latest_price AS (
   SELECT DISTINCT ON (source_listing_id) *
   FROM obs
   -- Not a price observation: field_state price_current unknown, blocked or parse_failure.
   -- not_published, restricted and not_applicable are observations and do win.
-  WHERE COALESCE(field_state ->> 'price_current', '') NOT IN ('unknown', 'blocked', 'parse_failure')
+  WHERE NOT prior
+    AND COALESCE(field_state ->> 'price_current', '') NOT IN ('unknown', 'blocked', 'parse_failure')
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
-latest_stock AS (
-  SELECT DISTINCT ON (source_listing_id)
+-- The newest real stock read of each listing on each market day.
+stock_days AS (
+  SELECT DISTINCT ON (source_listing_id, capture_day)
     source_listing_id, availability_state, observed_at, observation_id, evidence_retrieved_at,
-    file_received_at, crawl_run_id
+    file_received_at, crawl_run_id, capture_day
   FROM obs
   -- Not a stock observation: availability not_observed, unknown or blocked; never replaces a
   -- known state.
-  WHERE availability_state NOT IN ('not_observed', 'unknown', 'blocked')
-  ORDER BY source_listing_id, observed_at DESC, observation_id DESC
+  WHERE NOT prior AND availability_state NOT IN ('not_observed', 'unknown', 'blocked')
+  ORDER BY source_listing_id, capture_day, observed_at DESC, observation_id DESC
+),
+latest_stock AS (
+  SELECT
+    *,
+    row_number() OVER (
+      PARTITION BY source_listing_id ORDER BY observed_at DESC, observation_id DESC
+    ) = 1 AS newest
+  FROM stock_days
 ),
 latest AS (
   SELECT
     a.source_listing_id,
     COALESCE(p.variant_id, a.variant_id) AS variant_id,
-    COALESCE(p.price_current, a.price_current) AS price_current,
-    COALESCE(p.price_regular_stated, a.price_regular_stated) AS price_regular_stated,
-    COALESCE(p.price_type, a.price_type) AS price_type,
-    COALESCE(st.availability_state, a.availability_state) AS availability_state,
-    COALESCE(p.rating_value, a.rating_value) AS rating_value,
-    COALESCE(p.rating_scale, a.rating_scale) AS rating_scale,
-    COALESCE(p.rating_count, a.rating_count) AS rating_count,
+    -- A retained row (an earlier run's) carries no value: none is the window's.
+    CASE WHEN NOT a.prior THEN COALESCE(p.price_current, a.price_current) END AS price_current,
+    CASE WHEN NOT a.prior THEN COALESCE(p.price_regular_stated, a.price_regular_stated) END
+      AS price_regular_stated,
+    CASE WHEN NOT a.prior THEN COALESCE(p.price_type, a.price_type) END AS price_type,
+    CASE
+      WHEN a.prior THEN 'not_observed'
+      -- In a window, a real state of another day never stands in for the price day's.
+      ELSE COALESCE(st.availability_state, CASE
+        WHEN %(runs)s::bigint[] IS NULL
+          OR a.availability_state IN ('not_observed', 'unknown', 'blocked')
+        THEN a.availability_state
+        ELSE 'not_observed'
+      END)
+    END AS availability_state,
+    CASE WHEN NOT a.prior THEN COALESCE(p.rating_value, a.rating_value) END AS rating_value,
+    CASE WHEN NOT a.prior THEN COALESCE(p.rating_scale, a.rating_scale) END AS rating_scale,
+    CASE WHEN NOT a.prior THEN COALESCE(p.rating_count, a.rating_count) END AS rating_count,
+    a.prior AS retained,
     a.observed_at,
     a.crawl_run_id,
     a.run_status,
@@ -353,7 +414,13 @@ latest AS (
     COALESCE(p.file_received_at, st.file_received_at, a.file_received_at) AS file_received_at
   FROM latest_any a
   LEFT JOIN latest_price p ON p.source_listing_id = a.source_listing_id
-  LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id
+  -- Without a window, the newest real stock read. In a window (option A, ADR-0013), the newest
+  -- real read of the same market day as the price capture (the window's runs only), else none;
+  -- with no price capture, the newest.
+  LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id AND CASE
+    WHEN %(runs)s::bigint[] IS NULL OR p.source_listing_id IS NULL THEN st.newest
+    ELSE st.capture_day = p.capture_day
+  END
 )
 SELECT
   s.name AS source_name,
@@ -402,6 +469,7 @@ SELECT
   latest.stock_evidence_retrieved_at,
   latest.stock_run_id,
   latest.file_received_at,
+  latest.retained,
   -- The main image. Two element shapes are read: the Sephora loader's {role: 'main', url}, and
   -- the owner's ulta_ae load {roles: [..., 'image', ...], download_url} (download_url is the CDN
   -- URL the live combined file carries; local_path is never read). Lowest position wins. With no
@@ -779,20 +847,35 @@ def review_state_for_ui(value: str) -> str:
 
 
 def latest_params(
-    sources: Sequence[str], day: tuple[datetime, datetime] | None = None
+    sources: Sequence[str],
+    day: tuple[datetime, datetime] | None = None,
+    runs: Iterable[int] | None = None,
 ) -> dict[str, Any]:
-    """``LATEST_LISTINGS_SQL`` parameters; ``day`` is one market day ``[start, end)`` (history)."""
+    """``LATEST_LISTINGS_SQL`` parameters; ``day`` is one market day ``[start, end)`` (history),
+    ``runs`` the crawl windows' run ids (``--run``, ADR-0013)."""
+    if day is not None and runs is not None:
+        raise ValueError("a history day and crawl window runs do not mix")
     start, end = day if day is not None else (None, None)
-    return {"sources": list(sources), "day_start": start, "day_end": end}
+    return {
+        "sources": list(sources),
+        "day_start": start,
+        "day_end": end,
+        "runs": sorted(runs) if runs is not None else None,
+        "time_zone": MARKET_TIME_ZONE,
+    }
 
 
 def load_rows(
-    database_url: str, sources: Sequence[str] = DEFAULT_SOURCES
+    database_url: str,
+    sources: Sequence[str] = DEFAULT_SOURCES,
+    runs: Iterable[int] | None = None,
 ) -> tuple[list[ListingRow], list[MatchRow]]:
+    """``runs`` are the crawl windows' runs (``--run``, ADR-0013); ``None`` keeps the rules of
+    ``LATEST_LISTINGS_SQL`` without a window."""
     with psycopg.connect(psycopg_database_url(database_url), row_factory=dict_row) as connection:
         connection.read_only = True
         with connection.cursor() as cursor:
-            cursor.execute(LATEST_LISTINGS_SQL, latest_params(sources))
+            cursor.execute(LATEST_LISTINGS_SQL, latest_params(sources, runs=runs))
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
@@ -1067,6 +1150,26 @@ def build_dataset(
 #: admitted. The gate is per file; §6 sizes the served files together.
 
 
+def window_report(v3: Any) -> str:
+    """Per retailer: its crawl window and its offers marked not observed, by reason."""
+    marked: Counter[tuple[str, str]] = Counter(
+        (cid, str(o.not_observed_reason))
+        for p in v3.products
+        for cid, o in p.offers.items()
+        if o.not_observed_reason is not None
+    )
+    lines = []
+    for r in v3.meta.retailers:
+        w = r.window
+        span = "no window"
+        if w is not None:
+            run = "+".join((w.run_id, *w.segments))
+            span = f"run {run} {w.start.isoformat()}..{w.end.isoformat()}"
+        reasons = {reason: n for (cid, reason), n in sorted(marked.items()) if cid == r.id}
+        lines.append(f"window {r.id}: {span} notObservedReason={reasons}")
+    return "\n".join(lines)
+
+
 def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:
     """The written v3 bytes split three ways, exactly: ``prices`` (everything but
     ``Offer.content``), ``attributes`` (content without description and ingredients) and
@@ -1224,9 +1327,41 @@ def parser() -> argparse.ArgumentParser:
             "not completely collected go into notObserved windows (history.py)"
         ),
     )
+    result.add_argument(
+        "--run",
+        action="append",
+        default=[],
+        metavar="SOURCE=ID[+SEGMENT...]",
+        help=(
+            "a source's crawl window run, then its segments (ADR-0013), e.g. sephora_me=1+2; "
+            "repeat per source. With any --run, every exported source needs one"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
+
+
+def parse_runs(values: Sequence[str], sources: Sequence[str]) -> dict[str, tuple[int, ...]] | None:
+    """``--run SOURCE=ID[+SEGMENT...]`` per source, or ``None`` without any. A source named twice,
+    a source not exported, an exported source without one, or a run that is not a positive
+    integer is refused: a window's runs are declared, never guessed (ADR-0013)."""
+    if not values:
+        return None
+    runs: dict[str, tuple[int, ...]] = {}
+    for value in values:
+        source, sep, ids = value.partition("=")
+        parts = ids.split("+")
+        if not sep or not all(part.isdigit() and int(part) > 0 for part in parts):
+            raise SystemExit(f"--run {value!r}: expected SOURCE=ID[+SEGMENT...]")
+        if source in runs:
+            raise SystemExit(f"--run names {source} twice")
+        if source not in sources:
+            raise SystemExit(f"--run {source}: not one of --sources {','.join(sources)}")
+        runs[source] = tuple(int(part) for part in parts)
+    if missing := [s for s in sources if s not in runs]:
+        raise SystemExit(f"--run is missing for {', '.join(missing)}: every source needs one")
+    return runs
 
 
 def check_args(args: argparse.Namespace) -> None:
@@ -1248,6 +1383,8 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit("--sources must name at least one source")
     if args.history and args.output_v2 is None and args.output_v3 is None:
         raise SystemExit("--history needs --output-v2 or --output-v3 (v1 has one date)")
+    if args.history and args.run:
+        raise SystemExit("--history does not take --run (a crawl window is one snapshot)")
     if args.history and args.ulta_early_fixture is not None:
         raise SystemExit(
             "--history does not take --ulta-early-fixture (recon samples have no days)"
@@ -1294,7 +1431,12 @@ def build_v1(
 def main() -> None:
     args = parser().parse_args()
     check_args(args)
-    rows, matches = load_rows(args.database_url, args.sources)
+    runs = parse_runs(args.run, args.sources)
+    rows, matches = load_rows(
+        args.database_url,
+        args.sources,
+        None if runs is None else [run for ids in runs.values() for run in ids],
+    )
     early: list[dict[str, Any]] = []
     if args.ulta_early_fixture is not None:
         early.append(
@@ -1314,6 +1456,7 @@ def main() -> None:
         from scripts.demo_export.v2 import (  # noqa: PLC0415
             build_dataset_v2,
             category_notes,
+            crawl_windows,
             price_review,
             to_v3,
         )
@@ -1322,6 +1465,7 @@ def main() -> None:
             blocked_since=parse_utc(args.ulta_blocked_since), blocked=not args.ulta_unblocked
         )
         v2_rows = rows
+        windows = None
         if args.history:
             from scripts.demo_export.history import (  # noqa: PLC0415
                 Coverage,
@@ -1351,6 +1495,7 @@ def main() -> None:
                 f"notObserved={len(v2.not_observed)}"
             )
         else:
+            windows = crawl_windows(rows, runs)
             v2 = build_dataset_v2(
                 rows,
                 matches,
@@ -1361,11 +1506,13 @@ def main() -> None:
                 scope=args.scope,
                 producer_commit=args.producer_commit,
                 slots=slots,
+                windows=windows,
             )
         body = dump_dataset(v2, compact=True)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            v3 = to_v3(v2, v2_rows, matches)
+            v3 = to_v3(v2, v2_rows, matches, windows)
+            print(window_report(v3))
             body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
             v3_groups = v3_bytes_by_group(v3, len(body_v3))

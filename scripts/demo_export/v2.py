@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -38,9 +39,11 @@ from zoneinfo import ZoneInfo
 from pydantic import HttpUrl
 
 from pi_core import AvailabilityState, Concentration, MatchClass, ReviewState, is_valid_gtin
+from pi_core.enums import NotObservedReason
 from pi_dataset import (
     Capabilities,
     ContentField,
+    CrawlWindow,
     Dataset,
     DatasetV3,
     DecidedBy,
@@ -51,6 +54,7 @@ from pi_dataset import (
     Meta,
     MoneyValue,
     NotObserved,
+    NotObservedV3,
     Offer,
     OfferContent,
     OfferVariant,
@@ -165,15 +169,79 @@ def product_id(token: str) -> str:
 
 @dataclass
 class Stale:
-    """Values not published because they were captured on another day than ``meta.dates``."""
+    """Values not published because they were captured on another day than ``meta.dates`` (or,
+    with crawl ``windows``, outside the retailer's window), and offers the windows' runs did not
+    see (``retained``)."""
 
     day: date
     prices: int = 0
     regulars: int = 0
     stock: int = 0
+    retained: int = 0
+    #: Per retailer slot (``--run``, ADR-0013): a value counts when captured in its window, not
+    #: on ``day``. ``None`` is the one-day rule.
+    windows: Mapping[str, CrawlWindow] | None = None
 
     def on_day(self, moment: datetime) -> bool:
-        return moment.astimezone(ZoneInfo(MARKET.time_zone)).date() == self.day
+        return market_date(moment) == self.day
+
+    def holds(self, shop: str, moment: datetime) -> bool:
+        """``moment`` is a publishable capture of retailer slot ``shop``."""
+        if self.windows is None:
+            return self.on_day(moment)
+        window = self.windows.get(shop)
+        return window is not None and window.start <= moment <= window.end
+
+
+def market_date(moment: datetime) -> date:
+    return moment.astimezone(ZoneInfo(MARKET.time_zone)).date()
+
+
+def crawl_windows(
+    rows: Sequence[ListingRow], runs: Mapping[str, Sequence[int]] | None = None
+) -> dict[str, CrawlWindow]:
+    """Each retailer slot's crawl window (ADR-0013): the first and last capture of the values its
+    rows carry (price and stock captures; ``retained`` rows carry none). ``runs`` are the declared
+    runs per source name (``--run``): the first is the window's run, the rest its segments, and a
+    capture from any other run fails. Undeclared, a retailer's values must come from one run: two
+    runs, even on adjacent days, are never merged into one window."""
+    by_slot: dict[str, list[ListingRow]] = defaultdict(list)
+    for row in rows:
+        by_slot[row.retailer].append(row)
+    windows = {}
+    for slot, shop_rows in by_slot.items():
+        name = RETAILERS[slot][0]
+        captures = [
+            capture
+            for row in shop_rows
+            if not row.retained
+            for capture in (row.price_capture, row.stock_capture)
+        ]
+        used = {run for _, run in captures}
+        if runs is None:
+            if len(used) > 1:
+                msg = f"{name}: values from runs {sorted(used)}; one run per retailer (ADR-0013)"
+                raise ValueError(f"{msg}, pass --run to declare a run and its segments")
+            declared = sorted(used)
+        else:
+            sources = sorted({row.source_name for row in shop_rows})
+            declared = [run for source in sources for run in runs.get(source, ())]
+            if not declared:
+                raise ValueError(f"{name}: no --run declared for {', '.join(sources)}")
+            if extra := used - set(declared):
+                msg = f"{name}: values from runs {sorted(extra)} outside the declared {declared}"
+                raise ValueError(msg)
+        primary = [at for at, run in captures if run == declared[0]] if declared else []
+        if not primary:
+            raise ValueError(f"{name}: no capture of run {declared[:1] or '(none)'} in the rows")
+        moments = [at for at, _ in captures]
+        windows[slot] = CrawlWindow(
+            start=min(moments),
+            end=max(moments),
+            run_id=str(declared[0]),
+            segments=tuple(str(run) for run in declared[1:]),
+        )
+    return windows
 
 
 def money(value: Decimal | None, currency: str) -> MoneyValue | None:
@@ -269,9 +337,18 @@ def price_review(dataset: Dataset) -> dict[str, list[str]]:
 
 def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
     """Price and regular come from the price capture, stock from the stock observation's own
-    capture (``stock_capture``); each is published only when captured on ``stale.day``. The
-    evidence is the price capture when the price is published, else the stock observation."""
-    rep = choose_representative(rows)
+    capture (``stock_capture``); each is published only when captured on ``stale.day`` (or in
+    the retailer's crawl window, ``stale.windows``). Stock is published only from the same market
+    day as a published price (option A, ADR-0013). The evidence is the price capture when the
+    price is published, else the stock observation.
+
+    An offer whose rows are all ``retained`` (the window's runs did not see it) has no value and
+    keeps its earlier capture as evidence: never a removal, never out of stock."""
+    live = [row for row in rows if not row.retained]
+    if not live:
+        stale.retained += 1
+        return retained_offer(rows, currency)
+    rep = choose_representative(live)
     unit, size = rep.effective_size
     price_at, price_run_id = rep.price_capture
     stock_at, stock_run_id = rep.stock_capture
@@ -284,13 +361,16 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
         msg = f"{rep.source_name} {rep.source_listing_key}: a stated regular price on a source"
         raise ValueError(f"{msg} declared not_collected (REGULAR_STATED)")
     stated = money(rep.regular, currency) if collected else None
-    if price is not None and not stale.on_day(price_at):
+    if price is not None and not stale.holds(rep.retailer, price_at):
         price = None
         stale.prices += 1
         stale.regulars += stated is not None
     regular = stated if price is not None else None
     stock = None if rep.retailer in STOCK_NOT_PUBLISHED else availability(rep.availability)
-    if stock is not None and not stale.on_day(stock_at):
+    if stock is not None and not (
+        stale.holds(rep.retailer, stock_at)
+        and (price is None or market_date(stock_at) == market_date(price_at))
+    ):
         stock = None
         stale.stock += 1
     captured, run_id = (price_at, price_run_id) if price is not None else (stock_at, stock_run_id)
@@ -319,6 +399,34 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
             price=(price,),
             regular=(regular,) if regular is not None else None,
             availability=(stock,),
+        ),
+        evidence=Evidence(
+            captured_at=captured,
+            source=f"{rep.source_name} · local pi_db snapshot",
+            run_id=str(run_id),
+        ),
+        image=image(rep.image, RETAILERS[rep.retailer][0]),
+    )
+
+
+def retained_offer(rows: Sequence[ListingRow], currency: str) -> Offer:
+    """An offer the crawl window's runs did not see: no value, its earlier row's capture as
+    evidence (``to_v3`` marks it ``retained`` and covers it with a ``notObserved`` entry)."""
+    rep = min(rows, key=lambda row: row.variant_id)
+    unit, size = rep.effective_size
+    captured, run_id = rep.price_capture
+    return Offer(
+        currency=currency,
+        sku=rep.source_sku or rep.source_listing_key,
+        url=HttpUrl(rep.url),
+        size=Size(value=decimal_text(size), unit=unit) if unit and size and size > 0 else None,
+        shade_count=len({row.shade for row in rows if row.shade}),
+        rating=None,
+        early=False,
+        series=Series(
+            price=(None,),
+            regular=None,
+            availability=(None,),
         ),
         evidence=Evidence(
             captured_at=captured,
@@ -460,19 +568,24 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     scope: str = "beauty",
     producer_commit: str | None = None,
     slots: Sequence[str] | None = None,
+    windows: Mapping[str, CrawlWindow] | None = None,
 ) -> Dataset:
     """``ulta_note`` is v1's ``meta.retailers[u].note``, so both versions say the same thing.
 
     ``slots`` are the retailers listed in ``meta.retailers`` (``listed_slots`` by default): a
-    per-source file (ADR-0010) lists only its own, e.g. ``("f",)`` for the Faces file."""
+    per-source file (ADR-0010) lists only its own, e.g. ``("f",)`` for the Faces file.
+
+    ``windows`` (``crawl_windows``, ADR-0013) publish each retailer's values captured in its
+    crawl window instead of only those of the cutoff's day; ``to_v3`` writes them."""
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
     captures = [row.evidence_retrieved_at or row.observed_at for row in rows]
     captures += [parse_utc(p["offers"]["u"]["evidence"]["capturedAt"]) for p in ulta_early]
+    captures += [w.end for w in (windows or {}).values()]
     cutoff = max(captures)
     zone = ZoneInfo(MARKET.time_zone)
     day = cutoff.astimezone(zone).date()
-    stale = Stale(day)
+    stale = Stale(day, windows=windows)
 
     groups = group_rows(tidy_rows(rows))
     pairs, unpaired = pair_groups(groups, matches)
@@ -582,16 +695,24 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
                 "parse_failure"
                 if bad_prices and not has_price and not stale.prices
                 else "partial"
-                if bad_prices or stale.prices
+                if bad_prices or stale.prices or stale.retained
                 else "ok"
                 if has_price
                 else "not_collected"
             ),
             "regular": status_of(
-                "partial" if stale.regulars else "ok" if has_regular else "not_collected"
+                "partial"
+                if stale.regulars or (stale.retained and has_regular)
+                else "ok"
+                if has_regular
+                else "not_collected"
             ),
             "stock": status_of(
-                "partial" if stale.stock else "ok" if has_stock else "not_collected"
+                "partial"
+                if stale.stock or (stale.retained and has_stock)
+                else "ok"
+                if has_stock
+                else "not_collected"
             ),
             "size": status_of(
                 "ok"
@@ -705,10 +826,36 @@ def _sku(row: ListingRow) -> str:
     return row.source_sku or row.source_listing_key
 
 
-def to_v3(v2: Dataset, rows: Sequence[ListingRow], matches: Sequence[MatchRow]) -> DatasetV3:
+#: The ``why`` of the ``notObserved`` entry covering offers marked with a reason (ADR-0013).
+NOT_OBSERVED_WHY = {
+    NotObservedReason.RETAINED: {
+        "en": (
+            "Not seen by this crawl run: listed from an earlier run with no value. "
+            "Not a removal and not out of stock."
+        ),
+        "ar": (
+            "لم يرصدها تشغيل الزحف هذا: مدرجة من تشغيل سابق دون أي قيمة. "
+            "ليست إزالة ولا نفادًا للمخزون."
+        ),
+    },
+}
+
+
+def to_v3(
+    v2: Dataset,
+    rows: Sequence[ListingRow],
+    matches: Sequence[MatchRow],
+    windows: Mapping[str, CrawlWindow] | None = None,
+) -> DatasetV3:
     """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount`` and
     ``content``; an early (recon) offer's stay ``null``. The caller validates the dump with
-    ``load_any``."""
+    ``load_any``.
+
+    A snapshot (one date) also states each retailer's own ``fields`` and ``capabilities`` (never
+    the roll-up of ``meta.fields``, ADR-0013) and its crawl ``window`` from ``windows`` (the ones
+    ``build_dataset_v2`` used). An offer whose rows are all retained is marked ``retained`` and
+    covered by one ``notObserved`` entry per retailer, context and reason: the window's market
+    dates and the marked products' categories."""
     profile = committed_profile("beauty", 1)
     if profile is None:  # pragma: no cover - the profile is committed with pi_dataset
         raise ValueError("beauty@1 is not a committed profile")
@@ -725,6 +872,9 @@ def to_v3(v2: Dataset, rows: Sequence[ListingRow], matches: Sequence[MatchRow]) 
                         update={
                             "listing_count": len(grouped[p.id, cid]),
                             "content": content(grouped[p.id, cid], captured[cid]),
+                            "not_observed_reason": NotObservedReason.RETAINED
+                            if all(row.retained for row in grouped[p.id, cid])
+                            else None,
                         }
                     )
                     for cid, o in p.offers.items()
@@ -733,4 +883,126 @@ def to_v3(v2: Dataset, rows: Sequence[ListingRow], matches: Sequence[MatchRow]) 
         )
         for p in v3.products
     )
-    return v3.model_copy(update={"products": products})
+    slot_of = {rid: slot for slot, (rid, _) in RETAILERS.items()}
+    marked: dict[tuple[str, str, NotObservedReason], set[str]] = defaultdict(set)
+    for p in products:
+        for cid, o in p.offers.items():
+            if o.not_observed_reason is not None:
+                marked[cid, cid, o.not_observed_reason].add(p.category[0])
+    covering = []
+    for (rid, cid, reason), categories in sorted(marked.items()):
+        window = (windows or {}).get(slot_of[rid])
+        if window is None:
+            raise ValueError(f"{rid}: offers marked {reason} without a crawl window (--run)")
+        covering.append(
+            NotObservedV3(
+                retailer=rid,
+                context=cid,
+                start=market_date(window.start),
+                end=market_date(window.end),
+                categories=tuple(sorted(categories)),
+                why=NOT_OBSERVED_WHY[reason],
+            )
+        )
+    meta = v3.meta
+    if len(v2.meta.dates) == 1:
+        states = retailer_states(v2, grouped, windows)
+        meta = meta.model_copy(
+            update={
+                "retailers": tuple(
+                    r.model_copy(
+                        update={
+                            "window": (windows or {}).get(slot_of[r.id]),
+                            "fields": states[r.id][0],
+                            "capabilities": states[r.id][1],
+                        }
+                    )
+                    for r in meta.retailers
+                )
+            }
+        )
+    return v3.model_copy(
+        update={
+            "meta": meta,
+            "products": products,
+            "not_observed": (*v3.not_observed, *covering),
+        }
+    )
+
+
+def retailer_states(
+    v2: Dataset,
+    grouped: Mapping[tuple[str, str], Sequence[ListingRow]],
+    windows: Mapping[str, CrawlWindow] | None,
+) -> dict[str, tuple[dict[str, FieldStatus], Capabilities]]:
+    """Each listed retailer's field states and capabilities from its own offers alone, with the
+    rules of ``meta.fields``: its offers are rebuilt from their rows to count what its window (or
+    the day) left out."""
+    stale = {r.id: Stale(v2.meta.dates[-1], windows=windows) for r in v2.meta.retailers}
+    offers: dict[str, list[Offer]] = {r.id: [] for r in v2.meta.retailers}
+    bad: dict[str, int] = defaultdict(int)
+    for p in v2.products:
+        for rid, o in p.offers.items():
+            offers[rid].append(o)
+            if not o.early:
+                group = grouped[p.id, rid]
+                offer(group, o.currency, stale[rid])
+                bad[rid] += sum(1 for row in group if row.price is not None and row.price <= 0)
+    return {rid: _states(offers[rid], stale[rid], bad[rid]) for rid in offers}
+
+
+def _states(
+    offers: Sequence[Offer], stale: Stale, bad_prices: int
+) -> tuple[dict[str, FieldStatus], Capabilities]:
+    collected = [o for o in offers if not o.early]
+    has_price = any(o.series.price[0] is not None for o in collected)
+    has_regular = any(o.series.regular is not None for o in collected)
+    has_stock = any((o.series.availability or (None,))[0] is not None for o in collected)
+    sized = sum(o.size is not None for o in offers)
+    has_shades = any(o.shade_count for o in offers)
+    has_rating = any(o.rating is not None for o in offers)
+    with_image = sum(o.image is not None for o in offers)
+    fields = {
+        "price": "parse_failure"
+        if bad_prices and not has_price and not stale.prices
+        else "partial"
+        if bad_prices or stale.prices or stale.retained
+        else "ok"
+        if has_price
+        else "not_collected",
+        "regular": "partial"
+        if stale.regulars or (stale.retained and has_regular)
+        else "ok"
+        if has_regular
+        else "not_collected",
+        "stock": "partial"
+        if stale.stock or (stale.retained and has_stock)
+        else "ok"
+        if has_stock
+        else "not_collected",
+        "size": "ok"
+        if offers and sized == len(offers)
+        else "partial"
+        if sized
+        else "not_published",
+        "shades": "ok" if has_shades else "not_collected",
+        "rating": "ok" if has_rating else "not_collected",
+        "gtin": "not_published",
+        "image": "ok"
+        if offers and with_image == len(offers)
+        else "partial"
+        if with_image
+        else "not_collected",
+    }
+    capabilities = Capabilities(
+        history=False,
+        promotions=has_regular,
+        campaigns=False,
+        stock=has_stock,
+        sizes=sized > 0,
+        shades=has_shades,
+        coverage=False,
+        images=with_image > 0,
+        ratings=has_rating,
+    )
+    return {name: status_of(state) for name, state in fields.items()}, capabilities
