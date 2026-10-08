@@ -282,3 +282,35 @@ def test_a_refresh_in_flight_serves_the_last_good_set_without_waiting() -> None:
     now[0] = 10.0 + HttpCertSource.GRACE  # nothing usable: wait for the lock, then refresh
     assert source.certificates() == {"k2": "pem"}
     assert (busy.waited, len(calls)) == (1, 2)
+
+
+def test_require_all_refuses_a_cold_start_that_serves_less(tmp_path: Path) -> None:
+    # Deploy plan v2: with PI_API_REQUIRE_ALL=1 a body that does not load (missing, refused by
+    # the admission pin, or rejected by an older image) fails the factory, so uvicorn exits
+    # non-zero and Cloud Run never routes to the revision. Without the flag the API starts.
+    write(tmp_path, served_dataset())
+    missing = "datasets/ae/missing/latest.json"
+    base = {**ENV, "PI_API_LOCAL_DIR": str(tmp_path)}
+    strict = {**base, "PI_API_REQUIRE_ALL": "1"}
+    assert Settings.from_env(strict).require_all is True
+    assert Settings.from_env(base).require_all is False
+    assert app_from_env({**strict, "PI_API_DATASETS": DATASET_PATH}) is not None
+    with pytest.raises(RuntimeError, match=f"PI_API_REQUIRE_ALL: not loaded at start: {missing}$"):
+        app_from_env({**strict, "PI_API_DATASETS": f"{DATASET_PATH},{missing}"})
+    assert app_from_env({**base, "PI_API_DATASETS": f"{DATASET_PATH},{missing}"}) is not None
+    (tmp_path / DATASET_PATH).write_bytes(b"{}")
+    with pytest.raises(RuntimeError, match=DATASET_PATH):
+        app_from_env({**strict, "PI_API_DATASETS": DATASET_PATH})
+
+
+def test_require_all_names_unbuilt_composed_views(tmp_path: Path) -> None:
+    write(tmp_path, served_dataset())
+    missing = "datasets/ae/missing/latest.json"
+    source = SnapshotSource(
+        LocalStore(tmp_path), (), assigned={"shop_a": DATASET_PATH, "shop_x": missing}
+    )
+    source.load_all()
+    assert source.unserved() == [missing, "composed views"]
+    whole = SnapshotSource(LocalStore(tmp_path), (DATASET_PATH,))
+    whole.load_all()
+    assert whole.unserved() == []

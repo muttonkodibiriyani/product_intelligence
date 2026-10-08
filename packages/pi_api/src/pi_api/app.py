@@ -1203,6 +1203,10 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
         memory_mib=settings.memory_mib,
     )
     source.load_all()
+    if settings.require_all and (missing := source.unserved()):
+        # Raised from the factory, uvicorn exits non-zero: Cloud Run never marks the revision Ready.
+        msg = f"PI_API_REQUIRE_ALL: not loaded at start: {', '.join(missing)}"
+        raise RuntimeError(msg)
     catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)
     catalogues.load_all()
     verifier = TokenVerifier(settings.project_id, HttpCertSource())
