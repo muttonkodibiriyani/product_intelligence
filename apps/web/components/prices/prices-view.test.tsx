@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { golden } from '@/lib/api/golden';
 import type { Summary } from '@/lib/api/summary';
 import type { Envelope, Schemas } from '@/lib/api/types';
@@ -37,6 +37,18 @@ const withheld: Envelope<Summary> = {
 };
 
 const ctx = vi.hoisted(() => ({ search: '', compare: { kind: 'loading' } as unknown }));
+// A served retailer's section draws a chart directly (not through ../widgets/charts); jsdom has no
+// ResizeObserver, and without one its effect throws after the test has passed.
+beforeAll(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+
 vi.mock('../auth-provider', () => ({ useAuth: () => ({ api: {} }) }));
 vi.mock('../use-meta', () => ({
   useMeta: () => ({ data: meta }),
