@@ -27,7 +27,14 @@ from pi_capture.feed import SHOPS, Shop, build_feed, dump_feed, mapping_for
 from pi_capture.model import ProductCapture
 from pi_dataset import dump_dataset
 from pi_db import DATABASE_URL_ENV, alembic_config
-from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow, UltaContext, latest_params
+from scripts.demo_export.export import (
+    LATEST_LISTINGS_SQL,
+    RETENTION_BASELINE_SQL,
+    ListingRow,
+    UltaContext,
+    baseline_report,
+    latest_params,
+)
 from scripts.demo_export.history import RunSpan, read_history
 from scripts.demo_export.v2 import build_dataset_v2
 
@@ -942,6 +949,62 @@ def test_a_listing_the_window_did_not_see_is_retained_from_an_earlier_run(conn: 
     assert (b["price"], b["regular"], b["availability"]) == (None, None, "not_observed")
     assert (b["run_id"], b["observed_at"], b["retained"]) == (earlier, _at(1), True)
     assert b["rating"] is None
+
+
+def _baseline(world: World, runs: list[object]) -> str:
+    params = latest_params([world.name], runs=[int(str(r)) for r in runs])
+    return baseline_report(world.conn.execute(RETENTION_BASELINE_SQL, params).fetchall())
+
+
+def test_only_the_latest_succeeded_run_before_the_window_is_retained(conn: Conn) -> None:
+    """Reviewer 5461503616 item 3, Coordinator 01a11ce2-fd3e: B, seen only by run N-2, is not
+    retained; A, seen by N-1 (the latest succeeded run before the window) and missed by the
+    window, is."""
+    world = World(conn)
+    n2 = world.run("succeeded", 1)
+    world.observe(n2, "B", 1, "90")
+    n1 = world.run("succeeded", 2)
+    world.observe(n1, "A", 2, "70")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "C"}
+    assert (got["A"]["run_id"], got["A"]["retained"]) == (n1, True)
+    assert _baseline(world, [window]) == f"retention {world.name}: baseline succeeded run {n1}"
+
+
+def test_a_partial_run_is_never_the_retention_baseline(conn: Conn) -> None:
+    """A listing seen only by a partial N-1 is judged against N-2, the latest succeeded run
+    before it, and the log line says the partial run was skipped."""
+    world = World(conn)
+    n2 = world.run("succeeded", 1)
+    world.observe(n2, "A", 1, "70")
+    n1 = world.run("partial", 2)
+    world.observe(n1, "B", 2, "90")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "C"}
+    assert (got["A"]["run_id"], got["A"]["retained"]) == (n2, True)
+    assert _baseline(world, [window]) == (
+        f"retention {world.name}: baseline succeeded run {n2}; later partial runs [{n1}]"
+        " skipped, a partial run is never the baseline"
+    )
+
+
+def test_with_no_succeeded_run_before_the_window_nothing_is_retained(conn: Conn) -> None:
+    world = World(conn)
+    partial = world.run("partial", 1)
+    world.observe(partial, "A", 1, "70")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    assert set(_window(world, [window])) == {"C"}
+    assert _baseline(world, [window]).startswith(
+        f"retention {world.name}: baseline none (nothing retained); later partial runs [{partial}]"
+    )
 
 
 def test_without_a_window_nothing_is_retained(conn: Conn) -> None:

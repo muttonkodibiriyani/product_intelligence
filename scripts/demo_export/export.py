@@ -248,9 +248,11 @@ current_runs AS (
 -- partial run then counts, and only its observations on that day are read (never carried
 -- forward). With no day (the default), the rules above apply unchanged.
 -- A crawl window (--run, ADR-0013) names its runs instead: only their observations are values,
--- whatever their status. A listing they did not see keeps its latest earlier row, from a
--- succeeded or partial run of its source started before the source's first window run, as a
--- retained row with no values (never carried forward as a value, never read as a removal).
+-- whatever their status. A listing they did not see is kept only if the retention baseline saw
+-- it: the newest SUCCEEDED run of its context started before the source's first window run (a
+-- partial run never counts; Coordinator 01a11ce2-fd3e). It is a retained row with no values
+-- (never carried forward as a value, never read as a removal); a listing seen only by an older
+-- run, or only by a partial one, is left out.
 window_runs AS (
   SELECT r.id, s.id AS source_id, r.started_at
   FROM scoped_runs r
@@ -281,12 +283,13 @@ eligible_runs AS (
   WHERE %(day_start)s::timestamptz IS NOT NULL AND r.status IN ('succeeded', 'partial')
 ),
 prior_runs AS (
-  SELECT r.id
+  SELECT DISTINCT ON (r.source_context_id) r.id
   FROM scoped_runs r
   JOIN source_context sc ON sc.id = r.source_context_id
-  WHERE r.status IN ('succeeded', 'partial') AND r.started_at < (
+  WHERE r.status = 'succeeded' AND r.started_at < (
     SELECT min(w.started_at) FROM window_runs w WHERE w.source_id = sc.source_id
   )
+  ORDER BY r.source_context_id, r.started_at DESC, r.id DESC
 ),
 read_runs AS (
   SELECT id, false AS prior FROM eligible_runs
@@ -563,6 +566,64 @@ WHERE s.name = ANY(%(sources)s)
   )
 ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 """
+
+#: Per context of a windowed source: the retention baseline of ``LATEST_LISTINGS_SQL`` (its newest
+#: succeeded run started before the source's first window run, or NULL) and the partial runs
+#: started after it and before the window, which are never the baseline (Coordinator
+#: 01a11ce2-fd3e). The export logs both.
+RETENTION_BASELINE_SQL = """
+WITH window_runs AS (
+  SELECT r.id, sc.source_id, r.started_at
+  FROM crawl_run r
+  JOIN source_context sc ON sc.id = r.source_context_id
+  WHERE r.id = ANY(%(runs)s::bigint[])
+),
+contexts AS (
+  SELECT sc.id, s.name, (
+    SELECT min(w.started_at) FROM window_runs w WHERE w.source_id = sc.source_id
+  ) AS window_started_at
+  FROM source_context sc
+  JOIN source s ON s.id = sc.source_id
+  WHERE sc.country = 'AE' AND sc.locale = 'en-AE' AND s.name = ANY(%(sources)s)
+),
+baseline AS (
+  SELECT DISTINCT ON (c.id) c.id AS context_id, r.id, r.started_at
+  FROM contexts c
+  JOIN crawl_run r ON r.source_context_id = c.id
+  WHERE r.status = 'succeeded' AND r.started_at < c.window_started_at
+  ORDER BY c.id, r.started_at DESC, r.id DESC
+)
+SELECT
+  c.name AS source_name,
+  b.id AS baseline_run_id,
+  ARRAY(
+    SELECT r.id FROM crawl_run r
+    WHERE r.source_context_id = c.id AND r.status = 'partial'
+      AND r.started_at < c.window_started_at
+      AND (b.started_at IS NULL OR (r.started_at, r.id) > (b.started_at, b.id))
+    ORDER BY r.started_at, r.id
+  ) AS skipped_partial_run_ids
+FROM contexts c
+LEFT JOIN baseline b ON b.context_id = c.id
+WHERE c.window_started_at IS NOT NULL
+ORDER BY c.name, c.id
+"""
+
+
+def baseline_report(found: Iterable[Mapping[str, Any]]) -> str:
+    """One log line per windowed context: which run its retained listings may come from."""
+    lines = []
+    for row in found:
+        run = row["baseline_run_id"]
+        skipped = list(row["skipped_partial_run_ids"] or ())
+        line = f"retention {row['source_name']}: baseline " + (
+            f"succeeded run {run}" if run is not None else "none (nothing retained)"
+        )
+        if skipped:
+            line += f"; later partial runs {skipped} skipped, a partial run is never the baseline"
+        lines.append(line)
+    return "\n".join(lines)
+
 
 MATCHES_SQL = """
 SELECT variant_a, variant_b, match_class::text, score, algo_version, review_state::text,
@@ -875,7 +936,11 @@ def load_rows(
     with psycopg.connect(psycopg_database_url(database_url), row_factory=dict_row) as connection:
         connection.read_only = True
         with connection.cursor() as cursor:
-            cursor.execute(LATEST_LISTINGS_SQL, latest_params(sources, runs=runs))
+            params = latest_params(sources, runs=runs)
+            if runs is not None:
+                cursor.execute(RETENTION_BASELINE_SQL, params)
+                print(baseline_report(cursor.fetchall()))
+            cursor.execute(LATEST_LISTINGS_SQL, params)
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
