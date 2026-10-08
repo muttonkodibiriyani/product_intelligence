@@ -142,8 +142,10 @@ with one holder. Created by `infra/gcp/capture_reader_setup.sh` (idempotent), wh
 and STOPs if the account has any project role. Applying it and minting its one key both need the
 owner's explicit OK; the key goes to `~/.config/pi-capture-reader/key.json` (mode 600), never into
 a repo or an image. `pi-sephora-e631eaba` deletes every object after 1 day, so a Sephora output
-must be read within a day of the run.
+must be read within a day of the run, or held first under `sephora-hold/` in the capture bucket
+(same region, no egress; that path must carry no age rule).
 
 | Date | Resource | Settings | Cost |
 |------|----------|----------|------|
 | pending owner OK | SA `pi-capture-reader` (no project role) | `roles/storage.objectViewer` on `pi-sephora-e631eaba` and `pi-capture-productintelligence-beeb3` only; one user-managed key, minted on the owner's OK | free |
+| 2026-10-08 | prefix `gs://pi-capture-productintelligence-beeb3/sephora-hold/` | in-GCS hold copy of each Sephora output (RAW included) before the 1-day lifecycle; `gcloud storage cp -r gs://pi-sephora-e631eaba/<PREFIX> gs://pi-capture-productintelligence-beeb3/sephora-hold/` by the key holder; first: `p0-20261008-sephora` (Coordinator 01a11c97-bac8). Capture data is evidence: never deleted | ~0.02–0.03 USD/GB-month |
