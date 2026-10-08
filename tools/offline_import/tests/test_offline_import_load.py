@@ -246,6 +246,66 @@ def test_feed_without_price_columns_records_price_unknown(db: str, tmp_path: Pat
     assert states == {"unknown"}
 
 
+def test_a_full_price_row_is_full_only_when_the_feed_states_a_regular_on_promotion(
+    db: str, tmp_path: Path
+) -> None:
+    """One feed file, byte for byte, loaded for two sources declared differently: only the
+    declaration can tell them apart (never the rows, never a constant shared by the parsers). A
+    feed that never captured a regular price (Bloomingdale's) loads no 'full' row: the export
+    would read it as its own regular price, a 0% discount nobody observed. Each row keeps its own
+    observed_at; the file's evidence row alone carries the import time."""
+    feed = tmp_path / "acme_regular.json"
+    times = ("2026-10-03T08:00:00+00:00", "2026-10-05T09:30:00+00:00")
+    items = [
+        {"listing_key": f"K{i}", "url": f"https://acme.example/{i}", "price_current": "90",
+         "observed_at": at}
+        for i, at in enumerate(times)
+    ]  # fmt: skip
+    feed.write_text(json.dumps({"items": items}))
+    loaded: dict[str, list[tuple[Any, ...]]] = {}
+    for declared in ("on_promotion", "not_collected"):
+        name = f"acme_regular_{declared}"
+        mapping = ImportMapping.model_validate(
+            {
+                "source": {"name": name, "kind": "web"},
+                "country": "AE",
+                "locale": "en-AE",
+                "currency": "AED",
+                "time_zone": "Asia/Dubai",
+                "format": "json",
+                "json_items_path": "items",
+                "regular_stated": declared,
+                "columns": {
+                    c: c
+                    for c in (
+                        "listing_key",
+                        "url",
+                        "observed_at",
+                        "price_current",
+                        "price_regular",
+                        "price_promo",
+                    )
+                },
+            }
+        )
+        out = _load(db, mapping, feed, f"gs://pi-imports-test/acme/{name}.json")
+        loaded[declared] = _rows(
+            db,
+            "SELECT o.price_type::text, o.price_regular_stated, o.field_state, o.observed_at,"
+            " e.retrieved_at FROM offer_observation o JOIN evidence e ON e.id = o.evidence_id"
+            " WHERE o.crawl_run_id=%s ORDER BY o.observed_at",
+            (out["crawl_run_id"],),
+        )
+    unknown = {"price_regular_stated": "unknown", "price_promo": "unknown"}
+    for declared, price_type in (("on_promotion", "full"), ("not_collected", None)):
+        got = loaded[declared]
+        assert [(t, regular) for t, regular, *_ in got] == [(price_type, None)] * 2
+        for _, _, field_state, _, _ in got:
+            assert (field_state.items() >= unknown.items()) is (declared == "not_collected")
+        assert [observed.isoformat() for *_, observed, _ in got] == list(times)
+        assert all(r not in {datetime.fromisoformat(t) for t in times} for *_, r in got)
+
+
 def _content_feed(tmp_path: Path, name: str, locale: str = "en-AE") -> tuple[ImportMapping, Path]:
     columns = (
         "listing_key", "url", "name", "price_current", "observed_at", "description", "gender",
@@ -260,6 +320,7 @@ def _content_feed(tmp_path: Path, name: str, locale: str = "en-AE") -> tuple[Imp
             "time_zone": "Asia/Dubai",
             "format": "json",
             "json_items_path": "items",
+            "regular_stated": "on_promotion",
             "columns": {c: c for c in columns},
         }
     )
@@ -368,6 +429,7 @@ def test_page_attributes_go_to_labels_the_style_id_to_master_id_and_inci_to_ingr
             "time_zone": "Asia/Dubai",
             "format": "json",
             "json_items_path": "items",
+            "regular_stated": "on_promotion",
             "columns": {c: c for c in ("listing_key", "url", "observed_at", *attributes)},
         }
     )
@@ -427,6 +489,7 @@ def test_content_only_appends_a_re_derived_feed_and_touches_nothing_else(
         "time_zone": "Asia/Dubai",
         "format": "json",
         "json_items_path": "items",
+        "regular_stated": "on_promotion",
         "columns": {c: c for c in (*columns, "finish")},
     }
     mapping = ImportMapping.model_validate(config)
@@ -530,6 +593,7 @@ def test_content_only_skips_and_counts_a_listing_whose_content_is_already_later(
             "time_zone": "Asia/Dubai",
             "format": "json",
             "json_items_path": "items",
+            "regular_stated": "on_promotion",
             "columns": {c: c for c in columns},
         }
     )

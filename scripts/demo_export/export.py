@@ -96,6 +96,9 @@ class ListingRow:
     stock_observed_at: datetime | None = None
     stock_evidence_retrieved_at: datetime | None = None
     stock_run_id: int | None = None
+    #: When an offline_import feed file holding this listing's rows was imported (NULL for
+    #: crawled evidence). Never a capture time: v2 refuses an offer dated by it.
+    file_received_at: datetime | None = None
     #: The retailer's main image URL from the latest content; only v2 reads it (allowlisted there).
     image: str | None = None
     #: v3 ``Offer.content`` only (2026-10-03), all from the latest content row and the variant:
@@ -282,7 +285,15 @@ obs AS (
     o.crawl_run_id,
     cr.status AS run_status,
     sc.coverage_status::text,
-    e.retrieved_at AS evidence_retrieved_at
+    -- An offline_import evidence row is the feed file: its retrieved_at is when the file was
+    -- imported (the Ulta feed's own per-capture rows aside), not when the page was seen, so such
+    -- a row is dated by its own observed_at, the page's capture time. file_received_at keeps an
+    -- import time that differs from it only to prove it is never published as a capture time.
+    CASE WHEN e.fetch_method <> 'offline_import' THEN e.retrieved_at END AS evidence_retrieved_at,
+    CASE
+      WHEN e.fetch_method = 'offline_import' AND e.retrieved_at <> o.observed_at
+      THEN e.retrieved_at
+    END AS file_received_at
   FROM offer_observation o
   JOIN eligible_runs eligible ON eligible.id = o.crawl_run_id
   JOIN crawl_run cr ON cr.id = o.crawl_run_id
@@ -310,7 +321,7 @@ latest_price AS (
 latest_stock AS (
   SELECT DISTINCT ON (source_listing_id)
     source_listing_id, availability_state, observed_at, observation_id, evidence_retrieved_at,
-    crawl_run_id
+    file_received_at, crawl_run_id
   FROM obs
   -- Not a stock observation: availability not_observed, unknown or blocked; never replaces a
   -- known state.
@@ -338,7 +349,8 @@ latest AS (
     p.crawl_run_id AS price_run_id,
     st.observed_at AS stock_observed_at,
     st.evidence_retrieved_at AS stock_evidence_retrieved_at,
-    st.crawl_run_id AS stock_run_id
+    st.crawl_run_id AS stock_run_id,
+    COALESCE(p.file_received_at, st.file_received_at, a.file_received_at) AS file_received_at
   FROM latest_any a
   LEFT JOIN latest_price p ON p.source_listing_id = a.source_listing_id
   LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id
@@ -389,6 +401,7 @@ SELECT
   latest.stock_observed_at,
   latest.stock_evidence_retrieved_at,
   latest.stock_run_id,
+  latest.file_received_at,
   -- The main image. Two element shapes are read: the Sephora loader's {role: 'main', url}, and
   -- the owner's ulta_ae load {roles: [..., 'image', ...], download_url} (download_url is the CDN
   -- URL the live combined file carries; local_path is never read). Lowest position wins. With no
