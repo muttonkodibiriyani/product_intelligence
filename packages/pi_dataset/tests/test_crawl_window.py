@@ -62,10 +62,13 @@ def _doc_with(window_doc: dict[str, Any] | None) -> dict[str, Any]:
     d["meta"]["cutoff"] = "2026-10-06T20:00:00Z"
     d["meta"]["generatedAt"] = "2026-10-06T21:00:00Z"
     if window_doc is not None:
-        d["meta"]["retailers"][0]["window"] = window_doc
+        for retailer in d["meta"]["retailers"]:
+            retailer["window"] = dict(window_doc)
         for product in d["products"]:  # captured inside every window these tests write
             for offer in product["offers"].values():
                 offer["evidence"]["capturedAt"] = "2026-10-06T19:00:00Z"
+                if not offer.get("early"):  # a recon offer is never the window's run
+                    offer["evidence"]["runId"] = window_doc["runId"]
     return d
 
 
@@ -307,37 +310,107 @@ def test_without_a_window_the_rule_does_not_apply() -> None:
     DatasetV3.model_validate(d)
 
 
-def test_a_retailer_without_a_window_keeps_its_old_values_beside_a_windowed_one() -> None:
-    """The withheld shape (Coordinator 01a11cc6-57aa): one retailer windowed, another with no
-    window and a whole-retailer ``notObserved`` entry. The rules hold the windowed retailer only:
-    the other's values from before the window (e.g. Ulta's U1 captures) stay legal, unmarked."""
+def test_an_observed_offer_of_another_run_fails_even_inside_the_span() -> None:
+    """Validation holds what the exporter promises (Coordinator 01a11cd8-1fd5): an observed
+    offer of a windowed retailer is from the window's run or one of its segments."""
     d = _doc_with(FOUR)
-    windowed, other = (r["id"] for r in d["meta"]["retailers"][:2])
+    _first_offer(d)["evidence"]["runId"] = "6"
+    with pytest.raises(ValidationError, match="runId 6 is not its retailer's window run 7"):
+        DatasetV3.model_validate(d)
+    d["meta"]["retailers"][0]["window"]["segments"] = ["6"]
+    DatasetV3.model_validate(d)
+
+
+def test_an_observed_offer_with_no_run_fails() -> None:
+    """A null runId is not one of the window's runs (Coordinator 01a11ce2-fd3e)."""
+    d = _doc_with(FOUR)
+    _first_offer(d)["evidence"]["runId"] = None
+    with pytest.raises(ValidationError, match="runId None is not its retailer's window run 7"):
+        DatasetV3.model_validate(d)
+
+
+def _withheld(d: dict[str, Any], start: str | None, end: str = "2026-10-06") -> str:
+    """The second retailer withheld beside the windowed first (Coordinator 01a11cd9-48b1): no
+    window, last seen ``since`` 10-01 (its offers' run 1 captures, 04:10 in Dubai) and, unless
+    ``start`` is None, a whole-retailer ``notObserved`` entry ``start``..``end``."""
+    other = d["meta"]["retailers"][1]
+    other |= {"window": None, "since": "2026-10-01"}
     contexts = {c["id"]: c["retailer"] for c in d["meta"]["contexts"]}
-    old = [
-        o
+    for p in d["products"]:
+        for cid, o in p["offers"].items():
+            if contexts[cid] == other["id"] and not o.get("early"):
+                o["evidence"] |= {"capturedAt": "2026-10-01T00:10:00Z", "runId": "1"}
+    d["notObserved"] = (
+        []
+        if start is None
+        else [
+            {
+                "retailer": other["id"],
+                "context": None,
+                "start": start,
+                "end": end,
+                "categories": None,
+                "why": WHY,
+            }
+        ]
+    )
+    return str(other["id"])
+
+
+def test_a_retailer_without_a_window_keeps_its_old_values_beside_a_windowed_one() -> None:
+    """The withheld shape (Coordinator 01a11cc6-57aa, 01a11cd9-48b1): one retailer windowed,
+    another with no window and a whole-retailer ``notObserved`` entry from the day after its
+    ``since`` to the window's last day. The rules hold the windowed retailer only: the other's
+    values from before the window (e.g. Ulta's U1 captures) stay legal, unmarked."""
+    d = _doc_with(FOUR)
+    other = _withheld(d, "2026-10-02")
+    contexts = {c["id"]: c["retailer"] for c in d["meta"]["contexts"]}
+    assert any(
+        contexts[cid] == other and any(v is not None for v in o["series"]["price"])
         for p in d["products"]
         for cid, o in p["offers"].items()
-        if contexts[cid] == other and any(v is not None for v in o["series"]["price"])
-    ]
-    assert old, "the fixture needs a valued offer of the second retailer"
-    for o in old:
-        o["evidence"] |= {"capturedAt": "2026-09-30T18:00:00Z", "runId": "1"}
-    d["notObserved"] = [
-        {
-            "retailer": other,
-            "context": None,
-            "start": "2026-09-30",
-            "end": "2026-10-06",
-            "categories": None,
-            "why": WHY,
-        }
-    ]
+    ), "the fixture needs a valued offer of the second retailer"
     ds = DatasetV3.model_validate(d)
     shops = {r.id: r for r in ds.meta.retailers}
-    assert shops[windowed].window is not None
+    assert shops[d["meta"]["retailers"][0]["id"]].window is not None
     assert shops[other].window is None
     # the same old capture on the windowed retailer is refused
     _first_offer(d)["evidence"]["capturedAt"] = "2026-09-30T18:00:00Z"
     with pytest.raises(ValidationError, match="outside its retailer's window"):
+        DatasetV3.model_validate(d)
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "why"),
+    [
+        (None, "2026-10-06", "no entry"),
+        ("2026-10-03", "2026-10-06", "a day's gap after since"),
+        ("2026-10-02", "2026-10-05", "ends before the window's last day"),
+    ],
+)
+def test_a_withheld_retailer_needs_an_entry_from_the_day_after_since_to_the_end(
+    start: str | None, end: str, why: str
+) -> None:
+    d = _doc_with(FOUR)
+    _withheld(d, start, end)
+    with pytest.raises(
+        ValidationError,
+        match=r"no whole-retailer notObserved entry covering 2026-10-02\.\.2026-10-06",
+    ):
+        DatasetV3.model_validate(d)
+
+
+def test_a_withheld_retailer_entry_must_be_for_the_whole_retailer() -> None:
+    d = _doc_with(FOUR)
+    _withheld(d, "2026-10-02")
+    d["notObserved"][0]["categories"] = ["skincare"]
+    with pytest.raises(ValidationError, match="no whole-retailer notObserved entry"):
+        DatasetV3.model_validate(d)
+
+
+def test_a_withheld_retailer_with_offers_states_since() -> None:
+    d = _doc_with(FOUR)
+    _withheld(d, "2026-09-01")
+    d["meta"]["retailers"][1]["since"] = None
+    with pytest.raises(ValidationError, match=r"withheld \(no window\) with offers but no since"):
         DatasetV3.model_validate(d)

@@ -71,7 +71,9 @@ def beauty_doc() -> bytes:
 
 def faces_file(dates: list[str]) -> DatasetV3:
     """A Faces-only export: partial, no stock, one stated was-price."""
-    d = snapshot_doc({"faces-1": (FACES,), "faces-2": (FACES,)}, dates=dates)
+    d = snapshot_doc({"faces-1": (FACES,), "faces-2": (FACES,)}, dates=dates, windows=False)
+    # no window: beside the window-less beauty fixture a windowed shop would leave the beauty
+    # shops withheld without their notObserved entries (ADR-0013 §8), and the view refused
     d["meta"]["retailers"][0]["status"] = "partial"
     d["products"][0]["offers"][FACES]["series"]["regular"] = [REGULAR] * len(dates)
     return DatasetV3.model_validate(d)

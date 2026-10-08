@@ -39,7 +39,7 @@ def _offer(retailer: str, minor: int, n: int, captured: str) -> Doc:
         "evidence": {
             "capturedAt": captured,
             "source": f"fixture:{retailer}",
-            "runId": None,
+            "runId": f"run-{retailer}",  # the run of its window (own_keys)
             "itemKey": None,
             "itemKeyKind": None,
         },
@@ -70,6 +70,7 @@ def snapshot_doc(
     stage: str = "reviewed",
     fields: Mapping[str, str] | None = None,
     per_retailer: bool = True,
+    windows: bool = True,
 ) -> Doc:
     d = doc()
     meta = d["meta"]
@@ -96,7 +97,7 @@ def snapshot_doc(
         meta["retailers"] = [
             r
             | {
-                "window": window | {"runId": f"run-{r['id']}"},
+                "window": window | {"runId": f"run-{r['id']}"} if windows else None,
                 "fields": dict(meta["fields"]),
                 "capabilities": dict(meta["capabilities"]),
             }

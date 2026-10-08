@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal, Self
@@ -367,6 +367,7 @@ def v3_errors(ds: DatasetV3) -> list[str]:
     errors = _meta_errors(ds.meta)
     errors += _window_errors(ds.meta)
     errors += _window_offer_errors(ds)
+    errors += _withheld_errors(ds)
     errors += _profile_errors(ds)
     errors += _context_errors(ds)
     errors += [f"products: duplicate id {p}" for p in _duplicates([p.id for p in ds.products])]
@@ -402,7 +403,8 @@ def _observed(offer: OfferV3) -> bool:
 
 def _window_offer_errors(ds: DatasetV3) -> list[str]:
     """Each offer against its retailer's window (ADR-0013); a retailer without one (an upgraded
-    v2 body) is not checked. An observed offer was captured in the window. An offer marked
+    v2 body) is not checked. An observed offer was captured in the window, by the window's run
+    or one of its segments. An offer marked
     ``notObservedReason`` has no value, is from another run than the window's (a null run id is
     another run) and is covered by a ``notObserved`` entry, so the coverage disclosure names it.
     A recon (``early``) offer is never served as an in-window value and is not held to the span,
@@ -444,11 +446,59 @@ def _window_offer_errors(ds: DatasetV3) -> list[str]:
                         f"{where}: a recon offer captured by the window's run "
                         f"{offer.evidence.run_id}"
                     )
-            elif not window.start <= at <= window.end:
-                errors.append(
-                    f"{where}: capturedAt {at.isoformat()} is outside its retailer's window "
-                    f"{window.start.isoformat()}..{window.end.isoformat()} (run {window.run_id})"
-                )
+            else:
+                if not window.start <= at <= window.end:
+                    errors.append(
+                        f"{where}: capturedAt {at.isoformat()} is outside its retailer's window "
+                        f"{window.start.isoformat()}..{window.end.isoformat()} "
+                        f"(run {window.run_id})"
+                    )
+                if not ours:
+                    errors.append(
+                        f"{where}: runId {offer.evidence.run_id} is not its retailer's window run "
+                        f"{window.run_id} or one of its segments {sorted(window.segments)}"
+                    )
+    return errors
+
+
+def _withheld_errors(ds: DatasetV3) -> list[str]:
+    """A retailer without a window beside a windowed one is withheld (ADR-0013 §8): if it still
+    has offers, one whole-retailer ``notObserved`` entry (no context, no categories) covers the
+    gap: from the day after ``since`` (its last observed day) or earlier, to the set's last
+    window day or later, in market days, as the publish guard (``pi_api.windows``) reads it. A body
+    where no retailer has a window (an upgraded v2 body) is not checked."""
+    zones = {m.country: m.time_zone for m in ds.meta.markets}
+    ends = [
+        local_date(r.window.end, zones[r.country])
+        for r in ds.meta.retailers
+        if r.window is not None and r.country in zones
+    ]
+    if not ends:
+        return []
+    last = max(ends)
+    retailer_of = _retailer_of(ds)
+    stocked = {retailer_of.get(cid) for p in ds.products for cid in p.offers}
+    errors: list[str] = []
+    for r in ds.meta.retailers:
+        if r.window is not None or r.id not in stocked or r.country not in zones:
+            continue
+        where = f"meta.retailers.{r.id}"
+        if r.since is None:
+            errors.append(f"{where}: withheld (no window) with offers but no since")
+            continue
+        first = r.since + timedelta(days=1)
+        if not any(
+            w.retailer == r.id
+            and w.context is None
+            and w.categories is None
+            and w.start <= first
+            and last <= w.end
+            for w in ds.not_observed
+        ):
+            errors.append(
+                f"{where}: withheld (no window) with offers but no whole-retailer notObserved "
+                f"entry covering {first}..{last}"
+            )
     return errors
 
 
