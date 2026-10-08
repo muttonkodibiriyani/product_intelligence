@@ -13,6 +13,8 @@ from typing import Any
 
 import pytest
 
+from pi_capture.feed import SHOPS as CAPTURE_SHOPS
+from pi_capture.feed import mapping_for
 from pi_dataset import RetailerStatus, dump_dataset, load_any, load_dataset
 from pi_metrics import ProductFilter, launches, view
 from scripts.demo_export.export import (
@@ -32,6 +34,7 @@ from scripts.demo_export.test_history import NOW as LATER
 from scripts.demo_export.test_v2 import build
 from scripts.demo_export.v2 import (
     IMAGE_HOSTS,
+    REGULAR_STATED,
     RETAILERS,
     build_dataset_v2,
     to_v3,
@@ -53,9 +56,14 @@ SHOPS = {"o": OUNASS, "b": BLOOMINGDALES}
 
 def shop_row(source: str, variant: int = 400, family: int = 40, **kw: Any) -> ListingRow:
     """An Ounass or Bloomingdale's import row as pi_db holds it: the page's own stock, no rating
-    (neither page carries one), a partial run and context."""
+    (neither page carries one), a partial run and context. A Bloomingdale's row states no
+    regular price and has no price type (its feed declares ``regular_stated`` not_collected)."""
     kw.setdefault("availability", "in_stock")
+    if source == BLOOMINGDALES:
+        kw.setdefault("regular", None)
     base = row(source=source, family=family, variant=variant, **kw)
+    if source == BLOOMINGDALES:
+        base = replace(base, price_type=None)
     image = BLM_IMAGE if source == BLOOMINGDALES else OUNASS_IMAGE
     return replace(
         base,
@@ -136,13 +144,59 @@ def test_ratings_are_not_collected(source: str) -> None:
     assert d["meta"]["fields"]["rating"] == "not_collected"
 
 
-@pytest.mark.parametrize("source", [OUNASS, BLOOMINGDALES])
-def test_stated_was_prices_are_published_as_regular(source: str) -> None:
-    d = doc([shop_row(source, price="80", regular="100")])
+def test_ounass_stated_was_prices_are_published_as_regular() -> None:
+    d = doc([shop_row(OUNASS, price="80", regular="100")])
     assert only_offer(d)["series"]["regular"] == [
         {"amount": "100.00", "minor": 10000, "currency": "AED"}
     ]
     assert d["meta"]["capabilities"]["promotions"] is True
+
+
+def test_regular_capability_is_declared_for_every_slot_and_agrees_with_the_importer() -> None:
+    """No default: a slot without a declaration is a KeyError at export, not 'on_promotion'."""
+    assert set(REGULAR_STATED) == set(RETAILERS)
+    assert REGULAR_STATED["b"] == "not_collected"
+    for shop, declared in REGULAR_STATED.items():
+        source = RETAILERS[shop][0]
+        if source in CAPTURE_SHOPS:
+            assert CAPTURE_SHOPS[source].regular_stated == declared
+            assert mapping_for(CAPTURE_SHOPS[source])["regular_stated"] == declared
+
+
+def test_ounass_full_price_rows_keep_their_price_as_regular() -> None:
+    """Ounass states a regular only on markdowns (on_promotion): a full-price row's regular is its
+    price, so promotions stay on with a 0% share."""
+    full = replace(shop_row(OUNASS, price="90", regular="90"), price_type="full")
+    d = doc([full])
+    assert only_offer(d)["series"]["regular"] == only_offer(d)["series"]["price"]
+    assert d["meta"]["fields"]["regular"] == "ok"
+    assert d["meta"]["capabilities"]["promotions"] is True
+
+
+@pytest.mark.parametrize("price_type", [None, "full"])
+def test_bloomingdales_regular_is_not_collected(price_type: str | None) -> None:
+    """Bloomingdale's captured no regular price: none is published, ``fields.regular`` is
+    not_collected and promotions are off. ``full`` is how the 7,694 rows of run 8 were loaded
+    before the declaration (the query then gave them regular = price, a 0% discount nobody
+    observed); ``None`` is how the importer loads them now. Both export the same."""
+    rows = [
+        replace(shop_row(BLOOMINGDALES, variant=v, family=v, price="90"), price_type=price_type)
+        for v in (400, 401)
+    ]
+    if price_type == "full":  # the query's CASE: a full row's regular is its own price
+        rows = [replace(r, regular=r.price) for r in rows]
+    d = doc(rows, slots=("b",))
+    assert all(o["series"]["regular"] is None for p in d["products"] for o in p["offers"].values())
+    assert all(o["series"]["price"] for p in d["products"] for o in p["offers"].values())
+    assert d["meta"]["fields"]["regular"] == "not_collected"
+    assert d["meta"]["capabilities"]["promotions"] is False
+
+
+def test_a_stated_regular_on_a_not_collected_source_fails_the_export() -> None:
+    """A contradiction is an error, never silently dropped (the importer rejects such a row)."""
+    stated = replace(shop_row(BLOOMINGDALES, price="80", regular="100"), price_type="promotional")
+    with pytest.raises(ValueError, match="declared not_collected"):
+        doc([stated])
 
 
 def test_bloomingdales_images_only_from_its_own_host() -> None:
@@ -340,3 +394,21 @@ def test_no_launch_and_no_removal_whatever_the_runs_say(source: str) -> None:
     )
     (offer,) = one.products[0].offers.values()
     assert offer.series.availability == ("out_of_stock",)
+
+
+def test_only_the_declaration_tells_two_sources_with_identical_rows_apart() -> None:
+    """The pin on "never derived": Ounass and Bloomingdale's rows identical but for the source,
+    none struck (price_type 'full', regular = price as the query gives it), in one export. Only
+    the per-source declaration differs, so any rule read from the data or from a constant the
+    parsers share (LOOKED_FOR) would publish both the same."""
+    assert (REGULAR_STATED["o"], REGULAR_STATED["b"]) == ("on_promotion", "not_collected")
+    same: dict[str, Any] = {"price": "90", "regular": "90", "variant": 400, "family": 40}
+    rows = [replace(row(source=s, **same), price_type="full") for s in (OUNASS, BLOOMINGDALES)]
+    assert replace(rows[0], source_name=BLOOMINGDALES) == rows[1]
+    offers = {
+        source: only_offer(doc([r], slots=(slot(source),)))
+        for source, r in zip((OUNASS, BLOOMINGDALES), rows, strict=True)
+    }
+    assert offers[OUNASS]["series"]["regular"] == offers[OUNASS]["series"]["price"]
+    assert offers[BLOOMINGDALES]["series"]["regular"] is None
+    assert offers[OUNASS]["series"]["price"] == offers[BLOOMINGDALES]["series"]["price"]
