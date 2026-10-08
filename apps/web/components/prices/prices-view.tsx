@@ -72,13 +72,18 @@ export function PricesView() {
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
   };
   const wanted = sp.get('retailer');
-  const selected = (wanted && ids.includes(wanted) ? wanted : ids[0]) ?? null;
+  // A link naming a retailer the API doesn't serve (a typo, an old id, a shop not collected) shows
+  // nothing for it and says so: falling back to the first retailer would put its numbers under
+  // the name in the link.
+  const unknown = !!wanted && ids.length > 0 && !ids.includes(wanted);
+  const selected = unknown ? null : (wanted ?? ids[0]) || null;
   // A summary the API withheld for this retailer: the page says why, never another retailer's data.
   const missing = selected ? s.missing.find((m) => m.retailer === selected) : undefined;
   // Rows are keyed by the retailer the API answered for; the asked-for id's position is the fallback.
-  const row = missing
-    ? undefined
-    : (s.rows.find((r) => r.retailer === selected) ?? s.rows[selected ? ids.indexOf(selected) : 0]);
+  const row =
+    !selected || missing
+      ? undefined
+      : (s.rows.find((r) => r.retailer === selected) ?? s.rows[ids.indexOf(selected)]);
   const topRaw = Number(sp.get('top'));
   const top: Top = (TOPS as readonly number[]).includes(topRaw) ? (topRaw as Top) : 10;
 
@@ -89,13 +94,13 @@ export function PricesView() {
         <ErrorNotice error={error} />
       ) : loading || (s.loading && s.rows.length === 0) ? (
         <Loading kind="chart">{t('loading')}</Loading>
-      ) : ids.length === 0 || (!row && !missing && !s.error) ? (
+      ) : ids.length === 0 || (!unknown && !row && !missing && !s.error) ? (
         <p className="text-sm text-ink-2">{t('noRetailers')}</p>
       ) : (
         <>
           <section aria-labelledby="per-retailer" className="space-y-4">
             <SectionHead id="per-retailer" title={t('perRetailer')} hint={t('perRetailerHint')}>
-              {ids.length > 1 && (
+              {(ids.length > 1 || unknown) && (
                 <Segmented
                   label={tw('controls.retailer')}
                   value={selected ?? ''}
@@ -104,7 +109,14 @@ export function PricesView() {
                 />
               )}
             </SectionHead>
-            {s.error && !row && !missing && <ErrorNotice error={s.error.error} onRetry={s.error.retry} />}
+            {unknown && (
+              <p role="status" className="text-sm text-ink-2">
+                {t('unknownRetailer')}
+              </p>
+            )}
+            {s.error && selected && !row && !missing && (
+              <ErrorNotice error={s.error.error} onRetry={s.error.retry} />
+            )}
             {missing && (
               <p role="status" className="text-sm text-ink-2">
                 {t('noSummary', { retailer: name(missing.retailer) })}{' '}

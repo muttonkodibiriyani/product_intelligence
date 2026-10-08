@@ -307,3 +307,114 @@ for (const locale of ['en', 'ar'] as const) {
     });
   });
 }
+
+/**
+ * The five live retailer ids, each with its own product count, so a page that showed another
+ * retailer's summary under the asked-for id could not pass.
+ */
+const FIVE = { ulta_ae: 701, sephora_me: 502, faces_ae: 303, ounass_ae: 404, bloomingdales_ae: 905 };
+const meta5 = {
+  ...meta,
+  data: {
+    ...meta.data,
+    retailers: Object.keys(FIVE).map((id) => ({
+      country: 'AE',
+      id,
+      name: id,
+      note: null,
+      since: '2026-09-01',
+      status: 'supported',
+    })),
+  },
+};
+
+function api5() {
+  return async (route: Route) => {
+    const u = new URL(route.request().url());
+    const p = u.pathname;
+    if (p === '/api/v1/meta') return route.fulfill({ json: meta5 });
+    if (p === '/api/v1/summary') {
+      const id = u.searchParams.get('retailer') as keyof typeof FIVE;
+      return route.fulfill({
+        json: { ...summaryBody, data: { ...summaryBody.data, retailer: id, products: FIVE[id] } },
+      });
+    }
+    if (p === '/api/v1/compare') return route.fulfill({ json: compare });
+    if (p === '/api/v1/category-compare') {
+      const [base, other] = (u.searchParams.get('retailers') ?? '').split(',');
+      return route.fulfill({ json: categoryCompareBody(base, other, {}) });
+    }
+    return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+  };
+}
+
+for (const locale of ['en', 'ar'] as const) {
+  const T =
+    locale === 'ar'
+      ? {
+          retailer: 'المتجر',
+          products: 'المنتجات المتتبَّعة',
+          unknown: 'يشير هذا الرابط إلى متجر لا تتوفر له بيانات أسعار هنا. اختر متجرًا من الأعلى.',
+        }
+      : {
+          retailer: 'Retailer',
+          products: 'Products tracked',
+          unknown: 'This link names a retailer with no price data here. Pick one above.',
+        };
+
+  test.describe(`${locale} prices: the retailer in the link`, () => {
+    async function at(page: Page, q: string): Promise<Mock> {
+      const mock = await mockBackend(page, { onApi: api5() });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/prices/${q}`);
+      return mock;
+    }
+    const section = (page: Page) => page.locator('section[aria-labelledby="per-retailer"]');
+    const picker = (page: Page) => section(page).getByRole('group', { name: T.retailer });
+
+    test("an id the API doesn't serve says so and shows no other retailer's number", async ({ page }) => {
+      // sephora_ae is an old alias, not a served id; "nope" is a typo.
+      const mock = await at(page, '?retailer=sephora_ae');
+      for (const q of ['?retailer=sephora_ae', '?retailer=nope']) {
+        if (q !== '?retailer=sephora_ae') await page.goto(`/app/${locale}/prices/${q}`);
+        await expect(section(page).getByRole('status')).toHaveText(T.unknown);
+        await expect(section(page).getByText(T.products)).toHaveCount(0);
+        await expect(section(page).locator('dl')).toHaveCount(0);
+        // No shop is pressed: the page has not picked one for the reader.
+        await expect(picker(page).locator('[aria-pressed="true"]')).toHaveCount(0);
+      }
+      // Choosing one from there shows that one.
+      await picker(page).getByRole('button', { name: 'Faces' }).click();
+      await expect(page).toHaveURL(/[?&]retailer=faces_ae(&|$)/);
+      await expect(section(page).locator('dd').first()).toHaveText('303');
+      await expect(section(page).getByRole('status')).toHaveCount(0);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('?retailer=sephora_me shows Sephora and its own count, not the first retailer', async ({ page }) => {
+      const mock = await at(page, '?retailer=sephora_me');
+      await expect(picker(page).getByRole('button', { name: 'Sephora' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(section(page).locator('dd').first()).toHaveText('502');
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('choosing the first retailer clears the link and shows it because it was chosen', async ({
+      page,
+    }) => {
+      const mock = await at(page, '?retailer=ounass_ae');
+      await expect(section(page).locator('dd').first()).toHaveText('404');
+      await picker(page).getByRole('button', { name: 'Ulta' }).click();
+      await expect(page).not.toHaveURL(/[?&]retailer=/);
+      await expect(picker(page).getByRole('button', { name: 'Ulta' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(section(page).locator('dd').first()).toHaveText('701');
+      await expect(section(page).getByRole('status')).toHaveCount(0);
+      expect(mock.errors).toEqual([]);
+    });
+  });
+}

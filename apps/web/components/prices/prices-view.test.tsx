@@ -143,3 +143,29 @@ describe('PricesView: a retailer whose summary the API withheld', () => {
     expect(status.textContent).toContain(ar.reasons.retailer_blocked);
   });
 });
+
+describe('PricesView: a retailer id the API does not serve', () => {
+  it.each([['en'], ['ar']] as const)(
+    'says so (%s), shows no retailer’s numbers and presses no shop',
+    async (locale) => {
+      show('retailer=sephora_ae', locale);
+      const msgs = locale === 'ar' ? ar : en;
+      const status = await screen.findByText(msgs.prices.unknownRetailer);
+      expect(status.closest('[role=status]')).not.toBeNull();
+      expect(document.querySelector('[data-takeaway]')).toBeNull();
+      expect(document.querySelector('section[aria-labelledby="per-retailer"] dl')).toBeNull();
+      expect(document.querySelector('[aria-pressed="true"]')).toBeNull();
+      // Both served shops stay one press away.
+      expect(screen.getByRole('button', { name: 'Shop A' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Shop B' })).toBeTruthy();
+    },
+  );
+
+  it('an id it serves shows that retailer, not the first', async () => {
+    show('retailer=shop_c');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Shop C' }).getAttribute('aria-pressed')).toBe('true'),
+    );
+    expect(screen.queryByText(en.prices.unknownRetailer)).toBeNull();
+  });
+});
