@@ -9,6 +9,7 @@ import os
 import shutil
 import uuid
 from collections.abc import Iterator
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -336,3 +337,237 @@ def test_url_template_encodes_the_key() -> None:
     ld.m = load_mapping(MAPPING)
     row = SimpleNamespace(listing_key="AB/10 01?x#y", text={})
     assert ld._url(row) == "https://acme-beauty.example/p/AB%2F10%2001%3Fx%23y"  # type: ignore[arg-type]
+
+
+def test_page_attributes_go_to_labels_the_style_id_to_master_id_and_inci_to_ingredients(
+    db: str, tmp_path: Path
+) -> None:
+    attributes = {
+        "style_id": "STYLE-9",
+        "ingredients": "Aqua, Glycerin, Parfum, Limonene, Linalool, Citral",
+        "gift_with_purchase": ["Beauty Treats, Complimentary"],
+        "mpn": "VPN-1",
+        "colour_code": "242",
+        "colour_hex": "#C4A1A0",
+        "finish": "matte",
+        "lifecycle_class": "core",
+        "exclusivity": "exclusive",
+        "loyalty_points": "45",
+        "installment_amount_minor": "3500",
+        "bullets": ["Long wear", "Vegan"],
+        "skin_type": ["All Skin Types"],
+        "concern": ["Dryness"],
+        "installment_provider": ["tabby", "tamara"],
+    }
+    mapping = ImportMapping.model_validate(
+        {
+            "source": {"name": "acme_attrs", "kind": "web"},
+            "country": "AE",
+            "locale": "en-AE",
+            "currency": "AED",
+            "time_zone": "Asia/Dubai",
+            "format": "json",
+            "json_items_path": "items",
+            "columns": {c: c for c in ("listing_key", "url", "observed_at", *attributes)},
+        }
+    )
+    item = {
+        "listing_key": "A-1",
+        "url": "https://acme-beauty.example/p/a-1",
+        "observed_at": "2026-10-02T09:00:00+00:00",
+        **attributes,
+    }
+    path = tmp_path / "attrs.json"
+    path.write_text(json.dumps({"items": [item]}))
+    _load(db, mapping, path, "gs://pi-imports-test/acme/attrs.json")
+    [(ingredients, labels)] = _rows(
+        db,
+        "SELECT c.ingredients, c.labels FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id WHERE l.source_listing_key = 'A-1'",
+    )
+    assert ingredients == attributes["ingredients"]
+    assert labels["master_id"] == "STYLE-9"
+    assert "style_id" not in labels
+    assert "ingredients" not in labels
+    for key, value in attributes.items():
+        if key not in {"style_id", "ingredients"}:
+            assert labels[key] == value, key
+
+
+def test_the_content_hash_of_a_row_without_ingredients_is_unchanged() -> None:
+    labels = {"brand": "Acme"}
+    before = _sha_json([labels, "desc", ["new"]])
+    assert content_hash(labels, "desc", ["new"]) == before
+    assert content_hash(labels, "desc", ["new"], None) == before
+    assert content_hash(labels, "desc", ["new"], "Aqua") != before
+    assert content_hash(labels, None, None, "Aqua") != content_hash(labels, None, None)
+
+
+def _sha_json(parts: object) -> str:
+    return hashlib.sha256(
+        json.dumps(parts, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+def _attrs_feed(tmp_path: Path, name: str, items: list[dict[str, Any]]) -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps({"items": items}))
+    return path
+
+
+def test_content_only_appends_a_re_derived_feed_and_touches_nothing_else(
+    db: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    columns = ("listing_key", "url", "observed_at", "price_current", "style_id", "ingredients")
+    config = {
+        "source": {"name": "acme_rederive", "kind": "web"},
+        "country": "AE",
+        "locale": "en-AE",
+        "currency": "AED",
+        "time_zone": "Asia/Dubai",
+        "format": "json",
+        "json_items_path": "items",
+        "columns": {c: c for c in (*columns, "finish")},
+    }
+    mapping = ImportMapping.model_validate(config)
+    mapping_path = tmp_path / "rederive_mapping.json"
+    mapping_path.write_text(json.dumps(config))
+    monkeypatch.setenv(DATABASE_URL_ENV, db)
+    page_at = "2026-10-03T10:00:00+00:00"
+    base = [
+        {"listing_key": k, "url": f"https://acme-beauty.example/p/{k}", "observed_at": page_at,
+         "price_current": "120.00"}
+        for k in ("R-1", "R-2")
+    ]  # fmt: skip
+    v1 = _attrs_feed(tmp_path, "v1.json", base)
+    first = _load(db, mapping, v1, "gs://pi-imports-test/acme/v1.json")
+    tables = ("crawl_run", "evidence", "source_listing", "offer_observation")
+    counts = {t: _count(db, t) for t in tables}
+    original = _rows(
+        db,
+        "SELECT c.listing_id, c.observed_at, c.recorded_at, c.labels, c.content_hash"
+        " FROM listing_content c JOIN source_listing l ON l.id = c.listing_id"
+        " WHERE l.source_listing_key LIKE 'R-%%' ORDER BY 1",
+    )
+    assert len(original) == 2
+
+    # The same pages read by a newer reader: a new feed (new bytes) with the new fields, and a
+    # row whose listing was never loaded.
+    attrs = {"style_id": "STYLE-R", "finish": "matte",
+             "ingredients": "Aqua, Glycerin, Parfum, Limonene, Linalool, Citral"}  # fmt: skip
+    v2 = _attrs_feed(
+        tmp_path,
+        "v2.json",
+        [r | attrs for r in base]
+        + [base[0] | {"listing_key": "R-3", "url": "https://acme-beauty.example/p/R-3"}],
+    )
+    report_path = tmp_path / "v2.report.json"
+    v2_uri = "gs://pi-imports-test/acme/v2.json"
+    argv = [str(v2), "--mapping", str(mapping_path), "--content-only", "--uri", v2_uri]
+    assert main([*argv, "--report", str(report_path)]) == 0
+    got = json.loads(report_path.read_text())["load"]
+    report = validate_file(v2, mapping)
+    assert (got["content_inserted"], got["listings_not_loaded"], got["superseded"]) == (2, 1, 0)
+
+    # No run, evidence, listing or offer row; the first import's content rows are untouched.
+    assert {t: _count(db, t) for t in tables} == counts
+    for lid, at, recorded, labels, digest in original:
+        assert _rows(
+            db,
+            "SELECT labels, content_hash FROM listing_content WHERE listing_id=%s"
+            " AND observed_at=%s AND recorded_at=%s",
+            (lid, at, recorded),
+        ) == [(labels, digest)]
+    # The re-derived row keeps the page's time; only recorded_at is new, and the readers'
+    # tiebreak (observed_at DESC, recorded_at DESC) makes it the latest.
+    [(observed_at, recorded_at, ingredients, labels)] = _rows(
+        db,
+        "SELECT c.observed_at, c.recorded_at, c.ingredients, c.labels FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id WHERE l.source_listing_key = 'R-1'"
+        " ORDER BY c.observed_at DESC, c.recorded_at DESC LIMIT 1",
+    )
+    assert observed_at == datetime.fromisoformat(page_at)
+    assert recorded_at > original[0][2]
+    assert "page_observed_at" not in labels
+    assert labels["master_id"] == "STYLE-R"
+    assert labels["finish"] == "matte"
+    assert labels["import_sha256"] == report.sha256
+    assert ingredients == attrs["ingredients"]
+
+    # A replay of the re-derived feed adds nothing.
+    content = _count(db, "listing_content")
+    with psycopg.connect(db) as conn:
+        again = Loader(conn, mapping, report, v2_uri).load_content()
+    assert again["content_inserted"] == 0
+    assert _count(db, "listing_content") == content
+    # ... and so does a replay from another copy of the same bytes: the URI is not hashed.
+    with psycopg.connect(db) as conn:
+        moved = Loader(conn, mapping, report, "gs://pi-imports-test/elsewhere/v2.json")
+        assert moved.load_content()["content_inserted"] == 0
+    assert _count(db, "listing_content") == content
+
+    # The bytes of a full import carry nothing new: refused, from the API and the CLI.
+    with psycopg.connect(db) as conn, pytest.raises(ValueError, match="already imported"):
+        Loader(conn, mapping, validate_file(v1, mapping), "x").load_content()
+    capsys.readouterr()
+    assert main([str(v1), "--mapping", str(mapping_path), "--content-only"]) == 2
+    assert "already imported" in capsys.readouterr().err
+    assert first["replay"] is False
+
+
+def test_content_only_skips_and_counts_a_listing_whose_content_is_already_later(
+    db: str, tmp_path: Path
+) -> None:
+    """A re-derivation never lands behind a later page: a listing whose content already has a
+    later observed_at is skipped and counted, and the others are re-derived."""
+    columns = ("listing_key", "url", "observed_at", "price_current", "finish")
+    mapping = ImportMapping.model_validate(
+        {
+            "source": {"name": "acme_superseded", "kind": "web"},
+            "country": "AE",
+            "locale": "en-AE",
+            "currency": "AED",
+            "time_zone": "Asia/Dubai",
+            "format": "json",
+            "json_items_path": "items",
+            "columns": {c: c for c in columns},
+        }
+    )
+    page_at, later_at = "2026-10-03T10:00:00+00:00", "2026-10-05T10:00:00+00:00"
+    base = [
+        {"listing_key": k, "url": f"https://acme-beauty.example/p/{k}", "observed_at": page_at,
+         "price_current": "120.00"}
+        for k in ("S-1", "S-2")
+    ]  # fmt: skip
+    _load(db, mapping, _attrs_feed(tmp_path, "s1.json", base), "gs://pi-imports-test/s1.json")
+    # A later crawl has already read S-2 again.
+    later = [base[1] | {"observed_at": later_at, "price_current": "110.00"}]
+    _load(db, mapping, _attrs_feed(tmp_path, "s2.json", later), "gs://pi-imports-test/s2.json")
+    before = {key: _count_content(db, key) for key in ("S-1", "S-2")}
+
+    v2 = _attrs_feed(tmp_path, "s3.json", [r | {"finish": "matte"} for r in base])
+    with psycopg.connect(db) as conn:
+        got = Loader(
+            conn, mapping, validate_file(v2, mapping), "gs://pi-imports-test/s3.json"
+        ).load_content()
+    assert (got["content_inserted"], got["superseded"], got["listings_not_loaded"]) == (1, 1, 0)
+    assert _count_content(db, "S-1") == before["S-1"] + 1
+    assert _count_content(db, "S-2") == before["S-2"]
+    [(observed_at, labels)] = _rows(
+        db,
+        "SELECT c.observed_at, c.labels FROM listing_content c"
+        " JOIN source_listing l ON l.id = c.listing_id WHERE l.source_listing_key = 'S-2'"
+        " ORDER BY c.observed_at DESC, c.recorded_at DESC LIMIT 1",
+    )
+    assert observed_at == datetime.fromisoformat(later_at)
+    assert "finish" not in labels
+
+
+def _count_content(db: str, key: str) -> int:
+    [(n,)] = _rows(
+        db,
+        "SELECT count(*) FROM listing_content c JOIN source_listing l ON l.id = c.listing_id"
+        " WHERE l.source_listing_key = %s",
+        (key,),
+    )
+    return int(n)

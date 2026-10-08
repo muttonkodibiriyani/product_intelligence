@@ -469,6 +469,13 @@ def upload(bucket: Any, paths: list[str], body: bytes, latest_generation: int | 
     return 0
 
 
+def admission_line(body: bytes) -> str:
+    """What pi_api parses and an admission record keys on (pi-api-deploy.md §6): the gunzipped
+    body. ``pi_dataset.admission_sha256``, inlined because v1 runs without pi_dataset."""
+    unpacked = gzip.decompress(body)
+    return f"admission body={len(unpacked)}B sha256={hashlib.sha256(unpacked).hexdigest()}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("path", type=Path)
@@ -522,7 +529,12 @@ def main() -> int:
     if outside := outside_prefixes(paths, v1=v1):  # belt and braces: the packagers build these
         print(f"refusing: writes outside the source prefixes: {outside}", file=sys.stderr)
         return 1
-    print(json.dumps(summary, ensure_ascii=False), f"gzip={len(body)}B", sep="\n")
+    print(
+        json.dumps(summary, ensure_ascii=False),
+        f"gzip={len(body)}B",
+        admission_line(body),
+        sep="\n",
+    )
     drop = tuple(args.drop_source)
     if args.dry_run:
         if args.live_file:

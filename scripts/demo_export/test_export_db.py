@@ -7,8 +7,11 @@ import json
 import os
 import uuid
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
@@ -16,6 +19,12 @@ from alembic import command
 from psycopg.rows import dict_row
 from sqlalchemy.engine import make_url
 
+from offline_import.load import Loader
+from offline_import.mapping import ImportMapping
+from offline_import.validate import validate_file
+from pi_capture.bloomingdales import readings_from_bloomingdales
+from pi_capture.feed import SHOPS, Shop, build_feed, dump_feed, mapping_for
+from pi_capture.model import ProductCapture
 from pi_db import DATABASE_URL_ENV, alembic_config
 from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow, latest_params
 from scripts.demo_export.history import RunSpan, read_history
@@ -143,6 +152,20 @@ class World:
             "INSERT INTO listing_content (listing_id, observed_at, labels, content_hash)"
             " VALUES (%s, %s, %s::jsonb, %s)",
             (self.listings[key], T0.replace(hour=hour), json.dumps(labels), f"{key}-{hour}"),
+        )
+
+    def rederived(self, key: str, labels: dict[str, object], recorded_day: int) -> None:
+        """Content at page time 01:00, recorded on 1 Oct + ``recorded_day`` (a re-derivation)."""
+        self.conn.execute(
+            "INSERT INTO listing_content (listing_id, observed_at, recorded_at, labels,"
+            " content_hash) VALUES (%s, %s, %s, %s::jsonb, %s)",
+            (
+                self.listings[key],
+                T0.replace(hour=1),
+                T0.replace(day=recorded_day),
+                json.dumps(labels),
+                f"{key}-r{recorded_day}",
+            ),
         )
 
     def latest(self) -> dict[str, tuple[object, object]]:
@@ -404,6 +427,14 @@ def test_the_concentration_comes_from_the_latest_content_label(conn: Conn) -> No
     assert _row(world, "C")["concentration"] is None  # no content row at all
 
 
+def test_at_one_page_time_the_latest_recorded_content_wins(conn: Conn) -> None:
+    world = World(conn)
+    world.observe(world.run("succeeded", 1), "A", 1, "80")
+    world.rederived("A", {"concentration": "edt"}, recorded_day=2)  # first in table order
+    world.rederived("A", {"concentration": "edp"}, recorded_day=8)
+    assert _row(world, "A")["concentration"] == "edp"
+
+
 def test_ulta_rows_in_the_db_stay_out_unless_named_in_sources(conn: Conn) -> None:
     world = World(conn)
     world.observe(world.run("succeeded", 1), "s1", 1, "10")
@@ -462,6 +493,17 @@ def test_only_the_latest_content_decides_who_is_a_parent(conn: Conn) -> None:
     world.content("C", {"aggregate_parent": True}, hour=1)
     world.content("C", {"aggregate_parent": False}, hour=2)
     assert sorted(world.latest()) == ["C", "P"]
+
+
+def test_at_one_page_time_the_latest_recorded_child_content_decides(conn: Conn) -> None:
+    world = World(conn, "ulta_ae")
+    run = world.run("succeeded", 1)
+    for key in ("P", "C"):
+        world.observe(run, key, 1, "50")
+    world.content("P", _parent("C"))
+    world.rederived("C", {"aggregate_parent": True}, recorded_day=2)  # first in table order
+    world.rederived("C", {"aggregate_parent": False}, recorded_day=8)  # a child now: P dropped
+    assert sorted(world.latest()) == ["C"]
 
 
 def test_sephora_listings_are_never_deduplicated(conn: Conn) -> None:
@@ -616,3 +658,87 @@ def test_gift_with_purchase_titles_come_from_the_latest_content_in_order(conn: C
     assert _row(world, "A")["gift_with_purchase"] == ["Free pouch", "A mini", "Zip bag"]
     assert _row(world, "B")["gift_with_purchase"] == []
     assert _row(world, "C")["gift_with_purchase"] == []  # no content row at all
+
+
+def _blm_capture() -> ProductCapture:
+    product = {
+        "id": "900000101",
+        "master": {"masterId": "BEA900000100"},
+        "name": "Hydra Gel Cleanser",
+        "c_brand": "Synthetic Lab",
+        "c_rms_div": "Beauty",
+        "c_rms_dept": "Skincare",
+        "c_price": {"sales": {"value": 140, "currency": "AED"}},
+        "c_ingredients": "Aqua, Glycerin, Propanediol, Xanthan Gum, Phenoxyethanol, Citric Acid",
+        "c_product_promotions": [
+            {"promotionId": "GWP-Synthetic", "calloutMsgText": "<b>Beauty Treats</b>, free"}
+        ],
+    }
+    query = json.dumps({"queries": [{"state": {"data": {"productData": product}}}]})
+    page = f"<html><body><script>window.__Q__={query}</script></body></html>"
+    return ProductCapture(
+        source="test",
+        retailer="bloomingdales",
+        url="https://bloomingdales.ae/p/900000101",
+        locale="en-AE",
+        retrieved_at=datetime(2026, 10, 2, 9, 0, tzinfo=UTC),
+        egress="direct",
+        page_sha256="0" * 64,
+        readings=tuple(readings_from_bloomingdales(page, locale="en-AE")),
+    )
+
+
+def _feed_load_export(conn: Conn, migrated_db: str, tmp_path: Path, shop: Shop) -> dict[str, Any]:
+    """Page -> pi_capture feed -> offline_import load -> the export row."""
+    feed = tmp_path / "feed.json"
+    feed.write_text(dump_feed(build_feed([_blm_capture()], shop), shop), "utf-8")
+    mapping = ImportMapping.model_validate(mapping_for(shop))
+    with psycopg.connect(_libpq(migrated_db)) as load_conn:
+        Loader(load_conn, mapping, validate_file(feed, mapping), "gs://pi-test/blm.json").load()
+    rows = conn.execute(LATEST_LISTINGS_SQL, latest_params([shop.source])).fetchall()
+    (got,) = [dict(r) for r in rows]
+    content = conn.execute(
+        "SELECT c.labels FROM listing_content c JOIN source_listing l ON l.id = c.listing_id"
+        " JOIN source s ON s.id = l.source_id WHERE s.name = %s",
+        (shop.source,),
+    ).fetchone()
+    assert content is not None
+    return got | {"labels": content["labels"]}
+
+
+def test_a_captured_gift_with_purchase_and_style_reach_the_export_row(
+    conn: Conn, migrated_db: str, tmp_path: Path
+) -> None:
+    """The gift-with-purchase label and the style id (the family the export groups by) survive
+    every hop for a shop with page attributes (Bloomingdale's)."""
+    shop = replace(SHOPS["bloomingdales_ae"], source="blm_export_e2e")
+    got = _feed_load_export(conn, migrated_db, tmp_path, shop)
+    assert got["gift_with_purchase"] == ["Beauty Treats, free"]
+    assert got["family_id"] == "BEA900000100"
+    assert got["labels"]["master_id"] == "BEA900000100"
+
+
+def test_without_page_attributes_the_same_page_keeps_its_sku_family(
+    conn: Conn, migrated_db: str, tmp_path: Path
+) -> None:
+    """The same page through a shop without page attributes (Faces' setting): the style id
+    never reaches labels.master_id, so the family and product id stay keyed by the sku."""
+    shop = replace(SHOPS["bloomingdales_ae"], source="sku_family_e2e", page_attributes=False)
+    got = _feed_load_export(conn, migrated_db, tmp_path, shop)
+    assert "master_id" not in got["labels"]
+    assert got["family_id"] == got["source_listing_key"] == "900000101"
+    assert got["gift_with_purchase"] == []  # a promotion here, as on main
+
+
+def test_an_ounass_page_keeps_its_sku_family_and_product_id(
+    conn: Conn, migrated_db: str, tmp_path: Path
+) -> None:
+    """Ounass stays at sku grain: the same page, with a style id on it, through Ounass's shop
+    settings never reaches labels.master_id, so the family (and the product id derived from it)
+    is the listing key, as in the Ounass body already served; the other page attributes still
+    arrive."""
+    shop = replace(SHOPS["ounass_ae"], source="ounass_sku_e2e")
+    got = _feed_load_export(conn, migrated_db, tmp_path, shop)
+    assert "master_id" not in got["labels"]
+    assert got["family_id"] == got["source_listing_key"] == "900000101"
+    assert got["gift_with_purchase"] == ["Beauty Treats, free"]

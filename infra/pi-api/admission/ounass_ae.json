@@ -1,0 +1,35 @@
+{
+  "schema": "pi.admission/v1",
+  "dataset": "datasets/ae/ounass_ae/latest.json",
+  "sha256": "8963cbedf30bdcd6247de077296a7d5421c4462589182951c64ea463e8933eed",
+  "bytes": 72711307,
+  "memoryMiB": 3072,
+  "packContent": true,
+  "served": [
+    {
+      "path": "datasets/ae/beauty/latest.json",
+      "bytes": 26712113,
+      "sha256": "29e2dee6bd1b1bbd05f89f9e9221c0773069060554f136d3ffc9c00c5d93fe3c"
+    },
+    {
+      "path": "datasets/ae/faces_ae/latest.json",
+      "bytes": 2225842,
+      "sha256": "6d9e5d49c9e3eac239a8c09ac8eef25c045930f02649e942986a362c8ae2d2fa"
+    },
+    {
+      "path": "datasets/ae/ounass_ae/latest.json",
+      "bytes": 72711307,
+      "sha256": "8963cbedf30bdcd6247de077296a7d5421c4462589182951c64ea463e8933eed"
+    }
+  ],
+  "baselineMiB": 39,
+  "coldStartPeakMiB": 1066,
+  "refreshPeaksMiB": [
+    1554,
+    1586,
+    1661,
+    1661
+  ],
+  "measuredOn": "2026-10-07",
+  "benchCommit": "8a60ad69ec5dc8af4cdc96f37a024ff9d25327e2"
+}

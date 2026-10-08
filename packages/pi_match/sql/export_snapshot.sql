@@ -21,7 +21,7 @@ WITH latest_offer AS (
 latest_content AS (
   SELECT DISTINCT ON (c.listing_id) c.listing_id, c.labels
   FROM listing_content c
-  ORDER BY c.listing_id, c.observed_at DESC
+  ORDER BY c.listing_id, c.observed_at DESC, c.recorded_at DESC
 )
 SELECT json_strip_nulls(json_build_object(
   'source', s.name,

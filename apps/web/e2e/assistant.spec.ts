@@ -1,4 +1,4 @@
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, withSummary } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, signedIn, test, withSummary } from './fixtures';
 
 // The Ryzan AI page as it ships (flags off): the greeting, three starters, the thread area and
 // the composer with its one-line off-state. No question is ever sent, so no callable is mocked.
@@ -31,8 +31,7 @@ for (const locale of ['en', 'ar'] as const) {
 
   test(`assistant page ${locale}: greeting, three starters, composer off in one line`, async ({ page }) => {
     const mock = await mockBackend(page, { onApi: api });
-    await signIn(page, locale);
-    await expect(page.getByRole('navigation')).toBeVisible();
+    await signedIn(page, locale);
     await page.goto(`/app/${locale}/assistant/`);
     await expect(page.locator('html')).toHaveAttribute('dir', T.dir);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(T.title);

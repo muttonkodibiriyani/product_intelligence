@@ -3,7 +3,9 @@
  * The image-host tables and the CSP img-src that lets the browser load them are kept in separate
  * files, so a host added to a table but not to its img-src ships as a broken image, which no other
  * test catches. These pin each table to its own header:
- *  - /app: every IMAGE_OWNERS key (components/widgets/model.ts) is allowed by infra/firebase.json.
+ *  - /app: IMAGE_OWNERS (components/widgets/model.ts) and each img-src in infra/firebase.json name
+ *    the same hosts. Both ways: a CSP host with no owner still shows a placeholder (imageHost()
+ *    returns null), so adding it to firebase.json alone looks fixed and is not.
  *  - the root shell: IMG_HOSTS (src/model.js) and build.sh's hosted img-src name the same hosts.
  */
 import { readFileSync } from 'node:fs';
@@ -38,13 +40,14 @@ describe('/app image hosts', () => {
     expect(csps.length).toBeGreaterThan(0);
   });
 
-  // it.each over an empty table registers no test, so the cases below would vanish rather than fail.
+  // Two empty lists are equal, so an emptied table must fail on its own.
   it('IMAGE_OWNERS lists at least one host', () => {
     expect(Object.keys(IMAGE_OWNERS).length).toBeGreaterThan(0);
   });
 
-  it.each(Object.keys(IMAGE_OWNERS))('%s is allowed by every img-src in infra/firebase.json', (host) => {
-    for (const csp of csps) expect(csp.hosts, `img-src for ${csp.source}`).toContain(host);
+  it('every img-src in infra/firebase.json names exactly the IMAGE_OWNERS hosts', () => {
+    const owners = Object.keys(IMAGE_OWNERS).sort();
+    for (const csp of csps) expect([...csp.hosts].sort(), `img-src for ${csp.source}`).toEqual(owners);
   });
 });
 

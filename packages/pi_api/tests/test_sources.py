@@ -43,7 +43,7 @@ def test_the_combined_file_and_a_sephora_file_give_each_source_once(tmp_path: Pa
     new = dict.fromkeys(ids("p", 2000, 11529), (SEPHORA,))
     write(tmp_path, snapshot(new, dates=NEW, price=12_000), SEPHORA_FILE)
 
-    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
+    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED, memory_mib=3072)
     source.load_all()
     loaded = source.select(None, None)  # one view; never ambiguous
     ds = loaded.dataset

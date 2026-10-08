@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -25,6 +26,8 @@ from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
+
+from pi_dataset.gate import V3_MAX_BYTES
 
 DATASET_SCHEMA = "pi.dataset/v1"
 ALLOWED_CATEGORIES = {
@@ -443,7 +446,7 @@ LEFT JOIN LATERAL (
   SELECT content.labels, content.description, content.ingredients
   FROM listing_content content
   WHERE content.listing_id = sl.id
-  ORDER BY content.observed_at DESC
+  ORDER BY content.observed_at DESC, content.recorded_at DESC
   LIMIT 1
 ) lc ON true
 WHERE s.name = ANY(%(sources)s)
@@ -470,7 +473,7 @@ WHERE s.name = ANY(%(sources)s)
           SELECT child_content.labels ->> 'aggregate_parent' = 'true'
           FROM listing_content child_content
           WHERE child_content.listing_id = child_listing.id
-          ORDER BY child_content.observed_at DESC
+          ORDER BY child_content.observed_at DESC, child_content.recorded_at DESC
           LIMIT 1
         ),
         false
@@ -1042,15 +1045,13 @@ def build_dataset(
     return dataset
 
 
-#: The largest v3 file this exporter writes, in compact JSON bytes: pi_api's measured memory
-#: budget for one dataset at 3Gi (docs/runbooks/pi-api-deploy.md §6). Calibrated on the real
-#: Ounass snapshot (72.7 MB compact): ~1,530 MiB of refresh peak above the other sources, so
-#: 90 MB keeps one refresh inside the ~1,990 MiB left after imports, the other sources, two CSV
-#: exports and a 256 MiB margin. No override (Reviewer, 2026-10-03): a snapshot over it waits
-#: for the content to move to its own file. The gate is per file, but the size is for every served
-#: file together: the other files' reserve is 30 MB compact in total, so a second large catalogue
-#: passes here and still does not fit. §6 states the deploy-time byte check over all served files.
-V3_MAX_BYTES = 90_000_000
+#: The largest v3 file served on the default memory budget, in compact JSON bytes: one number
+#: shared with pi_api (``pi_dataset.gate``), fitted in docs/runbooks/pi-api-deploy.md §6. A
+#: larger body is refused unless ``--allow-over-gate`` asks for it; it is then written, reported
+#: OVER GATE and exits ``OVER_GATE_EXIT``, and pi_api serves it only on a measured admission
+#: record for its exact bytes. That flag supersedes the 2026-10-03 "no override" note
+#: (Coordinator, 2026-10-07): without the record no file can be measured, so Ounass could never be
+#: admitted. The gate is per file; §6 sizes the served files together.
 
 
 def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:
@@ -1093,13 +1094,44 @@ def format_groups(groups: Mapping[str, int]) -> str:
     return " ".join(f"{name}={size}" for name, size in groups.items())
 
 
-def check_v3_size(total: int, groups: Mapping[str, int]) -> None:
-    """Refuse (no file written) a v3 body over ``V3_MAX_BYTES``."""
-    if total > V3_MAX_BYTES:
+def check_v3_size(total: int, groups: Mapping[str, int], *, over_gate: bool = False) -> bool:
+    """Whether a v3 body is over ``V3_MAX_BYTES``. Over it, refuse (no file written) unless
+    ``over_gate`` (``--allow-over-gate``) asks for the file anyway."""
+    if total <= V3_MAX_BYTES:
+        return False
+    if not over_gate:
         raise SystemExit(
             f"refusing to write v3: {total} bytes is over the {V3_MAX_BYTES}-byte pi_api budget "
-            f"({format_groups(groups)}); nothing was written"
+            f"({format_groups(groups)}); nothing was written. A file over it is served only on a "
+            "measured admission record (pi-api-deploy.md §6): write it with --allow-over-gate"
         )
+    return True
+
+
+#: ``--allow-over-gate`` wrote a file over ``V3_MAX_BYTES``: never an ordinary success.
+OVER_GATE_EXIT = 3
+
+
+def write_v3(path: Path, body: bytes, products: int, groups: Mapping[str, int], over: bool) -> None:
+    """Write the v3 body and report it. A body over the gate exits ``OVER_GATE_EXIT`` after it
+    is written: the file exists to be measured, and pi_api serves it only on an admission record
+    for the body the publisher uploads (pi-api-deploy.md §6). The sha256 printed here is of this
+    file: advisory, since the publisher re-serialises it."""
+    write_bytes(path, body)
+    digest = sha256(path)
+    print(
+        f"wrote v3 {products} products to {path} sha256={digest} bytes={len(body)} "
+        f"of {V3_MAX_BYTES} by group: {format_groups(groups)}"
+    )
+    if over:
+        print(f"OVER GATE {path} {len(body)} sha256={digest}")
+        print(
+            f"over V3_MAX_BYTES={V3_MAX_BYTES}: not served until infra/pi-api/admission/ holds a "
+            "passing record for the published body; this file's sha256 is advisory, the record "
+            "keys on the body publish_dataset --dry-run reports (pi-api-deploy.md §6)",
+            file=sys.stderr,
+        )
+        raise SystemExit(OVER_GATE_EXIT)
 
 
 def write_json(path: Path, dataset: Mapping[str, Any]) -> None:
@@ -1162,6 +1194,14 @@ def parser() -> argparse.ArgumentParser:
         "--output-v3",
         type=Path,
         help="also write the v2 snapshot upgraded to pi.dataset/v3, with offer listingCount",
+    )
+    result.add_argument(
+        "--allow-over-gate",
+        action="store_true",
+        help=(
+            "write a v3 body over V3_MAX_BYTES anyway, then exit 3 (OVER GATE): it is served only "
+            "on a measured admission record for its sha256 (pi-api-deploy.md §6)"
+        ),
     )
     result.add_argument(
         "--history",
@@ -1316,7 +1356,7 @@ def main() -> None:
             body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
             v3_groups = v3_bytes_by_group(v3, len(body_v3))
-            check_v3_size(len(body_v3), v3_groups)
+            v3_over = check_v3_size(len(body_v3), v3_groups, over_gate=args.allow_over_gate)
     if dataset is None:
         print(f"v1 not written to {args.output}: no Ulta/Sephora rows in {args.sources}")
     else:
@@ -1343,12 +1383,7 @@ def main() -> None:
             f"above={len(review['above'])} {review['above'][:20]}"
         )
     if args.output_v3 is not None:
-        write_bytes(args.output_v3, body_v3)
-        print(
-            f"wrote v3 {len(v2.products)} products to {args.output_v3} "
-            f"sha256={sha256(args.output_v3)} bytes={len(body_v3)} of {V3_MAX_BYTES} "
-            f"by group: {format_groups(v3_groups)}"
-        )
+        write_v3(args.output_v3, body_v3, len(v2.products), v3_groups, v3_over)
 
 
 if __name__ == "__main__":
