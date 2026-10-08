@@ -519,7 +519,9 @@ def test_check_served_holds_no_window_and_a_missing_body(
 ) -> None:
     fresh = windowed_body("2026-10-08T10:00:00Z")
     assert check(tmp_path, monkeypatch, a=fresh, b=windowed_body(None)) == 1
-    assert "d/b: example_north_ae has no crawl window" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "d/b: example_north_ae: withheld (no window) with offers but no whole-retailer" in err
+    assert "it has no crawl window (ADR-0013)" in err
     argv = ["--project", "p", "--allow-test", "--check-served", "s=d/a,t=d/none"]
     assert run([*argv, "--served-root", str(tmp_path)], monkeypatch) == 1
     assert "HOLD, d/none: not found" in capsys.readouterr().err

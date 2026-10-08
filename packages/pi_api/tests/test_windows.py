@@ -29,6 +29,11 @@ BLOCKED = {
     "end": "2026-10-08",
     "why": {"en": "Blocked (p0-20261008-ulta-probe).", "ar": "محجوب."},
 }
+#: Follows #302's text when a windowless retailer has no whole-retailer entry (01a11d19-9686).
+HINT = (
+    "; it has no crawl window (ADR-0013): re-export it, or withhold it with a notObserved "
+    "entry for the whole retailer"
+)
 FRESH = {"start": "2026-10-08T00:00:00Z", "end": "2026-10-08T10:00:00Z", "runId": "fresh"}
 
 
@@ -118,9 +123,9 @@ def test_a_set_in_more_than_one_time_zone_is_refused() -> None:
 def test_a_retailer_without_a_window_is_refused() -> None:
     problems = window_problems([("old", windowed(None)), ("fresh", windowed(FRESH["end"]))])
     assert problems == [
-        f"old: {r} has no crawl window (ADR-0013): re-export it, or withhold it with a "
-        "notObserved entry for the whole retailer"
-        for r in ("example_north_ae", "example_south_ae")
+        f"old: {r}: withheld (no window) with offers but no whole-retailer notObserved entry "
+        f"covering 2026-09-02..2026-10-08{HINT}"
+        for r in (NORTH, SOUTH)
     ]
     assert window_problems([]) == []
 
@@ -171,7 +176,7 @@ def test_withholding_never_excuses_a_window_or_a_stale_disclosure() -> None:
     # Part of the retailer (a category) is not the whole retailer: no window is refused.
     part = disclosed(windowed(FRESH["end"], withheld={}), categories=["skincare"])
     [problem] = window_problems([("b", part)])
-    assert problem.startswith(f"b: {SOUTH} has no crawl window (ADR-0013)")
+    assert problem == covering("b", "2026-10-02", "2026-10-08") + HINT
 
 
 def test_a_set_with_no_window_at_all_is_refused_whatever_it_discloses() -> None:
@@ -271,3 +276,35 @@ def test_a_windowless_retailer_without_offers_is_skipped_as_compose_skips_it() -
     assert compose([empty]) is not None
     # The same retailer with an offer is judged: no window and no entry is refused.
     assert window_problems([("b", windowed(None))])  # control: offers, no window, no entry
+
+
+def scoped(ds: DatasetV3, scope: str) -> DatasetV3:
+    return ds.model_copy(update={"meta": ds.meta.model_copy(update={"scope": scope})})
+
+
+def test_a_withheld_entry_reaches_its_own_scopes_cutoff_not_another_scopes() -> None:
+    """Review 01a11d19-68b2, Coordinator 01a11d19-9686: the API composes one view per scope
+    (``source._composed``), so a withheld retailer is judged against the latest cutoff of its
+    own scope's files. Its entry ends on its scope's cutoff day, 10-06; another scope cut off
+    on 10-07 does not refuse it, whether the guard reads the files or (as ``app_from_env``
+    does) the files and the composed views. The gap is still counted over the whole set."""
+    beauty = windowed(
+        "2026-10-06T10:00:00Z", cutoff="2026-10-06T19:00:00Z", withheld={"end": "2026-10-06"}
+    )
+    fashion = scoped(windowed("2026-10-07T10:00:00Z", cutoff="2026-10-07T19:00:00Z"), "fashion")
+    views = [(f"scope:{d.meta.scope}", compose([d]).dataset) for d in (beauty, fashion)]
+    for served in ([("x", beauty), ("f", fashion)], [("x", beauty), ("f", fashion), *views]):
+        check = check_windows(served)
+        assert check.problems == []
+        assert check.withheld[0] == (
+            f"x: {SOUTH} withheld, not observed until 2026-10-06: Blocked (p0-20261008-ulta-probe)."
+        )
+    # The same entry beside a later body of its own scope is refused (the same-scope pair).
+    late = ("late", windowed("2026-10-07T10:00:00Z", cutoff="2026-10-07T19:00:00Z"))
+    assert window_problems([("x", beauty), ("f", fashion), late]) == [
+        covering("x", "2026-10-02", "2026-10-07")
+    ]
+    # Across scopes the gap still counts: fashion 8 Dubai days after beauty's window is refused.
+    stale = scoped(windowed("2026-10-14T10:00:00Z", cutoff="2026-10-14T19:00:00Z"), "fashion")
+    [problem] = window_problems([("x", beauty), ("f", stale)])
+    assert problem.startswith("window gap 8 days in Asia/Dubai, more than 7")

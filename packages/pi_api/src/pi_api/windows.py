@@ -10,10 +10,11 @@ A retailer with no window and no offers serves nothing and is skipped, as ``pi_d
 skips it (Coordinator 01a11d06-293f: parity with #302). One with offers is WITHHELD, not
 refused, when its body discloses it as not observed: a ``notObserved[]`` entry for the whole
 retailer (no context, no categories) that starts no later than the day after its ``since`` (its
-last capture) and runs to the served set's cutoff day in its market's time zone, the latest of
-the served files' cutoffs as in the composed view (ADR-0013 §8; Coordinator 01a11cc0-86a1,
-01a11cd9-48b1, 01a11d05-862f; review 01a11d05-231d: ulta_ae, blocked). It takes no part in the
-gap. A retailer with a window is always counted, so a stale window is refused, never excused,
+last capture) and runs to its scope's cutoff day in its market's time zone: the latest cutoff
+of the served files with its ``meta.scope``, as in that scope's composed view (ADR-0013 §8;
+Coordinator 01a11cc0-86a1, 01a11cd9-48b1, 01a11d05-862f, 01a11d19-9686; reviews 01a11d05-231d,
+01a11d19-68b2: ulta_ae, blocked). It takes no part in the gap, which is still counted over the
+whole set. A retailer with a window is always counted, so a stale window is refused, never excused,
 and nothing here widens ``MAX_GAP_DAYS``. A set where no retailer has a window is refused: there
 is no fresh window to withhold beside, and an old disclosure must not pass for one (review
 5461198455).
@@ -59,10 +60,11 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
     apart."""
     check = WindowCheck()
     windows: list[tuple[str, CrawlWindow, str]] = []
-    bare: list[tuple[str, date | None, str, tuple[NotObservedV3, ...]]] = []
-    cutoff: datetime | None = None
+    bare: list[_Bare] = []
+    cutoffs: dict[str, datetime] = {}
     for name, dataset in datasets:
-        cutoff = max(cutoff or dataset.meta.cutoff, dataset.meta.cutoff)
+        scope, cut = dataset.meta.scope, dataset.meta.cutoff
+        cutoffs[scope] = max(cutoffs.get(scope, cut), cut)
         zones = {m.country: m.time_zone for m in dataset.meta.markets}
         retailer_of = {c.id: c.retailer for c in dataset.meta.contexts}
         stocked = {retailer_of.get(cid) for p in dataset.products for cid in p.offers}
@@ -78,7 +80,7 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
                     for n in dataset.not_observed
                     if n.retailer == retailer.id and n.context is None and n.categories is None
                 )
-                bare.append((label, retailer.since, zones[retailer.country], whole))
+                bare.append((label, scope, retailer.since, zones[retailer.country], whole))
             else:
                 windows.append((label, retailer.window, zones[retailer.country]))
     found = sorted({zone for _, _, zone in windows})
@@ -100,41 +102,46 @@ def check_windows(datasets: Iterable[tuple[str, DatasetV3]]) -> WindowCheck:
             "no retailer in the served set has a crawl window (ADR-0013): a retailer can only "
             "be withheld beside a windowed one"
         )
-    if cutoff is not None:
-        _judge_withheld(check, bare, last, cutoff)
+    _judge_withheld(check, bare, last, cutoffs)
     return check
+
+
+#: A windowless retailer with offers: label, scope, ``since``, market time zone and its
+#: whole-retailer ``notObserved`` entries.
+_Bare = tuple[str, str, date | None, str, tuple[NotObservedV3, ...]]
 
 
 def _judge_withheld(
     check: WindowCheck,
-    bare: list[tuple[str, date | None, str, tuple[NotObservedV3, ...]]],
+    bare: list[_Bare],
     last: date | None,
-    set_cutoff: datetime,
+    cutoffs: dict[str, datetime],
 ) -> None:
     """Each windowless retailer with offers: withheld when one whole-retailer entry starts no
-    later than the day after its ``since`` (its last capture) and ends no earlier than
-    ``set_cutoff``'s day in its market's time zone, the rule ``pi_dataset.v3`` checks on one
-    body and ``compose`` on the composed view, whose cutoff is the latest of its files'
-    (Coordinator 01a11cd9-48b1, 01a11d05-862f; review 01a11d05-231d); refused otherwise, and
-    never withheld when the set has no window. The texts are #302's (01a11d06-293f)."""
-    for label, since, zone, whole in bare:
-        if not whole:
-            check.problems.append(
-                f"{label} has no crawl window (ADR-0013): re-export it, or withhold it with a "
-                "notObserved entry for the whole retailer"
-            )
-            continue
-        if last is None:
+    later than the day after its ``since`` (its last capture) and ends no earlier than its
+    scope's cutoff day in its market's time zone, the rule ``pi_dataset.v3`` checks on one body
+    and ``compose`` on one scope's view, whose cutoff is the latest of its files' (Coordinator
+    01a11cd9-48b1, 01a11d05-862f, 01a11d19-9686; reviews 01a11d05-231d, 01a11d19-68b2); refused
+    otherwise, and never withheld when the set has no window. The texts are #302's
+    (01a11d06-293f); with no whole-retailer entry at all the ADR hint follows (01a11d19-9686)."""
+    for label, scope, since, zone, whole in bare:
+        hint = (
+            ""
+            if whole
+            else "; it has no crawl window (ADR-0013): re-export it, or withhold it with a "
+            "notObserved entry for the whole retailer"
+        )
+        if whole and last is None:
             continue  # refused by the caller (no window, or more than one time zone)
         if since is None:
-            check.problems.append(f"{label}: withheld (no window) with offers but no since")
+            check.problems.append(f"{label}: withheld (no window) with offers but no since{hint}")
             continue
-        first, cutoff = since + timedelta(days=1), local_date(set_cutoff, zone)
+        first, cutoff = since + timedelta(days=1), local_date(cutoffs[scope], zone)
         entry = next((n for n in whole if n.start <= first and cutoff <= n.end), None)
         if entry is None:
             check.problems.append(
                 f"{label}: withheld (no window) with offers but no whole-retailer notObserved "
-                f"entry covering {first}..{cutoff}"
+                f"entry covering {first}..{cutoff}{hint}"
             )
             continue
         why = entry.why
