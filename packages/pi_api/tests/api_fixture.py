@@ -28,6 +28,7 @@ from pi_api.catalogue import CatalogueSource
 from pi_api.source import LocalStore, SnapshotSource
 from pi_dataset import Dataset, DatasetV3, dump_dataset
 from pi_dataset.gate import DEFAULT_MEMORY_MIB
+from pi_dataset.v3 import CrawlWindow
 from pi_metrics.view import as_v3
 
 PROJECT = "pi-test-project"
@@ -109,6 +110,16 @@ def own_keys(ds: Dataset | DatasetV3) -> DatasetV3:
         else r.model_copy(update={"fields": dict(m.fields), "capabilities": m.capabilities})
         for r in m.retailers
     )
+    return v3.model_copy(update={"meta": m.model_copy(update={"retailers": retailers})})
+
+
+def windowed(ds: Dataset | DatasetV3) -> DatasetV3:
+    """``own_keys(ds)`` with every retailer's crawl window at the cutoff, as a fresh export
+    carries it, so ``PI_API_REQUIRE_ALL`` passes the window guard."""
+    v3 = own_keys(ds)
+    m = v3.meta
+    window = CrawlWindow(start=m.cutoff, end=m.cutoff, run_id="run-fixture")
+    retailers = tuple(r.model_copy(update={"window": window}) for r in m.retailers)
     return v3.model_copy(update={"meta": m.model_copy(update={"retailers": retailers})})
 
 

@@ -450,15 +450,32 @@ revision serves it, and rollback is routing traffic back to the previous revisio
      - without `--reconciled-removals` (keys-only): every live ulta_ae offer is present by product
        id and offer key, and every live (sku, url) pair is still there;
      - with `--reconciled-removals FILE` (fresh): an offer may be missing only if its product id is
-       in FILE, the capture lane's reconciliation evidence (removal task 01a11c77-75e6).
+       in FILE, the capture lane's `removal_evidence.csv` (removal task 01a11c77-75e6). Every
+       ulta_ae row must carry `pdp-404`, `pdp-410`, `sitemap-absent` or `search-absent`. Any other
+       value refuses the publish: a notObservedReason (`retained`, `blocked`, `rate_limited`,
+       `capture_in_progress`, `planned_not_captured`) or `pdp-variant-absent`, which drops a
+       variant from a kept offer and never excuses an absent one (Coordinator 01a11cad-17da,
+       01a11cad-a1a9).
+     - the file's sephora_me offers get the source guard (no live offer lost), against the body
+       the live `PI_API_DATASETS` serves sephora_me from.
    - **Ulta U1 (owner's export) publish gate, both must pass** (Coordinator 01a11c8f-2138): the
      keys-only check above **and** DeepTester's `MODE=retain` (`scratch/wk/ulta-retention-check.py`,
      01a11c8d-e603). Keys-only proves no offer was dropped. MODE=retain proves every offer missing
      from the export is retained as not_observed: its capturedAt is unchanged and earlier than the
      window, and it has no price or stock value in the new window. Neither replaces the other.
-   - **Window guard:** the served windows are checked before deploy (DeepTester's window check). A
-     body set with a missing window, or an END more than 7 Dubai days from another served END
-     (boundary 20:00Z), is not deployed.
+   - **Window guard (in code; ruling 01a11cad-17da).** Publish every body first, chaining each
+     printed `PI_API_DATASETS=` value into the next `--live-datasets`. Then check the final value,
+     read-only, before step 2:
+
+     ```sh
+     uv run python infra/scripts/publish_dataset.py --project=$PROJECT --check-served="$NEW_DATASETS"
+     ```
+
+     It reads every body the value serves and HOLDs if any retailer has no crawl window, or if two
+     windows' ENDs are more than 7 Dubai days apart (8 is refused, 7 passes; Dubai days turn at
+     20:00Z). Only a value that prints `window guard: N bodies, ok` is rolled. The new revision
+     repeats the same check (`pi_api.windows`) at start under `PI_API_REQUIRE_ALL=1`, so a value
+     that skipped this step never becomes Ready.
 2. **Deploy a new revision without traffic.** Only `PI_API_DATASETS` changes (and
    `PI_API_REQUIRE_ALL=1`, the first time), so this is the one-variable update above, not the full
    form, which would STOP on the changed `DATASETS`:

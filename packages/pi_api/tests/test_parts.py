@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from api_fixture import DATASET_PATH, served_dataset, write
+from api_fixture import DATASET_PATH, served_dataset, windowed, write
 from pi_api.app import app_from_env, store_for
 from pi_api.auth import CertificatesUnavailableError, HttpCertSource
 from pi_api.config import Settings
@@ -303,7 +303,7 @@ def test_require_all_refuses_a_cold_start_that_serves_less(tmp_path: Path) -> No
     # Deploy plan v2: with PI_API_REQUIRE_ALL=1 a body that does not load (missing, refused by
     # the admission pin, or rejected by an older image) fails the factory, so uvicorn exits
     # non-zero and Cloud Run never routes to the revision. Without the flag the API starts.
-    write(tmp_path, served_dataset())
+    write(tmp_path, windowed(served_dataset()))
     missing = "datasets/ae/missing/latest.json"
     base = {**ENV, "PI_API_LOCAL_DIR": str(tmp_path)}
     strict = {**base, "PI_API_REQUIRE_ALL": "1"}

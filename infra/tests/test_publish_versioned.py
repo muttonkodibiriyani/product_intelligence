@@ -248,6 +248,96 @@ def test_retention_keys_only_is_exact() -> None:
     ]
 
 
+def removals_csv(tmp_path: Path, *rows: tuple[str, str, str]) -> Path:
+    """removal_evidence.csv as the capture lane writes it: (retailer, product_id, evidence_type)."""
+    header = "retailer,product_id,sku,url,last_captured_at,evidence_type,evidence_time,run_id"
+    lines = [header] + [
+        f"{retailer},{pid},S1,https://x/{pid},2026-10-01T00:00:00Z,{evidence},"
+        "2026-10-08T10:00:00Z,run-1"
+        for retailer, pid, evidence in rows
+    ]
+    file = tmp_path / "removal_evidence.csv"
+    file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return file
+
+
+@pytest.mark.parametrize("evidence", publish_dataset.REMOVAL_EVIDENCE)
+def test_removal_evidence_is_read_from_the_capture_lane_csv(tmp_path: Path, evidence: str) -> None:
+    file = removals_csv(tmp_path, ("ulta_ae", "p1", evidence), ("faces_ae", "p2", "blocked"))
+    assert publish_dataset.read_removals(file) == (frozenset({"p1"}), [])  # other shops: ignored
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "pdp-variant-absent",  # a variant of a KEPT offer: never excuses an absent offer
+        "retained",
+        "blocked",
+        "rate_limited",
+        "capture_in_progress",
+        "planned_not_captured",
+        "",
+    ],
+)
+def test_anything_but_removal_evidence_refuses_the_file(tmp_path: Path, evidence: str) -> None:
+    file = removals_csv(tmp_path, ("ulta_ae", "p0", "pdp-404"), ("ulta_ae", "p1", evidence))
+    _, errors = publish_dataset.read_removals(file)
+    assert len(errors) == 1
+    assert errors[0].startswith("removal_evidence.csv:3: ")
+
+
+def test_a_removals_file_without_the_columns_is_refused(tmp_path: Path) -> None:
+    file = tmp_path / "ids.json"
+    file.write_text('["p1"]', encoding="utf-8")
+    assert publish_dataset.read_removals(file)[1][0].startswith("ids.json: missing columns")
+
+
+def test_an_absent_offer_listed_with_pdp_variant_absent_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    doc = beauty_doc()
+    pid = doc["products"][0]["id"]
+    drop_ulta_offer(doc)
+    new = tmp_path / "new.json"
+    new.write_text(json.dumps(doc), encoding="utf-8")
+    live = tmp_path / "live.json"
+    live.write_text(beauty_raw(), encoding="utf-8")
+    argv = [str(new), "--project", "p", "--allow-test", "--dry-run", "--versioned"]
+    argv += ["--live-datasets", LIVE, "--allow-beauty-versioned", "--live-file", str(live)]
+    variant = removals_csv(tmp_path, ("ulta_ae", pid, "pdp-variant-absent"))
+    assert run([*argv, "--reconciled-removals", str(variant)], monkeypatch) == 1
+    assert "'pdp-variant-absent' is not removal evidence" in capsys.readouterr().err
+    gone = removals_csv(tmp_path, ("ulta_ae", pid, "pdp-404"))
+    assert run([*argv, "--reconciled-removals", str(gone)], monkeypatch) == 0
+    assert "retention ulta_ae: live 2 new 1 reconciled 1" in capsys.readouterr().out
+
+
+def test_a_beauty_publish_holds_a_lost_sephora_offer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review of #304 item 2: the beauty file's sephora_me offers get the source guard too."""
+    doc = beauty_doc()
+    del doc["products"][0]["offers"]["sephora_me"]
+    doc["products"][0]["matches"] = []
+    new = tmp_path / "new.json"
+    new.write_text(json.dumps(doc), encoding="utf-8")
+    bucket = Bucket()
+    stored(bucket, LIVE_BEAUTY, beauty_doc())
+    fake_firebase(monkeypatch, bucket)
+    argv = [str(new), "--project", "p", "--allow-test", "--versioned", "--live-datasets", LIVE]
+    assert run([*argv, "--allow-beauty-versioned"], monkeypatch) == 1
+    assert bucket.uploads == []
+    assert "HOLD, sephora_me drops from 3 to 2 offers" in capsys.readouterr().err
+    # sephora_me served from its own body: the guard reads that body. With 2 offers live
+    # there, the same new file passes.
+    split = LIVE.replace("sephora_me=datasets/ae/beauty/latest.json", "sephora_me=s/v/1.json")
+    smaller = json.loads(sephora_only())
+    del smaller["products"][0]["offers"]["sephora_me"]
+    stored(bucket, "s/v/1.json", smaller)
+    assert run([*argv[:-1], split, "--allow-beauty-versioned"], monkeypatch) == 0
+    assert "source guard: ok" in capsys.readouterr().out
+
+
 def test_retention_fresh_allows_only_reconciled_removals() -> None:
     live = beauty_doc()
     fresh = copy.deepcopy(live)
@@ -256,3 +346,59 @@ def test_retention_fresh_allows_only_reconciled_removals() -> None:
     assert publish_dataset.retention_problems(live, fresh, frozenset({pid})) == []
     other = frozenset({live["products"][1]["id"]})
     assert publish_dataset.retention_problems(live, fresh, other)
+
+
+# ------------------------------------------------------------------ check-served: the windows
+def windowed_body(end: str | None) -> bytes:
+    """The ae-pilot example as v3 with each retailer's own keys and a window ending at ``end``."""
+    from pi_dataset import committed_profile, dump_dataset, upgrade  # noqa: PLC0415
+    from pi_dataset.examples import ae_pilot  # noqa: PLC0415
+
+    profile = committed_profile("beauty", 1)
+    assert profile is not None
+    d: dict[str, Any] = json.loads(dump_dataset(upgrade(ae_pilot(), profile)))
+    meta = d["meta"]
+    meta["cutoff"] = meta["generatedAt"] = "2026-10-08T20:00:00Z"
+    for r in meta["retailers"]:
+        r["fields"], r["capabilities"] = dict(meta["fields"]), dict(meta["capabilities"])
+        if end is not None:
+            r["window"] = {"start": end, "end": end, "runId": f"run-{end}"}
+    return gzip.compress(json.dumps(d).encode(), mtime=0)
+
+
+def check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **bodies: bytes) -> int:
+    for name, body in bodies.items():
+        (tmp_path / "d" / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "d" / name).write_bytes(body)
+    value = ",".join(f"s{i}=d/{name}" for i, name in enumerate(bodies))
+    argv = ["--project", "p", "--allow-test", "--check-served", value]
+    return run([*argv, "--served-root", str(tmp_path)], monkeypatch)
+
+
+def test_check_served_passes_seven_dubai_days_and_holds_eight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fresh = windowed_body("2026-10-08T10:00:00Z")
+    seven = windowed_body("2026-09-30T20:00:00Z")  # 10-01 in Dubai
+    assert check(tmp_path, monkeypatch, a=fresh, b=seven) == 0
+    assert "window guard: 2 bodies, ok" in capsys.readouterr().out
+    eight = windowed_body("2026-09-30T19:59:00Z")  # 09-30 in Dubai
+    assert check(tmp_path, monkeypatch, a=fresh, b=eight) == 1
+    captured = capsys.readouterr()
+    assert "HOLD, window gap 8 Dubai days, more than 7" in captured.err
+    assert "window guard: 2 bodies, HOLD" in captured.out
+
+
+def test_check_served_holds_no_window_and_a_missing_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fresh = windowed_body("2026-10-08T10:00:00Z")
+    assert check(tmp_path, monkeypatch, a=fresh, b=windowed_body(None)) == 1
+    assert "d/b: example_north_ae has no crawl window" in capsys.readouterr().err
+    argv = ["--project", "p", "--allow-test", "--check-served", "s=d/a,t=d/none"]
+    assert run([*argv, "--served-root", str(tmp_path)], monkeypatch) == 1
+    assert "HOLD, d/none: not found" in capsys.readouterr().err
+    # One body serving two sources is read once.
+    argv = ["--project", "p", "--allow-test", "--check-served", "s=d/a,t=d/a"]
+    assert run([*argv, "--served-root", str(tmp_path)], monkeypatch) == 0
+    assert "window guard: 1 bodies, ok" in capsys.readouterr().out

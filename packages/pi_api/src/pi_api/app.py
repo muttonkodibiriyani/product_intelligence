@@ -105,6 +105,7 @@ from pi_api.source import (
     SnapshotSource,
 )
 from pi_api.summary import SummaryCache, SummaryQuery, SummaryView, own_source, summary_view
+from pi_api.windows import window_problems
 from pi_api.wire import (
     API_VERSION,
     ApiMeta,
@@ -1206,6 +1207,11 @@ def app_from_env(env: Mapping[str, str] | None = None) -> ASGIApp:
     if settings.require_all and (missing := source.unserved()):
         # Raised from the factory, uvicorn exits non-zero: Cloud Run never marks the revision Ready.
         msg = f"PI_API_REQUIRE_ALL: not loaded at start: {', '.join(missing)}"
+        raise RuntimeError(msg)
+    if settings.require_all and (
+        problems := window_problems((d.path, d.dataset) for d in source.datasets())
+    ):
+        msg = f"PI_API_REQUIRE_ALL: crawl windows: {'; '.join(problems)}"
         raise RuntimeError(msg)
     catalogues = CatalogueSource(store_for(settings), settings.catalogues, settings.refresh_seconds)
     catalogues.load_all()

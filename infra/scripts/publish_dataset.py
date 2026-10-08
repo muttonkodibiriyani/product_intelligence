@@ -58,9 +58,15 @@ the original cutoff copy is never replaced.
   ``datasets/<country>/beauty/v/`` object; latest.json and every existing beauty object stay
   untouched. Retention, against the body the live PI_API_DATASETS serves ulta_ae from: every
   live ulta_ae offer (product id + context) and every live (sku, url) pair must be present. With
-  ``--reconciled-removals FILE`` (fresh Ulta only), the offer of a product id listed there,
-  backed by the capture lane's reconciliation evidence, may be absent; a blocked or not-observed
-  read never justifies an absence.
+  ``--reconciled-removals FILE`` (fresh Ulta only), the offer of a product id listed there may be
+  absent. FILE is the capture lane's removal_evidence.csv; every ulta_ae row must carry removal
+  evidence from ``REMOVAL_EVIDENCE``, and any other value (a not-observed reason, a variant drop)
+  refuses the publish. The sephora_me offers in the file are held by the source guard against
+  the body the live PI_API_DATASETS serves sephora_me from.
+- ``--check-served <PI_API_DATASETS>`` (no body; read-only): the window guard over every body
+  that value serves (``pi_api.windows``, the check ``PI_API_REQUIRE_ALL=1`` repeats at start):
+  each retailer has a crawl window and no two windows end more than 7 Dubai days apart. Run it on
+  the value a roll will deploy, before the roll (pi-api-deploy.md §6).
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
         --project productintelligence-beeb3 dataset.json [--dry-run] [--allow-test]
@@ -68,6 +74,7 @@ the original cutoff copy is never replaced.
 
 import argparse
 import base64
+import csv
 import gzip
 import hashlib
 import json
@@ -87,6 +94,12 @@ PROTECTED_SOURCES = ("ulta_ae",)  # owner hard rule: never dropped, not even wit
 BEAUTY_SOURCES = ("sephora_me", "ulta_ae")  # the owner's combined file (--allow-beauty-versioned)
 BEAUTY = "beauty"
 RETAINED = "ulta_ae"  # --allow-beauty-versioned: no live offer of this source may go missing
+GUARDED = "sephora_me"  # --allow-beauty-versioned: held by the source guard (no loss)
+# --reconciled-removals: the only evidence that an offer is gone (evidence-CSV ruling
+# 01a11c7b-1adb; Coordinator 01a11cad-17da). pdp-variant-absent drops a variant from a KEPT
+# offer, so it never excuses an absent offer, and no notObservedReason is removal evidence.
+REMOVAL_EVIDENCE = ("pdp-404", "pdp-410", "sitemap-absent", "search-absent")
+REMOVAL_FIELDS = ("product_id", "evidence_type", "evidence_time", "run_id")
 V1_PREFIX = "datasets/uae"
 V1_SOURCE = "sephora_me"
 V1_META_DOC = "current"  # demo_meta/current: the legacy dashboard and smoke_demo read it
@@ -563,6 +576,69 @@ def retention_problems(
     return problems
 
 
+def read_removals(path: Path) -> tuple[frozenset[str], list[str]]:
+    """The ulta_ae product ids removal_evidence.csv (the capture lane's reconciliation) shows
+    removed, and why the file is refused: a missing column or value, or an ulta_ae row whose
+    evidence is not in ``REMOVAL_EVIDENCE``. One bad row refuses the whole file."""
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        header = reader.fieldnames or []
+    if missing := [f for f in ("retailer", *REMOVAL_FIELDS) if f not in header]:
+        return frozenset(), [f"{path.name}: missing columns {missing}"]
+    ids, errors = set(), []
+    for line, row in enumerate(rows, start=2):
+        if row["retailer"] != RETAINED:
+            continue
+        if empty := [f for f in REMOVAL_FIELDS if not (row[f] or "").strip()]:
+            errors.append(f"{path.name}:{line}: empty {empty}")
+        elif row["evidence_type"] not in REMOVAL_EVIDENCE:
+            errors.append(
+                f"{path.name}:{line}: {row['evidence_type']!r} is not removal evidence "
+                f"({', '.join(REMOVAL_EVIDENCE)}): {row['product_id']} stays retained"
+            )
+        else:
+            ids.add(row["product_id"])
+    return frozenset(ids), errors
+
+
+def only(doc: dict[str, Any], source: str) -> dict[str, Any]:
+    """A by-source document cut to ``source``'s offers (products without one dropped)."""
+    return {
+        "products": [
+            p | {"offers": {source: p["offers"][source]}}
+            for p in doc.get("products") or []
+            if source in (p.get("offers") or {})
+        ]
+    }
+
+
+def check_served(datasets: str, read: Any, *, allow_test: bool = False) -> int:
+    """The window guard over every body ``datasets`` (a PI_API_DATASETS value) serves, each
+    read with ``read(path) -> bytes | None`` and parsed as pi-api parses it."""
+    from pi_api.source import parse  # noqa: PLC0415 (v1 runs without it)
+    from pi_api.windows import window_problems  # noqa: PLC0415
+
+    paths = dict.fromkeys(e.strip().partition("=")[2] or e.strip() for e in datasets.split(","))
+    paths.pop("", None)
+    loaded, problems = [], []
+    for path in paths:
+        body = read(path)
+        if body is None:
+            problems.append(f"{path}: not found")
+            continue
+        try:
+            raw = gzip.decompress(body) if body[:2] == b"\x1f\x8b" else body
+            loaded.append((path, parse(raw, allow_test=allow_test)))
+        except ValueError as exc:
+            problems.append(f"{path}: pi-api cannot serve it: {exc}")
+    problems += window_problems(loaded)
+    for problem in problems:
+        print(f"HOLD, {problem}", file=sys.stderr)
+    print(f"window guard: {len(paths)} bodies,", "HOLD" if problems else "ok")
+    return 1 if problems else 0
+
+
 def refused_body(*bodies: bytes) -> str | None:
     """Why one of these bodies (the input file, the canonical body) is never published."""
     for body in bodies:
@@ -609,7 +685,7 @@ def admission_line(body: bytes) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("path", type=Path)
+    parser.add_argument("path", type=Path, nargs="?")
     parser.add_argument("--project", required=True)
     parser.add_argument("--bucket", default=None, help="default: <project>.firebasestorage.app")
     parser.add_argument("--dry-run", action="store_true")
@@ -647,8 +723,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--reconciled-removals",
         type=Path,
         metavar="FILE",
-        help="with --allow-beauty-versioned, fresh Ulta only: JSON list of product ids whose "
-        "ulta_ae offer the capture lane's reconciliation evidence shows removed",
+        help="with --allow-beauty-versioned, fresh Ulta only: the capture lane's "
+        "removal_evidence.csv; its ulta_ae rows' offers may be absent",
+    )
+    parser.add_argument(
+        "--check-served",
+        metavar="VALUE",
+        help="no body: the window guard over every body this PI_API_DATASETS value serves",
+    )
+    parser.add_argument(
+        "--served-root",
+        type=Path,
+        metavar="DIR",
+        help="with --check-served: read the bodies from DIR/<path> instead of the bucket",
     )
     return parser
 
@@ -661,6 +748,10 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
             f"refusing: --drop-source {', '.join(protected)}: never dropped (owner hard rule)"
         )
 
+    if args.check_served is not None:
+        return main_check_served(args)
+    if args.path is None:
+        parser.error("a dataset file is needed (or --check-served)")
     if args.versioned and args.live_datasets is None:
         parser.error("--versioned needs --live-datasets (the live PI_API_DATASETS)")
     beauty = args.allow_beauty_versioned
@@ -668,9 +759,13 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
         parser.error("--allow-beauty-versioned needs --versioned")
     if args.reconciled_removals and not beauty:
         parser.error("--reconciled-removals needs --allow-beauty-versioned")
-    removals = frozenset(
-        json.loads(args.reconciled_removals.read_text()) if args.reconciled_removals else ()
-    )
+    removals: frozenset[str] = frozenset()
+    if args.reconciled_removals:
+        removals, refused = read_removals(args.reconciled_removals)
+        if refused:
+            for err in refused[:50]:
+                print(f"refusing: {err}", file=sys.stderr)
+            return 1
 
     raw = args.path.read_text(encoding="utf-8")
     doc = json.loads(raw)
@@ -732,16 +827,25 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
             print(f"refusing: the live PI_API_DATASETS serves no {RETAINED}", file=sys.stderr)
             return 1
 
-    def judge(live: dict[str, Any] | None) -> int:
+    # beauty: sephora_me is held by the source guard against the body it is served from.
+    sephora_path = served_path(args.live_datasets or "", GUARDED) if beauty else None
+
+    def judge(live: dict[str, Any] | None, sephora: dict[str, Any] | None = None) -> int:
         if beauty:
             new = json.loads(gzip.decompress(body))
-            return report_guard(retention_problems(live, new, removals), drop)
+            problems = retention_problems(live, new, removals)
+            if sephora is not None:
+                problems += source_guard(
+                    only(by_source(sephora), GUARDED), only(packaged, GUARDED), GUARDED, drop
+                )
+            return report_guard(problems, drop)
         return report_guard(guard(live, packaged, source, drop), drop)
 
     if args.dry_run:
         held = 0
         if args.live_file:
-            held = judge(json.loads(args.live_file.read_text(encoding="utf-8")))
+            live_doc = json.loads(args.live_file.read_text(encoding="utf-8"))
+            held = judge(live_doc, live_doc if sephora_path else None)
         else:
             print(f"source guard: runs against the live {live_path} before upload")
         if args.versioned and not held:
@@ -755,7 +859,10 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     firebase_admin.initialize_app(options={"projectId": args.project, "storageBucket": bucket_name})
     bucket = storage.bucket()
     live, generation = read_live(bucket, live_path)
-    held = judge(live)
+    sephora = None
+    if sephora_path:
+        sephora = live if sephora_path == live_path else read_live(bucket, sephora_path)[0]
+    held = judge(live, sephora)
     if args.versioned:  # latest.json and Firestore stay as the live revision reads them
         if held or publish_versioned(bucket, target, body):
             return 1
@@ -766,6 +873,30 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     firestore.client().collection("demo_meta").document(meta_doc).set(summary)
     print(f"wrote firestore demo_meta/{meta_doc}")
     return 0
+
+
+def main_check_served(args: argparse.Namespace) -> int:
+    """--check-served: read-only, from --served-root or the bucket."""
+    if args.served_root is not None:
+        root: Path = args.served_root
+
+        def read(path: str) -> bytes | None:
+            file = root / path
+            return file.read_bytes() if file.is_file() else None
+
+        return check_served(args.check_served, read, allow_test=args.allow_test)
+    import firebase_admin  # noqa: PLC0415 (lazy: unit tests run without Firebase installed)
+    from firebase_admin import storage  # noqa: PLC0415
+
+    bucket_name = args.bucket or f"{args.project}.firebasestorage.app"
+    firebase_admin.initialize_app(options={"projectId": args.project, "storageBucket": bucket_name})
+    bucket = storage.bucket()
+
+    def fetch(path: str) -> bytes | None:
+        blob = bucket.get_blob(path)
+        return None if blob is None else bytes(blob.download_as_bytes(raw_download=True))
+
+    return check_served(args.check_served, fetch, allow_test=args.allow_test)
 
 
 def report_guard(problems: list[str], drop: tuple[str, ...]) -> int:
