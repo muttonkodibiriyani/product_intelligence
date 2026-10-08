@@ -235,6 +235,7 @@ class _Validator:
         if gtin is not None and not is_valid_gtin(gtin):
             warnings.append(f"gtin {gtin!r} is not a valid GTIN; dropped")
             text["gtin"] = None
+        reasons += self._uncollected_prices(prices)
         if reasons or key is None or at is None:
             self.report.rejected.append(Rejection(number, key, reasons))
             return
@@ -262,6 +263,15 @@ class _Validator:
                 lists=lists,
             )
         )
+
+    def _uncollected_prices(self, prices: dict[str, Decimal | None]) -> list[str]:
+        """A regular or promo price on a feed declared not to capture them contradicts it."""
+        if self.m.regular_stated != "not_collected":
+            return []
+        stated = [f for f in ("price_regular", "price_promo") if prices[f] is not None]
+        if not stated:
+            return []
+        return [f"{', '.join(stated)} on a feed declared regular_stated not_collected"]
 
     def _lists(self, get: dict[str, object], warnings: list[str]) -> dict[str, tuple[str, ...]]:
         lists = {f: _items(get.get(f)) for f in LIST_FIELDS if f in self.cols}

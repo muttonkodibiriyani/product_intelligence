@@ -28,6 +28,7 @@ SHOP = Shop(
     currency="AED",
     time_zone="Asia/Dubai",
     notes="synthetic",
+    regular_stated="on_promotion",
 )
 #: a shop that carries the page attributes, as Ounass and Bloomingdale's do
 ATTR_SHOP = replace(SHOP, source="example_attrs_ae", page_attributes=True, style_family=True)
