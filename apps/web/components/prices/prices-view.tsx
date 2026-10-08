@@ -75,7 +75,8 @@ export function PricesView() {
   // nothing for it and says so: falling back to the first retailer would put its numbers under
   // the name in the link.
   const unknown = !!wanted && ids.length > 0 && !ids.includes(wanted);
-  const selected = unknown ? null : (wanted ?? ids[0]) || null;
+  // An empty ?retailer= names nothing: the first retailer, as with no parameter.
+  const selected = unknown ? null : ((wanted || ids[0]) ?? null);
   // A summary the API withheld for this retailer: the page says why, never another retailer's data.
   const missing = selected ? s.missing.find((m) => m.retailer === selected) : undefined;
   // Rows are keyed by the retailer the API answered for; the asked-for id's position is the fallback.

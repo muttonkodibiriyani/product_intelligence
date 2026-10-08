@@ -53,7 +53,7 @@ describe('Known', () => {
   });
 });
 
-const reason = (v: string, locale: 'en' | 'ar' = 'ar') =>
+const reason = (v: string | null | undefined, locale: 'en' | 'ar' = 'ar') =>
   render(
     <NextIntlClientProvider
       locale={locale}
@@ -73,14 +73,28 @@ describe('Reason', () => {
     expect(reason('no_match').querySelector('bdi')).toBeNull();
   });
 
-  it('says withheld, with the code as sent, for a reason this build has no label for', () => {
-    expect(reason('window_unknown', 'en').textContent).toBe('Withheld: window_unknown');
-    const c = reason('window_unknown');
-    expect(c.textContent).toBe('محجوب: window_unknown');
-    const bdi = c.querySelector('bdi')!;
-    expect(bdi.textContent).toBe('window_unknown');
-    expect(bdi.getAttribute('dir')).toBe('ltr');
-    expect(bdi.getAttribute('lang')).toBe('en');
+  // future_reason is outside the API's enum for good; window_unknown is a real code that 1218b
+  // labels, and flips here when it does.
+  it.each(['future_reason', 'window_unknown'])(
+    'says withheld, with the code as sent, for a reason this build has no label for (%s)',
+    (code) => {
+      expect(reason(code, 'en').textContent).toBe(`Withheld: ${code}`);
+      const c = reason(code);
+      expect(c.textContent).toBe(`محجوب: ${code}`);
+      const bdi = c.querySelector('bdi')!;
+      expect(bdi.textContent).toBe(code);
+      expect(bdi.getAttribute('dir')).toBe('ltr');
+      expect(bdi.getAttribute('lang')).toBe('en');
+    },
+  );
+
+  it('no code at all (empty, blank or null) reads as plain withheld, never "Withheld: " and an empty code', () => {
+    for (const v of ['', '  ', null, undefined]) {
+      expect(reason(v, 'en').textContent).toBe('Withheld');
+      const c = reason(v);
+      expect(c.textContent).toBe('محجوب');
+      expect(c.querySelector('bdi')).toBeNull();
+    }
   });
 
   it('never resolves a code that is not enum-shaped as a key path', () => {

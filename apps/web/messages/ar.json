@@ -93,6 +93,7 @@
     "summaryTooFew": "المنتجات المطابَقة قليلة جدًا لعرض ملخص بعد.",
     "asOf": "البيانات حتى {date}",
     "asOfRetailer": "{retailer}: البيانات حتى {date}",
+    "withheld": "محجوب",
     "withheldCode": "محجوب: <c>{code}</c>"
   },
   "home": {

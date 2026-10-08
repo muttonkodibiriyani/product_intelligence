@@ -168,4 +168,17 @@ describe('PricesView: a retailer id the API does not serve', () => {
     );
     expect(screen.queryByText(en.prices.unknownRetailer)).toBeNull();
   });
+
+  it.each([['en'], ['ar']] as const)(
+    'an empty ?retailer= (%s) names nothing: the first retailer, no notice',
+    async (locale) => {
+      show('retailer=', locale);
+      const msgs = locale === 'ar' ? ar : en;
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Shop A' }).getAttribute('aria-pressed')).toBe('true'),
+      );
+      expect(screen.queryByText(msgs.prices.unknownRetailer)).toBeNull();
+      expect(screen.queryByText(msgs.prices.noRetailers)).toBeNull();
+    },
+  );
 });

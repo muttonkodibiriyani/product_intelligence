@@ -93,6 +93,7 @@
     "summaryTooFew": "Too few matched products for a summary yet.",
     "asOf": "Data as of {date}",
     "asOfRetailer": "{retailer}: data as of {date}",
+    "withheld": "Withheld",
     "withheldCode": "Withheld: <c>{code}</c>"
   },
   "home": {
