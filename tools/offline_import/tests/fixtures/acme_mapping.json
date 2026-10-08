@@ -11,6 +11,7 @@
   "time_zone": "Asia/Dubai",
   "observed_at": "2026-09-15T08:00:00+04:00",
   "complete_catalogue": false,
+  "regular_stated": "on_promotion",
   "columns": {
     "listing_key": "Variant ID",
     "sku": "SKU",

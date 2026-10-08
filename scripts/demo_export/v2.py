@@ -31,7 +31,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -105,6 +105,22 @@ SITEMAP_ATTESTED = frozenset({"f"})
 #: JSON-LD offer and the page flag agree, else the feed leaves it unknown): an out-of-stock page
 #: is an offer published out of stock, never dropped or read as removed.
 STOCK_NOT_PUBLISHED = frozenset({"f"})
+#: How each slot's source states a regular price, read here at export time so rows loaded before
+#: a declaration changed are published under it too (observations are append-only).
+#: ``on_promotion``: a regular price is stated on promotional rows, so a full-price row's regular
+#: is its price (the query's CASE). ``not_collected``: no regular price was ever captured, so none
+#: is published, ``fields.regular`` is ``not_collected`` and promotions are off; a stored
+#: price_type 'full' is not evidence of a full price. Every slot must be declared: no default.
+#: Bloomingdale's: no list price on any of the 7,739 pages captured 3-5 Oct, so whether the UAE
+#: site serves one on a markdown is unproven (Reviewer, 2026-10-08). It must agree with the
+#: importing shop's ``regular_stated`` (``pi_capture.feed.SHOPS``).
+REGULAR_STATED: dict[str, Literal["on_promotion", "not_collected"]] = {
+    "u": "on_promotion",
+    "s": "on_promotion",
+    "f": "on_promotion",
+    "o": "on_promotion",
+    "b": "not_collected",
+}
 STATUS = {
     "ok": RetailerStatus.SUPPORTED,
     "partial": RetailerStatus.PARTIAL,
@@ -260,16 +276,30 @@ def offer(rows: Sequence[ListingRow], currency: str, stale: Stale) -> Offer:
     price_at, price_run_id = rep.price_capture
     stock_at, stock_run_id = rep.stock_capture
     price = money(rep.price, currency)
+    collected = REGULAR_STATED[rep.retailer] == "on_promotion"
+    # The query's CASE gives a stored 'full' row its own price as regular; anything else is a
+    # stated regular, which a source declared not_collected cannot have.
+    derived = rep.price_type == "full" and rep.regular == rep.price
+    if not collected and rep.regular is not None and not derived:
+        msg = f"{rep.source_name} {rep.source_listing_key}: a stated regular price on a source"
+        raise ValueError(f"{msg} declared not_collected (REGULAR_STATED)")
+    stated = money(rep.regular, currency) if collected else None
     if price is not None and not stale.on_day(price_at):
         price = None
         stale.prices += 1
-        stale.regulars += money(rep.regular, currency) is not None
-    regular = money(rep.regular, currency) if price is not None else None
+        stale.regulars += stated is not None
+    regular = stated if price is not None else None
     stock = None if rep.retailer in STOCK_NOT_PUBLISHED else availability(rep.availability)
     if stock is not None and not stale.on_day(stock_at):
         stock = None
         stale.stock += 1
     captured, run_id = (price_at, price_run_id) if price is not None else (stock_at, stock_run_id)
+    if rep.file_received_at is not None and captured == rep.file_received_at:
+        msg = (
+            f"{rep.source_name} {rep.source_listing_key}: dated by its feed file's import time "
+            f"{captured.isoformat()}, not a capture time"
+        )
+        raise ValueError(msg)
     rating = None
     if rep.rating is not None and rep.rating_scale is not None and rep.rating_count is not None:
         rating = Rating(
