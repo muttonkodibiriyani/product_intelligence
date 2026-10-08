@@ -472,11 +472,14 @@ def windowed_body(end: str | None, *, blocked: str | None = None) -> bytes:
     assert profile is not None
     d: dict[str, Any] = json.loads(dump_dataset(upgrade(ae_pilot(), profile)))
     meta = d["meta"]
-    meta["cutoff"] = meta["generatedAt"] = "2026-10-08T20:00:00Z"
+    meta["cutoff"] = meta["generatedAt"] = "2026-10-08T19:59:00Z"  # 10-08 in Dubai
     for r in meta["retailers"]:
         r["fields"], r["capabilities"] = dict(meta["fields"]), dict(meta["capabilities"])
         if end is not None and r["id"] != blocked:
             r["window"] = {"start": end, "end": end, "runId": f"run-{end}"}
+            for offer in (p["offers"].get(r["id"]) for p in d["products"]):
+                if offer is not None and not offer["early"]:  # #302 rule (c); recon stays
+                    offer["evidence"] |= {"capturedAt": end, "runId": f"run-{end}"}
         if r["id"] == blocked:
             r["since"] = "2026-10-01"  # its last capture: the entry runs from the day after
     if blocked is not None:

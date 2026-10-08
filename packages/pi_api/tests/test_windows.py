@@ -14,6 +14,7 @@ from pi_api.app import app_from_env
 from pi_api.windows import MAX_GAP_DAYS, check_windows, window_problems
 from pi_dataset import DatasetV3, committed_profile, dump_dataset, upgrade
 from pi_dataset.examples import ae_pilot
+from pi_dataset.v3 import NotObservedV3
 
 NORTH, SOUTH = "example_north_ae", "example_south_ae"
 #: ulta_ae tonight (Coordinator 01a11cc0-86a1, 01a11cd9-48b1): the whole retailer, blocked from
@@ -33,7 +34,7 @@ FRESH = {"start": "2026-10-08T00:00:00Z", "end": "2026-10-08T10:00:00Z", "runId"
 def windowed(
     end: str | None,
     *,
-    cutoff: str = "2026-10-08T20:00:00Z",
+    cutoff: str = "2026-10-08T19:59:00Z",  # 10-08 in Dubai; 20:00Z is already 10-09
     zone: str = "Asia/Dubai",
     withheld: dict[str, Any] | None = None,
 ) -> DatasetV3:
@@ -50,11 +51,34 @@ def windowed(
         r["fields"], r["capabilities"] = dict(meta["fields"]), dict(meta["capabilities"])
         if end is not None and not (withheld is not None and r["id"] == SOUTH):
             r["window"] = {"start": end, "end": end, "runId": f"run-{end}"}
+            in_window(d, r["id"], end)
         if withheld is not None and r["id"] == SOUTH:
             r["since"] = SINCE
     if withheld is not None:
         d["notObserved"] = [{**BLOCKED, **withheld}]
     return DatasetV3.model_validate(d)
+
+
+def disclosed(ds: DatasetV3, **entry: Any) -> DatasetV3:
+    """``ds`` with ``SOUTH``'s whole-retailer entry changed by ``entry``, not re-validated: a
+    body ``pi_dataset.v3`` would refuse, so the served-set guard is tested on its own."""
+    [blocked] = [NotObservedV3.model_validate({**BLOCKED, **entry})]
+    return ds.model_copy(update={"not_observed": (blocked,)})
+
+
+def covering(name: str, first: str, cutoff: str) -> str:
+    return (
+        f"{name}: {SOUTH}: withheld (no window) but no whole-retailer notObserved entry "
+        f"covering {first}..{cutoff}"
+    )
+
+
+def in_window(d: dict[str, Any], retailer: str, end: str) -> None:
+    """Each of ``retailer``'s offers captured at ``end`` by its window's run, as #302 requires
+    of an observed offer (rule (c))."""
+    for product in d["products"]:
+        for offer in (o for c, o in product["offers"].items() if c == retailer and not o["early"]):
+            offer["evidence"] |= {"capturedAt": end, "runId": f"run-{end}"}
 
 
 def test_seven_dubai_days_pass_and_eight_are_refused_at_the_20z_boundary() -> None:
@@ -140,13 +164,11 @@ def test_withholding_never_excuses_a_window_or_a_stale_disclosure() -> None:
     stale = stale.model_copy(update={"not_observed": windowed(None, withheld={}).not_observed})
     [problem] = window_problems([("fresh", windowed(FRESH["end"])), ("stale", stale)])
     assert problem.startswith("window gap 8 days")
-    # Disclosed only until 10-07 while the set runs to 10-08: refused.
-    short = windowed(FRESH["end"], withheld={"end": "2026-10-07"})
-    assert window_problems([("b", short)]) == [
-        f"b: {SOUTH} is withheld only until 2026-10-07, before the set's last window day 2026-10-08"
-    ]
+    # Disclosed only until 10-07 while the cutoff is on 10-08: refused.
+    short = disclosed(windowed(FRESH["end"], withheld={}), end="2026-10-07")
+    assert window_problems([("b", short)]) == [covering("b", "2026-10-02", "2026-10-08")]
     # Part of the retailer (a category) is not the whole retailer: no window is refused.
-    part = windowed(FRESH["end"], withheld={"categories": ["skincare"]})
+    part = disclosed(windowed(FRESH["end"], withheld={}), categories=["skincare"])
     [problem] = window_problems([("b", part)])
     assert problem.startswith(f"b: {SOUTH} has no crawl window (ADR-0013)")
 
@@ -156,9 +178,10 @@ def test_a_set_with_no_window_at_all_is_refused_whatever_it_discloses() -> None:
     whole-retailer disclosure would pass for every retailer. Nothing fresh: refused."""
     old = {"start": "2026-09-01", "end": "2026-09-02"}
     entries = [{**BLOCKED, **old, "retailer": r} for r in (NORTH, SOUTH)]
-    both = DatasetV3.model_validate(
-        json.loads(dump_dataset(windowed(None))) | {"notObserved": entries}
-    )
+    d = json.loads(dump_dataset(windowed(None))) | {"notObserved": entries}
+    for r in d["meta"]["retailers"]:
+        r["since"] = "2026-09-01"
+    both = DatasetV3.model_validate(d)
     check = check_windows([("pre", both)])
     assert check.problems == [
         "no retailer in the served set has a crawl window (ADR-0013): a retailer can only be "
@@ -168,7 +191,8 @@ def test_a_set_with_no_window_at_all_is_refused_whatever_it_discloses() -> None:
     # The same disclosures beside one fresh window are judged against its day: too old.
     problems = window_problems([("pre", both), ("fresh", windowed(FRESH["end"]))])
     assert problems == [
-        f"pre: {r} is withheld only until 2026-09-02, before the set's last window day 2026-10-08"
+        f"pre: {r}: withheld (no window) but no whole-retailer notObserved entry covering "
+        "2026-09-02..2026-10-08"
         for r in (NORTH, SOUTH)
     ]
 
@@ -178,15 +202,26 @@ def test_a_withheld_retailer_is_disclosed_from_the_day_after_its_last_capture() 
     contiguous with the last capture; since 10-01 and an entry from 10-02 is tonight's shape."""
     assert window_problems([("b", windowed(FRESH["end"], withheld={}))]) == []
     assert window_problems([("b", windowed(FRESH["end"], withheld={"start": SINCE}))]) == []
-    gap = windowed(FRESH["end"], withheld={"start": "2026-10-03"})
-    assert window_problems([("b", gap)]) == [
-        f"b: {SOUTH} is withheld from 2026-10-03, not from the day after its last capture "
-        "(since 2026-10-01)"
-    ]
+    gap = disclosed(windowed(FRESH["end"], withheld={}), start="2026-10-03")
+    assert window_problems([("b", gap)]) == [covering("b", "2026-10-02", "2026-10-08")]
     known = windowed(FRESH["end"], withheld={})
     retailers = [r.model_copy(update={"since": None}) for r in known.meta.retailers]
     unknown = known.model_copy(
         update={"meta": known.meta.model_copy(update={"retailers": retailers})}
     )
-    [problem] = window_problems([("b", unknown)])
-    assert problem.endswith("not from the day after its last capture (since None)")
+    assert window_problems([("b", unknown)]) == [f"b: {SOUTH}: withheld (no window) but no since"]
+
+
+def test_a_withheld_entry_reaches_the_cutoffs_day_not_the_windows_last_day() -> None:
+    """Coordinator 01a11cf3-5ffd, 01a11cf9-5d28 (#302 c08d0ec4's rule): the window ends on
+    Dubai day 10-06 and the cutoff 2026-10-07T19:00Z is on 10-07; an entry to 10-06 is refused,
+    to 10-07 passes."""
+    cutoff = "2026-10-07T19:00:00Z"
+    ok = windowed("2026-10-06T10:00:00Z", cutoff=cutoff, withheld={"end": "2026-10-07"})
+    check = check_windows([("b", ok)])
+    assert check.problems == []
+    assert check.withheld == [
+        f"b: {SOUTH} withheld, not observed until 2026-10-07: Blocked (p0-20261008-ulta-probe)."
+    ]
+    short = disclosed(ok, end="2026-10-06")
+    assert window_problems([("b", short)]) == [covering("b", "2026-10-02", "2026-10-07")]
