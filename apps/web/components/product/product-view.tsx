@@ -16,7 +16,7 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import type { BackTo } from '../explore/product-table';
 import { Card } from '../ui/card';
-import { Size } from '../explore/product-table';
+import { productHref, Size } from '../explore/product-table';
 import { RowThumb } from '../explore/row-thumb';
 import { Known } from '../ui/known';
 import { Price } from '../ui/money';
@@ -178,7 +178,13 @@ export function ProductView() {
                 : t('offers', { date: formatDate(env.meta.cutoff, locale) })
             }
           >
-            <Offers offers={d.offers} name={name} caveats={env.caveats} />
+            <Offers
+              offers={d.offers}
+              name={name}
+              caveats={env.caveats}
+              backTo={backTo !== 'explore' && Object.hasOwn(BACKS, backTo) ? (backTo as BackTo) : undefined}
+              from={sp.get('from') ?? ''}
+            />
           </Section>
           {[...new Set(d.offers.filter((o) => o.retailer === 'ulta_ae' && o.sku).map((o) => o.sku!))].map(
             (sku) => (
@@ -245,10 +251,15 @@ function Offers({
   offers,
   name,
   caveats,
+  backTo,
+  from,
 }: {
   offers: Offer[];
   name: (id: string) => string;
   caveats: readonly CaveatView[];
+  /** The list this page was opened from, carried to another size's page. */
+  backTo: BackTo | undefined;
+  from: string;
 }) {
   const t = useTranslations('product');
   const ta = useTranslations('availability');
@@ -277,6 +288,8 @@ function Offers({
           field: 'regular',
           value: (o) => <Price of={{ price: o.regular }} locale={locale} />,
         },
+        // Never filled yet: the row says the member price is not collected, not that there is none.
+        { id: 'member', label: t('member'), field: 'member', value: () => null },
         {
           id: 'promo',
           label: t('promo'),
@@ -343,6 +356,20 @@ function Offers({
               </>
             );
           },
+        },
+      ],
+    },
+    {
+      id: 'content',
+      title: t('groupContent'),
+      rows: [
+        { id: 'images', label: t('images'), field: 'images', value: (o) => <Gallery o={o} /> },
+        { id: 'variants', label: t('variants'), field: 'variants', value: (o) => <Variants o={o} /> },
+        {
+          id: 'otherSizes',
+          label: t('otherSizes'),
+          field: 'otherSizes',
+          value: (o) => <OtherSizes o={o} back={backTo} from={from} />,
         },
       ],
     },
@@ -468,6 +495,91 @@ function OfferSize({
         </span>
       )}
     </>
+  );
+}
+
+/** At most this many pictures in a cell; the count says how many the page has. */
+const GALLERY_MAX = 4;
+
+/** The offer's own gallery as the retailer page (or its catalogue) lists it, in its order. */
+function Gallery({ o }: { o: Offer }) {
+  const t = useTranslations('product');
+  const locale = useLocale();
+  const { items, source } = o.content.images;
+  return (
+    <>
+      <span className="flex flex-wrap gap-1.5">
+        {items.slice(0, GALLERY_MAX).map((img, i) => (
+          <RowThumb
+            key={img.url}
+            url={img.url}
+            label={t('imageN', { n: i + 1 })}
+            cls="size-12 rounded-ctl border border-line-2 bg-surface"
+          />
+        ))}
+      </span>
+      <span className="mt-1 block text-xs text-ink-2">
+        {t('imageCount', { count: items.length, n: formatCount(items.length, locale) })}
+        {source && <> · {t(`imageSource.${source}`)}</>}
+      </span>
+    </>
+  );
+}
+
+/** The retailer's own listings grouped into the offer (its shades), each as the page states it. */
+function Variants({ o }: { o: Offer }) {
+  const t = useTranslations('product');
+  const locale = useLocale();
+  const items = o.content.variants.items;
+  return (
+    <details>
+      <summary className="cursor-pointer text-accent">
+        {t('variantCount', { count: items.length, n: formatCount(items.length, locale) })}
+      </summary>
+      <ul className="mt-1 space-y-1">
+        {items.map((v) => (
+          <li key={v.sku} data-variant>
+            {v.shade.state === 'observed' ? (
+              <bdi>{v.shade.text}</bdi>
+            ) : (
+              <span className="text-ink-2">{t(`content.${v.shade.state}`)}</span>
+            )}
+            <bdi dir="ltr" className="block font-mono text-xs break-all text-ink-2">
+              {v.sku}
+              {v.gtin.state === 'observed' && ` · ${v.gtin.barcode}`}
+            </bdi>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/**
+ * This retailer's other sizes of the same item, from its own product family: links to those
+ * products, never a claim that another retailer's size is the same item.
+ */
+function OtherSizes({ o, back, from }: { o: Offer; back: BackTo | undefined; from: string }) {
+  const locale = useLocale();
+  return (
+    <ul className="space-y-1">
+      {o.content.sizes.map((s) => (
+        <li key={s.productId}>
+          <Link
+            href={productHref(locale, s.productId, from, back)}
+            className="text-accent hover:underline focus-visible:outline-2"
+          >
+            {s.size || s.sizeLabel ? (
+              <OfferSize o={s} />
+            ) : (
+              <bdi dir="ltr" className="font-mono text-xs break-all">
+                {s.productId}
+              </bdi>
+            )}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
