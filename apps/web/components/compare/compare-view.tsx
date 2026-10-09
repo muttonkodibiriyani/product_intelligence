@@ -6,6 +6,7 @@ import { LIMITS, toCompareQuery } from '@/lib/compare';
 import { formatCount, formatDate } from '@/lib/format';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import { DatedShopNotice } from '../ui/dated-shop-notice';
 import { FilterChips } from '../ui/filter-chips';
 import { PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
@@ -57,6 +58,8 @@ export function CompareView() {
       />
 
       <CompareViews current="summary" search={key} />
+
+      <DatedShopNotice shops={ready ? [state.base, state.other] : []} />
 
       <PairPicker state={state} update={update} fixed={fixed} />
 

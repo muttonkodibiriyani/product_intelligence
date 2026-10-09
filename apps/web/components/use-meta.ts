@@ -16,6 +16,16 @@ export function useMeta() {
   });
 }
 
+/** Per-retailer coverage (counts and last collected day), shared by every page that shows it. */
+export function useCoverage() {
+  const { api } = useAuth();
+  return useQuery({
+    queryKey: ['coverage'],
+    queryFn: ({ signal }) => api!.get('/api/v1/coverage', { signal }),
+    enabled: !!api,
+  });
+}
+
 /**
  * Retailer id → the name shown to customers: the app's own name for the shops it knows, else the
  * display name from /meta, else (until /meta has loaded, or for an id it does not list) the id.

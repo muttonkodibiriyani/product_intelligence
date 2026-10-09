@@ -10,6 +10,7 @@ import { formatCount, formatDate } from '@/lib/format';
 import { navHref } from '@/lib/nav';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import { DatedShopNotice } from '../ui/dated-shop-notice';
 import { FilterChips } from '../ui/filter-chips';
 import { Known } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
@@ -64,6 +65,8 @@ export function OverlapView() {
       />
 
       <CompareViews current="overlap" search={key} />
+
+      <DatedShopNotice shops={ready ? [state.base, state.other] : []} />
 
       <PairPicker
         state={state}
