@@ -41,6 +41,8 @@ from pydantic import HttpUrl
 from pi_core import AvailabilityState, Concentration, MatchClass, ReviewState, is_valid_gtin
 from pi_core.enums import NotObservedReason
 from pi_dataset import (
+    AttributeEvidence,
+    AttributeSource,
     Capabilities,
     ContentField,
     CrawlWindow,
@@ -60,6 +62,7 @@ from pi_dataset import (
     OfferVariant,
     Producer,
     Product,
+    ProfileDeclaration,
     Rating,
     Retailer,
     RetailerStatus,
@@ -68,6 +71,7 @@ from pi_dataset import (
     committed_profile,
     upgrade,
 )
+from pi_dataset.v3 import BEAUTY_EVIDENCE_FROM, EXCERPT_MAX
 from scripts.demo_export.export import (
     MARKET_TIME_ZONE,
     GroupKey,
@@ -842,24 +846,43 @@ NOT_OBSERVED_WHY = {
 }
 
 
+#: The beauty profile versions this export writes (``--profile beauty@<n>``).
+BEAUTY_VERSIONS = (1, 2)
+
+#: Under an evidence profile (beauty@2 on, ADR-0008 §5), the keys this export can show the
+#: source of: the gift titles are the page's own text, stored as read. No other key is stored
+#: with its source text (the concentration label and the shade family are stored as values only),
+#: so each is published as not collected rather than with evidence it does not have.
+EVIDENCED_KEYS = frozenset({"giftWithPurchase"})
+
+
 def to_v3(
     v2: Dataset,
     rows: Sequence[ListingRow],
     matches: Sequence[MatchRow],
     windows: Mapping[str, CrawlWindow] | None = None,
+    *,
+    beauty: int = 1,
 ) -> DatasetV3:
-    """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount`` and
-    ``content``; an early (recon) offer's stay ``null``. The caller validates the dump with
-    ``load_any``.
+    """``v2`` upgraded under ``beauty@<beauty>`` (default 1), each collected offer with its
+    ``listingCount`` and ``content``; an early (recon) offer's stay ``null``. The caller validates
+    the dump with ``load_any``.
 
     A snapshot (one date) also states each retailer's own ``fields`` and ``capabilities`` (never
     the roll-up of ``meta.fields``, ADR-0013) and its crawl ``window`` from ``windows`` (the ones
     ``build_dataset_v2`` used). An offer whose rows are all retained is marked ``retained`` and
     covered by one ``notObserved`` entry per retailer, context and reason: the window's market
-    dates and the marked products' categories."""
-    profile = committed_profile("beauty", 1)
-    if profile is None:  # pragma: no cover - the profile is committed with pi_dataset
-        raise ValueError("beauty@1 is not a committed profile")
+    dates and the marked products' categories.
+
+    From ``beauty@2`` every value carries its evidence: a key outside ``EVIDENCED_KEYS`` is
+    declared not collected and its v2 values are left out, and each offer's gift titles (its
+    representative row's) are its ``giftWithPurchase``, with the page as their evidence."""
+    profile = evidence_profile(beauty)
+    evidenced = beauty >= BEAUTY_EVIDENCE_FROM
+    if evidenced:
+        v2 = v2.model_copy(
+            update={"products": tuple(p.model_copy(update={"attributes": {}}) for p in v2.products)}
+        )
     grouped = offer_rows(rows, matches)
     captured = captured_fields(rows)
     v3 = upgrade(v2, profile)
@@ -877,6 +900,7 @@ def to_v3(
                             if all(row.retained for row in grouped[p.id, cid])
                             else None,
                         }
+                        | (gift_attributes(grouped[p.id, cid]) if evidenced else {})
                     )
                     for cid, o in p.offers.items()
                 }
@@ -930,6 +954,45 @@ def to_v3(
             "not_observed": (*v3.not_observed, *covering),
         }
     )
+
+
+def evidence_profile(beauty: int) -> ProfileDeclaration:
+    """The committed ``beauty@<beauty>``; from the evidence version on, every key outside
+    ``EVIDENCED_KEYS`` declared not collected (a snapshot may turn a capability off, never on)."""
+    if beauty not in BEAUTY_VERSIONS:
+        raise ValueError(f"beauty@{beauty}: this export writes {BEAUTY_VERSIONS}")
+    profile = committed_profile("beauty", beauty)
+    if profile is None:  # pragma: no cover - the profiles are committed with pi_dataset
+        raise ValueError(f"beauty@{beauty} is not a committed profile")
+    if beauty < BEAUTY_EVIDENCE_FROM:
+        return profile
+    return profile.model_copy(
+        update={
+            "attribute_set": tuple(
+                a if a.key in EVIDENCED_KEYS else a.model_copy(update={"capability": False})
+                for a in profile.attribute_set
+            )
+        }
+    )
+
+
+def gift_attributes(rows: Sequence[ListingRow]) -> dict[str, Any]:
+    """An offer's ``giftWithPurchase`` and its evidence: the representative row's gift titles
+    (the listing its price is from), as the page states them. No titles, no key: a page without
+    a gift and one whose promotions were not read both leave it out."""
+    titles = list(choose_representative(rows).gift_with_purchase)
+    if not titles:
+        return {}
+    evidence = AttributeEvidence(
+        source=AttributeSource.PAGE,
+        field="gift_with_purchase",
+        excerpt=" | ".join(titles)[:EXCERPT_MAX],
+        rule=None,
+    )
+    return {
+        "attributes": {"giftWithPurchase": titles},
+        "attribute_evidence": {"giftWithPurchase": evidence},
+    }
 
 
 def retailer_states(

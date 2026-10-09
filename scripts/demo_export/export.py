@@ -1402,6 +1402,15 @@ def parser() -> argparse.ArgumentParser:
             "repeat per source. With any --run, every exported source needs one"
         ),
     )
+    result.add_argument(
+        "--profile",
+        default="beauty@1",
+        choices=("beauty@1", "beauty@2"),
+        help=(
+            "the v3 attribute profile. beauty@2 publishes each offer's gift titles with their "
+            "evidence and every key without stored evidence as not collected"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
@@ -1446,6 +1455,8 @@ def check_args(args: argparse.Namespace) -> None:
         )
     if not args.sources:
         raise SystemExit("--sources must name at least one source")
+    if args.profile != "beauty@1" and args.output_v3 is None:
+        raise SystemExit(f"--profile {args.profile} needs --output-v3 (only v3 has a profile)")
     if args.history and args.output_v2 is None and args.output_v3 is None:
         raise SystemExit("--history needs --output-v2 or --output-v3 (v1 has one date)")
     if args.history and args.run:
@@ -1576,7 +1587,9 @@ def main() -> None:
         body = dump_dataset(v2, compact=True)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            v3 = to_v3(v2, v2_rows, matches, windows)
+            v3 = to_v3(
+                v2, v2_rows, matches, windows, beauty=int(args.profile.removeprefix("beauty@"))
+            )
             print(window_report(v3))
             body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
