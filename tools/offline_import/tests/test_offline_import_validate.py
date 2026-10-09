@@ -20,6 +20,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 CSV = FIXTURES / "acme_feed.csv"
 JSON_FEED = FIXTURES / "acme_feed.json"
 MAPPING = FIXTURES / "acme_mapping.json"
+PROMO = {"price_promo": "s"}
 
 
 def _config(**overrides: Any) -> dict[str, Any]:
@@ -70,6 +71,9 @@ def test_fixture_mapping_loads() -> None:
         ({"country": "uae"}, "String should match pattern"),
         ({"time_zone": "Mars/Olympus"}, "unknown time zone"),
         ({"observed_at": None}, "import time is never used"),
+        # never inferred: a priced feed without a declaration is an error, not 'on_promotion'
+        ({"regular_stated": None}, "must declare regular_stated"),
+        ({"regular_stated": "sometimes"}, "on_promotion"),
         ({"observed_at": "2026-09-15T08:00:00"}, "timezone"),
         ({"availability_map": {}}, "needs an availability_map"),
         ({"availability_map": {"gone": "removed"}}, "cannot assert"),
@@ -81,6 +85,35 @@ def test_fixture_mapping_loads() -> None:
 def test_mapping_rejects(overrides: dict[str, Any], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         ImportMapping.model_validate(_config(**overrides))
+
+
+def test_a_feed_without_prices_needs_no_regular_declaration() -> None:
+    config = _config(regular_stated=None, columns={"listing_key": "k", "availability": "a"})
+    assert ImportMapping.model_validate(config).regular_stated is None
+
+
+def test_a_feed_declared_not_collected_rejects_a_stated_regular_or_promo() -> None:
+    mapping = ImportMapping.model_validate(
+        _config(
+            regular_stated="not_collected",
+            columns={"listing_key": "k", "price_current": "p", "price_regular": "r"} | PROMO,
+        )
+    )
+    report = Report(file="mem", sha256="0" * 64, format="csv")
+    validate_rows(
+        [
+            (2, {"k": "A", "p": "10", "r": "", "s": ""}),
+            (3, {"k": "B", "p": "10", "r": "12", "s": ""}),
+            (4, {"k": "C", "p": "10", "r": "", "s": "10"}),
+        ],
+        mapping,
+        report,
+    )
+    assert [r.listing_key for r in report.accepted] == ["A"]
+    assert {r.row: r.reasons for r in report.rejected} == {
+        3: ["price_regular on a feed declared regular_stated not_collected"],
+        4: ["price_promo on a feed declared regular_stated not_collected"],
+    }
 
 
 def test_other_market_needs_only_a_known_currency() -> None:

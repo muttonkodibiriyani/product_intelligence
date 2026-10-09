@@ -113,11 +113,12 @@ Deploy by digest, not by tag.
 
 The env vars come from the live service, not from this doc: the served files and retailers move
 (per-source files, the matched file, a new retailer's hosts, the match file), and `--set-env-vars`
-replaces every variable, deleting any it does not list. The deploy below sets exactly nine:
+replaces every variable, deleting any it does not list. The deploy below sets exactly ten:
 `PI_API_FIREBASE_PROJECT`, `PI_API_BUCKET`, `PI_API_DATASETS`, `PI_API_EVIDENCE_HOSTS`,
 `PI_API_IMAGE_HOSTS`, `PI_API_MEMORY_MIB` (required; `MEMORY_MIB` is `infra/pi-api/service.env`'s,
-and an empty live value is adopted, since services deployed before it have none) and `PI_API_CATALOGUES`, `PI_API_MATCHES`, `PI_API_ADMITTED`
-(optional; an empty value is left out). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`,
+and an empty live value is adopted, since services deployed before it have none) and `PI_API_CATALOGUES`, `PI_API_MATCHES`, `PI_API_ADMITTED`, `PI_API_REQUIRE_ALL`
+(optional; an empty value is left out; `REQUIRE_ALL=1` is set on every body refresh, see
+"Body refresh (deploy plan v2)" below). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`,
 `IMAGE_HOSTS`, `CATALOGUES` and `MATCHES` to the values you mean to serve, and `ADMITTED` to the
 `PI_API_ADMITTED=` value `infra/scripts/pi_api_admission.py check` prints for that `DATASETS` (§6;
 empty while the served set is within the fit) (the §2 paths and the hosts below on a first deploy),
@@ -132,7 +133,7 @@ if sys.argv[1] == "--names": print("\n".join(e["name"] for e in env))
 else: print(next((e.get("value", "") for e in env if e["name"] == sys.argv[1]), ""))' \
   "$1" 2>/dev/null; }
 FIREBASE_PROJECT=$PROJECT MEMORY_MIB=$PI_API_MEMORY_MIB
-REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS MEMORY_MIB" OPTIONAL="CATALOGUES MATCHES ADMITTED"
+REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS MEMORY_MIB" OPTIONAL="CATALOGUES MATCHES ADMITTED REQUIRE_ALL"
 ENV_OK=1 SET_ENV= KNOWN=" "
 test "$FIRST_DEPLOY" = 1 && test -n "$SVC_JSON" \
   && { echo "STOP: FIRST_DEPLOY=1 but pi-api already exists"; ENV_OK=0; }
@@ -141,7 +142,7 @@ for v in $REQUIRED $OPTIONAL; do
   case " $OPTIONAL " in *" $v "*) opt=1;; *) opt=0;; esac
   if { test -n "$want" || { test $opt = 1 && test -z "$have"; }; } \
     && { test "$want" = "$have" || { test -z "$have" \
-      && { test "$FIRST_DEPLOY" = 1 || test $v = MEMORY_MIB; }; }; } \
+      && { test "$FIRST_DEPLOY" = 1 || test $v = MEMORY_MIB || test $v = REQUIRE_ALL; }; }; } \
     && case "$want" in *@*) false;; esac
   then echo "PI_API_$v ok: [$want]"; test -z "$want" || SET_ENV="$SET_ENV@PI_API_$v=$want"
   else echo "STOP: PI_API_$v live=[$have] wanted=[$want] (no '@' allowed)"; ENV_OK=0
@@ -156,10 +157,10 @@ test "$ENV_OK" = 1 && echo "ENV OK" || echo "ENV STOP"
 
 On any STOP, do not deploy. Either take the live value (`DATASETS=$(live_env PI_API_DATASETS)`,
 and the same for the others) or treat the difference as a config change with its own approval and
-its own before/after diff. A live variable outside the nine (printed by name only) means this
+its own before/after diff. A live variable outside the ten (printed by name only) means this
 command would delete it: STOP and extend this list in a reviewed change first. Only a first
 deploy (no service yet) sets `FIRST_DEPLOY=1`, and the guard STOPs if the service exists; a failed
-describe otherwise STOPs. The STOP lines print live values: all nine are non-secret config (`ADMITTED` is sha256 digests). A
+describe otherwise STOPs. The STOP lines print live values: all ten are non-secret config (`ADMITTED` is sha256 digests). A
 secret never joins this list; it would need `--set-secrets` (not used, see below) and a reviewed
 change that prints its name only. To change one variable on a running service, use `gcloud run
 services update --update-env-vars` with its own approval (it leaves the others alone), not this
@@ -404,7 +405,7 @@ as it is.
     (rule 1) is at least as large as any other single file**: the file that refreshes at 31.48
     MiB per MB must be the largest. The 600 MiB reserve is **30 MB** at the resident rate
     (`OTHERS_MAX_BYTES`, the exporter's derivation of the 51 MB gate). An admission record is
-    issued only while its other files total at most `ADMISSION_OTHERS_MAX_BYTES` (50,000,000);
+    issued only while its other files total at most `ADMISSION_OTHERS_MAX_BYTES` (52,000,000);
     that cap governs issuing a record, never serving: pi_api serves an admitted body while the
     other files total at most the record's own measured figure (`refusal`, `≤`). Before
     any revision that adds to `PI_API_DATASETS` (or a publish that grows a served file), size
@@ -446,6 +447,92 @@ as it is.
 - **`--timeout=30s`, `--cpu-throttling` (request-based CPU).** The slowest route is a 50 k-row CSV
   export, ~4 s measured locally (~1.3 s JSONL); even several times slower on 1 vCPU it is well
   inside 30 s.
+
+### Body refresh (deploy plan v2)
+
+A new dataset body never overwrites a served object. It goes to a new create-only path, a new
+revision serves it, and rollback is routing traffic back to the previous revision.
+
+1. **Publish to a versioned path.** Read the live `PI_API_DATASETS` (`live_env PI_API_DATASETS`
+   above) and pass it verbatim:
+
+   ```sh
+   uv run python infra/scripts/publish_dataset.py <body.json> --project=$PROJECT \
+     --versioned --live-datasets="$(live_env PI_API_DATASETS)"
+   ```
+
+   It writes one object, `datasets/<cc>/<source|beauty>/v/<stem>-<sha12>.json`, with
+   `if_generation_match=0` (a re-run is refused, never an overwrite). It writes no `latest.json` and
+   no Firestore document, and prints the `PI_API_DATASETS=` value to deploy. A path the live
+   revision serves is refused, and so is a body set on the refused list.
+   - **Beauty (sephora_me + ulta_ae)** also needs `--allow-beauty-versioned`, only on the owner's P1
+     answer (form 01a11c72-16e3). The retention check is built in and fails the publish with
+     nothing uploaded:
+     - without `--reconciled-removals` (keys-only): every live ulta_ae offer is present by product
+       id and offer key, and every live (sku, url) pair is still there;
+     - with `--reconciled-removals FILE` (fresh): an offer may be missing only if its product id is
+       in FILE, the capture lane's `removal_evidence.csv` (removal task 01a11c77-75e6). Every
+       ulta_ae row must carry `pdp-404`, `pdp-410`, `sitemap-absent` or `search-absent`. Any other
+       value refuses the publish: a notObservedReason (`retained`, `blocked`, `rate_limited`,
+       `capture_in_progress`, `planned_not_captured`) or `pdp-variant-absent`, which drops a
+       variant from a kept offer and never excuses an absent one (Coordinator 01a11cad-17da,
+       01a11cad-a1a9).
+     - the file's sephora_me offers get the source guard (no live offer lost), against the body
+       the live `PI_API_DATASETS` serves sephora_me from.
+   - **Ulta U1 (owner's export) publish gate, both must pass** (Coordinator 01a11c8f-2138): the
+     keys-only check above **and** DeepTester's `MODE=retain` (`scratch/wk/ulta-retention-check.py`,
+     01a11c8d-e603). Keys-only proves no offer was dropped. MODE=retain proves every offer missing
+     from the export is retained as not_observed: its capturedAt is unchanged and earlier than the
+     window, and it has no price or stock value in the new window. Neither replaces the other.
+   - **Window guard (in code; ruling 01a11cad-17da).** Publish every body first, chaining each
+     printed `PI_API_DATASETS=` value into the next `--live-datasets`. Then check the final value,
+     read-only, before step 2:
+
+     ```sh
+     uv run python infra/scripts/publish_dataset.py --project=$PROJECT --check-served="$NEW_DATASETS"
+     ```
+
+     It reads every body the value serves and HOLDs if any retailer has no crawl window (or no
+     market for its country), if the windows are in more than one market time zone, or if two
+     windows' ENDs are more than 7 calendar days apart in that zone (`meta.markets` by country;
+     for AE, Asia/Dubai: 8 is refused, 7 passes, and days turn at 20:00Z).
+     A retailer that cannot be refreshed (tonight ulta_ae, blocked: Coordinator 01a11cc0-86a1)
+     is WITHHELD, not refused, only when its body gives it no window and carries a
+     `notObserved[]` entry for the whole retailer (`context` and `categories` null) that starts
+     no later than the day after its `since` and whose `end` reaches its scope's cutoff day: the
+     latest `meta.cutoff` across the `NEW_DATASETS` bodies of the retailer's scope (for ulta_ae,
+     the beauty-scope bodies), as a date in the market's time zone (Asia/Dubai; 20:00Z is already
+     the next day), as the API's per-scope `compose` takes it (Coordinator 01a11d05-862f,
+     01a11d19-9686). Set that `end` at roll time, from the final set, never from the body's own
+     window. The guard prints `<body>: <retailer> withheld, not observed until <date>: <why>`
+     and leaves it out of the gap, which is still counted over the whole set. Never give it a
+     window to pass: a retailer with a window is always counted. A windowless retailer with no
+     offers serves nothing and is skipped.
+     **Required pre-roll step** (Coordinator 01a11d14-184d): run this on the full final set and
+     paste its output verbatim into the pre-roll report. It must print `withheld` for ulta_ae
+     and no refusal; any refusal stops the roll. Only a value that prints
+     `window guard: N bodies, ok` is rolled. The new revision
+     repeats the same check (`pi_api.windows`) at start under `PI_API_REQUIRE_ALL=1`, so a value
+     that skipped this step never becomes Ready.
+2. **Deploy a new revision without traffic.** Only `PI_API_DATASETS` changes (and
+   `PI_API_REQUIRE_ALL=1`, the first time), so this is the one-variable update above, not the full
+   form, which would STOP on the changed `DATASETS`:
+
+   ```sh
+   gcloud run services update pi-api --project=$PROJECT --region=$REGION --no-traffic \
+     --tag=refresh --update-env-vars="^@^PI_API_DATASETS=$NEW_DATASETS@PI_API_REQUIRE_ALL=1"
+   ```
+
+   With `PI_API_REQUIRE_ALL=1` pi_api refuses to start unless every configured file and view loads,
+   so a revision with an unserved body never becomes Ready. Run the §8 checks against the `refresh`
+   tag URL before any traffic moves.
+3. **Move traffic:** `gcloud run services update-traffic pi-api --region=$REGION
+   --to-revisions=<new>=100`.
+4. **Roll back** by routing traffic to the previous revision (§9). Its env still names the old
+   objects, which are never overwritten or deleted, so rollback needs no republish.
+5. **Report** on the deploy task: the before and after revision and image digest; the old and new
+   `PI_API_DATASETS`; each new body's sha256 and path; the exact traffic command; and for beauty,
+   the form response id that allowed it.
 
 ## 7. Hosting rewrite
 

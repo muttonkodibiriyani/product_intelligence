@@ -36,7 +36,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pi_capture.model import JsonValue, ProductCapture, Reading
 from pi_core.money import CURRENCY_EXPONENTS
@@ -169,6 +169,10 @@ class Shop:
     currency: str
     time_zone: str
     notes: str
+    #: How the shop's pages state a regular price (offline_import's ``regular_stated``):
+    #: ``on_promotion`` when the reader has been seen to read one on a markdown, so a page without
+    #: one is at full price; ``not_collected`` until then (a full price nobody can vouch for).
+    regular_stated: Literal["on_promotion", "not_collected"]
     #: Use the availability the page states in its structured data.
     markup_availability: bool = False
     #: Carry the page attributes (:data:`ATTRIBUTE_COLUMNS`); the style id among them only with
@@ -199,6 +203,7 @@ SHOPS: dict[str, Shop] = {
         notes="Faces UAE (Chalhoub), product pages captured by pi_capture (task 01a0fc6d)",
         # per page, from the page's own JSON-LD and dataLayer only (coordinator ruling
         # 2026-10-06); the catalogue stays partial, so a missing page is never a stock-out
+        regular_stated="on_promotion",
         markup_availability=True,
     ),
     # beauty only (the reader leaves other divisions and Home out); stock per page from the
@@ -212,6 +217,7 @@ SHOPS: dict[str, Shop] = {
         time_zone="Asia/Dubai",
         notes="Ounass UAE (Al Tayer), beauty product pages read from the 2026-10-03 capture; "
         "partial: the run stopped before every planned page was fetched",
+        regular_stated="on_promotion",
         markup_availability=True,
         page_attributes=True,
     ),
@@ -224,6 +230,9 @@ SHOPS: dict[str, Shop] = {
         time_zone="Asia/Dubai",
         notes="Bloomingdale's UAE (Al Tayer), beauty product pages read from the 2026-10-03 "
         "capture",
+        # No list price on any of the 7,739 pages captured 3-5 Oct: whether the UAE site serves
+        # one on a markdown is unproven (Reviewer, 2026-10-08), so no full price is claimed.
+        regular_stated="not_collected",
         markup_availability=True,
         page_attributes=True,
         style_family=True,
@@ -561,6 +570,7 @@ def mapping_for(shop: Shop, *, complete: bool = False) -> dict[str, Any]:
         "currency": shop.currency,
         "time_zone": shop.time_zone,
         "complete_catalogue": complete,
+        "regular_stated": shop.regular_stated,
         "format": "json",
         "json_items_path": "items",
         "columns": {c: c for c in columns(shop)},

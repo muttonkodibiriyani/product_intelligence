@@ -35,7 +35,7 @@ V3_MAX_BYTES = 51_000_000
 #: The most the other files may total in an admission record ``pi_api_admission.py`` issues.
 #: It only governs issuing a record: serving checks the others against the record's own
 #: measured total (``refusal``), never against this.
-ADMISSION_OTHERS_MAX_BYTES = 50_000_000
+ADMISSION_OTHERS_MAX_BYTES = 52_000_000
 
 
 def peak_mib(sizes: Iterable[int]) -> float:

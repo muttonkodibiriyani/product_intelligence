@@ -38,7 +38,7 @@ def test_counts_and_shares(make_capture: Callable[..., ProductCapture]) -> None:
     shop = report.retailers[1]
     assert shop.pages == 3
     assert {a.key for a in shop.attributes} == beauty_page_keys
-    assert len(shop.attributes) == 91
+    assert len(shop.attributes) == 93
     assert "rise" not in {a.key for a in shop.attributes}
     gtin = _row(shop.attributes, "gtin")
     assert (gtin.observed, gtin.parse_failed, gtin.not_shown) == (2, 1, 0)

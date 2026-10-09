@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import product from '../../../docs/contracts/golden/pi-api/product.json';
 import type { CaveatView, Schemas } from '@/lib/api/types';
+import ar from '@/messages/ar.json';
+import en from '@/messages/en.json';
 import { columns, whyMissing, type OfferField } from './product-detail';
 
 type Offer = Schemas['OfferView'];
@@ -101,6 +103,59 @@ describe('whyMissing', () => {
       'noShadeRange',
     );
   });
+});
+
+describe('whyMissing on an offer the latest crawl did not see', () => {
+  // A listing carried from an earlier run: no price, no stock reading, nothing the retailer said.
+  const carried: Offer = { ...sparse, availability: 'not_observed', sku: 'A1' };
+  const why = (o: Offer) => FIELDS.map((f) => whyMissing(f, o, [], undefined));
+
+  it('says every gap is not seen, never not published', () => {
+    expect(Object.fromEntries(FIELDS.map((f) => [f, whyMissing(f, carried, [], undefined)]))).toEqual({
+      price: { state: 'notMeasured', reason: 'notObserved' },
+      regular: { state: 'notMeasured', reason: 'notObserved' },
+      promo: { state: 'notMeasured', reason: 'notObserved' },
+      availability: null,
+      rating: { state: 'notMeasured', reason: 'notObserved' },
+      size: { state: 'notMeasured', reason: 'notObserved' },
+      shades: { state: 'notMeasured', reason: 'notObserved' },
+      sku: null,
+    });
+    // Ahead of a was-price caveat and of a dataset that does not collect the attribute.
+    expect(whyMissing('regular', carried, [wasPrice], { ratings: false })?.reason).toBe('notObserved');
+    expect(whyMissing('rating', carried, [], { ratings: false })?.reason).toBe('notObserved');
+  });
+
+  it('keeps a value it carries and a published 0 shades', () => {
+    expect(whyMissing('price', { ...carried, price: aed('40.00') }, [], undefined)).toBeNull();
+    expect(whyMissing('shades', { ...carried, shadeCount: 0 }, [], undefined)?.reason).toBe('noShadeRange');
+  });
+
+  it('an ordinary offer with no price is still not published', () => {
+    expect(whyMissing('price', sparse, [], undefined)).toEqual({ state: 'notPublished', reason: 'noPrice' });
+    expect(whyMissing('price', { ...sparse, availability: 'out_of_stock' }, [], undefined)?.reason).toBe(
+      'noPrice',
+    );
+  });
+
+  for (const [locale, m, notPublished, notSeen] of [
+    ['en', en, 'Not published', 'Not seen in the latest crawl.'],
+    ['ar', ar, 'غير منشور', 'لم يُرصد في آخر جمع.'],
+  ] as const) {
+    it(`reads "not seen" in ${locale}, and nothing on it reads "not published"`, () => {
+      const text = why(carried)
+        .filter((w) => w !== null)
+        .map((w) => `${m.product.state[w.state]} ${(m.product.why as Record<string, string>)[w.reason]}`);
+      expect(text.length).toBe(6);
+      for (const t of text) {
+        expect(t).toContain(notSeen);
+        expect(t).not.toContain(notPublished);
+      }
+      // The control: the same render of an ordinary offer does say it.
+      const w = whyMissing('price', sparse, [], undefined)!;
+      expect(m.product.state[w.state]).toBe(notPublished);
+    });
+  }
 });
 
 describe('columns', () => {
