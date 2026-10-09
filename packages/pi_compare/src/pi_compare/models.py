@@ -13,7 +13,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, HttpUrl, JsonValue, StringConstraints, model_validator
 
-from pi_core.enums import MatchClass, ReviewState
+from pi_core.enums import AvailabilityState, MatchClass, ReviewState
 from pi_core.types import NonEmptyStr, UtcDatetime
 from pi_dataset.models import ContractModel, DecimalText, MoneyValue
 from pi_dataset.profiles import AttributeDef, AttributeKey
@@ -39,6 +39,13 @@ class MatrixState(StrEnum):
     ABSENT = "absent"
     NOT_OBSERVED = "not_observed"
     AMBIGUOUS = "ambiguous"
+
+
+class CaptureCompleteness(ContractModel):
+    """The caller's explicit basis for permitting (or refusing) an absence claim."""
+
+    complete: bool
+    basis: NonEmptyStr
 
 
 class Axis(StrEnum):
@@ -101,13 +108,67 @@ class AxisValue(ContractModel):
 
 
 class MatchEvidence(ContractModel):
+    left_listing_key: NonEmptyStr
+    right_listing_key: NonEmptyStr
     match_class: MatchClass
     review_state: ReviewState
     confidence: Confidence | None
     method: NonEmptyStr
     reasons: tuple[NonEmptyStr, ...]
-    left_fingerprint: NonEmptyStr
-    right_fingerprint: NonEmptyStr
+    left_fingerprint: NonEmptyStr | None
+    right_fingerprint: NonEmptyStr | None
+
+
+class VariantIdentityBasis(StrEnum):
+    CONTENT_VARIANT = "content_variant"
+    OFFER_SKU = "offer_sku"
+    LISTING_TOKEN = "listing_token"  # noqa: S105 - identity basis, not a credential
+
+
+class ListingTokenState(StrEnum):
+    KEYED = "keyed"
+    UNKEYED = "unkeyed"
+
+
+class LaunchBasis(StrEnum):
+    FIRST_OBSERVED = "first_observed"
+    RETAILER_BADGE = "retailer_badge"
+
+
+class LaunchEvidence(ContractModel):
+    state: ValueState
+    observed_on: date | None
+    basis: LaunchBasis | None
+
+    @model_validator(mode="after")
+    def _check_observed(self) -> Self:
+        present = self.observed_on is not None and self.basis is not None
+        if (self.state is ValueState.OBSERVED) != present:
+            msg = "an observed launch needs both date and basis"
+            raise ValueError(msg)
+        return self
+
+
+class CommercialSnapshot(ContractModel):
+    context: NonEmptyStr
+    current: MoneyValue | None
+    regular: MoneyValue | None
+    discount: DiscountResult
+    availability: AvailabilityState | None
+    availability_state: ValueState
+    launch: LaunchEvidence
+    captured_at: UtcDatetime
+    not_observed_reason: NonEmptyStr | None = None
+
+    @model_validator(mode="after")
+    def _check_availability(self) -> Self:
+        if self.availability_state is ValueState.OBSERVED and self.availability is None:
+            msg = "observed availability needs a value"
+            raise ValueError(msg)
+        if self.availability_state is ValueState.NOT_OBSERVED and self.not_observed_reason is None:
+            msg = "not-observed availability needs its source reason"
+            raise ValueError(msg)
+        return self
 
 
 class VariantRef(ContractModel):
@@ -115,16 +176,20 @@ class VariantRef(ContractModel):
 
     key: NonEmptyStr
     retailer_sku: NonEmptyStr
-    synthetic: bool
+    identity_basis: VariantIdentityBasis
+    contexts: tuple[NonEmptyStr, ...]
+    gtins: tuple[NonEmptyStr, ...] = ()
     axes: tuple[AxisValue, ...] = ()
 
 
 class ListingRef(ContractModel):
     retailer: NonEmptyStr
-    context: NonEmptyStr
+    contexts: tuple[NonEmptyStr, ...]
     token: NonEmptyStr
+    token_state: ListingTokenState
     source_product_id: NonEmptyStr
     variants: tuple[VariantRef, ...]
+    commercial: tuple[CommercialSnapshot, ...]
 
     @model_validator(mode="after")
     def _distinct_skus(self) -> Self:
@@ -155,6 +220,12 @@ class RetailerCell(ContractModel):
         return self
 
 
+class RetailerFamilyEvidence(ContractModel):
+    retailer: NonEmptyStr
+    retailer_family_id: NonEmptyStr
+    listing_keys: tuple[NonEmptyStr, ...]
+
+
 class ProductFamily(ContractModel):
     id: NonEmptyStr
     brand_key: NonEmptyStr
@@ -163,6 +234,9 @@ class ProductFamily(ContractModel):
     listings: tuple[ListingRef, ...]
     matrix: tuple[RetailerCell, ...]
     evidence: tuple[MatchEvidence, ...]
+    suggestions: tuple[MatchEvidence, ...] = ()
+    exclusions: tuple[MatchEvidence, ...] = ()
+    retailer_family_evidence: tuple[RetailerFamilyEvidence, ...] = ()
 
 
 class Discount(ContractModel):
@@ -191,6 +265,9 @@ class DiscountResult(ContractModel):
             msg = "a missing discount needs one reason"
             raise ValueError(msg)
         return self
+
+
+CommercialSnapshot.model_rebuild()
 
 
 class EvidencePointer(ContractModel):
@@ -313,3 +390,18 @@ class ImageDescriptionFile(ContractModel):
             msg = "image description file repeats an immutable generation key"
             raise ValueError(msg)
         return self
+
+
+class ProjectionIssue(ContractModel):
+    code: NonEmptyStr
+    listing_keys: tuple[NonEmptyStr, ...] = ()
+    detail: NonEmptyStr
+
+
+class ComparisonProjection(ContractModel):
+    schema_id: Literal["pi.comparison/v1"] = Field(default="pi.comparison/v1", alias="schema")
+    generation: NonEmptyStr
+    as_of: date
+    families: tuple[ProductFamily, ...]
+    issues: tuple[ProjectionIssue, ...] = ()
+    unkeyed_listings: int = 0

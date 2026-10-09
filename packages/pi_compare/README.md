@@ -8,6 +8,14 @@ unknown, conflict and invalid states explicit. It also owns exact Decimal discou
 the non-boolean retailer presence matrix, profile-driven attribute validation and the append-only
 image-description sidecar contract.
 
+`build_projection` adds the deterministic read model over `pi.dataset/v3` and an optional
+`pi.matches/v1` file. Approved/locked exact or family evidence and a retailer's own family id
+form families; proposed edges only produce auditable `ambiguous` cells. The caller must provide
+an explicit completeness decision and basis for every retailer before the builder can emit
+`absent`. Each listing retains every SKU, raw/canonical axis, context-level current/original
+price, Decimal discount, public availability state, first-observed launch evidence and capture
+timestamp.
+
 It does not fetch retailer pages, infer inventory quantities, convert currencies, merge source
 records or let generated image text affect product identity.
 

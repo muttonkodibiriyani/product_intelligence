@@ -1311,6 +1311,7 @@ source = { editable = "packages/pi_compare" }
 dependencies = [
     { name = "pi-core" },
     { name = "pi-dataset" },
+    { name = "pi-match" },
     { name = "pydantic" },
 ]
 
@@ -1318,6 +1319,7 @@ dependencies = [
 requires-dist = [
     { name = "pi-core", editable = "packages/pi_core" },
     { name = "pi-dataset", editable = "packages/pi_dataset" },
+    { name = "pi-match", editable = "packages/pi_match" },
     { name = "pydantic", specifier = ">=2.9" },
 ]
 
