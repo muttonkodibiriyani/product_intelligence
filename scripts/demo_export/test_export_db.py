@@ -1003,6 +1003,28 @@ def test_a_partial_run_after_the_baseline_retains_what_it_saw(conn: Conn) -> Non
     )
 
 
+def test_a_listing_the_baseline_and_a_later_partial_run_both_saw_keeps_the_newer_evidence(
+    conn: Conn,
+) -> None:
+    """Reviewer 5465016080 (c): A, seen by the succeeded N-2 and again by the partial N-1, is
+    retained once, from N-1 (the newer capture); B, seen only by N-2, keeps N-2's."""
+    world = World(conn)
+    n2 = world.run("succeeded", 1)
+    world.observe(n2, "A", 1, "70")
+    world.observe(n2, "B", 1, "80")
+    n1 = world.run("partial", 2)
+    world.observe(n1, "A", 2, "72")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "B", "C"}
+    a, b = got["A"], got["B"]
+    assert (a["run_id"], a["observed_at"], a["retained"]) == (n1, _at(2), True)
+    assert (b["run_id"], b["observed_at"], b["retained"]) == (n2, _at(1), True)
+    assert (a["price"], a["availability"]) == (None, "not_observed")
+
+
 def test_a_listing_a_later_succeeded_run_did_not_see_is_not_retained(conn: Conn) -> None:
     """Crawl 01a11e38-d0f3, Coordinator 01a11e38-fd27: P saw L, then the succeeded S (a complete
     catalogue) did not; S ends L's retention, so L is not retained from P."""
