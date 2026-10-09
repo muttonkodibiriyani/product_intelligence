@@ -92,7 +92,9 @@
     "snapshotOneOff": "{retailer}: one-off snapshot imported {date}",
     "summaryTooFew": "Too few matched products for a summary yet.",
     "asOf": "Data as of {date}",
-    "asOfRetailer": "{retailer}: data as of {date}"
+    "asOfRetailer": "{retailer}: data as of {date}",
+    "withheld": "Withheld",
+    "withheldCode": "Withheld: <c>{code}</c>"
   },
   "home": {
     "title": "Current dataset",
@@ -774,6 +776,7 @@
     "loading": "Loading price analytics…",
     "noRetailers": "No collected retailer to report on.",
     "noSummary": "No price summary for {retailer} yet.",
+    "unknownRetailer": "This link names a retailer with no price data here. Pick one above.",
     "onePair": "Comparisons need two collected retailers.",
     "noPairs": "No comparable pairs yet.",
     "kpis": "At a glance",

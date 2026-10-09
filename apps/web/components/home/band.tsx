@@ -9,7 +9,7 @@ import { formatCount, formatDate } from '@/lib/format';
 import { isValidPrice } from '@/lib/money';
 import { navHref } from '@/lib/nav';
 import { CountUp } from '../ui/count-up';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { Money } from '../ui/money';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { Tip } from '../ui/tip';
@@ -198,11 +198,10 @@ function ShopTile({
 }) {
   const t = useTranslations('home.band');
   const tk = useTranslations('widgets.kpi');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const d = row.data;
   const color = retailerColor(row.retailer, side(index));
-  const none = (reason: string) => <Chip tip={<Known t={tr} v={reason} />}>{tk('none')}</Chip>;
+  const none = (reason: string) => <Chip tip={<Reason v={reason} />}>{tk('none')}</Chip>;
   const count = (v: number) => (
     <CountUp to={v} final={formatCount(v, locale)} format={(x) => formatCount(Math.round(x), locale)} />
   );
@@ -279,7 +278,6 @@ function PromoTile({
   const t = useTranslations('home.band');
   const tk = useTranslations('widgets.kpi');
   const tp = useTranslations('widgets.promo');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const shops = rows.map((r, i) => {
     const p = promotions(r.data);
@@ -309,7 +307,7 @@ function PromoTile({
             color={retailerColor(r.retailer, side(i))}
           >
             {value === null ? (
-              <Chip tip={<Known t={tr} v={reason!} />}>{tk('none')}</Chip>
+              <Chip tip={<Reason v={reason!} />}>{tk('none')}</Chip>
             ) : s?.share ? (
               <Tip text={t('promoOf', { onPromo: s.onPromo, n: s.n })} at="end" className="relative z-10">
                 <span className="text-sm">
@@ -400,7 +398,6 @@ function LaunchTile({
   const tl = useTranslations('launches');
   const tk = useTranslations('widgets.kpi');
   const ts = useTranslations('state');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const maxTotal = Math.max(0, ...launches.map((l) => l.total ?? 0));
   const days = launches[0]?.perDay?.length ?? 30;
@@ -445,7 +442,7 @@ function LaunchTile({
           if (l.state === 'error' || l.total === null)
             return (
               <Row key={r.retailer} label={label} bar={null}>
-                <Chip tip={l.env?.reason ? <Known t={tr} v={l.env.reason} /> : ts('notAvailable')}>
+                <Chip tip={l.env?.reason ? <Reason v={l.env.reason} /> : ts('notAvailable')}>
                   {ts('notAvailable')}
                 </Chip>
               </Row>

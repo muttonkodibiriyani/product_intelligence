@@ -11,15 +11,17 @@ const compare = golden('compare') as Json;
 /** Shop B's summary withheld: status not ok, a reason, counts null, no section drawn. */
 const blockedB = { ...summaryBlocked, data: { ...summaryBlocked.data, retailer: 'shop_b' } };
 
-/** /prices for shop_a vs shop_b: the summaries, the matched pairs and the category comparison. */
-function api(counts: Counts = {}, withheld = false, wide = false) {
+/** /prices for shop_a vs shop_b: the summaries, the matched pairs and the category comparison.
+ * `withheld` withholds shop_b's summary; a string withholds it with that reason code instead. */
+function api(counts: Counts = {}, withheld: boolean | string = false, wide = false) {
+  const b = typeof withheld === 'string' ? { ...blockedB, reason: withheld } : blockedB;
   return async (route: Route) => {
     const u = new URL(route.request().url());
     const p = u.pathname;
     if (p === '/api/v1/meta') return route.fulfill({ json: meta });
     if (p === '/api/v1/summary')
       return route.fulfill({
-        json: withheld && u.searchParams.get('retailer') === 'shop_b' ? blockedB : summaryBody,
+        json: withheld && u.searchParams.get('retailer') === 'shop_b' ? b : summaryBody,
       });
     if (p === '/api/v1/compare') return route.fulfill({ json: compare });
     if (p === '/api/v1/category-compare') {
@@ -36,7 +38,7 @@ async function open(
   page: Page,
   locale: 'en' | 'ar',
   counts: Counts = {},
-  withheld = false,
+  withheld: boolean | string = false,
   wide = false,
 ): Promise<Mock> {
   const mock = await mockBackend(page, { onApi: api(counts, withheld, wide) });
@@ -82,6 +84,8 @@ for (const locale of ['en', 'ar'] as const) {
             /Shop B أغلى في 50\u200e?%\u200e? من 6 أزواج مطابقة وأرخص في 33\.3\u200e?%\u200e?؛ و16\.7\u200e?%\u200e? في النطاق المحيط بالصفر\./,
           retailer: 'المتجر',
           noSummary: 'لا يوجد ملخص أسعار لـShop B بعد. هذا المتجر يمنع الجمع.',
+          noSummaryLead: 'لا يوجد ملخص أسعار لـShop B بعد.',
+          withheldLabel: 'محجوب:',
         }
       : {
           title: 'Prices by category',
@@ -111,6 +115,8 @@ for (const locale of ['en', 'ar'] as const) {
             'Shop B is dearer on 50% of 6 matched pairs and cheaper on 33.3%; 16.7% sit in the band around zero.',
           retailer: 'Retailer',
           noSummary: 'No price summary for Shop B yet. This retailer blocks collection.',
+          noSummaryLead: 'No price summary for Shop B yet.',
+          withheldLabel: 'Withheld:',
         };
 
   test.describe(`${locale} prices`, () => {
@@ -275,6 +281,42 @@ for (const locale of ['en', 'ar'] as const) {
       expect(mock.errors).toEqual([]);
     });
 
+    // future_reason is outside the API's enum for good; window_unknown is a real code that 1218b
+    // labels, and flips here when it does.
+    for (const code of ['future_reason', 'window_unknown'])
+      test(`a reason code this build has no label for reads as withheld, the code as sent, left-to-right (${code})`, async ({
+        page,
+      }) => {
+        const mock = await open(page, locale, {}, code);
+        await expect(page.locator('#p-hist [data-takeaway]')).toBeVisible();
+        await page.getByRole('group', { name: T.retailer }).getByRole('button', { name: 'Shop B' }).click();
+        const status = page.locator('section[aria-labelledby="per-retailer"]').getByRole('status');
+        await expect(status).toHaveText(`${T.noSummaryLead} ${T.withheldLabel} ${code}`);
+        const run = status.locator('bdi');
+        await expect(run).toHaveText(code);
+        await expect(run).toHaveAttribute('dir', 'ltr');
+        await expect(run).toHaveAttribute('lang', 'en');
+        // Visual order: the label is read first, then the code. Measured on the label's own text, not
+        // the paragraph that holds both: in Arabic the code sits to the label's left, in English to its right.
+        const [label, box] = await run.evaluate((bdi, word) => {
+          const text = bdi.previousSibling!;
+          const range = document.createRange();
+          const at = text.textContent!.lastIndexOf(word);
+          range.setStart(text, at);
+          range.setEnd(text, at + word.length);
+          const a = range.getBoundingClientRect();
+          const b = bdi.getBoundingClientRect();
+          return [
+            { left: a.left, right: a.right, top: a.top },
+            { left: b.left, right: b.right, top: b.top },
+          ];
+        }, T.withheldLabel);
+        expect(Math.abs(label.top - box.top)).toBeLessThan(4);
+        if (locale === 'ar') expect(box.right).toBeLessThanOrEqual(label.left + 1);
+        else expect(box.left).toBeGreaterThanOrEqual(label.right - 1);
+        expect(mock.errors).toEqual([]);
+      });
+
     test('the spread of price gaps: every band of the served histogram, its split in one line, n beside it, under exact matches', async ({
       page,
     }) => {
@@ -304,6 +346,117 @@ for (const locale of ['en', 'ar'] as const) {
       if (isPhone()) await noHorizontalScroll(page);
       expect(mock.errors).toEqual([]);
       expect(mock.external).toEqual([]);
+    });
+  });
+}
+
+/**
+ * The five live retailer ids, each with its own product count, so a page that showed another
+ * retailer's summary under the asked-for id could not pass.
+ */
+const FIVE = { ulta_ae: 701, sephora_me: 502, faces_ae: 303, ounass_ae: 404, bloomingdales_ae: 905 };
+const meta5 = {
+  ...meta,
+  data: {
+    ...meta.data,
+    retailers: Object.keys(FIVE).map((id) => ({
+      country: 'AE',
+      id,
+      name: id,
+      note: null,
+      since: '2026-09-01',
+      status: 'supported',
+    })),
+  },
+};
+
+function api5() {
+  return async (route: Route) => {
+    const u = new URL(route.request().url());
+    const p = u.pathname;
+    if (p === '/api/v1/meta') return route.fulfill({ json: meta5 });
+    if (p === '/api/v1/summary') {
+      const id = u.searchParams.get('retailer') as keyof typeof FIVE;
+      return route.fulfill({
+        json: { ...summaryBody, data: { ...summaryBody.data, retailer: id, products: FIVE[id] } },
+      });
+    }
+    if (p === '/api/v1/compare') return route.fulfill({ json: compare });
+    if (p === '/api/v1/category-compare') {
+      const [base, other] = (u.searchParams.get('retailers') ?? '').split(',');
+      return route.fulfill({ json: categoryCompareBody(base, other, {}) });
+    }
+    return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
+  };
+}
+
+for (const locale of ['en', 'ar'] as const) {
+  const T =
+    locale === 'ar'
+      ? {
+          retailer: 'المتجر',
+          products: 'المنتجات المتتبَّعة',
+          unknown: 'يشير هذا الرابط إلى متجر لا تتوفر له بيانات أسعار هنا. اختر متجرًا من الأعلى.',
+        }
+      : {
+          retailer: 'Retailer',
+          products: 'Products tracked',
+          unknown: 'This link names a retailer with no price data here. Pick one above.',
+        };
+
+  test.describe(`${locale} prices: the retailer in the link`, () => {
+    async function at(page: Page, q: string): Promise<Mock> {
+      const mock = await mockBackend(page, { onApi: api5() });
+      await signedIn(page, locale);
+      await page.goto(`/app/${locale}/prices/${q}`);
+      return mock;
+    }
+    const section = (page: Page) => page.locator('section[aria-labelledby="per-retailer"]');
+    const picker = (page: Page) => section(page).getByRole('group', { name: T.retailer });
+
+    test("an id the API doesn't serve says so and shows no other retailer's number", async ({ page }) => {
+      // sephora_ae is an old alias, not a served id; "nope" is a typo.
+      const mock = await at(page, '?retailer=sephora_ae');
+      for (const q of ['?retailer=sephora_ae', '?retailer=nope']) {
+        if (q !== '?retailer=sephora_ae') await page.goto(`/app/${locale}/prices/${q}`);
+        await expect(section(page).getByRole('status')).toHaveText(T.unknown);
+        await expect(section(page).getByText(T.products)).toHaveCount(0);
+        await expect(section(page).locator('dl')).toHaveCount(0);
+        // No shop is pressed: the page has not picked one for the reader.
+        await expect(picker(page).locator('[aria-pressed="true"]')).toHaveCount(0);
+      }
+      // Choosing one from there shows that one.
+      await picker(page).getByRole('button', { name: 'Faces' }).click();
+      await expect(page).toHaveURL(/[?&]retailer=faces_ae(&|$)/);
+      await expect(section(page).locator('dd').first()).toHaveText('303');
+      await expect(section(page).getByRole('status')).toHaveCount(0);
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('?retailer=sephora_me shows Sephora and its own count, not the first retailer', async ({ page }) => {
+      const mock = await at(page, '?retailer=sephora_me');
+      await expect(picker(page).getByRole('button', { name: 'Sephora' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(section(page).locator('dd').first()).toHaveText('502');
+      expect(mock.errors).toEqual([]);
+    });
+
+    test('choosing the first retailer clears the link and shows it because it was chosen', async ({
+      page,
+    }) => {
+      const mock = await at(page, '?retailer=ounass_ae');
+      await expect(section(page).locator('dd').first()).toHaveText('404');
+      await picker(page).getByRole('button', { name: 'Ulta' }).click();
+      await expect(page).not.toHaveURL(/[?&]retailer=/);
+      await expect(picker(page).getByRole('button', { name: 'Ulta' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(section(page).locator('dd').first()).toHaveText('701');
+      await expect(section(page).getByRole('status')).toHaveCount(0);
+      expect(mock.errors).toEqual([]);
     });
   });
 }

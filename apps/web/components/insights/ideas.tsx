@@ -25,7 +25,7 @@ import {
 } from '@/lib/insights';
 import { listable, listedItems } from '@/lib/promotions';
 import { useAuth } from '../auth-provider';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { Money } from '../ui/money';
 import { useRetailerName } from '../use-meta';
 import { exploreHref, promotionsHref } from '../widgets/model';
@@ -104,7 +104,6 @@ function ValueCard({
   answer: string | null;
 }) {
   const t = useTranslations('insights');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   const catName = useCatName();
@@ -126,14 +125,14 @@ function ValueCard({
         value: null,
         note: !r ? (
           answer ? (
-            <Known t={tr} v={answer} />
+            <Reason v={answer} />
           ) : (
             t('notInAnswer')
           )
         ) : notCollected(r.reason) ? (
           t('value.off')
         ) : (
-          <Known t={tr} v={r.reason!} />
+          <Reason v={r.reason!} />
         ),
       };
     const v = valueShare(r);
@@ -268,7 +267,6 @@ function SizeCard({
   held: string;
 }) {
   const t = useTranslations('insights');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   const [all, setAll] = useState(false);
@@ -291,7 +289,7 @@ function SizeCard({
           n,
         }),
       };
-    return { id: s, value: null, note: l?.reason ? <Known t={tr} v={l.reason} /> : t('ladder.none') };
+    return { id: s, value: null, note: l?.reason ? <Reason v={l.reason} /> : t('ladder.none') };
   });
 
   return (
@@ -377,7 +375,6 @@ function StepRow({ x, shop }: { x: LadderStep; shop: string }) {
 
 function PromoCard({ focus, order }: { focus: string; order: string[] }) {
   const t = useTranslations('insights');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   const { api } = useAuth();
@@ -407,7 +404,7 @@ function PromoCard({ focus, order }: { focus: string; order: string[] }) {
     ) : r && r.n === 0 && (r.reason === null || r.reason === 'retailer_partial') ? (
       t('promo.noOriginal')
     ) : (
-      <Known t={tr} v={why ?? 'field_not_collected'} />
+      <Reason v={why ?? 'field_not_collected'} />
     );
     return { s, env, r: note === null ? r : undefined, priced: p, pct, note };
   };

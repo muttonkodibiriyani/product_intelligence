@@ -28,7 +28,7 @@ import { monogram, RowThumb } from '../explore/row-thumb';
 import { productHref } from '../explore/product-table';
 import { Card } from '../ui/card';
 import { FilterChips } from '../ui/filter-chips';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { Price } from '../ui/money';
 import { PageHeader } from '../ui/page-header';
 import { ProductCard, type PriceLine } from '../ui/product-card';
@@ -49,7 +49,6 @@ type Item = Schemas['PromoItem'];
  */
 export function PromotionsView() {
   const t = useTranslations('promotions');
-  const tr = useTranslations('reasons');
   const ts = useTranslations('state');
   const locale = useLocale();
   const sp = useSearchParams();
@@ -165,7 +164,7 @@ export function PromotionsView() {
                     {shop ? t('notMeasuredAt', { shop: name(shop) }) : t('notMeasuredFilters')}
                   </span>{' '}
                   <span className="text-ink-2">
-                    <Known t={tr} v={why} />
+                    <Reason v={why} />
                   </span>
                 </p>
               ) : items.length === 0 ? (

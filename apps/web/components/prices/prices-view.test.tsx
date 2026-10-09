@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { golden } from '@/lib/api/golden';
 import type { Summary } from '@/lib/api/summary';
 import type { Envelope, Schemas } from '@/lib/api/types';
@@ -37,6 +37,18 @@ const withheld: Envelope<Summary> = {
 };
 
 const ctx = vi.hoisted(() => ({ search: '', compare: { kind: 'loading' } as unknown }));
+// A served retailer's section draws a chart directly (not through ../widgets/charts); jsdom has no
+// ResizeObserver, and without one its effect throws after the test has passed.
+beforeAll(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+
 vi.mock('../auth-provider', () => ({ useAuth: () => ({ api: {} }) }));
 vi.mock('../use-meta', () => ({
   useMeta: () => ({ data: meta }),
@@ -142,4 +154,43 @@ describe('PricesView: a retailer whose summary the API withheld', () => {
     expect(status).not.toBeNull();
     expect(status.textContent).toContain(ar.reasons.retailer_blocked);
   });
+});
+
+describe('PricesView: a retailer id the API does not serve', () => {
+  it.each([['en'], ['ar']] as const)(
+    'says so (%s), shows no retailer’s numbers and presses no shop',
+    async (locale) => {
+      show('retailer=sephora_ae', locale);
+      const msgs = locale === 'ar' ? ar : en;
+      const status = await screen.findByText(msgs.prices.unknownRetailer);
+      expect(status.closest('[role=status]')).not.toBeNull();
+      expect(document.querySelector('[data-takeaway]')).toBeNull();
+      expect(document.querySelector('section[aria-labelledby="per-retailer"] dl')).toBeNull();
+      expect(document.querySelector('[aria-pressed="true"]')).toBeNull();
+      // Both served shops stay one press away.
+      expect(screen.getByRole('button', { name: 'Shop A' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Shop B' })).toBeTruthy();
+    },
+  );
+
+  it('an id it serves shows that retailer, not the first', async () => {
+    show('retailer=shop_c');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Shop C' }).getAttribute('aria-pressed')).toBe('true'),
+    );
+    expect(screen.queryByText(en.prices.unknownRetailer)).toBeNull();
+  });
+
+  it.each([['en'], ['ar']] as const)(
+    'an empty ?retailer= (%s) names nothing: the first retailer, no notice',
+    async (locale) => {
+      show('retailer=', locale);
+      const msgs = locale === 'ar' ? ar : en;
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Shop A' }).getAttribute('aria-pressed')).toBe('true'),
+      );
+      expect(screen.queryByText(msgs.prices.unknownRetailer)).toBeNull();
+      expect(screen.queryByText(msgs.prices.noRetailers)).toBeNull();
+    },
+  );
 });

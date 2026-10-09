@@ -8,7 +8,7 @@ import { formatCount, formatDate } from '@/lib/format';
 import { formatMoney, isValidPrice } from '@/lib/money';
 import { ErrorNotice } from '../error-notice';
 import { Card } from '../ui/card';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { pct } from '../widgets/model';
 import type { PairState } from '../widgets/use-compare';
 
@@ -59,7 +59,6 @@ export function CategoryCompareCard({
 
 function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pair: Pair; locale: string }) {
   const t = useTranslations('widgets.buckets');
-  const tr = useTranslations('reasons');
   const rtl = locale === 'ar';
   const lc = rtl ? 'ar' : 'en';
   const ids: [string, string] = [pair.base, pair.other];
@@ -71,7 +70,7 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
   /** What a side shows in place of its figures when it has none. */
   const sideNote = (s: Side) =>
     s.status === 'blocked' ? (
-      <Known t={tr} v={s.reason ?? 'retailer_blocked'} />
+      <Reason v={s.reason ?? 'retailer_blocked'} />
     ) : (
       t('tooFew', { n: formatCount(s.n, locale) })
     );
@@ -85,7 +84,7 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
     if (b.status === 'no_gap' && b.gapReason)
       return (
         <span className="text-xs text-ink-2">
-          <Known t={tr} v={b.gapReason} />
+          <Reason v={b.gapReason} />
         </span>
       );
     if (b.status !== 'ok' || b.gapPct === null) return <span className="text-ink-2">–</span>;
@@ -251,7 +250,7 @@ function CategoryCompareBody({ data, pair, locale }: { data: CategoryCompare; pa
               )
               .join('; '),
           })}{' '}
-          <Known t={tr} v="retailer_blocked" />
+          <Reason v="retailer_blocked" />
         </p>
       )}
 

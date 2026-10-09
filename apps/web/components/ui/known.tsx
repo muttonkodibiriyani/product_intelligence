@@ -1,4 +1,4 @@
-import type { useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 
 const ENUM = /^[a-z][a-z0-9_]{0,62}$/;
 
@@ -16,5 +16,30 @@ export function Known({ t, k, v }: { t: ReturnType<typeof useTranslations>; k?: 
     <span lang="en" dir="ltr">
       {v}
     </span>
+  );
+}
+
+/**
+ * Why a number is withheld, in the user's language. The API's reason list is closed in the types,
+ * but a newer API can send a code this build has no label for: that still reads as withheld, with
+ * the code as sent, isolated so it stays left-to-right inside Arabic. No code at all (empty or
+ * null) reads as plain withheld. Never blank, never a key path.
+ */
+export function Reason({ v }: { v: string | null | undefined }) {
+  const t = useTranslations('reasons');
+  const ts = useTranslations('state');
+  if (!v?.trim()) return <>{ts('withheld')}</>;
+  if (ENUM.test(v) && t.has(v) && typeof t.raw(v) === 'string') return <>{t(v)}</>;
+  return (
+    <>
+      {ts.rich('withheldCode', {
+        code: v,
+        c: (chunks) => (
+          <bdi lang="en" dir="ltr">
+            {chunks}
+          </bdi>
+        ),
+      })}
+    </>
   );
 }

@@ -7,7 +7,7 @@ import { formatCount, loc } from '@/lib/format';
 import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
 import { ErrorNotice } from '../error-notice';
 import { Card } from '../ui/card';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { Money, Pct } from '../ui/money';
 import { AboutDataLink, PageHeader } from '../ui/page-header';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
@@ -200,7 +200,6 @@ export function NoMatch({
   reason?: string | null;
 }) {
   const t = useTranslations('home.landing.match');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const sides = data ? [data.sides.base, data.sides.other] : null;
   return (
@@ -212,7 +211,7 @@ export function NoMatch({
             {reason && (
               <>
                 {' '}
-                <Known t={tr} v={reason} />
+                <Reason v={reason} />
               </>
             )}
           </>
@@ -324,7 +323,6 @@ const strong = (c: ReactNode) => <b className="font-semibold text-ink">{c}</b>;
 export function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
   const tt = useTranslations('widgets.top');
   const tk = useTranslations('widgets.kpi');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const many = rows.length > 1;
   const promos = rows.map((r) => ({ r, p: promotions(r.data) }));
@@ -355,7 +353,7 @@ export function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
                 >
                   <RetailerDot id={f.retailer} index={rows.indexOf(f)} />
                   <span>{f.name}</span>
-                  <Tip text={!fp.measured ? <Known t={tr} v={fp.reason} /> : null}>
+                  <Tip text={!fp.measured ? <Reason v={fp.reason} /> : null}>
                     <span className="pill bg-surface-2">{tk('none')}</span>
                   </Tip>
                 </p>

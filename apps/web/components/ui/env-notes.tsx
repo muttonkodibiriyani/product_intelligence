@@ -1,11 +1,11 @@
 'use client';
 
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale } from 'next-intl';
 import type { CaveatView, Envelope } from '@/lib/api/types';
 import { loc } from '@/lib/format';
 import { withRetailerNames } from '@/lib/retailers';
 import { useRetailerName } from '../use-meta';
-import { Known } from './known';
+import { Reason } from './known';
 
 /**
  * Why the data is thin, and the caveats the API attached, in the user's language and with shop
@@ -13,7 +13,6 @@ import { Known } from './known';
  * page; no other page draws a note box.
  */
 export function EnvNotes({ env, className = '' }: { env: Envelope<unknown>; className?: string }) {
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   if (env.status !== 'not_enough_data' && env.caveats.length === 0) return null;
@@ -21,7 +20,7 @@ export function EnvNotes({ env, className = '' }: { env: Envelope<unknown>; clas
   return (
     <div role="note" className={`space-y-1 panel px-4 py-3 text-sm ${className}`}>
       {env.status === 'not_enough_data' && env.reason && (
-        <p>{detail ? withRetailerNames(detail, name) : <Known t={tr} v={env.reason} />}</p>
+        <p>{detail ? withRetailerNames(detail, name) : <Reason v={env.reason} />}</p>
       )}
       <CaveatLines caveats={env.caveats} />
     </div>

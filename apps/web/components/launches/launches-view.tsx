@@ -20,7 +20,7 @@ import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import { productHref } from '../explore/product-table';
 import { FilterChips } from '../ui/filter-chips';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { Segmented } from '../ui/segmented';
 import { Loading } from '../ui/skeleton';
@@ -143,7 +143,6 @@ function ShopDays({ days }: { days: number }) {
 /** The list for the chosen window, newest first; the window and any filters live in the URL. */
 function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readiness: LaunchReadiness }) {
   const t = useTranslations('launches');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const sp = useSearchParams();
   const router = useRouter();
@@ -226,7 +225,7 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
                   {env.reason && (
                     <>
                       {' '}
-                      <Known t={tr} v={env.reason} />
+                      <Reason v={env.reason} />
                     </>
                   )}
                 </p>

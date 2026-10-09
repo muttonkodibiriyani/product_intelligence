@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { Envelope } from '@/lib/api/types';
 import { activeFilterCount, type ExploreState } from '@/lib/explore';
 import { navHref } from '@/lib/nav';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 
 /**
  * What stands in for the list when it has nothing: "no products match" only when the API answered
@@ -24,7 +24,6 @@ export function EmptyResults({
   const matchedOnly = state.matched === 'yes' && activeFilterCount(state) === 1;
   const t = useTranslations('explore');
   const ts = useTranslations('state');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   if (env.status === 'ok' && matchedOnly)
     return (
@@ -48,7 +47,7 @@ export function EmptyResults({
       <p className="font-medium">{ts('notAvailable')}</p>
       {env.reason && (
         <p className="mt-1 text-sm text-ink-2">
-          <Known t={tr} v={env.reason} />
+          <Reason v={env.reason} />
         </p>
       )}
     </div>

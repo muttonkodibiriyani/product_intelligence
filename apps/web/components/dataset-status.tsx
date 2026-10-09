@@ -7,7 +7,7 @@ import { retailerName } from '@/lib/retailers';
 import { ErrorNotice } from './error-notice';
 import { useMeta } from './use-meta';
 import { EnvNotes } from './ui/env-notes';
-import { Known } from './ui/known';
+import { Known, Reason } from './ui/known';
 import { importedOn } from './widgets/model';
 
 /**
@@ -20,7 +20,6 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
   const H = nested ? 'h2' : 'h1';
   const H2 = nested ? 'h3' : 'h2';
   const t = useTranslations('home');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const q = useMeta();
 
@@ -41,9 +40,7 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
       </H>
       {!nested && <p className="mt-1 max-w-prose text-sm text-ink-2">{t('intro')}</p>}
       {env.status === 'not_enough_data' && env.reason && (
-        <p className="mt-2 text-sm text-ink-2">
-          {loc(env.detail, locale) || <Known t={tr} v={env.reason} />}
-        </p>
+        <p className="mt-2 text-sm text-ink-2">{loc(env.detail, locale) || <Reason v={env.reason} />}</p>
       )}
       {m && (
         <>

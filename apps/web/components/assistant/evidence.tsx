@@ -10,7 +10,7 @@ import { formatCount, formatDate } from '@/lib/format';
 import { shareWidth } from '@/lib/promotions';
 import { productHref } from '../explore/product-table';
 import { useRetailerName } from '../use-meta';
-import { Known } from '../ui/known';
+import { Reason } from '../ui/known';
 import { ProductCard, useVerdictChip } from '../ui/product-card';
 import { RetailerDot, retailerTone } from '../ui/retailer-dot';
 
@@ -46,7 +46,6 @@ export function EvidenceCards({ cards }: { cards: readonly EvidenceCard[] }) {
  */
 export function ShareTiles({ shares }: { shares: readonly EvidenceShare[] }) {
   const t = useTranslations('assistant.share');
-  const tr = useTranslations('reasons');
   const locale = useLocale();
   const name = useRetailerName();
   if (shares.length === 0) return null;
@@ -66,7 +65,7 @@ export function ShareTiles({ shares }: { shares: readonly EvidenceShare[] }) {
             </p>
             {s.share === null ? (
               <p className="mt-1.5 text-sm text-ink-2">
-                {t('notMeasured')} {s.reason && <Known t={tr} v={s.reason} />}
+                {t('notMeasured')} {s.reason && <Reason v={s.reason} />}
               </p>
             ) : (
               <>
