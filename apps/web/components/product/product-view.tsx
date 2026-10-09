@@ -27,6 +27,8 @@ import { useMeta, useRetailerName } from '../use-meta';
 import { importedOn } from '../widgets/model';
 import { HistoryChart } from './history-chart';
 import { CatalogueGallery } from './catalogue-gallery';
+import { offerPriceDate, ULTA_RETAILER, UltaOfferPriceDate } from './offer-price-date';
+import { sourceObservationDate } from '../ui/as-of';
 
 /** The contract's product id pattern; anything else is not sent to the API. */
 const PRODUCT_ID = /^[A-Za-z0-9._:-]{1,200}$/;
@@ -265,6 +267,7 @@ function Offers({
   const locale = useLocale();
   const meta = useMeta().data?.data;
   const caps = meta?.capabilities;
+  const ultaSourceDate = sourceObservationDate(meta, ULTA_RETAILER);
   if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
   const ctx = (o: Offer) => meta?.contexts.find((c) => c.id === o.context);
 
@@ -273,7 +276,12 @@ function Offers({
       id: 'price',
       title: t('groupPrice'),
       rows: [
-        { id: 'price', label: t('price'), field: 'price', value: (o) => <Price of={o} locale={locale} /> },
+        {
+          id: 'price',
+          label: t('price'),
+          field: 'price',
+          value: (o) => <Price of={o} locale={locale} />,
+        },
         {
           id: 'regular',
           label: t('regular'),
@@ -372,7 +380,18 @@ function Offers({
         {
           id: 'evidence',
           label: t('lastSeen'),
-          value: (o) => <Evidence o={o} name={name} importedAt={importedOn(caveats, o.retailer)} />,
+          value: (o) => (
+            <>
+              {/* This row is always rendered, including when the latest-day price is null. */}
+              <UltaOfferPriceDate offer={o} sourceDate={ultaSourceDate} retailerName={name(o.retailer)} />
+              <Evidence
+                o={o}
+                name={name}
+                importedAt={importedOn(caveats, o.retailer)}
+                ultaPriceDate={offerPriceDate(o, ultaSourceDate)}
+              />
+            </>
+          ),
         },
       ],
     },
@@ -569,18 +588,30 @@ function Evidence({
   o,
   name,
   importedAt,
+  ultaPriceDate,
 }: {
   o: Offer;
   name: (id: string) => string;
   importedAt: string | null;
+  ultaPriceDate: ReturnType<typeof offerPriceDate>;
 }) {
   const t = useTranslations('product');
   const locale = useLocale();
   const url = safeHttpUrl(o.evidence.url);
   return (
     <>
-      {/* An imported retailer's capturedAt is its import time, never a capture date. */}
-      {importedAt ? (
+      {/* Ulta's offer-level import day wins over its source-wide latest-import caveat. */}
+      {ultaPriceDate ? (
+        ultaPriceDate.date ? (
+          <time dateTime={ultaPriceDate.date} className="block break-words text-xs text-ink-2">
+            {t('imported', { date: formatDate(ultaPriceDate.date, locale) })}
+          </time>
+        ) : (
+          <span className="block break-words text-xs font-semibold text-warn">
+            {t('importDateUnavailable')}
+          </span>
+        )
+      ) : importedAt ? (
         <time dateTime={importedAt} className="block text-xs text-ink-2">
           {t('imported', { date: formatDate(importedAt, locale) })}
         </time>
