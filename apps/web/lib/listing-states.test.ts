@@ -21,7 +21,7 @@ const read = (o: Partial<ListingSummary>): ListingSummary => ({
   endReached: false,
   pagesRead: 10,
   positionsCaptured: 480,
-  capturedAt: '2026-10-09T03:12:00Z',
+  firstAt: '2026-10-09T03:12:00Z',
   ...o,
 });
 
@@ -68,6 +68,18 @@ describe('absence', () => {
         kind: 'notObserved',
         stop,
       });
+  });
+
+  it('malformed counts or a non-boolean end_reached never give "not in the list"', () => {
+    const full = { stopReason: 'end', endReached: true } as const;
+    const bad = (o: object) => read({ ...full, ...o } as Partial<ListingSummary>);
+    for (const v of [undefined, NaN, 1.5, '48', null, Infinity]) {
+      expect(absence(bad({ positionsCaptured: v }))).toEqual({ kind: 'notObserved', stop: 'end' });
+      expect(absence(bad({ pagesRead: v }))).toEqual({ kind: 'notObserved', stop: 'end' });
+    }
+    for (const v of ['true', 1, 'yes']) expect(absence(bad({ endReached: v })).kind).toBe('notInFirst');
+    // Control: the well-formed full read does.
+    expect(absence(read(full)).kind).toBe('notInList');
   });
 
   it('reads an unknown served stop reason as an error, never as the end', () => {
@@ -164,9 +176,35 @@ describe('listingCell', () => {
 });
 
 describe('ranksComparable', () => {
-  it('compares positions only within one listing category', () => {
-    expect(ranksComparable({ category: 'best_seller' }, { category: 'best_seller' })).toBe(true);
-    expect(ranksComparable({ category: 'best_seller' }, { category: 'new' })).toBe(false);
-    expect(ranksComparable({ category: '' }, { category: '' })).toBe(false);
+  // #313's four listing kinds; the kind is never the key.
+  const KINDS = ['new', 'best_seller', 'exclusive', 'discovery'] as const;
+  const at = (retailer: string, listing: string, capture: string) => ({ retailer, listing, capture });
+
+  it.each(KINDS)('%s: two pages of one capture are peers', (kind) => {
+    expect(
+      ranksComparable(at('faces_ae', `faces-${kind}`, 'c1'), at('faces_ae', `faces-${kind}`, 'c1')),
+    ).toBe(true);
+  });
+
+  it.each(KINDS)('%s: the same listing in two captures is a time series, not peers', (kind) => {
+    expect(
+      ranksComparable(at('faces_ae', `faces-${kind}`, 'c1'), at('faces_ae', `faces-${kind}`, 'c2')),
+    ).toBe(false);
+  });
+
+  it.each(KINDS)('%s: two retailers are never ranked against each other', (kind) => {
+    expect(ranksComparable(at('faces_ae', kind, 'c1'), at('sephora_me', kind, 'c1'))).toBe(false);
+  });
+
+  it.each(KINDS)('%s: two listings of one retailer are not peers', (kind) => {
+    expect(ranksComparable(at('faces_ae', `${kind}-a`, 'c1'), at('faces_ae', `${kind}-b`, 'c1'))).toBe(false);
+  });
+
+  it('a missing or empty capture, retailer or listing is never comparable', () => {
+    expect(ranksComparable(at('faces_ae', 'faces-new', ''), at('faces_ae', 'faces-new', ''))).toBe(false);
+    expect(ranksComparable(at('', 'faces-new', 'c1'), at('', 'faces-new', 'c1'))).toBe(false);
+    expect(ranksComparable(at('faces_ae', '', 'c1'), at('faces_ae', '', 'c1'))).toBe(false);
+    const noCapture = { retailer: 'faces_ae', listing: 'faces-new' } as unknown as ReturnType<typeof at>;
+    expect(ranksComparable(noCapture, noCapture)).toBe(false);
   });
 });

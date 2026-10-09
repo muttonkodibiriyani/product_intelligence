@@ -709,7 +709,7 @@
     },
     "stop": {
       "end": "Read to the end of the list.",
-      "cap": "Stopped at the page limit; the list goes on.",
+      "cap": "Stopped at the page limit; the last page read was still full.",
       "no_products": "No product could be read from the first page.",
       "empty_page": "A later page showed no product we could read.",
       "repeat": "The site served the same page again.",

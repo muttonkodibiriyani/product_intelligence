@@ -28,8 +28,8 @@ export interface ListingSummary {
   endReached: boolean;
   pagesRead: number;
   positionsCaptured: number;
-  /** When the last page was read, an ISO instant in UTC. */
-  capturedAt: string;
+  /** When page 1 of this read was captured (#313's `first_at`), an ISO instant in UTC. */
+  firstAt: string;
 }
 
 /**
@@ -50,10 +50,12 @@ function stopOf(s: string): StopReason {
 export function absence(l: ListingSummary | null | undefined): Absence {
   if (!l) return { kind: 'notObserved', stop: 'not_read' };
   const stop = stopOf(l.stopReason);
-  // A page 1 that was blocked, failed or matched no product is not an empty list.
-  if (l.pagesRead < 1 || l.positionsCaptured < 1) return { kind: 'notObserved', stop };
+  // A page 1 that was blocked, failed or matched no product is not an empty list, and a count that
+  // is not a whole number (missing, NaN, a string) is no count at all.
+  const counted = (n: unknown) => Number.isInteger(n) && (n as number) >= 1;
+  if (!counted(l.pagesRead) || !counted(l.positionsCaptured)) return { kind: 'notObserved', stop };
   // Both must agree: a served end_reached with any other reason is not trusted to mean "the end".
-  if (l.endReached && stop === 'end') return { kind: 'notInList', at: l.capturedAt };
+  if (l.endReached === true && stop === 'end') return { kind: 'notInList', at: l.firstAt };
   return { kind: 'notInFirst', n: l.positionsCaptured, stop };
 }
 
@@ -120,7 +122,25 @@ export function listingCell<P>(row: PositionRow, held: ReadonlyMap<string, P>): 
   return product === undefined ? { kind: 'listedOnly', row } : { kind: 'detailed', row, product };
 }
 
-/** Best-seller positions compare only within the same listing category. */
-export function ranksComparable(a: { category: string }, b: { category: string }): boolean {
-  return a.category !== '' && a.category === b.category;
+/** Which run of which listing a position was read in. */
+export interface RankSource {
+  retailer: string;
+  /** The listing's id in the capture spec (#313's `listing`), not its category. */
+  listing: string;
+  /**
+   * One read of that listing, an id the API supplies (#313 emits none; the contract must carry it).
+   * Not a page's `captured_at`: the pages of one read differ in time and are still peers.
+   */
+  capture: string;
+}
+
+/**
+ * Positions are peers only within one run of one retailer's listing. Two retailers' best sellers,
+ * two listings of one retailer, or one listing on two days are not ranked against each other; the
+ * last is a time series, shown as movement ("was #5 on <date>").
+ */
+export function ranksComparable(a: RankSource, b: RankSource): boolean {
+  // A missing id (as served, despite the type) would otherwise equal another missing id.
+  const same = (x: unknown, y: unknown) => typeof x === 'string' && x !== '' && x === y;
+  return same(a.retailer, b.retailer) && same(a.listing, b.listing) && same(a.capture, b.capture);
 }
