@@ -797,10 +797,38 @@ def withhold(
                 start=min(since + timedelta(days=1), day),
                 end=until,
                 categories=None,
-                why=dict(withheld.why),
+                why=with_since(withheld.why, since),
             )
         )
     return out, entries
+
+
+#: The withhold reason's date placeholder, filled with the slot's own ``since`` (Coordinator
+#: 01a11e53-59d7): the note's date and the row's ``since`` are one value by construction.
+SINCE = "<since>"
+MONTHS = {
+    "en": (
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ),
+    "ar": (
+        "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+        "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
+    ),
+}  # fmt: skip
+
+
+def with_since(why: Mapping[str, str], since: date) -> dict[str, str]:
+    """``why`` with each ``<since>`` written as ``since`` in its language ("1 October 2026",
+    "1 أكتوبر 2026", ASCII digits). Any other ``<``/``>`` left is refused: nothing downstream
+    fills a placeholder, so one would be served as-is."""
+    out = {
+        lang: text.replace(SINCE, f"{since.day} {MONTHS[lang][since.month - 1]} {since.year}")
+        for lang, text in why.items()
+    }
+    if left := {lang: t for lang, t in out.items() if "<" in t or ">" in t}:
+        raise ValueError(f"withhold reason has an unfilled placeholder: {left}")
+    return out
 
 
 def offer_rows(

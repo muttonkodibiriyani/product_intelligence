@@ -1491,7 +1491,8 @@ def check_args(args: argparse.Namespace) -> None:
 def check_withhold(args: argparse.Namespace) -> None:
     """``--withhold`` (F1): each source once and exported, beside at least one windowed source,
     with ``--run`` (its values and ``since`` come from its window), a v2/v3 output, and a reason
-    in both languages; the reason and ``--withhold-until`` never without a withheld source."""
+    in both languages with no placeholder but ``<since>`` in it; the reason and
+    ``--withhold-until`` never without a withheld source."""
     held, why = args.withhold, (args.withhold_why, args.withhold_why_ar)
     if not held:
         if any(v is not None for v in (*why, args.withhold_until)):
@@ -1509,6 +1510,11 @@ def check_withhold(args: argparse.Namespace) -> None:
         raise SystemExit("--withhold needs --output-v2 or --output-v3 (v1 has no notObserved)")
     if any(v is None or not v.strip() for v in why):
         raise SystemExit("--withhold needs --withhold-why and --withhold-why-ar, both non-empty")
+    from scripts.demo_export.v2 import SINCE  # noqa: PLC0415
+
+    # nothing downstream fills a placeholder: only <since> is written in, by the exporter
+    if left := [v for v in why if v is not None and {"<", ">"} & set(v.replace(SINCE, ""))]:
+        raise SystemExit(f"--withhold-why(-ar) has a placeholder other than {SINCE}: {left}")
 
 
 def withheld_of(args: argparse.Namespace) -> Withheld | None:

@@ -18,7 +18,7 @@ from scripts.demo_export.export import UltaContext, check_args, parser, withheld
 from scripts.demo_export.test_export import row
 from scripts.demo_export.test_v2 import NOTE
 from scripts.demo_export.test_window import BLOCKED, SEPHORA, ULTA, at, offers, seen
-from scripts.demo_export.v2 import Withheld, build_dataset_v2, crawl_windows, to_v3
+from scripts.demo_export.v2 import Withheld, build_dataset_v2, crawl_windows, to_v3, with_since
 
 UNBLOCKED = UltaContext(blocked_since=at("2026-09-30T20:55"), blocked=False)
 WHY = {"en": "Ulta was last captured on 1 Oct.", "ar": "آخر التقاط لمتجر ألتا كان في 1 أكتوبر."}
@@ -155,6 +155,53 @@ def test_withhold_flags_become_withheld_slots() -> None:
     plain = parser().parse_args(BASE)
     check_args(plain)
     assert withheld_of(plain) is None
+    given = [*BASE, "--withhold", ULTA, "--withhold-why", FALLBACK["en"]]
+    filled = parser().parse_args([*given, "--withhold-why-ar", FALLBACK["ar"]])
+    check_args(filled)  # <since> is the one placeholder the exporter writes in
+    assert withheld_of(filled) == Withheld(frozenset({"u"}), FALLBACK)
+
+
+#: The fallback strings of 01a11e51-93d9, as given: ``<since>`` is written in by the exporter.
+FALLBACK = {
+    "en": "Ulta prices and stock shown are from the last complete read on <since>; "
+    "Ulta has not been refreshed since.",
+    "ar": "أسعار ومخزون Ulta المعروضة من آخر قراءة كاملة بتاريخ <since>؛ "
+    "لم يتم تحديث Ulta منذ ذلك الحين.",
+}
+
+
+def test_since_is_written_into_the_reason_from_the_rows_own_since() -> None:
+    ds = beauty(Withheld(frozenset({"u"}), FALLBACK))
+    shops = {r.id: r for r in ds.meta.retailers}
+    (entry,) = [n for n in ds.not_observed if n.retailer == ULTA]
+    print("since", shops[ULTA].since, "why", entry.why)
+    assert shops[ULTA].since == date(2026, 10, 1)
+    assert entry.why == {
+        "en": "Ulta prices and stock shown are from the last complete read on 1 October 2026; "
+        "Ulta has not been refreshed since.",
+        "ar": "أسعار ومخزون Ulta المعروضة من آخر قراءة كاملة بتاريخ 1 أكتوبر 2026؛ "
+        "لم يتم تحديث Ulta منذ ذلك الحين.",
+    }
+    assert "<" not in json.dumps(doc(ds), ensure_ascii=False).replace("<since>", "")
+
+
+@pytest.mark.parametrize(
+    ("day", "en", "ar"),
+    [
+        (date(2026, 1, 31), "31 January 2026", "31 يناير 2026"),
+        (date(2026, 12, 9), "9 December 2026", "9 ديسمبر 2026"),
+    ],
+)
+def test_since_is_written_in_each_language(day: date, en: str, ar: str) -> None:
+    assert with_since({"en": "on <since>.", "ar": "بتاريخ <since>"}, day) == {
+        "en": f"on {en}.",
+        "ar": f"بتاريخ {ar}",
+    }
+
+
+def test_a_reason_with_another_placeholder_is_refused() -> None:
+    with pytest.raises(ValueError, match="unfilled placeholder"):
+        with_since({"en": "on <since> (<run>)", "ar": "بتاريخ <since>"}, date(2026, 10, 1))
 
 
 @pytest.mark.parametrize(
@@ -169,6 +216,9 @@ def test_withhold_flags_become_withheld_slots() -> None:
         ([*BASE[:4], *BASE[6:], "--withhold", ULTA, *WHY_ARGS], "needs --output-v2 or"),
         ([*BASE, "--withhold", ULTA, "--withhold-why", WHY["en"]], "both non-empty"),
         ([*BASE, "--withhold", ULTA, *WHY_ARGS[:3], " "], "both non-empty"),
+        ([*BASE, "--withhold", ULTA, *WHY_ARGS[:3], "منذ <date>"], "other than <since>"),
+        ([*BASE, "--withhold", ULTA, "--withhold-why", "on <date>", *WHY_ARGS[2:]], "other than"),
+        ([*BASE, "--withhold", ULTA, "--withhold-why", "<since> > b", *WHY_ARGS[2:]], "other"),
     ],
 )
 def test_withhold_flags_are_refused_unless_complete(argv: list[str], message: str) -> None:
