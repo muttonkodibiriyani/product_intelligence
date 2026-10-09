@@ -1167,10 +1167,22 @@ def _promo(price: MoneyValue | None, regular: MoneyValue | None) -> str | None:
     return str(depth(price, regular).quantize(Decimal("0.1")))
 
 
+def shown_availability(offer: OfferV3, i: int) -> AvailabilityState | None:
+    """The offer's stock on date ``i`` as served. A body spells "not observed" as null (one
+    spelling, ``Series``); an offer its retailer's crawl window did not see carries the
+    offer-level ``notObservedReason`` (ADR-0013) and is served as ``not_observed``, so it never
+    reads as a retailer we do not collect (Coordinator 01a11e3c-6760, A2'). Keyed on that marker
+    only, never on the per-category ``notObserved`` windows, which cover observed offers too."""
+    states = offer.series.availability
+    state = None if states is None else states[i]
+    if state is None and offer.not_observed_reason is not None:
+        return AvailabilityState.NOT_OBSERVED
+    return state
+
+
 def _offer_fields(ds: DatasetV3, ctx: Context, offer: OfferV3) -> dict[str, Any]:
     i = len(ds.meta.dates) - 1
     price, regular = price_on(offer, i), regular_on(offer, i)
-    states = offer.series.availability
     return {
         "retailer": ctx.retailer,
         "price": price,
@@ -1181,7 +1193,7 @@ def _offer_fields(ds: DatasetV3, ctx: Context, offer: OfferV3) -> dict[str, Any]
         "shade_count": offer.shade_count,
         "sku": offer.sku,
         "early": offer.early,
-        "availability": None if states is None else states[i],
+        "availability": shown_availability(offer, i),
         "context": ctx.id,
         "channel": ctx.channel,
         "location": None if ctx.location is None else ctx.location.id,
@@ -1299,7 +1311,7 @@ def history(ds: DatasetV3, product: ProductV3, query: HistoryQuery) -> Metric[Hi
                 date=d,
                 price=price_on(o, i),
                 regular=regular_on(o, i),
-                availability=None if o.series.availability is None else o.series.availability[i],
+                availability=shown_availability(o, i),
             )
             for i, d in days
         )
