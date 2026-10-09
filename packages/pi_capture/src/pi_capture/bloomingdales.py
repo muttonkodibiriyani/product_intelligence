@@ -20,6 +20,18 @@ the shopper-facing badges are ``c_badges`` and the gift-with-purchase callout is
 ``c_product_promotions[].calloutMsgText``. A rating is read from ``c_ratings`` where the page
 carries one (a few do); otherwise ratings are left unread, not ``not_shown``.
 
+Go-live date: ``c_prd_live_date`` (a bare date) is the retailer's own date, read as
+``listing_live_date`` as published; it is never our ``launch_date`` and never ``first_seen``.
+
+In-store pickup: ``c_stores[]`` lists the click-and-collect stores, each with a true/false
+``available``. ``store_availability`` is ``[{store, pickup_available}]`` from those stores: a
+retailer payload flag whose display on the page is unverified (the widget is client-rendered), and
+"not available for pickup at that store" only, never offer stock. Where the product's or the shown
+variant's ``availableForInStorePickup`` disagrees with the stores, the whole value is
+``parse_failed``, as is any ``c_stores`` entry that is not a store with a true/false
+``clickAndCollectEnabled``. The inventory counts (``inventory.ats``, ``stockLevel``,
+``availableQuantity``) are never read.
+
 Never read: ``c_unitcost`` (the retailer's cost), ``c_fe_*`` (merchandising scores) and the
 payment widgets' keys; every field read here is named, nothing is copied wholesale.
 """
@@ -34,6 +46,7 @@ from pi_capture._page_attrs import (
     emit_bullets,
     emit_enum,
     emit_inci,
+    emit_live_date,
     emit_texts,
     enum_table,
     html_text,
@@ -77,6 +90,7 @@ _FORMULATION = enum_table(
         ("balm", "balm"),
     ]
 )
+_PICKUP_NOTE = "retailer payload flag; whether the page displays it is unverified"
 _GWP_PROMOTION = "GWP"  # promotionId prefix of a gift-with-purchase callout
 _INSTALMENTS = (
     ("c_tabbyPromo", "tabbyPromoApplicable"),
@@ -291,6 +305,76 @@ def _map_offer(em: _Emitter, pd: Mapping[str, Any]) -> None:
             )
 
 
+def _pickup_flags(pd: Mapping[str, Any]) -> list[tuple[str, bool]]:
+    """The product's and the shown variant's own in-store pickup flags, where they are bools."""
+    flags: list[tuple[str, bool]] = []
+    if isinstance(product := pd.get("c_availableForInStorePickup"), bool):
+        flags.append((f"{_PD}.c_availableForInStorePickup", product))
+    pid = _str(pd.get("id"))
+    for size in pd.get("c_sizes") or []:
+        for variant in (
+            (size.get("c_variant_availability") or []) if isinstance(size, Mapping) else []
+        ):
+            if not isinstance(variant, Mapping) or pid is None or _str(variant.get("pid")) != pid:
+                continue
+            if isinstance(flag := variant.get("availableForInStorePickup"), bool):
+                path = (
+                    f"{_PD}.c_sizes[].c_variant_availability[pid={pid}].availableForInStorePickup"
+                )
+                flags.append((path, flag))
+    return flags
+
+
+def _pickup_row(store: object) -> dict[str, str | bool] | tuple[str, str] | None:
+    """One ``c_stores`` entry: its row, ``None`` if click-and-collect is off there, or the
+    ``(raw_text, note)`` of a malformed entry. A malformed entry is never echoed whole: it may
+    carry a stock count."""
+    if not isinstance(store, Mapping):
+        return type(store).__name__, "a c_stores entry that is not a store"
+    enabled = store.get("clickAndCollectEnabled")
+    if not isinstance(enabled, bool):
+        raw = f"{store.get('name')!r}: clickAndCollectEnabled={enabled!r}"
+        return raw, "a store without a true/false clickAndCollectEnabled"
+    if not enabled:
+        return None
+    name, available = _str(store.get("name")), store.get("available")
+    if name is None or not isinstance(available, bool):
+        raw = f"{store.get('name')!r}: {available!r}"
+        return raw, "a click-and-collect store without a name or a true/false available"
+    return {"store": name, "pickup_available": available}
+
+
+def _map_store_pickup(em: _Emitter, pd: Mapping[str, Any]) -> None:
+    """In-store pickup by click-and-collect store, cross-checked with the product's own flags."""
+    key, path = "store_availability", f"{_PD}.c_stores[]"
+    stores = pd.get("c_stores")
+    if stores is None or stores == []:
+        em.not_shown(key, "no c_stores list")
+        return
+    if not isinstance(stores, list):
+        em.failed(key, type(stores).__name__, f"{_PD}.c_stores", "c_stores is not a list")
+        return
+    rows: list[dict[str, str | bool]] = []
+    for store in stores:
+        row = _pickup_row(store)
+        if isinstance(row, tuple):
+            em.failed(key, row[0], path, row[1])
+            return
+        if row is not None:
+            rows.append(row)
+    if not rows:
+        em.not_shown(key, "no click-and-collect store listed")
+        return
+    raw = "; ".join(f"{r['store']}: {r['pickup_available']}" for r in rows)
+    anywhere = any(r["pickup_available"] for r in rows)
+    for flag_path, flag in _pickup_flags(pd):
+        if flag != anywhere:
+            note = f"{flag_path} is {flag} but the stores' available flags say {anywhere}"
+            em.failed(key, raw, path, note)
+            return
+    em.observed(key, raw, rows, path, _PICKUP_NOTE)
+
+
 def readings_from_bloomingdales(html: str, *, locale: str, url: str | None = None) -> list[Reading]:
     """Bloomingdale's readings first, then the generic readers fill every key still unread;
     ``inventory.orderable`` is appended as its own
@@ -305,6 +389,10 @@ def readings_from_bloomingdales(html: str, *, locale: str, url: str | None = Non
     _map_attributes(em, pd)
     _map_merch(em, pd)
     _map_offer(em, pd)
+    emit_live_date(
+        em, pd.get("c_prd_live_date"), f"{_PD}.c_prd_live_date", "Bloomingdale's product live date"
+    )
+    _map_store_pickup(em, pd)
     em.extend(readings_from_generic(html, locale=locale, url=url))
     flag = stock_flag(
         pd.get("inventory"),
@@ -334,6 +422,7 @@ LOOKED_FOR: frozenset[str] = (
             "inci_list",
             "installment_amount_minor",
             "installment_provider",
+            "listing_live_date",
             "loyalty_points",
             "product_type",
             "shade_name",
@@ -341,6 +430,7 @@ LOOKED_FOR: frozenset[str] = (
             "size_unit",
             "size_value",
             "skin_type",
+            "store_availability",
             "style_id",
             "style_id_source",
         }
