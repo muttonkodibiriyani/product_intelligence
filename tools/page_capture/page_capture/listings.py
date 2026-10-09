@@ -21,8 +21,15 @@ its output afterwards, so an extractor bug never costs a second read.
 
 ``stop_reason`` is one of:
 
-- ``end``: a page came back short, empty or with no product not already seen (``end_reached``);
+- ``end``: a page came back short and added at least one product not already seen; the only
+  value with ``end_reached`` true;
 - ``cap``: ``max_pages`` read and the last one was still full;
+- ``no_products``: page 1 of a paged listing was read but no product link matched (an extractor
+  miss, a client-rendered shell or a soft challenge, never an empty list); never ``end_reached``;
+- ``empty_page``: a page after page 1 was read but no product link matched; never
+  ``end_reached``;
+- ``repeat``: a page's products were all already seen (``start`` ignored, page 1 served again);
+  never ``end_reached``;
 - ``robots_page1`` / ``page1_ssr``: a page-1-only listing (robots forbids paging, or only the
   server-rendered first page is read); never ``end_reached``;
 - ``block``: a page was blocked or rate limited, or skipped because its host had stopped;
@@ -323,15 +330,31 @@ def walk(listing: Listing, pages: Mapping[int, PageRead]) -> Walk:
         for pid, url in new:
             seen.add(pid)
             positions.append((len(positions) + 1, pid, url, pr))
-        if listing.paging == "none":
-            return Walk(tuple(read), tuple(positions), listing.page1_reason, False, step, None)
         if page == 1:
             step = len(pr.products)
-        if not new or len(pr.products) < step or step == 0:
-            return Walk(tuple(read), tuple(positions), "end", True, step, None)
-        if page >= listing.max_pages:
-            return Walk(tuple(read), tuple(positions), "cap", False, step, None)
+        stop = page_stop(listing, page, len(pr.products), len(new), step)
+        if stop is not None:
+            return Walk(tuple(read), tuple(positions), stop, stop == "end", step, None)
         page += 1
+
+
+def page_stop(listing: Listing, page: int, products: int, new: int, step: int) -> str | None:
+    """Why the walk stops after an ok ``page``, or None to read the next one.
+
+    Only a short page that still adds a product proves the end; a page with no products, or none
+    not already seen, is an extractor miss, a shell or an ignored ``start``.
+    """
+    if listing.paging == "none":
+        return listing.page1_reason
+    if not products:
+        return "no_products" if page == 1 else "empty_page"
+    if not new:
+        return "repeat"
+    if products < step:
+        return "end"
+    if page >= listing.max_pages:
+        return "cap"
+    return None
 
 
 def next_pages(spec: Spec, reads: Mapping[str, Mapping[int, PageRead]]) -> list[Item]:

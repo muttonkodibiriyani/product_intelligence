@@ -216,15 +216,49 @@ def test_paged_listing_stops_at_cap_without_end(tmp_path: Path) -> None:
     )
 
 
-def test_repeated_page_counts_as_end_and_positions_stay_unique(tmp_path: Path) -> None:
+def test_repeated_page_is_not_the_end_and_positions_stay_unique(tmp_path: Path) -> None:
     spec = listings.spec_from_json(spec_doc())
     cap = Capture(tmp_path / "c")
     cap.page("faces-new", 1, html=tiles(ids(0, 3)))
-    cap.page("faces-new", 2, html=tiles(ids(0, 3)))  # site served page 1 again past the end
-    rows, summary = listings.summarise(spec, listings.page_reads(spec, [cap.write()]))
-    assert summary[0]["positions_captured"] == 3
-    assert summary[0]["stop_reason"] == "end"
+    cap.page("faces-new", 2, html=tiles(ids(0, 3)))  # ``start`` ignored: page 1 served again
+    reads = listings.page_reads(spec, [cap.write()])
+    rows, summary = listings.summarise(spec, reads)
+    assert (summary[0]["positions_captured"], summary[0]["pages_read"]) == (3, 2)
+    assert (summary[0]["stop_reason"], summary[0]["end_reached"]) == ("repeat", False)
     assert len({r["product_id"] for r in rows}) == len(rows)
+    assert listings.next_pages(spec, reads) == []
+
+
+def test_short_page_of_only_seen_products_is_a_repeat_not_the_end(tmp_path: Path) -> None:
+    spec = listings.spec_from_json(spec_doc())
+    cap = Capture(tmp_path / "c")
+    cap.page("faces-new", 1, html=tiles(ids(0, 3)))
+    cap.page("faces-new", 2, html=tiles(ids(1, 2)))
+    _, summary = listings.summarise(spec, listings.page_reads(spec, [cap.write()]))
+    assert (summary[0]["stop_reason"], summary[0]["end_reached"]) == ("repeat", False)
+
+
+def test_paged_page_one_with_no_products_is_not_an_empty_list(tmp_path: Path) -> None:
+    spec = listings.spec_from_json(spec_doc())
+    cap = Capture(tmp_path / "c")
+    cap.page("faces-new", 1, html="<html><body>rendered client side</body></html>")
+    reads = listings.page_reads(spec, [cap.write()])
+    _, summary = listings.summarise(spec, reads)
+    new = next(s for s in summary if s["listing"] == "faces-new")
+    assert (new["stop_reason"], new["end_reached"]) == ("no_products", False)
+    assert (new["positions_captured"], new["page_size"]) == (0, None)
+    assert new["warnings"] == ["page 1 read but no product link matched"]
+    assert [it.id for it in listings.next_pages(spec, reads)] == []
+
+
+def test_empty_page_after_a_full_page_is_not_the_end(tmp_path: Path) -> None:
+    spec = listings.spec_from_json(spec_doc())
+    cap = Capture(tmp_path / "c")
+    cap.page("faces-new", 1, html=tiles(ids(0, 3)))
+    cap.page("faces-new", 2, html="<html><body>no tiles</body></html>")
+    _, summary = listings.summarise(spec, listings.page_reads(spec, [cap.write()]))
+    assert (summary[0]["stop_reason"], summary[0]["end_reached"]) == ("empty_page", False)
+    assert (summary[0]["positions_captured"], summary[0]["pages_read"]) == (3, 2)
 
 
 def test_block_on_page_two_keeps_page_one_but_never_ends(tmp_path: Path) -> None:
