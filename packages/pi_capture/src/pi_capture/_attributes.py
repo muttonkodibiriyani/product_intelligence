@@ -1762,6 +1762,21 @@ ATTRIBUTES: tuple[Attribute, ...] = (
         note=None,
     ),
     Attribute(
+        key="returnable",
+        group=AttributeGroup.STOCKOPS,
+        level=AttributeLevel.OFFER,
+        verticals=(
+            Vertical.BEAUTY,
+            Vertical.FASHION,
+        ),
+        type="bool",
+        source=AttributeSource.PAGE,
+        requirement="where published",
+        detail_only=True,
+        example="false",
+        note="Whether the retailer accepts this item back, as it publishes it for the item (Ounass isReturnable, 'Non-Returnable Item'). A missing flag stays missing: never read as returnable, and never inferred from the site-wide returns policy or return_window_days.",
+    ),
+    Attribute(
         key="warranty",
         group=AttributeGroup.STOCKOPS,
         level=AttributeLevel.STYLE,

@@ -306,3 +306,54 @@ def test_no_reader_fills_our_launch_date_or_first_seen() -> None:
         assert not looked_for & {"launch_date", "first_seen"}
     assert "listing_live_date" in LOOKED_FOR
     assert "listing_live_date" in BLM_LOOKED_FOR
+
+
+def _labelled(**over: Any) -> dict[str, Any]:
+    label = {"components": [{"text": "Non-Returnable Item"}]}
+    return _pdp(valuePropositionWrapper=label, **over)
+
+
+def test_the_item_flag_is_read_as_returnable_and_must_agree_with_the_label() -> None:
+    sizes = [{"sku": "900000002", "sizeCode": "NO SIZE", "isReturnable": False}]
+    r = _by_key(
+        readings_from_ounass(_page(_labelled(isReturnable=False, sizes=sizes)), locale="en-AE")
+    )
+    got = r["returnable"]
+    assert (got.state, got.value, got.raw_text) == ("observed", False, "False")
+    assert got.source_path == "pdp.isReturnable"
+    assert got.note == 'the page shows "Non-Returnable Item"'
+    ok = _by_key(readings_from_ounass(_page(_pdp(isReturnable=1)), locale="en-AE"))["returnable"]
+    assert (ok.state, ok.value, ok.note) == ("observed", True, None)
+    tab = {"tabs": [{"returns": {"title": "Non-Returnable Item"}}]}
+    clash = _pdp(isReturnable=True, deliveryDetails=tab)
+    bad = _by_key(readings_from_ounass(_page(clash), locale="en-AE"))["returnable"]
+    assert (bad.state, bad.value) == ("parse_failed", None)
+    assert "Non-Returnable Item" in (bad.note or "")
+
+
+def test_sizes_stand_in_for_a_missing_item_flag_only_when_they_agree() -> None:
+    def size(flag: Any) -> dict[str, Any]:
+        return {"sku": "9", "sizeCode": "30ML", "isReturnable": flag}
+
+    both = _by_key(
+        readings_from_ounass(_page(_pdp(sizes=[size(True), size(True)])), locale="en-AE")
+    )
+    got = both["returnable"]
+    assert (got.state, got.value, got.source_path) == ("observed", True, "pdp.sizes[].isReturnable")
+    for pdp in (
+        _pdp(sizes=[size(True), size(False)]),
+        _pdp(isReturnable=True, sizes=[size(False)]),
+        _pdp(isReturnable="yes"),
+    ):
+        r = _by_key(readings_from_ounass(_page(pdp), locale="en-AE"))["returnable"]
+        assert (r.state, r.value) == ("parse_failed", None), pdp
+
+
+def test_a_missing_flag_is_never_returnable_by_default() -> None:
+    r = _by_key(readings_from_ounass(_page(_pdp(isReturnable=None)), locale="en-AE"))["returnable"]
+    assert (r.state, r.value) == ("not_shown", None)
+    assert r.note == "no isReturnable flag and no non-returnable label"
+    only_label = _by_key(readings_from_ounass(_page(_labelled()), locale="en-AE"))["returnable"]
+    assert (only_label.state, only_label.value) == ("observed", False)
+    assert only_label.raw_text == "Non-Returnable Item"
+    assert "returnable" in LOOKED_FOR

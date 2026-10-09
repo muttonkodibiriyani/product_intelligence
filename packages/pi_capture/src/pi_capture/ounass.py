@@ -20,6 +20,10 @@ out of stock. Ounass shows no ratings in the page; they are recorded as ``not_sh
 Go-live date: ``onlineDateWithStock`` (a UTC moment) is the retailer's own date, read as
 ``listing_live_date`` in Asia/Dubai with the moment kept as raw text; it is never our
 ``launch_date`` and never ``first_seen``.
+
+Returns: ``isReturnable`` on the product (and on each size) is the item's own flag, read as
+``returnable``; the "Non-Returnable Item" label the page shows must agree with it. A page with no
+flag stays ``not_shown``: an item is never taken as returnable by default.
 """
 
 from __future__ import annotations
@@ -57,6 +61,7 @@ _CURRENCY = "AED"  # the ``...InAED`` fields; the page's own display currency ma
 _IMAGE_SCHEME = "https:"
 _NO_SIZE = "NO SIZE"
 # "Barbiere Beard Wash, 200ml": the size sits in the name when the selector says NO SIZE
+_NON_RETURNABLE = "Non-Returnable Item"  # the label beside the price and on the returns tab
 _NAME_SIZE = re.compile(r"(\d+(?:[.,]\d+)?\s?(?:ml|g|kg|l|oz))\s*$", re.I)
 
 
@@ -197,7 +202,8 @@ def _flag(value: Any) -> bool | None:
 
 def _map_offer(em: _Emitter, pdp: Mapping[str, Any]) -> None:
     """Merchandising class and the shopper-facing offer extras: loyalty points and instalments.
-    Shipping and returns are site policy (the same delivery tab on every page), not read here."""
+    Shipping and the returns window are site policy (the same delivery tab on every page), not
+    read here; whether this item can be returned at all is (:func:`_map_returnable`)."""
     if _flag(pdp.get("isClearance")):
         em.observed("lifecycle_class", "isClearance=1", "clearance", f"{_PDP}.isClearance")
     elif (season := _str(pdp.get("season"))) is not None:
@@ -227,6 +233,61 @@ def _map_offer(em: _Emitter, pdp: Mapping[str, Any]) -> None:
             f"{_PDP}.bnplPromoBanner.options[].key",
             "providers whose limits cover this price",
         )
+
+
+def _non_returnable_shown(pdp: Mapping[str, Any]) -> bool:
+    """Whether the page labels the item "Non-Returnable Item" (English pages only)."""
+    wrapper = pdp.get("valuePropositionWrapper")
+    shown = [
+        c.get("text")
+        for c in (wrapper.get("components") if isinstance(wrapper, Mapping) else None) or []
+        if isinstance(c, Mapping)
+    ]
+    details = pdp.get("deliveryDetails")
+    for tab in (details.get("tabs") if isinstance(details, Mapping) else None) or []:
+        returns = tab.get("returns") if isinstance(tab, Mapping) else None
+        if isinstance(returns, Mapping):
+            shown.append(returns.get("title"))
+    return any(isinstance(t, str) and t.strip() == _NON_RETURNABLE for t in shown)
+
+
+def _map_returnable(em: _Emitter, pdp: Mapping[str, Any]) -> None:
+    """``returnable`` from the product's ``isReturnable``, else from its sizes when they agree,
+    else ``False`` from a "Non-Returnable Item" label alone. A flag that is not a boolean, sizes
+    that disagree with each other or with the product, or a returnable flag beside that label is
+    ``parse_failed``; no flag and no label is ``not_shown``, never returnable by default."""
+    labelled = _non_returnable_shown(pdp)
+    sizes = [s for s in pdp.get("sizes") or [] if isinstance(s, Mapping)]
+    sized = [s.get("isReturnable") for s in sizes if s.get("isReturnable") is not None]
+    by_size = {_flag(v) for v in sized}
+    if pdp.get("isReturnable") is not None:
+        raw, path = pdp.get("isReturnable"), f"{_PDP}.isReturnable"
+        value = _flag(raw)
+    elif sized:
+        raw, path = sized[0], f"{_PDP}.sizes[].isReturnable"
+        value = _flag(raw) if len(by_size) == 1 else None
+    elif labelled:
+        em.observed(
+            "returnable",
+            _NON_RETURNABLE,
+            False,
+            f"{_PDP}.valuePropositionWrapper|deliveryDetails",
+            "no isReturnable flag; the page labels the item non-returnable",
+        )
+        return
+    else:
+        em.not_shown("returnable", "no isReturnable flag and no non-returnable label")
+        return
+    if value is None:
+        em.failed("returnable", str(raw), path, "isReturnable is not a flag, or the sizes disagree")
+    elif sized and by_size != {value}:
+        em.failed("returnable", str(raw), path, "the product and its sizes disagree")
+    elif value and labelled:
+        clash = f'the flag says returnable but the page shows "{_NON_RETURNABLE}"'
+        em.failed("returnable", str(raw), path, clash)
+    else:
+        shown = f'the page shows "{_NON_RETURNABLE}"' if labelled else None
+        em.observed("returnable", str(raw), value, path, shown)
 
 
 def _map_content(em: _Emitter, pdp: Mapping[str, Any], title: str | None) -> None:
@@ -267,6 +328,7 @@ def readings_from_ounass(html: str, *, locale: str, url: str | None = None) -> l
     _map_colour(em, pdp)
     _map_tabs(em, pdp)
     _map_offer(em, pdp)
+    _map_returnable(em, pdp)
     emit_live_date(
         em,
         pdp.get("onlineDateWithStock"),
@@ -307,6 +369,7 @@ LOOKED_FOR: frozenset[str] = (
             "listing_live_date",
             "loyalty_points",
             "product_type",
+            "returnable",
             "shade_name",
             "size_label",
             "size_unit",

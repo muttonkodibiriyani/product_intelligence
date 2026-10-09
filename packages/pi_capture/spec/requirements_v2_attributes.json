@@ -1697,6 +1697,21 @@
     "detail_only": true
   },
   {
+    "k": "returnable",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "false",
+    "req": "where published",
+    "src": "page",
+    "detail_only": true,
+    "note": "Whether the retailer accepts this item back, as it publishes it for the item (Ounass isReturnable, 'Non-Returnable Item'). A missing flag stays missing: never read as returnable, and never inferred from the site-wide returns policy or return_window_days."
+  },
+  {
     "k": "warranty",
     "g": "stockops",
     "lvl": "style",

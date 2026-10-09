@@ -1,8 +1,8 @@
 """Renders ``pi_capture/_attributes.py`` from the frozen requirements spec.
 
 The spec (``packages/pi_capture/spec/requirements_v2_attributes.json``) is the owner's list of
-143 attributes plus one ruled local addition (144; see ``spec/README.md``). This module turns it
-into Python source: four ``StrEnum`` classes whose members are exactly the distinct values found
+143 attributes plus two ruled local additions (145; see ``spec/README.md``). This module turns
+it into Python source: four ``StrEnum`` classes whose members are exactly the distinct values found
 in the data, the frozen ``Attribute`` record, and the ``ATTRIBUTES`` tuple. The rendered text is
 checked in; ``tests/test_registry.py`` renders it again and compares, so the module can never
 drift from the spec unnoticed.

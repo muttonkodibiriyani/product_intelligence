@@ -41,13 +41,13 @@ def test_generated_module_matches_spec() -> None:
 
 
 def test_counts_from_the_requirements() -> None:
-    assert len(ATTRIBUTES) == 144
-    assert len(by_key()) == 144
+    assert len(ATTRIBUTES) == 145
+    assert len(by_key()) == 145
     assert len(AttributeGroup) == 15
     assert len(AttributeLevel) == 4
     assert len(Vertical) == 3
-    assert len(page_sourced()) == 117
-    assert len(applicable("beauty")) == 113
+    assert len(page_sourced()) == 118
+    assert len(applicable("beauty")) == 114
     assert {str(a.level) for a in ATTRIBUTES} == {"style", "colour", "variant", "offer"}
 
 

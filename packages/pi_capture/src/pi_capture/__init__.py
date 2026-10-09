@@ -1,4 +1,4 @@
-"""pi_capture: the 144-attribute registry, raw-plus-value readings, generic page extractors and
+"""pi_capture: the 145-attribute registry, raw-plus-value readings, generic page extractors and
 per-retailer coverage. Capture everything raw first; parse later; say what was not found."""
 
 from pi_capture.coverage import AttributeCoverage, CoverageReport, RetailerCoverage, coverage
