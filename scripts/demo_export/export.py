@@ -14,17 +14,23 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
+
+from pi_dataset.gate import V3_MAX_BYTES
+
+if TYPE_CHECKING:
+    from scripts.demo_export.v2 import Withheld
 
 DATASET_SCHEMA = "pi.dataset/v1"
 ALLOWED_CATEGORIES = {
@@ -41,6 +47,8 @@ ALLOWED_CATEGORIES = {
 KNOWN_UNITS = {"ml", "g", "pc"}
 IN_STOCK = {"in_stock", "low_stock"}
 UNKNOWN_STOCK = {"unknown", "blocked", "not_observed"}
+#: The AE market's time zone: a crawl window's stock is read on the price capture's day in it.
+MARKET_TIME_ZONE = "Asia/Dubai"
 #: A price at or below this (AED) is not a real offer (owner ruling, 1 Oct 2026). pi_api withholds
 #: and flags it (``priceFlag = "invalid_low"``); the exporter never lets it stand for a variant
 #: group that has a valid price, and v1 shows it as null.
@@ -93,6 +101,12 @@ class ListingRow:
     stock_observed_at: datetime | None = None
     stock_evidence_retrieved_at: datetime | None = None
     stock_run_id: int | None = None
+    #: A listing the crawl window's runs did not see: its latest earlier row, with no values
+    #: (``LATEST_LISTINGS_SQL``). Exported as an offer marked ``retained`` (ADR-0013).
+    retained: bool = False
+    #: When an offline_import feed file holding this listing's rows was imported (NULL for
+    #: crawled evidence). Never a capture time: v2 refuses an offer dated by it.
+    file_received_at: datetime | None = None
     #: The retailer's main image URL from the latest content; only v2 reads it (allowlisted there).
     image: str | None = None
     #: v3 ``Offer.content`` only (2026-10-03), all from the latest content row and the variant:
@@ -236,24 +250,69 @@ current_runs AS (
 -- History mode (--history) passes one market day as [day_start, day_end): every succeeded or
 -- partial run then counts, and only its observations on that day are read (never carried
 -- forward). With no day (the default), the rules above apply unchanged.
+-- A crawl window (--run, ADR-0013) names its runs instead: only their observations are values,
+-- whatever their status. A listing they did not see is kept only if a retention run saw it: the
+-- newest SUCCEEDED run of its context started before the source's first window run, or a
+-- partial run started after that one (any partial run before the window when none succeeded)
+-- and before the window (Coordinator 01a11ce2-fd3e, amended by 01a11e38-6cba/-fd27). It is a
+-- retained row with no values (never carried forward as a value, never read as a removal). A
+-- partial run never is the baseline: it supplies only what it saw, so a listing seen only by a
+-- run older than the succeeded one (which is complete without it) is left out.
+window_runs AS (
+  SELECT r.id, s.id AS source_id, r.started_at
+  FROM scoped_runs r
+  JOIN source_context sc ON sc.id = r.source_context_id
+  JOIN source s ON s.id = sc.source_id
+  WHERE r.id = ANY(%(runs)s::bigint[])
+),
 eligible_runs AS (
-  SELECT id FROM current_runs WHERE %(day_start)s::timestamptz IS NULL
+  SELECT id FROM window_runs
+  UNION ALL
+  SELECT id FROM current_runs
+  WHERE %(day_start)s::timestamptz IS NULL AND %(runs)s::bigint[] IS NULL
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
   JOIN current_runs c ON c.source_context_id = r.source_context_id
-  WHERE %(day_start)s::timestamptz IS NULL
+  WHERE %(day_start)s::timestamptz IS NULL AND %(runs)s::bigint[] IS NULL
     AND r.status = 'partial' AND (r.started_at, r.id) > (c.started_at, c.id)
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
-  WHERE %(day_start)s::timestamptz IS NULL AND NOT EXISTS (
+  WHERE %(day_start)s::timestamptz IS NULL AND %(runs)s::bigint[] IS NULL AND NOT EXISTS (
     SELECT 1 FROM current_runs c WHERE c.source_context_id = r.source_context_id
   )
   UNION ALL
   SELECT r.id
   FROM scoped_runs r
   WHERE %(day_start)s::timestamptz IS NOT NULL AND r.status IN ('succeeded', 'partial')
+),
+before_window AS (
+  SELECT r.id, r.source_context_id, r.status, r.started_at
+  FROM scoped_runs r
+  JOIN source_context sc ON sc.id = r.source_context_id
+  WHERE r.started_at < (
+    SELECT min(w.started_at) FROM window_runs w WHERE w.source_id = sc.source_id
+  )
+),
+retention_baseline AS (
+  SELECT DISTINCT ON (source_context_id) id, source_context_id, started_at
+  FROM before_window
+  WHERE status = 'succeeded'
+  ORDER BY source_context_id, started_at DESC, id DESC
+),
+prior_runs AS (
+  SELECT id FROM retention_baseline
+  UNION ALL
+  SELECT r.id
+  FROM before_window r
+  LEFT JOIN retention_baseline b ON b.source_context_id = r.source_context_id
+  WHERE r.status = 'partial' AND (b.id IS NULL OR (r.started_at, r.id) > (b.started_at, b.id))
+),
+read_runs AS (
+  SELECT id, false AS prior FROM eligible_runs
+  UNION ALL
+  SELECT id, true FROM prior_runs WHERE id NOT IN (SELECT id FROM eligible_runs)
 ),
 -- One source may split an offer across rows: a page read carries price and rating with
 -- availability 'not_observed'; a stock read carries availability with price unknown
@@ -277,11 +336,25 @@ obs AS (
     o.observation_id,
     o.field_state,
     o.crawl_run_id,
+    eligible.prior,
+    -- The market day of the capture (evidence time, else the row's own), for same-day stock.
+    (
+      COALESCE(CASE WHEN e.fetch_method <> 'offline_import' THEN e.retrieved_at END, o.observed_at)
+      AT TIME ZONE %(time_zone)s
+    )::date AS capture_day,
     cr.status AS run_status,
     sc.coverage_status::text,
-    e.retrieved_at AS evidence_retrieved_at
+    -- An offline_import evidence row is the feed file: its retrieved_at is when the file was
+    -- imported (the Ulta feed's own per-capture rows aside), not when the page was seen, so such
+    -- a row is dated by its own observed_at, the page's capture time. file_received_at keeps an
+    -- import time that differs from it only to prove it is never published as a capture time.
+    CASE WHEN e.fetch_method <> 'offline_import' THEN e.retrieved_at END AS evidence_retrieved_at,
+    CASE
+      WHEN e.fetch_method = 'offline_import' AND e.retrieved_at <> o.observed_at
+      THEN e.retrieved_at
+    END AS file_received_at
   FROM offer_observation o
-  JOIN eligible_runs eligible ON eligible.id = o.crawl_run_id
+  JOIN read_runs eligible ON eligible.id = o.crawl_run_id
   JOIN crawl_run cr ON cr.id = o.crawl_run_id
   JOIN source_context sc ON sc.id = o.source_context_id
   LEFT JOIN evidence e ON e.id = o.evidence_id
@@ -294,37 +367,60 @@ obs AS (
 latest_any AS (
   SELECT DISTINCT ON (source_listing_id) *
   FROM obs
-  ORDER BY source_listing_id, observed_at DESC, observation_id DESC
+  -- A window's own row first; an earlier run's only when the window never saw the listing.
+  ORDER BY source_listing_id, prior, observed_at DESC, observation_id DESC
 ),
 latest_price AS (
   SELECT DISTINCT ON (source_listing_id) *
   FROM obs
   -- Not a price observation: field_state price_current unknown, blocked or parse_failure.
   -- not_published, restricted and not_applicable are observations and do win.
-  WHERE COALESCE(field_state ->> 'price_current', '') NOT IN ('unknown', 'blocked', 'parse_failure')
+  WHERE NOT prior
+    AND COALESCE(field_state ->> 'price_current', '') NOT IN ('unknown', 'blocked', 'parse_failure')
   ORDER BY source_listing_id, observed_at DESC, observation_id DESC
 ),
-latest_stock AS (
-  SELECT DISTINCT ON (source_listing_id)
+-- The newest real stock read of each listing on each market day.
+stock_days AS (
+  SELECT DISTINCT ON (source_listing_id, capture_day)
     source_listing_id, availability_state, observed_at, observation_id, evidence_retrieved_at,
-    crawl_run_id
+    file_received_at, crawl_run_id, capture_day
   FROM obs
   -- Not a stock observation: availability not_observed, unknown or blocked; never replaces a
   -- known state.
-  WHERE availability_state NOT IN ('not_observed', 'unknown', 'blocked')
-  ORDER BY source_listing_id, observed_at DESC, observation_id DESC
+  WHERE NOT prior AND availability_state NOT IN ('not_observed', 'unknown', 'blocked')
+  ORDER BY source_listing_id, capture_day, observed_at DESC, observation_id DESC
+),
+latest_stock AS (
+  SELECT
+    *,
+    row_number() OVER (
+      PARTITION BY source_listing_id ORDER BY observed_at DESC, observation_id DESC
+    ) = 1 AS newest
+  FROM stock_days
 ),
 latest AS (
   SELECT
     a.source_listing_id,
     COALESCE(p.variant_id, a.variant_id) AS variant_id,
-    COALESCE(p.price_current, a.price_current) AS price_current,
-    COALESCE(p.price_regular_stated, a.price_regular_stated) AS price_regular_stated,
-    COALESCE(p.price_type, a.price_type) AS price_type,
-    COALESCE(st.availability_state, a.availability_state) AS availability_state,
-    COALESCE(p.rating_value, a.rating_value) AS rating_value,
-    COALESCE(p.rating_scale, a.rating_scale) AS rating_scale,
-    COALESCE(p.rating_count, a.rating_count) AS rating_count,
+    -- A retained row (an earlier run's) carries no value: none is the window's.
+    CASE WHEN NOT a.prior THEN COALESCE(p.price_current, a.price_current) END AS price_current,
+    CASE WHEN NOT a.prior THEN COALESCE(p.price_regular_stated, a.price_regular_stated) END
+      AS price_regular_stated,
+    CASE WHEN NOT a.prior THEN COALESCE(p.price_type, a.price_type) END AS price_type,
+    CASE
+      WHEN a.prior THEN 'not_observed'
+      -- In a window, a real state of another day never stands in for the price day's.
+      ELSE COALESCE(st.availability_state, CASE
+        WHEN %(runs)s::bigint[] IS NULL
+          OR a.availability_state IN ('not_observed', 'unknown', 'blocked')
+        THEN a.availability_state
+        ELSE 'not_observed'
+      END)
+    END AS availability_state,
+    CASE WHEN NOT a.prior THEN COALESCE(p.rating_value, a.rating_value) END AS rating_value,
+    CASE WHEN NOT a.prior THEN COALESCE(p.rating_scale, a.rating_scale) END AS rating_scale,
+    CASE WHEN NOT a.prior THEN COALESCE(p.rating_count, a.rating_count) END AS rating_count,
+    a.prior AS retained,
     a.observed_at,
     a.crawl_run_id,
     a.run_status,
@@ -335,10 +431,17 @@ latest AS (
     p.crawl_run_id AS price_run_id,
     st.observed_at AS stock_observed_at,
     st.evidence_retrieved_at AS stock_evidence_retrieved_at,
-    st.crawl_run_id AS stock_run_id
+    st.crawl_run_id AS stock_run_id,
+    COALESCE(p.file_received_at, st.file_received_at, a.file_received_at) AS file_received_at
   FROM latest_any a
   LEFT JOIN latest_price p ON p.source_listing_id = a.source_listing_id
-  LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id
+  -- Without a window, the newest real stock read. In a window (option A, ADR-0013), the newest
+  -- real read of the same market day as the price capture (the window's runs only), else none;
+  -- with no price capture, the newest.
+  LEFT JOIN latest_stock st ON st.source_listing_id = a.source_listing_id AND CASE
+    WHEN %(runs)s::bigint[] IS NULL OR p.source_listing_id IS NULL THEN st.newest
+    ELSE st.capture_day = p.capture_day
+  END
 )
 SELECT
   s.name AS source_name,
@@ -386,6 +489,8 @@ SELECT
   latest.stock_observed_at,
   latest.stock_evidence_retrieved_at,
   latest.stock_run_id,
+  latest.file_received_at,
+  latest.retained,
   -- The main image. Two element shapes are read: the Sephora loader's {role: 'main', url}, and
   -- the owner's ulta_ae load {roles: [..., 'image', ...], download_url} (download_url is the CDN
   -- URL the live combined file carries; local_path is never read). Lowest position wins. With no
@@ -443,7 +548,7 @@ LEFT JOIN LATERAL (
   SELECT content.labels, content.description, content.ingredients
   FROM listing_content content
   WHERE content.listing_id = sl.id
-  ORDER BY content.observed_at DESC
+  ORDER BY content.observed_at DESC, content.recorded_at DESC
   LIMIT 1
 ) lc ON true
 WHERE s.name = ANY(%(sources)s)
@@ -470,7 +575,7 @@ WHERE s.name = ANY(%(sources)s)
           SELECT child_content.labels ->> 'aggregate_parent' = 'true'
           FROM listing_content child_content
           WHERE child_content.listing_id = child_listing.id
-          ORDER BY child_content.observed_at DESC
+          ORDER BY child_content.observed_at DESC, child_content.recorded_at DESC
           LIMIT 1
         ),
         false
@@ -479,6 +584,68 @@ WHERE s.name = ANY(%(sources)s)
   )
 ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 """
+
+#: Per context of a windowed source: the retention baseline of ``LATEST_LISTINGS_SQL`` (its newest
+#: succeeded run started before the source's first window run, or NULL) and the partial runs
+#: started after it and before the window. Those supply retained rows for what they saw but are
+#: never the baseline (Coordinator 01a11ce2-fd3e, amended by 01a11e38-6cba). The export logs both.
+RETENTION_BASELINE_SQL = """
+WITH window_runs AS (
+  SELECT r.id, sc.source_id, r.started_at
+  FROM crawl_run r
+  JOIN source_context sc ON sc.id = r.source_context_id
+  WHERE r.id = ANY(%(runs)s::bigint[])
+),
+contexts AS (
+  SELECT sc.id, s.name, (
+    SELECT min(w.started_at) FROM window_runs w WHERE w.source_id = sc.source_id
+  ) AS window_started_at
+  FROM source_context sc
+  JOIN source s ON s.id = sc.source_id
+  WHERE sc.country = 'AE' AND sc.locale = 'en-AE' AND s.name = ANY(%(sources)s)
+),
+baseline AS (
+  SELECT DISTINCT ON (c.id) c.id AS context_id, r.id, r.started_at
+  FROM contexts c
+  JOIN crawl_run r ON r.source_context_id = c.id
+  WHERE r.status = 'succeeded' AND r.started_at < c.window_started_at
+  ORDER BY c.id, r.started_at DESC, r.id DESC
+)
+SELECT
+  c.name AS source_name,
+  b.id AS baseline_run_id,
+  ARRAY(
+    SELECT r.id FROM crawl_run r
+    WHERE r.source_context_id = c.id AND r.status = 'partial'
+      AND r.started_at < c.window_started_at
+      AND (b.started_at IS NULL OR (r.started_at, r.id) > (b.started_at, b.id))
+    ORDER BY r.started_at, r.id
+  ) AS partial_run_ids
+FROM contexts c
+LEFT JOIN baseline b ON b.context_id = c.id
+WHERE c.window_started_at IS NOT NULL
+ORDER BY c.name, c.id
+"""
+
+
+def baseline_report(found: Iterable[Mapping[str, Any]]) -> str:
+    """One log line per windowed context: which run its retained listings may come from."""
+    lines = []
+    for row in found:
+        run = row["baseline_run_id"]
+        partial = list(row["partial_run_ids"] or ())
+        line = f"retention {row['source_name']}: baseline " + (
+            f"succeeded run {run}" if run is not None else "none"
+        )
+        if partial:
+            line += (
+                f"; partial runs {partial} retain only the listings they saw, never the baseline"
+            )
+        elif run is None:
+            line += " (nothing retained)"
+        lines.append(line)
+    return "\n".join(lines)
+
 
 MATCHES_SQL = """
 SELECT variant_a, variant_b, match_class::text, score, algo_version, review_state::text,
@@ -763,20 +930,39 @@ def review_state_for_ui(value: str) -> str:
 
 
 def latest_params(
-    sources: Sequence[str], day: tuple[datetime, datetime] | None = None
+    sources: Sequence[str],
+    day: tuple[datetime, datetime] | None = None,
+    runs: Iterable[int] | None = None,
 ) -> dict[str, Any]:
-    """``LATEST_LISTINGS_SQL`` parameters; ``day`` is one market day ``[start, end)`` (history)."""
+    """``LATEST_LISTINGS_SQL`` parameters; ``day`` is one market day ``[start, end)`` (history),
+    ``runs`` the crawl windows' run ids (``--run``, ADR-0013)."""
+    if day is not None and runs is not None:
+        raise ValueError("a history day and crawl window runs do not mix")
     start, end = day if day is not None else (None, None)
-    return {"sources": list(sources), "day_start": start, "day_end": end}
+    return {
+        "sources": list(sources),
+        "day_start": start,
+        "day_end": end,
+        "runs": sorted(runs) if runs is not None else None,
+        "time_zone": MARKET_TIME_ZONE,
+    }
 
 
 def load_rows(
-    database_url: str, sources: Sequence[str] = DEFAULT_SOURCES
+    database_url: str,
+    sources: Sequence[str] = DEFAULT_SOURCES,
+    runs: Iterable[int] | None = None,
 ) -> tuple[list[ListingRow], list[MatchRow]]:
+    """``runs`` are the crawl windows' runs (``--run``, ADR-0013); ``None`` keeps the rules of
+    ``LATEST_LISTINGS_SQL`` without a window."""
     with psycopg.connect(psycopg_database_url(database_url), row_factory=dict_row) as connection:
         connection.read_only = True
         with connection.cursor() as cursor:
-            cursor.execute(LATEST_LISTINGS_SQL, latest_params(sources))
+            params = latest_params(sources, runs=runs)
+            if runs is not None:
+                cursor.execute(RETENTION_BASELINE_SQL, params)
+                print(baseline_report(cursor.fetchall()))
+            cursor.execute(LATEST_LISTINGS_SQL, params)
             listing_dicts = cursor.fetchall()
             cursor.execute(MATCHES_SQL)
             match_dicts = cursor.fetchall()
@@ -1042,15 +1228,33 @@ def build_dataset(
     return dataset
 
 
-#: The largest v3 file this exporter writes, in compact JSON bytes: pi_api's measured memory
-#: budget for one dataset at 3Gi (docs/runbooks/pi-api-deploy.md §6). Calibrated on the real
-#: Ounass snapshot (72.7 MB compact): ~1,530 MiB of refresh peak above the other sources, so
-#: 90 MB keeps one refresh inside the ~1,990 MiB left after imports, the other sources, two CSV
-#: exports and a 256 MiB margin. No override (Reviewer, 2026-10-03): a snapshot over it waits
-#: for the content to move to its own file. The gate is per file, but the size is for every served
-#: file together: the other files' reserve is 30 MB compact in total, so a second large catalogue
-#: passes here and still does not fit. §6 states the deploy-time byte check over all served files.
-V3_MAX_BYTES = 90_000_000
+#: The largest v3 file served on the default memory budget, in compact JSON bytes: one number
+#: shared with pi_api (``pi_dataset.gate``), fitted in docs/runbooks/pi-api-deploy.md §6. A
+#: larger body is refused unless ``--allow-over-gate`` asks for it; it is then written, reported
+#: OVER GATE and exits ``OVER_GATE_EXIT``, and pi_api serves it only on a measured admission
+#: record for its exact bytes. That flag supersedes the 2026-10-03 "no override" note
+#: (Coordinator, 2026-10-07): without the record no file can be measured, so Ounass could never be
+#: admitted. The gate is per file; §6 sizes the served files together.
+
+
+def window_report(v3: Any) -> str:
+    """Per retailer: its crawl window and its offers marked not observed, by reason."""
+    marked: Counter[tuple[str, str]] = Counter(
+        (cid, str(o.not_observed_reason))
+        for p in v3.products
+        for cid, o in p.offers.items()
+        if o.not_observed_reason is not None
+    )
+    lines = []
+    for r in v3.meta.retailers:
+        w = r.window
+        span = "no window"
+        if w is not None:
+            run = "+".join((w.run_id, *w.segments))
+            span = f"run {run} {w.start.isoformat()}..{w.end.isoformat()}"
+        reasons = {reason: n for (cid, reason), n in sorted(marked.items()) if cid == r.id}
+        lines.append(f"window {r.id}: {span} notObservedReason={reasons}")
+    return "\n".join(lines)
 
 
 def v3_bytes_by_group(v3: Any, total: int) -> dict[str, int]:
@@ -1093,13 +1297,44 @@ def format_groups(groups: Mapping[str, int]) -> str:
     return " ".join(f"{name}={size}" for name, size in groups.items())
 
 
-def check_v3_size(total: int, groups: Mapping[str, int]) -> None:
-    """Refuse (no file written) a v3 body over ``V3_MAX_BYTES``."""
-    if total > V3_MAX_BYTES:
+def check_v3_size(total: int, groups: Mapping[str, int], *, over_gate: bool = False) -> bool:
+    """Whether a v3 body is over ``V3_MAX_BYTES``. Over it, refuse (no file written) unless
+    ``over_gate`` (``--allow-over-gate``) asks for the file anyway."""
+    if total <= V3_MAX_BYTES:
+        return False
+    if not over_gate:
         raise SystemExit(
             f"refusing to write v3: {total} bytes is over the {V3_MAX_BYTES}-byte pi_api budget "
-            f"({format_groups(groups)}); nothing was written"
+            f"({format_groups(groups)}); nothing was written. A file over it is served only on a "
+            "measured admission record (pi-api-deploy.md §6): write it with --allow-over-gate"
         )
+    return True
+
+
+#: ``--allow-over-gate`` wrote a file over ``V3_MAX_BYTES``: never an ordinary success.
+OVER_GATE_EXIT = 3
+
+
+def write_v3(path: Path, body: bytes, products: int, groups: Mapping[str, int], over: bool) -> None:
+    """Write the v3 body and report it. A body over the gate exits ``OVER_GATE_EXIT`` after it
+    is written: the file exists to be measured, and pi_api serves it only on an admission record
+    for the body the publisher uploads (pi-api-deploy.md §6). The sha256 printed here is of this
+    file: advisory, since the publisher re-serialises it."""
+    write_bytes(path, body)
+    digest = sha256(path)
+    print(
+        f"wrote v3 {products} products to {path} sha256={digest} bytes={len(body)} "
+        f"of {V3_MAX_BYTES} by group: {format_groups(groups)}"
+    )
+    if over:
+        print(f"OVER GATE {path} {len(body)} sha256={digest}")
+        print(
+            f"over V3_MAX_BYTES={V3_MAX_BYTES}: not served until infra/pi-api/admission/ holds a "
+            "passing record for the published body; this file's sha256 is advisory, the record "
+            "keys on the body publish_dataset --dry-run reports (pi-api-deploy.md §6)",
+            file=sys.stderr,
+        )
+        raise SystemExit(OVER_GATE_EXIT)
 
 
 def write_json(path: Path, dataset: Mapping[str, Any]) -> None:
@@ -1164,6 +1399,14 @@ def parser() -> argparse.ArgumentParser:
         help="also write the v2 snapshot upgraded to pi.dataset/v3, with offer listingCount",
     )
     result.add_argument(
+        "--allow-over-gate",
+        action="store_true",
+        help=(
+            "write a v3 body over V3_MAX_BYTES anyway, then exit 3 (OVER GATE): it is served only "
+            "on a measured admission record for its sha256 (pi-api-deploy.md §6)"
+        ),
+    )
+    result.add_argument(
         "--history",
         action="store_true",
         help=(
@@ -1171,9 +1414,71 @@ def parser() -> argparse.ArgumentParser:
             "not completely collected go into notObserved windows (history.py)"
         ),
     )
+    result.add_argument(
+        "--run",
+        action="append",
+        default=[],
+        metavar="SOURCE=ID[+SEGMENT...]",
+        help=(
+            "a source's crawl window run, then its segments (ADR-0013), e.g. sephora_me=1+2; "
+            "repeat per source. With any --run, every exported source needs one"
+        ),
+    )
+    result.add_argument(
+        "--profile",
+        default="beauty@1",
+        choices=("beauty@1", "beauty@2"),
+        help=(
+            "the v3 attribute profile. beauty@2 publishes each offer's gift titles with their "
+            "evidence and every key without stored evidence as not collected"
+        ),
+    )
+    result.add_argument(
+        "--withhold",
+        action="append",
+        default=[],
+        metavar="SOURCE",
+        help=(
+            "export SOURCE withheld (F1, ADR-0013 §8): its offers keep the values of its --run, "
+            "but it gets no crawl window, a since and one whole-retailer notObserved entry with "
+            "--withhold-why/--withhold-why-ar; repeatable, v2/v3 only"
+        ),
+    )
+    result.add_argument("--withhold-why", help="why the withheld sources are not observed (EN)")
+    result.add_argument("--withhold-why-ar", help="the same reason in Arabic (required with EN)")
+    result.add_argument(
+        "--withhold-until",
+        type=date.fromisoformat,
+        help=(
+            "the withheld entries' last day (YYYY-MM-DD, market time zone): the roll-time cutoff "
+            "day; default the body's own cutoff day, and never earlier"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
+
+
+def parse_runs(values: Sequence[str], sources: Sequence[str]) -> dict[str, tuple[int, ...]] | None:
+    """``--run SOURCE=ID[+SEGMENT...]`` per source, or ``None`` without any. A source named twice,
+    a source not exported, an exported source without one, or a run that is not a positive
+    integer is refused: a window's runs are declared, never guessed (ADR-0013)."""
+    if not values:
+        return None
+    runs: dict[str, tuple[int, ...]] = {}
+    for value in values:
+        source, sep, ids = value.partition("=")
+        parts = ids.split("+")
+        if not sep or not all(part.isdigit() and int(part) > 0 for part in parts):
+            raise SystemExit(f"--run {value!r}: expected SOURCE=ID[+SEGMENT...]")
+        if source in runs:
+            raise SystemExit(f"--run names {source} twice")
+        if source not in sources:
+            raise SystemExit(f"--run {source}: not one of --sources {','.join(sources)}")
+        runs[source] = tuple(int(part) for part in parts)
+    if missing := [s for s in sources if s not in runs]:
+        raise SystemExit(f"--run is missing for {', '.join(missing)}: every source needs one")
+    return runs
 
 
 def check_args(args: argparse.Namespace) -> None:
@@ -1193,8 +1498,12 @@ def check_args(args: argparse.Namespace) -> None:
         )
     if not args.sources:
         raise SystemExit("--sources must name at least one source")
+    if args.profile != "beauty@1" and args.output_v3 is None:
+        raise SystemExit(f"--profile {args.profile} needs --output-v3 (only v3 has a profile)")
     if args.history and args.output_v2 is None and args.output_v3 is None:
         raise SystemExit("--history needs --output-v2 or --output-v3 (v1 has one date)")
+    if args.history and args.run:
+        raise SystemExit("--history does not take --run (a crawl window is one snapshot)")
     if args.history and args.ulta_early_fixture is not None:
         raise SystemExit(
             "--history does not take --ulta-early-fixture (recon samples have no days)"
@@ -1206,6 +1515,49 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must be supplied together")
     if any(note is not None and not note.strip() for note in notes):
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must not be empty")
+    check_withhold(args)
+
+
+def check_withhold(args: argparse.Namespace) -> None:
+    """``--withhold`` (F1): each source once and exported, beside at least one windowed source,
+    with ``--run`` (its values and ``since`` come from its window), a v2/v3 output, and a reason
+    in both languages with no placeholder but ``<since>`` in it; the reason and
+    ``--withhold-until`` never without a withheld source."""
+    held, why = args.withhold, (args.withhold_why, args.withhold_why_ar)
+    if not held:
+        if any(v is not None for v in (*why, args.withhold_until)):
+            raise SystemExit("--withhold-why(-ar) and --withhold-until need --withhold")
+        return
+    if len(set(held)) != len(held):
+        raise SystemExit(f"--withhold names a source twice: {held}")
+    if extra := [s for s in held if s not in args.sources]:
+        raise SystemExit(f"--withhold {', '.join(extra)}: not one of --sources")
+    if set(held) == set(args.sources):
+        raise SystemExit("--withhold needs a windowed source beside it: every source is withheld")
+    if not args.run:
+        raise SystemExit("--withhold needs --run: a withheld source's since comes from its run")
+    if args.output_v2 is None and args.output_v3 is None:
+        raise SystemExit("--withhold needs --output-v2 or --output-v3 (v1 has no notObserved)")
+    if any(v is None or not v.strip() for v in why):
+        raise SystemExit("--withhold needs --withhold-why and --withhold-why-ar, both non-empty")
+    from scripts.demo_export.v2 import SINCE  # noqa: PLC0415
+
+    # nothing downstream fills a placeholder: only <since> is written in, by the exporter
+    if left := [v for v in why if v is not None and {"<", ">"} & set(v.replace(SINCE, ""))]:
+        raise SystemExit(f"--withhold-why(-ar) has a placeholder other than {SINCE}: {left}")
+
+
+def withheld_of(args: argparse.Namespace) -> Withheld | None:
+    """The ``--withhold`` sources as ``Withheld`` slots (``check_withhold`` ran), or ``None``."""
+    if not args.withhold:
+        return None
+    from scripts.demo_export.v2 import Withheld  # noqa: PLC0415
+
+    return Withheld(
+        slots=frozenset(slot(source) for source in args.withhold),
+        why={"en": args.withhold_why.strip(), "ar": args.withhold_why_ar.strip()},
+        until=args.withhold_until,
+    )
 
 
 def build_v1(
@@ -1241,7 +1593,12 @@ def build_v1(
 def main() -> None:
     args = parser().parse_args()
     check_args(args)
-    rows, matches = load_rows(args.database_url, args.sources)
+    runs = parse_runs(args.run, args.sources)
+    rows, matches = load_rows(
+        args.database_url,
+        args.sources,
+        None if runs is None else [run for ids in runs.values() for run in ids],
+    )
     early: list[dict[str, Any]] = []
     if args.ulta_early_fixture is not None:
         early.append(
@@ -1261,6 +1618,7 @@ def main() -> None:
         from scripts.demo_export.v2 import (  # noqa: PLC0415
             build_dataset_v2,
             category_notes,
+            crawl_windows,
             price_review,
             to_v3,
         )
@@ -1269,6 +1627,7 @@ def main() -> None:
             blocked_since=parse_utc(args.ulta_blocked_since), blocked=not args.ulta_unblocked
         )
         v2_rows = rows
+        windows = None
         if args.history:
             from scripts.demo_export.history import (  # noqa: PLC0415
                 Coverage,
@@ -1298,6 +1657,7 @@ def main() -> None:
                 f"notObserved={len(v2.not_observed)}"
             )
         else:
+            windows = crawl_windows(rows, runs)
             v2 = build_dataset_v2(
                 rows,
                 matches,
@@ -1308,15 +1668,25 @@ def main() -> None:
                 scope=args.scope,
                 producer_commit=args.producer_commit,
                 slots=slots,
+                windows=windows,
+                withheld=withheld_of(args),
             )
         body = dump_dataset(v2, compact=True)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            v3 = to_v3(v2, v2_rows, matches)
+            v3 = to_v3(
+                v2,
+                v2_rows,
+                matches,
+                windows,
+                frozenset(map(slot, args.withhold)),
+                beauty=int(args.profile.removeprefix("beauty@")),
+            )
+            print(window_report(v3))
             body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
             v3_groups = v3_bytes_by_group(v3, len(body_v3))
-            check_v3_size(len(body_v3), v3_groups)
+            v3_over = check_v3_size(len(body_v3), v3_groups, over_gate=args.allow_over_gate)
     if dataset is None:
         print(f"v1 not written to {args.output}: no Ulta/Sephora rows in {args.sources}")
     else:
@@ -1343,12 +1713,7 @@ def main() -> None:
             f"above={len(review['above'])} {review['above'][:20]}"
         )
     if args.output_v3 is not None:
-        write_bytes(args.output_v3, body_v3)
-        print(
-            f"wrote v3 {len(v2.products)} products to {args.output_v3} "
-            f"sha256={sha256(args.output_v3)} bytes={len(body_v3)} of {V3_MAX_BYTES} "
-            f"by group: {format_groups(v3_groups)}"
-        )
+        write_v3(args.output_v3, body_v3, len(v2.products), v3_groups, v3_over)
 
 
 if __name__ == "__main__":

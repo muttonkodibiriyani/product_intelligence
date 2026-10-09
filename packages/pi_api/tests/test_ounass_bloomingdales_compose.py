@@ -67,7 +67,9 @@ ADDED = {
 def shop_file(source: str, dates: list[str], *, stock: str = "in_stock") -> DatasetV3:
     """A one-shop export: partial, the page's own stock, a stated was-price, one image."""
     a, b = f"{source}-1", f"{source}-2"
-    d = snapshot_doc({a: (source,), b: (source,)}, dates=dates)
+    d = snapshot_doc({a: (source,), b: (source,)}, dates=dates, windows=False)
+    # no window: beside the window-less beauty fixture a windowed shop would leave the beauty
+    # shops withheld without their notObserved entries (ADR-0013 §8), and the view refused
     d["meta"]["retailers"][0]["status"] = "partial"
     first = d["products"][0]
     first["offers"][source]["series"]["regular"] = [

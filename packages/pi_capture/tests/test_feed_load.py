@@ -32,6 +32,7 @@ SHOP = Shop(
     currency="AED",
     time_zone="Asia/Dubai",
     notes="synthetic",
+    regular_stated="on_promotion",
 )
 
 

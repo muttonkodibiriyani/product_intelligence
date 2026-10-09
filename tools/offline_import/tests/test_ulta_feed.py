@@ -18,7 +18,7 @@ from scripts.demo_export.test_export import row
 from sqlalchemy.engine import make_url
 
 from offline_import import ulta_feed
-from offline_import.ulta_catalogue import enrich
+from offline_import.ulta_catalogue import LATEST, enrich
 from offline_import.ulta_catalogue import export as export_catalogue
 from offline_import.ulta_feed import export, load, prepare
 from pi_dataset.catalogue import CatalogueDataset
@@ -441,3 +441,47 @@ def test_catalogue_append_replay_and_price_history_preserved(db: str, tmp_path: 
                 (lid, observed_at),
             ).fetchone() == (labels,)
         assert conn.execute("SELECT count(*) FROM listing_content").fetchone() == (4,)
+
+
+def test_at_one_page_time_the_latest_recorded_content_is_read(db: str, tmp_path: Path) -> None:
+    """A re-derived row at the loaded row's observed_at wins only if recorded later."""
+    folder = tmp_path / "prepared"
+    prepare(feed(tmp_path, [source_record("early"), source_record("late")]), folder)
+    load(folder, db)
+    with psycopg.connect(db) as conn:
+        for sku, shift in (("early", "-1 day"), ("late", "1 day")):
+            conn.execute(
+                "INSERT INTO listing_content (listing_id, observed_at, recorded_at, labels,"
+                " content_hash) SELECT c.listing_id, c.observed_at, c.recorded_at + %s::interval,"
+                " c.labels || '{\"product_url_missing\": true}', c.content_hash || '-r'"
+                " FROM listing_content c JOIN source_listing l ON l.id = c.listing_id"
+                " WHERE l.source_listing_key = %s",
+                (shift, sku),
+            )
+        latest = {
+            sku: (labels.get("product_url_missing"), recorded)
+            for _, sku, _, labels, recorded in conn.execute(LATEST).fetchall()
+        }
+        loaded: dict[str, object] = dict(
+            conn.execute(
+                "SELECT l.source_listing_key, min(c.recorded_at) FILTER (WHERE c.content_hash"
+                " NOT LIKE '%-r') FROM listing_content c JOIN source_listing l ON"
+                " l.id = c.listing_id GROUP BY 1"
+            ).fetchall()
+        )
+    assert latest["early"] == (False, loaded["early"])  # the earlier re-derivation loses
+    assert latest["late"][0] is True
+    assert latest["late"][1] > loaded["late"]
+    target = tmp_path / "latest.json"
+    export(
+        db,
+        target,
+        sources=("ulta_ae",),
+        ulta=UltaContext(
+            blocked_since=ulta_feed.instant(ulta_feed.ULTA_BLOCKED_SINCE), blocked=False
+        ),
+    )
+    products = json.loads(target.read_text())["products"]
+    urls = {p["offers"]["ulta_ae"]["sku"]: p["offers"]["ulta_ae"]["url"] for p in products}
+    assert urls["early"] == "https://www.ulta.ae/en/early"
+    assert urls["late"] is None

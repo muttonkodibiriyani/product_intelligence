@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping
 from typing import Self
@@ -9,10 +10,48 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from pi_core import PiModel
+from pi_dataset.gate import DEFAULT_MEMORY_MIB
+
+log = logging.getLogger(__name__)
 
 _OBJECT = re.compile(r"^[a-z0-9][a-z0-9_./-]{0,200}\.json$")
 _RETAILER = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def admitted_entries(raw: str) -> dict[str, int]:
+    """``PI_API_ADMITTED``: comma-separated ``sha256:others_bytes``, as ``pi_api_admission.py
+    check`` prints them: a body's lowercase sha256 hex digest and the total bytes of the other
+    files its admission record measured beside it. A sha listed twice is refused: which bound
+    applies would otherwise depend on the order of the list."""
+    out: dict[str, int] = {}
+    for entry in (e.strip() for e in raw.split(",")):
+        if not entry:
+            continue
+        sha, _, others = entry.partition(":")
+        if not _SHA256.fullmatch(sha) or not others.isdigit():
+            msg = f"PI_API_ADMITTED entry {entry!r} is not sha256:others_bytes"
+            raise ValueError(msg)
+        if sha in out:
+            msg = f"PI_API_ADMITTED lists {sha} more than once"
+            raise ValueError(msg)
+        out[sha] = int(others)
+    return out
+
+
+def memory_mib(raw: str | None) -> int:
+    """``PI_API_MEMORY_MIB``, the instance memory the load rule assumes (infra/pi-api/service.env).
+    Missing or unreadable is the smallest instance, ``DEFAULT_MEMORY_MIB``: fail closed."""
+    value = (raw or "").strip()
+    if value.isdigit() and int(value) > 0:
+        return int(value)
+    log.error(
+        "PI_API_MEMORY_MIB is %r: assuming %d MiB, the smallest instance",
+        raw,
+        DEFAULT_MEMORY_MIB,
+    )
+    return DEFAULT_MEMORY_MIB
 
 
 def evidence_hosts(raw: str, var: str = "PI_API_EVIDENCE_HOSTS") -> dict[str, frozenset[str]]:
@@ -85,6 +124,15 @@ class Settings(PiModel):
     evidence_hosts: Mapping[str, frozenset[str]] = Field(default_factory=dict)
     #: Per retailer, the hosts whose product image URLs are served (same rules); empty nulls all.
     image_hosts: Mapping[str, frozenset[str]] = Field(default_factory=dict)
+    #: ``PI_API_ADMITTED``: the bodies that may be served over the memory rule (sha256 to the
+    #: other files' measured bytes), each with a passing record in infra/pi-api/admission/
+    #: (pi-api-deploy.md §6). Empty: none.
+    admitted: Mapping[str, int] = Field(default_factory=dict)
+    #: ``PI_API_MEMORY_MIB``: the instance memory the load rule is evaluated against.
+    memory_mib: int = Field(default=DEFAULT_MEMORY_MIB, gt=0)
+    #: ``PI_API_REQUIRE_ALL=1``: refuse to start unless every configured file and view loads, so a
+    #: revision whose bodies don't load never becomes Ready (pi-api-deploy.md §6, deploy plan v2).
+    require_all: bool = False
 
     @model_validator(mode="after")
     def _check_datasets(self) -> Self:
@@ -133,4 +181,7 @@ class Settings(PiModel):
             allow_test=env.get("PI_API_ALLOW_TEST", "") == "1",
             evidence_hosts=evidence_hosts(env.get("PI_API_EVIDENCE_HOSTS", "")),
             image_hosts=evidence_hosts(env.get("PI_API_IMAGE_HOSTS", ""), "PI_API_IMAGE_HOSTS"),
+            admitted=admitted_entries(env.get("PI_API_ADMITTED", "")),
+            memory_mib=memory_mib(env.get("PI_API_MEMORY_MIB")),
+            require_all=env.get("PI_API_REQUIRE_ALL", "") == "1",
         )

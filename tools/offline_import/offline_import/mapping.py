@@ -33,8 +33,24 @@ FEED_AVAILABILITY: frozenset[AvailabilityState] = frozenset(
 Format = Literal["csv", "xlsx", "json"]
 FORMAT_BY_SUFFIX: dict[str, Format] = {".csv": "csv", ".xlsx": "xlsx", ".json": "json"}
 
+# How a feed states a regular price (``ImportMapping.regular_stated``):
+# - ``on_promotion``: the regular price is stated on promotional rows, so a full-price row's
+#   regular price is its current price (Sephora's and Faces' shape, and Ounass's);
+# - ``not_collected``: the feed never captured a regular or promotional price, so a row's price
+#   type is unknown, never 'full' (a 'full' row would publish a false 0% discount).
+RegularStated = Literal["on_promotion", "not_collected"]
+
 # Fields that hold a list: a JSON array of strings, or one string as a one-item list (CSV/XLSX).
-LIST_FIELDS: tuple[str, ...] = ("badges", "promotions", "image_urls")
+LIST_FIELDS: tuple[str, ...] = (
+    "badges",
+    "promotions",
+    "gift_with_purchase",
+    "image_urls",
+    "bullets",
+    "skin_type",
+    "concern",
+    "installment_provider",
+)
 
 
 class SourceSpec(PiModel):
@@ -74,7 +90,28 @@ class Columns(PiModel):
     concentration: str | None = None
     badges: str | None = None
     promotions: str | None = None
+    gift_with_purchase: str | None = None
     image_urls: str | None = None
+    # Page attributes (pi_capture's reader keys): the style id becomes labels.master_id (the
+    # product family the export groups by), the INCI list goes to listing_content.ingredients,
+    # the rest are labels under their own names.
+    style_id: str | None = None
+    ingredients: str | None = None
+    mpn: str | None = None
+    colour_code: str | None = None
+    colour_hex: str | None = None
+    collection: str | None = None
+    fragrance_family: str | None = None
+    finish: str | None = None
+    formulation: str | None = None
+    lifecycle_class: str | None = None
+    exclusivity: str | None = None
+    loyalty_points: str | None = None
+    installment_amount_minor: str | None = None
+    bullets: str | None = None
+    skin_type: str | None = None
+    concern: str | None = None
+    installment_provider: str | None = None
 
     def mapped(self) -> dict[str, str]:
         """Field -> column for every mapped field."""
@@ -103,6 +140,9 @@ class ImportMapping(PiModel):
     # Otherwise the run is 'partial': absence from a feed is never read as removal.
     complete_catalogue: bool = False
     columns: Columns
+    # Required whenever a price column is mapped: never inferred from mapped columns (a
+    # capture's feed maps price_regular even when it never fills it) or from row counts.
+    regular_stated: RegularStated | None = None
     format: Format | None = None  # default: from the file suffix
     csv: CsvOptions = Field(default_factory=CsvOptions)
     # JSON: dotted path to the item array ("items", "data.products"); None = top-level array.
@@ -139,6 +179,9 @@ class ImportMapping(PiModel):
     def _check_invariants(self) -> Self:
         if self.observed_at is None and self.columns.observed_at is None:
             msg = "set observed_at or map columns.observed_at (import time is never used)"
+            raise ValueError(msg)
+        if self.prices_mapped and self.regular_stated is None:
+            msg = "a feed with prices must declare regular_stated (on_promotion or not_collected)"
             raise ValueError(msg)
         if self.columns.availability is not None and not self.availability_map:
             msg = "columns.availability needs an availability_map"

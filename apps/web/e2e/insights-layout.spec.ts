@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test';
 import fixture from './findings-fixture.json';
-import { expect, golden, mockBackend, servingMeta, signIn, test } from './fixtures';
+import { expect, golden, mockBackend, servingMeta, signedIn, test } from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -79,8 +79,7 @@ for (const locale of ['en', 'ar'] as const)
       test.skip(info.project.name.endsWith('-mobile'), 'desktop widths only');
       await page.setViewportSize({ width, height: 900 });
       const mock = await mockBackend(page, { onApi: api });
-      await signIn(page, locale);
-      await expect(page.getByRole('navigation').first()).toBeVisible();
+      await signedIn(page, locale);
       await page.goto(`/app/${locale}/prices/`);
       await expect(page.locator('main h1')).toBeVisible();
       const prices = await gutters(page);

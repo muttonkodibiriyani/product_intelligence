@@ -297,6 +297,43 @@
       "title": "Context",
       "type": "object"
     },
+    "CrawlWindow": {
+      "additionalProperties": false,
+      "description": "The one crawl run a retailer's values come from (ADR-0013): its first and last capture\nin the snapshot. A window never mixes runs and spans at most ``MAX_WINDOW_DAYS`` calendar\ndays of the retailer's market (checked with the meta, which knows the time zone).",
+      "properties": {
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        },
+        "runId": {
+          "pattern": "\\S",
+          "title": "Runid",
+          "type": "string"
+        },
+        "segments": {
+          "default": [],
+          "items": {
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "title": "Segments",
+          "type": "array"
+        },
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "runId"
+      ],
+      "title": "CrawlWindow",
+      "type": "object"
+    },
     "DecidedBy": {
       "enum": [
         "human",
@@ -648,7 +685,7 @@
         },
         "retailers": {
           "items": {
-            "$ref": "#/$defs/Retailer"
+            "$ref": "#/$defs/RetailerV3"
           },
           "minItems": 1,
           "title": "Retailers",
@@ -715,6 +752,18 @@
       ],
       "title": "MoneyValue",
       "type": "object"
+    },
+    "NotObservedReason": {
+      "description": "Why a published offer has no observation in its retailer's crawl window (ADR-0013).\n\nThe offer keeps its original ``capturedAt`` and a null in-window series; the reason is what\nexempts it from the window rule. Closed set (Coordinator ruling, 2026-10-08).",
+      "enum": [
+        "retained",
+        "blocked",
+        "rate_limited",
+        "capture_in_progress",
+        "planned_not_captured"
+      ],
+      "title": "NotObservedReason",
+      "type": "string"
     },
     "NotObservedV3": {
       "additionalProperties": false,
@@ -928,6 +977,17 @@
           ],
           "default": null,
           "title": "Listingcount"
+        },
+        "notObservedReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotObservedReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "rating": {
           "anyOf": [
@@ -1244,9 +1304,33 @@
       "title": "Rating",
       "type": "object"
     },
-    "Retailer": {
+    "RetailerStatus": {
+      "description": "Coverage of a retailer in this snapshot. Only ``supported`` backs an absence claim.",
+      "enum": [
+        "supported",
+        "partial",
+        "blocked",
+        "pending",
+        "retired"
+      ],
+      "title": "RetailerStatus",
+      "type": "string"
+    },
+    "RetailerV3": {
       "additionalProperties": false,
+      "description": "A v2 retailer plus its own crawl window, field states and capabilities (ADR-0013). The\nexporter always writes them; ``None`` is a file from before them, which only a file of one\nretailer may be (``pi_dataset.compose.resolved_retailers``).",
       "properties": {
+        "capabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Capabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "country": {
           "title": "Country",
           "type": "string"
@@ -1255,6 +1339,23 @@
           "default": false,
           "title": "Earlyexamples",
           "type": "boolean"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "patternProperties": {
+                "\\S": {
+                  "$ref": "#/$defs/FieldStatus"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
         },
         "id": {
           "pattern": "^[a-z][a-z0-9_]{1,62}$",
@@ -1311,6 +1412,17 @@
         },
         "status": {
           "$ref": "#/$defs/RetailerStatus"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CrawlWindow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1321,20 +1433,8 @@
         "since",
         "note"
       ],
-      "title": "Retailer",
+      "title": "RetailerV3",
       "type": "object"
-    },
-    "RetailerStatus": {
-      "description": "Coverage of a retailer in this snapshot. Only ``supported`` backs an absence claim.",
-      "enum": [
-        "supported",
-        "partial",
-        "blocked",
-        "pending",
-        "retired"
-      ],
-      "title": "RetailerStatus",
-      "type": "string"
     },
     "ReviewState": {
       "description": "Lifecycle of a match edge (MAT-05, MAT-07).",

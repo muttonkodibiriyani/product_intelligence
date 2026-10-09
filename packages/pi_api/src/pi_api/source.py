@@ -14,6 +14,16 @@ generation; until then the previous view stays live, and with none they are not 
 scope (``pi_api.matches``); views of other scopes are composed without it. A new generation that
 does not validate is ignored (the last good one stays applied; until one validates, the views are
 composed without it), and one whose vertical is not its view's leaves the previous views live.
+
+Every new generation is checked against the memory rule (``pi_dataset.gate``, pi-api-deploy §6)
+before it is parsed: the decompressed bodies of every file held, this one in place of its own
+path's current generation, at ``memory_mib`` (``PI_API_MEMORY_MIB``). A set over the fit loads
+only when its largest body's ``admission_sha256`` is in ``admitted`` (``PI_API_ADMITTED``, baked
+in at deploy from infra/pi-api/admission/) and the other files are within its record. A refused
+generation fails like one that does not validate, so the last good one stays live; at cold start
+the path is not served and the others are (it is retried once after them, so path order does
+not decide). A new over-the-rule export therefore needs a re-measure, a new record and a new
+revision.
 """
 
 from __future__ import annotations
@@ -30,12 +40,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
+from pi_api.content import packed
 from pi_api.dq import Imported, imported_view
 from pi_api.floor import FloorView, floor_view
 from pi_api.ids import ProductIds, product_ids
 from pi_api.matches import apply
-from pi_dataset import DatasetError, DatasetV3, ProductV3, load_any
+from pi_dataset import DatasetError, DatasetV3, ProductV3, admission_sha256, load_any
 from pi_dataset.compose import SourceInfo, compose, latest, only, source_infos
+from pi_dataset.gate import DEFAULT_MEMORY_MIB, refusal
 from pi_match.matchfile import MatchFile
 from pi_metrics.view import as_v3
 
@@ -215,7 +227,7 @@ def parse(data: bytes, *, allow_test: bool = False, limit: int = MAX_DATASET_BYT
     if len(data) > limit:
         msg = f"dataset is larger than {limit} bytes"
         raise ValueError(msg)
-    return as_v3(load_any(data.decode("utf-8"), allow_test=allow_test))
+    return as_v3(load_any(data, allow_test=allow_test))
 
 
 class SnapshotSource:
@@ -229,9 +241,21 @@ class SnapshotSource:
         allow_test: bool = False,
         assigned: Mapping[str, str] = MappingProxyType({}),
         matches: str | None = None,
+        pack_content: bool = True,
+        admitted: Mapping[str, int] = MappingProxyType({}),
+        memory_mib: int = DEFAULT_MEMORY_MIB,
     ) -> None:
         """``paths`` are served whole; ``assigned`` maps a source (retailer id) to its path;
-        ``matches`` is the match file applied to the composed views."""
+        ``matches`` is the match file applied to the composed views. ``pack_content`` keeps
+        offer content compressed in memory (``pi_api.content``); off only to compare.
+        ``admitted`` and ``memory_mib``: the memory rule's admission records and instance size."""
+        self._admitted = dict(admitted)
+        self._memory_mib = memory_mib
+        #: Each good generation's decompressed size and ``admission_sha256``: what the rule counts.
+        self._bodies: dict[str, tuple[int, str]] = {}
+        #: Paths whose last new generation the rule refused.
+        self._refused: set[str] = set()
+        self._pack_content = pack_content
         self._matches_path = matches
         #: The latest good match file and its generation.
         self._matches: tuple[MatchFile, str] | None = None
@@ -254,13 +278,13 @@ class SnapshotSource:
     def load_all(self) -> None:
         """Checks every path now, loading any new generation. Never raises for bad data."""
         changed = False
-        for path in dict.fromkeys((*self._paths, *self._assigned.values())):
-            loaded = self._load(path)
-            if loaded is not None:
-                self._files[path] = loaded
-                if path in self._paths:
-                    self._served[path] = _with_ids(_corrected(loaded))
-                changed = True
+        self._refused.clear()
+        paths = list(dict.fromkeys((*self._paths, *self._assigned.values())))
+        for path in paths:
+            changed |= self._take(path)
+        if changed:  # one retry: a refusal at cold start must not depend on path order
+            for path in [p for p in paths if p in self._refused and p not in self._files]:
+                changed |= self._take(path)
         if self._matches_path is not None and self._load_matches(self._matches_path):
             changed = True
         if not changed:
@@ -271,6 +295,15 @@ class SnapshotSource:
             kept = {k: v for k, v in self._loaded.items() if k not in self._paths}
             self._loaded = {**served, **(kept if groups is None else groups)}  # one swap
 
+    def _take(self, path: str) -> bool:
+        loaded = self._load(path)
+        if loaded is None:
+            return False
+        self._files[path] = loaded
+        if path in self._paths:
+            self._served[path] = _with_ids(_corrected(loaded))
+        return True
+
     def _load(self, path: str) -> Loaded | None:
         """The path's new generation, or ``None`` when unchanged or not loadable."""
         current = self._files.get(path)
@@ -278,8 +311,26 @@ class SnapshotSource:
             if current is not None and self._store.generation(path) == current.generation:
                 return None
             data, generation = self._store.read(path)
+            body = _gunzip(data, MAX_DATASET_BYTES) if data.startswith(_GZIP_MAGIC) else data
+            stats = (len(body), admission_sha256(body))
+            why = refusal({**self._bodies, path: stats}, self._admitted, self._memory_mib)
+            if why is not None:
+                self._refused.add(path)
+                kept = "UNAVAILABLE" if current is None else f"kept at {current.generation}"
+                log.error(
+                    "MEMORY RULE: dataset %s generation %s REFUSED, %s: %s",
+                    path,
+                    generation,
+                    kept,
+                    why,
+                )
+                return None
             # Upgraded here, off the request path; a v2 that can't be is not loaded.
-            dataset = parse(data, allow_test=self._allow_test)
+            dataset = parse(body, allow_test=self._allow_test)
+            if self._pack_content:
+                dataset = packed(dataset)
+            # A file of several retailers without their own keys is refused (ADR-0013).
+            infos = source_infos(dataset)
         except (DatasetError, ValueError, OSError, zlib.error) as error:
             log.warning("dataset %s not loaded: %s", path, type(error).__name__)
             return None
@@ -287,7 +338,8 @@ class SnapshotSource:
             log.exception("dataset %s: storage error", path)
             return None
         log.info("dataset %s loaded at generation %s", path, generation)
-        return Loaded(path, dataset, generation, source_infos(dataset))
+        self._bodies[path] = stats
+        return Loaded(path, dataset, generation, infos)
 
     def _load_matches(self, path: str) -> bool:
         """Whether a new good generation of the match file was loaded."""
@@ -355,6 +407,17 @@ class SnapshotSource:
                     self._running = False
 
         threading.Thread(target=run, name="pi-api-refresh", daemon=True).start()
+
+    def unserved(self) -> list[str]:
+        """What is configured but not served: each path and the match file with no good
+        generation, and ``composed views`` when assigned sources have none. Empty: all served."""
+        paths = dict.fromkeys((*self._paths, *self._assigned.values()))
+        missing = [p for p in paths if p not in self._files]
+        if self._matches_path is not None and self._matches is None:
+            missing.append(self._matches_path)
+        if self._assigned and all(k in self._paths for k in self._loaded):
+            missing.append("composed views")
+        return missing
 
     def datasets(self) -> tuple[Loaded, ...]:
         loaded = self._loaded

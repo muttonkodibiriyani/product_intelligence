@@ -1,5 +1,14 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import {
+  expect,
+  golden,
+  mockBackend,
+  noHorizontalScroll,
+  signedIn,
+  signIn,
+  test,
+  type Mock,
+} from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -40,11 +49,6 @@ function api(promotionsFor: (u: URL) => Json = () => promotions) {
     if (/^\/api\/v1\/products\/[^/]+$/.test(p)) return route.fulfill({ json: product });
     return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
   };
-}
-
-async function signedIn(page: Page, locale: 'en' | 'ar') {
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation')).toBeVisible();
 }
 
 const calls = (mock: Mock, path = '/api/v1/promotions') =>

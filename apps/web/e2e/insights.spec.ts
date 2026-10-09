@@ -1,4 +1,4 @@
-import type { Page, Route } from '@playwright/test';
+import type { Route } from '@playwright/test';
 import {
   expect,
   golden,
@@ -6,6 +6,7 @@ import {
   noHorizontalScroll,
   openNav,
   servingMeta,
+  signedIn,
   signIn,
   test,
 } from './fixtures';
@@ -50,17 +51,6 @@ async function api116(route: Route) {
 }
 
 // API with the new version on /meta, but /insights not deployed (404): honest, never an error card.
-/**
- * Signed in and settled before a full reload. The shell shows once the session is stored; a reload
- * earlier lands on sign-in on Firefox and WebKit. Network idle means the Overview's own calls
- * (it asks /compare) have all been made, so a cleared log holds only what the next page asks.
- */
-async function signedIn(page: Page, locale: 'en' | 'ar') {
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation').first()).toBeVisible();
-  await page.waitForLoadState('networkidle');
-}
-
 async function apiNoRoute(route: Route) {
   const p = new URL(route.request().url()).pathname;
   if (p === '/api/v1/meta') return route.fulfill({ json: meta });

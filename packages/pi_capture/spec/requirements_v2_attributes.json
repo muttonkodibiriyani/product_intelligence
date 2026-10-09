@@ -1283,6 +1283,20 @@
     "note": "Ours is known; a rival's is inferred, and the two must never share a column."
   },
   {
+    "k": "listing_live_date",
+    "g": "lifecycle",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "date",
+    "ex": "2025-05-25",
+    "req": "where published",
+    "src": "page",
+    "note": "The retailer go-live date it publishes for its own listing, as a date in Asia/Dubai. Not our launch_date and not first_seen: the three never share a column, and a missing one is never filled from either."
+  },
+  {
     "k": "delist_confirmed",
     "g": "lifecycle",
     "lvl": "variant",
@@ -1607,7 +1621,7 @@
       "fashion"
     ],
     "t": "jsonb",
-    "ex": "[{store, in_stock}]",
+    "ex": "[{store, pickup_available}]",
     "req": "where shown",
     "src": "page",
     "note": "Click-and-collect stock by branch, where a retailer exposes it. The only online window onto physical shelf availability we get."
@@ -1681,6 +1695,21 @@
     "req": "optional",
     "src": "page",
     "detail_only": true
+  },
+  {
+    "k": "returnable",
+    "g": "stockops",
+    "lvl": "offer",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "bool",
+    "ex": "false",
+    "req": "where published",
+    "src": "page",
+    "detail_only": true,
+    "note": "Whether the retailer accepts this item back, as it publishes it for the item (Ounass isReturnable, 'Non-Returnable Item'). A missing flag stays missing: never read as returnable, and never inferred from the site-wide returns policy or return_window_days."
   },
   {
     "k": "warranty",

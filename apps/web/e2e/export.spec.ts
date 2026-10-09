@@ -1,6 +1,6 @@
 import type { Route } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, signedIn, test, type Mock } from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -38,8 +38,7 @@ const exportCalls = (mock: Mock) =>
   mock.api.filter((r) => new URL(r.url).pathname === '/api/v1/export/products');
 
 async function openExplorer(page: import('@playwright/test').Page, locale: 'en' | 'ar', search = '') {
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation')).toBeVisible();
+  await signedIn(page, locale);
   await page.goto(`/app/${locale}/explore/${search}`);
   await expect(page.getByRole('list', { name: locale === 'ar' ? 'النتائج' : 'Results' })).toBeVisible();
 }
