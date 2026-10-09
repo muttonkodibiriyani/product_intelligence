@@ -1283,6 +1283,20 @@
     "note": "Ours is known; a rival's is inferred, and the two must never share a column."
   },
   {
+    "k": "listing_live_date",
+    "g": "lifecycle",
+    "lvl": "style",
+    "v": [
+      "beauty",
+      "fashion"
+    ],
+    "t": "date",
+    "ex": "2025-05-25",
+    "req": "where published",
+    "src": "page",
+    "note": "The retailer go-live date it publishes for its own listing, as a date in Asia/Dubai. Not our launch_date and not first_seen: the three never share a column, and a missing one is never filled from either."
+  },
+  {
     "k": "delist_confirmed",
     "g": "lifecycle",
     "lvl": "variant",

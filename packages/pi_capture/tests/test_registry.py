@@ -41,13 +41,13 @@ def test_generated_module_matches_spec() -> None:
 
 
 def test_counts_from_the_requirements() -> None:
-    assert len(ATTRIBUTES) == 143
-    assert len(by_key()) == 143
+    assert len(ATTRIBUTES) == 144
+    assert len(by_key()) == 144
     assert len(AttributeGroup) == 15
     assert len(AttributeLevel) == 4
     assert len(Vertical) == 3
-    assert len(page_sourced()) == 116
-    assert len(applicable("beauty")) == 112
+    assert len(page_sourced()) == 117
+    assert len(applicable("beauty")) == 113
     assert {str(a.level) for a in ATTRIBUTES} == {"style", "colour", "variant", "offer"}
 
 
@@ -64,6 +64,20 @@ def test_lookups() -> None:
         get("colour_of_the_sky")
     with pytest.raises(ValueError, match="not a valid"):
         for_group("weather")
+
+
+def test_the_retailer_go_live_date_never_shares_a_column_with_ours() -> None:
+    # launch_date is ours (feed only); a rival's published go-live date is its own page key
+    assert get("launch_date").source is AttributeSource.FEED
+    assert get("launch_date") not in page_sourced()
+    live = get("listing_live_date")
+    assert live in page_sourced()
+    assert (live.level, live.type, live.group) == (
+        AttributeLevel.STYLE,
+        "date",
+        AttributeGroup.LIFECYCLE,
+    )
+    assert get("first_seen").source is AttributeSource.DERIVED
 
 
 def test_every_type_string_parses() -> None:

@@ -20,6 +20,9 @@ the shopper-facing badges are ``c_badges`` and the gift-with-purchase callout is
 ``c_product_promotions[].calloutMsgText``. A rating is read from ``c_ratings`` where the page
 carries one (a few do); otherwise ratings are left unread, not ``not_shown``.
 
+Go-live date: ``c_prd_live_date`` (a bare date) is the retailer's own date, read as
+``listing_live_date`` as published; it is never our ``launch_date`` and never ``first_seen``.
+
 Never read: ``c_unitcost`` (the retailer's cost), ``c_fe_*`` (merchandising scores) and the
 payment widgets' keys; every field read here is named, nothing is copied wholesale.
 """
@@ -34,6 +37,7 @@ from pi_capture._page_attrs import (
     emit_bullets,
     emit_enum,
     emit_inci,
+    emit_live_date,
     emit_texts,
     enum_table,
     html_text,
@@ -305,6 +309,9 @@ def readings_from_bloomingdales(html: str, *, locale: str, url: str | None = Non
     _map_attributes(em, pd)
     _map_merch(em, pd)
     _map_offer(em, pd)
+    emit_live_date(
+        em, pd.get("c_prd_live_date"), f"{_PD}.c_prd_live_date", "Bloomingdale's product live date"
+    )
     em.extend(readings_from_generic(html, locale=locale, url=url))
     flag = stock_flag(
         pd.get("inventory"),
@@ -334,6 +341,7 @@ LOOKED_FOR: frozenset[str] = (
             "inci_list",
             "installment_amount_minor",
             "installment_provider",
+            "listing_live_date",
             "loyalty_points",
             "product_type",
             "shade_name",

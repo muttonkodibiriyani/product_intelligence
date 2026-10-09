@@ -1,4 +1,4 @@
-"""The attribute registry: lookups over the 143 requirement attributes and their type strings.
+"""The attribute registry: lookups over the 144 requirement attributes and their type strings.
 
 Storage rules (requirements v2, "attribute_storage"): every attribute must exist here before a
 value can be written against it, the registry fixes the level an attribute belongs to, and

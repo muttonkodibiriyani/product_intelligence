@@ -16,6 +16,10 @@ product: no removal and no stock-out is ever inferred from absence.
 Stock: ``outOfStock`` is carried as a second ``structured_data`` block beside the JSON-LD offer;
 the feed takes availability only when both agree. An out-of-stock page stays a row, published as
 out of stock. Ounass shows no ratings in the page; they are recorded as ``not_shown``.
+
+Go-live date: ``onlineDateWithStock`` (a UTC moment) is the retailer's own date, read as
+``listing_live_date`` in Asia/Dubai with the moment kept as raw text; it is never our
+``launch_date`` and never ``first_seen``.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
-from pi_capture._page_attrs import emit_bullets, emit_hex, emit_inci
+from pi_capture._page_attrs import emit_bullets, emit_hex, emit_inci, emit_live_date
 from pi_capture._size import emit_size
 from pi_capture.faces import _CONCENTRATIONS
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
@@ -263,6 +267,12 @@ def readings_from_ounass(html: str, *, locale: str, url: str | None = None) -> l
     _map_colour(em, pdp)
     _map_tabs(em, pdp)
     _map_offer(em, pdp)
+    emit_live_date(
+        em,
+        pdp.get("onlineDateWithStock"),
+        f"{_PDP}.onlineDateWithStock",
+        "Ounass onlineDateWithStock: first online with stock",
+    )
     em.extend(readings_from_generic(html, locale=locale, url=url))
     for key in ("rating_value", "rating_count"):
         em.not_shown(key, "Ounass product pages show no ratings")
@@ -294,6 +304,7 @@ LOOKED_FOR: frozenset[str] = (
             "inci_list",
             "installment_provider",
             "lifecycle_class",
+            "listing_live_date",
             "loyalty_points",
             "product_type",
             "shade_name",

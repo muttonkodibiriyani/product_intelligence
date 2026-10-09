@@ -288,3 +288,30 @@ def test_unit_cost_merchandising_scores_and_keys_never_reach_readings_or_the_fee
         assert forbidden not in rows_text
         assert forbidden not in readings_text
     assert not any("cost" in key for key in feed.rows[0])
+
+
+def test_the_published_live_date_is_read_as_published() -> None:
+    got = _by_key(
+        readings_from_bloomingdales(_page(_product(c_prd_live_date="2025-05-25")), locale="en-AE")
+    )
+    live = got["listing_live_date"]
+    assert (live.state, live.raw_text, live.value) == ("observed", "2025-05-25", "2025-05-25")
+    assert live.source_path == "productData.c_prd_live_date"
+    assert "launch_date" not in got
+    assert "first_seen" not in got
+
+
+@pytest.mark.parametrize(
+    ("value", "state"),
+    [
+        (None, "not_shown"),
+        (" ", "not_shown"),
+        ("2025-13-01", "parse_failed"),
+        ("May 25", "parse_failed"),
+    ],
+)
+def test_a_missing_or_unreadable_live_date_is_explicit(value: object, state: str) -> None:
+    got = _by_key(
+        readings_from_bloomingdales(_page(_product(c_prd_live_date=value)), locale="en-AE")
+    )
+    assert (got["listing_live_date"].state, got["listing_live_date"].value) == (state, None)

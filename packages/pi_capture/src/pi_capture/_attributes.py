@@ -1321,6 +1321,21 @@ ATTRIBUTES: tuple[Attribute, ...] = (
         note="Ours is known; a rival's is inferred, and the two must never share a column.",
     ),
     Attribute(
+        key="listing_live_date",
+        group=AttributeGroup.LIFECYCLE,
+        level=AttributeLevel.STYLE,
+        verticals=(
+            Vertical.BEAUTY,
+            Vertical.FASHION,
+        ),
+        type="date",
+        source=AttributeSource.PAGE,
+        requirement="where published",
+        detail_only=False,
+        example="2025-05-25",
+        note="The retailer go-live date it publishes for its own listing, as a date in Asia/Dubai. Not our launch_date and not first_seen: the three never share a column, and a missing one is never filled from either.",
+    ),
+    Attribute(
         key="delist_confirmed",
         group=AttributeGroup.LIFECYCLE,
         level=AttributeLevel.VARIANT,
