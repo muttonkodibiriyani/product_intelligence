@@ -27,8 +27,9 @@ from __future__ import annotations
 import html as html_
 import re
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from math import inf
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -304,8 +305,13 @@ def _map_swatch(em: _Emitter, v: Mapping[str, Any] | None, i: int) -> None:
     if swatch is None or not _file_name(swatch):
         em.not_shown("has_swatch_image", "the shown variant has no swatch image")
         return
+    gallery = {name for link in _links(v.get("images")) if (name := _file_name(link))}
+    if not gallery:  # nothing to compare with: a pack shot and a chip look the same
+        note = "gallery not inlined: cannot tell a swatch from the variant's own pack shot"
+        em.not_shown("has_swatch_image", note)
+        return
     path = f"{_PD}.c_variantsInfo[{i}].swatchImage"
-    if _file_name(swatch) in {_file_name(link) for link in _links(v.get("images"))}:
+    if _file_name(swatch) in gallery:
         note = "swatchImage repeats one of the variant's gallery images (a pack shot), not a swatch"
         em.observed("has_swatch_image", swatch, False, path, note)
     else:
@@ -313,39 +319,52 @@ def _map_swatch(em: _Emitter, v: Mapping[str, Any] | None, i: int) -> None:
         em.observed("has_swatch_image", swatch, True, path, note)
 
 
+def _review_day(raw: str) -> tuple[date, datetime | None] | None:
+    """The Asia/Dubai day of one datePublished, with its moment when it has one. A bare date is
+    the day as published; a time with no zone has no market day and reads as ``None``."""
+    try:
+        if len(raw) == len("2026-09-11"):
+            return date.fromisoformat(raw), None
+        moment = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        return None
+    return moment.astimezone(_MARKET_ZONE).date(), moment
+
+
 def _map_reviews(em: _Emitter, blocks: Sequence[JsonObject]) -> None:
-    """``review_recency``: the newest review the structured data lists, as an Asia/Dubai date."""
+    """``review_recency``: the newest review the structured data lists, as an Asia/Dubai date.
+    The first product node that lists a dated review is read; one without reviews is passed."""
+    seen_product = False
     for path, node in _walk(blocks):
         if not _types(node) & _PRODUCT_TYPES:
             continue
+        seen_product = True
         reviews = node.get("review")
         listed = reviews if isinstance(reviews, list) else [reviews]
         raws = [
             t for r in listed if isinstance(r, Mapping) and (t := _text(r.get("datePublished")))
         ]
         if not raws:
-            em.not_shown("review_recency", "no dated review listed in the structured data")
-            return
-        moments: list[tuple[datetime, str]] = []
-        for raw in raws:
-            try:
-                moment = datetime.fromisoformat(raw)
-            except ValueError:
-                continue
-            if moment.tzinfo is not None:  # a naive time has no market day
-                moments.append((moment, raw))
+            continue
+        days = [(*d, raw) for raw in raws if (d := _review_day(raw)) is not None]
         rpath = f"{path}.review[].datePublished"
-        if not moments:
-            em.failed("review_recency", "\n".join(raws), rpath, "no datePublished with a time zone")
+        if not days:
+            note = "no datePublished with a time zone or as a bare date"
+            em.failed("review_recency", "\n".join(raws), rpath, note)
             return
-        moment, raw = max(moments)
+        # the latest day; within it a timed review is later than a bare date
+        day, _, raw = max(days, key=lambda d: (d[0], d[1].timestamp() if d[1] else -inf))
         note = f"newest of {len(raws)} reviews the page lists; Asia/Dubai date"
-        if len(moments) < len(raws):
-            note += f"; {len(raws) - len(moments)} unreadable date(s) skipped"
-        day = moment.astimezone(_MARKET_ZONE).date().isoformat()
-        em.observed("review_recency", raw, day, rpath, note)
+        if len(days) < len(raws):
+            note += f"; {len(raws) - len(days)} unreadable date(s) skipped"
+        em.observed("review_recency", raw, day.isoformat(), rpath, note)
         return
-    em.not_shown("review_recency", "no product in the structured data")
+    if seen_product:
+        em.not_shown("review_recency", "no dated review listed in the structured data")
+    else:
+        em.not_shown("review_recency", "no product in the structured data")
 
 
 def _sephora_readings(details: Mapping[str, Any]) -> _Emitter:

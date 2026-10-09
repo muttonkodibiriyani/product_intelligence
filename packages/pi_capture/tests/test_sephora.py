@@ -6,6 +6,8 @@ import json
 from decimal import Decimal
 from typing import Any
 
+import pytest
+
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
 from pi_capture.model import Reading
 from pi_capture.registry import ATTRIBUTES
@@ -481,3 +483,54 @@ def test_the_page_path_reads_reviews_from_its_own_json_ld() -> None:
     plain = _by_key(readings_from_sephora(pdp_html(details()), locale="en"))
     assert plain["review_recency"].state == "not_shown"
     assert {"review_recency", "has_swatch_image"} <= LOOKED_FOR
+
+
+@pytest.mark.parametrize(
+    "gallery",
+    [
+        pytest.param(None, id="absent"),
+        pytest.param([], id="empty"),
+        pytest.param("$5f:props:images", id="rsc-reference"),
+        pytest.param(
+            [{"alt": "front"}, {"link": ""}, {"link": "https://img.example/"}], id="no-link"
+        ),
+    ],
+)
+def test_a_swatch_with_no_gallery_to_compare_is_never_true_or_false(gallery: Any) -> None:
+    # a size variant's own pack shot named *_swatch.jpg: without the gallery it cannot be told apart
+    shot = variant("V9", "30 ml", 99, swatchImage="https://cdn.example/x/470969_swatch.jpg")
+    if gallery is None:
+        del shot["images"]
+    else:
+        shot["images"] = gallery
+    d = details(c_default_variant_id="V9", c_variantsInfo=[shot])
+    r = _by_key(readings_from_sephora_details(d))["has_swatch_image"]
+    assert (r.state, r.value) == ("not_shown", None)
+    assert (r.note or "").startswith("gallery not inlined")
+
+
+def test_a_product_node_without_reviews_is_passed_for_the_next_one() -> None:
+    ld = [{"@type": "Product", "name": "bundle"}, *_ld("2026-09-11T08:00:00+04:00")]
+    r = _by_key(readings_from_sephora_details(details(), jsonld=ld))["review_recency"]
+    assert (r.state, r.value) == ("observed", "2026-09-11")
+    assert r.source_path == "jsonld[2].review[].datePublished"
+    empty: list[dict[str, Any]] = [
+        {"@type": "Product", "name": "x"},
+        {"@type": "Product", "review": []},
+    ]
+    r = _by_key(readings_from_sephora_details(details(), jsonld=empty))["review_recency"]
+    assert (r.state, r.note) == ("not_shown", "no dated review listed in the structured data")
+
+
+def test_a_bare_review_date_is_the_published_day_kept_as_raw() -> None:
+    newest = _ld("2026-09-10T23:00:00+00:00", "2026-09-12")
+    r = _by_key(readings_from_sephora_details(details(), jsonld=newest))["review_recency"]
+    assert (r.state, r.value, r.raw_text) == ("observed", "2026-09-12", "2026-09-12")
+    assert r.note == "newest of 2 reviews the page lists; Asia/Dubai date"
+    # the same Dubai day: the timed review is the later one (23:00Z on the 10th is the 11th)
+    same_day = _ld("2026-09-11", "2026-09-10T23:00:00+00:00")
+    r = _by_key(readings_from_sephora_details(details(), jsonld=same_day))["review_recency"]
+    assert (r.value, r.raw_text) == ("2026-09-11", "2026-09-10T23:00:00+00:00")
+    bad = _ld("2026-02-30")
+    r = _by_key(readings_from_sephora_details(details(), jsonld=bad))["review_recency"]
+    assert (r.state, r.raw_text) == ("parse_failed", "2026-02-30")
