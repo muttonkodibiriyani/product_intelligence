@@ -1,3 +1,5 @@
+"""Tests for comparison contract models."""
+
 from datetime import UTC, datetime
 
 import pytest
