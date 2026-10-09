@@ -238,3 +238,112 @@ def test_latest_keeps_a_window_over_the_sources_own_last_date() -> None:
     )
     makeup = [(str(w.start), str(w.end)) for w in now.not_observed if w.categories]
     assert makeup == [("2026-09-22", "2026-09-22"), ("2026-09-30", "2026-09-30")]
+
+
+# ---------------------------------------------------------------- per-retailer keys (ADR-0013)
+
+
+def test_a_file_of_several_retailers_without_their_own_keys_is_refused_at_load() -> None:
+    """A file from before ADR-0013: its meta.fields merge both retailers, so neither may take it."""
+    old = snapshot({"p1": BOTH}, dates=NEW, per_retailer=False)
+    for load in (source_infos, lambda ds: only(ds, [ULTA]), lambda ds: compose([ds])):
+        with pytest.raises(CompositionError, match="re-export it"):
+            load(old)
+
+
+def test_a_file_of_one_retailer_without_its_own_keys_takes_the_files_meta() -> None:
+    old = snapshot({"p1": (SEPHORA,)}, dates=NEW, per_retailer=False, fields={"stock": "ok"})
+    (info,) = source_infos(old)
+    assert info.fields == {"stock": FieldStatus.OK}
+    assert info.capabilities == old.meta.capabilities
+    (retailer,) = compose([old]).dataset.meta.retailers
+    assert retailer.fields == {"stock": FieldStatus.OK}
+    assert retailer.capabilities == old.meta.capabilities
+    assert retailer.window is None
+
+
+def test_each_source_has_its_own_fields_never_the_files() -> None:
+    d = snapshot_doc({"p1": BOTH}, dates=NEW, fields={"stock": "partial"})
+    for r in d["meta"]["retailers"]:
+        r["fields"] = {"stock": "ok" if r["id"] == ULTA else "not_collected"}
+        r["capabilities"] = d["meta"]["capabilities"] | {"stock": r["id"] == ULTA}
+    ds = DatasetV3.model_validate(d)
+    by_source = {s.source: s for s in source_infos(ds)}
+    assert by_source[ULTA].fields == {"stock": FieldStatus.OK}
+    assert by_source[SEPHORA].fields == {"stock": FieldStatus.NOT_COLLECTED}
+    assert by_source[SEPHORA].capabilities.stock is False
+    seph = only(ds, [SEPHORA]).meta.retailers[0]
+    assert seph.fields == {"stock": FieldStatus.NOT_COLLECTED}
+
+
+def test_a_source_that_declares_no_fields_has_none_never_the_files() -> None:
+    """``fields: {}`` is "nothing declared": it is valid, and never the file's merged fields."""
+    d = snapshot_doc({"p1": BOTH}, dates=NEW, fields={"stock": "partial"})
+    for r in d["meta"]["retailers"]:
+        r["fields"] = {} if r["id"] == SEPHORA else {"stock": "ok"}
+    ds = DatasetV3.model_validate(d)
+    by_source = {s.source: s for s in source_infos(ds)}
+    assert by_source[SEPHORA].fields == {}
+    assert by_source[ULTA].fields == {"stock": FieldStatus.OK}
+    assert only(ds, [SEPHORA]).meta.retailers[0].fields == {}
+
+
+def test_a_lone_source_keeps_the_key_it_declares_and_takes_only_the_missing_one() -> None:
+    d = snapshot_doc({"p1": (ULTA,)}, dates=NEW, fields={"stock": "partial"})
+    (r,) = d["meta"]["retailers"]
+    r["fields"] = {"stock": "ok"}
+    del r["capabilities"]
+    (info,) = source_infos(DatasetV3.model_validate(d))
+    assert info.fields == {"stock": FieldStatus.OK}
+    assert info.capabilities == DatasetV3.model_validate(d).meta.capabilities
+
+
+def test_the_composed_view_carries_each_sources_window_fields_and_capabilities() -> None:
+    view = compose([only(combined(), [ULTA]), only(sephora(), [SEPHORA])]).dataset
+    windows = {r.id: r.window for r in view.meta.retailers}
+    ulta, seph = windows[ULTA], windows[SEPHORA]
+    assert ulta is not None
+    assert seph is not None
+    assert ulta.run_id == f"run-{ULTA}"
+    assert ulta.end.date() == date(2026, 9, 22)
+    assert seph.end.date() == date(2026, 9, 30)
+    assert all(r.fields is not None and r.capabilities is not None for r in view.meta.retailers)
+
+
+def _withheld_ulta(end: str | None) -> DatasetV3:
+    """Ulta without a window, last seen 22 Sep, and (unless ``end`` is None) its whole-retailer
+    ``notObserved`` entry from the day after to ``end``."""
+    d = snapshot_doc({"p2": (ULTA,)}, dates=OLD, windows=False)
+    d["meta"]["retailers"][0]["since"] = "2026-09-22"
+    if end is not None:
+        d["notObserved"] = [
+            {
+                "retailer": ULTA,
+                "context": None,
+                "start": "2026-09-23",
+                "end": end,
+                "categories": None,
+                "why": {"en": "Blocked by the site, not removed.", "ar": "محجوب من الموقع."},
+            }
+        ]
+    return DatasetV3.model_validate(d)
+
+
+def test_a_windowed_source_composes_beside_a_withheld_one_with_its_entry() -> None:
+    """ADR-0013 §8 at the view: windowed Sephora beside window-less Ulta is served when Ulta's
+    whole-retailer entry runs from the day after ``since`` to the cutoff's day (30 Sep)."""
+    view = compose([_withheld_ulta("2026-09-30"), only(sephora(), [SEPHORA])]).dataset
+    assert view.meta.cutoff.date() == date(2026, 9, 30)
+    windows = {r.id: r.window for r in view.meta.retailers}
+    assert windows[ULTA] is None
+    assert windows[SEPHORA] is not None
+
+
+@pytest.mark.parametrize("end", [None, "2026-09-29"])
+def test_a_withheld_source_without_its_entry_to_the_cutoff_is_refused_at_compose(
+    end: str | None,
+) -> None:
+    with pytest.raises(
+        ValueError, match=r"no whole-retailer notObserved entry covering 2026-09-23\.\.2026-09-30"
+    ):
+        compose([_withheld_ulta(end), only(sephora(), [SEPHORA])])

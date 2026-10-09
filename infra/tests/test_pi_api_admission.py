@@ -15,7 +15,7 @@ import pi_api_admission as admission
 import publish_dataset
 import pytest
 
-from api_fixture import served_dataset, write
+from api_fixture import own_keys, served_dataset, write
 from pi_api.app import app_from_env
 from pi_dataset import V3_MAX_BYTES, admission_sha256, dump_dataset
 from pi_dataset import gate as rule
@@ -107,11 +107,16 @@ def test_deployed_pi_api_packs_content() -> None:
     assert "pack_content" not in inspect.getsource(app_from_env)
 
 
+def test_faces_fit_within_the_pinned_admission_others_cap() -> None:
+    assert ADMISSION_OTHERS_MAX_BYTES == 52_000_000
+    assert 26_712_113 + 25_281_568 <= ADMISSION_OTHERS_MAX_BYTES  # noqa: SIM300
+
+
 def test_others_at_the_admission_cap_are_admitted() -> None:
     others = ADMISSION_OTHERS_MAX_BYTES
     big = record(served=[served(BIG, OUNASS, "a" * 64), served(SMALL, others, "b" * 64)])
     now = {**NOW, SMALL: served(SMALL, others, "b" * 64)}
-    assert admission.check([big], 3072, now) == ({"a" * 64: 50_000_000}, [])
+    assert admission.check([big], 3072, now) == ({"a" * 64: 52_000_000}, [])
 
 
 def test_others_over_the_admission_cap_are_refused_even_when_measured() -> None:
@@ -120,7 +125,7 @@ def test_others_over_the_admission_cap_are_refused_even_when_measured() -> None:
     now = {**NOW, SMALL: served(SMALL, others, "b" * 64)}
     _, refused = admission.check([big], 3072, now)
     assert refused == [
-        f"REFUSED {BIG} sha256={'a' * 64}: the other files total {others} bytes, over 50000000"
+        f"REFUSED {BIG} sha256={'a' * 64}: the other files total {others} bytes, over 52000000"
     ]
 
 
@@ -162,7 +167,7 @@ def nothing_fits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("nothing_fits")
 def test_measure_serves_every_file_and_writes_a_record_check_accepts(tmp_path: Path) -> None:
-    dataset = served_dataset()
+    dataset = own_keys(served_dataset())  # each shop with its own keys (ADR-0013)
     small = dump_dataset(dataset, compact=True)
     (tmp_path / SMALL).parent.mkdir(parents=True)
     (tmp_path / SMALL).write_bytes(small)

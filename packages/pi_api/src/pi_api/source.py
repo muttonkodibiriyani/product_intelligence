@@ -329,6 +329,8 @@ class SnapshotSource:
             dataset = parse(body, allow_test=self._allow_test)
             if self._pack_content:
                 dataset = packed(dataset)
+            # A file of several retailers without their own keys is refused (ADR-0013).
+            infos = source_infos(dataset)
         except (DatasetError, ValueError, OSError, zlib.error) as error:
             log.warning("dataset %s not loaded: %s", path, type(error).__name__)
             return None
@@ -337,7 +339,7 @@ class SnapshotSource:
             return None
         log.info("dataset %s loaded at generation %s", path, generation)
         self._bodies[path] = stats
-        return Loaded(path, dataset, generation, source_infos(dataset))
+        return Loaded(path, dataset, generation, infos)
 
     def _load_matches(self, path: str) -> bool:
         """Whether a new good generation of the match file was loaded."""
@@ -405,6 +407,17 @@ class SnapshotSource:
                     self._running = False
 
         threading.Thread(target=run, name="pi-api-refresh", daemon=True).start()
+
+    def unserved(self) -> list[str]:
+        """What is configured but not served: each path and the match file with no good
+        generation, and ``composed views`` when assigned sources have none. Empty: all served."""
+        paths = dict.fromkeys((*self._paths, *self._assigned.values()))
+        missing = [p for p in paths if p not in self._files]
+        if self._matches_path is not None and self._matches is None:
+            missing.append(self._matches_path)
+        if self._assigned and all(k in self._paths for k in self._loaded):
+            missing.append("composed views")
+        return missing
 
     def datasets(self) -> tuple[Loaded, ...]:
         loaded = self._loaded

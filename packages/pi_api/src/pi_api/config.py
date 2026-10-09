@@ -130,6 +130,9 @@ class Settings(PiModel):
     admitted: Mapping[str, int] = Field(default_factory=dict)
     #: ``PI_API_MEMORY_MIB``: the instance memory the load rule is evaluated against.
     memory_mib: int = Field(default=DEFAULT_MEMORY_MIB, gt=0)
+    #: ``PI_API_REQUIRE_ALL=1``: refuse to start unless every configured file and view loads, so a
+    #: revision whose bodies don't load never becomes Ready (pi-api-deploy.md §6, deploy plan v2).
+    require_all: bool = False
 
     @model_validator(mode="after")
     def _check_datasets(self) -> Self:
@@ -180,4 +183,5 @@ class Settings(PiModel):
             image_hosts=evidence_hosts(env.get("PI_API_IMAGE_HOSTS", ""), "PI_API_IMAGE_HOSTS"),
             admitted=admitted_entries(env.get("PI_API_ADMITTED", "")),
             memory_mib=memory_mib(env.get("PI_API_MEMORY_MIB")),
+            require_all=env.get("PI_API_REQUIRE_ALL", "") == "1",
         )
