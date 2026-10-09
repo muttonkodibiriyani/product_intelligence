@@ -1,6 +1,19 @@
 """Evidence-backed cross-retailer comparison primitives."""
 
 from pi_compare.attributes import validate_attribute, validate_attributes
+from pi_compare.incremental import (
+    ApplyResult,
+    BuildIdentity,
+    EventKind,
+    IncrementalChangeSet,
+    ProjectionEvent,
+    ProjectionHistory,
+    ProjectionManifest,
+    apply_projection,
+    build_manifest,
+    empty_history,
+    rollback,
+)
 from pi_compare.models import (
     AttributeCell,
     AttributeObservation,
@@ -25,28 +38,39 @@ from pi_compare.presence import retailer_cell
 from pi_compare.projection import build_projection
 
 __all__ = [
+    "ApplyResult",
     "AttributeCell",
     "AttributeObservation",
     "AttributeReport",
     "AttributeSpec",
     "Axis",
     "AxisValue",
+    "BuildIdentity",
     "CaptureCompleteness",
     "ComparisonProjection",
     "Discount",
     "DiscountResult",
+    "EventKind",
     "EvidencePointer",
     "ImageDescription",
     "ImageDescriptionFile",
+    "IncrementalChangeSet",
     "MatrixState",
     "ProductFamily",
+    "ProjectionEvent",
+    "ProjectionHistory",
+    "ProjectionManifest",
     "RetailerCell",
     "ValueState",
+    "apply_projection",
+    "build_manifest",
     "build_projection",
     "discount",
+    "empty_history",
     "normalise_size",
     "normalise_text_axis",
     "retailer_cell",
+    "rollback",
     "validate_attribute",
     "validate_attributes",
 ]
