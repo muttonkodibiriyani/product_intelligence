@@ -23,7 +23,9 @@ const wasPriceUnverified = (caveats: readonly CaveatView[], retailer: string) =>
 /**
  * The reason `field` is missing on `o`, or null when it has a value (or a price under review,
  * which the price cell words itself). `caps` is /meta's capabilities: an attribute the dataset
- * doesn't collect is "not measured", never "not published" by the retailer.
+ * doesn't collect is "not measured", never "not published" by the retailer. An offer the latest
+ * crawl didn't see (`not_observed`, a listing carried from an earlier run) has no values by
+ * design, so nothing on it can be read as the retailer's: every gap is "not seen".
  */
 export function whyMissing(
   field: OfferField,
@@ -31,6 +33,13 @@ export function whyMissing(
   caveats: readonly CaveatView[],
   caps: Caps,
 ): Why | null {
+  const why = fieldWhy(field, o, caveats, caps);
+  return why && why.state !== 'none' && o.availability === 'not_observed'
+    ? { state: 'notMeasured', reason: 'notObserved' }
+    : why;
+}
+
+function fieldWhy(field: OfferField, o: Offer, caveats: readonly CaveatView[], caps: Caps): Why | null {
   switch (field) {
     case 'price':
       return o.price || priceState(o) === 'review' ? null : { state: 'notPublished', reason: 'noPrice' };

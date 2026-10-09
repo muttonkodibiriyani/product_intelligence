@@ -4,7 +4,7 @@ The offline, "parse later" half of the capture principle: a page is stored whole
 package says what the page should have told us and what it actually did.
 
 * `spec/requirements_v2_attributes.json` — the 143 requirement attributes, copied from the
-  requirements artifact (see `spec/README.md` for provenance).
+  requirements artifact, plus two ruled local additions (see `spec/README.md` for provenance).
 * `pi_capture.registry` — the attributes as typed Python (`ATTRIBUTES`, generated into
   `_attributes.py` by `scripts/gen_registry.py`), lookups (`by_key`, `for_group`, `for_level`,
   `page_sourced`, `applicable`) and `type_spec`, which parses the spec's type strings

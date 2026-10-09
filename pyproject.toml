@@ -152,6 +152,7 @@ files = [
   "infra/scripts/prod_smoke_pages.py",
   "infra/scripts/publish_dataset.py",
   "infra/scripts/pi_api_admission.py",
+  "infra/scripts/run_env_assert.py",
   "infra/tests",
 ]
 

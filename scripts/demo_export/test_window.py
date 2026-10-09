@@ -11,8 +11,13 @@ from decimal import Decimal
 
 import pytest
 
+from pi_api import catalog
+from pi_api.catalog import NO_HOSTS
+from pi_core import AvailabilityState
 from pi_core.enums import NotObservedReason
 from pi_dataset import DatasetV3, OfferV3, dump_dataset, load_any
+from pi_metrics.availability import availability
+from pi_metrics.model import ProductFilter
 from scripts.demo_export.export import ListingRow, UltaContext, parse_runs, window_report
 from scripts.demo_export.test_export import row
 from scripts.demo_export.test_v2 import NOTE
@@ -280,6 +285,97 @@ def test_a_retained_listing_without_a_window_is_refused() -> None:
     )
     with pytest.raises(ValueError, match="sephora_me: offers marked retained without a crawl"):
         to_v3(v2, listing, [])
+
+
+# A retained offer through the API (Coordinator 01a11e3c-6760, A2'): null in the body, served
+# ``not_observed``; never a stock-out, a flip or a removal.
+
+FACES = "faces_ae"
+LIVE_SKU, CARRIED_SKU = "005414023904", "005414023902"  # the carried one: one of the 30
+
+
+def faces_carry() -> DatasetV3:
+    """Faces window run 9 and a listing only the earlier partial run 6 saw (the 30)."""
+    live = replace(
+        seen(row(source=FACES, variant=901, family=91), at("2026-10-08T18:00"), run=9),
+        source_sku=LIVE_SKU,
+        availability="not_observed",
+    )
+    carried = replace(
+        seen(row(source=FACES, variant=902, family=92), at("2026-10-03T13:07"), run=6),
+        source_sku=CARRIED_SKU,
+        price=None,
+        regular=None,
+        availability="not_observed",
+        rating=None,
+        retained=True,
+        price_observed_at=None,
+        price_evidence_retrieved_at=None,
+        price_run_id=None,
+        stock_observed_at=None,
+        stock_evidence_retrieved_at=None,
+        stock_run_id=None,
+    )
+    return export([live, carried], {FACES: (9,)})
+
+
+def test_a_retained_offer_is_null_in_the_body_and_not_observed_in_the_api() -> None:
+    ds = faces_carry()
+    body = offers(ds, FACES)
+    carried, live = body[CARRIED_SKU], body[LIVE_SKU]
+    # The body: one spelling (pi_dataset ``Series``), the offer-level marker, run 6's capture.
+    assert carried.not_observed_reason is NotObservedReason.RETAINED
+    assert carried.series.availability == (None,)
+    assert (carried.series.price, carried.series.regular, carried.rating) == ((None,), None, None)
+    assert (carried.evidence.run_id, carried.evidence.captured_at) == ("6", at("2026-10-03T13:07"))
+    assert (live.not_observed_reason, live.series.availability) == (None, (None,))
+
+    served = {}
+    for product in ds.products:
+        detail = catalog.product_detail(ds, product, hosts=NO_HOSTS)
+        (view,) = detail.data.offers
+        hist = catalog.history(ds, product, catalog.HistoryQuery())
+        (series,) = hist.data.series.values()
+        served[view.sku] = (view, [pt.availability for pt in series])
+    view, points = served[CARRIED_SKU]
+    assert view.availability is AvailabilityState.NOT_OBSERVED
+    assert points == [AvailabilityState.NOT_OBSERVED]
+    assert view.evidence.captured_at == at("2026-10-03T13:07")
+    assert (view.price, view.regular, view.promo_pct, view.rating) == (None, None, None, None)
+    # An ordinary unread offer, in a category a notObserved window covers, stays null.
+    assert any(w.retailer == FACES for w in ds.not_observed)
+    view, points = served[LIVE_SKU]
+    assert (view.availability, points) == (None, [None])
+
+
+def test_a_retained_offer_feeds_no_stock_out_flip_or_removal() -> None:
+    """A sephora_me retained offer (a retailer whose stock is published): served
+    ``not_observed`` by the API, counted outside the stock denominator, never out of stock."""
+    listing = [
+        seen(row(variant=101, availability="in_stock"), at("2026-10-05T08:00"), run=7),
+        replace(
+            seen(row(variant=102, family=11), at("2026-10-01T08:00"), run=6),
+            price=None,
+            regular=None,
+            availability="not_observed",
+            rating=None,
+            retained=True,
+        ),
+    ]
+    ds = export(listing, {SEPHORA: (7,)})
+    i = len(ds.meta.dates) - 1
+    kept = offers(ds, SEPHORA)
+    assert kept["sku-102"].series.availability == (None,)  # findings and insights read this
+    assert catalog.shown_availability(kept["sku-102"], i) is AvailabilityState.NOT_OBSERVED
+    assert catalog.shown_availability(kept["sku-101"], i) is AvailabilityState.IN_STOCK
+    metric = availability(ds, (), ProductFilter()).data
+    assert metric is not None
+    (shop,) = (r for r in metric.retailers if r.retailer == SEPHORA)
+    assert shop.counts[AvailabilityState.IN_STOCK] == 1
+    assert shop.counts[AvailabilityState.NOT_OBSERVED] == 1
+    assert shop.counts[AvailabilityState.OUT_OF_STOCK] == 0
+    assert shop.counts[AvailabilityState.REMOVED] == 0
+    assert shop.denominator == 1
 
 
 # Each retailer states its own fields and capabilities.
