@@ -63,7 +63,7 @@ LIST_VIEW = {"en": ("Show as", "List"), "ar": ("طريقة العرض", "قائ�
 def expected_csp() -> str:
     hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
     for block in hosting["headers"]:
-        if block["source"] == "**":
+        if block.get("source") == "**":
             for h in block["headers"]:
                 if h["key"].lower() == "content-security-policy":
                     return str(h["value"])
