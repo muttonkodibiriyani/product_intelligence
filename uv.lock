@@ -11,6 +11,7 @@ resolution-markers = [
 members = [
     "pi-api",
     "pi-capture",
+    "pi-compare",
     "pi-connector-ulta",
     "pi-core",
     "pi-dataset",
@@ -1304,6 +1305,23 @@ dependencies = [
 requires-dist = [{ name = "pi-core", editable = "packages/pi_core" }]
 
 [[package]]
+name = "pi-compare"
+version = "0.1.0"
+source = { editable = "packages/pi_compare" }
+dependencies = [
+    { name = "pi-core" },
+    { name = "pi-dataset" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pi-core", editable = "packages/pi_core" },
+    { name = "pi-dataset", editable = "packages/pi_dataset" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
+
+[[package]]
 name = "pi-connector-ulta"
 version = "0.1.0"
 source = { editable = "packages/pi_connector_ulta" }
@@ -1590,6 +1608,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "pi-api" },
     { name = "pi-capture" },
+    { name = "pi-compare" },
     { name = "pi-connector-ulta" },
     { name = "pi-core" },
     { name = "pi-dataset" },
@@ -1615,6 +1634,7 @@ dev = [
 requires-dist = [
     { name = "pi-api", editable = "packages/pi_api" },
     { name = "pi-capture", editable = "packages/pi_capture" },
+    { name = "pi-compare", editable = "packages/pi_compare" },
     { name = "pi-connector-ulta", editable = "packages/pi_connector_ulta" },
     { name = "pi-core", editable = "packages/pi_core" },
     { name = "pi-dataset", editable = "packages/pi_dataset" },
