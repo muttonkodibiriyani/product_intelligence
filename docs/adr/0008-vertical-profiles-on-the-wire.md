@@ -469,10 +469,12 @@ flags. `beauty@3` = `beauty@2` plus one key:
 
 | Key | Level | Type | Values | Facet | Block |
 |---|---|---|---|---|---|
-| `retailerFlags` | product, or variant | list of `{code, text: {en, ar}}` (S1b names the wire type) | `code` is one of `new`, `exclusive`, `online_only`, `limited_edition`, `best_seller`, `unknown`; `text` is the retailer's own flag text exactly as served, in source order | no | null |
+| `retailerFlags` | product, or variant | list of `{code, text: {en, ar}}` (S1b names the wire type) | `code` is one of `new`, `exclusive`, `online_only`, `limited_edition`, `best_seller`, `unknown`; `text` is the retailer's own flag text, whitespace-trimmed, in source order | no | null |
 
 - `text.en` and `text.ar` are each taken from that language's own read (the AR side comes from the
-  `-ar` extract). A side the source did not send is `null`, and it is never translated.
+  `-ar` extract), with leading and trailing whitespace trimmed (Sephora's AR best-seller text has a
+  leading space) and nothing else changed. A side that was not served or not captured is `null`,
+  and it is never translated (ruling 01a11e5b-acd3).
 - A flag the code table does not know gets `unknown`, with its text kept as served.
 - Product-level flags (Sephora `c_productFlags`) sit on the product. Variant-level flags
   (`c_variantsInfo[].c_productFlags`) sit on that variant only, and they are never lifted to the
