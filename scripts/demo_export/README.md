@@ -121,3 +121,10 @@ Validate the result with the frontend-owned validator before handoff:
 ```sh
 node /path/to/contract/validate.js /path/to/dataset.json
 ```
+
+## Re-export a combined v2 body per retailer (ADR-0013)
+
+`uv run python -m scripts.demo_export.reexport IN OUT` re-exports a published multi-retailer
+v2 body (e.g. the owner's sephora_me + ulta_ae beauty file) as v3 with each retailer's own
+`fields` and `capabilities`, from the body alone. Offers and values are copied unchanged; a
+retailer keeps the file's field state except where none of its own offers carries the field.
