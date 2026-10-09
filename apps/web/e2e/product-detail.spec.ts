@@ -244,8 +244,10 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(cell(page, 'availability', 0)).toHaveText(`${T.notMeasured}${T.notCollected}`);
       await expect(cell(page, 'sku', 1)).toHaveText(`${T.notPublished}${T.noSku}`);
       // No page content captured: not captured, never "not published" or an empty cell.
-      for (const attr of ['images', 'variants', 'otherSizes'])
+      for (const attr of ['variants', 'otherSizes'])
         await expect(cell(page, attr, 0)).toHaveText(`${T.notMeasured}${T.notCaptured}`);
+      // The golden /meta does not collect images at all: that, not a missed capture, is the reason.
+      await expect(cell(page, 'images', 0)).toHaveText(`${T.notMeasured}${T.notCollected}`);
       // Every optional attribute, in both columns, is a reasoned state.
       for (const attr of [
         'regular',
