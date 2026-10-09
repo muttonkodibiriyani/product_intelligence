@@ -79,7 +79,7 @@ smoke. Rollback target: `pi-api-00001-jpx`.
 
 | Date       | Resource | Settings | Cost |
 |------------|----------|----------|------|
-| 2026-09-30 | bucket `pi-sephora-e631eaba` (created outside the repo) | me-central1, soft delete 7 days, lifecycle `{Delete, age: 1}` on every object | < $0.01/month |
+| 2026-09-30 | bucket `pi-sephora-e631eaba` (created outside the repo) | me-central1, soft delete 7 days, lifecycle `{Delete, age: 1}` on every object (**superseded 2026-10-01**, next row: only `dev-`, `recon-`, `ulta-test/` delete at 1 day; everything else at 14) | < $0.01/month |
 | 2026-10-01 (applied 08:25Z, coordinator-approved) | lifecycle → `infra/gcp/pi-runs-lifecycle.json` | `dev-*`, `recon-*`, `ulta-test/` still delete at 1 day; everything else (run outputs: `snap-*`, `stock-*`, `price-*`, planner prefixes) at 14 days, matching pg-backups | < $0.01/month |
 
 Why 14 days: a run must outlive a HELD load until it is cleared, and the ADR-0009 planner reads
@@ -134,3 +134,21 @@ digest; owner steps, cron and budget in `tools/uae_collect/README.md`. Faces fir
 | pending owner run | Scheduler job `pi-uae-collect-faces` (me-central1) | `0 20 * * *` UTC; the job picks daily / full (Mon, Thu) / ar (1st); no retries; **created paused** | free (2nd of the 3 free jobs) |
 | pending owner run | SA `pi-feed-reader` (no key, no project role) | `roles/storage.objectViewer` on the capture bucket under IAM condition `feeds-only` (objects under `feeds/`, lists with prefix `feeds/`); `firebase-adminsdk-fbsvc` has `roles/iam.serviceAccountTokenCreator` on this SA only | free |
 | pending owner run | budget `pi-uae-collect-5usd` | $5/month on label `pi-collect=uae`, alerts at 50/90/100% | free |
+
+## Capture reader (Coordinator 01a11c92-591d)
+
+A read-only identity for loading capture outputs on the host, so the Firebase Admin SDK key stays
+with one holder. Created by `infra/gcp/capture_reader_setup.sh` (idempotent), which creates no key
+and STOPs if the account has any project role. Applying it and minting its one key both need the
+owner's explicit OK; the key goes to `~/.config/pi-capture-reader/key.json` (mode 600), never into
+a repo or an image. `pi-sephora-e631eaba` runs `pi-runs-lifecycle.json`: `dev-`, `recon-` and `ulta-test/` delete at
+1 day, every other prefix (run outputs such as `p0-20261008-sephora`) at 14 days, with 7 days of
+soft delete after that. Read the live rules before relying on either (`gcloud storage buckets
+describe gs://pi-sephora-e631eaba --format='value(lifecycle_config)'`). RAW is the one artefact
+that cannot be re-fetched, so each output is also held under `sephora-hold/` in the capture
+bucket (same region, no egress; that bucket has no lifecycle rule).
+
+| Date | Resource | Settings | Cost |
+|------|----------|----------|------|
+| pending owner OK | SA `pi-capture-reader` (no project role) | `roles/storage.objectViewer` on `pi-sephora-e631eaba` and `pi-capture-productintelligence-beeb3` only; one user-managed key, minted on the owner's OK | free |
+| 2026-10-08 | prefix `gs://pi-capture-productintelligence-beeb3/sephora-hold/<PREFIX>/` | in-GCS hold copy of each Sephora output (RAW included). `pi-sephora-e631eaba` deletes every object 14 days after it was written (lifecycle rule 2, no prefix); the held copy lives in `pi-capture-productintelligence-beeb3/sephora-hold/`, which has no lifecycle rule. Family: `p0-20261008-sephora`, `-ar`, `-ar2`, `-stock1` (4.32 GiB, 12,568 objects in 4 prefixes; CLARIFY, 2026-10-09), plus `p0-20261009-sephora-ar3` after the AR completion pass ends. One copy per prefix, same region: `gcloud storage cp -r gs://pi-sephora-e631eaba/<PREFIX> gs://pi-capture-productintelligence-beeb3/sephora-hold/`, run by CLARIFY under its own existing identity; `pi-capture-reader` stays objectViewer and copies nothing. Verified by `du -s` bytes and object count per prefix, source against destination, which must match exactly. Done by 2026-10-12, before the first source expiry at 2026-10-22T17:36Z; the source objects and their 14-day rule are left as they are (Coordinator 01a11c97-bac8, 01a11c9a-4b08, 01a11cad-a1a9, 01a11cb7-7aa5, 01a11e6f-95ab). Capture data is evidence: never deleted | ~0.11 USD/month plus ~0.06 USD one-off for the writes; **cap 2 USD/month** for the hold prefix: at the cap the owner is asked |
