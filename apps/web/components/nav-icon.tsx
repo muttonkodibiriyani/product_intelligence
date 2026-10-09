@@ -8,6 +8,7 @@ const PATHS: Record<NavKey, string> = {
   compare: '<path d="M4 7h16M4 17h16"/><path d="m8 3-4 4 4 4M16 13l4 4-4 4"/>',
   insights:
     '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3Z"/>',
+  gaps: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 10h18M9 4v16"/><path d="M13 15h4" stroke-dasharray="1.5 1.5"/>',
   promotions:
     '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
   launches: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/>',

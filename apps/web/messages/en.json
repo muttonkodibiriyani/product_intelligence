@@ -13,6 +13,7 @@
       "explore": "Products",
       "compare": "Compare",
       "insights": "Insights",
+      "gaps": "Gaps",
       "promotions": "Promotions",
       "launches": "Launches",
       "status": "Dataset",
@@ -1262,5 +1263,69 @@
         "intro": "How concentrated each catalogue is by brand, where each brand is priced, and what each shop has launched."
       }
     }
+  },
+  "gaps": {
+    "title": "Brand gaps",
+    "intro": "What {shop} lists, brand by brand, against the other shops. Counts are listings: one product in one size.",
+    "shop": "Shop",
+    "loading": "Loading brand gaps…",
+    "notServed": "Brand gaps need a newer version of the data service. The page opens once it is live.",
+    "empty": "No {shop} listings match these brands.",
+    "label": {
+      "unmatched": "Unmatched",
+      "missing": "Not at any other shop"
+    },
+    "labelNote": {
+      "unmatched": "No match found at the compared shops. Not proof that they don't sell it.",
+      "missing": "Matches are reviewed and every compared shop is fully collected."
+    },
+    "ofListings": "of {n} {shop} listings",
+    "openList": "List them",
+    "notAt": {
+      "title": "Proven not at",
+      "note": "Counted only where the shop's collection is complete for the category.",
+      "none": "No compared shop is fully collected yet, so nothing is proven absent."
+    },
+    "withheld": {
+      "title": "Not counted",
+      "note": "No number for these shops, not a zero."
+    },
+    "side": {
+      "both": "Matched at another shop",
+      "unconfirmed": "Possible match, unconfirmed",
+      "family": "Other size or shade elsewhere",
+      "focus_only": "Unmatched",
+      "others_only": "Only at other shops",
+      "not_at": "Not at {shop}"
+    },
+    "col": {
+      "brand": "Brand",
+      "listings": "{shop} listings",
+      "both": "Matched",
+      "unconfirmed": "Unconfirmed",
+      "family": "Other size",
+      "share": "Share",
+      "notAt": "Not at {shop}",
+      "othersOnly": "Only elsewhere"
+    },
+    "othersOnlyWithheld": "Not counted while {shop} is not fully collected.",
+    "sort": {
+      "label": "Sort",
+      "focus_only": "Most unmatched",
+      "focus_n": "Most listings",
+      "brand": "Brand A–Z"
+    },
+    "count": "{side}, {brand}: {n}. Open the list",
+    "allBrands": "All brands",
+    "list": {
+      "title": "{side} · {brand}",
+      "total": "{n, plural, one {# listing} other {# listings}}",
+      "more": "Show more",
+      "close": "Close",
+      "empty": "No listings.",
+      "alsoAt": "Also at {shops}",
+      "notAt": "Not at {shops}"
+    },
+    "exportFile": "pi-brand-gaps"
   }
 }

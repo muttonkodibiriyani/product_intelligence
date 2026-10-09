@@ -8,6 +8,7 @@ export const NAV_KEYS = [
   'explore',
   'compare',
   'insights',
+  'gaps',
   'promotions',
   'launches',
   'prices',
@@ -28,6 +29,7 @@ const PATH: Record<NavKey, string> = {
   explore: 'explore/',
   compare: 'compare/',
   insights: 'insights/',
+  gaps: 'gaps/',
   promotions: 'promotions/',
   launches: 'launches/',
   prices: 'prices/',
@@ -49,6 +51,7 @@ const MATCH: Record<NavKey, RegExp | null> = {
   explore: /^\/(en|ar)\/(explore|product)\//,
   compare: /^\/(en|ar)\/compare\//,
   insights: /^\/(en|ar)\/insights\//,
+  gaps: /^\/(en|ar)\/gaps\//,
   promotions: /^\/(en|ar)\/promotions\//,
   launches: /^\/(en|ar)\/launches\//,
   prices: /^\/(en|ar)\/prices\//,
@@ -71,14 +74,16 @@ export interface NavSignals {
   launchesReady?: boolean;
   /** /meta's apiVersion serves /api/v1/insights (`lib/insights.ts`); undefined until /meta answers. */
   insightsServed?: boolean;
+  /** /meta's apiVersion serves /api/v1/brand-gaps (`lib/brand-gaps.ts`); undefined until /meta answers. */
+  gapsServed?: boolean;
 }
 
 export type NavState = 'shown' | 'hidden' | 'soon';
 
 /**
  * Overview, Compare, Dataset and the assistant always show (Compare carries its own empty state).
- * Insights shows only once /meta says the API serves it: an older API has no /insights route, so
- * the page stays out of the nav (not "soon") until then, and while /meta is unknown.
+ * Insights and Gaps show only once /meta says the API serves them: an older API has neither route,
+ * so the page stays out of the nav (not "soon") until then, and while /meta is unknown.
  * Products and Prices need a retailer with priced products; Promotions a retailer whose discounts
  * are measured. Launches stays reachable but reads "soon" until every retailer has the collection
  * days a launch needs. While a signal is unknown (still loading, or the request failed) the page
@@ -93,6 +98,8 @@ export function navState(key: NavKey, s: NavSignals): NavState {
       return s.promoMeasured === false ? 'hidden' : 'shown';
     case 'insights':
       return s.insightsServed === true ? 'shown' : 'hidden';
+    case 'gaps':
+      return s.gapsServed === true ? 'shown' : 'hidden';
     case 'launches':
       return s.launchesReady === false ? 'soon' : 'shown';
     default:
