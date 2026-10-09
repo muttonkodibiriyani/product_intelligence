@@ -13,6 +13,7 @@ import pytest
 from publish_dataset import retention_problems
 
 from pi_api.windows import check_windows
+from pi_core.enums import NotObservedReason
 from pi_dataset import DatasetV3, dump_dataset, load_any
 from scripts.demo_export.export import UltaContext, check_args, parser, withheld_of
 from scripts.demo_export.test_export import row
@@ -95,6 +96,38 @@ def test_a_withheld_retailer_without_since_is_refused() -> None:
     print("problems", check.problems)
     assert len(check.problems) == 1
     assert "ulta_ae: withheld (no window) with offers but no since" in check.problems[0]
+
+
+def test_a_marked_offer_of_a_withheld_retailer_is_held_by_the_whole_retailer_entry() -> None:
+    """Reviewer 5465060215 item 1, pinned: a withheld retailer has no window, so v3's per-offer
+    runId and coverage checks (``_window_offer_errors``) skip its marked offer, even one from
+    the retailer's own run with no category entry. What holds it is the whole-retailer
+    ``notObserved`` entry: drop that and the same body is refused."""
+    ds = beauty()
+    marked = {
+        p.id: {
+            cid: o.model_copy(update={"not_observed_reason": NotObservedReason.RETAINED})
+            if cid == ULTA
+            else o
+            for cid, o in p.offers.items()
+        }
+        for p in ds.products
+    }
+    products = tuple(p.model_copy(update={"offers": marked[p.id]}) for p in ds.products)
+    body = ds.model_copy(update={"products": products})
+    (ulta,) = offers(body, ULTA).values()
+    print("marked", ulta.not_observed_reason, "run", ulta.evidence.run_id)
+    assert ulta.not_observed_reason is NotObservedReason.RETAINED
+    assert ulta.evidence.run_id == "5"  # the retailer's own run: refused if it had a window
+    reloaded = load_any(dump_dataset(body))
+    assert isinstance(reloaded, DatasetV3)
+    assert check_windows([("beauty", reloaded)]).problems == []
+
+    bare = body.model_copy(
+        update={"not_observed": tuple(n for n in body.not_observed if n.retailer != ULTA)}
+    )
+    with pytest.raises(ValueError, match="with offers but no whole-retailer notObserved"):
+        load_any(dump_dataset(bare))
 
 
 def test_withhold_until_extends_the_entry_and_never_ends_before_the_cutoff() -> None:
