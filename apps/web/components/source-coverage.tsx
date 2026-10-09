@@ -24,7 +24,7 @@ export function SourceCoverage({
   const detail = useFreshnessDetail();
   const th = 'th whitespace-nowrap text-start';
   return (
-    <section aria-labelledby="source-coverage-title" className="mt-8">
+    <section id="source-coverage" aria-labelledby="source-coverage-title" className="mt-8">
       <H id="source-coverage-title" className="text-base font-semibold">
         {t('title')}
       </H>
