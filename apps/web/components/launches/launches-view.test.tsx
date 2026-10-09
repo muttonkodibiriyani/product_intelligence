@@ -10,6 +10,7 @@ import { LaunchesView } from './launches-view';
 
 const meta = golden('meta') as Envelope<Schemas['MetaView']>;
 const launches = golden('launches') as Envelope<Schemas['Launches']>;
+const product = golden('product') as Envelope<Schemas['ProductDetail']>;
 /** The API declining the view for this catalogue: not ok, a reason, an empty list, no caveat. */
 const notApplicable: Envelope<Schemas['Launches']> = {
   ...launches,
@@ -19,7 +20,12 @@ const notApplicable: Envelope<Schemas['Launches']> = {
   data: { items: [], total: 0, truncated: false },
 };
 
-const ctx = vi.hoisted(() => ({ body: {} as unknown, asked: [] as unknown[], meta: {} as unknown }));
+const ctx = vi.hoisted(() => ({
+  body: {} as unknown,
+  detail: {} as unknown,
+  asked: [] as unknown[],
+  meta: {} as unknown,
+}));
 // Shop C restarted on the last day: still short of two days while A and B are in.
 const oneBehind: Envelope<Schemas['MetaView']> = {
   ...meta,
@@ -31,7 +37,8 @@ const oneBehind: Envelope<Schemas['MetaView']> = {
 vi.mock('../auth-provider', () => ({
   useAuth: () => ({
     api: {
-      get: async (_path: string, opts: { query: unknown }) => {
+      get: async (path: string, opts: { query: unknown }) => {
+        if (path.includes('/products/{')) return ctx.detail;
         ctx.asked.push(opts.query);
         return ctx.body;
       },
@@ -55,6 +62,7 @@ afterEach(() => {
 
 function show(body: unknown, locale: 'en' | 'ar' = 'en', m: unknown = meta) {
   ctx.body = body;
+  ctx.detail = product;
   ctx.meta = m;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -89,13 +97,13 @@ describe('LaunchesView', () => {
 
   it('names a shop still short of two days under the list, the count as a plural in both languages', async () => {
     show(launches, 'en', oneBehind);
-    await screen.findByText('Product p14');
+    expect(await screen.findAllByText('Product p14')).toHaveLength(2);
     expect(document.querySelector('#launch-pending')!.textContent).toBe(
       'Shop C is not included yet: 1 of 2 collection days.',
     );
     cleanup();
     show(launches, 'ar', oneBehind);
-    await screen.findByText('Product p14');
+    expect(await screen.findAllByText('Product p14')).toHaveLength(2);
     expect(document.querySelector('#launch-pending')!.textContent).toBe(
       'Shop C غير مشمول بعد: 1 من يومي جمع.',
     );
@@ -103,7 +111,7 @@ describe('LaunchesView', () => {
 
   it('asks for the window ending on the last collection day, inclusive', async () => {
     show(launches);
-    await screen.findByText('Product p14');
+    expect(await screen.findAllByText('Product p14')).toHaveLength(2);
     expect(ctx.asked).toEqual([{ since: '2026-09-01', limit: 100 }]);
   });
 
@@ -115,7 +123,7 @@ describe('LaunchesView', () => {
       data: { ...meta.data!, cutoff: '2026-09-30T22:30:00Z', dates: [...meta.data!.dates, '2026-10-01'] },
     };
     show(launches, 'en', late);
-    await screen.findByText('Product p14');
+    expect(await screen.findAllByText('Product p14')).toHaveLength(2);
     expect(ctx.asked).toEqual([{ since: '2026-09-02', limit: 100 }]);
   });
 });

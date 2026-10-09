@@ -1,12 +1,19 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { Envelope, Schemas } from '@/lib/api/types';
 import { formatCount, formatDate } from '@/lib/format';
+import {
+  filterLaunchEvidence,
+  launchEvidenceRow,
+  type EvidenceField,
+  type FieldState,
+  type LaunchEvidenceRow,
+} from '@/lib/launch-evidence';
 import {
   parseLaunches,
   toLaunchesQuery,
@@ -18,13 +25,16 @@ import {
 import { MAX_LIMIT } from '@/lib/url-state';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import { monogram, RowThumb } from '../explore/row-thumb';
 import { productHref } from '../explore/product-table';
 import { FilterChips } from '../ui/filter-chips';
 import { Known } from '../ui/known';
+import { Money } from '../ui/money';
 import { PageHeader } from '../ui/page-header';
 import { Segmented } from '../ui/segmented';
 import { Loading } from '../ui/skeleton';
 import { useMeta, useRetailerName } from '../use-meta';
+import { LaunchesFilters } from './launches-filters';
 import { launchReadiness, MIN_DAYS, type LaunchReadiness, type ShopReadiness } from './readiness';
 
 const TH = 'th whitespace-nowrap';
@@ -90,7 +100,7 @@ function NotYet({ shops }: { shops: ShopReadiness[] }) {
         </svg>
       </span>
       <h2 className="text-lg font-semibold tracking-tight text-balance">{t('notYet', { min: MIN_DAYS })}</h2>
-      <p className="mx-auto mt-2 max-w-prose text-sm text-ink-2">{t('notYetWhy')}</p>
+      <p className="mx-auto mt-2 max-w-prose text-sm text-ink-2">{t('firstObservedWhy')}</p>
       {shops.length > 0 && (
         <ul aria-label={t('readiness')} className="mt-5 grid gap-2.5 text-start text-sm sm:grid-cols-2">
           {shops.map((s) => (
@@ -173,22 +183,57 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
   const data = env?.data ?? null;
   const ok = !!data && env?.status === 'ok';
   const waiting = readiness.shops.filter((s) => !s.ready);
+  const items = ok ? data.items : [];
+  const detailIds = [...new Set(items.map((item) => item.id))];
+  const details = useQueries({
+    queries: detailIds.map((id) => ({
+      queryKey: ['product', id],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        api!.get('/api/v1/products/{product_id}', { params: { product_id: id }, signal }),
+      enabled: !!api,
+    })),
+  });
+  const detailById = new Map(
+    detailIds.map((id, index) => {
+      const detail = details[index];
+      return [id, detail?.isPending ? undefined : (detail?.data ?? null)] as const;
+    }),
+  );
+  const evidenceRows = items.map((item) => launchEvidenceRow(item, detailById.get(item.id), env?.caveats));
+  const filteredRows = filterLaunchEvidence(evidenceRows, state);
+  const evidenceLoading = details.some((detail) => detail.isPending);
+  const evidenceErrors = details.filter((detail) => detail.isError).length;
 
   return (
     <>
       <FilterChips
+        retailer={state.retailer}
         brand={state.brand}
         category={state.category}
+        name={name}
         remove={(k, v) => update({ [k]: state[k].filter((x) => x !== v) })}
+        removeRetailer={(v) => update({ retailer: state.retailer.filter((x) => x !== v) })}
       />
+      {ok && (
+        <LaunchesFilters
+          state={state}
+          rows={evidenceRows}
+          retailers={meta.data!.retailers.filter((retailer) =>
+            readiness.shops.some((shop) => shop.id === retailer.id),
+          )}
+          currency={env.meta.currency}
+          end={end}
+          update={update}
+        />
+      )}
       <section aria-labelledby="launch-items-title" className="panel">
         <header className="flex flex-wrap items-start gap-x-3 gap-y-2 px-5 pt-4">
           <div className="min-w-0 flex-1">
             <h2 id="launch-items-title" className="text-base font-semibold">
-              {t('newIn', { n: state.days })}
+              {t('firstObservedIn', { n: state.days })}
             </h2>
             <p className="mt-0.5 text-sm text-ink-2">
-              {t('newInHint')}
+              {t('firstObservedHint')}
               {ok && (
                 <>
                   {' '}
@@ -200,6 +245,11 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
                         })
                       : t('count', { total: data.total, n: formatCount(data.total, locale) })}
                   </span>
+                  {!evidenceLoading && filteredRows.length !== data.items.length && (
+                    <span className="ms-2 text-ink-2">
+                      {t('filteredCount', { n: formatCount(filteredRows.length, locale) })}
+                    </span>
+                  )}
                 </>
               )}
             </p>
@@ -233,7 +283,17 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
               )}
               {ok && (
                 <div id="rows">
-                  <Items items={data.items} name={name} from={key} />
+                  {evidenceLoading && (
+                    <p role="status" className="mb-3 text-sm text-ink-2">
+                      {t('loadingEvidence')}
+                    </p>
+                  )}
+                  {evidenceErrors > 0 && (
+                    <p role="status" className="mb-3 text-sm text-warn">
+                      {t('evidenceUnavailable', { n: evidenceErrors })}
+                    </p>
+                  )}
+                  <Items items={filteredRows} name={name} from={key} />
                   {data.truncated && (
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                       <p className="text-ink-2">{t('truncated')}</p>
@@ -275,64 +335,303 @@ function Items({
   name,
   from,
 }: {
-  items: Schemas['Launch'][];
+  items: LaunchEvidenceRow[];
   name: (id: string) => string;
   from: string;
 }) {
   const t = useTranslations('launches');
-  const locale = useLocale();
   if (items.length === 0) return <p className="text-sm text-ink-2">{t('empty')}</p>;
   return (
-    <div className="relative -mx-5 overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="border-b border-line">
-          <tr>
-            <th scope="col" className={`${TH} text-start ps-5`}>
-              {t('product')}
-            </th>
-            <th scope="col" className={`${TH} text-start`}>
-              {t('retailer')}
-            </th>
-            <th scope="col" className={`${TH} pe-5 text-end`}>
-              {t('firstSeen')}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((i) => (
-            <tr key={`${i.id}:${i.retailer}`} className="border-t border-line first:border-t-0">
-              <th scope="row" className={`${TD} min-w-40 ps-5 text-start font-normal`}>
-                <span className="flex items-center gap-3">
-                  <Monogram name={i.name} />
-                  <Link
-                    href={productHref(locale, i.id, from, 'launches')}
-                    className="font-medium text-ink hover:underline focus-visible:outline-2"
-                  >
-                    <span dir="auto">{i.name}</span>
-                  </Link>
-                </span>
+    <>
+      <ul className="grid gap-3 md:hidden">
+        {items.map((row) => (
+          <li key={`${row.launch.id}:${row.launch.retailer}`} className="rounded-ctl border border-line p-3">
+            <Product row={row} from={from} />
+            <dl className="mt-3 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-3 gap-y-2 text-[13px]">
+              <Term label={t('retailer')}>{name(row.launch.retailer)}</Term>
+              <RowFields row={row} />
+            </dl>
+          </li>
+        ))}
+      </ul>
+      <div className="relative -mx-5 hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[1120px] text-sm">
+          <thead className="border-b border-line">
+            <tr>
+              <th scope="col" className={`${TH} text-start ps-5`}>
+                {t('product')}
               </th>
-              <td className={`${TD} text-start`}>{name(i.retailer)}</td>
-              <td className={`${TD} pe-5 text-end whitespace-nowrap tabular-nums`}>
-                <time dateTime={i.firstSeen}>{formatDate(i.firstSeen, locale)}</time>
-              </td>
+              <th scope="col" className={`${TH} text-start`}>
+                {t('retailer')}
+              </th>
+              <th scope="col" className={`${TH} text-start`}>
+                {t('variant')}
+              </th>
+              <th scope="col" className={`${TH} text-start`}>
+                {t('pricing')}
+              </th>
+              <th scope="col" className={`${TH} text-start`}>
+                {t('availability')}
+              </th>
+              <th scope="col" className={`${TH} pe-5 text-start`}>
+                {t('evidence')}
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((row) => (
+              <tr
+                key={`${row.launch.id}:${row.launch.retailer}`}
+                className="border-t border-line first:border-t-0"
+              >
+                <th scope="row" className={`${TD} min-w-64 ps-5 text-start font-normal`}>
+                  <Product row={row} from={from} />
+                </th>
+                <td className={`${TD} min-w-32 text-start`}>{name(row.launch.retailer)}</td>
+                <td className={`${TD} min-w-48`}>
+                  <dl className="grid gap-1.5">
+                    <Term label={t('sku')}>
+                      <Field field={row.sku} />
+                    </Term>
+                    <Term label={t('size')}>
+                      <SizeField field={row.size} />
+                    </Term>
+                    <Term label={t('color')}>
+                      <Field field={row.color} />
+                    </Term>
+                    <Term label={t('shade')}>
+                      <Field field={row.shade} />
+                    </Term>
+                  </dl>
+                </td>
+                <td className={`${TD} min-w-52`}>
+                  <dl className="grid gap-1.5">
+                    <Term label={t('currentPrice')}>
+                      <MoneyField field={row.currentPrice} />
+                    </Term>
+                    <Term label={t('regularPrice')}>
+                      <MoneyField field={row.regularPrice} />
+                    </Term>
+                    <Term label={t('memberPrice')}>
+                      <MoneyField field={row.memberPrice} />
+                    </Term>
+                    <Term label={t('promotion')}>
+                      <PromotionField field={row.promotionPct} />
+                    </Term>
+                  </dl>
+                </td>
+                <td className={`${TD} min-w-40`}>
+                  <AvailabilityField field={row.availability} />
+                </td>
+                <td className={`${TD} min-w-64 pe-5`}>
+                  <Evidence row={row} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function Product({ row, from }: { row: LaunchEvidenceRow; from: string }) {
+  const t = useTranslations('launches');
+  const locale = useLocale();
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <RowThumb
+        url={row.image.value}
+        retailer={row.launch.retailer}
+        label={t('noImage')}
+        monogram={row.brand.value ? monogram(row.brand.value) : undefined}
+      />
+      <span className="min-w-0">
+        <Field field={row.brand} className="block text-[11px] tracking-[0.06em] text-ink-3 uppercase" />
+        <Link
+          href={productHref(locale, row.launch.id, from, 'launches')}
+          className="block font-medium text-ink hover:underline focus-visible:outline-2"
+        >
+          <span dir="auto">{row.launch.name}</span>
+        </Link>
+        <span className="mt-0.5 block text-xs text-ink-3">
+          {t('productId')}: <bdi>{row.launch.id}</bdi>
+        </span>
+        <span className="mt-0.5 block text-xs text-ink-3">
+          {t('category')}: <CategoryField field={row.category} />
+        </span>
+        <span className="mt-0.5 block text-xs text-ink-3">
+          {t('image')}: <State state={row.image.state} observed={t('available')} />
+        </span>
+      </span>
     </div>
   );
 }
 
-/** /launches carries no image, so the thumbnail is the name's first letter; the name sits beside it. */
-function Monogram({ name }: { name: string }) {
-  const first = [...name.trim()][0] ?? '';
+function RowFields({ row }: { row: LaunchEvidenceRow }) {
+  const t = useTranslations('launches');
   return (
-    <span
-      aria-hidden="true"
-      className="grid size-10 shrink-0 place-items-center rounded-ctl bg-surface-2 text-sm font-semibold text-ink-2"
-    >
-      {first.toLocaleUpperCase()}
+    <>
+      <Term label={t('sku')}>
+        <Field field={row.sku} />
+      </Term>
+      <Term label={t('size')}>
+        <SizeField field={row.size} />
+      </Term>
+      <Term label={t('color')}>
+        <Field field={row.color} />
+      </Term>
+      <Term label={t('shade')}>
+        <Field field={row.shade} />
+      </Term>
+      <Term label={t('currentPrice')}>
+        <MoneyField field={row.currentPrice} />
+      </Term>
+      <Term label={t('regularPrice')}>
+        <MoneyField field={row.regularPrice} />
+      </Term>
+      <Term label={t('memberPrice')}>
+        <MoneyField field={row.memberPrice} />
+      </Term>
+      <Term label={t('promotion')}>
+        <PromotionField field={row.promotionPct} />
+      </Term>
+      <Term label={t('availability')}>
+        <AvailabilityField field={row.availability} />
+      </Term>
+      <Term label={t('evidence')}>
+        <Evidence row={row} />
+      </Term>
+    </>
+  );
+}
+
+function Term({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="contents">
+      <dt className="text-xs text-ink-3">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
+  );
+}
+
+function Field({ field, className }: { field: EvidenceField<string>; className?: string }) {
+  if (field.state !== 'observed' || field.value === null)
+    return <State state={field.state} className={className} />;
+  return (
+    <span className={className} dir="auto">
+      {field.value}
     </span>
   );
+}
+
+function CategoryField({ field }: { field: EvidenceField<string[]> }) {
+  if (field.state !== 'observed' || field.value === null) return <State state={field.state} />;
+  return <span dir="auto">{field.value.join(' / ')}</span>;
+}
+
+function SizeField({ field }: { field: LaunchEvidenceRow['size'] }) {
+  if (field.state !== 'observed' || field.value === null) return <State state={field.state} />;
+  if (typeof field.value === 'string') return <bdi>{field.value}</bdi>;
+  return (
+    <bdi dir="ltr" className="tabular-nums">
+      {field.value.value} {field.value.unit}
+    </bdi>
+  );
+}
+
+function MoneyField({ field }: { field: LaunchEvidenceRow['currentPrice'] }) {
+  const locale = useLocale();
+  if (field.state !== 'observed' || field.value === null) return <State state={field.state} />;
+  return <Money m={field.value} locale={locale} />;
+}
+
+function PromotionField({ field }: { field: LaunchEvidenceRow['promotionPct'] }) {
+  if (field.state !== 'observed' || field.value === null) return <State state={field.state} />;
+  return (
+    <bdi dir="ltr" className="verdict verdict-good">
+      −{field.value}%
+    </bdi>
+  );
+}
+
+function AvailabilityField({ field }: { field: LaunchEvidenceRow['availability'] }) {
+  const t = useTranslations('launches.filters.availabilityStates');
+  if (field.state !== 'observed' || field.value === null) return <State state={field.state} />;
+  return <span>{t(field.value)}</span>;
+}
+
+function Evidence({ row }: { row: LaunchEvidenceRow }) {
+  const t = useTranslations('launches');
+  const locale = useLocale();
+  const source = row.source.value ? safeHttpUrl(row.source.value) : null;
+  return (
+    <div className="space-y-1.5 text-xs">
+      <p>
+        <span className="text-ink-3">{t('retailerDeclaration')}: </span>
+        <State state={row.retailerDeclaration.state} />
+      </p>
+      <p>
+        <span className="text-ink-3">{t('firstObserved')}: </span>
+        <time dateTime={row.launch.firstSeen}>{formatDate(row.launch.firstSeen, locale)}</time>
+        <span className="ms-1 text-ink-3">({t('notLaunchDate')})</span>
+      </p>
+      <p>
+        <span className="text-ink-3">{t('evidenceDate')}: </span>
+        {row.evidenceAt.value ? (
+          <time dateTime={row.evidenceAt.value}>{formatDate(row.evidenceAt.value, locale, true)}</time>
+        ) : (
+          <State state={row.evidenceAt.state} />
+        )}
+      </p>
+      {row.staleAsOf && (
+        <p className="text-warn">{t('staleAsOf', { date: formatDate(row.staleAsOf, locale) })}</p>
+      )}
+      <p>
+        <span className="text-ink-3">{t('source')}: </span>
+        {source ? (
+          <a
+            href={source}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            referrerPolicy="no-referrer"
+            className="text-accent hover:underline focus-visible:outline-2"
+          >
+            {t('openSource')}
+          </a>
+        ) : row.source.value ? (
+          <State state="invalid" />
+        ) : (
+          <State state={row.source.state} />
+        )}
+      </p>
+      <ul aria-label={t('evidenceStates')} className="flex flex-wrap gap-1">
+        {row.states.map((state) => (
+          <li key={state} className="pill">
+            {t(`filters.evidenceStates.${state}`)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function State({ state, observed, className }: { state: FieldState; observed?: string; className?: string }) {
+  const t = useTranslations('launches.fieldStates');
+  return (
+    <span
+      className={`${state === 'invalid' || state === 'contradictory' ? 'text-warn' : 'text-ink-3'} ${className ?? ''}`}
+    >
+      {state === 'observed' && observed ? observed : t(state)}
+    </span>
+  );
+}
+
+function safeHttpUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
 }

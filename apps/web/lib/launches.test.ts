@@ -21,6 +21,16 @@ describe('launches URL state', () => {
     expect(toLaunchesSearch({ ...EMPTY_LAUNCHES, days: 30 })).toBe('');
   });
 
+  it('round-trips every evidence filter and drops unknown evidence states', () => {
+    const q =
+      '?retailer=sephora_ae&brand=Evidence+Beauty&category=lips&availability=in_stock&evidence=stale' +
+      '&dateFrom=2026-09-24&dateTo=2026-09-30&priceMin=25&priceMax=100.50&discountMin=10' +
+      '&size=4+g&color=red&shade=rose';
+    expect(toLaunchesSearch(parse(q))).toBe(q);
+    expect(parse(`${q}&evidence=made_up`).evidence).toEqual(['stale']);
+    expect(parse('dateFrom=yesterday&priceMin=-1&size=x'.repeat(121)).dateFrom).toBe('');
+  });
+
   it('offers only the two windows, 30 days by default', () => {
     expect(parseWindow('7')).toBe(7);
     expect(parseWindow('30')).toBe(30);
@@ -61,6 +71,11 @@ describe('launches URL state', () => {
       since: '2026-09-24',
       brand: ['Fixture Beauty'],
       limit: 500,
+    });
+    expect(toLaunchesQuery(parse('retailer=sephora_ae&shade=rose&evidence=missing'), CUTOFF)).toEqual({
+      since: '2026-09-01',
+      retailer: ['sephora_ae'],
+      limit: 100,
     });
     // A cutoff that is not a day: no window rather than a value the API would refuse.
     expect(toLaunchesQuery(EMPTY_LAUNCHES, '')).toEqual({ limit: 100 });

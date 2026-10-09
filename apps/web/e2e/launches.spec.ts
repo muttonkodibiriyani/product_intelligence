@@ -86,8 +86,8 @@ for (const locale of ['en', 'ar'] as const) {
           oneOfTwo: '1 من 2',
           promotions: 'اطّلع على العروض الحالية',
           browse: 'تصفّح كل المنتجات',
-          newIn30: 'الجديد في آخر 30 يومًا',
-          newIn7: 'الجديد في آخر 7 أيام',
+          newIn30: 'أول رصد في آخر 30 يومًا',
+          newIn7: 'أول رصد في آخر 7 أيام',
           window: 'الفترة',
           days7: '7 أيام',
           days30: '30 يومًا',
@@ -112,8 +112,8 @@ for (const locale of ['en', 'ar'] as const) {
           oneOfTwo: '1 of 2',
           promotions: "See what's on promotion",
           browse: 'Browse all products',
-          newIn30: 'New in the last 30 days',
-          newIn7: 'New in the last 7 days',
+          newIn30: 'First observed in the last 30 days',
+          newIn7: 'First observed in the last 7 days',
           window: 'Window',
           days7: '7 days',
           days30: '30 days',
@@ -197,7 +197,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('note')).toHaveCount(0);
       await expect(page.locator('main')).not.toContainText(golden1.caveats[0][locale]);
       await expect(page.getByText(T.three)).toBeVisible();
-      const rows = page.locator('#rows table tbody tr');
+      const rows = page.locator('#rows ul:visible > li, #rows table:visible tbody tr');
       await expect(rows).toHaveCount(3);
       await expect(rows.first()).toContainText('Product p14');
       await expect(rows.first()).toContainText('Shop B');
@@ -217,7 +217,7 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api() });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/launches/`);
-      await expect(page.locator('#rows table')).toBeVisible();
+      await expect(page.locator('#rows ul:visible > li, #rows table:visible tbody tr')).toHaveCount(3);
       const group = page.getByRole('group', { name: T.window });
       await expect(group.getByRole('button', { name: T.days30 })).toHaveAttribute('aria-pressed', 'true');
       await group.getByRole('button', { name: T.days7 }).click();
@@ -233,7 +233,7 @@ for (const locale of ['en', 'ar'] as const) {
       const mock = await mockBackend(page, { onApi: api(oneBehind) });
       await signedIn(page, locale);
       await page.goto(`/app/${locale}/launches/`);
-      await expect(page.locator('#rows table tbody tr')).toHaveCount(3);
+      await expect(page.locator('#rows ul:visible > li, #rows table:visible tbody tr')).toHaveCount(3);
       await expect(page.locator('#launch-pending')).toHaveText(T.pending);
       await expect(page.getByRole('note')).toHaveCount(0);
       await expect(await navLink(page, T.nav)).toContainText(T.soon);
@@ -276,7 +276,7 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await page.getByRole('link', { name: T.back }).click();
       await expect(page).toHaveURL(new RegExp(`/app/${locale}/launches/\\?days=7$`));
-      await expect(page.locator('#rows table tbody tr')).toHaveCount(3);
+      await expect(page.locator('#rows ul:visible > li, #rows table:visible tbody tr')).toHaveCount(3);
       expect(mock.errors).toEqual([]);
     });
   });
