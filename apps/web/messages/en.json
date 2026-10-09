@@ -443,7 +443,28 @@
       "noSku": "The listing shows no SKU.",
       "parseFailure": "Collected, but the value could not be read.",
       "blocked": "Collection was blocked for this retailer.",
-      "partialCollection": "Collected for only part of this retailer’s listings."
+      "partialCollection": "Collected for only part of this retailer’s listings.",
+      "memberNotCollected": "Member prices are not collected yet.",
+      "contentNotCaptured": "The page content was not captured for this offer.",
+      "noImages": "The listing shows no images.",
+      "noVariants": "The listing shows no shades or variants.",
+      "noOtherSizes": "No other size of this listing is in the data."
+    },
+    "member": "Member price",
+    "groupContent": "Page content",
+    "images": "Images",
+    "variants": "Shades and variants",
+    "otherSizes": "Other sizes at this retailer",
+    "imageN": "Image {n}",
+    "imageCount": "{count, plural, one {{n} image} other {{n} images}}",
+    "imageSource": {
+      "page": "from the product page",
+      "catalogue": "from the retailer catalogue"
+    },
+    "variantCount": "{count, plural, one {{n} listing} other {{n} listings}}",
+    "content": {
+      "not_published": "Not published",
+      "not_captured": "Not captured"
     }
   },
   "compare": {

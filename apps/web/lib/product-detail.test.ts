@@ -182,6 +182,76 @@ describe('whyMissing on an offer the latest crawl did not see', () => {
   }
 });
 
+type Content = Offer['content'];
+const content = (c: Partial<Content>): Offer => ({ ...full, content: { ...full.content, ...c } });
+const IMG = 'https://img-product.sephora.me/p/1.jpg';
+
+describe('whyMissing on page content and member price', () => {
+  it('the golden offer, with no page content, says it was not captured, never not published', () => {
+    for (const f of ['images', 'variants', 'otherSizes'] as const)
+      expect(whyMissing(f, full, [], undefined)).toEqual({
+        state: 'notMeasured',
+        reason: 'contentNotCaptured',
+      });
+  });
+
+  it('a member price is not collected for any offer, with or without a price', () => {
+    for (const o of [full, sparse])
+      expect(whyMissing('member', o, [], undefined)).toEqual({
+        state: 'notMeasured',
+        reason: 'memberNotCollected',
+      });
+  });
+
+  it("observed content has a value; content the page did not publish is the retailer's", () => {
+    const o = content({
+      images: { state: 'observed', items: [{ url: IMG }], source: 'page' },
+      variants: {
+        state: 'observed',
+        items: [
+          {
+            sku: 'V1',
+            shade: { state: 'observed', text: 'Ruby' },
+            gtin: { state: 'not_published', barcode: null },
+          },
+        ],
+      },
+      sizes: [{ productId: 'p2', size: { unit: 'ml', value: '100' }, sizeLabel: null }],
+    });
+    for (const f of ['images', 'variants', 'otherSizes'] as const)
+      expect(whyMissing(f, o, [], undefined)).toBeNull();
+    const empty = content({
+      images: { state: 'not_published', items: [], source: null },
+      variants: { state: 'not_published', items: [] },
+    });
+    expect(whyMissing('images', empty, [], undefined)).toEqual({ state: 'notPublished', reason: 'noImages' });
+    expect(whyMissing('variants', empty, [], undefined)).toEqual({
+      state: 'notPublished',
+      reason: 'noVariants',
+    });
+    // Content captured, no sibling in the family: none, not a gap in collection.
+    expect(whyMissing('otherSizes', empty, [], undefined)).toEqual({ state: 'none', reason: 'noOtherSizes' });
+  });
+
+  it('images a dataset does not collect are not collected; an observed but empty gallery is not shown', () => {
+    expect(whyMissing('images', full, [], { images: false })?.reason).toBe('notCollected');
+    const hollow = content({ images: { state: 'observed', items: [], source: null } });
+    expect(whyMissing('images', hollow, [], undefined)?.reason).toBe('contentNotCaptured');
+  });
+
+  it('an offer the latest crawl did not see reads not seen for its content too', () => {
+    const carried = { ...full, availability: 'not_observed' as const };
+    expect(whyMissing('images', carried, [], undefined)?.reason).toBe('notObserved');
+    expect(whyMissing('member', carried, [], undefined)?.reason).toBe('notObserved');
+  });
+
+  it('every reason it can give is worded in both languages', () => {
+    for (const m of [en, ar])
+      for (const r of ['memberNotCollected', 'contentNotCaptured', 'noImages', 'noVariants', 'noOtherSizes'])
+        expect((m.product.why as Record<string, string>)[r]).toBeTruthy();
+  });
+});
+
 describe('columns', () => {
   it('one per offer; a retailer with two contexts is marked so they can be told apart', () => {
     const offers = [
