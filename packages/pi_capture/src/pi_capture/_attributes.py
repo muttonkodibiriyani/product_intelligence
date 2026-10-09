@@ -1321,6 +1321,21 @@ ATTRIBUTES: tuple[Attribute, ...] = (
         note="Ours is known; a rival's is inferred, and the two must never share a column.",
     ),
     Attribute(
+        key="listing_live_date",
+        group=AttributeGroup.LIFECYCLE,
+        level=AttributeLevel.STYLE,
+        verticals=(
+            Vertical.BEAUTY,
+            Vertical.FASHION,
+        ),
+        type="date",
+        source=AttributeSource.PAGE,
+        requirement="where published",
+        detail_only=False,
+        example="2025-05-25",
+        note="The retailer go-live date it publishes for its own listing, as a date in Asia/Dubai. Not our launch_date and not first_seen: the three never share a column, and a missing one is never filled from either.",
+    ),
+    Attribute(
         key="delist_confirmed",
         group=AttributeGroup.LIFECYCLE,
         level=AttributeLevel.VARIANT,
@@ -1668,7 +1683,7 @@ ATTRIBUTES: tuple[Attribute, ...] = (
         source=AttributeSource.PAGE,
         requirement="where shown",
         detail_only=False,
-        example="[{store, in_stock}]",
+        example="[{store, pickup_available}]",
         note="Click-and-collect stock by branch, where a retailer exposes it. The only online window onto physical shelf availability we get.",
     ),
     Attribute(
@@ -1745,6 +1760,21 @@ ATTRIBUTES: tuple[Attribute, ...] = (
         detail_only=True,
         example="14",
         note=None,
+    ),
+    Attribute(
+        key="returnable",
+        group=AttributeGroup.STOCKOPS,
+        level=AttributeLevel.OFFER,
+        verticals=(
+            Vertical.BEAUTY,
+            Vertical.FASHION,
+        ),
+        type="bool",
+        source=AttributeSource.PAGE,
+        requirement="where published",
+        detail_only=True,
+        example="false",
+        note="Whether the retailer accepts this item back, as it publishes it for the item (Ounass isReturnable, 'Non-Returnable Item'). A missing flag stays missing: never read as returnable, and never inferred from the site-wide returns policy or return_window_days.",
     ),
     Attribute(
         key="warranty",
