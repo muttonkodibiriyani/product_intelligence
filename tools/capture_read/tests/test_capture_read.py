@@ -250,3 +250,24 @@ def test_main_on_a_local_directory(tmp_path: Path, capsys: pytest.CaptureFixture
     assert json.loads(capsys.readouterr().out)["rows"] == 1
     assert cr.main(env, bucket=cr.LocalBucket(tmp_path)) == 0
     assert cr.LocalBucket(tmp_path / "missing").names("x/") == []
+
+
+def test_a_404_or_410_page_row_gives_no_reading_and_no_error_row(tmp_path: Path) -> None:
+    # A gone page is crawl evidence (its page row keeps the http status). It never becomes a
+    # ProductCapture, so nothing downstream can turn it into a removal or a stock statement.
+    gen = _GENERIC_PAGE.encode()
+    rows = [
+        (_rec(1, "ikea", b"", state="http_error", status=404, raw=None), b""),
+        (_rec(2, "ikea", b"", state="http_error", status=410, raw=None), b""),
+        (_rec(3, "ikea", gen), gen),
+    ]
+    bucket = cr.LocalBucket(tmp_path)
+    lines = "".join(json.dumps(rec) + "\n" for rec, _body in rows)
+    bucket.put(f"{SRC}/pages/part-0000.jsonl.gz", gzip.compress(lines.encode()))
+    bucket.put(f"{SRC}/{rows[2][0]['raw']}", gzip.compress(gen))
+    status = cr.run(bucket, _job())
+    assert status == {"pages": 1, "pages_ok": 1, "parts_read": 1, "rows": 1}
+    assert [loads(line).url for line in _out(bucket, "part-0000.jsonl.gz")] == [
+        "https://shop.example/p/3"
+    ]
+    assert not bucket.exists(f"{SRC}/readings/errors/part-0000.jsonl.gz")
