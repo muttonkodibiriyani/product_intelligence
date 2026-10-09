@@ -1621,7 +1621,7 @@
       "fashion"
     ],
     "t": "jsonb",
-    "ex": "[{store, in_stock}]",
+    "ex": "[{store, pickup_available}]",
     "req": "where shown",
     "src": "page",
     "note": "Click-and-collect stock by branch, where a retailer exposes it. The only online window onto physical shelf availability we get."

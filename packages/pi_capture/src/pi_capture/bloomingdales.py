@@ -28,8 +28,9 @@ In-store pickup: ``c_stores[]`` lists the click-and-collect stores, each with a 
 retailer payload flag whose display on the page is unverified (the widget is client-rendered), and
 "not available for pickup at that store" only, never offer stock. Where the product's or the shown
 variant's ``availableForInStorePickup`` disagrees with the stores, the whole value is
-``parse_failed``. The inventory counts (``inventory.ats``, ``stockLevel``, ``availableQuantity``)
-are never read.
+``parse_failed``, as is any ``c_stores`` entry that is not a store with a true/false
+``clickAndCollectEnabled``. The inventory counts (``inventory.ats``, ``stockLevel``,
+``availableQuantity``) are never read.
 
 Never read: ``c_unitcost`` (the retailer's cost), ``c_fe_*`` (merchandising scores) and the
 payment widgets' keys; every field read here is named, nothing is copied wholesale.
@@ -324,6 +325,25 @@ def _pickup_flags(pd: Mapping[str, Any]) -> list[tuple[str, bool]]:
     return flags
 
 
+def _pickup_row(store: object) -> dict[str, str | bool] | tuple[str, str] | None:
+    """One ``c_stores`` entry: its row, ``None`` if click-and-collect is off there, or the
+    ``(raw_text, note)`` of a malformed entry. A malformed entry is never echoed whole: it may
+    carry a stock count."""
+    if not isinstance(store, Mapping):
+        return type(store).__name__, "a c_stores entry that is not a store"
+    enabled = store.get("clickAndCollectEnabled")
+    if not isinstance(enabled, bool):
+        raw = f"{store.get('name')!r}: clickAndCollectEnabled={enabled!r}"
+        return raw, "a store without a true/false clickAndCollectEnabled"
+    if not enabled:
+        return None
+    name, available = _str(store.get("name")), store.get("available")
+    if name is None or not isinstance(available, bool):
+        raw = f"{store.get('name')!r}: {available!r}"
+        return raw, "a click-and-collect store without a name or a true/false available"
+    return {"store": name, "pickup_available": available}
+
+
 def _map_store_pickup(em: _Emitter, pd: Mapping[str, Any]) -> None:
     """In-store pickup by click-and-collect store, cross-checked with the product's own flags."""
     key, path = "store_availability", f"{_PD}.c_stores[]"
@@ -332,20 +352,16 @@ def _map_store_pickup(em: _Emitter, pd: Mapping[str, Any]) -> None:
         em.not_shown(key, "no c_stores list")
         return
     if not isinstance(stores, list):
-        em.failed(key, str(stores)[:200], f"{_PD}.c_stores", "c_stores is not a list")
+        em.failed(key, type(stores).__name__, f"{_PD}.c_stores", "c_stores is not a list")
         return
     rows: list[dict[str, str | bool]] = []
     for store in stores:
-        if not isinstance(store, Mapping) or store.get("clickAndCollectEnabled") is not True:
-            continue
-        name, available = _str(store.get("name")), store.get("available")
-        if name is None or not isinstance(available, bool):
-            raw = f"{store.get('name')!r}: {available!r}"
-            em.failed(
-                key, raw, path, "a click-and-collect store without a name or a true/false available"
-            )
+        row = _pickup_row(store)
+        if isinstance(row, tuple):
+            em.failed(key, row[0], path, row[1])
             return
-        rows.append({"store": name, "pickup_available": available})
+        if row is not None:
+            rows.append(row)
     if not rows:
         em.not_shown(key, "no click-and-collect store listed")
         return

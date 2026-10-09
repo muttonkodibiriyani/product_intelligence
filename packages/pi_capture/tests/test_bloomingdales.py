@@ -381,8 +381,34 @@ def test_a_product_or_variant_pickup_flag_that_disagrees_with_the_stores_is_pars
     assert (bad.state, bad.value) == ("parse_failed", None)
     nameless = _pickup(c_stores=[_store(name=" ")])
     assert (nameless.state, nameless.value) == ("parse_failed", None)
-    odd = _pickup(c_stores={"name": "x"})
-    assert (odd.state, odd.note) == ("parse_failed", "c_stores is not a list")
+    odd = _pickup(c_stores={"name": "x", "stockLevel": 7})
+    assert (odd.state, odd.raw_text, odd.note) == ("parse_failed", "dict", "c_stores is not a list")
+
+
+def test_a_malformed_store_entry_makes_the_whole_value_parse_failed() -> None:
+    valid = _store(available=True)
+    cases: list[tuple[list[Any], str, str]] = [
+        (["Dubai Mall"], "str", "a c_stores entry that is not a store"),
+        ([7], "int", "a c_stores entry that is not a store"),
+        ([valid, None], "NoneType", "a c_stores entry that is not a store"),
+    ]
+    for enabled in ("true", 1, None):
+        raw = f'"Bloomingdale\'s - Dubai Mall": clickAndCollectEnabled={enabled!r}'
+        cases.append(([_store(clickAndCollectEnabled=enabled)], raw, ""))
+    missing = {k: v for k, v in _store().items() if k != "clickAndCollectEnabled"}
+    cases.append(([missing], '"Bloomingdale\'s - Dubai Mall": clickAndCollectEnabled=None', ""))
+    # one malformed entry beside a valid one: no partial value
+    cases.append(
+        (
+            [valid, _store("Other", clickAndCollectEnabled="yes")],
+            "'Other': clickAndCollectEnabled='yes'",
+            "",
+        )
+    )
+    for stores, raw, note in cases:
+        r = _pickup(c_stores=stores, c_availableForInStorePickup=True)
+        assert (r.state, r.value, r.raw_text) == ("parse_failed", None, raw), stores
+        assert r.note == (note or "a store without a true/false clickAndCollectEnabled")
 
 
 def test_no_store_list_is_not_shown_and_never_a_pickup_false() -> None:
@@ -390,8 +416,12 @@ def test_no_store_list_is_not_shown_and_never_a_pickup_false() -> None:
     for over in cases:
         r = _pickup(**over)
         assert (r.state, r.value, r.note) == ("not_shown", None, "no c_stores list"), over
-    closed = _pickup(c_stores=[_store(clickAndCollectEnabled=False, available=True)])
-    assert (closed.state, closed.note) == ("not_shown", "no click-and-collect store listed")
+    closed = [
+        _store(clickAndCollectEnabled=False, available=True),
+        _store("B", clickAndCollectEnabled=False),
+    ]
+    r = _pickup(c_stores=closed)
+    assert (r.state, r.value, r.note) == ("not_shown", None, "no click-and-collect store listed")
 
 
 def test_pickup_is_not_offer_stock_and_store_counts_are_never_read(

@@ -1683,7 +1683,7 @@ ATTRIBUTES: tuple[Attribute, ...] = (
         source=AttributeSource.PAGE,
         requirement="where shown",
         detail_only=False,
-        example="[{store, in_stock}]",
+        example="[{store, pickup_available}]",
         note="Click-and-collect stock by branch, where a retailer exposes it. The only online window onto physical shelf availability we get.",
     ),
     Attribute(
