@@ -67,6 +67,12 @@ the original cutoff copy is never replaced.
   sku) key may appear once. A body that gives ulta_ae no window (withheld, or v2) reconciles
   nothing. The sephora_me offers in the file are held by the source guard against the body the
   live PI_API_DATASETS serves sephora_me from.
+- ``--allow-ulta-separate`` (with ``--versioned``; owner A2 ruling, task 01a1209d-f9b4: the
+  Ulta v2 catalogue as its own append-only target): a body whose offers are all ulta_ae goes to
+  a new create-only ``datasets/<country>/ulta_ae/v/`` object, never to beauty/ or a latest.json,
+  and only the ``ulta_ae=`` entry of PI_API_DATASETS is repointed. The retention check above
+  (keys-only, no ``--reconciled-removals``) runs against the body the live PI_API_DATASETS
+  serves ulta_ae from; with none, the publish is refused.
 - ``--check-served <PI_API_DATASETS>`` (no body; read-only): the window guard over every body
   that value serves (``pi_api.windows``, the check ``PI_API_REQUIRE_ALL=1`` repeats at start):
   each retailer has a crawl window, all windows are in one market time zone, and no two end
@@ -100,6 +106,7 @@ PROTECTED_SOURCES = ("ulta_ae",)  # owner hard rule: never dropped, not even wit
 BEAUTY_SOURCES = ("sephora_me", "ulta_ae")  # the owner's combined file (--allow-beauty-versioned)
 BEAUTY = "beauty"
 RETAINED = "ulta_ae"  # --allow-beauty-versioned: no live offer of this source may go missing
+ULTA_SOURCES = (RETAINED,)  # --allow-ulta-separate: the Ulta-only file
 GUARDED = "sephora_me"  # --allow-beauty-versioned: held by the source guard (no loss)
 # --reconciled-removals: the only evidence that an offer is gone (evidence-CSV ruling
 # 01a11c7b-1adb; Coordinator 01a11cad-17da). pdp-variant-absent drops a variant from a KEPT
@@ -116,6 +123,11 @@ V1_META_DOC = "current"  # demo_meta/current: the legacy dashboard and smoke_dem
 REFUSED_BODIES = {
     "b98194beba185c2f4cfaf211cb055a8ef0b58372bc827e3910011b6dcc673382": "BLM 2026-10-03 export "
     "without per-retailer window keys (re-export it)",
+    # The rejected Ulta replacement v1 (gzip, then content): superseded by v2, never published.
+    "16a23a8f10144a64990beb98d2b95f1fce06d59ba590fddef7137a5f981a29b3": "Ulta replacement v1 "
+    "(rejected: inexact AED money), superseded by v2",
+    "cfb82077564f9c9b1ae3e6f99032ea5303f6a2fc87bd95a87e2f85f0031ed3c2": "Ulta replacement v1 "
+    "(rejected: inexact AED money), superseded by v2",
 }
 PRECONDITION_FAILED = 412  # google.api_core PreconditionFailed.code (if_generation_match)
 # Never ship Algolia credentials: header/param names, or a 32-hex key next to an Algolia hint.
@@ -344,12 +356,25 @@ def beauty_errors(doc: dict[str, Any]) -> list[str]:
     return []
 
 
+def ulta_errors(doc: dict[str, Any]) -> list[str]:
+    """Why a by-source document is not the Ulta-only file (exactly ULTA_SOURCES)."""
+    sources = tuple(sorted(offer_counts(doc)))
+    if sources != ULTA_SOURCES:
+        return [f"ulta separate: offers must come from exactly {ULTA_SOURCES}, not {sources}"]
+    return []
+
+
 def package_v2(
-    dataset: Any, allowed: tuple[str, ...] = PUBLISH_SOURCES, *, beauty: bool = False
+    dataset: Any,
+    allowed: tuple[str, ...] = PUBLISH_SOURCES,
+    *,
+    beauty: bool = False,
+    ulta: bool = False,
 ) -> tuple[bytes, list[str], dict[str, Any], str]:
     """v2 or v3 body (canonical dump), paths under datasets/<country>/<source>, summary, and
     the Firestore doc (``v2_<country>_<source>`` for both: the summary says which schema).
-    ``beauty``: the combined sephora_me+ulta_ae file, under datasets/<country>/beauty."""
+    ``beauty``: the combined sephora_me+ulta_ae file, under datasets/<country>/beauty.
+    ``ulta``: the Ulta-only file, under datasets/<country>/ulta_ae."""
     from pi_dataset import dump_dataset  # noqa: PLC0415
 
     meta = dataset.meta
@@ -361,6 +386,9 @@ def package_v2(
     if beauty:
         errors = beauty_errors(by_source(doc))
         source = None if errors else BEAUTY
+    elif ulta:
+        errors = ulta_errors(by_source(doc))
+        source = None if errors else RETAINED
     else:
         source, errors = publishing_source(by_source(doc), allowed)
     if source is None:
@@ -535,9 +563,10 @@ def versioned_path(paths: list[str], body: bytes) -> str:
     return f"{prefix}/v/{snapshot.removesuffix('.json')}-{sha[:12]}.json"
 
 
-def versioned_outside(path: str, *, beauty: bool = False) -> bool:
-    """A ``--versioned`` target outside datasets/<cc>/<published source, or beauty>/v/."""
-    allowed = (*PUBLISH_SOURCES, BEAUTY) if beauty else PUBLISH_SOURCES
+def versioned_outside(path: str, *, beauty: bool = False, ulta: bool = False) -> bool:
+    """A ``--versioned`` target outside datasets/<cc>/<published source, or beauty>/v/; with
+    ``ulta``, outside datasets/<cc>/ulta_ae/v/ (never beauty/ or another source)."""
+    allowed = ULTA_SOURCES if ulta else (*PUBLISH_SOURCES, BEAUTY) if beauty else PUBLISH_SOURCES
     pattern = rf"datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/v/[^/]+\.json"
     return re.fullmatch(pattern, path) is None
 
@@ -777,6 +806,12 @@ def build_parser() -> argparse.ArgumentParser:
         "ONLY on the owner's P1 answer (form 01a11c72-16e3)",
     )
     parser.add_argument(
+        "--allow-ulta-separate",
+        action="store_true",
+        help="with --versioned: the ulta_ae-only file to a new ulta_ae/v/ object "
+        "(owner A2 ruling, task 01a1209d-f9b4)",
+    )
+    parser.add_argument(
         "--reconciled-removals",
         type=Path,
         metavar="FILE",
@@ -814,6 +849,11 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     beauty = args.allow_beauty_versioned
     if beauty and not args.versioned:
         parser.error("--allow-beauty-versioned needs --versioned")
+    ulta = args.allow_ulta_separate
+    if ulta and not args.versioned:
+        parser.error("--allow-ulta-separate needs --versioned")
+    if ulta and beauty:
+        parser.error("--allow-ulta-separate and --allow-beauty-versioned are separate targets")
     if args.reconciled_removals and not beauty:
         parser.error("--reconciled-removals needs --allow-beauty-versioned")
     raw = args.path.read_text(encoding="utf-8")
@@ -836,7 +876,13 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     else:
         check = validate_v3 if doc["schema"] == SCHEMA_V3 else validate_v2
         dataset, errors = check(raw, allow_test=args.allow_test)
-        errors += beauty_errors(by_source(doc)) if beauty else publishing_source(by_source(doc))[1]
+        sources = by_source(doc)
+        if beauty:
+            errors += beauty_errors(sources)
+        elif ulta:
+            errors += ulta_errors(sources)
+        else:
+            errors += publishing_source(sources)[1]
     if errors:
         for err in errors[:50]:
             print(f"INVALID: {err}", file=sys.stderr)
@@ -846,12 +892,12 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
         source, meta_doc = V1_SOURCE, V1_META_DOC
         packaged = v1_by_source(json.loads(gzip.decompress(body)))
     else:
-        body, paths, summary, meta_doc = package_v2(dataset, beauty=beauty)
+        body, paths, summary, meta_doc = package_v2(dataset, beauty=beauty, ulta=ulta)
         source = str(summary["source"])
         # The guard judges exactly what is uploaded.
         packaged = by_source(json.loads(gzip.decompress(body)))
-    # belt and braces: the packagers build these (beauty is held to versioned_outside below)
-    if not beauty and (outside := outside_prefixes(paths, v1=v1)):
+    # belt and braces: the packagers build these (beauty and ulta: versioned_outside below)
+    if not (beauty or ulta) and (outside := outside_prefixes(paths, v1=v1)):
         print(f"refusing: writes outside the source prefixes: {outside}", file=sys.stderr)
         return 1
     if reason := refused_body(args.path.read_bytes(), gzip.decompress(body)):
@@ -862,7 +908,7 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
         datasets, problems = repoint(
             args.live_datasets, list(BEAUTY_SOURCES) if beauty else [source], target
         )
-        if versioned_outside(target, beauty=beauty):
+        if versioned_outside(target, beauty=beauty, ulta=ulta):
             problems.append(f"{target} is outside the versioned prefixes")
         if problems:
             for problem in problems:
@@ -880,7 +926,7 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     live_path = paths[-1]
     if args.versioned:
         live_path = served_path(args.live_datasets, RETAINED if beauty else source) or live_path
-        for guarded in (RETAINED, GUARDED) if beauty else ():
+        for guarded in (RETAINED, GUARDED) if beauty else (RETAINED,) if ulta else ():
             if served_path(args.live_datasets, guarded) is None:
                 print(f"refusing: the live PI_API_DATASETS serves no {guarded}", file=sys.stderr)
                 return 1
@@ -889,7 +935,7 @@ def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after a
     sephora_path = served_path(args.live_datasets or "", GUARDED) if beauty else None
 
     def judge(live: dict[str, Any] | None, sephora: dict[str, Any] | None = None) -> int:
-        if beauty:
+        if beauty or ulta:
             new = json.loads(gzip.decompress(body))
             problems = retention_problems(live, new, removals)
             if sephora is not None:

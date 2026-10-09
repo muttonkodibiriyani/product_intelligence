@@ -18,7 +18,7 @@ import publish_dataset
 import pytest
 from test_publish_dataset import Blob
 from test_publish_dataset import Bucket as _Bucket
-from test_publish_source_guard import EXAMPLE, sephora_only
+from test_publish_source_guard import EXAMPLE, _without, sephora_only
 
 LIVE = (
     "sephora_me=datasets/ae/beauty/latest.json,ulta_ae=datasets/ae/beauty/latest.json,"
@@ -555,3 +555,159 @@ def test_check_served_holds_a_set_with_no_window_at_all(
     captured = capsys.readouterr()
     assert "HOLD, no retailer in the served set has a crawl window" in captured.err
     assert "withheld" not in captured.out
+
+
+# ------------------------------------------------------------------ --allow-ulta-separate
+LIVE_ULTA_TARGET = "datasets/ae/ulta_ae/v/"
+
+
+def ulta_only() -> str:
+    """The ae-pilot example reduced to its south retailer, renamed ulta_ae: the beauty file's
+    Ulta offers alone, so the keys-only retention against the live beauty body passes."""
+    doc = _without(json.loads(EXAMPLE.read_text(encoding="utf-8")), "example_north_ae")
+    doc["products"] = [p for p in doc["products"] if p.get("offers")]
+    return json.dumps(doc).replace("example_south_ae", "ulta_ae")
+
+
+def ulta_argv(path: Path, *extra: str, live: str = LIVE) -> list[str]:
+    return [
+        str(path),
+        "--project",
+        "p",
+        "--allow-test",
+        "--versioned",
+        "--live-datasets",
+        live,
+        "--allow-ulta-separate",
+        *extra,
+    ]
+
+
+def test_the_ulta_flag_needs_versioned_and_is_not_beauty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    new = tmp_path / "new.json"
+    new.write_text(ulta_only(), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        run([str(new), "--project", "p", "--allow-test", "--allow-ulta-separate"], monkeypatch)
+    with pytest.raises(SystemExit):
+        run([*ulta_argv(new), "--allow-beauty-versioned"], monkeypatch)
+    with pytest.raises(SystemExit):
+        run([*ulta_argv(new), "--reconciled-removals", str(tmp_path / "r.csv")], monkeypatch)
+
+
+def test_an_ulta_file_without_the_flag_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    new = tmp_path / "new.json"
+    new.write_text(ulta_only(), encoding="utf-8")
+    argv = [str(new), "--project", "p", "--allow-test", "--dry-run", "--versioned"]
+    assert run([*argv, "--live-datasets", LIVE], monkeypatch) == 1
+    assert "INVALID" in capsys.readouterr().err
+
+
+def test_the_ulta_flag_accepts_exactly_ulta() -> None:
+    assert publish_dataset.ulta_errors(publish_dataset.by_source(json.loads(ulta_only()))) == []
+    assert publish_dataset.ulta_errors(publish_dataset.by_source(beauty_doc()))
+    assert publish_dataset.ulta_errors(publish_dataset.by_source(json.loads(sephora_only())))
+
+
+def test_an_ulta_target_is_only_ulta_ae_v() -> None:
+    outside = publish_dataset.versioned_outside
+    assert not outside("datasets/ae/ulta_ae/v/20260930T000000Z-abc.json", ulta=True)
+    for path in (
+        "datasets/ae/beauty/v/20260930T000000Z-abc.json",
+        "datasets/ae/beauty/latest.json",
+        "datasets/ae/sephora_me/v/20260930T000000Z-abc.json",
+        "datasets/ae/ulta_ae/latest.json",
+        "datasets/ae/ulta_ae/20260930T000000Z.json",
+    ):
+        assert outside(path, ulta=True), path
+    # the other modes never write ulta_ae
+    assert outside("datasets/ae/ulta_ae/v/x.json")
+    assert outside("datasets/ae/ulta_ae/v/x.json", beauty=True)
+
+
+def test_an_ulta_publish_writes_only_a_new_ulta_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    new = tmp_path / "new.json"
+    new.write_text(ulta_only(), encoding="utf-8")
+    bucket = Bucket()
+    stored(bucket, LIVE_BEAUTY, beauty_doc())
+    before = dict(bucket.stored)
+    written = fake_firebase(monkeypatch, bucket)
+    assert run(ulta_argv(new), monkeypatch) == 0
+    [target] = bucket.uploads
+    assert target.startswith(LIVE_ULTA_TARGET)
+    assert {k: v for k, v in bucket.stored.items() if k != target} == before
+    assert written == []
+    uploaded = json.loads(gzip.decompress(bucket.stored[target]))
+    counts = publish_dataset.offer_counts(publish_dataset.by_source(uploaded))
+    assert set(counts) == {"ulta_ae"}  # no Sephora rows
+    out = capsys.readouterr().out
+    assert "retention ulta_ae: live 2 new 2 reconciled 0" in out
+    assert out.strip().endswith(
+        f"sephora_me={LIVE_BEAUTY},ulta_ae={target},faces_ae=datasets/ae/faces_ae/latest.json"
+    )
+
+
+def test_an_ulta_publish_with_a_dropped_live_offer_uploads_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    doc = json.loads(ulta_only())
+    doc["products"] = doc["products"][1:]
+    new = tmp_path / "new.json"
+    new.write_text(json.dumps(doc), encoding="utf-8")
+    bucket = Bucket()
+    stored(bucket, LIVE_BEAUTY, beauty_doc())
+    fake_firebase(monkeypatch, bucket)
+    assert run(ulta_argv(new), monkeypatch) == 1
+    assert bucket.uploads == []
+    assert "1 live ulta_ae offers missing" in capsys.readouterr().err
+
+
+def test_an_ulta_publish_refuses_without_a_live_ulta_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    new = tmp_path / "new.json"
+    new.write_text(ulta_only(), encoding="utf-8")
+    bucket = Bucket()
+    fake_firebase(monkeypatch, bucket)
+    live = "sephora_me=datasets/ae/beauty/latest.json"
+    assert run(ulta_argv(new, live=live), monkeypatch) == 1
+    assert bucket.uploads == []
+    assert "serves no ulta_ae" in capsys.readouterr().err
+    assert run(ulta_argv(new), monkeypatch) == 1  # served, but no body there to check
+    assert bucket.uploads == []
+    assert "no live ulta_ae body" in capsys.readouterr().err
+
+
+def test_an_ulta_publish_never_overwrites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    new = tmp_path / "new.json"
+    new.write_text(ulta_only(), encoding="utf-8")
+    dataset, _ = publish_dataset.validate_v2(ulta_only(), allow_test=True)
+    body, paths, _, _ = publish_dataset.package_v2(dataset, ulta=True)
+    target = publish_dataset.versioned_path(paths, body)
+    bucket = Bucket()
+    stored(bucket, LIVE_BEAUTY, beauty_doc())
+    bucket.stored[target] = b"someone else's bytes"
+    fake_firebase(monkeypatch, bucket)
+    assert run(ulta_argv(new), monkeypatch) == 1
+    assert bucket.stored[target] == b"someone else's bytes"
+    assert "already exists with different content" in capsys.readouterr().err
+    # and a target the live revision already serves is refused before any upload
+    live = f"sephora_me={LIVE_BEAUTY},ulta_ae={target}"
+    stored(bucket, target, json.loads(ulta_only()))
+    assert run(ulta_argv(new, live=live), monkeypatch) == 1
+    assert "already in the live PI_API_DATASETS" in capsys.readouterr().err
+
+
+def test_the_rejected_ulta_v1_body_is_refused() -> None:
+    for sha in (
+        "16a23a8f10144a64990beb98d2b95f1fce06d59ba590fddef7137a5f981a29b3",
+        "cfb82077564f9c9b1ae3e6f99032ea5303f6a2fc87bd95a87e2f85f0031ed3c2",
+    ):
+        assert "Ulta replacement v1" in publish_dataset.REFUSED_BODIES[sha]
