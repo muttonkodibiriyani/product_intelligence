@@ -363,6 +363,7 @@
     "offline_audit": "In-store audit"
   },
   "product": {
+    "gtinAbsent": "GTIN",
     "missingId": "No product was given. Open a product from the list.",
     "loading": "Loading product…",
     "back": "Back to products",

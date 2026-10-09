@@ -522,7 +522,12 @@ function Gallery({ o }: { o: Offer }) {
       </span>
       <span className="mt-1 block text-xs text-ink-2">
         {t('imageCount', { count: items.length, n: formatCount(items.length, locale) })}
-        {source && <> · {t(`imageSource.${source}`)}</>}
+        {source && (
+          <>
+            {' · '}
+            <Known t={t} k="imageSource" v={source} />
+          </>
+        )}
       </span>
     </>
   );
@@ -544,12 +549,20 @@ function Variants({ o }: { o: Offer }) {
             {v.shade.state === 'observed' ? (
               <bdi>{v.shade.text}</bdi>
             ) : (
-              <span className="text-ink-2">{t(`content.${v.shade.state}`)}</span>
+              <span className="text-ink-2">
+                <Known t={t} k="content" v={v.shade.state} />
+              </span>
             )}
             <bdi dir="ltr" className="block font-mono text-xs break-all text-ink-2">
               {v.sku}
-              {v.gtin.state === 'observed' && ` · ${v.gtin.barcode}`}
+              {v.gtin.state === 'observed' && v.gtin.barcode && ` · ${v.gtin.barcode}`}
             </bdi>
+            {!(v.gtin.state === 'observed' && v.gtin.barcode) && (
+              <span data-gtin-state={v.gtin.state} className="block text-xs text-ink-3">
+                {t('gtinAbsent')}:{' '}
+                <Known t={t} k="content" v={v.gtin.state === 'observed' ? 'not_published' : v.gtin.state} />
+              </span>
+            )}
           </li>
         ))}
       </ul>
