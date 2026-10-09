@@ -701,6 +701,34 @@
     "newInHint": "First seen at the shop in this window.",
     "pending": "{shop} is not included yet: {n} of {min, plural, one {# collection day} other {# collection days}}."
   },
+  "listing": {
+    "absence": {
+      "notInList": "Not in {shop}'s list on {date}",
+      "notInFirst": "{count, plural, one {Not in the first position captured} other {Not in the first {n} positions captured}}",
+      "notObserved": "Not observed"
+    },
+    "stop": {
+      "end": "Read to the end of the list.",
+      "cap": "Stopped at the page limit; the last page read was still full.",
+      "no_products": "No product could be read from the first page.",
+      "empty_page": "A later page showed no product we could read.",
+      "repeat": "The site served the same page again.",
+      "robots_page1": "The retailer's robots.txt allows page 1 only.",
+      "page1_ssr": "Only the first page is read.",
+      "block": "The retailer blocked the read.",
+      "error": "A page failed to load.",
+      "pending": "The next page is not read yet.",
+      "not_read": "This list was not read."
+    },
+    "listedOnly": "Listed, details not observed",
+    "listedAt": "Position {position}, page {page}",
+    "signal": {
+      "flag": "Retailer flag: {text}",
+      "newIn": "New-in list, position {position} on page {page}, read {time} UTC",
+      "firstSeen": "First seen {date}"
+    },
+    "arNotCaptured": "The Arabic text was not captured for this product."
+  },
   "retailerChecks": {
     "legend": "Retailers",
     "hint": "None ticked shows every retailer."
