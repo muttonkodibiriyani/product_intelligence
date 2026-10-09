@@ -5,7 +5,7 @@ description = "Competitive product and price intelligence platform (workspace ro
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["pi-capture", "pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-profiles", "pi-metrics", "pi-api", "pi-image", "pi-similar"]
+dependencies = ["pi-capture", "pi-compare", "pi-connector-ulta", "pi-core", "pi-dataset", "pi-db", "pi-fetch", "pi-match", "pi-profiles", "pi-metrics", "pi-api", "pi-image", "pi-similar"]
 
 [tool.uv]
 package = false
@@ -15,6 +15,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 pi-capture = { workspace = true }
+pi-compare = { workspace = true }
 pi-connector-ulta = { workspace = true }
 pi-core = { workspace = true }
 pi-dataset = { workspace = true }
@@ -74,6 +75,7 @@ warn_unreachable = true
 plugins = ["pydantic.mypy"]
 mypy_path = [
   "packages/pi_capture/src",
+  "packages/pi_compare/src",
   "packages/pi_core/src",
   "packages/pi_connector_ulta/src",
   "packages/pi_dataset/src",
@@ -111,6 +113,8 @@ files = [
   "packages/pi_capture/scripts",
   "packages/pi_capture/src",
   "packages/pi_capture/tests",
+  "packages/pi_compare/src",
+  "packages/pi_compare/tests",
   "packages/pi_core/src",
   "packages/pi_core/tests",
   "packages/pi_connector_ulta/src",
@@ -196,7 +200,7 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = [
-  "pi_capture", "pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe",
+  "pi_capture", "pi_compare", "pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe",
   "pi_match", "pi_metrics", "offline_import", "pi_api", "pi_profiles", "page_capture",
   "browser_capture", "capture_read", "pi_similar", "uae_collect",
 ]
