@@ -557,17 +557,18 @@ def upload(bucket: Any, paths: list[str], body: bytes, latest_generation: int | 
 
 def versioned_path(paths: list[str], body: bytes) -> str:
     """The create-only path a ``--versioned`` publish writes: ``<prefix>/v/<cutoff>-<sha12>.json``,
-    keyed by the gunzipped body pi_api parses, so a different body never lands on a used path."""
+    keyed by the gunzipped body pi_api parses, so a different body never lands on a used path.
+    Lowercase: pi_api's config accepts only lowercase object paths (``pi_api.config._OBJECT``)."""
     prefix, snapshot = paths[0].rsplit("/", 1)
     sha = hashlib.sha256(gzip.decompress(body)).hexdigest()
-    return f"{prefix}/v/{snapshot.removesuffix('.json')}-{sha[:12]}.json"
+    return f"{prefix}/v/{snapshot.removesuffix('.json')}-{sha[:12]}.json".lower()
 
 
 def versioned_outside(path: str, *, beauty: bool = False, ulta: bool = False) -> bool:
     """A ``--versioned`` target outside datasets/<cc>/<published source, or beauty>/v/; with
     ``ulta``, outside datasets/<cc>/ulta_ae/v/ (never beauty/ or another source)."""
     allowed = ULTA_SOURCES if ulta else (*PUBLISH_SOURCES, BEAUTY) if beauty else PUBLISH_SOURCES
-    pattern = rf"datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/v/[^/]+\.json"
+    pattern = rf"datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/v/[a-z0-9_.-]+\.json"
     return re.fullmatch(pattern, path) is None
 
 

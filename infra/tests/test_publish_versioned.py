@@ -94,11 +94,23 @@ def test_a_versioned_path_is_new_per_body_and_never_latest() -> None:
     body, paths, _, _ = publish_dataset.package_v2(dataset)
     target = publish_dataset.versioned_path(paths, body)
     sha = hashlib.sha256(gzip.decompress(body)).hexdigest()
-    assert target == f"datasets/ae/sephora_me/v/20260930T000000Z-{sha[:12]}.json"
+    assert target == f"datasets/ae/sephora_me/v/20260930t000000z-{sha[:12]}.json"
     assert not publish_dataset.versioned_outside(target)
     assert publish_dataset.versioned_outside("datasets/ae/sephora_me/latest.json")
     assert publish_dataset.versioned_outside("datasets/ae/beauty/v/x.json")
     assert not publish_dataset.versioned_outside("datasets/ae/beauty/v/x.json", beauty=True)
+
+
+def test_a_versioned_path_is_one_pi_api_will_serve() -> None:
+    from pi_api.config import _OBJECT  # noqa: PLC0415 (the serving rule itself)
+
+    for doc, ulta in ((sephora_only(), False), (ulta_only(), True)):
+        dataset, _ = publish_dataset.validate_v2(doc, allow_test=True)
+        body, paths, _, _ = publish_dataset.package_v2(dataset, ulta=ulta)
+        target = publish_dataset.versioned_path(paths, body)
+        assert _OBJECT.fullmatch(target), target
+        assert not publish_dataset.versioned_outside(target, ulta=ulta)
+    assert publish_dataset.versioned_outside("datasets/ae/sephora_me/v/20260930T000000Z-a.json")
 
 
 def test_repoint_moves_only_the_published_sources() -> None:
@@ -614,8 +626,9 @@ def test_the_ulta_flag_accepts_exactly_ulta() -> None:
 
 def test_an_ulta_target_is_only_ulta_ae_v() -> None:
     outside = publish_dataset.versioned_outside
-    assert not outside("datasets/ae/ulta_ae/v/20260930T000000Z-abc.json", ulta=True)
+    assert not outside("datasets/ae/ulta_ae/v/20260930t000000z-abc.json", ulta=True)
     for path in (
+        "datasets/ae/ulta_ae/v/20260930T000000Z-abc.json",
         "datasets/ae/beauty/v/20260930T000000Z-abc.json",
         "datasets/ae/beauty/latest.json",
         "datasets/ae/sephora_me/v/20260930T000000Z-abc.json",
