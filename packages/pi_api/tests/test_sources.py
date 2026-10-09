@@ -89,6 +89,9 @@ def test_a_composed_source_cutoff_is_its_own_latest_capture(tmp_path: Path) -> N
     combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
     for product in combined["products"]:
         product["offers"][ULTA]["evidence"]["capturedAt"] = "2026-09-21T12:00:00Z"
+    for r in combined["meta"]["retailers"]:  # Ulta's window covers its own captures (ADR-0013)
+        if r["id"] == ULTA:
+            r["window"]["start"] = "2026-09-21T12:00:00Z"
     write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
     write(tmp_path, snapshot({"p1": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
     source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)

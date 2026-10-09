@@ -15,14 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from api_fixture import DATASET_PATH, make_client, served_dataset
+from api_fixture import DATASET_PATH, make_client, own_keys, served_dataset
 from pi_api.config import Settings, admitted_entries, memory_mib
 from pi_api.source import LocalStore, SnapshotSource
 from pi_dataset import admission_sha256, dump_dataset
 from pi_dataset import gate as rule
 
-UNIT = 20_000
-COMPACT = dump_dataset(served_dataset(), compact=True)
+UNIT = 25_000
+COMPACT = dump_dataset(own_keys(served_dataset()), compact=True)
 OTHER = "datasets/ae/faces/latest.json"
 ENV = {"PI_API_DATASETS": DATASET_PATH, "PI_API_LOCAL_DIR": ".", "PI_API_FIREBASE_PROJECT": "p"}
 

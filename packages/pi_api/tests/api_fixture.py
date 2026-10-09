@@ -6,6 +6,7 @@ Nothing here touches the network: certificates come from ``FakeCerts`` and the d
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -28,6 +29,7 @@ from pi_api.catalogue import CatalogueSource
 from pi_api.source import LocalStore, SnapshotSource
 from pi_dataset import Dataset, DatasetV3, dump_dataset
 from pi_dataset.gate import DEFAULT_MEMORY_MIB
+from pi_metrics.view import as_v3
 
 PROJECT = "pi-test-project"
 KID = "test-kid"
@@ -97,10 +99,42 @@ def served_dataset() -> Dataset:
     return rebuild(metrics_dataset(), test=False)
 
 
-def write(root: Path, dataset: Dataset | DatasetV3, path: str = DATASET_PATH) -> None:
+def own_keys(ds: Dataset | DatasetV3) -> DatasetV3:
+    """``ds`` as the exporter writes it (ADR-0013): v3, each retailer with its own fields and
+    capabilities (the file's, where the fixture has no other)."""
+    v3 = as_v3(ds)
+    m = v3.meta
+    retailers = tuple(
+        r
+        if r.fields is not None and r.capabilities is not None
+        else r.model_copy(update={"fields": dict(m.fields), "capabilities": m.capabilities})
+        for r in m.retailers
+    )
+    return v3.model_copy(update={"meta": m.model_copy(update={"retailers": retailers})})
+
+
+def windowed(ds: Dataset | DatasetV3) -> DatasetV3:
+    """``own_keys(ds)`` with every retailer's crawl window at the cutoff, as a fresh export
+    carries it, so ``PI_API_REQUIRE_ALL`` passes the window guard."""
+    d: dict[str, Any] = json.loads(dump_dataset(own_keys(ds)))
+    cutoff = d["meta"]["cutoff"]
+    for r in d["meta"]["retailers"]:
+        r["window"] = {"start": cutoff, "end": cutoff, "runId": "run-fixture"}
+    for product in d["products"]:
+        for offer in (o for o in product["offers"].values() if not o["early"]):
+            offer["evidence"] |= {"capturedAt": cutoff, "runId": "run-fixture"}  # #302 rule (c)
+    return DatasetV3.model_validate(d)
+
+
+def write(
+    root: Path, dataset: Dataset | DatasetV3, path: str = DATASET_PATH, *, legacy: bool = False
+) -> None:
+    """Store ``dataset`` as the exporter writes it; ``legacy`` stores it as given, so a file of
+    several retailers without their own keys (from before ADR-0013) can be tested."""
     target = root / path
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(dump_dataset(dataset))
+    several = len(dataset.meta.retailers) > 1
+    target.write_bytes(dump_dataset(own_keys(dataset) if several and not legacy else dataset))
 
 
 class Client:

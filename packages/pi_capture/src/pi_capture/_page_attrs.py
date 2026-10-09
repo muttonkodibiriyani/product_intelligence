@@ -1,5 +1,5 @@
 """Page attributes shared by the retailer readers: HTML fragments to text and bullet lines, the
-ingredient-list test, enum and colour checks.
+ingredient-list test, enum, colour and go-live date checks.
 
 Every reader names the fields it reads; nothing here walks a page object, so a key the reader
 does not name (unit cost, merchandising scores, API keys) can never become a reading.
@@ -10,11 +10,21 @@ from __future__ import annotations
 import html
 import re
 from collections.abc import Iterable, Mapping
+from datetime import date, datetime
 from typing import Final
+from zoneinfo import ZoneInfo
 
 from pi_capture.generic import _Emitter
 
-__all__ = ["emit_bullets", "emit_enum", "emit_hex", "emit_inci", "emit_texts", "html_lines"]
+__all__ = [
+    "emit_bullets",
+    "emit_enum",
+    "emit_hex",
+    "emit_inci",
+    "emit_live_date",
+    "emit_texts",
+    "html_lines",
+]
 
 _TAG = re.compile(r"<[^>]+>")
 _BREAK = re.compile(r"<\s*(?:/?\s*(?:li|p|div|ul|ol)|br)\b[^>]*>", re.I)
@@ -22,6 +32,12 @@ _SPACE = re.compile(r"\s+")
 _SPACE_BEFORE_MARK = re.compile(r"\s+([,.;:!?])")  # left by a removed tag: "<b>x</b>, y"
 _BULLET = re.compile(r"^[•\-\u2013*]\s*")
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# a moment with its zone: "2022-11-27T21:06:05.000Z", "2025-06-30T03:59:09+04:00"
+_MOMENT = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$"
+)
+_MARKET_ZONE: Final = ZoneInfo("Asia/Dubai")
 
 # An INCI list names these; a list of fragrance notes, actives with claims or a placeholder does
 # not. Kept short and generic: one of them in the first items is enough.
@@ -131,6 +147,31 @@ def emit_hex(em: _Emitter, value: object, path: str) -> None:
         em.failed("colour_hex", value, path, "not a #RRGGBB colour")
     else:
         em.observed("colour_hex", value, value.strip().upper(), path)
+
+
+def emit_live_date(em: _Emitter, value: object, path: str, note: str) -> None:
+    """``listing_live_date``: the retailer go-live date it publishes for its own listing, as an
+    ISO date. A bare date is kept as published; a moment with a zone becomes its date in
+    Asia/Dubai. Absent: ``not_shown``. Anything else, a moment without a zone among it, is
+    ``parse_failed``. Never filled from today, ``first_seen`` or our own ``launch_date``."""
+    key = "listing_live_date"
+    if value is None or (isinstance(value, str) and not value.strip()):
+        em.not_shown(key, f"the page object carries no {path.rsplit('.', 1)[-1]}")
+        return
+    if not isinstance(value, str):
+        em.failed(key, str(value), path, "not a date string")
+        return
+    raw = value.strip()
+    try:
+        if _DATE.match(raw):
+            em.observed(key, raw, date.fromisoformat(raw).isoformat(), path, note)
+        elif _MOMENT.match(raw):
+            local = datetime.fromisoformat(raw).astimezone(_MARKET_ZONE).date()
+            em.observed(key, raw, local.isoformat(), path, f"{note}; date in Asia/Dubai")
+        else:
+            em.failed(key, raw, path, "not an ISO date or a moment with its zone")
+    except ValueError:
+        em.failed(key, raw, path, "not a calendar date")
 
 
 def _norm(value: str) -> str:

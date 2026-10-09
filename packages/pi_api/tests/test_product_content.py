@@ -133,11 +133,16 @@ def test_a_gallery_with_no_url_on_an_allowed_host_reads_not_captured(tmp_path: P
 
 
 def test_a_v3_snapshot_from_before_content_still_serves_not_captured(tmp_path: Path) -> None:
-    """main's own v3 at 66bc083, unchanged: it validates, and every field is not_captured."""
+    """main's own v3 at 66bc083, with only each retailer's own fields and capabilities added
+    (ADR-0013: a file of several retailers needs them): it validates, and every field is
+    not_captured."""
     target = tmp_path / DATASET_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(OLD_V3.read_bytes())
     assert "content" not in OLD_V3.read_text()
+    old = json.loads(OLD_V3.read_text())
+    for r in old["meta"]["retailers"]:
+        r |= {"fields": old["meta"]["fields"], "capabilities": old["meta"]["capabilities"]}
+    target.write_text(json.dumps(old))
     client = make_client(tmp_path, image_hosts=HOSTS)[0]
     for content in contents(client).values():
         assert set(states(content).values()) == {"not_captured"}

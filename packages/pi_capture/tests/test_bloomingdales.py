@@ -288,3 +288,151 @@ def test_unit_cost_merchandising_scores_and_keys_never_reach_readings_or_the_fee
         assert forbidden not in rows_text
         assert forbidden not in readings_text
     assert not any("cost" in key for key in feed.rows[0])
+
+
+def test_the_published_live_date_is_read_as_published() -> None:
+    got = _by_key(
+        readings_from_bloomingdales(_page(_product(c_prd_live_date="2025-05-25")), locale="en-AE")
+    )
+    live = got["listing_live_date"]
+    assert (live.state, live.raw_text, live.value) == ("observed", "2025-05-25", "2025-05-25")
+    assert live.source_path == "productData.c_prd_live_date"
+    assert "launch_date" not in got
+    assert "first_seen" not in got
+
+
+@pytest.mark.parametrize(
+    ("value", "state"),
+    [
+        (None, "not_shown"),
+        (" ", "not_shown"),
+        ("2025-13-01", "parse_failed"),
+        ("May 25", "parse_failed"),
+    ],
+)
+def test_a_missing_or_unreadable_live_date_is_explicit(value: object, state: str) -> None:
+    got = _by_key(
+        readings_from_bloomingdales(_page(_product(c_prd_live_date=value)), locale="en-AE")
+    )
+    assert (got["listing_live_date"].state, got["listing_live_date"].value) == (state, None)
+
+
+_PICKUP_NOTE = "retailer payload flag; whether the page displays it is unverified"
+
+
+def _store(name: Any = "Bloomingdale's - Dubai Mall", **over: Any) -> dict[str, Any]:
+    store: dict[str, Any] = {
+        "ID": "country_store_pickup",
+        "name": name,
+        "available": False,
+        "clickAndCollectEnabled": True,
+        "inventoryListId": "uae-storepickup",
+        "stockLevel": 7,
+    }
+    return store | over
+
+
+def _variant(pickup: Any, pid: str = "900000101") -> dict[str, Any]:
+    va = {"pid": pid, "availableForInStorePickup": pickup, "availability": {"availableQuantity": 9}}
+    return {"variantId": pid, "c_variant_availability": [va]}
+
+
+def _pickup(**over: Any) -> Reading:
+    got = _by_key(readings_from_bloomingdales(_page(_product(**over)), locale="en-AE"))
+    return got["store_availability"]
+
+
+def test_store_pickup_is_read_per_click_and_collect_store_and_agrees_with_the_product() -> None:
+    off = _pickup(c_stores=[_store()], c_availableForInStorePickup=False, c_sizes=[_variant(False)])
+    assert (off.state, off.value) == (
+        "observed",
+        [{"store": "Bloomingdale's - Dubai Mall", "pickup_available": False}],
+    )
+    assert (off.raw_text, off.source_path, off.note) == (
+        "Bloomingdale's - Dubai Mall: False",
+        "productData.c_stores[]",
+        _PICKUP_NOTE,
+    )
+    stores = [_store(available=True), _store("Closed Store", clickAndCollectEnabled=False)]
+    on = _pickup(c_stores=stores, c_availableForInStorePickup=True, c_sizes=[_variant(True)])
+    assert on.value == [{"store": "Bloomingdale's - Dubai Mall", "pickup_available": True}]
+    # another variant's flag is not this page's
+    other = _pickup(c_stores=[_store()], c_sizes=[_variant(True, pid="900000999")])
+    assert (other.state, other.value) == (
+        "observed",
+        [{"store": "Bloomingdale's - Dubai Mall", "pickup_available": False}],
+    )
+
+
+def test_a_product_or_variant_pickup_flag_that_disagrees_with_the_stores_is_parse_failed() -> None:
+    for over in (
+        {"c_availableForInStorePickup": True},
+        {"c_sizes": [_variant(True)]},
+        {"c_availableForInStorePickup": False, "c_sizes": [_variant(True)]},
+    ):
+        r = _pickup(c_stores=[_store()], **over)
+        assert (r.state, r.value, r.raw_text) == (
+            "parse_failed",
+            None,
+            "Bloomingdale's - Dubai Mall: False",
+        ), over
+        assert "but the stores' available flags say False" in (r.note or "")
+    bad = _pickup(c_stores=[_store(available="yes")])
+    assert (bad.state, bad.value) == ("parse_failed", None)
+    nameless = _pickup(c_stores=[_store(name=" ")])
+    assert (nameless.state, nameless.value) == ("parse_failed", None)
+    odd = _pickup(c_stores={"name": "x", "stockLevel": 7})
+    assert (odd.state, odd.raw_text, odd.note) == ("parse_failed", "dict", "c_stores is not a list")
+
+
+def test_a_malformed_store_entry_makes_the_whole_value_parse_failed() -> None:
+    valid = _store(available=True)
+    cases: list[tuple[list[Any], str, str]] = [
+        (["Dubai Mall"], "str", "a c_stores entry that is not a store"),
+        ([7], "int", "a c_stores entry that is not a store"),
+        ([valid, None], "NoneType", "a c_stores entry that is not a store"),
+    ]
+    for enabled in ("true", 1, None):
+        raw = f'"Bloomingdale\'s - Dubai Mall": clickAndCollectEnabled={enabled!r}'
+        cases.append(([_store(clickAndCollectEnabled=enabled)], raw, ""))
+    missing = {k: v for k, v in _store().items() if k != "clickAndCollectEnabled"}
+    cases.append(([missing], '"Bloomingdale\'s - Dubai Mall": clickAndCollectEnabled=None', ""))
+    # one malformed entry beside a valid one: no partial value
+    cases.append(
+        (
+            [valid, _store("Other", clickAndCollectEnabled="yes")],
+            "'Other': clickAndCollectEnabled='yes'",
+            "",
+        )
+    )
+    for stores, raw, note in cases:
+        r = _pickup(c_stores=stores, c_availableForInStorePickup=True)
+        assert (r.state, r.value, r.raw_text) == ("parse_failed", None, raw), stores
+        assert r.note == (note or "a store without a true/false clickAndCollectEnabled")
+
+
+def test_no_store_list_is_not_shown_and_never_a_pickup_false() -> None:
+    cases: list[dict[str, Any]] = [{}, {"c_stores": []}, {"c_stores": None}]
+    for over in cases:
+        r = _pickup(**over)
+        assert (r.state, r.value, r.note) == ("not_shown", None, "no c_stores list"), over
+    closed = [
+        _store(clickAndCollectEnabled=False, available=True),
+        _store("B", clickAndCollectEnabled=False),
+    ]
+    r = _pickup(c_stores=closed)
+    assert (r.state, r.value, r.note) == ("not_shown", None, "no click-and-collect store listed")
+
+
+def test_pickup_is_not_offer_stock_and_store_counts_are_never_read(
+    make_capture: CaptureFactory,
+) -> None:
+    product = _product(c_stores=[_store()], c_sizes=[_variant(False)])
+    readings = readings_from_bloomingdales(_page(product, "InStock"), locale="en-AE")
+    capture = make_capture(readings=tuple(readings), url="https://bloomingdales.ae/p/x")
+    feed = build_feed([capture], SHOPS["bloomingdales_ae"])
+    assert feed.rows[0]["availability"] == "instock"  # pickup False never reads as out of stock
+    pickup = _by_key(readings)["store_availability"]
+    text = json.dumps([pickup.raw_text, pickup.value, pickup.note, pickup.source_path])
+    for hidden in ("stockLevel", "availableQuantity", "ats", "7", "9"):
+        assert hidden not in text

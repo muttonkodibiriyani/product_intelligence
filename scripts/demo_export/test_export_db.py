@@ -27,7 +27,14 @@ from pi_capture.feed import SHOPS, Shop, build_feed, dump_feed, mapping_for
 from pi_capture.model import ProductCapture
 from pi_dataset import dump_dataset
 from pi_db import DATABASE_URL_ENV, alembic_config
-from scripts.demo_export.export import LATEST_LISTINGS_SQL, ListingRow, UltaContext, latest_params
+from scripts.demo_export.export import (
+    LATEST_LISTINGS_SQL,
+    RETENTION_BASELINE_SQL,
+    ListingRow,
+    UltaContext,
+    baseline_report,
+    latest_params,
+)
 from scripts.demo_export.history import RunSpan, read_history
 from scripts.demo_export.v2 import build_dataset_v2
 
@@ -122,7 +129,11 @@ class World:
         price_type: str | None = "full",
         regular: str | None = None,
         evidence: object = None,
+        at: datetime | None = None,
     ) -> None:
+        """One observation at ``hour`` on 1 Oct (UTC), or exactly ``at`` (then one run may read
+        the same listing more than once)."""
+        moment = T0.replace(hour=hour) if at is None else at
         if key not in self.listings:
             self.listings[key] = _id(
                 self.conn,
@@ -136,12 +147,12 @@ class World:
             " price_type, currency, availability_state, field_state, quality_status, evidence_id)"
             " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AED', %s, %s::jsonb, 'accepted', %s)",
             (
-                f"{run}-{key}",
+                f"{run}-{key}" if at is None else f"{run}-{key}-{at.isoformat()}",
                 run,
                 context or self.context,
                 self.listings[key],
-                T0.replace(hour=hour),
-                T0.replace(hour=hour),
+                moment,
+                moment,
                 Decimal(price) if price is not None else None,
                 Decimal(regular) if regular is not None else None,
                 price_type if price is not None else None,
@@ -857,3 +868,231 @@ def test_only_offline_import_evidence_gives_way_to_the_rows_own_time(
         assert (got["evidence_retrieved_at"], got["file_received_at"]) == (None, retrieved)
     captured, _ = ListingRow(**fields).price_capture
     assert captured == (retrieved if dated_by_evidence else T0.replace(hour=1))
+
+
+# ------------------------------------------- crawl windows (--run, ADR-0013; option A stock)
+
+
+def _window(world: World, runs: list[object]) -> dict[str, dict[str, object]]:
+    params = latest_params([world.name], runs=[int(str(r)) for r in runs])
+    rows = world.conn.execute(LATEST_LISTINGS_SQL, params).fetchall()
+    return {str(r["source_listing_key"]): dict(r) for r in rows}
+
+
+def _at(hour: int, minute: int = 0) -> datetime:
+    return T0.replace(hour=hour, minute=minute)  # 1 Oct UTC: Dubai 1 Oct until 20:00Z
+
+
+def test_in_a_window_the_latest_real_same_day_stock_read_wins(conn: Conn) -> None:
+    """Several stock reads on the price's Dubai day: the latest real one; a later blocked read
+    is skipped, never published as out of stock."""
+    world = World(conn)
+    run = world.run("partial", 1)
+    world.observe(run, "A", 1, "80", availability="not_observed")
+    for hour, state in ((2, "in_stock"), (3, "out_of_stock"), (4, "blocked")):
+        world.observe(run, "A", 0, None, availability=state, field_state=STOCK_ONLY, at=_at(hour))
+
+    a = _window(world, [run])["A"]
+    assert (a["price"], a["availability"]) == (Decimal("80"), "out_of_stock")
+    assert (a["stock_observed_at"], a["stock_run_id"]) == (_at(3), run)
+    assert a["retained"] is False
+
+
+def test_in_a_window_another_runs_same_day_stock_read_is_never_used(conn: Conn) -> None:
+    """The Sephora run-2 shape: run 1 reads the page, run 2 the stock, the same Dubai day."""
+    world = World(conn)
+    run_1 = world.run("partial", 1)
+    world.observe(run_1, "A", 1, "80", availability="not_observed")
+    run_2 = world.run("partial", 2)
+    world.observe(run_2, "A", 2, None, availability="out_of_stock", field_state=STOCK_ONLY)
+
+    a = _window(world, [run_1])["A"]
+    assert (a["price"], a["availability"], a["stock_run_id"]) == (
+        Decimal("80"),
+        "not_observed",
+        None,
+    )
+    assert _row(world, "A")["availability"] == "out_of_stock"  # without a window, as before
+
+
+def test_in_a_window_stock_after_dubai_midnight_is_not_the_prices(conn: Conn) -> None:
+    """Price at Dubai 23:59 and stock at 00:01 the next Dubai day, one run: no stock."""
+    world = World(conn)
+    run = world.run("partial", 1)
+    world.observe(run, "A", 0, "80", availability="not_observed", at=_at(19, 59))
+    world.observe(run, "A", 0, None, availability="in_stock", field_state=STOCK_ONLY, at=_at(20, 1))
+
+    a = _window(world, [run])["A"]
+    assert (a["price"], a["availability"], a["stock_run_id"]) == (
+        Decimal("80"),
+        "not_observed",
+        None,
+    )
+
+
+def test_a_listing_the_window_did_not_see_is_retained_from_an_earlier_run(conn: Conn) -> None:
+    """B was seen only by an earlier succeeded run: it is kept with no value (never a removal)
+    and its earlier run as evidence. C, seen only by a run after the window's, is not read."""
+    world = World(conn)
+    earlier = world.run("succeeded", 1)
+    world.observe(earlier, "A", 1, "70")
+    world.observe(earlier, "B", 1, "90", availability="in_stock")
+    window = world.run("partial", 5)
+    world.observe(window, "A", 5, "75")
+    later = world.run("succeeded", 9)
+    world.observe(later, "C", 9, "50")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "B"}
+    a, b = got["A"], got["B"]
+    assert (a["price"], a["run_id"], a["retained"]) == (Decimal("75"), window, False)
+    assert (b["price"], b["regular"], b["availability"]) == (None, None, "not_observed")
+    assert (b["run_id"], b["observed_at"], b["retained"]) == (earlier, _at(1), True)
+    assert b["rating"] is None
+
+
+def _baseline(world: World, runs: list[object]) -> str:
+    params = latest_params([world.name], runs=[int(str(r)) for r in runs])
+    return baseline_report(world.conn.execute(RETENTION_BASELINE_SQL, params).fetchall())
+
+
+def test_only_the_latest_succeeded_run_before_the_window_is_retained(conn: Conn) -> None:
+    """Reviewer 5461503616 item 3, Coordinator 01a11ce2-fd3e: B, seen only by run N-2, is not
+    retained; A, seen by N-1 (the latest succeeded run before the window) and missed by the
+    window, is."""
+    world = World(conn)
+    n2 = world.run("succeeded", 1)
+    world.observe(n2, "B", 1, "90")
+    n1 = world.run("succeeded", 2)
+    world.observe(n1, "A", 2, "70")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "C"}
+    assert (got["A"]["run_id"], got["A"]["retained"]) == (n1, True)
+    assert _baseline(world, [window]) == f"retention {world.name}: baseline succeeded run {n1}"
+
+
+def test_a_partial_run_after_the_baseline_retains_what_it_saw(conn: Conn) -> None:
+    """Coordinator 01a11e38-6cba (A1): B, seen only by a partial N-1 after the succeeded N-2, is
+    retained from N-1 with no value; A is still retained from N-2. The partial run is never the
+    baseline, and the log line says so."""
+    world = World(conn)
+    n2 = world.run("succeeded", 1)
+    world.observe(n2, "A", 1, "70")
+    n1 = world.run("partial", 2)
+    world.observe(n1, "B", 2, "90", availability="in_stock")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "B", "C"}
+    assert (got["A"]["run_id"], got["A"]["retained"]) == (n2, True)
+    b = got["B"]
+    assert (b["run_id"], b["observed_at"], b["retained"]) == (n1, _at(2), True)
+    assert (b["price"], b["regular"], b["availability"], b["rating"]) == (
+        None,
+        None,
+        "not_observed",
+        None,
+    )
+    assert _baseline(world, [window]) == (
+        f"retention {world.name}: baseline succeeded run {n2}; partial runs [{n1}] retain only"
+        " the listings they saw, never the baseline"
+    )
+
+
+def test_a_listing_the_baseline_and_a_later_partial_run_both_saw_keeps_the_newer_evidence(
+    conn: Conn,
+) -> None:
+    """Reviewer 5465016080 (c): A, seen by the succeeded N-2 and again by the partial N-1, is
+    retained once, from N-1 (the newer capture); B, seen only by N-2, keeps N-2's."""
+    world = World(conn)
+    n2 = world.run("succeeded", 1)
+    world.observe(n2, "A", 1, "70")
+    world.observe(n2, "B", 1, "80")
+    n1 = world.run("partial", 2)
+    world.observe(n1, "A", 2, "72")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "B", "C"}
+    a, b = got["A"], got["B"]
+    assert (a["run_id"], a["observed_at"], a["retained"]) == (n1, _at(2), True)
+    assert (b["run_id"], b["observed_at"], b["retained"]) == (n2, _at(1), True)
+    assert (a["price"], a["availability"]) == (None, "not_observed")
+
+
+def test_a_listing_a_later_succeeded_run_did_not_see_is_not_retained(conn: Conn) -> None:
+    """Crawl 01a11e38-d0f3, Coordinator 01a11e38-fd27: P saw L, then the succeeded S (a complete
+    catalogue) did not; S ends L's retention, so L is not retained from P."""
+    world = World(conn)
+    p = world.run("partial", 1)
+    world.observe(p, "L", 1, "90")
+    s = world.run("succeeded", 2)
+    world.observe(s, "A", 2, "70")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "C"}
+    assert (got["A"]["run_id"], got["A"]["retained"]) == (s, True)
+    assert _baseline(world, [window]) == f"retention {world.name}: baseline succeeded run {s}"
+
+
+def test_with_no_succeeded_run_a_partial_run_retains_what_it_saw(conn: Conn) -> None:
+    """The Faces case (Coordinator 01a11e36-b087, 01a11e38-6cba): window run 9, an earlier
+    partial run 6 and no succeeded run. Exactly the listings run 6 saw and run 9 did not are
+    retained, with run 6's capture as evidence and no value from run 6; the window's own listings
+    keep the window's values."""
+    world = World(conn)
+    six = world.run("partial", 1)
+    world.observe(six, "A", 1, "70", availability="in_stock")
+    world.observe(six, "B", 1, "90", availability="in_stock")
+    nine = world.run("succeeded", 5)
+    world.observe(nine, "A", 5, "75")
+    world.observe(nine, "C", 5, "80")
+
+    got = _window(world, [nine])
+    assert set(got) == {"A", "B", "C"}
+    assert [k for k, v in sorted(got.items()) if v["retained"]] == ["B"]
+    a, b = got["A"], got["B"]
+    assert (a["price"], a["run_id"]) == (Decimal("75"), nine)
+    assert (b["run_id"], b["observed_at"]) == (six, _at(1))
+    assert (b["price"], b["regular"], b["availability"], b["rating"]) == (
+        None,
+        None,
+        "not_observed",
+        None,
+    )
+    assert (b["stock_run_id"], b["price_run_id"]) == (None, None)
+    assert _baseline(world, [nine]) == (
+        f"retention {world.name}: baseline none; partial runs [{six}] retain only the listings"
+        " they saw, never the baseline"
+    )
+
+
+def test_with_no_run_before_the_window_nothing_is_retained(conn: Conn) -> None:
+    world = World(conn)
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+    later = world.run("partial", 9)
+    world.observe(later, "D", 9, "60")
+
+    assert set(_window(world, [window])) == {"C"}
+    assert _baseline(world, [window]) == f"retention {world.name}: baseline none (nothing retained)"
+
+
+def test_without_a_window_nothing_is_retained(conn: Conn) -> None:
+    world = World(conn)
+    earlier = world.run("succeeded", 1)
+    world.observe(earlier, "A", 1, "70")
+    rows = conn.execute(LATEST_LISTINGS_SQL, latest_params([world.name])).fetchall()
+    assert [r["retained"] for r in rows] == [False]
+
+
+def test_a_history_day_and_window_runs_do_not_mix() -> None:
+    with pytest.raises(ValueError, match="do not mix"):
+        latest_params(["sephora_me"], day=(T0, T0), runs=[1])
