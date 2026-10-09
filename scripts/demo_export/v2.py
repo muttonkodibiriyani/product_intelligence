@@ -799,7 +799,13 @@ def withhold(
         since = market_date(window.end)
         why = with_since(withheld.why, since)
         after = since + timedelta(days=1)
-        start = after if withheld.alone and after <= until else min(after, day)
+        if withheld.alone and after > until:
+            msg = (
+                f"--withhold-alone: --withhold-until {until} is not after since {since}: "
+                "nothing is withheld"
+            )
+            raise ValueError(msg)
+        start = after if withheld.alone else min(after, day)
         note = {"note": why} if withheld.alone else {}
         out.append(r.model_copy(update={"since": since, **note}))
         entries.append(NotObserved(retailer=r.id, start=start, end=until, categories=None, why=why))

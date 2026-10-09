@@ -168,9 +168,13 @@ def test_without_alone_the_entry_still_starts_on_the_cutoff_day() -> None:
     assert shop.note == NOTE
 
 
-def test_alone_without_until_past_since_keeps_the_cutoff_day_start() -> None:
-    ds = ulta_alone(Withheld(frozenset({"u"}), WHY, OCT_1, alone=True))
-    assert [(n.start, n.end) for n in ds.not_observed] == [(OCT_1, OCT_1)]
+def test_alone_with_until_not_after_since_is_refused() -> None:
+    """No day is both observed and not observed (01a11f65-cfeb, 01a11f76-cebd): until == since
+    leaves nothing to withhold, so the export is refused, never written with an entry on
+    the slice's own day."""
+    message = "--withhold-alone: --withhold-until 2026-10-01 is not after since 2026-10-01"
+    with pytest.raises(ValueError, match=message):
+        ulta_alone(Withheld(frozenset({"u"}), WHY, OCT_1, alone=True))
 
 
 def test_withhold_alone_flags_become_withheld_slots() -> None:
