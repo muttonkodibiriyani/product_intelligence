@@ -459,6 +459,11 @@ revision serves it, and rollback is routing traffic back to the previous revisio
        01a11cad-a1a9).
      - the file's sephora_me offers get the source guard (no live offer lost), against the body
        the live `PI_API_DATASETS` serves sephora_me from.
+   - **Ulta separate target (owner A2 ruling, task 01a1209d-f9b4)** uses `--allow-ulta-separate`
+     instead: an ulta_ae-only body to a new create-only `datasets/<cc>/ulta_ae/v/` object. Only the
+     `ulta_ae=` entry is repointed, so sephora_me keeps its beauty body. The keys-only retention
+     check runs against the body the live value serves ulta_ae from; there is no
+     `--reconciled-removals`. The window guard below still applies to the final value.
    - **Ulta U1 (owner's export) publish gate, both must pass** (Coordinator 01a11c8f-2138): the
      keys-only check above **and** DeepTester's `MODE=retain` (`scratch/wk/ulta-retention-check.py`,
      01a11c8d-e603). Keys-only proves no offer was dropped. MODE=retain proves every offer missing
