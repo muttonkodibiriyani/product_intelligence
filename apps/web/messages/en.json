@@ -27,6 +27,8 @@
     "menu": "Menu",
     "closeMenu": "Close menu",
     "asOf": "Data as of {date}",
+    "retailerLatestPriceData": "Latest {retailer} price data: {date}. Individual offers may be older.",
+    "retailerPriceDateUnknown": "Latest {retailer} price date unavailable; treat prices as stale.",
     "aboutData": "About the data"
   },
   "auth": {
@@ -376,6 +378,10 @@
     "evidence": "Evidence",
     "captured": "Captured {date}",
     "imported": "Imported {date}, capture date unknown",
+    "importDateUnavailable": "Import date unavailable; capture date unknown",
+    "offerPriceAsOf": "{retailer} price data as of {date}",
+    "offerPriceStale": "Stale: {retailer} price data as of {date}",
+    "offerPriceDateUnavailable": "Stale: {retailer} price date unavailable",
     "source": "Open page",
     "noSource": "No page link",
     "early": "New listing: not in comparisons yet",
