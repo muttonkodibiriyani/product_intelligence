@@ -8,6 +8,8 @@ from pi_compare.models import (
     AttributeSpec,
     Axis,
     AxisValue,
+    CaptureCompleteness,
+    ComparisonProjection,
     Discount,
     DiscountResult,
     EvidencePointer,
@@ -20,6 +22,7 @@ from pi_compare.models import (
 )
 from pi_compare.normalise import discount, normalise_size, normalise_text_axis
 from pi_compare.presence import retailer_cell
+from pi_compare.projection import build_projection
 
 __all__ = [
     "AttributeCell",
@@ -28,6 +31,8 @@ __all__ = [
     "AttributeSpec",
     "Axis",
     "AxisValue",
+    "CaptureCompleteness",
+    "ComparisonProjection",
     "Discount",
     "DiscountResult",
     "EvidencePointer",
@@ -37,6 +42,7 @@ __all__ = [
     "ProductFamily",
     "RetailerCell",
     "ValueState",
+    "build_projection",
     "discount",
     "normalise_size",
     "normalise_text_axis",

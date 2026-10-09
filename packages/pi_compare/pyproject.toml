@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
   "pi-core",
   "pi-dataset",
+  "pi-match",
   "pydantic>=2.9",
 ]
 

@@ -15,9 +15,11 @@ from pi_compare.models import (
     DiscountResult,
     EvidencePointer,
     ListingRef,
+    ListingTokenState,
     MatrixState,
     NormalisationMethod,
     RetailerCell,
+    VariantIdentityBasis,
     VariantRef,
 )
 from pi_dataset.models import MoneyValue
@@ -67,30 +69,49 @@ def test_description_sidecar_rejects_duplicate_immutable_key() -> None:
 
 
 def test_distinct_skus_remain_distinct_even_with_equal_axes() -> None:
-    first = VariantRef(key="listing:sku-1", retailer_sku="sku-1", synthetic=False)
-    second = VariantRef(key="listing:sku-2", retailer_sku="sku-2", synthetic=False)
+    first = VariantRef(
+        key="listing:sku-1",
+        retailer_sku="sku-1",
+        identity_basis=VariantIdentityBasis.OFFER_SKU,
+        contexts=("faces_ae",),
+    )
+    second = VariantRef(
+        key="listing:sku-2",
+        retailer_sku="sku-2",
+        identity_basis=VariantIdentityBasis.OFFER_SKU,
+        contexts=("faces_ae",),
+    )
     listing = ListingRef.model_validate(
         {
             "retailer": "faces_ae",
-            "context": "faces_ae",
+            "contexts": ["faces_ae"],
             "token": "item-1",
+            "tokenState": ListingTokenState.KEYED,
             "sourceProductId": "item-1",
             "variants": (first, second),
+            "commercial": [],
         }
     )
     assert [variant.retailer_sku for variant in listing.variants] == ["sku-1", "sku-2"]
 
 
 def test_duplicate_variant_identity_is_rejected() -> None:
-    variant = VariantRef(key="listing:sku-1", retailer_sku="sku-1", synthetic=False)
+    variant = VariantRef(
+        key="listing:sku-1",
+        retailer_sku="sku-1",
+        identity_basis=VariantIdentityBasis.OFFER_SKU,
+        contexts=("faces_ae",),
+    )
     with pytest.raises(ValidationError, match="duplicate variant keys"):
         ListingRef.model_validate(
             {
                 "retailer": "faces_ae",
-                "context": "faces_ae",
+                "contexts": ["faces_ae"],
                 "token": "item-1",
+                "tokenState": ListingTokenState.KEYED,
                 "sourceProductId": "item-1",
                 "variants": (variant, variant),
+                "commercial": [],
             }
         )
 
