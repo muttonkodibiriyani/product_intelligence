@@ -177,6 +177,15 @@ describe('launch evidence filters', () => {
     expect(result.map((row) => row.launch.retailer)).toEqual(expected);
   });
 
+  it('matches on the trimmed term, so a space still being typed changes nothing', () => {
+    const only = (change: Partial<LaunchEvidenceFilters>) =>
+      filterLaunchEvidence(rows, { ...emptyFilters(), ...change }).map((row) => row.launch.retailer);
+    expect(only({ size: '8 ' })).toEqual(['faces_ae']);
+    expect(only({ size: ' 8 g ' })).toEqual(['faces_ae']);
+    expect(only({ size: '   ' })).toEqual(['sephora_ae', 'faces_ae']);
+    expect(only({ shade: 'rose ' })).toEqual(['sephora_ae', 'faces_ae']);
+  });
+
   it('fails closed for unsupported color evidence', () => {
     expect(filterLaunchEvidence(rows, { ...emptyFilters(), color: 'red' })).toEqual([]);
   });

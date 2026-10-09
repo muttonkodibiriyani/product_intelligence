@@ -252,8 +252,10 @@ export interface LaunchEvidenceFilters {
   evidence: LaunchEvidenceState[];
 }
 
-const includesText = (field: EvidenceField<string>, query: string) =>
-  !query || (field.value?.toLocaleLowerCase().includes(query.toLocaleLowerCase()) ?? false);
+const includesText = (field: EvidenceField<string>, raw: string) => {
+  const query = raw.trim().toLocaleLowerCase();
+  return !query || (field.value?.toLocaleLowerCase().includes(query) ?? false);
+};
 
 function sizeText(field: EvidenceField<Schemas['Size'] | string>): string {
   if (typeof field.value === 'string') return field.value;
@@ -288,8 +290,8 @@ export function filterLaunchEvidence(
       (!row.availability.value || !filters.availability.includes(row.availability.value))
     )
       return false;
-    if (filters.size && !sizeText(row.size).toLocaleLowerCase().includes(filters.size.toLocaleLowerCase()))
-      return false;
+    const size = filters.size.trim().toLocaleLowerCase();
+    if (size && !sizeText(row.size).toLocaleLowerCase().includes(size)) return false;
     if (!includesText(row.color, filters.color)) return false;
     if (!includesText(row.shade, filters.shade)) return false;
     if (filters.evidence.length && !filters.evidence.some((state) => row.states.includes(state)))

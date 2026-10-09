@@ -86,8 +86,10 @@ const NUMBER = /^\d{1,9}(?:\.\d{1,3})?$/;
 
 const cleanDate = (value: string | null) => (value && DAY.test(value) ? value : '');
 const cleanNumber = (value: string | null) => (value && NUMBER.test(value) ? value : '');
+// Kept as typed: the URL is re-read after every keystroke, so trimming here would eat a space the
+// user is still typing ("rose gold"). Matching trims (filterLaunchEvidence); the API never sees it.
 const cleanTerm = (value: string | null) => {
-  const term = value?.trim() ?? '';
+  const term = value ?? '';
   return term.length <= 120 ? term : '';
 };
 
@@ -124,4 +126,12 @@ export function toLaunchesQuery(s: LaunchesState, end: string): LaunchesQuery {
     ...(s.category.length ? { category: s.category } : {}),
     limit: s.limit,
   };
+}
+
+/**
+ * The cache key for /launches: only what the API receives, so typing in a browser-only filter
+ * (price, size, evidence...) neither refetches nor blanks the list.
+ */
+export function launchesQueryKey(s: LaunchesState, end: string) {
+  return ['launches', toLaunchesQuery(s, end)] as const;
 }

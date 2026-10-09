@@ -1,6 +1,6 @@
 'use client';
 
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
@@ -15,6 +15,7 @@ import {
   type LaunchEvidenceRow,
 } from '@/lib/launch-evidence';
 import {
+  launchesQueryKey,
   parseLaunches,
   toLaunchesQuery,
   toLaunchesSearch,
@@ -39,6 +40,17 @@ import { launchReadiness, MIN_DAYS, type LaunchReadiness, type ShopReadiness } f
 
 const TH = 'th whitespace-nowrap';
 const TD = 'px-3 py-2.5 align-top';
+/** Filters typed into a field: each keystroke replaces the history entry instead of adding one. */
+const TYPED: readonly string[] = [
+  'dateFrom',
+  'dateTo',
+  'priceMin',
+  'priceMax',
+  'discountMin',
+  'size',
+  'color',
+  'shade',
+];
 
 /**
  * Products a shop started listing. Until some shop has two collection days there is nothing a
@@ -167,17 +179,19 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
   const parsed = useMemo(() => parseLaunches(new URLSearchParams(search)), [search]);
   const [pending, setPending] = useState<{ at: string; state: LaunchesState } | null>(null);
   const state = pending?.at === search ? pending.state : parsed;
-  const key = toLaunchesSearch(state);
+  const from = toLaunchesSearch(state);
   const update = (next: Partial<LaunchesState>) => {
     const target = { ...state, ...next };
     setPending({ at: search, state: target });
-    router.push(pathname + toLaunchesSearch(target), { scroll: false });
+    const typed = Object.keys(next).every((k) => TYPED.includes(k));
+    router[typed ? 'replace' : 'push'](pathname + toLaunchesSearch(target), { scroll: false });
   };
 
   const q = useQuery({
-    queryKey: ['launches', key, end],
+    queryKey: launchesQueryKey(state, end),
     queryFn: ({ signal }) => api!.get('/api/v1/launches', { query: toLaunchesQuery(state, end), signal }),
     enabled: !!api,
+    placeholderData: keepPreviousData,
   });
   const env = q.data;
   const data = env?.data ?? null;
@@ -293,7 +307,7 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
                       {t('evidenceUnavailable', { n: evidenceErrors })}
                     </p>
                   )}
-                  <Items items={filteredRows} name={name} from={key} />
+                  <Items items={filteredRows} name={name} from={from} />
                   {data.truncated && (
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                       <p className="text-ink-2">{t('truncated')}</p>
