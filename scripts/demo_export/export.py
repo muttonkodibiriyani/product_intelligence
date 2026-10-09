@@ -19,15 +19,18 @@ import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
 
 from pi_dataset.gate import V3_MAX_BYTES
+
+if TYPE_CHECKING:
+    from scripts.demo_export.v2 import Withheld
 
 DATASET_SCHEMA = "pi.dataset/v1"
 ALLOWED_CATEGORIES = {
@@ -248,11 +251,13 @@ current_runs AS (
 -- partial run then counts, and only its observations on that day are read (never carried
 -- forward). With no day (the default), the rules above apply unchanged.
 -- A crawl window (--run, ADR-0013) names its runs instead: only their observations are values,
--- whatever their status. A listing they did not see is kept only if the retention baseline saw
--- it: the newest SUCCEEDED run of its context started before the source's first window run (a
--- partial run never counts; Coordinator 01a11ce2-fd3e). It is a retained row with no values
--- (never carried forward as a value, never read as a removal); a listing seen only by an older
--- run, or only by a partial one, is left out.
+-- whatever their status. A listing they did not see is kept only if a retention run saw it: the
+-- newest SUCCEEDED run of its context started before the source's first window run, or a
+-- partial run started after that one (any partial run before the window when none succeeded)
+-- and before the window (Coordinator 01a11ce2-fd3e, amended by 01a11e38-6cba/-fd27). It is a
+-- retained row with no values (never carried forward as a value, never read as a removal). A
+-- partial run never is the baseline: it supplies only what it saw, so a listing seen only by a
+-- run older than the succeeded one (which is complete without it) is left out.
 window_runs AS (
   SELECT r.id, s.id AS source_id, r.started_at
   FROM scoped_runs r
@@ -282,14 +287,27 @@ eligible_runs AS (
   FROM scoped_runs r
   WHERE %(day_start)s::timestamptz IS NOT NULL AND r.status IN ('succeeded', 'partial')
 ),
-prior_runs AS (
-  SELECT DISTINCT ON (r.source_context_id) r.id
+before_window AS (
+  SELECT r.id, r.source_context_id, r.status, r.started_at
   FROM scoped_runs r
   JOIN source_context sc ON sc.id = r.source_context_id
-  WHERE r.status = 'succeeded' AND r.started_at < (
+  WHERE r.started_at < (
     SELECT min(w.started_at) FROM window_runs w WHERE w.source_id = sc.source_id
   )
-  ORDER BY r.source_context_id, r.started_at DESC, r.id DESC
+),
+retention_baseline AS (
+  SELECT DISTINCT ON (source_context_id) id, source_context_id, started_at
+  FROM before_window
+  WHERE status = 'succeeded'
+  ORDER BY source_context_id, started_at DESC, id DESC
+),
+prior_runs AS (
+  SELECT id FROM retention_baseline
+  UNION ALL
+  SELECT r.id
+  FROM before_window r
+  LEFT JOIN retention_baseline b ON b.source_context_id = r.source_context_id
+  WHERE r.status = 'partial' AND (b.id IS NULL OR (r.started_at, r.id) > (b.started_at, b.id))
 ),
 read_runs AS (
   SELECT id, false AS prior FROM eligible_runs
@@ -569,8 +587,8 @@ ORDER BY s.name, pf.id, v.size_value NULLS FIRST, v.id
 
 #: Per context of a windowed source: the retention baseline of ``LATEST_LISTINGS_SQL`` (its newest
 #: succeeded run started before the source's first window run, or NULL) and the partial runs
-#: started after it and before the window, which are never the baseline (Coordinator
-#: 01a11ce2-fd3e). The export logs both.
+#: started after it and before the window. Those supply retained rows for what they saw but are
+#: never the baseline (Coordinator 01a11ce2-fd3e, amended by 01a11e38-6cba). The export logs both.
 RETENTION_BASELINE_SQL = """
 WITH window_runs AS (
   SELECT r.id, sc.source_id, r.started_at
@@ -602,7 +620,7 @@ SELECT
       AND r.started_at < c.window_started_at
       AND (b.started_at IS NULL OR (r.started_at, r.id) > (b.started_at, b.id))
     ORDER BY r.started_at, r.id
-  ) AS skipped_partial_run_ids
+  ) AS partial_run_ids
 FROM contexts c
 LEFT JOIN baseline b ON b.context_id = c.id
 WHERE c.window_started_at IS NOT NULL
@@ -615,12 +633,16 @@ def baseline_report(found: Iterable[Mapping[str, Any]]) -> str:
     lines = []
     for row in found:
         run = row["baseline_run_id"]
-        skipped = list(row["skipped_partial_run_ids"] or ())
+        partial = list(row["partial_run_ids"] or ())
         line = f"retention {row['source_name']}: baseline " + (
-            f"succeeded run {run}" if run is not None else "none (nothing retained)"
+            f"succeeded run {run}" if run is not None else "none"
         )
-        if skipped:
-            line += f"; later partial runs {skipped} skipped, a partial run is never the baseline"
+        if partial:
+            line += (
+                f"; partial runs {partial} retain only the listings they saw, never the baseline"
+            )
+        elif run is None:
+            line += " (nothing retained)"
         lines.append(line)
     return "\n".join(lines)
 
@@ -1402,6 +1424,27 @@ def parser() -> argparse.ArgumentParser:
             "repeat per source. With any --run, every exported source needs one"
         ),
     )
+    result.add_argument(
+        "--withhold",
+        action="append",
+        default=[],
+        metavar="SOURCE",
+        help=(
+            "export SOURCE withheld (F1, ADR-0013 §8): its offers keep the values of its --run, "
+            "but it gets no crawl window, a since and one whole-retailer notObserved entry with "
+            "--withhold-why/--withhold-why-ar; repeatable, v2/v3 only"
+        ),
+    )
+    result.add_argument("--withhold-why", help="why the withheld sources are not observed (EN)")
+    result.add_argument("--withhold-why-ar", help="the same reason in Arabic (required with EN)")
+    result.add_argument(
+        "--withhold-until",
+        type=date.fromisoformat,
+        help=(
+            "the withheld entries' last day (YYYY-MM-DD, market time zone): the roll-time cutoff "
+            "day; default the body's own cutoff day, and never earlier"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
@@ -1461,6 +1504,49 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must be supplied together")
     if any(note is not None and not note.strip() for note in notes):
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must not be empty")
+    check_withhold(args)
+
+
+def check_withhold(args: argparse.Namespace) -> None:
+    """``--withhold`` (F1): each source once and exported, beside at least one windowed source,
+    with ``--run`` (its values and ``since`` come from its window), a v2/v3 output, and a reason
+    in both languages with no placeholder but ``<since>`` in it; the reason and
+    ``--withhold-until`` never without a withheld source."""
+    held, why = args.withhold, (args.withhold_why, args.withhold_why_ar)
+    if not held:
+        if any(v is not None for v in (*why, args.withhold_until)):
+            raise SystemExit("--withhold-why(-ar) and --withhold-until need --withhold")
+        return
+    if len(set(held)) != len(held):
+        raise SystemExit(f"--withhold names a source twice: {held}")
+    if extra := [s for s in held if s not in args.sources]:
+        raise SystemExit(f"--withhold {', '.join(extra)}: not one of --sources")
+    if set(held) == set(args.sources):
+        raise SystemExit("--withhold needs a windowed source beside it: every source is withheld")
+    if not args.run:
+        raise SystemExit("--withhold needs --run: a withheld source's since comes from its run")
+    if args.output_v2 is None and args.output_v3 is None:
+        raise SystemExit("--withhold needs --output-v2 or --output-v3 (v1 has no notObserved)")
+    if any(v is None or not v.strip() for v in why):
+        raise SystemExit("--withhold needs --withhold-why and --withhold-why-ar, both non-empty")
+    from scripts.demo_export.v2 import SINCE  # noqa: PLC0415
+
+    # nothing downstream fills a placeholder: only <since> is written in, by the exporter
+    if left := [v for v in why if v is not None and {"<", ">"} & set(v.replace(SINCE, ""))]:
+        raise SystemExit(f"--withhold-why(-ar) has a placeholder other than {SINCE}: {left}")
+
+
+def withheld_of(args: argparse.Namespace) -> Withheld | None:
+    """The ``--withhold`` sources as ``Withheld`` slots (``check_withhold`` ran), or ``None``."""
+    if not args.withhold:
+        return None
+    from scripts.demo_export.v2 import Withheld  # noqa: PLC0415
+
+    return Withheld(
+        slots=frozenset(slot(source) for source in args.withhold),
+        why={"en": args.withhold_why.strip(), "ar": args.withhold_why_ar.strip()},
+        until=args.withhold_until,
+    )
 
 
 def build_v1(
@@ -1572,11 +1658,12 @@ def main() -> None:
                 producer_commit=args.producer_commit,
                 slots=slots,
                 windows=windows,
+                withheld=withheld_of(args),
             )
         body = dump_dataset(v2, compact=True)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            v3 = to_v3(v2, v2_rows, matches, windows)
+            v3 = to_v3(v2, v2_rows, matches, windows, frozenset(map(slot, args.withhold)))
             print(window_report(v3))
             body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
