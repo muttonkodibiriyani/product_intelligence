@@ -8,7 +8,9 @@ adds, per ADR-0008 §4:
 * ``Size.label`` and ``Size.system``, with ``value``/``unit`` now nullable together;
 * offers keyed by **context** id, with ``Offer.attributes`` and ``evidence.itemKey``;
 * ``notObserved[].context``;
-* ``attributeEvidence`` on products and offers: where each attribute value was read (§5).
+* ``attributeEvidence`` on products and offers: where each attribute value was read (§5);
+* ``meta.retailers[].window``, ``.fields`` and ``.capabilities``: each retailer's own crawl window
+  and states (ADR-0013), so a file of several retailers never gives one the others' states.
 
 The cross-field rules (the context-id rule, identity rules (a)-(c), declared attributes, money
 currencies inside attributes, the profile's size rules) are the ``DatasetV3`` validator below.
@@ -19,19 +21,24 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Iterator, Mapping
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal, Self
+from zoneinfo import ZoneInfo
 
 from pydantic import AfterValidator, Field, HttpUrl, JsonValue, ValidationError, model_validator
 
 from pi_core import Channel, CurrencyCode
+from pi_core.enums import NotObservedReason
 from pi_core.listing import is_valid_gtin
-from pi_core.types import NonEmptyStr
+from pi_core.types import NonEmptyStr, UtcDatetime
 from pi_dataset.models import (
     DECIMAL_TEXT,
+    Capabilities,
     ContractModel,
     Evidence,
+    FieldStatus,
     LocalizedText,
     MarketInfo,
     MatchEdge,
@@ -40,6 +47,7 @@ from pi_dataset.models import (
     NotObserved,
     Offer,
     ProductId,
+    Retailer,
     SourceKey,
     UnsignedDecimalText,
     _duplicates,
@@ -109,7 +117,59 @@ class Context(ContractModel):
     label: LocalizedText
 
 
+#: The most market calendar days a crawl window may span, first capture to last, inclusive.
+MAX_WINDOW_DAYS = 4
+
+
+class CrawlWindow(ContractModel):
+    """The one crawl run a retailer's values come from (ADR-0013): its first and last capture
+    in the snapshot. A window never mixes runs and spans at most ``MAX_WINDOW_DAYS`` calendar
+    days of the retailer's market (checked with the meta, which knows the time zone)."""
+
+    start: UtcDatetime
+    end: UtcDatetime
+    run_id: NonEmptyStr
+    #: Continuations of the run (e.g. a run's ``-ar`` and ``-stock`` passes): their captures are
+    #: this window's too, so they hold to the same span and rules.
+    segments: tuple[NonEmptyStr, ...] = ()
+
+    @model_validator(mode="after")
+    def _check_order(self) -> Self:
+        if self.start > self.end:
+            msg = f"window of run {self.run_id}: start {self.start} is after end {self.end}"
+            raise ValueError(msg)
+        runs = [self.run_id, *self.segments]
+        if len(set(runs)) != len(runs):
+            msg = f"window of run {self.run_id}: segments {list(self.segments)} repeat a run"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def run_ids(self) -> frozenset[str]:
+        """The run and its segments: every run whose captures this window holds."""
+        return frozenset((self.run_id, *self.segments))
+
+    def days(self, time_zone: str) -> int:
+        """Calendar days in ``time_zone``, first capture to last, inclusive."""
+        return (local_date(self.end, time_zone) - local_date(self.start, time_zone)).days + 1
+
+
+def local_date(moment: datetime, time_zone: str) -> date:
+    return moment.astimezone(ZoneInfo(time_zone)).date()
+
+
+class RetailerV3(Retailer):
+    """A v2 retailer plus its own crawl window, field states and capabilities (ADR-0013). The
+    exporter always writes them; ``None`` is a file from before them, which only a file of one
+    retailer may be (``pi_dataset.compose.resolved_retailers``)."""
+
+    window: CrawlWindow | None = None
+    fields: dict[NonEmptyStr, FieldStatus] | None = None
+    capabilities: Capabilities | None = None
+
+
 class MetaV3(Meta):
+    retailers: Annotated[tuple[RetailerV3, ...], Field(min_length=1)]
     #: Kept from v2 (``vertical``) and must equal ``profile.name``.
     profile: ProfileInfo
     attribute_set: tuple[AttributeDef, ...]
@@ -250,6 +310,9 @@ class OfferV3(Offer):
     content: OfferContent | None = None
     #: Per key of ``attributes``: where its value was read (§5). Optional and additive.
     attribute_evidence: dict[AttributeKey, AttributeEvidence] = Field(default_factory=dict)
+    #: Why the offer has no observation in its retailer's crawl window: it keeps its original
+    #: ``capturedAt`` and a null series (ADR-0013). ``null`` for an offer observed in the window.
+    not_observed_reason: NotObservedReason | None = None
 
 
 class ProductV3(ContractModel):
@@ -302,6 +365,9 @@ class DatasetV3(ContractModel):
 def v3_errors(ds: DatasetV3) -> list[str]:
     """Every cross-field problem, each naming its path."""
     errors = _meta_errors(ds.meta)
+    errors += _window_errors(ds.meta)
+    errors += _window_offer_errors(ds)
+    errors += _withheld_errors(ds)
     errors += _profile_errors(ds)
     errors += _context_errors(ds)
     errors += [f"products: duplicate id {p}" for p in _duplicates([p.id for p in ds.products])]
@@ -310,6 +376,144 @@ def v3_errors(ds: DatasetV3) -> list[str]:
     errors += _attribute_errors(ds)
     errors += _not_observed_errors(ds)
     return errors
+
+
+def _window_errors(meta: MetaV3) -> list[str]:
+    zones = {m.country: m.time_zone for m in meta.markets}
+    errors = []
+    for r in meta.retailers:
+        if r.window is None or r.country not in zones:
+            continue
+        days = r.window.days(zones[r.country])
+        if days > MAX_WINDOW_DAYS:
+            errors.append(
+                f"meta.retailers.{r.id}.window: run {r.window.run_id} spans {days} days in "
+                f"{zones[r.country]}, more than {MAX_WINDOW_DAYS}"
+            )
+        if r.window.end > meta.cutoff:
+            errors.append(f"meta.retailers.{r.id}.window: end is after meta.cutoff")
+    return errors
+
+
+def _observed(offer: OfferV3) -> bool:
+    """The offer has a value in its series: a price, a regular or a stock state."""
+    s = offer.series
+    return any(v is not None for v in (*s.price, *(s.regular or ()), *(s.availability or ())))
+
+
+def _window_offer_errors(ds: DatasetV3) -> list[str]:
+    """Each offer against its retailer's window (ADR-0013); a retailer without one (an upgraded
+    v2 body) is not checked. An observed offer was captured in the window, by the window's run
+    or one of its segments. An offer marked
+    ``notObservedReason`` has no value, is from another run than the window's (a null run id is
+    another run) and is covered by a ``notObserved`` entry, so the coverage disclosure names it.
+    A recon (``early``) offer is never served as an in-window value and is not held to the span,
+    but it is not from the window's run either."""
+    zones = {m.country: m.time_zone for m in ds.meta.markets}
+    retailers = {r.id: r for r in ds.meta.retailers}
+    retailer_of = _retailer_of(ds)
+    errors: list[str] = []
+    for p in ds.products:
+        for cid, offer in p.offers.items():
+            shop = retailers.get(retailer_of.get(cid, ""))
+            if shop is None or shop.window is None:
+                continue
+            window = shop.window
+            where = f"products.{p.id}.offers.{cid}"
+            at = offer.evidence.captured_at
+            ours = offer.evidence.run_id in window.run_ids
+            reason = offer.not_observed_reason
+            if reason is not None:
+                if _observed(offer):
+                    errors.append(f"{where}: marked {reason} but has an in-window value")
+                if ours:
+                    errors.append(
+                        f"{where}: marked {reason} but captured by the window's run "
+                        f"{offer.evidence.run_id}"
+                    )
+                zone = zones.get(shop.country)
+                days = (
+                    (local_date(window.start, zone), local_date(window.end, zone)) if zone else None
+                )
+                if days is not None and not _covered(ds, (shop.id, cid), p, days):
+                    errors.append(
+                        f"{where}: marked {reason} but no notObserved entry covers it "
+                        "(retailer, context, category and the window's dates)"
+                    )
+            elif offer.early:
+                if ours:
+                    errors.append(
+                        f"{where}: a recon offer captured by the window's run "
+                        f"{offer.evidence.run_id}"
+                    )
+            else:
+                if not window.start <= at <= window.end:
+                    errors.append(
+                        f"{where}: capturedAt {at.isoformat()} is outside its retailer's window "
+                        f"{window.start.isoformat()}..{window.end.isoformat()} "
+                        f"(run {window.run_id})"
+                    )
+                if not ours:
+                    errors.append(
+                        f"{where}: runId {offer.evidence.run_id} is not its retailer's window run "
+                        f"{window.run_id} or one of its segments {sorted(window.segments)}"
+                    )
+    return errors
+
+
+def _withheld_errors(ds: DatasetV3) -> list[str]:
+    """A retailer without a window beside a windowed one is withheld (ADR-0013 §8): if it still
+    has offers, one whole-retailer ``notObserved`` entry (no context, no categories) covers the
+    gap: from the day after ``since`` (its last observed day) or earlier, to the cutoff's day or
+    later, in the retailer's market days (Coordinator 01a11cee-6a77: the cutoff, which is never
+    before the set's last window day the publish guard ``pi_api.windows`` reads). A body where no
+    retailer has a window (an upgraded v2 body) is not checked."""
+    zones = {m.country: m.time_zone for m in ds.meta.markets}
+    if all(r.window is None for r in ds.meta.retailers):
+        return []
+    retailer_of = _retailer_of(ds)
+    stocked = {retailer_of.get(cid) for p in ds.products for cid in p.offers}
+    errors: list[str] = []
+    for r in ds.meta.retailers:
+        if r.window is not None or r.id not in stocked or r.country not in zones:
+            continue
+        where = f"meta.retailers.{r.id}"
+        if r.since is None:
+            errors.append(f"{where}: withheld (no window) with offers but no since")
+            continue
+        first = r.since + timedelta(days=1)
+        last = local_date(ds.meta.cutoff, zones[r.country])
+        if not any(
+            w.retailer == r.id
+            and w.context is None
+            and w.categories is None
+            and w.start <= first
+            and last <= w.end
+            for w in ds.not_observed
+        ):
+            errors.append(
+                f"{where}: withheld (no window) with offers but no whole-retailer notObserved "
+                f"entry covering {first}..{last}"
+            )
+    return errors
+
+
+def _covered(
+    ds: DatasetV3, where: tuple[str, str], product: ProductV3, days: tuple[date, date]
+) -> bool:
+    """A ``notObserved`` entry for the retailer, the offer's context (or all), the product's
+    category (or all), whose dates overlap the window's ``days`` (first, last). One-directional:
+    values inside an entry stay legal, and reasons are not compared (``why`` is free text)."""
+    (shop, cid), (first, last) = where, days
+    category = product.category[0].casefold()
+    return any(
+        w.retailer == shop
+        and w.context in (None, cid)
+        and (w.categories is None or category in {c.casefold() for c in w.categories})
+        and w.start <= last
+        and first <= w.end
+        for w in ds.not_observed
+    )
 
 
 def _profile_errors(ds: DatasetV3) -> list[str]:

@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, signedIn, test } from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const clone = <T>(v: T): T => structuredClone(v);
@@ -70,8 +70,7 @@ function api(product: Json) {
 
 async function open(page: Page, locale: 'en' | 'ar', product: Json) {
   const mock = await mockBackend(page, { onApi: api(product) });
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation').first()).toBeVisible();
+  await signedIn(page, locale);
   await page.goto(`/app/${locale}/product/?id=${product.data.card.id}`);
   await expect(page.getByRole('heading', { level: 1, name: product.data.card.name })).toBeVisible();
   return mock;
@@ -205,8 +204,7 @@ test('a retailer seen in two places gets a column for each, named by place', asy
     onApi: (r) =>
       new URL(r.request().url()).pathname === '/api/v1/meta' ? r.fulfill({ json: m }) : api(p)(r),
   });
-  await signIn(page, 'en');
-  await expect(page.getByRole('navigation').first()).toBeVisible();
+  await signedIn(page, 'en');
   await page.goto(`/app/en/product/?id=${p.data.card.id}`);
   const heads = page.locator('[data-offer-sheet] thead th');
   await expect(heads).toHaveCount(3);

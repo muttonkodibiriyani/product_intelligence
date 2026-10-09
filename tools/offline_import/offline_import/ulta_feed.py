@@ -263,6 +263,8 @@ def prepare(  # noqa: PLR0912, PLR0915 - source transformation
         "currency": "AED",
         "time_zone": "Asia/Dubai",
         "complete_catalogue": False,
+        # The scrape states a regular price on promotional rows (Sephora's shape).
+        "regular_stated": "on_promotion",
         "format": "json",
         "columns": {k: k for k in columns},
         "availability_map": {k: k for k in ["in_stock", "out_of_stock", "low_stock", "unknown"]},
@@ -367,8 +369,12 @@ class UltaLoader(Loader):
         self.c.execute(
             "INSERT INTO listing_content "
             "(listing_id,observed_at,description,ingredients,how_to_use,labels,content_hash) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-            (lid, row.observed_at, *values, Jsonb(labels), content_hash),
+            "SELECT %s,%s,%s,%s,%s,%s,%s "
+            # one content per page time, the first written, on replay too
+            "WHERE NOT EXISTS (SELECT 1 FROM listing_content "
+            "WHERE listing_id=%s AND observed_at=%s) "
+            "ON CONFLICT DO NOTHING",
+            (lid, row.observed_at, *values, Jsonb(labels), content_hash, lid, row.observed_at),
         )
 
     def _offer(self, lid: int, row: ImportRow, run: int, evidence: int) -> bool:
@@ -531,7 +537,7 @@ def export(
             "'product_url_missing',lc.labels->'product_url_missing') FROM source_listing "
             "sl JOIN source s ON s.id=sl.source_id LEFT JOIN LATERAL (SELECT "
             "labels FROM listing_content c WHERE c.listing_id=sl.id ORDER BY "
-            "observed_at DESC LIMIT 1) lc ON true WHERE s.name = ANY(%s)",
+            "observed_at DESC, recorded_at DESC LIMIT 1) lc ON true WHERE s.name = ANY(%s)",
             (list(sources),),
         ).fetchall()
     labels = {(s, key): data or {} for s, key, data in content}

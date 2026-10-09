@@ -1,5 +1,6 @@
 """``pi.dataset/v2`` and ``v3``: the published snapshot contracts, JSON Schemas and validators."""
 
+from pi_dataset.gate import V3_MAX_BYTES, admission_sha256
 from pi_dataset.models import (
     SCHEMA_ID,
     Capabilities,
@@ -40,6 +41,7 @@ from pi_dataset.v3 import (
     AttributeSource,
     ContentField,
     Context,
+    CrawlWindow,
     DatasetV3,
     EvidenceV3,
     ItemKeyKind,
@@ -50,6 +52,7 @@ from pi_dataset.v3 import (
     OfferV3,
     OfferVariant,
     ProductV3,
+    RetailerV3,
     SizeV3,
 )
 from pi_dataset.validate import (
@@ -65,6 +68,7 @@ from pi_dataset.validate import (
 __all__ = [
     "SCHEMA_ID",
     "SCHEMA_ID_V3",
+    "V3_MAX_BYTES",
     "AttributeBlock",
     "AttributeDef",
     "AttributeEvidence",
@@ -75,6 +79,7 @@ __all__ = [
     "ContentField",
     "Context",
     "ContractModel",
+    "CrawlWindow",
     "Dataset",
     "DatasetError",
     "DatasetV3",
@@ -104,10 +109,12 @@ __all__ = [
     "Rating",
     "Retailer",
     "RetailerStatus",
+    "RetailerV3",
     "Series",
     "Size",
     "SizeV3",
     "UpgradeError",
+    "admission_sha256",
     "committed_profile",
     "committed_profiles",
     "dump_dataset",

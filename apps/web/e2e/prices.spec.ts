@@ -1,7 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { categoryCompareBody, THIN, wideCategoryCompareBody, type Counts } from './category-compare-fixture';
 import { summaryBlocked, summaryBody } from './summary-fixture';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, signedIn, test, type Mock } from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -40,8 +40,7 @@ async function open(
   wide = false,
 ): Promise<Mock> {
   const mock = await mockBackend(page, { onApi: api(counts, withheld, wide) });
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation')).toBeVisible();
+  await signedIn(page, locale);
   await page.goto(`/app/${locale}/prices/`);
   return mock;
 }

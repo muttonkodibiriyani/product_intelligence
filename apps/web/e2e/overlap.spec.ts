@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test, type Mock } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, signedIn, test, type Mock } from './fixtures';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -38,17 +38,6 @@ const overlapCalls = (mock: Mock) =>
   mock.api
     .map((r) => new URL(r.url))
     .filter((u) => u.pathname === '/api/v1/compare' && u.searchParams.get('rows') === 'overlap');
-
-/**
- * Signs in and waits until the session is live and sign-in's own redirect and prefetches have
- * settled, so a following goto doesn't race them (a goto fired into them can hang WebKit).
- */
-async function signedIn(page: Page, locale: 'en' | 'ar') {
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation').first()).toBeVisible();
-  await page.waitForURL((u) => !/\/sign-in\/?$/.test(u.pathname));
-  await page.waitForLoadState('networkidle');
-}
 
 for (const locale of ['en', 'ar'] as const) {
   const T =

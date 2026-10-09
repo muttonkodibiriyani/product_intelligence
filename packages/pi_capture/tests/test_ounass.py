@@ -10,10 +10,13 @@ from typing import Any
 
 import pytest
 
+from pi_capture.bloomingdales import LOOKED_FOR as BLM_LOOKED_FOR
+from pi_capture.faces import LOOKED_FOR as FACES_LOOKED_FOR
 from pi_capture.feed import SHOPS, build_feed
 from pi_capture.model import ProductCapture, Reading
 from pi_capture.ounass import LOOKED_FOR, readings_from_ounass
 from pi_capture.page_json import NoProductObject, OutOfScopePage
+from pi_capture.sephora import LOOKED_FOR as SEPHORA_LOOKED_FOR
 
 CaptureFactory = Callable[..., ProductCapture]
 
@@ -172,3 +175,185 @@ def test_ounass_rows_carry_the_stock_the_page_states(
     (row,) = result.rows
     assert row.get("availability") == expected
     assert (row["listing_key"], row["price_current"]) == ("900000001_242", "450.00")
+
+
+# The page-attribute fields, shaped like the storefront's (values synthetic), with a payment
+# widget's key and an internal score that must never be read.
+_WIDGET_KEY = "SYNTHETIC-NOT-A-KEY"
+_ATTRIBUTES: dict[str, Any] = {
+    "colors": [{"colorId": "242"}, {"colorId": "243"}],
+    "selectedColor": {"label": "Rose Petal", "hex": "#c4a1a0", "styleColorId": "900000001_242"},
+    "colorId": "242",
+    "contentTabs": [
+        {
+            "tabId": "ingredients",
+            "html": "<p>Alcohol Denat., Parfum, Aqua, Limonene, Linalool, Citral</p>",
+        },
+        {"tabId": "keyDetails", "html": "<ul><li>Long wear</li><li>Made in France</li></ul>"},
+        {"tabId": "delivery", "html": "<p>Free delivery over AED 400</p>"},
+    ],
+    "season": "Continuity",
+    "exclusive": 1,
+    "amberPoints": 45,
+    "bnplPromoBanner": {
+        "apiKey": _WIDGET_KEY,
+        "options": [
+            {"key": "tabby", "isAmountWithinLimits": True},
+            {"key": "tamara", "isAmountWithinLimits": False},
+        ],
+    },
+    "merchScore": "secret-rank",
+}
+
+
+def test_page_attributes_are_read_from_the_named_fields() -> None:
+    got = _by_key(readings_from_ounass(_page(_pdp(**_ATTRIBUTES)), locale="en-AE"))
+    assert got["shade_name"].value == "Rose Petal"
+    assert got["colour_hex"].value == "#C4A1A0"
+    assert got["colour_code"].value == "242"
+    assert str(got["inci_list"].value).startswith("Alcohol Denat., Parfum, Aqua")
+    assert got["bullets"].value == ["Long wear", "Made in France"]
+    assert got["lifecycle_class"].value == "core"
+    assert got["exclusivity"].value == "exclusive"
+    assert got["loyalty_points"].value == 45
+    assert got["installment_provider"].value == ["tabby"]
+    assert set(got) <= LOOKED_FOR
+
+
+def test_a_single_colour_product_reads_no_colour_and_odd_values_are_parse_failed() -> None:
+    pdp = _pdp(
+        **_ATTRIBUTES
+        | {
+            "colors": [],
+            "season": "SS26",
+            "contentTabs": [{"tabId": "ingredients", "html": "<p>Notes: cedar, vetiver</p>"}],
+        }
+    )
+    got = _by_key(readings_from_ounass(_page(pdp), locale="en-AE"))
+    assert not {"shade_name", "colour_hex", "colour_code"} & set(got)
+    assert got["lifecycle_class"].state == "parse_failed"
+    assert got["inci_list"].state == "parse_failed"
+    bad_hex = _pdp(**_ATTRIBUTES | {"selectedColor": {"label": "Rose", "hex": "pink"}})
+    got = _by_key(readings_from_ounass(_page(bad_hex), locale="en-AE"))
+    assert got["colour_hex"].state == "parse_failed"
+
+
+def test_clearance_wins_over_the_season() -> None:
+    got = _by_key(
+        readings_from_ounass(_page(_pdp(**_ATTRIBUTES | {"isClearance": 1})), locale="en-AE")
+    )
+    assert got["lifecycle_class"].value == "clearance"
+
+
+def test_widget_keys_and_internal_scores_never_reach_readings_or_the_feed(
+    make_capture: CaptureFactory,
+) -> None:
+    readings = readings_from_ounass(_page(_pdp(**_ATTRIBUTES)), locale="en-AE")
+    capture = make_capture(readings=tuple(readings), url="https://ounass.ae/p/x")
+    feed = build_feed([capture], SHOPS["ounass_ae"])
+    rows_text = json.dumps(feed.rows, default=str)
+    readings_text = json.dumps(
+        [(r.key, r.raw_text, r.value, r.source_path, r.note) for r in _by_key(readings).values()],
+        default=str,
+    )
+    for forbidden in (_WIDGET_KEY, "apiKey", "merchScore", "secret-rank"):
+        assert forbidden not in rows_text
+        assert forbidden not in readings_text
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("2022-11-27T21:06:05.000Z", "2022-11-28"),  # after 20:00 UTC: already the next day here
+        ("2025-06-30T19:59:59.999Z", "2025-06-30"),  # one millisecond before Dubai midnight
+        ("2025-06-30T20:00:00.000Z", "2025-07-01"),  # Dubai midnight
+        ("2025-12-31T23:30:00Z", "2026-01-01"),  # across the year
+        ("2025-06-30T03:59:09+04:00", "2025-06-30"),
+    ],
+)
+def test_the_go_live_moment_becomes_its_date_in_dubai_with_the_raw_text_kept(
+    raw: str, expected: str
+) -> None:
+    got = _by_key(readings_from_ounass(_page(_pdp(onlineDateWithStock=raw)), locale="en-AE"))
+    live = got["listing_live_date"]
+    assert (live.state, live.raw_text, live.value) == ("observed", raw, expected)
+    assert live.source_path == "pdp.onlineDateWithStock"
+    assert "launch_date" not in got
+    assert "first_seen" not in got
+
+
+@pytest.mark.parametrize(
+    ("value", "state", "raw"),
+    [
+        (None, "not_shown", None),  # absent: never today, never first_seen
+        ("", "not_shown", None),
+        ("2025-06-30T03:59:09", "parse_failed", "2025-06-30T03:59:09"),  # no zone: which day?
+        ("2025-02-30T10:00:00Z", "parse_failed", "2025-02-30T10:00:00Z"),
+        ("27/11/2022", "parse_failed", "27/11/2022"),
+        (1669583165000, "parse_failed", "1669583165000"),
+    ],
+)
+def test_a_missing_or_unreadable_go_live_date_is_explicit(
+    value: object, state: str, raw: str | None
+) -> None:
+    got = _by_key(readings_from_ounass(_page(_pdp(onlineDateWithStock=value)), locale="en-AE"))
+    live = got["listing_live_date"]
+    assert (live.state, live.raw_text, live.value) == (state, raw, None)
+
+
+def test_no_reader_fills_our_launch_date_or_first_seen() -> None:
+    for looked_for in (LOOKED_FOR, BLM_LOOKED_FOR, FACES_LOOKED_FOR, SEPHORA_LOOKED_FOR):
+        assert not looked_for & {"launch_date", "first_seen"}
+    assert "listing_live_date" in LOOKED_FOR
+    assert "listing_live_date" in BLM_LOOKED_FOR
+
+
+def _labelled(**over: Any) -> dict[str, Any]:
+    label = {"components": [{"text": "Non-Returnable Item"}]}
+    return _pdp(valuePropositionWrapper=label, **over)
+
+
+def test_the_item_flag_is_read_as_returnable_and_must_agree_with_the_label() -> None:
+    sizes = [{"sku": "900000002", "sizeCode": "NO SIZE", "isReturnable": False}]
+    r = _by_key(
+        readings_from_ounass(_page(_labelled(isReturnable=False, sizes=sizes)), locale="en-AE")
+    )
+    got = r["returnable"]
+    assert (got.state, got.value, got.raw_text) == ("observed", False, "False")
+    assert got.source_path == "pdp.isReturnable"
+    assert got.note == 'the page shows "Non-Returnable Item"'
+    ok = _by_key(readings_from_ounass(_page(_pdp(isReturnable=1)), locale="en-AE"))["returnable"]
+    assert (ok.state, ok.value, ok.note) == ("observed", True, None)
+    tab = {"tabs": [{"returns": {"title": "Non-Returnable Item"}}]}
+    clash = _pdp(isReturnable=True, deliveryDetails=tab)
+    bad = _by_key(readings_from_ounass(_page(clash), locale="en-AE"))["returnable"]
+    assert (bad.state, bad.value) == ("parse_failed", None)
+    assert "Non-Returnable Item" in (bad.note or "")
+
+
+def test_sizes_stand_in_for_a_missing_item_flag_only_when_they_agree() -> None:
+    def size(flag: Any) -> dict[str, Any]:
+        return {"sku": "9", "sizeCode": "30ML", "isReturnable": flag}
+
+    both = _by_key(
+        readings_from_ounass(_page(_pdp(sizes=[size(True), size(True)])), locale="en-AE")
+    )
+    got = both["returnable"]
+    assert (got.state, got.value, got.source_path) == ("observed", True, "pdp.sizes[].isReturnable")
+    for pdp in (
+        _pdp(sizes=[size(True), size(False)]),
+        _pdp(isReturnable=True, sizes=[size(False)]),
+        _pdp(isReturnable="yes"),
+    ):
+        r = _by_key(readings_from_ounass(_page(pdp), locale="en-AE"))["returnable"]
+        assert (r.state, r.value) == ("parse_failed", None), pdp
+
+
+def test_a_missing_flag_is_never_returnable_by_default() -> None:
+    r = _by_key(readings_from_ounass(_page(_pdp(isReturnable=None)), locale="en-AE"))["returnable"]
+    assert (r.state, r.value) == ("not_shown", None)
+    assert r.note == "no isReturnable flag and no non-returnable label"
+    only_label = _by_key(readings_from_ounass(_page(_labelled()), locale="en-AE"))["returnable"]
+    assert (only_label.state, only_label.value) == ("observed", False)
+    assert only_label.raw_text == "Non-Returnable Item"
+    assert "returnable" in LOOKED_FOR

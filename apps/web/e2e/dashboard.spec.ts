@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test';
 import { categoryCompareBody, THIN } from './category-compare-fixture';
-import { expect, golden, mockBackend, noHorizontalScroll, signIn, test } from './fixtures';
+import { expect, golden, mockBackend, noHorizontalScroll, signedIn, test } from './fixtures';
 import { summaryBlocked, summaryBody } from './summary-fixture';
 
 type Json = Record<string, unknown>;
@@ -97,8 +97,7 @@ const VIEWS: Record<string, Section[]> = {
 };
 
 async function open(page: Page, locale: 'en' | 'ar', view?: string) {
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation')).toBeVisible();
+  await signedIn(page, locale);
   await page.goto(`/app/${locale}/dashboard/${view ? `?view=${view}` : ''}`);
 }
 
