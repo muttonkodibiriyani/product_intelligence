@@ -384,8 +384,9 @@ as it is.
     (rule 1) is at least as large as any other single file**: the file that refreshes at 31.48
     MiB per MB must be the largest. The 600 MiB reserve is **30 MB** at the resident rate
     (`OTHERS_MAX_BYTES`, the exporter's derivation of the 51 MB gate). An admission record is
-    issued only while its other files total at most `ADMISSION_OTHERS_MAX_BYTES` (52,000,000);
-    that cap governs issuing a record, never serving: pi_api serves an admitted body while the
+    issued only while its other files total at most `ADMISSION_OTHERS_MAX_BYTES` (80,000,000:
+    beauty, Faces and Bloomingdale's beside Ounass); the record's measured peak at 75% of the
+    instance is still what admits a set. That cap governs issuing a record, never serving: pi_api serves an admitted body while the
     other files total at most the record's own measured figure (`refusal`, `≤`). Before
     any revision that adds to `PI_API_DATASETS` (or a publish that grows a served file), size
     **every** served file's `latest.json` as **decompressed, compact** bytes and check:
