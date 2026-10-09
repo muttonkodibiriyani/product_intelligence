@@ -932,6 +932,25 @@ NOT_OBSERVED_WHY = {
 }
 
 
+def served_history(v3: DatasetV3, *, on: bool = True) -> DatasetV3:
+    """``--serve-history`` (Coordinator 01a11f69-5abb item 2): this slice states
+    ``history=True`` in its meta and in each retailer's own capabilities, so a composed view keeps
+    every day of it instead of the last one (``pi_api`` catalog). Nothing else changes: a day the
+    slice has no capture on stays null, and its ``notObserved`` entries are kept as written.
+    Without the flag (``on=False``) the body is returned as it is, the same object."""
+    if not on:
+        return v3
+    retailers = []
+    for r in v3.meta.retailers:
+        if r.capabilities is None:
+            raise ValueError(f"--serve-history: {r.id} has no capabilities of its own")
+        caps = r.capabilities.model_copy(update={"history": True})
+        retailers.append(r.model_copy(update={"capabilities": caps}))
+    caps = v3.meta.capabilities.model_copy(update={"history": True})
+    meta = v3.meta.model_copy(update={"capabilities": caps, "retailers": tuple(retailers)})
+    return v3.model_copy(update={"meta": meta})
+
+
 def to_v3(
     v2: Dataset,
     rows: Sequence[ListingRow],

@@ -1415,6 +1415,14 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     result.add_argument(
+        "--serve-history",
+        action="store_true",
+        help=(
+            "the v3 body states capabilities.history=true (meta and each retailer), so a composed "
+            "view serves every day of this slice, not only the last (01a11f69-5abb); v2 unchanged"
+        ),
+    )
+    result.add_argument(
         "--run",
         action="append",
         default=[],
@@ -1493,6 +1501,10 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit("--history needs --output-v2 or --output-v3 (v1 has one date)")
     if args.history and args.run:
         raise SystemExit("--history does not take --run (a crawl window is one snapshot)")
+    if args.serve_history and args.output_v3 is None:
+        raise SystemExit("--serve-history needs --output-v3 (only the v3 body carries it)")
+    if args.serve_history and args.history:
+        raise SystemExit("--serve-history does not take --history (that states it already)")
     if args.history and args.ulta_early_fixture is not None:
         raise SystemExit(
             "--history does not take --ulta-early-fixture (recon samples have no days)"
@@ -1609,6 +1621,7 @@ def main() -> None:
             category_notes,
             crawl_windows,
             price_review,
+            served_history,
             to_v3,
         )
 
@@ -1663,7 +1676,10 @@ def main() -> None:
         body = dump_dataset(v2, compact=True)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            v3 = to_v3(v2, v2_rows, matches, windows, frozenset(map(slot, args.withhold)))
+            v3 = served_history(
+                to_v3(v2, v2_rows, matches, windows, frozenset(map(slot, args.withhold))),
+                on=args.serve_history,
+            )
             print(window_report(v3))
             body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
