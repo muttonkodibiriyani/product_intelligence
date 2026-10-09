@@ -974,37 +974,93 @@ def test_only_the_latest_succeeded_run_before_the_window_is_retained(conn: Conn)
     assert _baseline(world, [window]) == f"retention {world.name}: baseline succeeded run {n1}"
 
 
-def test_a_partial_run_is_never_the_retention_baseline(conn: Conn) -> None:
-    """A listing seen only by a partial N-1 is judged against N-2, the latest succeeded run
-    before it, and the log line says the partial run was skipped."""
+def test_a_partial_run_after_the_baseline_retains_what_it_saw(conn: Conn) -> None:
+    """Coordinator 01a11e38-6cba (A1): B, seen only by a partial N-1 after the succeeded N-2, is
+    retained from N-1 with no value; A is still retained from N-2. The partial run is never the
+    baseline, and the log line says so."""
     world = World(conn)
     n2 = world.run("succeeded", 1)
     world.observe(n2, "A", 1, "70")
     n1 = world.run("partial", 2)
-    world.observe(n1, "B", 2, "90")
+    world.observe(n1, "B", 2, "90", availability="in_stock")
+    window = world.run("partial", 5)
+    world.observe(window, "C", 5, "75")
+
+    got = _window(world, [window])
+    assert set(got) == {"A", "B", "C"}
+    assert (got["A"]["run_id"], got["A"]["retained"]) == (n2, True)
+    b = got["B"]
+    assert (b["run_id"], b["observed_at"], b["retained"]) == (n1, _at(2), True)
+    assert (b["price"], b["regular"], b["availability"], b["rating"]) == (
+        None,
+        None,
+        "not_observed",
+        None,
+    )
+    assert _baseline(world, [window]) == (
+        f"retention {world.name}: baseline succeeded run {n2}; partial runs [{n1}] retain only"
+        " the listings they saw, never the baseline"
+    )
+
+
+def test_a_listing_a_later_succeeded_run_did_not_see_is_not_retained(conn: Conn) -> None:
+    """Crawl 01a11e38-d0f3, Coordinator 01a11e38-fd27: P saw L, then the succeeded S (a complete
+    catalogue) did not; S ends L's retention, so L is not retained from P."""
+    world = World(conn)
+    p = world.run("partial", 1)
+    world.observe(p, "L", 1, "90")
+    s = world.run("succeeded", 2)
+    world.observe(s, "A", 2, "70")
     window = world.run("partial", 5)
     world.observe(window, "C", 5, "75")
 
     got = _window(world, [window])
     assert set(got) == {"A", "C"}
-    assert (got["A"]["run_id"], got["A"]["retained"]) == (n2, True)
-    assert _baseline(world, [window]) == (
-        f"retention {world.name}: baseline succeeded run {n2}; later partial runs [{n1}]"
-        " skipped, a partial run is never the baseline"
+    assert (got["A"]["run_id"], got["A"]["retained"]) == (s, True)
+    assert _baseline(world, [window]) == f"retention {world.name}: baseline succeeded run {s}"
+
+
+def test_with_no_succeeded_run_a_partial_run_retains_what_it_saw(conn: Conn) -> None:
+    """The Faces case (Coordinator 01a11e36-b087, 01a11e38-6cba): window run 9, an earlier
+    partial run 6 and no succeeded run. Exactly the listings run 6 saw and run 9 did not are
+    retained, with run 6's capture as evidence and no value from run 6; the window's own listings
+    keep the window's values."""
+    world = World(conn)
+    six = world.run("partial", 1)
+    world.observe(six, "A", 1, "70", availability="in_stock")
+    world.observe(six, "B", 1, "90", availability="in_stock")
+    nine = world.run("succeeded", 5)
+    world.observe(nine, "A", 5, "75")
+    world.observe(nine, "C", 5, "80")
+
+    got = _window(world, [nine])
+    assert set(got) == {"A", "B", "C"}
+    assert [k for k, v in sorted(got.items()) if v["retained"]] == ["B"]
+    a, b = got["A"], got["B"]
+    assert (a["price"], a["run_id"]) == (Decimal("75"), nine)
+    assert (b["run_id"], b["observed_at"]) == (six, _at(1))
+    assert (b["price"], b["regular"], b["availability"], b["rating"]) == (
+        None,
+        None,
+        "not_observed",
+        None,
+    )
+    assert (b["stock_run_id"], b["price_run_id"]) == (None, None)
+    assert _baseline(world, [nine]) == (
+        f"retention {world.name}: baseline none; partial runs [{six}] retain only the listings"
+        " they saw, never the baseline"
     )
 
 
-def test_with_no_succeeded_run_before_the_window_nothing_is_retained(conn: Conn) -> None:
+def test_with_no_run_before_the_window_nothing_is_retained(conn: Conn) -> None:
     world = World(conn)
-    partial = world.run("partial", 1)
-    world.observe(partial, "A", 1, "70")
     window = world.run("partial", 5)
     world.observe(window, "C", 5, "75")
+    later = world.run("partial", 9)
+    world.observe(later, "D", 9, "60")
 
     assert set(_window(world, [window])) == {"C"}
-    assert _baseline(world, [window]).startswith(
-        f"retention {world.name}: baseline none (nothing retained); later partial runs [{partial}]"
-    )
+    assert _baseline(world, [window]) == f"retention {world.name}: baseline none (nothing retained)"
 
 
 def test_without_a_window_nothing_is_retained(conn: Conn) -> None:
