@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Schemas } from '@/lib/api/types';
 import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
-import { sourceObservationDate, UltaPriceDate } from './as-of';
+import { sourceObservation, sourceObservationDate, UltaPriceDate } from './as-of';
 
 type Meta = Schemas['MetaView'];
 
@@ -47,6 +47,18 @@ describe('UltaPriceDate', () => {
     expect(
       sourceObservationDate(fixture(['ulta_ae'], [{ source: 'ulta_ae', lastDate: 'soon' }]), 'ulta_ae'),
     ).toBeNull();
+    expect(label(fixture(['ulta_ae'], [{ source: 'ulta_ae', lastDate: 'soon' }])).textContent).toBe(
+      'Latest Ulta price date could not be read; treat prices as stale.',
+    );
+    const twice = fixture(
+      ['ulta_ae'],
+      [
+        { source: 'ulta_ae', lastDate: '2026-10-01' },
+        { source: 'ulta_ae', lastDate: '2026-10-09' },
+      ],
+    );
+    expect(sourceObservation(twice, 'ulta_ae').state).toBe('conflict');
+    expect(label(twice).textContent).toBe('Ulta sources report conflicting dates; treat prices as stale.');
   });
 
   it("never assigns Ulta's label or date to another retailer", () => {

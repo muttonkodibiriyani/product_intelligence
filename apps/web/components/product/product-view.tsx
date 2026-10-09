@@ -11,7 +11,7 @@ import { parseState, toSearch } from '@/lib/explore';
 import { parseLaunches, toLaunchesSearch } from '@/lib/launches';
 import { parsePromotions, toPromotionsSearch } from '@/lib/promotions';
 import { formatCount, formatDate, loc } from '@/lib/format';
-import { columns, whyMissing, type OfferField, type Why } from '@/lib/product-detail';
+import { columns, sourceFields, whyMissing, type OfferField, type Why } from '@/lib/product-detail';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import type { BackTo } from '../explore/product-table';
@@ -256,6 +256,7 @@ function Offers({
   const locale = useLocale();
   const meta = useMeta().data?.data;
   const caps = meta?.capabilities;
+  const sources = meta?.sources;
   const ultaSourceDate = sourceObservationDate(meta, ULTA_RETAILER);
   if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
   const ctx = (o: Offer) => meta?.contexts.find((c) => c.id === o.context);
@@ -420,7 +421,8 @@ function Offers({
                   {r.label}
                 </th>
                 {cols.map(({ offer: o }) => {
-                  const why = r.field && whyMissing(r.field, o, caveats, caps);
+                  const why =
+                    r.field && whyMissing(r.field, o, caveats, caps, sourceFields(sources, o.retailer));
                   return (
                     <td key={o.context} className={`${TD} break-words`}>
                       {why ? <Missing why={why} /> : r.value(o)}

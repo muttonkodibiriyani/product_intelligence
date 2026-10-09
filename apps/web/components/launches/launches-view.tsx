@@ -9,6 +9,7 @@ import type { Envelope, Schemas } from '@/lib/api/types';
 import { formatCount, formatDate } from '@/lib/format';
 import {
   filterLaunchEvidence,
+  launchFilterGaps,
   launchEvidenceRow,
   type EvidenceField,
   type FieldState,
@@ -29,7 +30,7 @@ import { ErrorNotice } from '../error-notice';
 import { monogram, RowThumb } from '../explore/row-thumb';
 import { productHref } from '../explore/product-table';
 import { FilterChips } from '../ui/filter-chips';
-import { FreshnessStrip, useSourceFreshness } from '../ui/freshness';
+import { FilterGapNote, FreshnessStrip, useSourceFreshness } from '../ui/freshness';
 import { Known } from '../ui/known';
 import { Money } from '../ui/money';
 import { PageHeader } from '../ui/page-header';
@@ -270,6 +271,7 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
                 </>
               )}
             </p>
+            {ok && <FilterGapNote gaps={launchFilterGaps(state)} />}
           </div>
           <Segmented
             label={t('window')}
@@ -575,7 +577,7 @@ function PromotionField({ field }: { field: LaunchEvidenceRow['promotionPct'] })
 function AvailabilityField({ field }: { field: LaunchEvidenceRow['availability'] }) {
   const t = useTranslations('launches.filters.availabilityStates');
   if (field.state !== 'observed' || field.value === null) return <State state={field.state} />;
-  return <span>{t(field.value)}</span>;
+  return <Known t={t} v={field.value} />;
 }
 
 function Evidence({ row }: { row: LaunchEvidenceRow }) {

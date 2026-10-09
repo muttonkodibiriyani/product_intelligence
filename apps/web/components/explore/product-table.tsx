@@ -105,7 +105,7 @@ export function ProductTable({
                       className="block max-w-72 leading-tight font-medium text-ink hover:underline focus-visible:outline-2"
                       dir="auto"
                     >
-                      {c.name}
+                      {c.name?.trim() ? c.name : <span className="text-ink-3">{tc('noName')}</span>}
                     </Link>
                     <span className="block truncate text-xs text-ink-3">
                       {c.size && <SizeText size={c.size} />}
@@ -170,7 +170,7 @@ function Price({ card, retailer, locale }: { card: Card; retailer: string; local
 function GapCell({ pair, name, scale }: { pair: Card['gap']; name: (id: string) => string; scale: number }) {
   const t = useTranslations('gap');
   const locale = useLocale();
-  if (!pair) return <span className="text-ink-3">–</span>;
+  if (!pair) return <NoGap label={t('noPair')} />;
   const g = pair.gap;
   if (g) {
     const bar = gapBar(g, scale);
@@ -203,5 +203,15 @@ function GapCell({ pair, name, scale }: { pair: Card['gap']; name: (id: string) 
         </span>
       </span>
     );
-  return <span className="text-ink-3">–</span>;
+  return <NoGap label={t('noGap')} />;
+}
+
+/** A dash for the eye, with its reason for screen readers and on hover. */
+function NoGap({ label }: { label: string }) {
+  return (
+    <span className="text-ink-3" title={label} data-gap-absent>
+      <span aria-hidden>–</span>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
 }

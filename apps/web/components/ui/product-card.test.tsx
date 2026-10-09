@@ -86,6 +86,11 @@ describe('ProductCard', () => {
     expect(screen.queryByText(/0\.01/)).toBeNull();
   });
 
+  it('a product without a published name still links, and says the name is missing', () => {
+    card({ name: '  ' });
+    expect(screen.getByRole('link', { name: en.productCard.noName })).toBeTruthy();
+  });
+
   it('the chip sits on the picture with its tone', () => {
     const chip: Chip = { tone: 'good', label: 'Ulta UAE cheaper 4.2%' };
     const { container } = card({ chip });

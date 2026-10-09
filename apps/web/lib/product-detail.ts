@@ -3,6 +3,31 @@ import { priceState } from '@/lib/money';
 
 type Offer = Schemas['OfferView'];
 type Caps = Partial<Schemas['Capabilities']> | undefined;
+/** The offer's own source's declared field states (/meta `sources[].fields`), by field key. */
+type Fields = Readonly<Record<string, Schemas['FieldStatus']>> | undefined;
+
+/** The /meta field key each offer attribute is declared under (pi_dataset `RetailerV3.fields`). */
+const FIELD_KEY: Partial<Record<OfferField, string>> = {
+  price: 'price',
+  regular: 'regular',
+  availability: 'stock',
+  rating: 'rating',
+  size: 'size',
+  shades: 'shades',
+  sku: 'sku',
+};
+
+/**
+ * "Not published" is a claim about the retailer's page, so it stands only when the source does not
+ * declare otherwise: a field the source says it did not collect, could not parse, was blocked on
+ * or collected only in part is ours, not the retailer's, and says so.
+ */
+const DECLARED: Partial<Record<Schemas['FieldStatus'], Why>> = {
+  not_collected: { state: 'notMeasured', reason: 'notCollected' },
+  parse_failure: { state: 'notMeasured', reason: 'parseFailure' },
+  blocked: { state: 'notMeasured', reason: 'blocked' },
+  partial: { state: 'notMeasured', reason: 'partialCollection' },
+};
 
 /**
  * Why an offer attribute has no value: what the cell says (`state`) and the reason under it
@@ -25,18 +50,36 @@ const wasPriceUnverified = (caveats: readonly CaveatView[], retailer: string) =>
  * which the price cell words itself). `caps` is /meta's capabilities: an attribute the dataset
  * doesn't collect is "not measured", never "not published" by the retailer. An offer the latest
  * crawl didn't see (`not_observed`, a listing carried from an earlier run) has no values by
- * design, so nothing on it can be read as the retailer's: every gap is "not seen".
+ * design, so nothing on it can be read as the retailer's: every gap is "not seen". `fields` is
+ * the offer's source's declared field states: "not published" yields to any declared state that
+ * makes the gap ours (not collected, parse failure, blocked, partial).
  */
 export function whyMissing(
   field: OfferField,
   o: Offer,
   caveats: readonly CaveatView[],
   caps: Caps,
+  fields?: Fields,
 ): Why | null {
   const why = fieldWhy(field, o, caveats, caps);
-  return why && why.state !== 'none' && o.availability === 'not_observed'
-    ? { state: 'notMeasured', reason: 'notObserved' }
-    : why;
+  if (why && why.state !== 'none' && o.availability === 'not_observed')
+    return { state: 'notMeasured', reason: 'notObserved' };
+  if (why?.state !== 'notPublished') return why;
+  const key = FIELD_KEY[field];
+  const declared = key ? fields?.[key] : undefined;
+  return (declared && DECLARED[declared]) ?? why;
+}
+
+/**
+ * The declared field states of the one source that is this retailer's, or none when /meta sends
+ * no source, or more than one, of that exact id (conflicting declarations are never merged).
+ */
+export function sourceFields(
+  sources: readonly Pick<Schemas['SourceInfo'], 'source' | 'fields'>[] | undefined,
+  retailer: string,
+): Fields {
+  const own = (sources ?? []).filter((s) => s.source === retailer);
+  return own.length === 1 ? own[0]!.fields : undefined;
 }
 
 function fieldWhy(field: OfferField, o: Offer, caveats: readonly CaveatView[], caps: Caps): Why | null {

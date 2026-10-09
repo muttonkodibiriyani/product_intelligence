@@ -17,18 +17,34 @@ export function sourceObservationDate(
   meta: Schemas['MetaView'] | null | undefined,
   retailer: string,
 ): string | null {
-  const sources = meta?.sources.filter((source) => source.source === retailer) ?? [];
-  const dates = new Set(
-    sources
-      .map((source) => source.lastDate)
-      .filter((date) => {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-        const parsed = new Date(`${date}T00:00:00Z`);
-        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
-      }),
-  );
-  return dates.size === 1 && dates.size === sources.length ? [...dates][0]! : null;
+  const observed = sourceObservation(meta, retailer);
+  return observed.state === 'ok' ? observed.date : null;
 }
+
+/** Why a retailer's observation day is or is not usable: absent, unreadable, or conflicting. */
+export type SourceObservation =
+  { state: 'ok'; date: string } | { state: 'unavailable' | 'invalid' | 'conflict'; date: null };
+
+export function sourceObservation(
+  meta: Schemas['MetaView'] | null | undefined,
+  retailer: string,
+): SourceObservation {
+  const sources = meta?.sources.filter((source) => source.source === retailer) ?? [];
+  if (sources.length === 0) return { state: 'unavailable', date: null };
+  if (sources.length > 1) return { state: 'conflict', date: null };
+  const date = sources[0]!.lastDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { state: 'invalid', date: null };
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
+    ? { state: 'ok', date }
+    : { state: 'invalid', date: null };
+}
+
+const DATE_KEY = {
+  unavailable: 'retailerPriceDateUnknown',
+  invalid: 'retailerPriceDateInvalid',
+  conflict: 'retailerPriceDateConflict',
+} as const;
 
 /** Ulta's latest source day as context; individual offer labels remain authoritative. */
 export function UltaPriceDate({ meta }: { meta: Schemas['MetaView'] | null | undefined }) {
@@ -36,13 +52,13 @@ export function UltaPriceDate({ meta }: { meta: Schemas['MetaView'] | null | und
   const locale = useLocale();
   const ulta = meta?.retailers.find((retailer) => retailer.id === ULTA);
   if (!ulta) return null;
-  const observed = sourceObservationDate(meta, ULTA);
+  const observed = sourceObservation(meta, ULTA);
   const name = retailerName(ULTA, ulta.name, locale);
   return (
-    <span data-retailer-date={ULTA} className="break-words">
-      {observed
-        ? t('retailerLatestPriceData', { retailer: name, date: formatDate(observed, locale) })
-        : t('retailerPriceDateUnknown', { retailer: name })}
+    <span data-retailer-date={ULTA} data-date-state={observed.state} className="break-words">
+      {observed.state === 'ok'
+        ? t('retailerLatestPriceData', { retailer: name, date: formatDate(observed.date, locale) })
+        : t(DATE_KEY[observed.state], { retailer: name })}
     </span>
   );
 }

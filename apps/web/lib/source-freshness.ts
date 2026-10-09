@@ -169,7 +169,8 @@ export function missingFields(card: Card): CardField[] {
  * the list instead of letting them vanish: a brand filter cannot match a product without a brand,
  * a price bound one without a price, an availability filter one whose stock was not observed.
  */
-export type FilterGap = 'brand' | 'category' | 'price' | 'availability';
+export type FilterGap =
+  'brand' | 'category' | 'price' | 'availability' | 'discount' | 'size' | 'shade' | 'color';
 export function filterGaps(s: {
   brand: readonly string[];
   category: readonly string[];

@@ -107,7 +107,7 @@ export function ProductCard({
           dir="auto"
           className="line-clamp-2 text-[13px] leading-snug font-medium text-ink after:absolute after:inset-0 group-hover:underline focus-visible:outline-2"
         >
-          {name}
+          {name.trim() ? name : <span className="text-ink-3">{t('noName')}</span>}
         </Link>
         {(size || category) && (
           <span className="truncate text-xs text-ink-3">

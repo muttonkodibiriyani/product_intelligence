@@ -9,7 +9,7 @@ export const ULTA_RETAILER = 'ulta_ae';
 type Offer = Pick<Schemas['OfferView'], 'retailer' | 'evidence'>;
 
 export type OfferPriceDate =
-  { state: 'latest' | 'stale'; date: string } | { state: 'unavailable'; date: null };
+  { state: 'latest' | 'stale'; date: string } | { state: 'unavailable' | 'invalid'; date: null };
 
 /** A real calendar day in the API's date form; rollover dates fail closed. */
 function calendarDay(value: unknown): string | null {
@@ -34,16 +34,19 @@ function evidenceDay(value: unknown): string | null {
 }
 
 /**
- * Ulta's exact offer-level price day, compared only with Ulta's own source day. Missing or bad
- * evidence and impossible future-of-source evidence are unavailable; no state is inferred from
+ * Ulta's exact offer-level price day, compared only with Ulta's own source day. Missing evidence
+ * is unavailable; unreadable or impossible future-of-source evidence is invalid; no state is inferred from
  * the wall clock. When source metadata is unavailable, a valid offer day remains visible but is
  * conservatively stale.
  */
 export function offerPriceDate(offer: Offer, sourceDate: string | null): OfferPriceDate | null {
   if (offer.retailer !== ULTA_RETAILER) return null;
-  const date = evidenceDay(offer.evidence?.capturedAt);
+  const raw = offer.evidence?.capturedAt;
+  if (raw == null || raw === '') return { state: 'unavailable', date: null };
+  const date = evidenceDay(raw);
   const latest = calendarDay(sourceDate);
-  if (!date || (latest && date > latest)) return { state: 'unavailable', date: null };
+  // Evidence that is present but unreadable, or later than the source's own day, is invalid.
+  if (!date || (latest && date > latest)) return { state: 'invalid', date: null };
   return { state: latest && date === latest ? 'latest' : 'stale', date };
 }
 
@@ -67,7 +70,9 @@ export function UltaOfferPriceDate({
         retailer: retailerName,
         date: formatDate(observed.date, locale),
       })
-    : t('offerPriceDateUnavailable', { retailer: retailerName });
+    : t(observed.state === 'invalid' ? 'offerPriceDateInvalid' : 'offerPriceDateUnavailable', {
+        retailer: retailerName,
+      });
   return (
     <span
       data-offer-price-date={ULTA_RETAILER}

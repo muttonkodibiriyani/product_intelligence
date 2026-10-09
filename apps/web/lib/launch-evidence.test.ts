@@ -3,6 +3,7 @@ import { golden } from './api/golden';
 import type { Envelope, Schemas } from './api/types';
 import {
   filterLaunchEvidence,
+  launchFilterGaps,
   launchEvidenceRow,
   type LaunchEvidenceFilters,
   type LaunchEvidenceRow,
@@ -83,10 +84,11 @@ describe('launch evidence adapter', () => {
     expect(row.availability.value).toBe('in_stock');
     expect(row.evidenceAt.value).toBe('2026-10-08T09:30:00Z');
     expect(row.source.value).toBe('https://example.invalid/source');
-    expect(row.retailerDeclaration).toEqual({ state: 'missing', value: null });
-    expect(row.memberPrice).toEqual({ state: 'missing', value: null });
-    expect(row.color).toEqual({ state: 'missing', value: null });
-    expect(row.states).toEqual(['first_observed_only', 'missing']);
+    // Fields the API never collects say so: never "missing" from the retailer's page.
+    expect(row.retailerDeclaration).toEqual({ state: 'not_collected', value: null });
+    expect(row.memberPrice).toEqual({ state: 'not_collected', value: null });
+    expect(row.color).toEqual({ state: 'not_collected', value: null });
+    expect(row.states).toEqual(['first_observed_only', 'not_collected']);
   });
 
   it('preserves null image, not_published, not_observed, stale and invalid as distinct states', () => {
@@ -116,7 +118,21 @@ describe('launch evidence adapter', () => {
       'not_observed',
       'stale',
       'invalid',
+      'not_collected',
     ]);
+  });
+
+  it('marks an implausible regular price, discount or evidence date invalid, never shown as observed', () => {
+    const env = detail('sephora_ae', 'spf-9', (offer) => {
+      offer.regular = { ...offer.regular!, amount: 'abc' };
+      offer.promoPct = '140';
+      offer.evidence = { ...offer.evidence, capturedAt: 'not-a-date' };
+    });
+    const row = launchEvidenceRow(launch('sephora_ae', 'spf-9'), env);
+    expect(row.regularPrice).toEqual({ state: 'invalid', value: null });
+    expect(row.promotionPct).toEqual({ state: 'invalid', value: null });
+    expect(row.evidenceAt).toEqual({ state: 'invalid', value: null });
+    expect(row.states).toContain('invalid');
   });
 
   it('fails closed on contradictory same-context offers and ambiguous multi-context offers', () => {
@@ -140,11 +156,15 @@ describe('launch evidence adapter', () => {
   });
 
   it('keeps a failed or loading detail explicit instead of borrowing another retailer offer', () => {
-    expect(launchEvidenceRow(launch('sephora_ae', 'spf-4'), undefined).detailState).toBe('loading');
+    const loading = launchEvidenceRow(launch('sephora_ae', 'spf-4'), undefined);
+    expect(loading.detailState).toBe('loading');
+    expect(loading.currentPrice.state).toBe('unknown');
     const unavailable = launchEvidenceRow(launch('faces_ae', 'faces-4'), null);
     expect(unavailable.detailState).toBe('unavailable');
-    expect(unavailable.brand.state).toBe('missing');
-    expect(unavailable.states).toContain('missing');
+    // Evidence that was never read is unknown, never "missing" from the retailer.
+    expect(unavailable.brand.state).toBe('unknown');
+    expect(unavailable.states).toContain('unknown');
+    expect(unavailable.states).not.toContain('missing');
   });
 });
 
@@ -188,5 +208,36 @@ describe('launch evidence filters', () => {
 
   it('fails closed for unsupported color evidence', () => {
     expect(filterLaunchEvidence(rows, { ...emptyFilters(), color: 'red' })).toEqual([]);
+  });
+
+  it('matches the "not observed" and "unknown" stock options against the field state', () => {
+    const unseen = launchEvidenceRow(
+      launch('faces_ae', 'faces-6'),
+      detail('faces_ae', 'faces-6', (offer) => {
+        offer.availability = 'not_observed';
+      }),
+    );
+    const unread = launchEvidenceRow(launch('ulta_ae', 'ulta-6'), undefined);
+    const pick = (availability: string[]) =>
+      filterLaunchEvidence([unseen, unread], { ...emptyFilters(), availability }).map(
+        (r) => r.launch.retailer,
+      );
+    expect(pick(['not_observed'])).toEqual(['faces_ae']);
+    expect(pick(['unknown'])).toEqual(['ulta_ae']);
+  });
+
+  it('names every active value filter a product without that value cannot match', () => {
+    expect(launchFilterGaps(emptyFilters())).toEqual([]);
+    expect(
+      launchFilterGaps({
+        ...emptyFilters(),
+        brand: ['B'],
+        priceMax: '50',
+        discountMin: '10',
+        size: '8 g',
+        shade: ' ',
+        color: 'red',
+      }),
+    ).toEqual(['brand', 'price', 'discount', 'size', 'color']);
   });
 });

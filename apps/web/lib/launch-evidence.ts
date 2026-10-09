@@ -9,11 +9,25 @@ export const EVIDENCE_STATES = [
   'stale',
   'invalid',
   'contradictory',
+  'unknown',
+  'not_collected',
 ] as const;
 export type LaunchEvidenceState = (typeof EVIDENCE_STATES)[number];
 
+/**
+ * - `unknown`: the product's evidence has not been read (still loading, or the detail request
+ *   failed), so nothing is said about the field: never "missing".
+ * - `not_collected`: the API does not collect this field at all (API 1.25.0).
+ */
 export type FieldState =
-  'observed' | 'missing' | 'not_published' | 'not_observed' | 'invalid' | 'contradictory';
+  | 'observed'
+  | 'missing'
+  | 'not_published'
+  | 'not_observed'
+  | 'invalid'
+  | 'contradictory'
+  | 'unknown'
+  | 'not_collected';
 
 export interface EvidenceField<T> {
   value: T | null;
@@ -22,6 +36,24 @@ export interface EvidenceField<T> {
 
 const missing = <T>(): EvidenceField<T> => ({ value: null, state: 'missing' });
 const contradictory = <T>(): EvidenceField<T> => ({ value: null, state: 'contradictory' });
+const unknown = <T>(): EvidenceField<T> => ({ value: null, state: 'unknown' });
+const notCollected = <T>(): EvidenceField<T> => ({ value: null, state: 'not_collected' });
+const invalid = <T>(): EvidenceField<T> => ({ value: null, state: 'invalid' });
+
+/** A discount the page can show as a percentage: a number above 0 and below 100. */
+function percent(value: string | null | undefined): EvidenceField<string> {
+  const text = value?.trim();
+  if (!text) return missing();
+  const n = Number(text);
+  return Number.isFinite(n) && n > 0 && n < 100 ? observed(text) : invalid();
+}
+
+/** An evidence timestamp the page can date; anything unparseable is invalid, never shown. */
+function timestamp(value: string | null | undefined): EvidenceField<string> {
+  const text = value?.trim();
+  if (!text) return missing();
+  return Number.isNaN(Date.parse(text)) ? invalid() : observed(text);
+}
 const observed = <T>(value: T): EvidenceField<T> => ({ value, state: 'observed' });
 
 export interface LaunchEvidenceRow {
@@ -104,9 +136,10 @@ export function launchEvidenceRow(
 ): LaunchEvidenceRow {
   const base = {
     launch,
-    color: missing<string>(),
-    memberPrice: missing<Money>(),
-    retailerDeclaration: missing<string>(),
+    // Not collected by the API: said as such, never "missing" from the retailer's page.
+    color: notCollected<string>(),
+    memberPrice: notCollected<Money>(),
+    retailerDeclaration: notCollected<string>(),
     staleAsOf: staleDate(caveats, launch.retailer),
   };
 
@@ -114,18 +147,18 @@ export function launchEvidenceRow(
     return finish({
       ...base,
       detailState: 'loading',
-      brand: missing(),
-      category: missing(),
-      image: missing(),
-      sku: missing(),
-      size: missing(),
-      shade: missing(),
-      currentPrice: missing(),
-      regularPrice: missing(),
-      promotionPct: missing(),
-      availability: missing(),
-      evidenceAt: missing(),
-      source: missing(),
+      brand: unknown(),
+      category: unknown(),
+      image: unknown(),
+      sku: unknown(),
+      size: unknown(),
+      shade: unknown(),
+      currentPrice: unknown(),
+      regularPrice: unknown(),
+      promotionPct: unknown(),
+      availability: unknown(),
+      evidenceAt: unknown(),
+      source: unknown(),
     });
   }
 
@@ -134,18 +167,18 @@ export function launchEvidenceRow(
     return finish({
       ...base,
       detailState: 'unavailable',
-      brand: missing(),
-      category: missing(),
-      image: missing(),
-      sku: missing(),
-      size: missing(),
-      shade: missing(),
-      currentPrice: missing(),
-      regularPrice: missing(),
-      promotionPct: missing(),
-      availability: missing(),
-      evidenceAt: missing(),
-      source: missing(),
+      brand: unknown(),
+      category: unknown(),
+      image: unknown(),
+      sku: unknown(),
+      size: unknown(),
+      shade: unknown(),
+      currentPrice: unknown(),
+      regularPrice: unknown(),
+      promotionPct: unknown(),
+      availability: unknown(),
+      evidenceAt: unknown(),
+      source: unknown(),
     });
   }
 
@@ -204,10 +237,13 @@ export function launchEvidenceRow(
     ),
     shade,
     currentPrice,
-    regularPrice: offerField((item) => (item.regular ? observed(item.regular) : missing())),
-    promotionPct: offerField((item) => cleanText(item.promoPct)),
+    regularPrice: offerField((item) => {
+      if (item.regular && !isValidAmount(item.regular.amount)) return invalid();
+      return item.regular ? observed(item.regular) : missing();
+    }),
+    promotionPct: offerField((item) => percent(item.promoPct)),
     availability,
-    evidenceAt: offerField((item) => cleanText(item.evidence.capturedAt)),
+    evidenceAt: offerField((item) => timestamp(item.evidence.capturedAt)),
     source: offerField((item) => cleanText(item.evidence.url)),
   });
 }
@@ -262,6 +298,23 @@ function sizeText(field: EvidenceField<Schemas['Size'] | string>): string {
   return field.value ? `${field.value.value} ${field.value.unit}` : '';
 }
 
+/**
+ * The active value filters a row without that observed value cannot match, so the page can say
+ * those products are not in the list instead of letting them vanish.
+ */
+export function launchFilterGaps(filters: LaunchEvidenceFilters): LaunchFilterGap[] {
+  const out: LaunchFilterGap[] = [];
+  if (filters.brand.length) out.push('brand');
+  if (filters.category.length) out.push('category');
+  if (filters.priceMin || filters.priceMax) out.push('price');
+  if (filters.discountMin) out.push('discount');
+  if (filters.size.trim()) out.push('size');
+  if (filters.shade.trim()) out.push('shade');
+  if (filters.color.trim()) out.push('color');
+  return out;
+}
+export type LaunchFilterGap = 'brand' | 'category' | 'price' | 'discount' | 'size' | 'shade' | 'color';
+
 /** Client-side filters apply only to fields already exposed by the two public responses. */
 export function filterLaunchEvidence(
   rows: readonly LaunchEvidenceRow[],
@@ -285,9 +338,11 @@ export function filterLaunchEvidence(
     if (high !== null && (!Number.isFinite(high) || amount === null || amount > high)) return false;
     const pct = row.promotionPct.value ? Number(row.promotionPct.value) : null;
     if (discount !== null && (!Number.isFinite(discount) || pct === null || pct < discount)) return false;
+    // A stock state the detail did not observe is its state ("not_observed", "unknown"), so the
+    // filter's own options for those states match it instead of dropping the row.
     if (
       filters.availability.length &&
-      (!row.availability.value || !filters.availability.includes(row.availability.value))
+      !filters.availability.includes(row.availability.value ?? row.availability.state)
     )
       return false;
     const size = filters.size.trim().toLocaleLowerCase();

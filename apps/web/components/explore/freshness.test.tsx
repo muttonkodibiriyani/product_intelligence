@@ -150,6 +150,27 @@ describe('ProductTable evidence states', () => {
 });
 
 describe('ProductGrid evidence states', () => {
+  it('names an unnamed product and gives an absent gap a reason screen readers can read', () => {
+    const items = rows().slice(0, 2);
+    items[0] = { ...items[0]!, name: '' };
+    wrap(
+      <ProductTable
+        items={items}
+        retailers={[...IDS]}
+        pair={['faces_ae', 'sephora_me']}
+        name={(id) => id}
+        from=""
+        sources={sources}
+      />,
+    );
+    const link = screen.getAllByRole('link')[0]!;
+    expect(link.textContent).toBe(en.productCard.noName);
+    const absent = document.querySelectorAll('[data-gap-absent]');
+    expect(absent).toHaveLength(2);
+    expect(absent[0]!.textContent).toContain(en.gap.noPair);
+    expect(absent[0]!.querySelector('[aria-hidden]')?.textContent).toBe('–');
+  });
+
   it('renders all 50 cards in Arabic with missing-field labels and non-latest states', () => {
     const items = rows();
     wrap(
