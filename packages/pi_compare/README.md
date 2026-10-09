@@ -16,6 +16,14 @@ an explicit completeness decision and basis for every retailer before the builde
 price, Decimal discount, public availability state, first-observed launch evidence and capture
 timestamp.
 
+`apply_projection` records accepted outputs in an immutable generation history. Its idempotency
+key includes the source, match, attribute-profile, description and builder generations. Exact
+replay appends nothing; a byte-different replay is rejected. The caller's changed listing keys
+must account for every changed old/new family before the served pointer advances. The resulting
+change set names only affected family and facet cache buckets and reports old-plus-new member
+visits. Corrections point to a prior event, while rollback appends an audit event and moves the
+served pointer without deleting manifests or projections.
+
 It does not fetch retailer pages, infer inventory quantities, convert currencies, merge source
 records or let generated image text affect product identity.
 
@@ -25,5 +33,5 @@ uv run mypy packages/pi_compare/src packages/pi_compare/tests
 uv run pytest packages/pi_compare/tests
 ```
 
-The family projection builder, read API and web view land in later slices described in
+The read API and web view land in later slices described in
 [`docs/design/cross-retailer-comparison.md`](../../docs/design/cross-retailer-comparison.md).
