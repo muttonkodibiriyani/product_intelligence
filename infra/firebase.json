@@ -67,7 +67,7 @@
         ]
       },
       {
-        "source": "**/*.@(html|json)",
+        "regex": "^(?:.*/|.*\\.(?:html|json|txt))$",
         "headers": [
           {
             "key": "Cache-Control",

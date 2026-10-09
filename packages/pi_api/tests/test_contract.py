@@ -185,6 +185,33 @@ def test_hosting_routes_api_first_and_unknown_paths_404() -> None:
             assert "pinTag" not in rule["run"]
 
 
+def test_hosting_pages_are_revalidated_and_hashed_assets_are_immutable() -> None:
+    """Hosting matches header rules against the request path, and with ``trailingSlash: true``
+    people visit ``/app/en/product/``, not ``.../index.html``. A page URL or its RSC ``.txt``
+    payload that misses the no-cache rule gets Hosting's default ``max-age=3600``, so a release
+    stays invisible for up to an hour (2026-10-09, after A3)."""
+    hosting = json.loads((REPO / "infra" / "firebase.json").read_text(encoding="utf-8"))["hosting"]
+    (no_cache,) = [
+        b["regex"]
+        for b in hosting["headers"]
+        if "regex" in b and {"key": "Cache-Control", "value": "no-cache"} in b["headers"]
+    ]
+    for path in (
+        "/app/",
+        "/app/en/product/",
+        "/app/ar/launches/",
+        "/auth/action/",
+        "/app/en/product/index.html",
+        "/app/en/product/index.txt",
+        "/app/en/product/__next._full.txt",
+        "/404.html",
+        "/app/assistant-app-check.json",
+    ):
+        assert re.fullmatch(no_cache, path), f"{path} would be cached for an hour"
+    for path in ("/app/_next/static/chunks/abc123.js", "/app/_next/static/css/abc123.css"):
+        assert not re.fullmatch(no_cache, path), f"{path} is content-hashed and stays immutable"
+
+
 def _csp_directives() -> dict[str, list[str]]:
     """The hosting ``Content-Security-Policy`` as ``{directive: [sources]}``.
 
