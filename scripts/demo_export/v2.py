@@ -30,7 +30,7 @@ import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -192,6 +192,20 @@ class Stale:
             return self.on_day(moment)
         window = self.windows.get(shop)
         return window is not None and window.start <= moment <= window.end
+
+
+@dataclass(frozen=True)
+class Withheld:
+    """Retailer slots exported WITHHELD (F1, ADR-0013 §8; Coordinator 01a11e1d-19a1): their offers
+    keep the values of their own run (``--run``), but the body gives them no crawl window, so no
+    cross-retailer gap is counted on their old captures. Each states ``since``, its window's last
+    market day, and one whole-retailer ``notObserved`` entry with ``why`` runs from the day after
+    ``since`` (or the cutoff day, if that is earlier) to ``until``: the roll-time cutoff day, or
+    the body's own cutoff day when ``None``; never earlier than the latter."""
+
+    slots: frozenset[str]
+    why: Mapping[str, str]
+    until: date | None = None
 
 
 def market_date(moment: datetime) -> date:
@@ -570,6 +584,7 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     producer_commit: str | None = None,
     slots: Sequence[str] | None = None,
     windows: Mapping[str, CrawlWindow] | None = None,
+    withheld: Withheld | None = None,
 ) -> Dataset:
     """``ulta_note`` is v1's ``meta.retailers[u].note``, so both versions say the same thing.
 
@@ -577,7 +592,9 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     per-source file (ADR-0010) lists only its own, e.g. ``("f",)`` for the Faces file.
 
     ``windows`` (``crawl_windows``, ADR-0013) publish each retailer's values captured in its
-    crawl window instead of only those of the cutoff's day; ``to_v3`` writes them."""
+    crawl window instead of only those of the cutoff's day; ``to_v3`` writes them. ``withheld``
+    slots still publish the values of their window but state ``since`` and a ``notObserved``
+    entry instead (``Withheld``); ``to_v3`` then gives them no window."""
     if not rows and not ulta_early:
         raise ValueError("refusing to create an empty demo dataset")
     captures = [row.evidence_retrieved_at or row.observed_at for row in rows]
@@ -670,6 +687,11 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
                 },
             ),
         )
+    if withheld is not None:
+        if "u" in withheld.slots and ulta_status is RetailerStatus.BLOCKED:
+            raise ValueError("ulta_ae is blocked by ruling: it cannot also be withheld")
+        retailers, held = withhold(retailers, withheld, windows, day)
+        not_observed = (*not_observed, *held)
     meta = Meta(
         kind="snapshot",
         cutoff=cutoff,
@@ -739,6 +761,46 @@ def build_dataset_v2(  # noqa: PLR0913 - mirrors build_dataset plus the v2 meta
     return Dataset(
         schema_id="pi.dataset/v2", meta=meta, products=tuple(products), not_observed=not_observed
     )
+
+
+def withhold(
+    retailers: Sequence[Retailer],
+    withheld: Withheld,
+    windows: Mapping[str, CrawlWindow] | None,
+    day: date,
+) -> tuple[list[Retailer], list[NotObserved]]:
+    """``retailers`` with each ``withheld`` slot's ``since`` set, and its whole-retailer entries
+    (``Withheld``). A withheld slot that is not listed, or has no window to take ``since`` from,
+    is refused: a withheld retailer is never guessed."""
+    slot_of = {rid: slot for slot, (rid, _) in RETAILERS.items()}
+    listed = {slot_of[r.id] for r in retailers}
+    if missing := sorted(withheld.slots - listed):
+        raise ValueError(f"withheld {missing}: not a listed retailer of this export")
+    until = day if withheld.until is None else withheld.until
+    if until < day:
+        raise ValueError(f"withheld until {until}: before the cutoff day {day}")
+    out: list[Retailer] = []
+    entries: list[NotObserved] = []
+    for r in retailers:
+        slot = slot_of[r.id]
+        if slot not in withheld.slots:
+            out.append(r)
+            continue
+        window = (windows or {}).get(slot)
+        if window is None:
+            raise ValueError(f"{r.id}: withheld with no crawl window (--run) to take since from")
+        since = market_date(window.end)
+        out.append(r.model_copy(update={"since": since}))
+        entries.append(
+            NotObserved(
+                retailer=r.id,
+                start=min(since + timedelta(days=1), day),
+                end=until,
+                categories=None,
+                why=dict(withheld.why),
+            )
+        )
+    return out, entries
 
 
 def offer_rows(
@@ -847,6 +909,7 @@ def to_v3(
     rows: Sequence[ListingRow],
     matches: Sequence[MatchRow],
     windows: Mapping[str, CrawlWindow] | None = None,
+    withheld: frozenset[str] = frozenset(),
 ) -> DatasetV3:
     """``v2`` upgraded under ``beauty@1``, each collected offer with its ``listingCount`` and
     ``content``; an early (recon) offer's stay ``null``. The caller validates the dump with
@@ -856,7 +919,8 @@ def to_v3(
     the roll-up of ``meta.fields``, ADR-0013) and its crawl ``window`` from ``windows`` (the ones
     ``build_dataset_v2`` used). An offer whose rows are all retained is marked ``retained`` and
     covered by one ``notObserved`` entry per retailer, context and reason: the window's market
-    dates and the marked products' categories."""
+    dates and the marked products' categories. A ``withheld`` slot (``Withheld``) gets no window:
+    its values are still counted against its own window in its ``fields``."""
     profile = committed_profile("beauty", 1)
     if profile is None:  # pragma: no cover - the profile is committed with pi_dataset
         raise ValueError("beauty@1 is not a committed profile")
@@ -914,7 +978,9 @@ def to_v3(
                 "retailers": tuple(
                     r.model_copy(
                         update={
-                            "window": (windows or {}).get(slot_of[r.id]),
+                            "window": None
+                            if slot_of[r.id] in withheld
+                            else (windows or {}).get(slot_of[r.id]),
                             "fields": states[r.id][0],
                             "capabilities": states[r.id][1],
                         }

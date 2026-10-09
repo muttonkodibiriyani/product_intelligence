@@ -19,15 +19,18 @@ import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
 
 from pi_dataset.gate import V3_MAX_BYTES
+
+if TYPE_CHECKING:
+    from scripts.demo_export.v2 import Withheld
 
 DATASET_SCHEMA = "pi.dataset/v1"
 ALLOWED_CATEGORIES = {
@@ -1402,6 +1405,27 @@ def parser() -> argparse.ArgumentParser:
             "repeat per source. With any --run, every exported source needs one"
         ),
     )
+    result.add_argument(
+        "--withhold",
+        action="append",
+        default=[],
+        metavar="SOURCE",
+        help=(
+            "export SOURCE withheld (F1, ADR-0013 §8): its offers keep the values of its --run, "
+            "but it gets no crawl window, a since and one whole-retailer notObserved entry with "
+            "--withhold-why/--withhold-why-ar; repeatable, v2/v3 only"
+        ),
+    )
+    result.add_argument("--withhold-why", help="why the withheld sources are not observed (EN)")
+    result.add_argument("--withhold-why-ar", help="the same reason in Arabic (required with EN)")
+    result.add_argument(
+        "--withhold-until",
+        type=date.fromisoformat,
+        help=(
+            "the withheld entries' last day (YYYY-MM-DD, market time zone): the roll-time cutoff "
+            "day; default the body's own cutoff day, and never earlier"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
@@ -1461,6 +1485,43 @@ def check_args(args: argparse.Namespace) -> None:
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must be supplied together")
     if any(note is not None and not note.strip() for note in notes):
         raise SystemExit("--ulta-blocked-note and --ulta-blocked-note-ar must not be empty")
+    check_withhold(args)
+
+
+def check_withhold(args: argparse.Namespace) -> None:
+    """``--withhold`` (F1): each source once and exported, beside at least one windowed source,
+    with ``--run`` (its values and ``since`` come from its window), a v2/v3 output, and a reason
+    in both languages; the reason and ``--withhold-until`` never without a withheld source."""
+    held, why = args.withhold, (args.withhold_why, args.withhold_why_ar)
+    if not held:
+        if any(v is not None for v in (*why, args.withhold_until)):
+            raise SystemExit("--withhold-why(-ar) and --withhold-until need --withhold")
+        return
+    if len(set(held)) != len(held):
+        raise SystemExit(f"--withhold names a source twice: {held}")
+    if extra := [s for s in held if s not in args.sources]:
+        raise SystemExit(f"--withhold {', '.join(extra)}: not one of --sources")
+    if set(held) == set(args.sources):
+        raise SystemExit("--withhold needs a windowed source beside it: every source is withheld")
+    if not args.run:
+        raise SystemExit("--withhold needs --run: a withheld source's since comes from its run")
+    if args.output_v2 is None and args.output_v3 is None:
+        raise SystemExit("--withhold needs --output-v2 or --output-v3 (v1 has no notObserved)")
+    if any(v is None or not v.strip() for v in why):
+        raise SystemExit("--withhold needs --withhold-why and --withhold-why-ar, both non-empty")
+
+
+def withheld_of(args: argparse.Namespace) -> Withheld | None:
+    """The ``--withhold`` sources as ``Withheld`` slots (``check_withhold`` ran), or ``None``."""
+    if not args.withhold:
+        return None
+    from scripts.demo_export.v2 import Withheld  # noqa: PLC0415
+
+    return Withheld(
+        slots=frozenset(slot(source) for source in args.withhold),
+        why={"en": args.withhold_why.strip(), "ar": args.withhold_why_ar.strip()},
+        until=args.withhold_until,
+    )
 
 
 def build_v1(
@@ -1572,11 +1633,12 @@ def main() -> None:
                 producer_commit=args.producer_commit,
                 slots=slots,
                 windows=windows,
+                withheld=withheld_of(args),
             )
         body = dump_dataset(v2, compact=True)
         load_dataset(body)  # the publisher's strict load, credential scan included
         if args.output_v3 is not None:
-            v3 = to_v3(v2, v2_rows, matches, windows)
+            v3 = to_v3(v2, v2_rows, matches, windows, frozenset(map(slot, args.withhold)))
             print(window_report(v3))
             body_v3 = dump_dataset(v3, compact=True)
             load_any(body_v3)  # the same strict load, as v3
