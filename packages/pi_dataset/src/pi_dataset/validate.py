@@ -43,8 +43,12 @@ def _refuse_float(text: str) -> Any:
     raise DatasetError([msg])
 
 
-def _parse(raw: bytes | str, accepts: tuple[str, ...]) -> tuple[str, str]:
-    """Credential scan, float refusal and the schema id, before any model rule: (text, id)."""
+def _parse(raw: bytes | str, accepts: tuple[str, ...]) -> str:
+    """Credential scan, float refusal and the schema id, before any model rule.
+
+    The decoded text and its parse are dropped on return: the caller validates ``raw`` itself,
+    so a large document is never held as bytes, text and a JSON tree at once (tm8 01a11763-dc85).
+    """
     text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
     forbidden = [
         f"forbidden credential-like content: /{p.pattern}/" for p in FORBIDDEN if p.search(text)
@@ -61,13 +65,14 @@ def _parse(raw: bytes | str, accepts: tuple[str, ...]) -> tuple[str, str]:
         raise DatasetError(
             [f"unsupported schema {shown}; this reader accepts {', '.join(accepts)}"]
         )
-    return text, str(schema)
+    return str(schema)
 
 
-def _validate[M: (Dataset, DatasetV3)](model: type[M], text: str, allow_test: bool) -> M:
+def _validate[M: (Dataset, DatasetV3)](model: type[M], raw: bytes | str, allow_test: bool) -> M:
     try:
         # Strict: no coercion, so "false", "12900" or 0 never stand in for false, 12900 or false.
-        dataset = model.model_validate_json(text, strict=True)
+        # Bytes as given: a str would add a UTF-8 copy for the validator to read.
+        dataset = model.model_validate_json(raw, strict=True)
     except ValidationError as exc:
         raise DatasetError(
             [f"{'.'.join(str(p) for p in e['loc']) or '<root>'}: {e['msg']}" for e in exc.errors()]
@@ -79,21 +84,24 @@ def _validate[M: (Dataset, DatasetV3)](model: type[M], text: str, allow_test: bo
 
 def load_dataset(raw: bytes | str, *, allow_test: bool = False) -> Dataset:
     """Parse and validate a v2 document; raise ``DatasetError`` rather than return a partial one."""
-    text, _ = _parse(raw, (SCHEMA_ID,))
-    return _validate(Dataset, text, allow_test)
+    _parse(raw, (SCHEMA_ID,))
+    return _validate(Dataset, raw, allow_test)
 
 
 def load_any(raw: bytes | str, *, allow_test: bool = False) -> Dataset | DatasetV3:
     """A v2 or v3 document, each parsed with its own model (ADR-0008 §0)."""
-    text, schema = _parse(raw, (SCHEMA_ID, SCHEMA_ID_V3))
+    schema = _parse(raw, (SCHEMA_ID, SCHEMA_ID_V3))
     if schema == SCHEMA_ID_V3:
-        return _validate(DatasetV3, text, allow_test)
-    return _validate(Dataset, text, allow_test)
+        return _validate(DatasetV3, raw, allow_test)
+    return _validate(Dataset, raw, allow_test)
 
 
-def dump_dataset(dataset: Dataset | DatasetV3) -> bytes:
-    """Canonical UTF-8 JSON: aliases, explicit nulls, no floats (there are none to emit)."""
-    return (dataset.model_dump_json(indent=2) + "\n").encode("utf-8")
+def dump_dataset(dataset: Dataset | DatasetV3, *, compact: bool = False) -> bytes:
+    """Canonical UTF-8 JSON: aliases, explicit nulls, no floats (there are none to emit).
+
+    ``compact`` drops the indentation: the form the exporter writes and the publisher uploads,
+    since whitespace is a third of an indented snapshot and none of it is data."""
+    return (dataset.model_dump_json(indent=None if compact else 2) + "\n").encode("utf-8")
 
 
 def json_schema() -> dict[str, Any]:

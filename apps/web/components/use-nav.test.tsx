@@ -81,7 +81,7 @@ describe('useNav', () => {
       error: null,
     };
     const listed = keys();
-    expect(listed).toEqual(['overview', 'compare', 'launches', 'dataset', 'assistant']);
+    expect(listed).toEqual(['overview', 'dashboard', 'compare', 'launches', 'dataset', 'assistant']);
   });
 
   it('lists Insights only when /meta comes from an API that serves it (1.23.0+)', () => {

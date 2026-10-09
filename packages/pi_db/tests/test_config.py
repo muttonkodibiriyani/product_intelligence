@@ -64,8 +64,8 @@ def test_alembic_config_escapes_percent_in_url() -> None:
 
 def test_single_linear_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0004"]
-    assert [r.revision for r in script.walk_revisions()] == ["0004", "0003", "0002", "0001"]
+    assert script.get_heads() == ["0005"]
+    assert [r.revision for r in script.walk_revisions()] == ["0005", "0004", "0003", "0002", "0001"]
 
 
 def test_0002_only_qualifies_the_enum() -> None:
@@ -156,6 +156,11 @@ def test_offline_sql_renders(capsys: pytest.CaptureFixture[str]) -> None:
     assert "ALTER TYPE fetch_method ADD VALUE IF NOT EXISTS 'offline_import'" in sql
     assert "WHEN 'offline_import' THEN 0" in sql
     assert "ADD COLUMN attributes_schema text" in sql
+    # 0005's STOP checks are SQL, so the preview shows them before the key swap
+    assert "%" not in sql[sql.index("Running upgrade 0004 -> 0005") :]
+    assert sql.index(
+        "(listing_id, observed_at, content_hash) groups hold more than one row"
+    ) < sql.index("PRIMARY KEY (listing_id, observed_at, recorded_at)")
 
 
 def test_attributes_schema_pattern_matches_pi_profiles() -> None:

@@ -428,7 +428,11 @@ class Loader:
             self.c.execute(
                 "INSERT INTO listing_content (listing_id, observed_at, description,"
                 " description_ar, badges, labels,"
-                " content_hash) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                " content_hash) SELECT %s,%s,%s,%s,%s,%s,%s"
+                # one content per page time, the first written, on replay too
+                " WHERE NOT EXISTS (SELECT 1 FROM listing_content"
+                " WHERE listing_id=%s AND observed_at=%s)"
+                " ON CONFLICT DO NOTHING",
                 (
                     lid,
                     at,
@@ -437,6 +441,8 @@ class Loader:
                     [f.get("text1") for f in v.get("c_productFlags") or [] if f.get("text1")],
                     _jsonb(labels),
                     _sha(content),
+                    lid,
+                    at,
                 ),
             )
             currency = d.get("currency")
@@ -486,7 +492,17 @@ class Loader:
         Any doubt about what was paid stores no price: the state says ``unknown`` and a counter
         says why, and a variant with no price at all is ``not_published``.
         """
-        regular = _money(v.get("c_price"))
+        raw_price = v.get("c_price")
+        if (
+            isinstance(raw_price, (int, float, Decimal))
+            and not isinstance(raw_price, bool)
+            and raw_price <= 0
+        ):
+            # a stated 0 (119 products on 10-08) is counted. The state stays not_published until
+            # the exporter takes the rating from its own row (01a11e5e-9e6d): an unknown price
+            # row would drop the page's rating from the body.
+            self.bump("price_not_positive")
+        regular = _money(raw_price)
         raw_sale = v.get("c_salesPrice")
         sale = _money(raw_sale)
         promo = sale is not None and regular is not None and sale < regular

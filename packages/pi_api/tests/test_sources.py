@@ -43,7 +43,7 @@ def test_the_combined_file_and_a_sephora_file_give_each_source_once(tmp_path: Pa
     new = dict.fromkeys(ids("p", 2000, 11529), (SEPHORA,))
     write(tmp_path, snapshot(new, dates=NEW, price=12_000), SEPHORA_FILE)
 
-    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED)
+    source = SnapshotSource(LocalStore(tmp_path), (), assigned=ASSIGNED, memory_mib=3072)
     source.load_all()
     loaded = source.select(None, None)  # one view; never ambiguous
     ds = loaded.dataset
@@ -89,6 +89,9 @@ def test_a_composed_source_cutoff_is_its_own_latest_capture(tmp_path: Path) -> N
     combined = snapshot_doc({"p1": BOTH, "p2": (ULTA,)}, dates=OLD)
     for product in combined["products"]:
         product["offers"][ULTA]["evidence"]["capturedAt"] = "2026-09-21T12:00:00Z"
+    for r in combined["meta"]["retailers"]:  # Ulta's window covers its own captures (ADR-0013)
+        if r["id"] == ULTA:
+            r["window"]["start"] = "2026-09-21T12:00:00Z"
     write(tmp_path, DatasetV3.model_validate(combined), COMBINED)
     write(tmp_path, snapshot({"p1": (SEPHORA,)}, dates=NEW), SEPHORA_FILE)
     source = SnapshotSource(LocalStore(tmp_path), (COMBINED,), assigned=ASSIGNED)

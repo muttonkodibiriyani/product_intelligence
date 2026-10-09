@@ -1,10 +1,11 @@
-import type { Page, Route } from '@playwright/test';
+import type { Route } from '@playwright/test';
 import {
   expect,
   golden,
   mockBackend,
   navLink,
   noHorizontalScroll,
+  signedIn,
   signIn,
   test,
   type Mock,
@@ -65,11 +66,6 @@ function api(metaBody: Json = meta, launchesFor: (u: URL) => Json = () => launch
     if (/^\/api\/v1\/products\/[^/]+$/.test(p)) return route.fulfill({ json: product });
     return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'no route' } } });
   };
-}
-
-async function signedIn(page: Page, locale: 'en' | 'ar') {
-  await signIn(page, locale);
-  await expect(page.getByRole('navigation')).toBeVisible();
 }
 
 const calls = (mock: Mock) =>

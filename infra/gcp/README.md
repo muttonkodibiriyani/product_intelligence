@@ -1,7 +1,7 @@
 # GCP project state (productintelligence-beeb3)
 
 Record of every change made to the live project outside a deploy workflow. Append; never rewrite.
-Budget: $25/month. The billing account ID is kept out of this public repo; get it with
+Budget: $100/month (owner, 2026-10-07; was $25). The billing account ID is kept out of this public repo; get it with
 `gcloud billing projects describe productintelligence-beeb3`.
 
 ## Enabled APIs (beyond Firebase defaults)
@@ -14,20 +14,32 @@ Budget: $25/month. The billing account ID is kept out of this public repo; get i
 
 ## Budget alerts
 
-Required: one budget of $25/month scoped to this project, alerting billing admins at 50%, 90%
-and 100% of actual spend. The deploy service account has no billing-account role, so the owner
-creates it (from Cloud Shell, as a billing account admin):
+Required: one budget of $100/month (owner, 2026-10-07; was $25) scoped to this project,
+alerting billing admins at 50%, 90% and 100% of actual spend ($50 / $90 / $100). New billable
+resources are pre-approved while the projected total stays at or under $100/month; each one
+still states its expected and maximum monthly cost in its PR. Anything that would take the
+projected total over $100 goes back to the owner.
+
+Created or updated by `infra/gcp/budget_setup.sh` (idempotent). It renames an existing
+`pi-monthly-25usd` to `pi-monthly-100usd` and resets its amount and thresholds in place, without
+touching its notification rule (emails and the kill-switch topic). The amount is in the billing
+account's currency: 100USD, or 367.25AED at 3.6725 AED per USD. The assistant kill switch trips
+at 90% of this budget, so it now trips at ~$90. The $5 budgets `pi-vertex-5usd` and
+`pi-uae-collect-5usd` are separate.
+
+The deploy service account has no billing-account role, and none is granted: nothing automated
+reads costs or manages budgets yet, so `roles/billing.costsManager` for a service account waits
+for a named consumer. The owner runs the script from Cloud Shell as a billing account admin,
+pinned to the reviewed commit, and checks its sha256 against the one posted with the PR merge:
 
 ```sh
-BILLING_ACCOUNT=$(gcloud billing projects describe productintelligence-beeb3 --format='value(billingAccountName.basename())')
-gcloud billing budgets create --billing-account="$BILLING_ACCOUNT" \
-  --display-name="pi-monthly-25usd" --budget-amount=25USD \
-  --filter-projects=projects/productintelligence-beeb3 \
-  --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0
+curl -fsSLo /tmp/budget_setup.sh https://raw.githubusercontent.com/muttonkodibiriyani/product_intelligence/<merge sha>/infra/gcp/budget_setup.sh && sha256sum /tmp/budget_setup.sh
+bash /tmp/budget_setup.sh
 ```
 
-Check first with `gcloud billing budgets list --billing-account="$BILLING_ACCOUNT"`; if a
-budget already exists, add the missing thresholds with `gcloud billing budgets update` instead.
+| Date       | Resource | Settings | Cost |
+|------------|----------|----------|------|
+| pending owner run | budget `pi-monthly-100usd` (was `pi-monthly-25usd`) | $100/month, project filter, alerts at 50/90/100% | free |
 
 ## Database backups
 
@@ -107,3 +119,18 @@ pi-sephora-variant-pass --location=me-central1 --project=productintelligence-bee
 resource not found … retryPolicies`); most likely API propagation; a retry worked. `pause`
 stops everything (ADR-0009, Guards). A one-off manual run now has to override the job's `AUTO=1`:
 `gcloud run jobs execute pi-sephora-snapshot --update-env-vars=AUTO=0,PREFIX=…,CUTOFF=…`.
+
+## UAE collection (task 01a11653-ac7a)
+
+Coordinator-approved plan (~$5/month cap for Faces, Bloomingdale's and Ounass together). Created
+by `infra/gcp/uae_collect_setup.sh` (idempotent) from an `IMAGE` built from main and pinned by
+digest; owner steps, cron and budget in `tools/uae_collect/README.md`. Faces first.
+
+| Date | Resource | Settings | Cost |
+|------|----------|----------|------|
+| pending owner run | SA `pi-uae-collect` (no key, no project role) | `roles/storage.objectUser` on `pi-capture-productintelligence-beeb3` under an IAM condition limited to `runs/`, `state/` and `feeds/`; runtime of the `pi-uae-collect-*` jobs | free |
+| pending owner run | job `pi-uae-collect-faces` | `SHOP=faces_ae`; 1 vCPU / 1 GiB; task timeout 7 h; no retries; label `pi-collect=uae` | ≈ $0.9/month (≈ $0.08 per full or AR pass, ~10 a month; daily passes ≈ $0.003) |
+| pending owner run | SA `pi-uae-scheduler` (no key, no project role) | `roles/run.invoker` on each `pi-uae-collect-*` job only | free |
+| pending owner run | Scheduler job `pi-uae-collect-faces` (me-central1) | `0 20 * * *` UTC; the job picks daily / full (Mon, Thu) / ar (1st); no retries; **created paused** | free (2nd of the 3 free jobs) |
+| pending owner run | SA `pi-feed-reader` (no key, no project role) | `roles/storage.objectViewer` on the capture bucket under IAM condition `feeds-only` (objects under `feeds/`, lists with prefix `feeds/`); `firebase-adminsdk-fbsvc` has `roles/iam.serviceAccountTokenCreator` on this SA only | free |
+| pending owner run | budget `pi-uae-collect-5usd` | $5/month on label `pi-collect=uae`, alerts at 50/90/100% | free |

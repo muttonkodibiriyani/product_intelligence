@@ -37,8 +37,9 @@ certificates, and GCS reads use the service account.
 ## 2. Pre-checks (read-only)
 
 ```sh
-PROJECT=productintelligence-beeb3
-REGION=me-central1
+set -a; . infra/pi-api/service.env; set +a   # the live settings (memory, maxScale), in git
+PROJECT=$PI_API_PROJECT
+REGION=$PI_API_REGION
 BUCKET=productintelligence-beeb3.firebasestorage.app   # confirm: the bucket publish_dataset.py writes
 gcloud storage buckets describe gs://$BUCKET --format='value(uniform_bucket_level_access,location)'
 ```
@@ -112,11 +113,15 @@ Deploy by digest, not by tag.
 
 The env vars come from the live service, not from this doc: the served files and retailers move
 (per-source files, the matched file, a new retailer's hosts, the match file), and `--set-env-vars`
-replaces every variable, deleting any it does not list. The deploy below sets exactly seven:
+replaces every variable, deleting any it does not list. The deploy below sets exactly ten:
 `PI_API_FIREBASE_PROJECT`, `PI_API_BUCKET`, `PI_API_DATASETS`, `PI_API_EVIDENCE_HOSTS`,
-`PI_API_IMAGE_HOSTS` (required) and `PI_API_CATALOGUES`, `PI_API_MATCHES` (optional; an empty value
-is left out). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`, `IMAGE_HOSTS`, `CATALOGUES` and
-`MATCHES` to the values you mean to serve (the §2 paths and the hosts below on a first deploy),
+`PI_API_IMAGE_HOSTS`, `PI_API_MEMORY_MIB` (required; `MEMORY_MIB` is `infra/pi-api/service.env`'s,
+and an empty live value is adopted, since services deployed before it have none) and `PI_API_CATALOGUES`, `PI_API_MATCHES`, `PI_API_ADMITTED`, `PI_API_REQUIRE_ALL`
+(optional; an empty value is left out; `REQUIRE_ALL=1` is set on every body refresh, see
+"Body refresh (deploy plan v2)" below). Set `BUCKET` (§2), `DATASETS`, `EVIDENCE_HOSTS`,
+`IMAGE_HOSTS`, `CATALOGUES` and `MATCHES` to the values you mean to serve, and `ADMITTED` to the
+`PI_API_ADMITTED=` value `infra/scripts/pi_api_admission.py check` prints for that `DATASETS` (§6;
+empty while the served set is within the fit) (the §2 paths and the hosts below on a first deploy),
 then run (bash):
 
 ```sh
@@ -127,8 +132,8 @@ env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env
 if sys.argv[1] == "--names": print("\n".join(e["name"] for e in env))
 else: print(next((e.get("value", "") for e in env if e["name"] == sys.argv[1]), ""))' \
   "$1" 2>/dev/null; }
-FIREBASE_PROJECT=$PROJECT
-REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS" OPTIONAL="CATALOGUES MATCHES"
+FIREBASE_PROJECT=$PROJECT MEMORY_MIB=$PI_API_MEMORY_MIB
+REQUIRED="FIREBASE_PROJECT BUCKET DATASETS EVIDENCE_HOSTS IMAGE_HOSTS MEMORY_MIB" OPTIONAL="CATALOGUES MATCHES ADMITTED REQUIRE_ALL"
 ENV_OK=1 SET_ENV= KNOWN=" "
 test "$FIRST_DEPLOY" = 1 && test -n "$SVC_JSON" \
   && { echo "STOP: FIRST_DEPLOY=1 but pi-api already exists"; ENV_OK=0; }
@@ -136,7 +141,8 @@ for v in $REQUIRED $OPTIONAL; do
   want=${!v}; have=$(live_env "PI_API_$v"); KNOWN="$KNOWN PI_API_$v "
   case " $OPTIONAL " in *" $v "*) opt=1;; *) opt=0;; esac
   if { test -n "$want" || { test $opt = 1 && test -z "$have"; }; } \
-    && { test "$want" = "$have" || { test "$FIRST_DEPLOY" = 1 && test -z "$have"; }; } \
+    && { test "$want" = "$have" || { test -z "$have" \
+      && { test "$FIRST_DEPLOY" = 1 || test $v = MEMORY_MIB || test $v = REQUIRE_ALL; }; }; } \
     && case "$want" in *@*) false;; esac
   then echo "PI_API_$v ok: [$want]"; test -z "$want" || SET_ENV="$SET_ENV@PI_API_$v=$want"
   else echo "STOP: PI_API_$v live=[$have] wanted=[$want] (no '@' allowed)"; ENV_OK=0
@@ -151,20 +157,33 @@ test "$ENV_OK" = 1 && echo "ENV OK" || echo "ENV STOP"
 
 On any STOP, do not deploy. Either take the live value (`DATASETS=$(live_env PI_API_DATASETS)`,
 and the same for the others) or treat the difference as a config change with its own approval and
-its own before/after diff. A live variable outside the seven (printed by name only) means this
+its own before/after diff. A live variable outside the ten (printed by name only) means this
 command would delete it: STOP and extend this list in a reviewed change first. Only a first
 deploy (no service yet) sets `FIRST_DEPLOY=1`, and the guard STOPs if the service exists; a failed
-describe otherwise STOPs. The STOP lines print live values: all seven are non-secret config. A
+describe otherwise STOPs. The STOP lines print live values: all ten are non-secret config (`ADMITTED` is sha256 digests). A
 secret never joins this list; it would need `--set-secrets` (not used, see below) and a reviewed
 change that prints its name only. To change one variable on a running service, use `gcloud run
 services update --update-env-vars` with its own approval (it leaves the others alone), not this
 command.
 
+Then check the live memory and maxScale against `infra/pi-api/service.env` (the deploy below sets
+the revision's from it; a STOP means the file and the service disagree, so the memory rule would be
+evaluated against the wrong instance size):
+
+```sh
+gcloud run services describe pi-api --project=$PROJECT --region=$REGION --format=json \
+  | uv run python infra/scripts/pi_api_admission.py service   # → SERVICE OK, or no deploy
+```
+
+Skip it on a first deploy (no service yet), and in the revision that changes `service.env` itself:
+there it STOPs on exactly the changed lines, which the PR's reviewed diff covers.
+
 ```sh
 test "$ENV_OK" = 1 && gcloud run deploy pi-api --project=$PROJECT --region=$REGION \
   --image="$REGION-docker.pkg.dev/$PROJECT/pi-api/pi-api@$DIGEST" \
   --service-account="pi-api@$PROJECT.iam.gserviceaccount.com" \
-  --min-instances=0 --max-instances=3 --cpu=1 --memory=1Gi --timeout=30s \
+  --min-instances=0 --max-instances=$PI_API_MAX_SCALE_REVISION --cpu=1 \
+  --memory=${PI_API_MEMORY_MIB}Mi --timeout=30s \
   --cpu-throttling --cpu-boost --port=8080 --ingress=all --allow-unauthenticated \
   --set-env-vars="$SET_ENV"
 ```
@@ -212,6 +231,16 @@ as it is.
   Firebase ID token in the app and fails closed (decision log, 2026-10-01). If an org policy
   (for example domain-restricted sharing) refuses the binding, stop (stop rule).
 - The startup probe is the default TCP probe. There are no health routes, by design.
+- **Checks after a revision that changes the served files or the memory** (there is no
+  `/healthz`; every route needs a Firebase token):
+  1. The revision's logs from container start carry no `MEMORY RULE: … REFUSED` ERROR and no
+     `PI_API_MEMORY_MIB is …: assuming 1024 MiB` ERROR, and one `dataset <path> loaded at
+     generation <n>` line per `DATASETS` path (a path shared by several sources loads once).
+  2. One signed-in product request per dataset key in `DATASETS` (for example `ounass_ae`,
+     `sephora_me`, `ulta_ae`, `faces_ae`) returns 200 (`infra/scripts/prod_smoke_api.py`, run by
+     the owner with their token; until then the report says "signed-in smoke NOT run").
+  3. The loaded product count per new source matches the export's (for Ounass, the export's
+     `products` count; 32,810 on 2026-10-07).
 - **`--cpu-boost`**: the gcloud default (startup-only), passed explicitly so redeploys match live; accepted 2026-10-01.
 - **Memory 1Gi** (decision log, 2026-10-01; was 512Mi). Measured locally (RSS, Python 3.12):
 
@@ -222,16 +251,267 @@ as it is.
   | One export, per row (CSV: rows + encode peak; JSONL less) | ~4.4 KiB (50 k rows ≈ 220 MiB) |
   | **Peak, 20 000 products loaded + 2 concurrent CSV exports of all of them** | **800 MiB** |
 
-  So at the dataset budget (≤ 50 MB JSON) the measured peak is ~800 MiB, inside 1Gi with
-  ~200 MiB headroom. A 50 k-row export would need a 50 k-product dataset, which by itself exceeds
-  the budget, so the 2 × ~220 MiB worst case never adds to a full dataset. 512Mi does not fit a
-  budget-size dataset at all. The app allows two exports at once per instance; a third gets
-  `429 rate_limited` (`Retry-After: 5`). If Cloud Run logs a memory-limit restart, report it;
-  change nothing without a decision. The first lever is less concurrency (a lower
-  `--concurrency`, or `MAX_CONCURRENT_EXPORTS` in `pi_api/export.py`), not more memory.
+  That table predates content and the Ounass/Bloomingdale's catalogues. Re-measured 2026-10-07 on
+  main `67496647`: pi_api's own `SnapshotSource` on the real Ounass v3 (32,810 products,
+  107.4 MB indented = **72.7 MB compact**) plus the 9,529-product beauty file, composed as
+  `sephora_me`, `ulta_ae` and `ounass_ae`. Faces is not included, so production is somewhat higher.
+
+  | Phase | Time | Peak RSS | RSS after |
+  |---|---|---|---|
+  | Imports | | | 67 MiB |
+  | Cold start, beauty only | 5 s | 308 MiB | 268 MiB |
+  | Cold start, + Ounass (42,339 products) | 26–30 s | 1,185 MiB | 942 MiB |
+  | `GET /products?q=…` | 4.5 s | 947 MiB | 947 MiB |
+  | CSV export of all products (6.7 MB) | 15–16 s | ~1,030 MiB | ~1,000 MiB |
+  | **Refresh: a new Ounass generation** (×4) | 22–31 s | **1,739–1,795 MiB** | 1,409–1,596 MiB |
+
+  Re-measured on the same files once offer content is packed on load and the dataset is
+  validated from bytes (tm8 01a11763-dc85). These are the numbers the gate below uses:
+
+  | Phase | Time | Peak RSS | RSS after (trimmed) |
+  |---|---|---|---|
+  | Cold start, beauty only | 5 s | 308 MiB | 272 MiB |
+  | Cold start, + Ounass | 32 s | **982 MiB** | 712 MiB |
+  | CSV export of all products | 15 s | 752 MiB | 747 MiB |
+  | `GET /products/{id}` (unpacks one product's content) | 0.2 s | 749 MiB | 747 MiB |
+  | **Refresh: a new Ounass generation** (×4) | 30–43 s | **1,450–1,455 MiB** | 1,059–1,138 MiB |
+
+  Most of the old peak was the parse, not the resident data: validating a decoded `str` held the
+  text (~2× the file) plus a UTF-8 copy for pydantic-core. Validating the bytes removes both.
+  Packing keeps description, ingredients, images and variants zlib-compressed per offer and
+  unpacks them for the detail view only; card, list and search fields stay resident.
+
+  - **No leak.** Allocated blocks stay flat across refreshes. The RSS that remains after a refresh
+    is glibc keeping freed arenas: `malloc_trim` brings it back to ~1,050 MiB, and the next
+    refresh's peak does not grow.
+  - **A refresh holds two generations.** The old file and its composed view stay live while the
+    new file is parsed and composed. For Ounass that is now ~1,180 MiB above the other sources at
+    peak (was ~1,530), about 2.68 × its steady ~440 MiB (~6.3 bytes resident per compact JSON
+    byte; was 9.3), or **~16.3 MiB of refresh peak per compact MB** (was 21.0).
+  - **1Gi cannot hold Ounass**, not even at cold start (982 MiB before Faces). 2Gi holds today's
+    set (Ounass, beauty, Faces, two exports) with ~265 MiB to spare at a refresh peak, but the
+    general rule below would allow only ~27.5 MB for the largest file there. **3Gi** is the size for
+    Ounass (decision log 2026-10-07), with max-instances 1 on the revision and the service
+    (`infra/pi-api/service.env`). Cost at me-central1 (Tier 2, request-based CPU): about $3-7 a
+    month expected; one instance serving every second of a month would be about $107 (the cost
+    row and the budget alerts are in step F's runbook change). Step F's revision (`f3gi`,
+    2026-10-07) went first, on the image from before the load rule, after a bench of the live set on that image's code
+    (export sha256 `8963cbed…`, beauty and Faces as served: refresh peak 1,757 MiB ≤ 2,304).
+    The first revision on an image with the load rule must carry the record
+    `infra/pi-api/admission/ounass_ae.json` (the same four files, packed: refresh peak 1,661 MiB)
+    as `PI_API_ADMITTED=8963cbedf30bdcd6247de077296a7d5421c4462589182951c64ea463e8933eed:28937955`
+    (others: beauty 26,712,113 counted once for `sephora_me` and `ulta_ae`, Faces 2,225,842).
+    Without it pi_api refuses Ounass (`UNAVAILABLE`): the set is 2,938 MiB on the fit. Others
+    are 1.06 MB under the 30 MB reserve, so no beauty, Faces or Ounass publish goes out until
+    that revision is live (Coordinator, 2026-10-07); any later publish of one of them is a new
+    record.
+  - **The export gate** (`V3_MAX_BYTES` in `pi_dataset.gate`, imported by the exporter and by
+    pi_api) is **51,000,000** bytes of **compact** JSON. The exporter and the publisher write
+    compact JSON; whitespace is about a third of an indented file and none of it is resident. It
+    comes from a fit, not from one file: the beauty file (the densest per byte measured; Ounass is
+    16.3 MiB per MB) scaled by repeating its products with fresh skus, served alone by
+    `SnapshotSource`, cold start then four refreshes, RSS sampled every 20 ms (2026-10-07):
+
+    | Compact bytes | Products | Cold start peak | Refresh peaks (×4) |
+    |---|---|---|---|
+    | 10,110,000 | 9,529 | 309 MiB | 394 MiB |
+    | 30,451,012 | 28,587 | 770 MiB | 1,018–1,020 MiB |
+    | 60,957,592 | 57,174 | 1,474 MiB | 1,967–1,993 MiB |
+
+    Least squares on the highest refresh peak: **refresh peak ≈ 70.4 MiB + 31.48 MiB per compact
+    MB** (residuals −5, +9, −4 MiB; the intercept is the ~67 MiB of imports). The rule is that the
+    largest file's refresh peak plus the other files' resident memory stays within **75% of the
+    instance memory** (25% for exports, request buffers and allocator slack). With the other files
+    at the 600 MiB reserve (rule 2 below):
+
+    | Memory | 75% | Largest file (rule 1) | Today's Ounass, 72.7 MB |
+    |---|---|---|---|
+    | **3Gi** | 2,304 MiB | (2,304 − 600 − 70.4) / 31.48 = 51.9 MB → **51,000,000** bytes | over the gate: needs an admission record |
+    | 2Gi | 1,536 MiB | (1,536 − 600 − 70.4) / 31.48 = 27.5 MB | over the gate |
+
+    The fit spans 10–61 MB. Nothing smaller than the 10 MB point was measured, so for small files
+    the intercept is extrapolated (the 10 MB point sits 5 MiB under the line, so it is not
+    optimistic there), and nothing above 61 MB is covered: a larger file is only ever served on a
+    record of its own. `test_content_memory.py` loads a 10 MB content-heavy sample (real Ounass
+    text, its zlib ratio pinned) and scales it to the gate, so it pins the content-heavy end.
+    The constant assumes **3Gi**; at 2Gi it would be 27,500,000.
+  - **Over the gate, a file is served on a measured admission record only** (Coordinator,
+    2026-10-07; supersedes the 2026-10-03 "no override" note). `demo_export --allow-over-gate`
+    writes an over-gate body, prints `OVER GATE <file> <bytes> sha256=<hex>` and exits 3; that
+    sha is advisory, because the publisher re-serialises. **pi_api enforces the composed rule at
+    load** (`pi_dataset.gate.refusal`), not the per-file byte gate: before parsing a new
+    generation it sums every served body with the new one (a path shared by several sources,
+    such as `sephora_me` and `ulta_ae` on the beauty file, is read, parsed and counted once) and
+    evaluates `70.4 + 31.48 × largest_MB + 20 × others_MB` against 75% of `PI_API_MEMORY_MIB`.
+    Over it, the set loads only if the largest body's sha256 is in `PI_API_ADMITTED` and the
+    other files total at most that entry's measured bytes. Otherwise it logs ERROR `MEMORY RULE:
+    dataset <path> generation <n> REFUSED, …` with the reason and does not parse it: at cold
+    start the path is `UNAVAILABLE` (its sources serve nothing), on a refresh it is `kept at
+    <generation>` (the last good one stays served). A missing or unreadable `PI_API_MEMORY_MIB`
+    logs an ERROR and assumes 1024 MiB, the smallest instance (fail closed). `PI_API_ADMITTED`
+    entries are `sha256:others_bytes`, as `pi_api_admission.py check` prints them; the record also
+    pins whether offer content was packed (`packContent`; pi_api packs by default). **The admitted sha256 is of the
+    decompressed `latest.json` body that pi_api parses**: not of the gzip object in the bucket,
+    and not of the exporter's file (the publisher writes `dump_dataset(compact=True)`, then
+    gzips). The publisher prints it: `admission body=<n>B sha256=<hex>`, dry run included.
+
+    The record is `infra/pi-api/admission/<dataset>.json` (schema `pi.admission/v1`: sha256,
+    bytes, memory, every served file's path/bytes/sha256, baseline, cold-start and four refresh
+    peaks, date, bench commit), written by `infra/scripts/pi_api_admission.py measure` with
+    **every** `PI_API_DATASETS` file resident and the largest refreshed four times. It passes only
+    if the highest refresh peak is at most 75% of the memory. `pi_api_admission.py check`, run
+    before the deploy, refuses (`ADMISSION STOP`) when an over-gate body has no record with its
+    sha256, when the record's peak is over 75%, when it was measured at another memory or with
+    another set of files, or when another file grew; otherwise it prints `ADMISSION OK` and the
+    `PI_API_ADMITTED=` value. A new export is a new sha: it is measured again. Order for an
+    over-gate dataset (Ounass):
+
+    1. Export with `--allow-over-gate` (exit 3 is expected for this dataset only).
+    2. Publisher `--dry-run --live-file`: note the `admission … sha256`.
+    3. Bench that exact body: `pi_api_admission.py measure` on a local copy of every served
+       object at its bucket path, with the next revision's `DATASETS` and memory.
+    4. Commit the record through review.
+    5. Publish for real. pi_api does not serve it yet: its log shows one `MEMORY RULE: … REFUSED,
+       kept at …` (or `UNAVAILABLE`) ERROR for this dataset per refresh, `… has no admission
+       record`, which is expected until step 6, not an incident.
+    6. Deploy the revision with `ADMITTED` from `pi_api_admission.py check` (and the memory the
+       record was measured at).
+    7. Verify it is served.
+  - **The gate is per file; the memory is for all served files together.** Refreshes run one at
+    a time, so only the largest file's second generation counts; every other file counts at its
+    resident rate, ~20 MiB per compact MB (the beauty file's measured rate: 201 MiB for 10.1 MB).
+    That rate is lower than the refresh rate, so rule 2 holds only while **the largest file
+    (rule 1) is at least as large as any other single file**: the file that refreshes at 31.48
+    MiB per MB must be the largest. The 600 MiB reserve is **30 MB** at the resident rate
+    (`OTHERS_MAX_BYTES`, the exporter's derivation of the 51 MB gate). An admission record is
+    issued only while its other files total at most `ADMISSION_OTHERS_MAX_BYTES` (52,000,000);
+    that cap governs issuing a record, never serving: pi_api serves an admitted body while the
+    other files total at most the record's own measured figure (`refusal`, `≤`). Before
+    any revision that adds to `PI_API_DATASETS` (or a publish that grows a served file), size
+    **every** served file's `latest.json` as **decompressed, compact** bytes and check:
+
+    1. the largest file is at most **51,000,000** bytes (or has a passing admission record), and
+    2. all the other files together are at most **30,000,000** bytes.
+
+    If either fails, do not deploy that revision: serve the large dataset alone, or keep the new
+    one out until it is measured. A second large catalogue (Bloomingdale's) always fails rule 2
+    and needs a record with both resident. Two traps: the publisher stores objects gzip-encoded,
+    so the GCS object size is the gzip size; and a file published before compact output (before
+    2026-10-07) is indented, ~1.5× its compact size. The check below handles both (paths from
+    `DATASETS`, dropping any `source=` prefix):
+
+    ```sh
+    for p in $(printf '%s' "$DATASETS" | tr ',' '\n' | sed 's/^[^=]*=//' | sort -u); do
+      gcloud storage cat "gs://$BUCKET/$p" | python3 -c 'import gzip,json,sys
+    b = sys.stdin.buffer.read()
+    b = gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
+    print(len(json.dumps(json.loads(b), separators=(",", ":"), ensure_ascii=False).encode()), sys.argv[1])' "$p"
+    done | sort -rn
+    ```
+
+    The first line is the largest file (rule 1); the rest must sum to at most 30,000,000 (rule 2).
+  - **While pi-api runs at 1Gi** (until step F's 3Gi revision is live), the same composition sets
+    the cap: the largest file's refresh peak plus the others' resident memory within 75% of 1Gi,
+    `70.4 + 31.48 × largest_MB + 20 × others_MB ≤ 768 MiB`, with the largest file at least as large
+    as any other. Today's set (beauty 17.05 MB, Faces 1.4 MB) is 635 MiB. With Faces as the only
+    other file, the largest may be at most **21,000,000** bytes. pi_api applies this at load with
+    `PI_API_MEMORY_MIB=1024`: a file that would break it is refused, not served into an OOM.
+  - **Cold start vs `--timeout=30s`.** With Ounass the load takes 26–30 s, and uvicorn opens the
+    port only after it, so the default TCP startup probe passes. The first request after scale to
+    zero waits that long. Measure it on the first 3Gi revision. `--min-instances=1` would remove
+    the wait, but it is new spend and needs the owner's OK.
+  - The app allows two exports at once per instance; a third gets `429 rate_limited`
+    (`Retry-After: 5`). If Cloud Run logs a memory-limit restart, report it; change nothing
+    without a decision.
 - **`--timeout=30s`, `--cpu-throttling` (request-based CPU).** The slowest route is a 50 k-row CSV
   export, ~4 s measured locally (~1.3 s JSONL); even several times slower on 1 vCPU it is well
   inside 30 s.
+
+### Body refresh (deploy plan v2)
+
+A new dataset body never overwrites a served object. It goes to a new create-only path, a new
+revision serves it, and rollback is routing traffic back to the previous revision.
+
+1. **Publish to a versioned path.** Read the live `PI_API_DATASETS` (`live_env PI_API_DATASETS`
+   above) and pass it verbatim:
+
+   ```sh
+   uv run python infra/scripts/publish_dataset.py <body.json> --project=$PROJECT \
+     --versioned --live-datasets="$(live_env PI_API_DATASETS)"
+   ```
+
+   It writes one object, `datasets/<cc>/<source|beauty>/v/<stem>-<sha12>.json`, with
+   `if_generation_match=0` (a re-run is refused, never an overwrite). It writes no `latest.json` and
+   no Firestore document, and prints the `PI_API_DATASETS=` value to deploy. A path the live
+   revision serves is refused, and so is a body set on the refused list.
+   - **Beauty (sephora_me + ulta_ae)** also needs `--allow-beauty-versioned`, only on the owner's P1
+     answer (form 01a11c72-16e3). The retention check is built in and fails the publish with
+     nothing uploaded:
+     - without `--reconciled-removals` (keys-only): every live ulta_ae offer is present by product
+       id and offer key, and every live (sku, url) pair is still there;
+     - with `--reconciled-removals FILE` (fresh): an offer may be missing only if its product id is
+       in FILE, the capture lane's `removal_evidence.csv` (removal task 01a11c77-75e6). Every
+       ulta_ae row must carry `pdp-404`, `pdp-410`, `sitemap-absent` or `search-absent`. Any other
+       value refuses the publish: a notObservedReason (`retained`, `blocked`, `rate_limited`,
+       `capture_in_progress`, `planned_not_captured`) or `pdp-variant-absent`, which drops a
+       variant from a kept offer and never excuses an absent one (Coordinator 01a11cad-17da,
+       01a11cad-a1a9).
+     - the file's sephora_me offers get the source guard (no live offer lost), against the body
+       the live `PI_API_DATASETS` serves sephora_me from.
+   - **Ulta U1 (owner's export) publish gate, both must pass** (Coordinator 01a11c8f-2138): the
+     keys-only check above **and** DeepTester's `MODE=retain` (`scratch/wk/ulta-retention-check.py`,
+     01a11c8d-e603). Keys-only proves no offer was dropped. MODE=retain proves every offer missing
+     from the export is retained as not_observed: its capturedAt is unchanged and earlier than the
+     window, and it has no price or stock value in the new window. Neither replaces the other.
+   - **Window guard (in code; ruling 01a11cad-17da).** Publish every body first, chaining each
+     printed `PI_API_DATASETS=` value into the next `--live-datasets`. Then check the final value,
+     read-only, before step 2:
+
+     ```sh
+     uv run python infra/scripts/publish_dataset.py --project=$PROJECT --check-served="$NEW_DATASETS"
+     ```
+
+     It reads every body the value serves and HOLDs if any retailer has no crawl window (or no
+     market for its country), if the windows are in more than one market time zone, or if two
+     windows' ENDs are more than 7 calendar days apart in that zone (`meta.markets` by country;
+     for AE, Asia/Dubai: 8 is refused, 7 passes, and days turn at 20:00Z).
+     A retailer that cannot be refreshed (tonight ulta_ae, blocked: Coordinator 01a11cc0-86a1)
+     is WITHHELD, not refused, only when its body gives it no window and carries a
+     `notObserved[]` entry for the whole retailer (`context` and `categories` null) that starts
+     no later than the day after its `since` and whose `end` reaches its scope's cutoff day: the
+     latest `meta.cutoff` across the `NEW_DATASETS` bodies of the retailer's scope (for ulta_ae,
+     the beauty-scope bodies), as a date in the market's time zone (Asia/Dubai; 20:00Z is already
+     the next day), as the API's per-scope `compose` takes it (Coordinator 01a11d05-862f,
+     01a11d19-9686). Set that `end` at roll time, from the final set, never from the body's own
+     window. The guard prints `<body>: <retailer> withheld, not observed until <date>: <why>`
+     and leaves it out of the gap, which is still counted over the whole set. Never give it a
+     window to pass: a retailer with a window is always counted. A windowless retailer with no
+     offers serves nothing and is skipped.
+     **Required pre-roll step** (Coordinator 01a11d14-184d): run this on the full final set and
+     paste its output verbatim into the pre-roll report. It must print `withheld` for ulta_ae
+     and no refusal; any refusal stops the roll. Only a value that prints
+     `window guard: N bodies, ok` is rolled. The new revision
+     repeats the same check (`pi_api.windows`) at start under `PI_API_REQUIRE_ALL=1`, so a value
+     that skipped this step never becomes Ready.
+2. **Deploy a new revision without traffic.** Only `PI_API_DATASETS` changes (and
+   `PI_API_REQUIRE_ALL=1`, the first time), so this is the one-variable update above, not the full
+   form, which would STOP on the changed `DATASETS`:
+
+   ```sh
+   gcloud run services update pi-api --project=$PROJECT --region=$REGION --no-traffic \
+     --tag=refresh --update-env-vars="^@^PI_API_DATASETS=$NEW_DATASETS@PI_API_REQUIRE_ALL=1"
+   ```
+
+   With `PI_API_REQUIRE_ALL=1` pi_api refuses to start unless every configured file and view loads,
+   so a revision with an unserved body never becomes Ready. Run the §8 checks against the `refresh`
+   tag URL before any traffic moves.
+3. **Move traffic:** `gcloud run services update-traffic pi-api --region=$REGION
+   --to-revisions=<new>=100`.
+4. **Roll back** by routing traffic to the previous revision (§9). Its env still names the old
+   objects, which are never overwritten or deleted, so rollback needs no republish.
+5. **Report** on the deploy task: the before and after revision and image digest; the old and new
+   `PI_API_DATASETS`; each new body's sha256 and path; the exact traffic command; and for beauty,
+   the form response id that allowed it.
 
 ## 7. Hosting rewrite
 

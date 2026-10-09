@@ -1,9 +1,16 @@
-"""A ``pi.dataset/v3`` snapshot at the export's 50 MB budget, with ``Offer.content`` at realistic
-sizes, loads inside the memory headroom the deploy runbook leaves (pi-api-deploy.md §6).
+"""A ``pi.dataset/v3`` snapshot with ``Offer.content`` at realistic sizes, scaled to the export's
+compact budget, stays inside the resident share the deploy runbook gives one dataset at 3Gi
+(pi-api-deploy.md §6).
 
-Text is cheaper per byte than the many small objects of a price-only product, so a budget-size
-snapshot heavy with description/ingredients holds *less* than a price-only one; this pins that
-the content fields do not change the arithmetic the 1Gi limit rests on.
+The content is synthetic with a real shape: ``fixtures/ounass_offer_content_sample.json`` is
+written by ``make_offer_content_sample.py`` from a profile of 200 real Ounass offers taken at a
+fixed stride from the snapshot the budget was calibrated on (each description's length, UTF-8
+size and character width; each offer's images, ids and what repeats inside it), with no retailer
+text. Its per-offer zlib ratio is pinned to the range of real data, because packed content's
+memory is its compressed size and repetitive filler text compresses ~10x better than real
+descriptions. A 10 MB sample is loaded and
+scaled linearly (resident memory grows with product count), so CI does not have to hold a
+full-budget snapshot.
 """
 
 from __future__ import annotations
@@ -12,47 +19,82 @@ import copy
 import gc
 import json
 import tracemalloc
+import zlib
 from pathlib import Path
 from typing import Any
 
-from api_fixture import DATASET_PATH, bearer, make_client, served_dataset
-from pi_metrics import view
+from api_fixture import DATASET_PATH, bearer, make_client, own_keys, served_dataset
+from make_offer_content_sample import sample
+from pi_dataset import V3_MAX_BYTES, OfferContent
 
-BUDGET = 50_000_000  # scripts/demo_export/export.py V3_MAX_BYTES
-HEADROOM = 200 * 2**20  # pi-api-deploy.md §6: ~200 MiB left inside 1Gi at the budget
-CAPTURED = ["description", "ingredients", "images", "shade", "gtin"]
-WORDS = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 30
+BUDGET = V3_MAX_BYTES  # compact JSON bytes
+SAMPLE = 10_000_000
+# pi-api-deploy.md §6: the gate's steady share at 3Gi (its fitted refresh peak, 70 + 31.48 MiB/MB
+# x 51 MB = 1,676 MiB, / 2.68 the measured peak-to-steady ratio).
+RESIDENT = 625 * 2**20
+CONTENT = Path(__file__).parent / "fixtures" / "ounass_offer_content_sample.json"
+# Real Ounass offer content compresses 2.09x in aggregate (per offer: p1 1.41, p99 3.55); the
+# synthetic sample 2.14x (p1 1.44, p99 3.72).
+RATIO = (1.6, 2.6)
 
 
-def product(template: dict[str, Any], i: int) -> dict[str, Any]:
+def contents() -> list[dict[str, Any]]:
+    loaded: list[dict[str, Any]] = json.loads(CONTENT.read_text(encoding="utf-8"))
+    return loaded
+
+
+def product(template: dict[str, Any], content: dict[str, Any], i: int) -> dict[str, Any]:
     p = copy.deepcopy(template)
     p["id"] = f"x{i:06d}"
     for offer in p["offers"].values():
-        offer["content"] = {
-            "captured": CAPTURED,
-            "description": f"{WORDS[:1500]}{i}",  # ~1.5 KB, a typical beauty description
-            "ingredients": f"{WORDS[:1000]}{i}",  # ~1 KB INCI list
-            "images": [f"https://media.example/{i}/{k}.jpg" for k in range(6)],
-            "variants": [
-                {"sku": f"{i}-{k}", "shade": f"Shade {k}", "gtin": "4006381333931"}
-                for k in range(4)
-            ],
-            "family": f"family-{i // 3}",
-        }
+        offer["content"] = copy.deepcopy(content)
+        offer["content"]["family"] = f"family-{i // 3}"
     return p
 
 
 def budget_doc() -> bytes:
-    doc: dict[str, Any] = view.as_v3(served_dataset()).model_dump(mode="json", by_alias=True)
+    doc: dict[str, Any] = own_keys(served_dataset()).model_dump(mode="json", by_alias=True)
     template = next(p for p in doc["products"] if p["id"] == "p01")
-    count = BUDGET // len(json.dumps(product(template, 0)))
-    doc["products"] = [product(template, i) for i in range(count)]
-    return json.dumps(doc).encode()
+    sample = contents()
+    mean = sum(len(compact(product(template, c, 0))) for c in sample) / len(sample)
+    count = int(SAMPLE // mean)
+    doc["products"] = [product(template, sample[i % len(sample)], i) for i in range(count)]
+    return compact(doc).encode()
 
 
-def test_a_budget_size_snapshot_with_content_loads_inside_the_headroom(tmp_path: Path) -> None:
+def compact(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def zlib_ratio(sample: list[dict[str, Any]]) -> float:
+    bodies = [OfferContent.model_validate(c).model_dump_json().encode() for c in sample]
+    return sum(map(len, bodies)) / sum(len(zlib.compress(b)) for b in bodies)
+
+
+def test_the_sample_is_what_its_generator_writes() -> None:
+    assert contents() == sample()
+
+
+def test_the_sample_carries_no_retailer_host() -> None:
+    assert "ounass" not in CONTENT.read_text(encoding="utf-8").lower()
+
+
+def test_the_sample_compresses_like_real_offer_content() -> None:
+    assert RATIO[0] <= zlib_ratio(contents()) <= RATIO[1]
+
+
+def test_the_ratio_check_rejects_repetitive_filler_text() -> None:
+    words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 30
+    filler = {"captured": ["description", "ingredients"], "description": words[:1500]}
+    assert zlib_ratio([{**filler, "ingredients": words[:1000]}]) > RATIO[1]
+
+
+def test_a_budget_size_snapshot_with_content_stays_inside_its_resident_share(
+    tmp_path: Path,
+) -> None:
     body = budget_doc()
-    assert BUDGET * 0.98 < len(body) <= BUDGET * 1.02
+    assert SAMPLE * 0.98 < len(body) <= SAMPLE * 1.02
+    scale = BUDGET / len(body)
     target = tmp_path / DATASET_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(body)
@@ -65,9 +107,10 @@ def test_a_budget_size_snapshot_with_content_loads_inside_the_headroom(tmp_path:
         # The first detail request builds the lazy indexes (families, lookups) too.
         response = client.get("/api/v1/products/x000001", headers=bearer())
         assert response.status_code == 200, response.text
-        assert [s["productId"] for s in response.json()["data"]["offers"][0]["content"]["sizes"]]
+        assert response.json()["data"]["offers"][0]["content"]["description"]
         gc.collect()
         retained = tracemalloc.get_traced_memory()[0] - before
     finally:
         tracemalloc.stop()
-    assert retained < HEADROOM, f"{retained / 2**20:.0f} MiB retained"
+    at_budget = retained * scale
+    assert at_budget < RESIDENT, f"{at_budget / 2**20:.0f} MiB at the budget"

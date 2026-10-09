@@ -194,6 +194,21 @@ def at(when: datetime, **changes: Any) -> ListingRow:
     return ListingRow(**(base.__dict__ | {"observed_at": when, "evidence_retrieved_at": when}))
 
 
+def test_an_offer_dated_by_its_feed_files_import_time_blocks_the_export() -> None:
+    """The guard behind the obs CTE's offline_import case: if that case regresses and a feed row
+    comes out dated by the file's import time, the export refuses rather than publish it."""
+    imported = datetime(2026, 9, 30, 10, 0, tzinfo=UTC)
+    dated_by_file = ListingRow(**(at(imported).__dict__ | {"file_received_at": imported}))
+    with pytest.raises(ValueError, match="import time"):
+        build([dated_by_file])
+
+
+def test_an_offer_with_no_feed_file_time_exports_at_its_capture_time() -> None:
+    captured = datetime(2026, 9, 30, 10, 0, tzinfo=UTC)
+    plain = ListingRow(**(at(captured).__dict__ | {"file_received_at": None}))
+    assert only_offer(doc([plain]))["evidence"]["capturedAt"] == "2026-09-30T10:00:00Z"
+
+
 def test_a_value_captured_on_another_day_is_null_never_carried_forward() -> None:
     """Contract rule 6: Sephora on 30 Sep, Ulta on 28 Sep -> only Sephora has values on 30 Sep."""
     fresh = at(datetime(2026, 9, 30, 10, 0, tzinfo=UTC), availability="in_stock")

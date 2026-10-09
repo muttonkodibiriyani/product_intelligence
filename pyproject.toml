@@ -42,7 +42,7 @@ line-length = 100
 target-version = "py312"
 src = [
   "packages/*/src", "packages/*/tests", "tests", "tools/gulf_probe", "tools/offline_import",
-  "tools/page_capture", "tools/browser_capture", "tools/capture_read",
+  "tools/page_capture", "tools/browser_capture", "tools/capture_read", "tools/uae_collect",
 ]
 
 [tool.ruff.lint]
@@ -101,6 +101,8 @@ mypy_path = [
   "tools/browser_capture/tests",
   "tools/capture_read",
   "tools/capture_read/tests",
+  "tools/uae_collect",
+  "tools/uae_collect/tests",
   "tools/offline_import",
   "infra/scripts",
 ]
@@ -140,13 +142,17 @@ files = [
   "tools/page_capture",
   "tools/browser_capture",
   "tools/capture_read",
+  "tools/uae_collect",
   "tools/offline_import",
   "infra/scripts/db_url_guard.py",
   "infra/scripts/invite_user.py",
   "infra/scripts/pg_backup.py",
+  "infra/scripts/feed_load.py",
   "infra/scripts/prod_smoke_api.py",
   "infra/scripts/prod_smoke_pages.py",
   "infra/scripts/publish_dataset.py",
+  "infra/scripts/pi_api_admission.py",
+  "infra/scripts/run_env_assert.py",
   "infra/tests",
 ]
 
@@ -167,10 +173,10 @@ warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
-testpaths = ["packages", "apps/assistant/pytests", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "tools/sephora_snapshot/tests", "tools/page_capture/tests", "tools/browser_capture/tests", "tools/capture_read/tests", "tools/offline_import/tests", "scripts/demo_export", "scripts/similar_coverage", "infra/tests"]
+testpaths = ["packages", "apps/assistant/pytests", "tests/uat", "tools/gulf_probe/tests", "tools/ulta_snapshot/tests", "tools/sephora_snapshot/tests", "tools/page_capture/tests", "tools/browser_capture/tests", "tools/capture_read/tests", "tools/uae_collect/tests", "tools/offline_import/tests", "scripts/demo_export", "scripts/similar_coverage", "infra/tests"]
 # Offline CLI adapters reuse scripts.demo_export; importlib-mode pytest needs the same repo root
 # that `python -m offline_import.ulta_feed` has, without relying on an operator's PYTHONPATH.
-pythonpath = [".", "tests", "packages/pi_fetch/tests", "packages/pi_metrics/tests", "packages/pi_api/tests", "packages/pi_image/tests", "packages/pi_similar/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "tools/page_capture", "tools/page_capture/tests", "tools/browser_capture", "tools/browser_capture/tests", "tools/capture_read", "tools/offline_import", "infra/scripts", "infra/tests"]
+pythonpath = [".", "tests", "packages/pi_fetch/tests", "packages/pi_metrics/tests", "packages/pi_api/tests", "packages/pi_image/tests", "packages/pi_similar/tests", "tools/gulf_probe", "tools/ulta_snapshot", "tools/sephora_snapshot", "tools/sephora_snapshot/tests", "tools/page_capture", "tools/page_capture/tests", "tools/browser_capture", "tools/browser_capture/tests", "tools/capture_read", "tools/uae_collect", "tools/offline_import", "infra/scripts", "infra/tests"]
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [
   "browser: launches a real Playwright browser (CI installs engines and asserts 0 skips)",
@@ -192,7 +198,7 @@ branch = true
 source = [
   "pi_capture", "pi_core", "pi_connector_ulta", "pi_dataset", "pi_db", "pi_fetch", "gulf_probe",
   "pi_match", "pi_metrics", "offline_import", "pi_api", "pi_profiles", "page_capture",
-  "browser_capture", "capture_read", "pi_similar",
+  "browser_capture", "capture_read", "pi_similar", "uae_collect",
 ]
 # network entry points that run only inside their job images
 omit = ["*/gulf_probe/run.py", "*/browser_capture/pw.py"]

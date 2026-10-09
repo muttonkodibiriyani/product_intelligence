@@ -54,6 +54,19 @@ const LaunchChart = dynamic(() => import('./launch-chart').then((m) => m.LaunchC
 
 type Pair = { base: string; other: string; name: (id: string) => string };
 
+/** Every chart this section can draw; a dashboard view picks a subset, the Overview draws them all. */
+export const INSIGHT_KEYS = [
+  'gaps',
+  'index',
+  'launches',
+  'hist',
+  'ladder',
+  'brands',
+  'share',
+  'depth',
+] as const;
+export type InsightKey = (typeof INSIGHT_KEYS)[number];
+
 /**
  * The charts that dig into the data, each under one line stating what it shows, computed from
  * the same slice of the API it draws (components/prices/takeaways.ts): the pair's price gaps by
@@ -66,17 +79,20 @@ export function Insights({
   pair,
   cat,
   launches,
+  show = INSIGHT_KEYS,
 }: {
   rows: readonly RetailerSummary[];
   pair: Pair | null;
   cat: PairState<CategoryCompare>;
   launches: ReturnType<typeof useLaunchCounts>;
+  show?: readonly InsightKey[];
 }) {
   const t = useTranslations('home.insights');
   const tw = useTranslations('widgets');
   const locale = useLocale();
   const lc = locale === 'ar' ? 'ar' : 'en';
-  const index = useIndexData(pair);
+  const on = (k: InsightKey) => show.includes(k);
+  const index = useIndexData(on('index') ? pair : null);
   const series = launches.shops
     .filter((l) => l.state === 'ready' && l.perDay && l.perDay.length > 0)
     .map((l) => ({
@@ -87,9 +103,11 @@ export function Insights({
     }));
   const launched = launchTotals(launches.shops.length, series);
   const covered = new Intl.ListFormat(locale, { type: 'conjunction' }).format(launched.covered);
-  const trend = index.kind === 'ready' ? trendPoints(index.data) : null;
+  const trend = on('index') && index.kind === 'ready' ? trendPoints(index.data) : null;
   const buckets =
-    cat.kind === 'ready' ? cat.data.buckets.filter((b) => b.status === 'ok' && b.gapPct !== null) : [];
+    on('gaps') && cat.kind === 'ready'
+      ? cat.data.buckets.filter((b) => b.status === 'ok' && b.gapPct !== null)
+      : [];
   const widest = widestBucket(buckets);
   const label = (b: Bucket) => b.label?.[lc] || tw(`categories.name.${b.key}`);
 
@@ -99,7 +117,7 @@ export function Insights({
         {t('title')}
       </h2>
       <CardGrid>
-        {pair && (cat.kind === 'loading' || widest) && (
+        {pair && on('gaps') && (cat.kind === 'loading' || widest) && (
           <Card
             id="i-gaps"
             span={trend ? 6 : 12}
@@ -144,7 +162,7 @@ export function Insights({
             <IndexTrendWidget data={index.data} currency="" locale={locale} pair={pair} />
           </Card>
         )}
-        {series.length > 0 && (
+        {on('launches') && series.length > 0 && (
           <Card
             id="i-launches"
             span={12}
@@ -168,7 +186,7 @@ export function Insights({
           </Card>
         )}
         {rows.map((r, i) => (
-          <ShopCharts key={r.retailer} row={r} index={i} />
+          <ShopCharts key={r.retailer} row={r} index={i} on={on} />
         ))}
       </CardGrid>
     </section>
@@ -187,7 +205,15 @@ function widestBucket(buckets: readonly Bucket[]): Bucket | null {
 }
 
 /** One shop's charts, each only when /summary measured its section and the line can be said. */
-function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
+function ShopCharts({
+  row,
+  index,
+  on,
+}: {
+  row: RetailerSummary;
+  index: number;
+  on: (k: InsightKey) => boolean;
+}) {
   const t = useTranslations('home.insights');
   const tw = useTranslations('widgets');
   const locale = useLocale();
@@ -205,7 +231,7 @@ function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
   const shop = row.name;
   return (
     <>
-      {d.priceHist && hist && (
+      {on('hist') && d.priceHist && hist && (
         <Card
           id={id('hist')}
           span={6}
@@ -220,7 +246,7 @@ function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
           <PriceHistWidget data={d.priceHist} {...p} />
         </Card>
       )}
-      {d.ladder && ladder && (
+      {on('ladder') && d.ladder && ladder && (
         <Card
           id={id('ladder')}
           span={6}
@@ -240,7 +266,7 @@ function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
           <LadderWidget data={d.ladder} {...p} />
         </Card>
       )}
-      {d.brandPrice && brands && (
+      {on('brands') && d.brandPrice && brands && (
         <Card
           id={id('brands')}
           span={6}
@@ -260,7 +286,7 @@ function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
           <BrandPriceWidget data={d.brandPrice} top={BRANDS_TOP} {...p} />
         </Card>
       )}
-      {d.brandPrice && d.priced !== null && topShare && (
+      {on('share') && d.brandPrice && d.priced !== null && topShare && (
         <Card
           id={id('share')}
           span={6}
@@ -270,7 +296,7 @@ function ShopCharts({ row, index }: { row: RetailerSummary; index: number }) {
           <BrandShareWidget data={d.brandPrice} priced={d.priced} quiet {...p} />
         </Card>
       )}
-      {promo.measured && band && (
+      {on('depth') && promo.measured && band && (
         <Card
           id={id('depth')}
           span={12}

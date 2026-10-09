@@ -14,9 +14,26 @@ Scope: the capture is for beauty. ``c_rms_div`` other than ``Beauty``, or ``c_rm
 false on beauty pages too. A page with no ``productData`` raises :class:`NoProductObject`.
 
 Stock: ``inventory.orderable`` is carried as a second ``structured_data`` block beside the JSON-LD
-offer; the feed takes availability only when both agree. Promotions are internal ids
-(``productPromotions[].promotionId``, e.g. one GWP id on every page), not shopper-facing labels,
-so no badge is read from them. The page HTML carries no ratings; they are ``not_shown``.
+offer; the feed takes availability only when both agree. ``productPromotions[].promotionId`` are
+internal ids (one GWP id on every page), not shopper-facing labels, so nothing is read from them;
+the shopper-facing badges are ``c_badges`` and the gift-with-purchase callout is
+``c_product_promotions[].calloutMsgText``. A rating is read from ``c_ratings`` where the page
+carries one (a few do); otherwise ratings are left unread, not ``not_shown``.
+
+Go-live date: ``c_prd_live_date`` (a bare date) is the retailer's own date, read as
+``listing_live_date`` as published; it is never our ``launch_date`` and never ``first_seen``.
+
+In-store pickup: ``c_stores[]`` lists the click-and-collect stores, each with a true/false
+``available``. ``store_availability`` is ``[{store, pickup_available}]`` from those stores: a
+retailer payload flag whose display on the page is unverified (the widget is client-rendered), and
+"not available for pickup at that store" only, never offer stock. Where the product's or the shown
+variant's ``availableForInStorePickup`` disagrees with the stores, the whole value is
+``parse_failed``, as is any ``c_stores`` entry that is not a store with a true/false
+``clickAndCollectEnabled``. The inventory counts (``inventory.ats``, ``stockLevel``,
+``availableQuantity``) are never read.
+
+Never read: ``c_unitcost`` (the retailer's cost), ``c_fe_*`` (merchandising scores) and the
+payment widgets' keys; every field read here is named, nothing is copied wholesale.
 """
 
 from __future__ import annotations
@@ -25,6 +42,15 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
+from pi_capture._page_attrs import (
+    emit_bullets,
+    emit_enum,
+    emit_inci,
+    emit_live_date,
+    emit_texts,
+    enum_table,
+    html_text,
+)
 from pi_capture._size import emit_size
 from pi_capture.faces import _CONCENTRATIONS
 from pi_capture.generic import LOOKED_FOR as GENERIC_LOOKED_FOR
@@ -48,6 +74,28 @@ from pi_capture.page_json import (
 __all__ = ["LOOKED_FOR", "readings_from_bloomingdales"]
 
 _PD = "productData"
+_NO_COLOUR = "nocolor"
+# Bloomingdale's facet values (lower case, separators as "_") -> the spec's enum values; a value
+# outside these (``gloss___shine``, ``natural``) is parse_failed, never stretched to fit
+_FINISH = enum_table(
+    [("matte", "matte"), ("satin", "satin"), ("dewy", "dewy"), ("radiant", "radiant")]
+)
+_FORMULATION = enum_table(
+    [
+        ("liquid", "liquid"),
+        ("cream", "cream"),
+        ("powder", "powder"),
+        ("stick", "stick"),
+        ("gel", "gel"),
+        ("balm", "balm"),
+    ]
+)
+_PICKUP_NOTE = "retailer payload flag; whether the page displays it is unverified"
+_GWP_PROMOTION = "GWP"  # promotionId prefix of a gift-with-purchase callout
+_INSTALMENTS = (
+    ("c_tabbyPromo", "tabbyPromoApplicable"),
+    ("c_tamaraPromo", "tamaraPromoApplicable"),
+)
 
 
 def _str(value: Any) -> str | None:
@@ -156,9 +204,180 @@ def _map_content(em: _Emitter, pd: Mapping[str, Any]) -> None:
             break
 
 
+def _map_colour(em: _Emitter, pd: Mapping[str, Any]) -> None:
+    """The page's own colour from ``c_colors`` (the entry whose id is this product's id); the
+    ``nocolor`` entry every uncoloured product carries is not a shade."""
+    sku = _str(pd.get("id"))
+    for colour in pd.get("c_colors") or []:
+        if not isinstance(colour, Mapping) or _str(colour.get("id")) != sku:
+            continue
+        if _str(colour.get("value")) == _NO_COLOUR:
+            return
+        if (label := _str(colour.get("text"))) is not None:
+            em.observed("shade_name", label, label, f"{_PD}.c_colors[id={sku}].text")
+        return
+
+
+def _map_attributes(em: _Emitter, pd: Mapping[str, Any]) -> None:
+    if (mpn := _str(pd.get("c_vpn"))) is not None:
+        em.observed("mpn", mpn, mpn, f"{_PD}.c_vpn", "vendor product number")
+    if isinstance(ingredients := pd.get("c_ingredients"), str):
+        emit_inci(em, ingredients, f"{_PD}.c_ingredients")
+    if isinstance(long := pd.get("longDescription"), str) and "<li" in long.lower():
+        emit_bullets(em, long, f"{_PD}.longDescription")
+    emit_texts(em, "skin_type", pd.get("c_skintype"), f"{_PD}.c_skintype")
+    emit_texts(em, "concern", pd.get("c_skinConcern"), f"{_PD}.c_skinConcern")
+    if (scent := _str(pd.get("c_scent"))) is not None:
+        em.observed("fragrance_family", scent, scent, f"{_PD}.c_scent")
+    if (collection := _str(pd.get("c_collection"))) is not None:
+        em.observed("collection", collection, collection, f"{_PD}.c_collection")
+    emit_enum(em, "finish", pd.get("c_npm_finish"), f"{_PD}.c_npm_finish", _FINISH)
+    emit_enum(
+        em, "formulation", pd.get("c_npm_formulation"), f"{_PD}.c_npm_formulation", _FORMULATION
+    )
+
+
+def _map_merch(em: _Emitter, pd: Mapping[str, Any]) -> None:
+    emit_texts(em, "badges", pd.get("c_badges"), f"{_PD}.c_badges")
+    for promo in pd.get("c_product_promotions") or []:
+        if not isinstance(promo, Mapping):
+            continue
+        pid = _str(promo.get("promotionId")) or ""
+        callout = promo.get("calloutMsgText")
+        text = html_text(callout) if isinstance(callout, str) else ""
+        if pid.upper().startswith(_GWP_PROMOTION) and text:
+            path = f"{_PD}.c_product_promotions[{pid}].calloutMsgText"
+            em.observed("gift_with_purchase", text, text, path)
+            break
+    rating = _str(pd.get("c_ratings"))
+    if rating is not None:
+        try:
+            value = Decimal(rating)
+        except ArithmeticError:
+            value = None
+        if value is None or not value.is_finite() or not 0 <= value <= 5:
+            em.failed("rating_value", rating, f"{_PD}.c_ratings", "not a 0-5 rating")
+        else:
+            em.observed("rating_value", rating, value, f"{_PD}.c_ratings")
+
+
+def _map_offer(em: _Emitter, pd: Mapping[str, Any]) -> None:
+    """Loyalty points and the instalment offers. Only the named fields are read from the payment
+    widgets (never their keys)."""
+    points = pd.get("c_amberPointsAmount")
+    if (
+        isinstance(points, int | Decimal)
+        and not isinstance(points, bool)
+        and points >= 0
+        and points == int(points)
+    ):
+        em.observed(
+            "loyalty_points", str(points), int(points), f"{_PD}.c_amberPointsAmount", "Amber"
+        )
+    providers: list[str] = []
+    amounts: list[tuple[str, str | None, str]] = []
+    for field, applicable in _INSTALMENTS:
+        widget = pd.get(field)
+        if not isinstance(widget, Mapping) or widget.get(applicable) is not True:
+            continue
+        providers.append(field.removeprefix("c_").removesuffix("Promo"))
+        if (monthly := _str(widget.get("monthlyPrice"))) is not None:
+            amounts.append((monthly, _str(widget.get("currency")), f"{_PD}.{field}.monthlyPrice"))
+    if providers:
+        em.observed(
+            "installment_provider",
+            ", ".join(providers),
+            providers,
+            f"{_PD}.c_tabbyPromo|c_tamaraPromo",
+            "providers whose widget applies to this price",
+        )
+    if amounts:
+        minors = {_minor_units(a, c)[0] for a, c, _p in amounts}
+        amount, currency, path = amounts[0]
+        if len(minors) == 1:
+            _emit_price(em, "installment_amount_minor", amount, currency, path, "per instalment")
+        else:
+            em.failed(
+                "installment_amount_minor",
+                " | ".join(a for a, _c, _p in amounts),
+                path,
+                "providers state different instalment amounts",
+            )
+
+
+def _pickup_flags(pd: Mapping[str, Any]) -> list[tuple[str, bool]]:
+    """The product's and the shown variant's own in-store pickup flags, where they are bools."""
+    flags: list[tuple[str, bool]] = []
+    if isinstance(product := pd.get("c_availableForInStorePickup"), bool):
+        flags.append((f"{_PD}.c_availableForInStorePickup", product))
+    pid = _str(pd.get("id"))
+    for size in pd.get("c_sizes") or []:
+        for variant in (
+            (size.get("c_variant_availability") or []) if isinstance(size, Mapping) else []
+        ):
+            if not isinstance(variant, Mapping) or pid is None or _str(variant.get("pid")) != pid:
+                continue
+            if isinstance(flag := variant.get("availableForInStorePickup"), bool):
+                path = (
+                    f"{_PD}.c_sizes[].c_variant_availability[pid={pid}].availableForInStorePickup"
+                )
+                flags.append((path, flag))
+    return flags
+
+
+def _pickup_row(store: object) -> dict[str, str | bool] | tuple[str, str] | None:
+    """One ``c_stores`` entry: its row, ``None`` if click-and-collect is off there, or the
+    ``(raw_text, note)`` of a malformed entry. A malformed entry is never echoed whole: it may
+    carry a stock count."""
+    if not isinstance(store, Mapping):
+        return type(store).__name__, "a c_stores entry that is not a store"
+    enabled = store.get("clickAndCollectEnabled")
+    if not isinstance(enabled, bool):
+        raw = f"{store.get('name')!r}: clickAndCollectEnabled={enabled!r}"
+        return raw, "a store without a true/false clickAndCollectEnabled"
+    if not enabled:
+        return None
+    name, available = _str(store.get("name")), store.get("available")
+    if name is None or not isinstance(available, bool):
+        raw = f"{store.get('name')!r}: {available!r}"
+        return raw, "a click-and-collect store without a name or a true/false available"
+    return {"store": name, "pickup_available": available}
+
+
+def _map_store_pickup(em: _Emitter, pd: Mapping[str, Any]) -> None:
+    """In-store pickup by click-and-collect store, cross-checked with the product's own flags."""
+    key, path = "store_availability", f"{_PD}.c_stores[]"
+    stores = pd.get("c_stores")
+    if stores is None or stores == []:
+        em.not_shown(key, "no c_stores list")
+        return
+    if not isinstance(stores, list):
+        em.failed(key, type(stores).__name__, f"{_PD}.c_stores", "c_stores is not a list")
+        return
+    rows: list[dict[str, str | bool]] = []
+    for store in stores:
+        row = _pickup_row(store)
+        if isinstance(row, tuple):
+            em.failed(key, row[0], path, row[1])
+            return
+        if row is not None:
+            rows.append(row)
+    if not rows:
+        em.not_shown(key, "no click-and-collect store listed")
+        return
+    raw = "; ".join(f"{r['store']}: {r['pickup_available']}" for r in rows)
+    anywhere = any(r["pickup_available"] for r in rows)
+    for flag_path, flag in _pickup_flags(pd):
+        if flag != anywhere:
+            note = f"{flag_path} is {flag} but the stores' available flags say {anywhere}"
+            em.failed(key, raw, path, note)
+            return
+    em.observed(key, raw, rows, path, _PICKUP_NOTE)
+
+
 def readings_from_bloomingdales(html: str, *, locale: str, url: str | None = None) -> list[Reading]:
-    """Bloomingdale's readings first, then the generic readers fill every key still unread, then
-    ratings are marked ``not_shown``; ``inventory.orderable`` is appended as its own
+    """Bloomingdale's readings first, then the generic readers fill every key still unread;
+    ``inventory.orderable`` is appended as its own
     ``structured_data`` block. Raises :class:`NoProductObject` or :class:`OutOfScopePage`."""
     pd = bloomingdales_product(html)
     em = _Emitter()
@@ -166,9 +385,15 @@ def readings_from_bloomingdales(html: str, *, locale: str, url: str | None = Non
     _map_taxonomy(em, pd)
     _map_prices(em, pd)
     _map_content(em, pd)
+    _map_colour(em, pd)
+    _map_attributes(em, pd)
+    _map_merch(em, pd)
+    _map_offer(em, pd)
+    emit_live_date(
+        em, pd.get("c_prd_live_date"), f"{_PD}.c_prd_live_date", "Bloomingdale's product live date"
+    )
+    _map_store_pickup(em, pd)
     em.extend(readings_from_generic(html, locale=locale, url=url))
-    for key in ("rating_value", "rating_count"):
-        em.not_shown(key, "Bloomingdale's UAE product pages carry no ratings in the HTML")
     flag = stock_flag(
         pd.get("inventory"),
         "orderable",
@@ -183,13 +408,29 @@ def readings_from_bloomingdales(html: str, *, locale: str, url: str | None = Non
 LOOKED_FOR: frozenset[str] = (
     frozenset(
         {
+            "badges",
+            "bullets",
             "category_l1..l4",
+            "collection",
             "concentration",
+            "concern",
             "department",
+            "finish",
+            "formulation",
+            "fragrance_family",
+            "gift_with_purchase",
+            "inci_list",
+            "installment_amount_minor",
+            "installment_provider",
+            "listing_live_date",
+            "loyalty_points",
             "product_type",
+            "shade_name",
             "size_label",
             "size_unit",
             "size_value",
+            "skin_type",
+            "store_availability",
             "style_id",
             "style_id_source",
         }

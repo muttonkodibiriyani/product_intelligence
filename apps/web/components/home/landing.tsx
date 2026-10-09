@@ -321,7 +321,7 @@ const strong = (c: ReactNode) => <b className="font-semibold text-ink">{c}</b>;
  * The deepest discounts, one card per retailer whose was-prices are verified (/summary measures
  * them or says why not); a retailer whose discounts are not measured gets one chip at the foot.
  */
-function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
+export function TopDiscounts({ rows }: { rows: readonly RetailerSummary[] }) {
   const tt = useTranslations('widgets.top');
   const tk = useTranslations('widgets.kpi');
   const tr = useTranslations('reasons');
