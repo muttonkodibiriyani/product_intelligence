@@ -5,6 +5,7 @@
 //   node scripts/csp.mjs --check out out-assistant   fails unless firebase.json lists exactly
 //                                                   the union of the builds' hashes
 //   node scripts/csp.mjs --write out out-assistant   rewrites the script-src hashes to that union
+//   node scripts/csp.mjs --id                        prints the build id this tree gets
 //
 // `npm run build` checks both exports: out/ (as built, flags off in CI) and out-assistant/ (the
 // assistant switched on), so one committed CSP is valid for today's deploy and for switch-on.
@@ -12,7 +13,11 @@
 // Check). Anything else in the committed directive ('unsafe-inline', another host) fails --check.
 //
 // The build id is a hash of the sources (next.config.ts), so the same source gives the same
-// hashes on any machine, and CI's check after `next build` catches a stale list.
+// hashes on any machine, and CI's check after `next build` catches a stale list. That id counts
+// only what git tracks, as it is in the working tree, so --write refuses while any build-id input
+// is untracked or uncommitted (the list would match that local build and no commit), or the
+// exports' build id is not this tree's (a build from before a commit).
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -26,6 +31,94 @@ if (dirs.length === 0) dirs.push('out');
 // CSP_CONFIG lets scripts/csp.test.ts point the check at a fixture; builds use the real file.
 const CONFIG =
     process.env.CSP_CONFIG ?? join(import.meta.dirname, '..', '..', '..', 'infra', 'firebase.json');
+
+// The build-id inputs of next.config.ts (csp.test.ts keeps the list and the id below equal to its
+// own). infra/firebase.json is not one, so the file --write changes never trips the guards.
+const INPUTS = [
+    'app',
+    'components',
+    'i18n',
+    'lib',
+    'messages',
+    'public',
+    'next.config.ts',
+    'package-lock.json',
+];
+// CSP_TREE lets csp.test.ts point the guards at a fixture repo; builds use apps/web.
+const TREE = process.env.CSP_TREE ?? join(import.meta.dirname, '..');
+const git = (...a) => execFileSync('git', a, { cwd: TREE, encoding: 'utf8' });
+
+/** contentBuildId() of next.config.ts: the id a build of this tree, as it is now, gets. */
+function treeBuildId() {
+    const files = git('ls-files', '-z', '--', ...INPUTS)
+        .split('\0')
+        .filter((f) => f && !/\.test\.tsx?$/.test(f))
+        .sort();
+    const h = createHash('sha256');
+    for (const f of files)
+        h.update(f)
+            .update('\0')
+            .update(readFileSync(join(TREE, f)))
+            .update('\0');
+    return h.digest('hex').slice(0, 20);
+}
+
+if (mode === '--id') {
+    console.log(treeBuildId());
+    process.exit(0);
+}
+
+if (mode === '--write') {
+    // Both checks are needed: the id check below catches untracked inputs (contentBuildId ignores
+    // them); this dirty guard catches uncommitted edits to tracked inputs (both ids read the working
+    // tree and agree). Removing either reopens one hole. -z keeps non-ASCII paths unquoted.
+    const dirty = git('status', '--porcelain', '-z', '--untracked-files=all', '--', ...INPUTS)
+        .split('\0')
+        .filter((l) => /^.. /.test(l) && !/\.test\.tsx?$/.test(l));
+    if (dirty.length > 0) {
+        console.error(
+            `csp: not writing: these build-id inputs are not committed, so this build's id is one no commit gives.\n` +
+                `Commit (or remove) them, rebuild, then run csp:write again.\n${dirty.join('\n')}`,
+        );
+        process.exit(1);
+    }
+}
+
+// The hashes belong to one build id (the inline scripts carry it), read from each export's
+// _next/static/<id>/. Every mode needs the exports to agree on it, which needs no git, so --check
+// still runs on a deploy checkout with no git (docs/runbooks/assistant-enablement.md). --write must
+// also match this tree's id: an export built before a commit, or elsewhere, has hashes CI's build
+// will not reproduce.
+const builtAs = (dir) => {
+    const st = join(dir, '_next', 'static');
+    try {
+        return readdirSync(st).filter((n) => {
+            try {
+                return statSync(join(st, n, '_buildManifest.js')).isFile();
+            } catch {
+                return false;
+            }
+        });
+    } catch {
+        return [];
+    }
+};
+const built = dirs.map((dir) => ({ dir, ids: builtAs(dir) }));
+const bad = built.find((b) => b.ids.length !== 1);
+const fail = (msg) => {
+    console.error(`csp: ${msg} Rebuild (npm run build) first.`);
+    process.exit(1);
+};
+if (bad) fail(`${bad.dir} has ${bad.ids.length === 0 ? 'no build id' : `build ids ${bad.ids.join(', ')}`}.`);
+const buildId = built[0].ids[0];
+const other = built.find((b) => b.ids[0] !== buildId);
+if (other) fail(`${built[0].dir} was built as ${buildId} but ${other.dir} as ${other.ids[0]}.`);
+if (mode === '--write') {
+    // Not redundant with the dirty guard above; see the note there.
+    const treeId = treeBuildId();
+    if (treeId !== buildId)
+        fail(`${dirs.join(', ')} were built as ${buildId}, but this tree builds as ${treeId}.`);
+}
 
 const hashes = new Set();
 let inline = 0;
