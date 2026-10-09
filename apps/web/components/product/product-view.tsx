@@ -560,7 +560,11 @@ function Variants({ o }: { o: Offer }) {
             {!(v.gtin.state === 'observed' && v.gtin.barcode) && (
               <span data-gtin-state={v.gtin.state} className="block text-xs text-ink-3">
                 {t('gtinAbsent')}:{' '}
-                <Known t={t} k="content" v={v.gtin.state === 'observed' ? 'not_published' : v.gtin.state} />
+                {v.gtin.state === 'observed' ? (
+                  t('gtinUnreadable')
+                ) : (
+                  <Known t={t} k="content" v={v.gtin.state} />
+                )}
               </span>
             )}
           </li>

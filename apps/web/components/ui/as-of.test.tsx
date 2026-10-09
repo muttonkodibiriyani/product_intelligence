@@ -58,7 +58,16 @@ describe('UltaPriceDate', () => {
       ],
     );
     expect(sourceObservation(twice, 'ulta_ae').state).toBe('conflict');
-    expect(label(twice).textContent).toBe('Ulta sources report conflicting dates; treat prices as stale.');
+    expect(label(twice).textContent).toBe('Ulta has more than one source; treat prices as stale.');
+    // Two sources on the same day are still two sources: no single date, and no claim they disagree.
+    const same = fixture(
+      ['ulta_ae'],
+      [
+        { source: 'ulta_ae', lastDate: '2026-10-09' },
+        { source: 'ulta_ae', lastDate: '2026-10-09' },
+      ],
+    );
+    expect(label(same).textContent).toBe('Ulta has more than one source; treat prices as stale.');
   });
 
   it("never assigns Ulta's label or date to another retailer", () => {

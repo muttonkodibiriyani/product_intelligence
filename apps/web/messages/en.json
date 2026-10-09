@@ -30,7 +30,7 @@
     "retailerLatestPriceData": "Latest {retailer} price data: {date}. Individual offers may be older.",
     "retailerPriceDateUnknown": "Latest {retailer} price date unavailable; treat prices as stale.",
     "retailerPriceDateInvalid": "Latest {retailer} price date could not be read; treat prices as stale.",
-    "retailerPriceDateConflict": "{retailer} sources report conflicting dates; treat prices as stale.",
+    "retailerPriceDateConflict": "{retailer} has more than one source; treat prices as stale.",
     "aboutData": "About the data"
   },
   "auth": {
@@ -363,7 +363,8 @@
     "offline_audit": "In-store audit"
   },
   "product": {
-    "gtinAbsent": "GTIN",
+    "gtinAbsent": "Barcode (GTIN)",
+    "gtinUnreadable": "Could not be read",
     "missingId": "No product was given. Open a product from the list.",
     "loading": "Loading product…",
     "back": "Back to products",

@@ -30,7 +30,7 @@
     "retailerLatestPriceData": "أحدث بيانات أسعار {retailer}: {date}. قد تكون بعض العروض أقدم.",
     "retailerPriceDateUnknown": "تاريخ أحدث أسعار {retailer} غير متاح؛ تُعامل الأسعار كبيانات قديمة.",
     "retailerPriceDateInvalid": "تعذّرت قراءة تاريخ أحدث أسعار {retailer}؛ تُعامل الأسعار كبيانات قديمة.",
-    "retailerPriceDateConflict": "مصادر {retailer} تذكر تواريخ متعارضة؛ تُعامل الأسعار كبيانات قديمة.",
+    "retailerPriceDateConflict": "لدى {retailer} أكثر من مصدر واحد؛ تُعامل الأسعار كبيانات قديمة.",
     "aboutData": "عن البيانات"
   },
   "auth": {
@@ -363,7 +363,8 @@
     "offline_audit": "تدقيق في المتجر"
   },
   "product": {
-    "gtinAbsent": "الرقم العالمي GTIN",
+    "gtinAbsent": "الباركود (GTIN)",
+    "gtinUnreadable": "تعذّرت قراءته",
     "missingId": "لم يُحدَّد منتج. افتح منتجًا من القائمة.",
     "loading": "جارٍ تحميل المنتج…",
     "back": "العودة إلى المنتجات",
