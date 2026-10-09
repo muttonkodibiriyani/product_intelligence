@@ -1,4 +1,5 @@
 import type { QueryOf } from './api/types';
+import { EVIDENCE_STATES, type LaunchEvidenceFilters, type LaunchEvidenceState } from './launch-evidence';
 import { cleanList, type Limit, LIMITS, parseLimit } from './url-state';
 
 export type LaunchesQuery = QueryOf<'/api/v1/launches'>;
@@ -8,18 +9,27 @@ export const WINDOWS = [30, 7] as const;
 export type Window = (typeof WINDOWS)[number];
 
 /** The launches view, all in the URL. */
-export interface LaunchesState {
+export interface LaunchesState extends LaunchEvidenceFilters {
   /** How many days back from the dataset's cutoff the list reaches. */
   days: Window;
-  brand: string[];
-  category: string[];
   limit: Limit;
 }
 
 export const EMPTY_LAUNCHES: LaunchesState = {
   days: WINDOWS[0],
+  retailer: [],
   brand: [],
   category: [],
+  dateFrom: '',
+  dateTo: '',
+  priceMin: '',
+  priceMax: '',
+  discountMin: '',
+  availability: [],
+  size: '',
+  color: '',
+  shade: '',
+  evidence: [],
   limit: LIMITS[0],
 };
 
@@ -31,15 +41,40 @@ export function parseWindow(v: string | null): Window {
 export function parseLaunches(sp: URLSearchParams): LaunchesState {
   return {
     days: parseWindow(sp.get('days')),
+    retailer: cleanList(sp.getAll('retailer')),
     brand: cleanList(sp.getAll('brand')),
     category: cleanList(sp.getAll('category')),
+    dateFrom: cleanDate(sp.get('dateFrom')),
+    dateTo: cleanDate(sp.get('dateTo')),
+    priceMin: cleanNumber(sp.get('priceMin')),
+    priceMax: cleanNumber(sp.get('priceMax')),
+    discountMin: cleanNumber(sp.get('discountMin')),
+    availability: cleanList(sp.getAll('availability')),
+    size: cleanTerm(sp.get('size')),
+    color: cleanTerm(sp.get('color')),
+    shade: cleanTerm(sp.get('shade')),
+    evidence: cleanList(sp.getAll('evidence')).filter((value): value is LaunchEvidenceState =>
+      (EVIDENCE_STATES as readonly string[]).includes(value),
+    ),
     limit: parseLimit(sp.get('limit')),
   };
 }
 
 export function toLaunchesSearch(s: LaunchesState): string {
   const p = new URLSearchParams();
-  for (const k of ['brand', 'category'] as const) for (const v of s[k]) p.append(k, v);
+  for (const k of ['retailer', 'brand', 'category', 'availability', 'evidence'] as const)
+    for (const v of s[k]) p.append(k, v);
+  for (const k of [
+    'dateFrom',
+    'dateTo',
+    'priceMin',
+    'priceMax',
+    'discountMin',
+    'size',
+    'color',
+    'shade',
+  ] as const)
+    if (s[k]) p.set(k, s[k]);
   if (s.days !== WINDOWS[0]) p.set('days', String(s.days));
   if (s.limit !== LIMITS[0]) p.set('limit', String(s.limit));
   const out = p.toString();
@@ -47,6 +82,16 @@ export function toLaunchesSearch(s: LaunchesState): string {
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const NUMBER = /^\d{1,9}(?:\.\d{1,3})?$/;
+
+const cleanDate = (value: string | null) => (value && DAY.test(value) ? value : '');
+const cleanNumber = (value: string | null) => (value && NUMBER.test(value) ? value : '');
+// Kept as typed: the URL is re-read after every keystroke, so trimming here would eat a space the
+// user is still typing ("rose gold"). Matching trims (filterLaunchEvidence); the API never sees it.
+const cleanTerm = (value: string | null) => {
+  const term = value ?? '';
+  return term.length <= 120 ? term : '';
+};
 
 /**
  * The day the window ends on: the dataset's last collection day, a market date. The cutoff is an
@@ -76,8 +121,17 @@ export function toLaunchesQuery(s: LaunchesState, end: string): LaunchesQuery {
   const since = windowSince(end, s.days);
   return {
     ...(since ? { since } : {}),
+    ...(s.retailer.length ? { retailer: s.retailer } : {}),
     ...(s.brand.length ? { brand: s.brand } : {}),
     ...(s.category.length ? { category: s.category } : {}),
     limit: s.limit,
   };
+}
+
+/**
+ * The cache key for /launches: only what the API receives, so typing in a browser-only filter
+ * (price, size, evidence...) neither refetches nor blanks the list.
+ */
+export function launchesQueryKey(s: LaunchesState, end: string) {
+  return ['launches', toLaunchesQuery(s, end)] as const;
 }
