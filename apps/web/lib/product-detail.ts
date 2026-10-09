@@ -15,7 +15,27 @@ export interface Why {
 
 /** The offer attributes that can be missing, each read from the API's own nulls and caveats. */
 export type OfferField =
-  'price' | 'regular' | 'promo' | 'availability' | 'rating' | 'size' | 'shades' | 'sku';
+  | 'price'
+  | 'regular'
+  | 'member'
+  | 'promo'
+  | 'availability'
+  | 'rating'
+  | 'size'
+  | 'shades'
+  | 'sku'
+  | 'images'
+  | 'variants'
+  | 'otherSizes';
+
+type ContentState = Schemas['ContentState'];
+
+/** A content field's own state: published but empty is the retailer's, not captured is ours. */
+function contentWhy(state: ContentState, absent: string, notCollected: boolean): Why | null {
+  if (state === 'observed') return null;
+  if (state === 'not_published') return { state: 'notPublished', reason: absent };
+  return { state: 'notMeasured', reason: notCollected ? 'notCollected' : 'contentNotCaptured' };
+}
 
 const wasPriceUnverified = (caveats: readonly CaveatView[], retailer: string) =>
   caveats.some((c) => c.code === 'was_price_unverified' && c.params.retailer === retailer);
@@ -48,6 +68,9 @@ function fieldWhy(field: OfferField, o: Offer, caveats: readonly CaveatView[], c
       return wasPriceUnverified(caveats, o.retailer)
         ? { state: 'notMeasured', reason: 'wasPriceUnverified' }
         : { state: 'notPublished', reason: 'noRegular' };
+    case 'member':
+      // The contract carries no member (loyalty) price for any retailer: never shown as absent.
+      return { state: 'notMeasured', reason: 'memberNotCollected' };
     case 'promo':
       // A discount on a price under review is no discount: the price itself isn't trusted.
       if (priceState(o) === 'review' || priceState({ price: o.regular }) === 'review')
@@ -81,6 +104,24 @@ function fieldWhy(field: OfferField, o: Offer, caveats: readonly CaveatView[], c
         : { state: 'notPublished', reason: 'noShades' };
     case 'sku':
       return o.sku ? null : { state: 'notPublished', reason: 'noSku' };
+    case 'images': {
+      const why = contentWhy(o.content.images.state, 'noImages', caps?.images === false);
+      // An observed gallery the page can't show (no URL left) is not a gallery: say so.
+      return (
+        why ??
+        (o.content.images.items.length > 0 ? null : { state: 'notMeasured', reason: 'contentNotCaptured' })
+      );
+    }
+    case 'variants':
+      return (
+        contentWhy(o.content.variants.state, 'noVariants', false) ??
+        (o.content.variants.items.length > 0 ? null : { state: 'notPublished', reason: 'noVariants' })
+      );
+    case 'otherSizes':
+      // Sizes come from the page's own product family: with no page content there is no family.
+      if (o.content.variants.state === 'not_captured' && o.content.sizes.length === 0)
+        return { state: 'notMeasured', reason: 'contentNotCaptured' };
+      return o.content.sizes.length > 0 ? null : { state: 'none', reason: 'noOtherSizes' };
   }
 }
 

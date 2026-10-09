@@ -428,7 +428,28 @@
       "noSize": "لا تعرض الصفحة حجمًا.",
       "noShadeRange": "لا توجد درجات لونية لهذا المنتج.",
       "noShades": "لا تعرض الصفحة عدد الدرجات.",
-      "noSku": "لا تعرض الصفحة رمز المنتج."
+      "noSku": "لا تعرض الصفحة رمز المنتج.",
+      "memberNotCollected": "أسعار الأعضاء غير مُجمَّعة بعد.",
+      "contentNotCaptured": "لم يُلتقط محتوى الصفحة لهذا العرض.",
+      "noImages": "لا تعرض الصفحة صورًا.",
+      "noVariants": "لا تعرض الصفحة درجات أو خيارات.",
+      "noOtherSizes": "لا يوجد حجم آخر لهذا المنتج في البيانات."
+    },
+    "member": "سعر الأعضاء",
+    "groupContent": "محتوى الصفحة",
+    "images": "الصور",
+    "variants": "الدرجات والخيارات",
+    "otherSizes": "أحجام أخرى لدى هذا المتجر",
+    "imageN": "الصورة {n}",
+    "imageCount": "{count, plural, one {صورة واحدة} two {صورتان} few {{n} صور} many {{n} صورة} other {{n} صورة}}",
+    "imageSource": {
+      "page": "من صفحة المنتج",
+      "catalogue": "من كتالوج المتجر"
+    },
+    "variantCount": "{count, plural, one {خيار واحد} two {خياران} few {{n} خيارات} many {{n} خيارًا} other {{n} خيار}}",
+    "content": {
+      "not_published": "غير منشور",
+      "not_captured": "غير مُلتقَط"
     }
   },
   "compare": {

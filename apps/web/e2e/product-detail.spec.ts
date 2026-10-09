@@ -11,6 +11,7 @@ const history = golden('history') as Json;
 const ROWS = [
   'price',
   'regular',
+  'member',
   'promo',
   'availability',
   'rating',
@@ -18,8 +19,17 @@ const ROWS = [
   'shades',
   'sku',
   'channel',
+  'images',
+  'variants',
+  'otherSizes',
   'evidence',
 ];
+
+const IMG = 'https://img-product.sephora.me/a/p01-1.jpg';
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 /** The golden product with every attribute filled: a SKU, shades, a page link, a size label. */
 function full(): Json {
@@ -30,6 +40,33 @@ function full(): Json {
   p.data.offers[1].sku = 'SB-77';
   p.data.offers[1].sizeLabel = 'M';
   p.data.offers[1].sizeSystem = 'EU';
+  // Shop A's page: a gallery, two shades (one unnamed), another size in its own family.
+  p.data.offers[0].content = {
+    ...p.data.offers[0].content,
+    images: { state: 'observed', items: [{ url: IMG }], source: 'page' },
+    variants: {
+      state: 'observed',
+      items: [
+        {
+          sku: 'SA-1001-RD',
+          shade: { state: 'observed', text: 'Ruby' },
+          gtin: { state: 'observed', barcode: '4006381333931' },
+        },
+        {
+          sku: 'SA-1001-XX',
+          shade: { state: 'not_published', text: null },
+          gtin: { state: 'not_published', barcode: null },
+        },
+      ],
+    },
+    sizes: [{ productId: 'p02', size: { unit: 'ml', value: '100' }, sizeLabel: null }],
+  };
+  // Shop B's page was captured and shows neither.
+  p.data.offers[1].content = {
+    ...p.data.offers[1].content,
+    images: { state: 'not_published', items: [], source: null },
+    variants: { state: 'not_published', items: [] },
+  };
   return p;
 }
 
@@ -70,6 +107,9 @@ function api(product: Json) {
 
 async function open(page: Page, locale: 'en' | 'ar', product: Json) {
   const mock = await mockBackend(page, { onApi: api(product) });
+  await page.route('https://img-product.sephora.me/**', (r) =>
+    r.fulfill({ contentType: 'image/png', body: PNG }),
+  );
   await signedIn(page, locale);
   await page.goto(`/app/${locale}/product/?id=${product.data.card.id}`);
   await expect(page.getByRole('heading', { level: 1, name: product.data.card.name })).toBeVisible();
@@ -105,6 +145,13 @@ for (const locale of ['en', 'ar'] as const) {
           needsPrice: 'لا سعر يُحسب منه.',
           noSku: 'لا تعرض الصفحة رمز المنتج.',
           source: 'افتح الصفحة',
+          member: 'أسعار الأعضاء غير مُجمَّعة بعد.',
+          notCaptured: 'لم يُلتقط محتوى الصفحة لهذا العرض.',
+          noImages: 'لا تعرض الصفحة صورًا.',
+          oneImage: 'صورة واحدة',
+          twoListings: 'خياران',
+          unnamed: 'غير منشور',
+          noOther: 'لا يوجد حجم آخر لهذا المنتج في البيانات.',
         }
       : {
           shopA: 'Shop A',
@@ -121,6 +168,13 @@ for (const locale of ['en', 'ar'] as const) {
           needsPrice: 'No price to work it out from.',
           noSku: 'The listing shows no SKU.',
           source: 'Open page',
+          member: 'Member prices are not collected yet.',
+          notCaptured: 'The page content was not captured for this offer.',
+          noImages: 'The listing shows no images.',
+          oneImage: '1 image',
+          twoListings: '2 listings',
+          unnamed: 'Not published',
+          noOther: 'No other size of this listing is in the data.',
         };
 
   test.describe(`${locale} product detail`, () => {
@@ -154,6 +208,26 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(cell(page, 'promo', 1)).toContainText(T.none);
       // The golden's 0 shades is no shade range, never a count of 0.
       await expect(cell(page, 'shades', 1)).toContainText(T.noRange);
+      // Member price: never collected, and said so on every offer.
+      for (const col of [0, 1])
+        await expect(cell(page, 'member', col)).toHaveText(`${T.notMeasured}${T.member}`);
+      // Page content is the retailer's own: its gallery, its shades, its other sizes.
+      const pic = cell(page, 'images', 0).locator('img');
+      await expect(pic).toHaveAttribute('src', IMG);
+      await expect.poll(() => pic.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+      await expect(cell(page, 'images', 0)).toContainText(T.oneImage);
+      await expect(cell(page, 'images', 1)).toHaveText(`${T.notPublished}${T.noImages}`);
+      const variants = cell(page, 'variants', 0);
+      await variants.getByText(T.twoListings).click();
+      await expect(variants.locator('[data-variant]')).toHaveCount(2);
+      await expect(variants.locator('[data-variant]').nth(0)).toContainText('Ruby');
+      await expect(variants.locator('[data-variant]').nth(0)).toContainText('4006381333931');
+      await expect(variants.locator('[data-variant]').nth(1)).toContainText(T.unnamed);
+      await expect(cell(page, 'otherSizes', 0).getByRole('link')).toHaveAttribute(
+        'href',
+        new RegExp(`/${locale}/product/\\?id=p02`),
+      );
+      await expect(cell(page, 'otherSizes', 1)).toHaveText(`${T.none}${T.noOther}`);
       await fits(page);
       expect(mock.external).toEqual([]);
       expect(mock.errors).toEqual([]);
@@ -169,8 +243,23 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(cell(page, 'promo', 1)).toHaveText(`${T.notMeasured}${T.wasPrice}`);
       await expect(cell(page, 'availability', 0)).toHaveText(`${T.notMeasured}${T.notCollected}`);
       await expect(cell(page, 'sku', 1)).toHaveText(`${T.notPublished}${T.noSku}`);
+      // No page content captured: not captured, never "not published" or an empty cell.
+      for (const attr of ['images', 'variants', 'otherSizes'])
+        await expect(cell(page, attr, 0)).toHaveText(`${T.notMeasured}${T.notCaptured}`);
       // Every optional attribute, in both columns, is a reasoned state.
-      for (const attr of ['regular', 'promo', 'availability', 'rating', 'size', 'shades', 'sku'])
+      for (const attr of [
+        'regular',
+        'member',
+        'promo',
+        'availability',
+        'rating',
+        'size',
+        'shades',
+        'sku',
+        'images',
+        'variants',
+        'otherSizes',
+      ])
         for (const col of [0, 1])
           await expect(cell(page, attr, col).locator('[data-missing]')).toHaveCount(1);
       expect(
