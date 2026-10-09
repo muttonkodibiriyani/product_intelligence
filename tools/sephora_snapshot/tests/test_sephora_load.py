@@ -183,6 +183,112 @@ def test_price_without_currency_is_unknown_not_aed(db: str, tmp_path: Path) -> N
         assert row == (None, None, "unknown")
 
 
+def test_a_zero_price_with_an_empty_currency_is_counted_never_0_aed(
+    db: str, tmp_path: Path
+) -> None:
+    """P10051810's shape in the 10-08 extract (CLARIFY 01a11e55-db9c): ``currency: ''``,
+    ``c_price: 0``, ``c_valuePrice: "$undefined"``. A stated 0 is a broken price: the offer
+    stores none, never a 0, never AED, and ``price_not_positive`` counts it. Its state stays
+    ``not_published`` (ruling 01a11e5e-bb38). The control: a variant with no ``c_price`` reads
+    the same and is not counted."""
+    d = details("P10051810")
+    d["currency"] = ""
+    d["c_variantsInfo"][0]["c_price"] = 0
+    d["c_variantsInfo"][0]["c_salesPrice"] = "$undefined"
+    d["c_variantsInfo"][0]["c_valuePrice"] = "$undefined"
+    unpriced = details("P10051811")
+    del unpriced["c_variantsInfo"][0]["c_price"]
+    unpriced["c_variantsInfo"][0]["c_salesPrice"] = "$undefined"
+    root = _folder(tmp_path / "zero", {"stopped": "cutoff"})
+    write_part(
+        root, "pdp_en", [pdp_rec("P10051810", "en", d), pdp_rec("P10051811", "en", unpriced)]
+    )
+    with psycopg.connect(db) as conn:
+        counts = _load(conn, root)
+        rows = conn.execute(
+            "SELECT o.price_current, o.currency, o.price_type, o.field_state ->> 'price_current',"
+            " l.source_listing_key"
+            " FROM offer_observation o JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key IN ('100518101', '100518111')"
+            " ORDER BY l.source_listing_key"
+        ).fetchall()
+    print("counts", counts, "rows", rows)
+    assert rows == [
+        (None, None, None, "not_published", "100518101"),
+        (None, None, None, "not_published", "100518111"),
+    ]
+    assert counts["price_not_positive"] == 1
+
+
+# The 119 pids whose productDetails.c_price is 0 in p0-20261008-sephora/pdp_en (CLARIFY
+# 01a11e5b-65c1). Only the pids are real: which of them carry a zero at variant level too is not
+# in that list, so the per-pid shapes below are invented to match its counts.
+_ZERO = """
+P59319 P10016619 P10017125 P1000208397 P10051810 P10016967 P1000202426 P10016586 P10016616
+P10056862 P10013246 P3054 P10016957 P10016968 P21308 P10016615 P54616 P1293012 P10024343
+P10045193 P10008140 P10016622 P3381003 P10016955 P770103 P1000214904 P10024807 P3593090
+P2484008 P1665026 P10016951 P763028 P10016602 P16220 P10022789 P3339005 P10045323 P10022791
+P1665025 P82412 P1626012 P10016601 P10017131 P10016977 P10016999 P10016777 P2157013 P10064401
+P10016606 P10022637 P10016983 P10007796 P111987 P1000214709 P36013 P1000202690 P1000214830
+P10024324 P10060620 P1000215461 P47503 P10016996 P2709005 P10016596 P10016984 P10051586
+P10016734 P2469005 P10016953 P10016744 P3434603 P21306 P3462050 P10022790 P10023118 P86715
+P1000214693 P10013245 P10017130 P10014220 P10013772 P10023023 P10016592 P10011578 P10050811
+P449021 P1000202744 P10016600 P10025850 P1572027 P10013717 P10026284 P10061467 P10016989
+P10021826 P10013571 P10011996 P10053019 P10017129 P1758076 P3441001 P10009728 P10016960
+P10017128 P3663001 P10045620 P10016617 P10014218 P2122001 P10016959 P10016962 P10016947
+P1000214445 P10016990 P10021825 P36247 P10016961 P3394022 P10016612
+"""
+ZERO_PIDS = _ZERO.split()
+
+
+def _priced(pid: str, prices: list[int], product_price: int) -> dict[str, Any]:
+    d = details(pid)
+    d["c_price"] = product_price
+    base = d["c_variantsInfo"][0]
+    d["c_variantsInfo"] = [
+        {**base, "product_id": f"{pid[1:]}{i}", "c_price": p, "c_salesPrice": "$undefined"}
+        for i, p in enumerate(prices, 1)
+    ]
+    return d
+
+
+def test_the_10_08_zero_prices_are_counted_per_variant_offer(db: str, tmp_path: Path) -> None:
+    """CLARIFY's 10-08 counts: 119 products with a product-level 0; 81 of them with every
+    variant at 0 (80 with one variant, 1 with two: 82 offers); 38 with a 0 at product level only
+    (28 with one variant, 10 with two: 48 priced offers, the must-stay-quiet control); and 4
+    variant-level zeros under a positively priced product (invented pids, the must-fire control
+    for a product-level-only read). The loader writes per variant, so exactly 86 offers are
+    ``price_not_positive``: none of them gets a price (state ``not_published``), and every other
+    offer keeps its own."""
+    assert len(ZERO_PIDS) == len(set(ZERO_PIDS)) == 119
+    shapes = [[0]] * 80 + [[0, 0]] + [[100]] * 28 + [[100, 120]] * 10
+    recs = [
+        pdp_rec(pid, "en", _priced(pid, prices, 0))
+        for pid, prices in zip(ZERO_PIDS, shapes, strict=True)
+    ]
+    recs += [pdp_rec(f"P9900{n}", "en", _priced(f"P9900{n}", [100, 0], 100)) for n in range(4)]
+    root = _folder(tmp_path / "zeros", {"stopped": "cutoff"})
+    write_part(root, "pdp_en", recs)
+    with psycopg.connect(db) as conn:
+        counts = _load(conn, root)
+        rows = conn.execute(
+            "SELECT l.source_listing_key, o.price_current, o.field_state ->> 'price_current'"
+            " FROM offer_observation o JOIN source_listing l ON l.id = o.source_listing_id"
+            " WHERE l.source_listing_key = ANY(%s)",
+            ([f"{r['pid'][1:]}{i}" for r in recs for i in (1, 2)],),
+        ).fetchall()
+    unpriced = sorted(key for key, price, state in rows if state == "not_published")
+    priced = {key: price for key, price, state in rows if state is None}
+    print("counts", counts, "rows", len(rows), "unpriced", len(unpriced), "priced", len(priced))
+    assert counts["price_not_positive"] == 86
+    assert len(rows) == 82 + 48 + 8
+    assert len(unpriced) == 86
+    assert all(price is None for key, price, state in rows if state == "not_published")
+    assert len(priced) == 48 + 4
+    assert set(priced.values()) == {Decimal(100), Decimal(120)}
+    assert [k for k in unpriced if k.startswith("9900")] == [f"9900{n}2" for n in range(4)]
+
+
 @pytest.mark.parametrize(
     ("pid", "sale", "expected"),
     [

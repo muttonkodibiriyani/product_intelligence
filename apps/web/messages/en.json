@@ -423,6 +423,7 @@
       "needsRegular": "No regular price to compare with.",
       "atRegular": "Sold at the regular price.",
       "notCollected": "Not collected for this retailer.",
+      "notObserved": "Not seen in the latest crawl.",
       "noRating": "The listing shows no rating.",
       "noSize": "The listing shows no size.",
       "noShadeRange": "The listing has no shade range.",

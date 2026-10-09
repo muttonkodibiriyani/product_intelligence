@@ -68,10 +68,19 @@ regular price and the other did not, the other was shown as `ok` / `true` becaus
    covered by a `notObserved` entry for the same retailer, context, category and dates, and the
    exporter writes those entries. Retained fields roll up as `partial`. A marked offer without a
    window is refused. Early offers (captured before the window, unmarked) are exempt from the span
-   but fail if their `runId` is one of the window's runs. A partial run is never the baseline: when
-   the newest earlier run is partial, the newest succeeded run before it is, and the export logs
-   which run it used and which partial runs it skipped. A listing seen only by an older run, or
-   only by a partial one, is left out (Reviewer 5461503616 item 3, Coordinator 01a11ce2-fd3e).
+   but fail if their `runId` is one of the window's runs. **The retention set** is the baseline
+   plus every partial run of the context started after it and before the window (every partial
+   run before the window when none succeeded). Each supplies a retained row for the listings it
+   saw and the window did not; when several saw one, the newest capture is its evidence. A
+   succeeded run is a complete catalogue, so it ends retention: a listing an older run saw and
+   the baseline did not is left out. A partial run is never the baseline and never a removal: it
+   retains only what it saw, and a listing it did not see keeps the baseline's row. The export
+   logs the baseline and the partial runs it read (Reviewer 5461503616 item 3, Coordinator
+   01a11ce2-fd3e, amended by 01a11e38-6cba and 01a11e38-fd27). The body keeps a retained offer's
+   stock `null`; the API serves it as `not_observed`, keyed on `notObservedReason` only, never on
+   the per-category `notObserved` windows (A2', Coordinator 01a11e3c-6760). It is served as
+   `not_observed` from #309, a value the published `AvailabilityState` already has; apiVersion
+   1.26.0 marks it in 01a11ce5-bd59.
 8. **A retailer with no window is not checked, and is withheld downstream.** A listed retailer with
    no rows in the export has `window = None`, and its offers keep the plain rule-6 meaning. Bodies
    exported before v3 have no window either. No cross-retailer comparison treats a missing window
