@@ -11,7 +11,7 @@ import { parseState, toSearch } from '@/lib/explore';
 import { parseLaunches, toLaunchesSearch } from '@/lib/launches';
 import { parsePromotions, toPromotionsSearch } from '@/lib/promotions';
 import { formatCount, formatDate, loc } from '@/lib/format';
-import { columns, whyMissing, type OfferField, type Why } from '@/lib/product-detail';
+import { columns, sourceFields, whyMissing, type OfferField, type Why } from '@/lib/product-detail';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
 import type { BackTo } from '../explore/product-table';
@@ -267,6 +267,7 @@ function Offers({
   const locale = useLocale();
   const meta = useMeta().data?.data;
   const caps = meta?.capabilities;
+  const sources = meta?.sources;
   const ultaSourceDate = sourceObservationDate(meta, ULTA_RETAILER);
   if (offers.length === 0) return <p className="px-5 pb-3 text-ink-2">{t('noOffers')}</p>;
   const ctx = (o: Offer) => meta?.contexts.find((c) => c.id === o.context);
@@ -447,7 +448,8 @@ function Offers({
                   {r.label}
                 </th>
                 {cols.map(({ offer: o }) => {
-                  const why = r.field && whyMissing(r.field, o, caveats, caps);
+                  const why =
+                    r.field && whyMissing(r.field, o, caveats, caps, sourceFields(sources, o.retailer));
                   return (
                     <td key={o.context} className={`${TD} break-words`}>
                       {why ? <Missing why={why} /> : r.value(o)}
@@ -520,7 +522,12 @@ function Gallery({ o }: { o: Offer }) {
       </span>
       <span className="mt-1 block text-xs text-ink-2">
         {t('imageCount', { count: items.length, n: formatCount(items.length, locale) })}
-        {source && <> · {t(`imageSource.${source}`)}</>}
+        {source && (
+          <>
+            {' · '}
+            <Known t={t} k="imageSource" v={source} />
+          </>
+        )}
       </span>
     </>
   );
@@ -542,12 +549,24 @@ function Variants({ o }: { o: Offer }) {
             {v.shade.state === 'observed' ? (
               <bdi>{v.shade.text}</bdi>
             ) : (
-              <span className="text-ink-2">{t(`content.${v.shade.state}`)}</span>
+              <span className="text-ink-2">
+                <Known t={t} k="content" v={v.shade.state} />
+              </span>
             )}
             <bdi dir="ltr" className="block font-mono text-xs break-all text-ink-2">
               {v.sku}
-              {v.gtin.state === 'observed' && ` · ${v.gtin.barcode}`}
+              {v.gtin.state === 'observed' && v.gtin.barcode && ` · ${v.gtin.barcode}`}
             </bdi>
+            {!(v.gtin.state === 'observed' && v.gtin.barcode) && (
+              <span data-gtin-state={v.gtin.state} className="block text-xs text-ink-3">
+                {t('gtinAbsent')}:{' '}
+                {v.gtin.state === 'observed' ? (
+                  t('gtinUnreadable')
+                ) : (
+                  <Known t={t} k="content" v={v.gtin.state} />
+                )}
+              </span>
+            )}
           </li>
         ))}
       </ul>

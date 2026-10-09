@@ -82,6 +82,13 @@ describe('SourceCoverage', () => {
     expect(within(ulta).getByText('16,868')).toBeTruthy();
     expect(ulta.textContent).toContain('Imported snapshot 9 Oct 2026: capture date unknown.');
     expect(within(ulta).getByText('1 of 3 ok')).toBeTruthy();
+    // Every field that is not ok is named with its own status, not folded into the count.
+    expect(within(ulta).getByText('1 partly collected')).toBeTruthy();
+    expect(within(ulta).getByText('1 not published by the shop')).toBeTruthy();
+    // Two sources for one shop: the cells say conflict, never "Not sent".
+    const twice = document.querySelector('tr[data-source="twice_ae"]') as HTMLElement;
+    expect(twice.querySelectorAll('[data-evidence-state="conflict"]')).toHaveLength(3);
+    expect(twice.textContent).not.toContain(en.freshness.productsNone);
     const faces = document.querySelector('tr[data-source="faces_ae"]') as HTMLElement;
     expect(faces.textContent).toContain(en.freshness.partial);
     expect(faces.textContent).toContain('Last observed 3 Oct 2026; the dataset runs to 9 Oct 2026.');
@@ -101,7 +108,8 @@ describe('SourceCoverage', () => {
     show('ar');
     expect(screen.getByRole('heading', { name: ar.freshness.title })).toBeTruthy();
     expect(screen.getAllByText(ar.freshness.state.stale)).toHaveLength(4);
-    expect(screen.getByText(ar.freshness.state.conflict)).toBeTruthy();
+    expect(screen.getAllByText(ar.freshness.state.conflict)).toHaveLength(3);
+    expect(document.querySelector('[data-field-status="partial"]')?.textContent).toMatch(/جُمعت جزئيًا/);
     expect(screen.getByText(ar.freshness.state.invalid)).toBeTruthy();
     expect(screen.getByText(ar.freshness.state.not_observed)).toBeTruthy();
     expect(screen.getByText(ar.freshness.state.unavailable)).toBeTruthy();

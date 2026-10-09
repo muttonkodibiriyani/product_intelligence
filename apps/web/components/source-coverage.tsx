@@ -3,7 +3,9 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { formatCount, formatDate } from '@/lib/format';
 import type { SourceFreshness } from '@/lib/source-freshness';
-import { SourceBadge, useFreshnessDetail } from './ui/freshness';
+import { SourceBadge, StateBadge, useFreshnessDetail } from './ui/freshness';
+
+const NOT_OK = ['partial', 'not_collected', 'not_published', 'parse_failure', 'blocked'] as const;
 
 /**
  * Every retailer's own source as /meta sent it: its state, its own last observation date, its
@@ -73,15 +75,26 @@ export function SourceCoverage({
                     )}
                   </td>
                   <td className="py-2 pe-6 text-end tabular-nums">
-                    {s.products == null ? (
+                    {s.state === 'conflict' ? (
+                      <StateBadge state="conflict" />
+                    ) : s.products == null ? (
                       <span className="text-ink-3">{t('productsNone')}</span>
                     ) : (
                       formatCount(s.products, locale)
                     )}
                   </td>
                   <td className="py-2 text-ink-2 tabular-nums">
-                    {n ? (
-                      t('fields', { ok: s.fields.ok ?? 0, n })
+                    {s.state === 'conflict' ? (
+                      <StateBadge state="conflict" />
+                    ) : n ? (
+                      <>
+                        {t('fields', { ok: s.fields.ok ?? 0, n })}
+                        {NOT_OK.filter((k) => s.fields[k]).map((k) => (
+                          <span key={k} data-field-status={k} className="block text-xs">
+                            {t(`fieldStatus.${k}`, { n: s.fields[k] ?? 0 })}
+                          </span>
+                        ))}
+                      </>
                     ) : (
                       <span className="text-ink-3">{t('fieldsNone')}</span>
                     )}

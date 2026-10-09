@@ -29,6 +29,8 @@
     "asOf": "Data as of {date}",
     "retailerLatestPriceData": "Latest {retailer} price data: {date}. Individual offers may be older.",
     "retailerPriceDateUnknown": "Latest {retailer} price date unavailable; treat prices as stale.",
+    "retailerPriceDateInvalid": "Latest {retailer} price date could not be read; treat prices as stale.",
+    "retailerPriceDateConflict": "{retailer} has more than one source; treat prices as stale.",
     "aboutData": "About the data"
   },
   "auth": {
@@ -292,6 +294,8 @@
     }
   },
   "gap": {
+    "noPair": "No matched offer at the other shop",
+    "noGap": "No price gap: a price is missing on one side",
     "otherDearer": "{other} dearer",
     "otherCheaper": "{other} cheaper",
     "equal": "Same price",
@@ -310,6 +314,7 @@
     }
   },
   "productCard": {
+    "noName": "Name not published",
     "notSold": "No offer observed",
     "was": "was",
     "save": "Save",
@@ -358,6 +363,8 @@
     "offline_audit": "In-store audit"
   },
   "product": {
+    "gtinAbsent": "Barcode (GTIN)",
+    "gtinUnreadable": "Could not be read",
     "missingId": "No product was given. Open a product from the list.",
     "loading": "Loading product…",
     "back": "Back to products",
@@ -382,10 +389,11 @@
     "offerPriceAsOf": "{retailer} price data as of {date}",
     "offerPriceStale": "Stale: {retailer} price data as of {date}",
     "offerPriceDateUnavailable": "Stale: {retailer} price date unavailable",
+    "offerPriceDateInvalid": "Stale: {retailer} price date could not be read",
     "source": "Open page",
     "noSource": "No page link",
     "early": "New listing: not in comparisons yet",
-    "noOffers": "No retailer offers this product on this date.",
+    "noOffers": "No retailer offer observed for this product on this date.",
     "pairs": "Price gaps",
     "pairsHint": "Gap is the other retailer's price minus the base's, on the latest date.",
     "pairBase": "Base",
@@ -435,6 +443,9 @@
       "noShadeRange": "The listing has no shade range.",
       "noShades": "The listing shows no shade count.",
       "noSku": "The listing shows no SKU.",
+      "parseFailure": "Collected, but the value could not be read.",
+      "blocked": "Collection was blocked for this retailer.",
+      "partialCollection": "Collected for only part of this retailer’s listings.",
       "memberNotCollected": "Member prices are not collected yet.",
       "contentNotCaptured": "The page content was not captured for this offer.",
       "noImages": "The listing shows no images.",
@@ -747,7 +758,9 @@
       "not_published": "Not published",
       "not_observed": "Not observed",
       "invalid": "Invalid / under review",
-      "contradictory": "Contradictory"
+      "contradictory": "Contradictory",
+      "unknown": "Unknown (evidence not read)",
+      "not_collected": "Not collected"
     },
     "filters": {
       "title": "Filters",
@@ -788,7 +801,9 @@
         "not_observed": "Not observed",
         "stale": "Stale",
         "invalid": "Invalid",
-        "contradictory": "Contradictory"
+        "contradictory": "Contradictory",
+        "unknown": "Evidence not read",
+        "not_collected": "Not collected"
       }
     },
     "notYet": "Launches appear once each shop has been collected on at least {min, plural, =2 {two} other {#}} separate days",
@@ -1404,6 +1419,13 @@
     "colProducts": "Products",
     "colFields": "Declared fields",
     "fields": "{ok} of {n} ok",
+    "fieldStatus": {
+      "partial": "{n} partly collected",
+      "not_collected": "{n} not collected",
+      "not_published": "{n} not published by the shop",
+      "parse_failure": "{n} could not be read",
+      "blocked": "{n} blocked by the shop"
+    },
     "fieldsNone": "Not sent",
     "productsNone": "Not sent",
     "dateNone": "Not available",
@@ -1421,7 +1443,11 @@
       "brand": "brand",
       "category": "category",
       "price": "observed price",
-      "availability": "observed stock"
+      "availability": "observed stock",
+      "discount": "observed discount",
+      "size": "size",
+      "shade": "shade",
+      "color": "colour"
     },
     "listSep": ", "
   }

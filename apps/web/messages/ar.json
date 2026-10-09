@@ -29,6 +29,8 @@
     "asOf": "البيانات حتى {date}",
     "retailerLatestPriceData": "أحدث بيانات أسعار {retailer}: {date}. قد تكون بعض العروض أقدم.",
     "retailerPriceDateUnknown": "تاريخ أحدث أسعار {retailer} غير متاح؛ تُعامل الأسعار كبيانات قديمة.",
+    "retailerPriceDateInvalid": "تعذّرت قراءة تاريخ أحدث أسعار {retailer}؛ تُعامل الأسعار كبيانات قديمة.",
+    "retailerPriceDateConflict": "لدى {retailer} أكثر من مصدر واحد؛ تُعامل الأسعار كبيانات قديمة.",
     "aboutData": "عن البيانات"
   },
   "auth": {
@@ -292,6 +294,8 @@
     }
   },
   "gap": {
+    "noPair": "لا يوجد عرض مطابق لدى المتجر الآخر",
+    "noGap": "لا فرق سعر: السعر غير متوفر لدى أحد الطرفين",
     "otherDearer": "{other} أغلى",
     "otherCheaper": "{other} أرخص",
     "equal": "السعر نفسه",
@@ -310,6 +314,7 @@
     }
   },
   "productCard": {
+    "noName": "الاسم غير منشور",
     "notSold": "لم يُرصد عرض",
     "was": "كان",
     "save": "وفّر",
@@ -358,6 +363,8 @@
     "offline_audit": "تدقيق في المتجر"
   },
   "product": {
+    "gtinAbsent": "الباركود (GTIN)",
+    "gtinUnreadable": "تعذّرت قراءته",
     "missingId": "لم يُحدَّد منتج. افتح منتجًا من القائمة.",
     "loading": "جارٍ تحميل المنتج…",
     "back": "العودة إلى المنتجات",
@@ -382,10 +389,11 @@
     "offerPriceAsOf": "بيانات سعر {retailer} حتى {date}",
     "offerPriceStale": "قديم: بيانات سعر {retailer} حتى {date}",
     "offerPriceDateUnavailable": "قديم: تاريخ سعر {retailer} غير متاح",
+    "offerPriceDateInvalid": "قديم: تعذّرت قراءة تاريخ سعر {retailer}",
     "source": "افتح الصفحة",
     "noSource": "لا رابط للصفحة",
     "early": "منتج جديد: لم يدخل المقارنات بعد",
-    "noOffers": "لا يعرض أي متجر هذا المنتج في هذا التاريخ.",
+    "noOffers": "لم يُرصد أي عرض لهذا المنتج لدى أي متجر في هذا التاريخ.",
     "pairs": "فروق الأسعار",
     "pairsHint": "الفرق هو سعر المتجر الآخر ناقص سعر الأساس، في آخر تاريخ.",
     "pairBase": "الأساس",
@@ -435,6 +443,9 @@
       "noShadeRange": "لا توجد درجات لونية لهذا المنتج.",
       "noShades": "لا تعرض الصفحة عدد الدرجات.",
       "noSku": "لا تعرض الصفحة رمز المنتج.",
+      "parseFailure": "جُمعت، لكن تعذّرت قراءة القيمة.",
+      "blocked": "حُظر الجمع لدى هذا المتجر.",
+      "partialCollection": "جُمعت لجزء فقط من قوائم هذا المتجر.",
       "memberNotCollected": "أسعار الأعضاء غير مُجمَّعة بعد.",
       "contentNotCaptured": "لم يُلتقط محتوى الصفحة لهذا العرض.",
       "noImages": "لا تعرض الصفحة صورًا.",
@@ -747,7 +758,9 @@
       "not_published": "غير منشور",
       "not_observed": "غير مرصود",
       "invalid": "غير صالح / قيد المراجعة",
-      "contradictory": "متعارض"
+      "contradictory": "متعارض",
+      "unknown": "غير معروف (لم تُقرأ الأدلة)",
+      "not_collected": "لا يُجمع"
     },
     "filters": {
       "title": "عوامل التصفية",
@@ -788,7 +801,9 @@
         "not_observed": "غير مرصود",
         "stale": "قديم",
         "invalid": "غير صالح",
-        "contradictory": "متعارض"
+        "contradictory": "متعارض",
+        "unknown": "لم تُقرأ الأدلة",
+        "not_collected": "لا يُجمع"
       }
     },
     "notYet": "تظهر المنتجات الجديدة بعد جمع بيانات كل متجر في {min, plural, two {يومين منفصلين} other {{min, number, latn} أيام منفصلة}} على الأقل",
@@ -1404,6 +1419,13 @@
     "colProducts": "المنتجات",
     "colFields": "الحقول المعلنة",
     "fields": "{ok} من {n} سليمة",
+    "fieldStatus": {
+      "partial": "{n} جُمعت جزئيًا",
+      "not_collected": "{n} لم تُجمع",
+      "not_published": "{n} لا ينشرها المتجر",
+      "parse_failure": "{n} تعذّرت قراءتها",
+      "blocked": "{n} حجبها المتجر"
+    },
     "fieldsNone": "لم تُرسل",
     "productsNone": "لم تُرسل",
     "dateNone": "غير متاح",
@@ -1421,7 +1443,11 @@
       "brand": "علامة تجارية",
       "category": "فئة",
       "price": "سعر مرصود",
-      "availability": "مخزون مرصود"
+      "availability": "مخزون مرصود",
+      "discount": "خصم مرصود",
+      "size": "الحجم",
+      "shade": "الدرجة اللونية",
+      "color": "اللون"
     },
     "listSep": "، "
   }

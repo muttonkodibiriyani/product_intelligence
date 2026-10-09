@@ -3,7 +3,7 @@ import product from '../../../docs/contracts/golden/pi-api/product.json';
 import type { CaveatView, Schemas } from '@/lib/api/types';
 import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
-import { columns, whyMissing, type OfferField } from './product-detail';
+import { columns, sourceFields, whyMissing, type OfferField } from './product-detail';
 
 type Offer = Schemas['OfferView'];
 const full = product.data.offers[0] as Offer;
@@ -29,6 +29,30 @@ const sparse: Offer = {
 };
 
 describe('whyMissing', () => {
+  it('says "not published" only when the source does not declare the gap as its own', () => {
+    const declared = (status: Schemas['FieldStatus']) =>
+      whyMissing('rating', sparse, [], undefined, { rating: status });
+    expect(declared('not_published')).toEqual({ state: 'notPublished', reason: 'noRating' });
+    expect(declared('ok')).toEqual({ state: 'notPublished', reason: 'noRating' });
+    expect(declared('not_collected')).toEqual({ state: 'notMeasured', reason: 'notCollected' });
+    expect(declared('parse_failure')).toEqual({ state: 'notMeasured', reason: 'parseFailure' });
+    expect(declared('blocked')).toEqual({ state: 'notMeasured', reason: 'blocked' });
+    expect(declared('partial')).toEqual({ state: 'notMeasured', reason: 'partialCollection' });
+    // The same holds for any declared field.
+    expect(whyMissing('price', { ...sparse }, [], undefined, { price: 'blocked' })?.reason).toBe('blocked');
+    // Every reason has its words in both languages.
+    for (const r of ['parseFailure', 'blocked', 'partialCollection'])
+      expect([r in en.product.why, r in ar.product.why]).toEqual([true, true]);
+  });
+
+  it('reads declared fields only from the one source of that exact retailer', () => {
+    const a = { source: 'shop_a', fields: { rating: 'blocked' as const } };
+    expect(sourceFields([a], 'shop_a')).toEqual({ rating: 'blocked' });
+    expect(sourceFields([a], 'shop_b')).toBeUndefined();
+    expect(sourceFields([a, { ...a, fields: { rating: 'ok' as const } }], 'shop_a')).toBeUndefined();
+    expect(sourceFields(undefined, 'shop_a')).toBeUndefined();
+  });
+
   it('says nothing for a value the API sent', () => {
     const o = { ...full, sku: 'A1', shadeCount: 12 };
     for (const f of FIELDS) expect(whyMissing(f, o, [], undefined)).toBeNull();

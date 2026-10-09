@@ -223,6 +223,12 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(variants.locator('[data-variant]').nth(0)).toContainText('Ruby');
       await expect(variants.locator('[data-variant]').nth(0)).toContainText('4006381333931');
       await expect(variants.locator('[data-variant]').nth(1)).toContainText(T.unnamed);
+      // A variant without a barcode says so, rather than dropping the GTIN silently.
+      await expect(variants.locator('[data-variant]').nth(1).locator('[data-gtin-state]')).toHaveAttribute(
+        'data-gtin-state',
+        'not_published',
+      );
+      await expect(variants.locator('[data-variant]').nth(0).locator('[data-gtin-state]')).toHaveCount(0);
       await expect(cell(page, 'otherSizes', 0).getByRole('link')).toHaveAttribute(
         'href',
         new RegExp(`/${locale}/product/\\?id=p02`),

@@ -37,16 +37,19 @@ describe('offerPriceDate', () => {
   });
 
   it('fails closed for missing, malformed, rollover, and source-conflicting offer evidence', () => {
-    for (const capturedAt of [undefined, '', 'soon', '2026-02-30T00:00:00Z']) {
+    for (const capturedAt of [undefined, '']) {
       expect(offerPriceDate(offer('ulta_ae', capturedAt), '2026-10-09')).toEqual({
         state: 'unavailable',
         date: null,
       });
     }
-    expect(offerPriceDate(offer('ulta_ae', '2026-10-10T00:00:00Z'), '2026-10-09')).toEqual({
-      state: 'unavailable',
-      date: null,
-    });
+    // Present but unreadable, or later than the source's own day: invalid, not merely missing.
+    for (const capturedAt of ['soon', '2026-02-30T00:00:00Z', '2026-10-10T00:00:00Z']) {
+      expect(offerPriceDate(offer('ulta_ae', capturedAt), '2026-10-09')).toEqual({
+        state: 'invalid',
+        date: null,
+      });
+    }
   });
 
   it('does not infer freshness from the wall clock and treats an unknown source day as stale', () => {
@@ -79,6 +82,9 @@ describe('UltaOfferPriceDate', () => {
       'Ulta Beauty UAE price data as of 9 Oct 2026',
     );
     expect(label(offer('ulta_ae', 'bad'), '2026-10-09').textContent).toBe(
+      'Stale: Ulta Beauty UAE price date could not be read',
+    );
+    expect(label(offer('ulta_ae', undefined), '2026-10-09').textContent).toBe(
       'Stale: Ulta Beauty UAE price date unavailable',
     );
   });
