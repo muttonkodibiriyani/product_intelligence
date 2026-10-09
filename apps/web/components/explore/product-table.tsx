@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { Schemas } from '@/lib/api/types';
+import { cellState, freshnessOf, missingFields, type SourceFreshness } from '@/lib/source-freshness';
 import { gapBar, gapScale } from '@/lib/verdict';
+import { MissingFields, SourceBadge, StateBadge } from '../ui/freshness';
 import { Known } from '../ui/known';
 import { Money, Pct, Price as PriceOf } from '../ui/money';
 import { MatchReviewLabel, SizeText } from '../ui/product-card';
@@ -31,12 +33,15 @@ export function ProductTable({
   pair,
   name,
   from,
+  sources = null,
 }: {
   items: Card[];
   retailers: string[];
   pair: [string, string] | null;
   name: (id: string) => string;
   from: string;
+  /** Each retailer's own source state (lib/source-freshness); none until /meta has loaded. */
+  sources?: readonly SourceFreshness[] | null;
 }) {
   const t = useTranslations('explore');
   const tc = useTranslations('productCard');
@@ -55,6 +60,11 @@ export function ProductTable({
             {retailers.map((r) => (
               <th key={r} scope="col" className={`${th} text-end`}>
                 {name(r)}
+                {sources && (
+                  <span className="mt-1 block font-normal">
+                    <SourceBadge source={freshnessOf(sources, r)} />
+                  </span>
+                )}
               </th>
             ))}
             {pair && (
@@ -85,9 +95,11 @@ export function ProductTable({
                     cls="size-11 shrink-0 rounded-[6px] bg-surface-2"
                   />
                   <div className="min-w-0">
-                    <span className="block truncate text-xs text-ink-3" dir="auto">
-                      {c.brand}
-                    </span>
+                    {c.brand && (
+                      <span className="block truncate text-xs text-ink-3" dir="auto">
+                        {c.brand}
+                      </span>
+                    )}
                     <Link
                       href={productHref(locale, c.id, from)}
                       className="block max-w-72 leading-tight font-medium text-ink hover:underline focus-visible:outline-2"
@@ -101,12 +113,14 @@ export function ProductTable({
                       <span dir="auto">{c.category.join(' › ')}</span>
                     </span>
                     <MatchReviewLabel review={c.matchReview} className="mt-1" />
+                    <MissingFields fields={missingFields(c)} className="mt-0.5" />
                   </div>
                 </div>
               </th>
               {retailers.map((r) => (
                 <td key={r} className="px-3 py-2 text-end whitespace-nowrap tabular-nums">
                   <Price card={c} retailer={r} locale={locale} />
+                  {sources && <CellBadge card={c} source={freshnessOf(sources, r)} />}
                 </td>
               ))}
               {pair && (
@@ -119,6 +133,17 @@ export function ProductTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** The cell's evidence state when it is not the dataset's latest; nothing more for a current price. */
+function CellBadge({ card, source }: { card: Card; source: SourceFreshness }) {
+  const state = cellState(card, source);
+  if (state === 'fresh' || state === 'no_offer' || state === 'no_price') return null;
+  return (
+    <span className="mt-0.5 block">
+      <StateBadge state={state} />
+    </span>
   );
 }
 

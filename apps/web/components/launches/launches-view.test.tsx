@@ -126,4 +126,21 @@ describe('LaunchesView', () => {
     expect(await screen.findAllByText('Product p14')).toHaveLength(2);
     expect(ctx.asked).toEqual([{ since: '2026-09-02', limit: 100 }]);
   });
+
+  it('shows each listed shop source state from its own last date, without another request', async () => {
+    const later: Envelope<Schemas['MetaView']> = {
+      ...meta,
+      data: { ...meta.data!, dates: [...meta.data!.dates, '2026-10-01'] },
+    };
+    show(launches, 'ar', later);
+    expect(await screen.findAllByText('Product p14')).toHaveLength(2);
+    const strip = screen.getByRole('region', { name: ar.freshness.title });
+    const states = [...strip.querySelectorAll('[data-evidence-state]')].map((el) =>
+      el.getAttribute('data-evidence-state'),
+    );
+    expect(states.length).toBeGreaterThan(0);
+    // Every shop's own last date (30 Sep) is before the view's (1 Oct): none is called current.
+    expect(states.every((s) => s === 'stale' || s === 'unavailable')).toBe(true);
+    expect(ctx.asked).toHaveLength(1);
+  });
 });

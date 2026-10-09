@@ -3,6 +3,7 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { useSyncExternalStore } from 'react';
 import type { Schemas } from '@/lib/api/types';
+import { cellState, freshnessOf, missingFields, type SourceFreshness } from '@/lib/source-freshness';
 import { verdictOf } from '@/lib/verdict';
 import { ProductCard, useVerdictChip, type PriceLine } from '../ui/product-card';
 import { productHref } from './product-table';
@@ -12,14 +13,21 @@ export type View = 'grid' | 'list';
 
 /**
  * The price lines of a product card: one per shop in column order. A shop without the product
- * reads "Not sold"; when the pair's sizes differ, each side shows its own size.
+ * reads "No offer observed" (never "out of stock"); when the pair's sizes differ, each side shows
+ * its own size. With `sources`, each line carries its own retailer's evidence state.
  */
-export function priceLines(c: Card, retailers: readonly string[], name: (id: string) => string): PriceLine[] {
+export function priceLines(
+  c: Card,
+  retailers: readonly string[],
+  name: (id: string) => string,
+  sources?: readonly SourceFreshness[] | null,
+): PriceLine[] {
   const sizes = c.gap?.sizeLabels;
   return retailers.map((r) => ({
     retailer: r,
     label: name(r),
     notSold: !(r in c.prices),
+    evidence: sources ? cellState(c, freshnessOf(sources, r)) : null,
     price: c.prices[r],
     priceFlag: c.priceFlags?.[r],
     size: sizes && c.gap ? (r === c.gap.base ? sizes[0] : r === c.gap.other ? sizes[1] : null) : null,
@@ -35,12 +43,15 @@ export function ProductGrid({
   retailers,
   name,
   from,
+  sources = null,
 }: {
   items: Card[];
   retailers: string[];
   pair?: [string, string] | null;
   name: (id: string) => string;
   from: string;
+  /** Each retailer's own source state (lib/source-freshness); none until /meta has loaded. */
+  sources?: readonly SourceFreshness[] | null;
 }) {
   const t = useTranslations('explore');
   const locale = useLocale();
@@ -56,9 +67,10 @@ export function ProductGrid({
             name={c.name}
             size={c.size}
             category={c.category.at(-1)}
-            lines={priceLines(c, retailers, name)}
+            lines={priceLines(c, retailers, name, sources)}
             chip={chip(verdictOf(c))}
             matchReview={c.matchReview}
+            missing={missingFields(c)}
           />
         </li>
       ))}

@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import type { Money as MoneyValue, Schemas } from '@/lib/api/types';
+import type { CardField, CellState } from '@/lib/source-freshness';
 import { priceState, type Priced } from '@/lib/money';
 import type { Verdict } from '@/lib/verdict';
 import { monogram, RowThumb } from '../explore/row-thumb';
+import { MissingFields, StateBadge } from './freshness';
 import { Known } from './known';
 import { Money } from './money';
 import { RetailerDot } from './retailer-dot';
@@ -26,8 +28,10 @@ export type PriceLine = {
   saved?: MoneyValue | null;
   /** The discount depth as the API wrote it ("37.5"), shown as −37.5%. */
   off?: string | null;
-  /** The shop does not sell this product: the line reads "Not sold". */
+  /** No offer of this shop was observed for the product: never read as "out of stock" or "removed". */
   notSold?: boolean;
+  /** The evidence state of this shop's line when it is not the dataset's latest (lib/source-freshness). */
+  evidence?: CellState | null;
   /** This shop's size when the pair's sizes differ (PairGap.sizeLabels). */
   size?: string | null;
 };
@@ -59,6 +63,7 @@ export function ProductCard({
   lines,
   chip,
   matchReview,
+  missing,
 }: {
   href: string;
   image?: string | null;
@@ -74,6 +79,8 @@ export function ProductCard({
   chip?: Chip | null;
   /** The card's match as the API sent it; "unreviewed" shows a label under the size. */
   matchReview?: Schemas['MatchReview'] | null;
+  /** The fields the product lacks, each labelled; the card is shown all the same. */
+  missing?: readonly CardField[];
 }) {
   const t = useTranslations('productCard');
   return (
@@ -111,9 +118,10 @@ export function ProductCard({
         )}
         {/* Above the card's full-size link, so the label's explanation opens on hover and focus. */}
         <MatchReviewLabel review={matchReview} className="relative z-[1] mt-1" />
+        {missing && <MissingFields fields={missing} />}
         <dl className="mt-auto grid gap-1 pt-2 text-[13px]">
           {lines.map((l, i) => (
-            <div key={l.retailer} className="flex items-center gap-1.5">
+            <div key={l.retailer} className="flex flex-wrap items-center gap-1.5">
               <dt className="flex min-w-0 items-center gap-1.5">
                 <RetailerDot id={l.retailer} index={i} />
                 <span className="truncate">{l.label}</span>
@@ -125,6 +133,11 @@ export function ProductCard({
               </dt>
               <dd className="ms-auto text-end font-medium tabular-nums">
                 <LinePrice line={l} />
+                {l.evidence && l.evidence !== 'fresh' && !l.notSold && (
+                  <span className="mt-0.5 block">
+                    <StateBadge state={l.evidence} />
+                  </span>
+                )}
               </dd>
             </div>
           ))}
