@@ -8,34 +8,46 @@ flags, the ingredient list, merchandising flags and the gift promotions.
 :func:`readings_from_sephora` reads those first and lets
 :func:`pi_capture.generic.readings_from_generic` fill whatever is left, so each registry key gets
 exactly one reading. :func:`readings_from_sephora_details` serves the snapshot records that
-already hold the extracted object.
+already hold the extracted object (and, when given, the page's JSON-LD blocks).
 
 The page shows one variant at a time: the default variant (``c_default_variant_id``) is the one
 read, and a page with several says so in the note. RSC references (``"$undefined"``,
 ``"$83:props:offers"``) are placeholders for data the page did not inline; they are never read
 as text, and a reduced price given that way is recorded as not shown.
+
+``swatchImage`` is not proof of a swatch: across the snapshot, a size variant's
+``swatchImage`` is usually one of its own gallery pack shots, whatever its file name says
+(``470969_swatch.jpg``). A variant has a swatch only when the file is not one of its gallery
+images. Review recency is the newest ``datePublished`` among the reviews the JSON-LD lists,
+which is the page's own selection, not the full review history.
 """
 
 from __future__ import annotations
 
 import html as html_
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pi_capture._size import emit_size, read_size
 from pi_capture.generic import (
-    LOOKED_FOR as GENERIC_LOOKED_FOR,
-)
-from pi_capture.generic import (
+    _PRODUCT_TYPES,
     JsonObject,
     _emit_price,
     _Emitter,
     _minor_units,
+    _types,
+    _walk,
     find_json_objects,
+    parse_jsonld,
     readings_from_generic,
     rsc_text,
+)
+from pi_capture.generic import (
+    LOOKED_FOR as GENERIC_LOOKED_FOR,
 )
 from pi_capture.model import Reading
 
@@ -54,6 +66,7 @@ _NUMBER_UNIT = re.compile(r"\d[\d.,]*\s*[^\d\s]{1,6}")  # "3 oz": a size with an
 _WS = re.compile(r"\s+")
 _EXCLUSIVITY = {"EXCLUSIVE": "exclusive", "SELECTIVE": "selective", "WIDE": "wide"}
 _MAX_CATEGORY_LEVELS = 4
+_MARKET_ZONE = ZoneInfo("Asia/Dubai")  # a review's date is the market's calendar day
 
 
 def _present(value: Any) -> bool:
@@ -280,6 +293,61 @@ def _map_merch(em: _Emitter, d: Mapping[str, Any]) -> None:
         em.observed("related_products", ", ".join(related), related, f"{_PD}.recommendedProductIds")
 
 
+def _file_name(url: str) -> str:
+    return url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+
+
+def _map_swatch(em: _Emitter, v: Mapping[str, Any] | None, i: int) -> None:
+    if v is None:
+        return
+    swatch = _text(v.get("swatchImage"))
+    if swatch is None or not _file_name(swatch):
+        em.not_shown("has_swatch_image", "the shown variant has no swatch image")
+        return
+    path = f"{_PD}.c_variantsInfo[{i}].swatchImage"
+    if _file_name(swatch) in {_file_name(link) for link in _links(v.get("images"))}:
+        note = "swatchImage repeats one of the variant's gallery images (a pack shot), not a swatch"
+        em.observed("has_swatch_image", swatch, False, path, note)
+    else:
+        note = "a separate swatch file, not one of the variant's gallery images"
+        em.observed("has_swatch_image", swatch, True, path, note)
+
+
+def _map_reviews(em: _Emitter, blocks: Sequence[JsonObject]) -> None:
+    """``review_recency``: the newest review the structured data lists, as an Asia/Dubai date."""
+    for path, node in _walk(blocks):
+        if not _types(node) & _PRODUCT_TYPES:
+            continue
+        reviews = node.get("review")
+        listed = reviews if isinstance(reviews, list) else [reviews]
+        raws = [
+            t for r in listed if isinstance(r, Mapping) and (t := _text(r.get("datePublished")))
+        ]
+        if not raws:
+            em.not_shown("review_recency", "no dated review listed in the structured data")
+            return
+        moments: list[tuple[datetime, str]] = []
+        for raw in raws:
+            try:
+                moment = datetime.fromisoformat(raw)
+            except ValueError:
+                continue
+            if moment.tzinfo is not None:  # a naive time has no market day
+                moments.append((moment, raw))
+        rpath = f"{path}.review[].datePublished"
+        if not moments:
+            em.failed("review_recency", "\n".join(raws), rpath, "no datePublished with a time zone")
+            return
+        moment, raw = max(moments)
+        note = f"newest of {len(raws)} reviews the page lists; Asia/Dubai date"
+        if len(moments) < len(raws):
+            note += f"; {len(raws) - len(moments)} unreadable date(s) skipped"
+        day = moment.astimezone(_MARKET_ZONE).date().isoformat()
+        em.observed("review_recency", raw, day, rpath, note)
+        return
+    em.not_shown("review_recency", "no product in the structured data")
+
+
 def _sephora_readings(details: Mapping[str, Any]) -> _Emitter:
     em = _Emitter()
     v, i, note = _variant(details)
@@ -288,6 +356,7 @@ def _sephora_readings(details: Mapping[str, Any]) -> _Emitter:
     _map_classification(em, details)
     _map_money(em, details, v, i, note)
     _map_variant_label(em, v, i)
+    _map_swatch(em, v, i)
     _map_merch(em, details)
     return em
 
@@ -310,6 +379,7 @@ _SEPHORA_KEYS = frozenset(
         "description",
         "exclusivity",
         "gift_with_purchase",
+        "has_swatch_image",
         "has_video",
         "image_count",
         "image_urls",
@@ -323,6 +393,7 @@ _SEPHORA_KEYS = frozenset(
         "regular_price_minor",
         "related_products",
         "retailer_sku",
+        "review_recency",
         "shade_name",
         "size_label",
         "size_unit",
@@ -337,14 +408,23 @@ LOOKED_FOR: frozenset[str] = _SEPHORA_KEYS | GENERIC_LOOKED_FOR
 ``ProductCapture.looked_for`` so the coverage report separates "not shown" from "never read"."""
 
 
-def readings_from_sephora_details(details: Mapping[str, Any]) -> list[Reading]:
-    """Readings from an already extracted ``productDetails`` object (no page, no generic pass)."""
-    return _sephora_readings(details).readings
+def readings_from_sephora_details(
+    details: Mapping[str, Any], *, jsonld: Sequence[JsonObject] | None = None
+) -> list[Reading]:
+    """Readings from an already extracted ``productDetails`` object (no page, no generic pass).
+
+    ``jsonld`` is the page's saved JSON-LD blocks; without them ``review_recency`` is not read.
+    """
+    em = _sephora_readings(details)
+    if jsonld is not None:
+        _map_reviews(em, jsonld)
+    return em.readings
 
 
 def readings_from_sephora(html: str, *, locale: str, url: str | None = None) -> list[Reading]:
     """Sephora readings from the RSC payload first, then the generic extractors fill the rest."""
     details = product_details(html)
     em = _Emitter() if details is None else _sephora_readings(details)
+    _map_reviews(em, parse_jsonld(html)[0])
     em.extend(readings_from_generic(html, locale=locale, url=url))
     return em.readings
