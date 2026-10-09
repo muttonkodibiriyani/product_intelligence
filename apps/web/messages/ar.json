@@ -27,6 +27,8 @@
     "menu": "القائمة",
     "closeMenu": "إغلاق القائمة",
     "asOf": "البيانات حتى {date}",
+    "retailerLatestPriceData": "أحدث بيانات أسعار {retailer}: {date}. قد تكون بعض العروض أقدم.",
+    "retailerPriceDateUnknown": "تاريخ أحدث أسعار {retailer} غير متاح؛ تُعامل الأسعار كبيانات قديمة.",
     "aboutData": "عن البيانات"
   },
   "auth": {
@@ -376,6 +378,10 @@
     "evidence": "الدليل",
     "captured": "رُصد {date}",
     "imported": "استُوردت في {date}، وتاريخ جمعها غير معروف",
+    "importDateUnavailable": "تاريخ الاستيراد غير متاح؛ تاريخ الجمع غير معروف",
+    "offerPriceAsOf": "بيانات سعر {retailer} حتى {date}",
+    "offerPriceStale": "قديم: بيانات سعر {retailer} حتى {date}",
+    "offerPriceDateUnavailable": "قديم: تاريخ سعر {retailer} غير متاح",
     "source": "افتح الصفحة",
     "noSource": "لا رابط للصفحة",
     "early": "منتج جديد: لم يدخل المقارنات بعد",
