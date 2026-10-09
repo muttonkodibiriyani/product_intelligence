@@ -10,10 +10,13 @@ from typing import Any
 
 import pytest
 
+from pi_capture.bloomingdales import LOOKED_FOR as BLM_LOOKED_FOR
+from pi_capture.faces import LOOKED_FOR as FACES_LOOKED_FOR
 from pi_capture.feed import SHOPS, build_feed
 from pi_capture.model import ProductCapture, Reading
 from pi_capture.ounass import LOOKED_FOR, readings_from_ounass
 from pi_capture.page_json import NoProductObject, OutOfScopePage
+from pi_capture.sephora import LOOKED_FOR as SEPHORA_LOOKED_FOR
 
 CaptureFactory = Callable[..., ProductCapture]
 
@@ -256,3 +259,101 @@ def test_widget_keys_and_internal_scores_never_reach_readings_or_the_feed(
     for forbidden in (_WIDGET_KEY, "apiKey", "merchScore", "secret-rank"):
         assert forbidden not in rows_text
         assert forbidden not in readings_text
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("2022-11-27T21:06:05.000Z", "2022-11-28"),  # after 20:00 UTC: already the next day here
+        ("2025-06-30T19:59:59.999Z", "2025-06-30"),  # one millisecond before Dubai midnight
+        ("2025-06-30T20:00:00.000Z", "2025-07-01"),  # Dubai midnight
+        ("2025-12-31T23:30:00Z", "2026-01-01"),  # across the year
+        ("2025-06-30T03:59:09+04:00", "2025-06-30"),
+    ],
+)
+def test_the_go_live_moment_becomes_its_date_in_dubai_with_the_raw_text_kept(
+    raw: str, expected: str
+) -> None:
+    got = _by_key(readings_from_ounass(_page(_pdp(onlineDateWithStock=raw)), locale="en-AE"))
+    live = got["listing_live_date"]
+    assert (live.state, live.raw_text, live.value) == ("observed", raw, expected)
+    assert live.source_path == "pdp.onlineDateWithStock"
+    assert "launch_date" not in got
+    assert "first_seen" not in got
+
+
+@pytest.mark.parametrize(
+    ("value", "state", "raw"),
+    [
+        (None, "not_shown", None),  # absent: never today, never first_seen
+        ("", "not_shown", None),
+        ("2025-06-30T03:59:09", "parse_failed", "2025-06-30T03:59:09"),  # no zone: which day?
+        ("2025-02-30T10:00:00Z", "parse_failed", "2025-02-30T10:00:00Z"),
+        ("27/11/2022", "parse_failed", "27/11/2022"),
+        (1669583165000, "parse_failed", "1669583165000"),
+    ],
+)
+def test_a_missing_or_unreadable_go_live_date_is_explicit(
+    value: object, state: str, raw: str | None
+) -> None:
+    got = _by_key(readings_from_ounass(_page(_pdp(onlineDateWithStock=value)), locale="en-AE"))
+    live = got["listing_live_date"]
+    assert (live.state, live.raw_text, live.value) == (state, raw, None)
+
+
+def test_no_reader_fills_our_launch_date_or_first_seen() -> None:
+    for looked_for in (LOOKED_FOR, BLM_LOOKED_FOR, FACES_LOOKED_FOR, SEPHORA_LOOKED_FOR):
+        assert not looked_for & {"launch_date", "first_seen"}
+    assert "listing_live_date" in LOOKED_FOR
+    assert "listing_live_date" in BLM_LOOKED_FOR
+
+
+def _labelled(**over: Any) -> dict[str, Any]:
+    label = {"components": [{"text": "Non-Returnable Item"}]}
+    return _pdp(valuePropositionWrapper=label, **over)
+
+
+def test_the_item_flag_is_read_as_returnable_and_must_agree_with_the_label() -> None:
+    sizes = [{"sku": "900000002", "sizeCode": "NO SIZE", "isReturnable": False}]
+    r = _by_key(
+        readings_from_ounass(_page(_labelled(isReturnable=False, sizes=sizes)), locale="en-AE")
+    )
+    got = r["returnable"]
+    assert (got.state, got.value, got.raw_text) == ("observed", False, "False")
+    assert got.source_path == "pdp.isReturnable"
+    assert got.note == 'the page shows "Non-Returnable Item"'
+    ok = _by_key(readings_from_ounass(_page(_pdp(isReturnable=1)), locale="en-AE"))["returnable"]
+    assert (ok.state, ok.value, ok.note) == ("observed", True, None)
+    tab = {"tabs": [{"returns": {"title": "Non-Returnable Item"}}]}
+    clash = _pdp(isReturnable=True, deliveryDetails=tab)
+    bad = _by_key(readings_from_ounass(_page(clash), locale="en-AE"))["returnable"]
+    assert (bad.state, bad.value) == ("parse_failed", None)
+    assert "Non-Returnable Item" in (bad.note or "")
+
+
+def test_sizes_stand_in_for_a_missing_item_flag_only_when_they_agree() -> None:
+    def size(flag: Any) -> dict[str, Any]:
+        return {"sku": "9", "sizeCode": "30ML", "isReturnable": flag}
+
+    both = _by_key(
+        readings_from_ounass(_page(_pdp(sizes=[size(True), size(True)])), locale="en-AE")
+    )
+    got = both["returnable"]
+    assert (got.state, got.value, got.source_path) == ("observed", True, "pdp.sizes[].isReturnable")
+    for pdp in (
+        _pdp(sizes=[size(True), size(False)]),
+        _pdp(isReturnable=True, sizes=[size(False)]),
+        _pdp(isReturnable="yes"),
+    ):
+        r = _by_key(readings_from_ounass(_page(pdp), locale="en-AE"))["returnable"]
+        assert (r.state, r.value) == ("parse_failed", None), pdp
+
+
+def test_a_missing_flag_is_never_returnable_by_default() -> None:
+    r = _by_key(readings_from_ounass(_page(_pdp(isReturnable=None)), locale="en-AE"))["returnable"]
+    assert (r.state, r.value) == ("not_shown", None)
+    assert r.note == "no isReturnable flag and no non-returnable label"
+    only_label = _by_key(readings_from_ounass(_page(_labelled()), locale="en-AE"))["returnable"]
+    assert (only_label.state, only_label.value) == ("observed", False)
+    assert only_label.raw_text == "Non-Returnable Item"
+    assert "returnable" in LOOKED_FOR
