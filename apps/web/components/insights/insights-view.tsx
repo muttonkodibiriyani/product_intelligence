@@ -20,13 +20,14 @@ import {
   type Stockouts,
 } from '@/lib/insights';
 import { useAuth } from '../auth-provider';
+import { DatedShopNotice } from '../ui/dated-shop-notice';
 import { ErrorNotice } from '../error-notice';
 import { FindingsSection } from './findings/findings-section';
 import { Known } from '../ui/known';
 import { PageHeader } from '../ui/page-header';
 import { RetailerDot, retailerColor } from '../ui/retailer-dot';
 import { Loading } from '../ui/skeleton';
-import { useMeta, useRetailerName } from '../use-meta';
+import { useCoverage, useMeta, useRetailerName } from '../use-meta';
 import { activeRetailers, compareHref, exploreHref } from '../widgets/model';
 import { Ideas } from './ideas';
 import { PairPrices } from './pair-cards';
@@ -102,6 +103,7 @@ export function InsightsView() {
         intro={t('intro')}
         tools={active.length >= 2 ? <ShopPicker shops={active} value={shop} onChange={pick} /> : undefined}
       />
+      <DatedShopNotice shops={shops} />
       {served === true && !missing && findings && (
         <FindingsSection focus={findings.focus} rival={findings.rival} />
       )}
@@ -195,12 +197,7 @@ function ShopPicker({
 
 function Glance({ shops }: { shops: string[] }) {
   const t = useTranslations('insights');
-  const { api } = useAuth();
-  const coverage = useQuery({
-    queryKey: ['coverage'],
-    queryFn: ({ signal }) => api!.get('/api/v1/coverage', { signal }),
-    enabled: !!api,
-  });
+  const coverage = useCoverage();
   const fresh = (id: string) => coverage.data?.data?.retailers.find((r) => r.id === id)?.freshness ?? null;
   return (
     <section aria-labelledby="ins-glance" className="space-y-2.5">

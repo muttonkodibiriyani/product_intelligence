@@ -146,7 +146,8 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/en/insights/',
   useSearchParams: () => new URLSearchParams(search),
 }));
-vi.mock('../use-meta', () => ({
+vi.mock('../use-meta', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../use-meta')>()),
   useRetailerName: () => (id: string) => ({ shop_a: 'Shop A', shop_b: 'Shop B', shop_c: 'Shop C' })[id] ?? id,
   useMeta: () => ({
     data: {
@@ -507,7 +508,8 @@ describe('InsightsView', () => {
   it('says so on an older API, and asks /insights nothing', () => {
     apiVersion = '1.22.0';
     view(rich);
-    expect(screen.getByRole('note').textContent).toContain('1.23.0');
+    // The other note is the pilot pair's absence: this fixture's shops are shop_a to shop_c.
+    expect(screen.getAllByRole('note').some((n) => n.textContent?.includes('1.23.0'))).toBe(true);
     expect(asked.some((a) => a.path === '/api/v1/insights')).toBe(false);
   });
 

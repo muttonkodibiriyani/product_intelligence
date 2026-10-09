@@ -1262,5 +1262,10 @@
         "intro": "How concentrated each catalogue is by brand, where each brand is priced, and what each shop has launched."
       }
     }
+  },
+  "shopNotice": {
+    "asOf": "{shop} prices as of {date}.",
+    "asOfNote": "{shop} prices as of {date}: {note}",
+    "absent": "{shop} is not in this data."
   }
 }
