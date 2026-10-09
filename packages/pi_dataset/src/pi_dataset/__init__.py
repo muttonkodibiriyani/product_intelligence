@@ -41,6 +41,7 @@ from pi_dataset.v3 import (
     AttributeSource,
     ContentField,
     Context,
+    CrawlWindow,
     DatasetV3,
     EvidenceV3,
     ItemKeyKind,
@@ -51,6 +52,7 @@ from pi_dataset.v3 import (
     OfferV3,
     OfferVariant,
     ProductV3,
+    RetailerV3,
     SizeV3,
 )
 from pi_dataset.validate import (
@@ -77,6 +79,7 @@ __all__ = [
     "ContentField",
     "Context",
     "ContractModel",
+    "CrawlWindow",
     "Dataset",
     "DatasetError",
     "DatasetV3",
@@ -106,6 +109,7 @@ __all__ = [
     "Rating",
     "Retailer",
     "RetailerStatus",
+    "RetailerV3",
     "Series",
     "Size",
     "SizeV3",

@@ -225,6 +225,8 @@ def test_the_default_query_reads_no_day_window() -> None:
         "sources": ["sephora_me"],
         "day_start": None,
         "day_end": None,
+        "runs": None,
+        "time_zone": "Asia/Dubai",
     }
     start, end = day_bounds(D2)
     assert latest_params(["sephora_me"], (start, end))["day_start"] == start
