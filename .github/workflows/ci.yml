@@ -6,7 +6,9 @@ on:
     branches: [main]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # PRs: a new push cancels the old run. main: one group per commit, so every merged sha
+  # gets its own completed run (only such a sha is deployable).
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -154,7 +156,7 @@ jobs:
   web-next:
     name: Web (Next.js) — audit, types, lint, tests, build, E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: apps/web
@@ -184,7 +186,7 @@ jobs:
       - name: Playwright browsers + system deps
         run: npx playwright install --with-deps chromium firefox webkit
       - name: E2E (EN + AR, desktop + mobile, three engines)
-        run: npm run e2e
+        run: npm run e2e -- --workers=4
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
