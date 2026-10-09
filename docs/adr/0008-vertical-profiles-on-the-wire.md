@@ -462,6 +462,18 @@ The validator checks two things:
   Matching reads only `page` and `text_rule` values, or its own parsers.
 - No model call runs without the owner's written cost approval.
 
+### 6. `beauty@3`: retailer flags (amendment, 2026-10-09)
+Coordinator ruling (message 01a11e50-d4c4, task 01a11e4b-4de2, subtask S1b) on the owner's request
+for Sephora's own "New" / "Exclusive" flags. `beauty@3` = `beauty@2` plus one key:
+
+| Key | Level | Type | Values | Facet | Block |
+|---|---|---|---|---|---|
+| `retailerFlags` | offer | `text_list` | the retailer's own flag text, in source order, e.g. `["New", "Exclusive"]` | no | null |
+
+- Evidence is `page` (Sephora `c_productFlags[].text1`).
+- Absent means not read. The value is never inferred from anything else.
+- `beauty@2` stays committed; the exporter's default profile is unchanged by this amendment.
+
 ## Migration path
 Small PRs. Until step 5, beauty production output stays byte-identical v2.
 
