@@ -17,8 +17,10 @@ import {
   type ExploreState,
 } from '@/lib/explore';
 import { formatCount } from '@/lib/format';
+import { filterGaps } from '@/lib/source-freshness';
 import { useAuth } from '../auth-provider';
 import { ErrorNotice } from '../error-notice';
+import { FilterGapNote, FreshnessStrip, useSourceFreshness } from '../ui/freshness';
 import { AboutDataLink, PageHeader } from '../ui/page-header';
 import { Loading } from '../ui/skeleton';
 import { useRetailerName } from '../use-meta';
@@ -73,6 +75,8 @@ export function Explorer() {
   const restarted = (q.data?.pages.length ?? 0) > pages.length || pages[0]?.restarted;
   const currency = first?.meta.currency ?? '';
   const active = activeFilterCount(state);
+  const sources = useSourceFreshness(first?.caveats);
+  const shown = columns(state, first?.data?.facets.retailer ?? []);
 
   const filters = (
     <Filters
@@ -134,6 +138,10 @@ export function Explorer() {
           <p className="mt-1 text-xs text-ink-2">
             <AboutDataLink />
           </p>
+          <div className="mt-3 space-y-2">
+            <FreshnessStrip sources={sources} name={name} only={shown.length ? shown : undefined} />
+            <FilterGapNote gaps={filterGaps(state)} />
+          </div>
 
           {restarted && (
             <p role="status" className="mt-3 rounded-ctl bg-butter px-4 py-2.5 text-sm text-warn">
@@ -157,10 +165,11 @@ export function Explorer() {
                   return (
                     <Body
                       items={items}
-                      retailers={columns(state, first?.data?.facets.retailer ?? [])}
+                      retailers={shown}
                       pair={hasPair(state) ? (state.retailer as [string, string]) : null}
                       name={name}
                       from={key}
+                      sources={sources}
                     />
                   );
                 })()}

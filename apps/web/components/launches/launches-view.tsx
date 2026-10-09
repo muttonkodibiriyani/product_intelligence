@@ -29,6 +29,7 @@ import { ErrorNotice } from '../error-notice';
 import { monogram, RowThumb } from '../explore/row-thumb';
 import { productHref } from '../explore/product-table';
 import { FilterChips } from '../ui/filter-chips';
+import { FreshnessStrip, useSourceFreshness } from '../ui/freshness';
 import { Known } from '../ui/known';
 import { Money } from '../ui/money';
 import { PageHeader } from '../ui/page-header';
@@ -217,6 +218,7 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
   const filteredRows = filterLaunchEvidence(evidenceRows, state);
   const evidenceLoading = details.some((detail) => detail.isPending);
   const evidenceErrors = details.filter((detail) => detail.isError).length;
+  const sources = useSourceFreshness(env?.caveats);
 
   return (
     <>
@@ -240,6 +242,7 @@ function List({ meta, readiness }: { meta: Envelope<Schemas['MetaView']>; readin
           update={update}
         />
       )}
+      <FreshnessStrip sources={sources} name={name} only={readiness.shops.map((shop) => shop.id)} />
       <section aria-labelledby="launch-items-title" className="panel">
         <header className="flex flex-wrap items-start gap-x-3 gap-y-2 px-5 pt-4">
           <div className="min-w-0 flex-1">

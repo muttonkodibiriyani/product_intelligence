@@ -617,7 +617,9 @@ for (const locale of ['en', 'ar'] as const) {
       await expect(page.getByRole('heading', { level: 2, name: T.about })).toBeVisible();
       await expect(page.locator('#about-data')).toContainText(T.aboutP1);
       // The retailers keep their status here, and only here: Shop C reads as partly collected.
-      await expect(page.locator('#dataset tr').filter({ hasText: 'Shop C' })).toContainText(T.partial);
+      await expect(
+        page.locator('#dataset tr:not(#source-coverage tr)').filter({ hasText: 'Shop C' }),
+      ).toContainText(T.partial);
       // The footer's link lands on the same section.
       await expect(page.locator('footer').getByRole('link', { name: T.about })).toHaveAttribute(
         'href',

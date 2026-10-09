@@ -217,13 +217,24 @@ for (const locale of ['en', 'ar'] as const) {
       // has an import date, the others keep "since"; with an imported retailer present, the
       // dataset cutoff says whose it is.
       await page.goto(`/app/${locale}/dataset/`);
-      const row = page.locator('#dataset tr').filter({ hasText: 'Ulta' });
+      const row = page.locator('#dataset tr:not(#source-coverage tr)').filter({ hasText: 'Ulta' });
       await expect(row.locator('th')).toHaveText('Ulta');
       await expect(row.locator('td').nth(1)).toHaveText(T.row);
       await expect(
-        page.locator('#dataset tr').filter({ hasText: 'Shop A' }).locator('td').nth(1),
+        page
+          .locator('#dataset tr:not(#source-coverage tr)')
+          .filter({ hasText: 'Shop A' })
+          .locator('td')
+          .nth(1),
       ).not.toHaveText(T.row);
       await expect(page.locator('#dataset dl').first()).toContainText(T.collected);
+      // Source coverage: the imported shop is never "latest in dataset", whatever its date.
+      const coverage = page
+        .locator('#source-coverage tr')
+        .filter({ hasText: 'Ulta' })
+        .locator('[data-evidence-state]');
+      await expect(coverage).toHaveCount(1);
+      await expect(coverage).not.toHaveAttribute('data-evidence-state', 'fresh');
       await noHorizontalScroll(page);
       await page.goBack();
 

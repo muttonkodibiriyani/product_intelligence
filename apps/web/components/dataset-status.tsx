@@ -4,7 +4,9 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { formatDate, loc } from '@/lib/format';
 import { retailerName } from '@/lib/retailers';
+import { sourceFreshness } from '@/lib/source-freshness';
 import { ErrorNotice } from './error-notice';
+import { SourceCoverage } from './source-coverage';
 import { useMeta } from './use-meta';
 import { EnvNotes } from './ui/env-notes';
 import { Known } from './ui/known';
@@ -101,6 +103,11 @@ export function DatasetStatus({ nested = false }: { nested?: boolean } = {}) {
               </tbody>
             </table>
           </div>
+          <SourceCoverage
+            sources={sourceFreshness(m, env.caveats)}
+            name={(id) => retailerName(id, m.retailers.find((r) => r.id === id)?.name, locale)}
+            heading={H2}
+          />
         </>
       )}
       <section id="about-data" aria-labelledby="about-data-title" className="mt-8 scroll-mt-6">

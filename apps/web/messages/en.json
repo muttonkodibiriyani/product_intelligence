@@ -310,7 +310,7 @@
     }
   },
   "productCard": {
-    "notSold": "Not sold",
+    "notSold": "No offer observed",
     "was": "was",
     "save": "Save",
     "off": "−{pct}%",
@@ -1370,5 +1370,59 @@
         "intro": "How concentrated each catalogue is by brand, where each brand is priced, and what each shop has launched."
       }
     }
+  },
+  "freshness": {
+    "title": "Source freshness by shop",
+    "intro": "Each shop's data is dated by its own last observation. “Latest in dataset” means it reaches the dataset's last date, not today. Older, missing or unreadable dates are never shown as current, and a missing listing never means out of stock or removed.",
+    "state": {
+      "fresh": "Latest in dataset",
+      "stale": "Stale",
+      "unavailable": "Unavailable",
+      "not_observed": "Not observed",
+      "conflict": "Conflicting dates",
+      "invalid": "Invalid date",
+      "no_offer": "No offer observed",
+      "no_price": "No price observed",
+      "mixed": "Mixed dates",
+      "invalid_price": "Price under review"
+    },
+    "detail": {
+      "fresh": "Last observed {date}, the dataset's last date.",
+      "stale": "Last observed {date}; the dataset runs to {view}.",
+      "staleUndated": "The API marks this shop's data as older than the other shops'.",
+      "unavailable": "Collection status: {status}. Its data is not current.",
+      "not_observed": "This dataset has no source data for this shop.",
+      "conflict": "The API sent more than one last date for this shop, so none is used.",
+      "invalid": "This shop's date cannot be read, or is after the dataset's last date.",
+      "mixed": "Last observed {date}, but part of this shop’s data is an imported snapshot: a listed price may be older. Each product page shows its offer’s own date."
+    },
+    "imported": "Imported snapshot {date}: capture date unknown.",
+    "partial": "Partial collection",
+    "colShop": "Shop",
+    "colState": "State",
+    "colLast": "Last observed",
+    "colProducts": "Products",
+    "colFields": "Declared fields",
+    "fields": "{ok} of {n} ok",
+    "fieldsNone": "Not sent",
+    "productsNone": "Not sent",
+    "dateNone": "Not available",
+    "missing": "Missing: {fields}",
+    "field": {
+      "brand": "brand",
+      "name": "name",
+      "category": "category",
+      "image": "image",
+      "size": "size",
+      "price": "price"
+    },
+    "filterGap": "Products with no {fields} cannot match the active filters, so they are not in this list. Clear those filters to include them.",
+    "gap": {
+      "brand": "brand",
+      "category": "category",
+      "price": "observed price",
+      "availability": "observed stock"
+    },
+    "listSep": ", "
   }
 }
