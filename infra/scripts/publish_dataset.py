@@ -46,6 +46,32 @@ the original cutoff copy is never replaced.
   meta.contexts maps it to its source, and the one-source rule and the guard judge sources. The
   first switch of a live per-source file from v2 to v3 is run by Exec Eng/owner after the
   Reviewer has read its ``--dry-run --live-file`` output (coordinator, 2026-10-06).
+- ``--versioned --live-datasets <live PI_API_DATASETS>`` (v2/v3; deploy plan v2,
+  pi-api-deploy.md §6): one create-only object ``<prefix>/v/<cutoff>-<sha12>.json`` and nothing
+  else (no latest.json, no Firestore), so no path the live revision reads ever changes; refused
+  if that path is live or the body is in ``REFUSED_BODIES``. The source guard reads the body the
+  live PI_API_DATASETS serves for the source. Prints the PI_API_DATASETS value the new revision
+  rolls with; rollback is traffic back to the previous revision.
+- ``--allow-beauty-versioned`` (with ``--versioned``; ONLY on the owner's P1 answer to form
+  01a11c72-16e3, cited in the deploy report): the one exception to "PI never writes ulta_ae
+  data". A body whose sources are exactly sephora_me and ulta_ae goes to a new create-only
+  ``datasets/<country>/beauty/v/`` object; latest.json and every existing beauty object stay
+  untouched. Retention, against the body the live PI_API_DATASETS serves ulta_ae from: every
+  live ulta_ae offer (product id + context) and every live (sku, url) pair must be present. With
+  ``--reconciled-removals FILE`` (fresh Ulta only), the offer of a product id listed there may be
+  absent. FILE is the capture lane's removal_evidence.csv; every ulta_ae row must carry removal
+  evidence from ``REMOVAL_EVIDENCE``, and any other value (a not-observed reason, a variant drop)
+  refuses the publish. Each ulta_ae row must also come from this roll: its run_id in the new
+  body's ulta_ae window (``runId`` and ``segments``) and its evidence_time on a day of that
+  window in the market's time zone, as the window guard counts days; a (retailer, product_id,
+  sku) key may appear once. A body that gives ulta_ae no window (withheld, or v2) reconciles
+  nothing. The sephora_me offers in the file are held by the source guard against the body the
+  live PI_API_DATASETS serves sephora_me from.
+- ``--check-served <PI_API_DATASETS>`` (no body; read-only): the window guard over every body
+  that value serves (``pi_api.windows``, the check ``PI_API_REQUIRE_ALL=1`` repeats at start):
+  each retailer has a crawl window, all windows are in one market time zone, and no two end
+  more than 7 calendar days apart in it (Asia/Dubai for AE). Run it on
+  the value a roll will deploy, before the roll (pi-api-deploy.md §6).
 
     GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> uv run --script infra/scripts/publish_dataset.py \
         --project productintelligence-beeb3 dataset.json [--dry-run] [--allow-test]
@@ -53,14 +79,16 @@ the original cutoff copy is never replaced.
 
 import argparse
 import base64
+import csv
 import gzip
 import hashlib
 import json
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 SCHEMA = "pi.dataset/v1"
 SCHEMA_V2 = "pi.dataset/v2"
@@ -69,9 +97,26 @@ PER_SOURCE_SCHEMAS = (SCHEMA_V2, SCHEMA_V3)
 # The only sources PI publishes; any other source's data is protected (owner, 2026-10-01).
 PUBLISH_SOURCES = ("sephora_me", "faces_ae", "ounass_ae", "bloomingdales_ae")
 PROTECTED_SOURCES = ("ulta_ae",)  # owner hard rule: never dropped, not even with --drop-source
+BEAUTY_SOURCES = ("sephora_me", "ulta_ae")  # the owner's combined file (--allow-beauty-versioned)
+BEAUTY = "beauty"
+RETAINED = "ulta_ae"  # --allow-beauty-versioned: no live offer of this source may go missing
+GUARDED = "sephora_me"  # --allow-beauty-versioned: held by the source guard (no loss)
+# --reconciled-removals: the only evidence that an offer is gone (evidence-CSV ruling
+# 01a11c7b-1adb; Coordinator 01a11cad-17da). pdp-variant-absent drops a variant from a KEPT
+# offer, so it never excuses an absent offer, and no notObservedReason is removal evidence.
+REMOVAL_EVIDENCE = ("pdp-404", "pdp-410", "sitemap-absent", "search-absent")
+REMOVAL_FIELDS = ("product_id", "evidence_type", "evidence_time", "run_id")
+#: (the run ids of the new body's ulta_ae window, its first and last day in the market's zone)
+RemovalWindow = tuple[frozenset[str], date, date, str]
 V1_PREFIX = "datasets/uae"
 V1_SOURCE = "sephora_me"
 V1_META_DOC = "current"  # demo_meta/current: the legacy dashboard and smoke_demo read it
+# sha256 of an input file or its canonical body: never published (deploy plan v2). The BLM export
+# of 2026-10-03 predates the per-retailer window keys a window-aware image requires.
+REFUSED_BODIES = {
+    "b98194beba185c2f4cfaf211cb055a8ef0b58372bc827e3910011b6dcc673382": "BLM 2026-10-03 export "
+    "without per-retailer window keys (re-export it)",
+}
 PRECONDITION_FAILED = 412  # google.api_core PreconditionFailed.code (if_generation_match)
 # Never ship Algolia credentials: header/param names, or a 32-hex key next to an Algolia hint.
 FORBIDDEN = [
@@ -291,11 +336,20 @@ def source_guard(
     return problems
 
 
+def beauty_errors(doc: dict[str, Any]) -> list[str]:
+    """Why a by-source document is not the combined beauty file (exactly BEAUTY_SOURCES)."""
+    sources = tuple(sorted(offer_counts(doc)))
+    if sources != BEAUTY_SOURCES:
+        return [f"beauty: offers must come from exactly {BEAUTY_SOURCES}, not {sources}"]
+    return []
+
+
 def package_v2(
-    dataset: Any, allowed: tuple[str, ...] = PUBLISH_SOURCES
+    dataset: Any, allowed: tuple[str, ...] = PUBLISH_SOURCES, *, beauty: bool = False
 ) -> tuple[bytes, list[str], dict[str, Any], str]:
     """v2 or v3 body (canonical dump), paths under datasets/<country>/<source>, summary, and
-    the Firestore doc (``v2_<country>_<source>`` for both: the summary says which schema)."""
+    the Firestore doc (``v2_<country>_<source>`` for both: the summary says which schema).
+    ``beauty``: the combined sephora_me+ulta_ae file, under datasets/<country>/beauty."""
     from pi_dataset import dump_dataset  # noqa: PLC0415
 
     meta = dataset.meta
@@ -304,7 +358,11 @@ def package_v2(
     country = meta.markets[0].country.lower()
     dumped = dump_dataset(dataset, compact=True)
     doc = json.loads(dumped)
-    source, errors = publishing_source(by_source(doc), allowed)
+    if beauty:
+        errors = beauty_errors(by_source(doc))
+        source = None if errors else BEAUTY
+    else:
+        source, errors = publishing_source(by_source(doc), allowed)
     if source is None:
         raise ValueError(errors[0])
     prefix = f"datasets/{country}/{source}"
@@ -469,6 +527,212 @@ def upload(bucket: Any, paths: list[str], body: bytes, latest_generation: int | 
     return 0
 
 
+def versioned_path(paths: list[str], body: bytes) -> str:
+    """The create-only path a ``--versioned`` publish writes: ``<prefix>/v/<cutoff>-<sha12>.json``,
+    keyed by the gunzipped body pi_api parses, so a different body never lands on a used path."""
+    prefix, snapshot = paths[0].rsplit("/", 1)
+    sha = hashlib.sha256(gzip.decompress(body)).hexdigest()
+    return f"{prefix}/v/{snapshot.removesuffix('.json')}-{sha[:12]}.json"
+
+
+def versioned_outside(path: str, *, beauty: bool = False) -> bool:
+    """A ``--versioned`` target outside datasets/<cc>/<published source, or beauty>/v/."""
+    allowed = (*PUBLISH_SOURCES, BEAUTY) if beauty else PUBLISH_SOURCES
+    pattern = rf"datasets/[a-z]{{2}}/({'|'.join(map(re.escape, allowed))})/v/[^/]+\.json"
+    return re.fullmatch(pattern, path) is None
+
+
+def served_path(live: str, source: str) -> str | None:
+    """The path the live PI_API_DATASETS serves ``source`` from (``source=path`` entries)."""
+    for entry in live.split(","):
+        name, eq, path = entry.strip().partition("=")
+        if eq and name == source:
+            return path
+    return None
+
+
+def source_offers(doc: dict[str, Any], source: str) -> dict[str, dict[str, Any]]:
+    """``{"<product id>/<key>": offer}`` for every offer of ``source`` in a v2/v3 document (v2
+    keys offers by source, v3 by context, mapped to its retailer through meta.contexts)."""
+    owner = {c.get("id"): c.get("retailer") for c in (doc.get("meta") or {}).get("contexts") or []}
+    v3 = doc.get("schema") == SCHEMA_V3
+    return {
+        f"{p.get('id')}/{key}": offer
+        for p in doc.get("products") or []
+        for key, offer in (p.get("offers") or {}).items()
+        if (owner.get(key, key) if v3 else key) == source and isinstance(offer, dict)
+    }
+
+
+def retention_problems(
+    live: dict[str, Any] | None, new: dict[str, Any], removals: frozenset[str] = frozenset()
+) -> list[str]:
+    """HOLDs for live ``RETAINED`` offers the new document lacks, by product id + key and by
+    (sku, url); an offer of a product in ``removals`` (reconciled product ids, fresh loads only)
+    may be absent."""
+    if live is None:
+        return [f"HOLD, no live {RETAINED} body to check retention against"]
+    before, after = source_offers(live, RETAINED), source_offers(new, RETAINED)
+    kept = {k: o for k, o in before.items() if k.partition("/")[0] not in removals}
+    problems = []
+    if lost := sorted(set(kept) - set(after)):
+        problems.append(f"HOLD, {len(lost)} live {RETAINED} offers missing: {lost[:20]}")
+    pairs = {(o.get("sku"), o.get("url")) for o in after.values()}
+    if gone := sorted({(o.get("sku"), o.get("url")) for o in kept.values()} - pairs, key=str):
+        problems.append(f"HOLD, {len(gone)} live {RETAINED} (sku, url) missing: {gone[:20]}")
+    print(f"retention {RETAINED}: live {len(before)} new {len(after)} reconciled {len(removals)}")
+    return problems
+
+
+def removal_window(doc: dict[str, Any]) -> RemovalWindow | None:
+    """The new body's ``RETAINED`` window, which removal evidence must come from (Coordinator
+    01a11cd6-a407): ``None`` when the body gives it none (withheld, or a v2 body)."""
+    meta = doc.get("meta") or {}
+    zones = {m.get("country"): m.get("timeZone") for m in meta.get("markets") or []}
+    for r in meta.get("retailers") or []:
+        window, zone = r.get("window"), zones.get(r.get("country"))
+        if r.get("id") != RETAINED or not window or not zone:
+            continue
+        runs = frozenset([window["runId"], *(window.get("segments") or [])])
+        first, last = (_local_day(window[k], zone) for k in ("start", "end"))
+        if first is not None and last is not None:
+            return runs, first, last, zone
+    return None
+
+
+def _local_day(moment: str, zone: str) -> date | None:
+    try:
+        when = datetime.fromisoformat(moment)
+    except ValueError:
+        return None
+    return when.astimezone(ZoneInfo(zone)).date() if when.tzinfo else None
+
+
+def read_removals(path: Path, window: RemovalWindow | None) -> tuple[frozenset[str], list[str]]:
+    """The ulta_ae product ids removal_evidence.csv (the capture lane's reconciliation) shows
+    removed in this roll, and why the file is refused: a missing column or value, or an ulta_ae
+    row whose evidence is not in ``REMOVAL_EVIDENCE``, whose run is not in ``window``, whose
+    evidence_time is not on one of its days, or whose key repeats. One bad row refuses the whole
+    file, and with no ``window`` every ulta_ae row is refused."""
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        header = reader.fieldnames or []
+    if missing := [f for f in ("retailer", "sku", *REMOVAL_FIELDS) if f not in header]:
+        return frozenset(), [f"{path.name}: missing columns {missing}"]
+    ids, errors, seen = set(), [], set()
+    for line, row in enumerate(rows, start=2):
+        if row["retailer"] != RETAINED:
+            continue
+        where, pid = f"{path.name}:{line}", row["product_id"]
+        key = (row["retailer"], pid, row["sku"])
+        if empty := [f for f in REMOVAL_FIELDS if not (row[f] or "").strip()]:
+            errors.append(f"{where}: empty {empty}")
+        elif row["evidence_type"] not in REMOVAL_EVIDENCE:
+            errors.append(
+                f"{where}: {row['evidence_type']!r} is not removal evidence "
+                f"({', '.join(REMOVAL_EVIDENCE)}): {pid} stays retained"
+            )
+        elif key in seen:
+            errors.append(f"{where}: duplicate key {key}")
+        elif problem := _outside(row, window):
+            errors.append(f"{where}: {problem}: {pid} stays retained")
+        else:
+            ids.add(pid)
+        seen.add(key)
+    return frozenset(ids), errors
+
+
+def _outside(row: dict[str, str], window: RemovalWindow | None) -> str | None:
+    """Why a row's evidence is not from the new body's ``RETAINED`` window, or ``None``."""
+    if window is None:
+        return f"the new body gives {RETAINED} no crawl window, so no evidence is from this roll"
+    runs, first, last, zone = window
+    if row["run_id"] not in runs:
+        return f"run {row['run_id']!r} is not in the {RETAINED} window ({', '.join(sorted(runs))})"
+    day = _local_day(row["evidence_time"], zone)
+    if day is None or not first <= day <= last:
+        return f"evidence_time {row['evidence_time']!r} is not on a window day ({first}..{last})"
+    return None
+
+
+def only(doc: dict[str, Any], source: str) -> dict[str, Any]:
+    """A by-source document cut to ``source``'s offers (products without one dropped)."""
+    return {
+        "products": [
+            p | {"offers": {source: p["offers"][source]}}
+            for p in doc.get("products") or []
+            if source in (p.get("offers") or {})
+        ]
+    }
+
+
+def check_served(datasets: str, read: Any, *, allow_test: bool = False) -> int:
+    """The window guard over every body ``datasets`` (a PI_API_DATASETS value) serves, each
+    read with ``read(path) -> bytes | None`` and parsed as pi-api parses it."""
+    from pi_api.source import parse  # noqa: PLC0415 (v1 runs without it)
+    from pi_api.windows import check_windows  # noqa: PLC0415
+
+    paths = dict.fromkeys(e.strip().partition("=")[2] or e.strip() for e in datasets.split(","))
+    paths.pop("", None)
+    loaded, problems = [], []
+    for path in paths:
+        body = read(path)
+        if body is None:
+            problems.append(f"{path}: not found")
+            continue
+        try:
+            raw = gzip.decompress(body) if body[:2] == b"\x1f\x8b" else body
+            loaded.append((path, parse(raw, allow_test=allow_test)))
+        except ValueError as exc:
+            problems.append(f"{path}: pi-api cannot serve it: {exc}")
+    check = check_windows(loaded)
+    problems += check.problems
+    for line in check.withheld:
+        print(line)
+    for problem in problems:
+        print(f"HOLD, {problem}", file=sys.stderr)
+    print(f"window guard: {len(paths)} bodies,", "HOLD" if problems else "ok")
+    return 1 if problems else 0
+
+
+def refused_body(*bodies: bytes) -> str | None:
+    """Why one of these bodies (the input file, the canonical body) is never published."""
+    for body in bodies:
+        if reason := REFUSED_BODIES.get(hashlib.sha256(body).hexdigest()):
+            return reason
+    return None
+
+
+def repoint(live: str, sources: list[str], path: str) -> tuple[str, list[str]]:
+    """PI_API_DATASETS with ``sources`` served from ``path`` (added if not yet served); every
+    other entry verbatim. Errors: the path is already live, or a source is served bare."""
+    entries = [e.strip() for e in live.split(",") if e.strip()]
+    errors = []
+    served = {e.partition("=")[2] or e for e in entries}
+    if path in served:
+        errors.append(f"{path} is already in the live PI_API_DATASETS: never written")
+    out = []
+    for entry in entries:
+        source, eq, _ = entry.partition("=")
+        out.append(f"{source}={path}" if eq and source in sources else entry)
+    have = {e.partition("=")[0] for e in entries if "=" in e}
+    out += [f"{s}={path}" for s in sources if s not in have]
+    if bare := [e for e in entries if "=" not in e]:
+        errors.append(f"bare entries {bare}: name each source (source=path) first")
+    return ",".join(out), errors
+
+
+def publish_versioned(bucket: Any, path: str, body: bytes) -> int:
+    """Create-only upload of ``path``; an existing different object is never replaced."""
+    state = put(bucket, path, body, create_only=True)
+    if state == "different":
+        print(f"refusing: {path} already exists with different content", file=sys.stderr)
+        return 1
+    print(f"{state} gs://{bucket.name}/{path}")
+    return 0
+
+
 def admission_line(body: bytes) -> str:
     """What pi_api parses and an admission record keys on (pi-api-deploy.md §6): the gunzipped
     body. ``pi_dataset.admission_sha256``, inlined because v1 runs without pi_dataset."""
@@ -476,9 +740,9 @@ def admission_line(body: bytes) -> str:
     return f"admission body={len(unpacked)}B sha256={hashlib.sha256(unpacked).hexdigest()}"
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("path", type=Path)
+    parser.add_argument("path", type=Path, nargs="?")
     parser.add_argument("--project", required=True)
     parser.add_argument("--bucket", default=None, help="default: <project>.firebasestorage.app")
     parser.add_argument("--dry-run", action="store_true")
@@ -496,15 +760,75 @@ def main() -> int:
         help="let this live source be missing, smaller or changed (repeatable, one ID each). "
         "OWNER APPROVAL REQUIRED; refused for ulta_ae",
     )
+    parser.add_argument(
+        "--versioned",
+        action="store_true",
+        help="v2/v3: write only a new create-only <prefix>/v/ object (deploy plan v2)",
+    )
+    parser.add_argument(
+        "--live-datasets",
+        metavar="VALUE",
+        help="with --versioned: the live revision's PI_API_DATASETS, verbatim",
+    )
+    parser.add_argument(
+        "--allow-beauty-versioned",
+        action="store_true",
+        help="with --versioned: the sephora_me+ulta_ae file to a new beauty/v/ object. "
+        "ONLY on the owner's P1 answer (form 01a11c72-16e3)",
+    )
+    parser.add_argument(
+        "--reconciled-removals",
+        type=Path,
+        metavar="FILE",
+        help="with --allow-beauty-versioned, fresh Ulta only: the capture lane's "
+        "removal_evidence.csv; its ulta_ae rows' offers may be absent",
+    )
+    parser.add_argument(
+        "--check-served",
+        metavar="VALUE",
+        help="no body: the window guard over every body this PI_API_DATASETS value serves",
+    )
+    parser.add_argument(
+        "--served-root",
+        type=Path,
+        metavar="DIR",
+        help="with --check-served: read the bodies from DIR/<path> instead of the bucket",
+    )
+    return parser
+
+
+def main() -> int:  # noqa: PLR0911, PLR0912, PLR0915 -- one linear gate after another
+    parser = build_parser()
     args = parser.parse_args()
     if protected := sorted(set(args.drop_source) & set(PROTECTED_SOURCES)):
         parser.error(
             f"refusing: --drop-source {', '.join(protected)}: never dropped (owner hard rule)"
         )
 
+    if args.check_served is not None:
+        return main_check_served(args)
+    if args.path is None:
+        parser.error("a dataset file is needed (or --check-served)")
+    if args.versioned and args.live_datasets is None:
+        parser.error("--versioned needs --live-datasets (the live PI_API_DATASETS)")
+    beauty = args.allow_beauty_versioned
+    if beauty and not args.versioned:
+        parser.error("--allow-beauty-versioned needs --versioned")
+    if args.reconciled_removals and not beauty:
+        parser.error("--reconciled-removals needs --allow-beauty-versioned")
     raw = args.path.read_text(encoding="utf-8")
     doc = json.loads(raw)
+    removals: frozenset[str] = frozenset()
+    if args.reconciled_removals:
+        window = removal_window(doc) if isinstance(doc, dict) else None
+        removals, refused = read_removals(args.reconciled_removals, window)
+        if refused:
+            for err in refused[:50]:
+                print(f"refusing: {err}", file=sys.stderr)
+            return 1
     v1 = not (isinstance(doc, dict) and doc.get("schema") in PER_SOURCE_SCHEMAS)
+    if args.versioned and v1:
+        parser.error("--versioned publishes v2/v3 files only")
     if not isinstance(doc, dict):
         errors = ["not a JSON object"]
     elif v1:
@@ -512,7 +836,7 @@ def main() -> int:
     else:
         check = validate_v3 if doc["schema"] == SCHEMA_V3 else validate_v2
         dataset, errors = check(raw, allow_test=args.allow_test)
-        errors += publishing_source(by_source(doc))[1]
+        errors += beauty_errors(by_source(doc)) if beauty else publishing_source(by_source(doc))[1]
     if errors:
         for err in errors[:50]:
             print(f"INVALID: {err}", file=sys.stderr)
@@ -522,13 +846,28 @@ def main() -> int:
         source, meta_doc = V1_SOURCE, V1_META_DOC
         packaged = v1_by_source(json.loads(gzip.decompress(body)))
     else:
-        body, paths, summary, meta_doc = package_v2(dataset)
+        body, paths, summary, meta_doc = package_v2(dataset, beauty=beauty)
         source = str(summary["source"])
         # The guard judges exactly what is uploaded.
         packaged = by_source(json.loads(gzip.decompress(body)))
-    if outside := outside_prefixes(paths, v1=v1):  # belt and braces: the packagers build these
+    # belt and braces: the packagers build these (beauty is held to versioned_outside below)
+    if not beauty and (outside := outside_prefixes(paths, v1=v1)):
         print(f"refusing: writes outside the source prefixes: {outside}", file=sys.stderr)
         return 1
+    if reason := refused_body(args.path.read_bytes(), gzip.decompress(body)):
+        print(f"refusing: {reason}", file=sys.stderr)
+        return 1
+    if args.versioned:
+        target = versioned_path(paths, body)
+        datasets, problems = repoint(
+            args.live_datasets, list(BEAUTY_SOURCES) if beauty else [source], target
+        )
+        if versioned_outside(target, beauty=beauty):
+            problems.append(f"{target} is outside the versioned prefixes")
+        if problems:
+            for problem in problems:
+                print(f"refusing: {problem}", file=sys.stderr)
+            return 1
     print(
         json.dumps(summary, ensure_ascii=False),
         f"gzip={len(body)}B",
@@ -536,12 +875,40 @@ def main() -> int:
         sep="\n",
     )
     drop = tuple(args.drop_source)
+    # The guard reads what the live revision serves this source (beauty: ulta_ae) from when
+    # versioned, else the prefix's latest.json.
+    live_path = paths[-1]
+    if args.versioned:
+        live_path = served_path(args.live_datasets, RETAINED if beauty else source) or live_path
+        for guarded in (RETAINED, GUARDED) if beauty else ():
+            if served_path(args.live_datasets, guarded) is None:
+                print(f"refusing: the live PI_API_DATASETS serves no {guarded}", file=sys.stderr)
+                return 1
+
+    # beauty: sephora_me is held by the source guard against the body it is served from.
+    sephora_path = served_path(args.live_datasets or "", GUARDED) if beauty else None
+
+    def judge(live: dict[str, Any] | None, sephora: dict[str, Any] | None = None) -> int:
+        if beauty:
+            new = json.loads(gzip.decompress(body))
+            problems = retention_problems(live, new, removals)
+            if sephora is not None:
+                problems += source_guard(
+                    only(by_source(sephora), GUARDED), only(packaged, GUARDED), GUARDED, drop
+                )
+            return report_guard(problems, drop)
+        return report_guard(guard(live, packaged, source, drop), drop)
+
     if args.dry_run:
+        held = 0
         if args.live_file:
-            live = json.loads(args.live_file.read_text(encoding="utf-8"))
-            return report_guard(guard(live, packaged, source, drop), drop)
-        print(f"source guard: runs against the live {paths[-1]} before upload")
-        return 0
+            live_doc = json.loads(args.live_file.read_text(encoding="utf-8"))
+            held = judge(live_doc, live_doc if sephora_path else None)
+        else:
+            print(f"source guard: runs against the live {live_path} before upload")
+        if args.versioned and not held:
+            print(f"would upload gs://<bucket>/{target}", f"PI_API_DATASETS={datasets}", sep="\n")
+        return held
 
     import firebase_admin  # noqa: PLC0415 (lazy: unit tests run without Firebase installed)
     from firebase_admin import firestore, storage  # noqa: PLC0415
@@ -549,13 +916,48 @@ def main() -> int:
     bucket_name = args.bucket or f"{args.project}.firebasestorage.app"
     firebase_admin.initialize_app(options={"projectId": args.project, "storageBucket": bucket_name})
     bucket = storage.bucket()
-    live, generation = read_live(bucket, paths[-1])
-    held = report_guard(guard(live, packaged, source, drop), drop)
+    live, generation = read_live(bucket, live_path)
+    sephora = None
+    if sephora_path:
+        sephora = live if sephora_path == live_path else read_live(bucket, sephora_path)[0]
+        if sephora is None:  # never skip the guard: no body to hold against is a refusal
+            print(f"refusing: no live {GUARDED} body at {sephora_path}", file=sys.stderr)
+            return 1
+    held = judge(live, sephora)
+    if args.versioned:  # latest.json and Firestore stay as the live revision reads them
+        if held or publish_versioned(bucket, target, body):
+            return 1
+        print(f"PI_API_DATASETS={datasets}")
+        return 0
     if held or upload(bucket, paths, body, latest_generation=generation):
         return 1  # a HOLD uploads nothing; upload() reports its own refusals
     firestore.client().collection("demo_meta").document(meta_doc).set(summary)
     print(f"wrote firestore demo_meta/{meta_doc}")
     return 0
+
+
+def main_check_served(args: argparse.Namespace) -> int:
+    """--check-served: read-only, from --served-root or the bucket."""
+    if args.served_root is not None:
+        root: Path = args.served_root
+
+        def read(path: str) -> bytes | None:
+            file = root / path
+            return file.read_bytes() if file.is_file() else None
+
+        return check_served(args.check_served, read, allow_test=args.allow_test)
+    import firebase_admin  # noqa: PLC0415 (lazy: unit tests run without Firebase installed)
+    from firebase_admin import storage  # noqa: PLC0415
+
+    bucket_name = args.bucket or f"{args.project}.firebasestorage.app"
+    firebase_admin.initialize_app(options={"projectId": args.project, "storageBucket": bucket_name})
+    bucket = storage.bucket()
+
+    def fetch(path: str) -> bytes | None:
+        blob = bucket.get_blob(path)
+        return None if blob is None else bytes(blob.download_as_bytes(raw_download=True))
+
+    return check_served(args.check_served, fetch, allow_test=args.allow_test)
 
 
 def report_guard(problems: list[str], drop: tuple[str, ...]) -> int:

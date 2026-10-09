@@ -20,7 +20,8 @@
   - ADR-0006 (access rulings): ordinary browser behaviour only, no impersonation, no stealth, no
     challenge solving, no proxy, stop on any block, and no change of egress after a block;
   - blocked or unread means `not_observed`, never out of stock or removed;
-  - regular price decision A: regular stays `not_collected`, and `c_valuePrice` is never used;
+  - regular price decision A: regular stays `not_collected`, and `c_valuePrice` is never used
+    (narrowed by Amendment 1, 2026-10-09: it may be collected only as the separate `valuePrice`);
   - Ulta stays blocked. This ADR adds no Ulta collection.
 
 ## Context
@@ -241,6 +242,19 @@ bytes).
   parked, so this ADR does not add one. The 14-day rule in the tool's README applies to the
   recurring run bucket (#124), not to the capture bucket. Setting a retention for the capture
   bucket is an owner decision recorded in the decision log when taken.
+
+## Amendment 1, 2026-10-09: Sephora `c_valuePrice` as a separate `valuePrice`
+
+The owner asked for it directly on 2026-10-09: sephora.ae shows some prices as "AED 135.00  Real
+value AED 180.00". Ruled by the Coordinator on that request (message 01a11e4f-217c, task
+01a11e4b-4de2):
+
+- Sephora `c_valuePrice` may be collected ONLY as a separate field, `valuePrice`, meaning the
+  retailer-stated value of the offer (typically a set).
+- It is never written to `regular` / `price_regular_stated`, never used as a was-price or a
+  markdown baseline, and never enters discount or markdown metrics.
+- Analytics may show "value - price" only labelled "as stated by the retailer".
+- `regular` for `sephora_me` stays `not_collected`. The rest of decision A is unchanged.
 
 ## Consequences
 - The blueprint's Cadence row, §6.4 and the crawling cost row now point here for `sephora_me`.

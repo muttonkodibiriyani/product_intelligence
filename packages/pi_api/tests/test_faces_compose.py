@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from api_fixture import Client, bearer, make_client, served_dataset
+from api_fixture import Client, bearer, make_client, own_keys, served_dataset
 from metrics_fixture import rebuild
 from pi_api.config import Settings, dataset_entries
 from pi_api.source import AmbiguousDatasetError
@@ -62,7 +62,7 @@ FACES_TOTALS = {
 
 def beauty_doc() -> bytes:
     """The pi_metrics fixture as an AE/beauty file whose first two shops are Sephora and Ulta."""
-    raw = dump_dataset(rebuild(served_dataset(), scope="beauty"))
+    raw = dump_dataset(own_keys(rebuild(served_dataset(), scope="beauty")))
     # Renames keep the edge order a < b: sephora_me < ulta_ae < vshop_c < wshop_d.
     for old, new in (("shop_a", SEPHORA), ("shop_b", ULTA), ("shop_c", "vshop_c")):
         raw = raw.replace(old.encode(), new.encode())
@@ -71,7 +71,9 @@ def beauty_doc() -> bytes:
 
 def faces_file(dates: list[str]) -> DatasetV3:
     """A Faces-only export: partial, no stock, one stated was-price."""
-    d = snapshot_doc({"faces-1": (FACES,), "faces-2": (FACES,)}, dates=dates)
+    d = snapshot_doc({"faces-1": (FACES,), "faces-2": (FACES,)}, dates=dates, windows=False)
+    # no window: beside the window-less beauty fixture a windowed shop would leave the beauty
+    # shops withheld without their notObserved entries (ADR-0013 §8), and the view refused
     d["meta"]["retailers"][0]["status"] = "partial"
     d["products"][0]["offers"][FACES]["series"]["regular"] = [REGULAR] * len(dates)
     return DatasetV3.model_validate(d)
