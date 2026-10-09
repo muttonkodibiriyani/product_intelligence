@@ -22,6 +22,8 @@ const TINT: Record<CellState, string> = {
   not_observed: 'bg-surface-2 text-ink-2',
   conflict: 'bg-lav text-lav-ink',
   invalid: 'bg-rose text-rose-ink',
+  invalid_price: 'bg-rose text-rose-ink',
+  mixed: 'bg-butter text-butter-ink',
   no_offer: 'bg-surface-2 text-ink-2',
   no_price: 'bg-surface-2 text-ink-2',
 };
@@ -48,8 +50,8 @@ export function useFreshnessDetail(): (s: SourceFreshness) => string {
   return (s) => {
     const date = (d: string | null) => (d ? formatDate(d, locale) : t('dateNone'));
     const base =
-      s.state === 'fresh'
-        ? t('detail.fresh', { date: date(s.lastDate) })
+      s.state === 'fresh' || s.state === 'mixed'
+        ? t(`detail.${s.state}`, { date: date(s.lastDate) })
         : s.state === 'stale'
           ? s.lastDate
             ? t('detail.stale', { date: date(s.lastDate), view: date(s.viewDate) })

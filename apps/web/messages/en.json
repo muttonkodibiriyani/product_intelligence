@@ -1355,7 +1355,9 @@
       "conflict": "Conflicting dates",
       "invalid": "Invalid date",
       "no_offer": "No offer observed",
-      "no_price": "No price observed"
+      "no_price": "No price observed",
+      "mixed": "Mixed dates",
+      "invalid_price": "Price under review"
     },
     "detail": {
       "fresh": "Last observed {date}, the dataset's last date.",
@@ -1364,7 +1366,8 @@
       "unavailable": "Collection status: {status}. Its data is not current.",
       "not_observed": "This dataset has no source data for this shop.",
       "conflict": "The API sent more than one last date for this shop, so none is used.",
-      "invalid": "This shop's date cannot be read, or is after the dataset's last date."
+      "invalid": "This shop's date cannot be read, or is after the dataset's last date.",
+      "mixed": "Last observed {date}, but part of this shop’s data is an imported snapshot: a listed price may be older. Each product page shows its offer’s own date."
     },
     "imported": "Imported snapshot {date}: capture date unknown.",
     "partial": "Partial collection",

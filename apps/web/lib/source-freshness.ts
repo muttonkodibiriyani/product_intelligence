@@ -3,7 +3,7 @@ import type { CaveatView, Schemas } from './api/types';
 type Meta = Pick<Schemas['MetaView'], 'dates' | 'retailers' | 'sources'>;
 type Card = Pick<
   Schemas['ProductCard'],
-  'brand' | 'category' | 'image' | 'name' | 'prices' | 'priceFlags' | 'size'
+  'brand' | 'category' | 'image' | 'name' | 'prices' | 'priceFlags' | 'size' | 'sizeLabel'
 >;
 
 /**
@@ -18,6 +18,9 @@ type Card = Pick<
  * - `not_observed`: the retailer is listed but no source of that exact id was sent.
  * - `conflict`: two sources (or a source and its caveat) disagree about its last date.
  * - `invalid`: a malformed date, or a last date after the view's own.
+ * - `mixed`: the last date is the view's, but the API says part of the source is an imported
+ *   snapshot (`snapshot_import_date`). A list row carries no per-offer date, so a retained older
+ *   offer cannot be told apart from a current one and the source is never shown as `fresh`.
  */
 export const EVIDENCE_STATES = [
   'fresh',
@@ -26,6 +29,7 @@ export const EVIDENCE_STATES = [
   'not_observed',
   'conflict',
   'invalid',
+  'mixed',
 ] as const;
 export type EvidenceState = (typeof EVIDENCE_STATES)[number];
 
@@ -108,7 +112,7 @@ export function sourceFreshness(meta: Meta, caveats: readonly CaveatView[] = [])
       const asOf = stale.map((c) => calendarDay(c.params.asOf));
       if (asOf.some((d) => d !== lastDate)) return 'conflict';
       if (stale.length || lastDate < viewDate) return 'stale';
-      return 'fresh';
+      return imported ? 'mixed' : 'fresh';
     })();
     return { ...base, state };
   });
@@ -132,13 +136,14 @@ export function freshnessOf(all: readonly SourceFreshness[], retailer: string): 
 
 /**
  * The state of one product's cell for one retailer in a list. The list carries no offer of that
- * retailer, no price on the read date, or an invalid price: each says exactly that, never "out of
- * stock", "not sold" or "removed". Otherwise the cell takes the retailer's own source state.
+ * retailer, no price on the read date, or a price the API flags as implausible (`invalid_price`,
+ * distinct from an invalid date): each says exactly that, never "out of stock", "not sold" or
+ * "removed". Otherwise the cell takes the retailer's own source state.
  */
-export type CellState = EvidenceState | 'no_offer' | 'no_price';
+export type CellState = EvidenceState | 'no_offer' | 'no_price' | 'invalid_price';
 export function cellState(card: Pick<Card, 'prices' | 'priceFlags'>, source: SourceFreshness): CellState {
   if (!Object.hasOwn(card.prices, source.retailer)) return 'no_offer';
-  if (card.priceFlags?.[source.retailer] === 'invalid_low') return 'invalid';
+  if (card.priceFlags?.[source.retailer] === 'invalid_low') return 'invalid_price';
   if (card.prices[source.retailer] == null) return 'no_price';
   return source.state;
 }
@@ -154,7 +159,7 @@ export function missingFields(card: Card): CardField[] {
   if (blank(card.name)) out.push('name');
   if (!card.category?.length) out.push('category');
   if (blank(card.image)) out.push('image');
-  if (!card.size) out.push('size');
+  if (!card.size && blank(card.sizeLabel)) out.push('size');
   if (!Object.values(card.prices ?? {}).some((p) => p != null)) out.push('price');
   return out;
 }

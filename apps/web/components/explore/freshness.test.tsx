@@ -125,7 +125,7 @@ describe('ProductTable evidence states', () => {
     expect(text).not.toMatch(/out of stock|removed|delisted|not sold/i);
   });
 
-  it('marks an invalid price invalid and a priceless cell without a state of its own', () => {
+  it('marks an invalid price as a price under review (not an invalid date) and a priceless cell without a state of its own', () => {
     const item = {
       ...rows()[4]!,
       prices: { ulta_ae: aed('0.01'), faces_ae: null },
@@ -142,7 +142,9 @@ describe('ProductTable evidence states', () => {
       />,
     );
     const [ulta, faces] = within(screen.getAllByRole('row')[1]!).getAllByRole('cell');
-    expect(ulta!.querySelector('[data-evidence-state="invalid"]')).toBeTruthy();
+    const badge = ulta!.querySelector('[data-evidence-state="invalid_price"]');
+    expect(badge?.textContent).toContain(en.freshness.state.invalid_price);
+    expect(ulta!.textContent).not.toContain(en.freshness.state.invalid);
     expect(faces!.textContent).toBe(en.product.noPrice);
   });
 });

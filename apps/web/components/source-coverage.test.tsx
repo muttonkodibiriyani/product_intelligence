@@ -73,7 +73,7 @@ describe('SourceCoverage', () => {
     expect(screen.getByRole('heading', { name: en.freshness.title })).toBeTruthy();
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows).toHaveLength(9);
-    expect(IDS.map(stateOf)).toEqual(['stale', 'stale', 'stale', 'stale', 'fresh']);
+    expect(IDS.map(stateOf)).toEqual(['stale', 'stale', 'stale', 'stale', 'mixed']);
     expect(stateOf('later_ae')).toBe('unavailable');
     expect(stateOf('quiet_ae')).toBe('not_observed');
     expect(stateOf('odd_ae')).toBe('invalid');
@@ -90,7 +90,9 @@ describe('SourceCoverage', () => {
     expect(quiet.textContent).toContain(en.freshness.dateNone);
     // The state is text, not only a colour, and its explanation reaches screen readers.
     const badge = ulta.querySelector('[data-evidence-state]') as HTMLElement;
-    expect(badge.textContent).toContain(en.freshness.state.fresh);
+    // Ulta reaches the last date but carries an imported snapshot: mixed, never "latest".
+    expect(badge.textContent).toContain(en.freshness.state.mixed);
+    expect(badge.textContent).not.toContain(en.freshness.state.fresh);
     expect(badge.querySelector('.sr-only')?.textContent).toContain('9 Oct 2026');
     expect(screen.getByRole('table').textContent).not.toMatch(/out of stock|removed|delisted/i);
   });
