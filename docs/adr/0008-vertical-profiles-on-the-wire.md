@@ -462,6 +462,27 @@ The validator checks two things:
   Matching reads only `page` and `text_rule` values, or its own parsers.
 - No model call runs without the owner's written cost approval.
 
+### 6. `beauty@3`: retailer flags (amendment, 2026-10-09)
+Coordinator rulings (messages 01a11e50-d4c4, wire shape 01a11e56-49d6 and 01a11e56-67a1;
+task 01a11e4b-4de2, subtask S1b) on the owner's request for Sephora's own "New" / "Exclusive"
+flags. `beauty@3` = `beauty@2` plus one key:
+
+| Key | Level | Type | Values | Facet | Block |
+|---|---|---|---|---|---|
+| `retailerFlags` | product, or variant | list of `{code, text: {en, ar}}` (S1b names the wire type) | `code` is one of `new`, `exclusive`, `online_only`, `limited_edition`, `best_seller`, `unknown`; `text` is the retailer's own flag text, whitespace-trimmed, in source order | no | null |
+
+- `text.en` and `text.ar` are each taken from that language's own read (the AR side comes from the
+  `-ar` extract), with leading and trailing whitespace trimmed (Sephora's AR best-seller text has a
+  leading space) and nothing else changed. A side that was not served or not captured is `null`,
+  and it is never translated (ruling 01a11e5b-acd3).
+- A flag the code table does not know gets `unknown`, with its text kept as served.
+- Product-level flags (Sephora `c_productFlags`) sit on the product. Variant-level flags
+  (`c_variantsInfo[].c_productFlags`) sit on that variant only, and they are never lifted to the
+  product. The 81 pids whose flags are variant-only are the must-fire control.
+- `best_seller` is a label the retailer shows. It is not a rank or a position.
+- Evidence is `page`. Absent means not read, and the value is never inferred from anything else.
+- `beauty@2` stays committed; the exporter's default profile is unchanged by this amendment.
+
 ## Migration path
 Small PRs. Until step 5, beauty production output stays byte-identical v2.
 
