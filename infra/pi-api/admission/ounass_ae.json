@@ -1,35 +1,45 @@
 {
   "schema": "pi.admission/v1",
-  "dataset": "datasets/ae/ounass_ae/latest.json",
-  "sha256": "8963cbedf30bdcd6247de077296a7d5421c4462589182951c64ea463e8933eed",
-  "bytes": 72711307,
+  "dataset": "datasets/ae/ounass_ae/v/20261007t164509z-035a650365f1.json",
+  "sha256": "035a650365f16c2927f04b44705c4bca05f0381f63dd078566cc3f2daa74f168",
+  "bytes": 73531809,
   "memoryMiB": 3072,
   "packContent": true,
   "served": [
     {
-      "path": "datasets/ae/beauty/latest.json",
-      "bytes": 26712113,
-      "sha256": "29e2dee6bd1b1bbd05f89f9e9221c0773069060554f136d3ffc9c00c5d93fe3c"
+      "path": "datasets/ae/beauty/v/20261001t032000z-776d2919f252.json",
+      "bytes": 20053049,
+      "sha256": "776d2919f25273fb8e9afaee08f16fff3b45d47e7ecf3e98eb0e6f0e77788ac3"
     },
     {
-      "path": "datasets/ae/faces_ae/latest.json",
-      "bytes": 2225842,
-      "sha256": "6d9e5d49c9e3eac239a8c09ac8eef25c045930f02649e942986a362c8ae2d2fa"
+      "path": "datasets/ae/bloomingdales_ae/v/20261009t115146z-6c259f549fdc.json",
+      "bytes": 14585573,
+      "sha256": "6c259f549fdc86909a9306dc67f21616f7c8ef2588805e47db258969aca0da65"
     },
     {
-      "path": "datasets/ae/ounass_ae/latest.json",
-      "bytes": 72711307,
-      "sha256": "8963cbedf30bdcd6247de077296a7d5421c4462589182951c64ea463e8933eed"
+      "path": "datasets/ae/faces_ae/v/20261003t130747z-aac59eb8156f.json",
+      "bytes": 1437898,
+      "sha256": "aac59eb8156f01f4c84d4ed85ed80486bd4b52e5df423bee628353e6a37097ce"
+    },
+    {
+      "path": "datasets/ae/ounass_ae/v/20261007t164509z-035a650365f1.json",
+      "bytes": 73531809,
+      "sha256": "035a650365f16c2927f04b44705c4bca05f0381f63dd078566cc3f2daa74f168"
+    },
+    {
+      "path": "datasets/ae/ulta_ae/v/20261009t015038z-5c454621d2ea.json",
+      "bytes": 19589529,
+      "sha256": "5c454621d2eaaacbf6d84dcd94cfc7f1c76b9e594d88c803d12854954fe02b13"
     }
   ],
-  "baselineMiB": 39,
-  "coldStartPeakMiB": 1066,
+  "baselineMiB": 58,
+  "coldStartPeakMiB": 1382,
   "refreshPeaksMiB": [
-    1554,
-    1586,
-    1661,
-    1661
+    2023,
+    2026,
+    2026,
+    2026
   ],
-  "measuredOn": "2026-10-07",
-  "benchCommit": "8a60ad69ec5dc8af4cdc96f37a024ff9d25327e2"
+  "measuredOn": "2026-10-10",
+  "benchCommit": "acfed4ae148ce8fb6aed6a07f77975fa1630d99f"
 }
