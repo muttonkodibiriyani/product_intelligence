@@ -56,14 +56,12 @@ SHOPS = {"o": OUNASS, "b": BLOOMINGDALES}
 
 def shop_row(source: str, variant: int = 400, family: int = 40, **kw: Any) -> ListingRow:
     """An Ounass or Bloomingdale's import row as pi_db holds it: the page's own stock, no rating
-    (neither page carries one), a partial run and context. A Bloomingdale's row states no
-    regular price and has no price type (its feed declares ``regular_stated`` not_collected)."""
+    (neither page carries one), a partial run and context. A Bloomingdale's row is at full price:
+    the query's CASE gives a stored 'full' row its own price as regular (``on_promotion``)."""
     kw.setdefault("availability", "in_stock")
-    if source == BLOOMINGDALES:
-        kw.setdefault("regular", None)
     base = row(source=source, family=family, variant=variant, **kw)
-    if source == BLOOMINGDALES:
-        base = replace(base, price_type=None)
+    if source == BLOOMINGDALES and "regular" not in kw:
+        base = replace(base, price_type="full", regular=base.price)
     image = BLM_IMAGE if source == BLOOMINGDALES else OUNASS_IMAGE
     return replace(
         base,
@@ -155,7 +153,7 @@ def test_ounass_stated_was_prices_are_published_as_regular() -> None:
 def test_regular_capability_is_declared_for_every_slot_and_agrees_with_the_importer() -> None:
     """No default: a slot without a declaration is a KeyError at export, not 'on_promotion'."""
     assert set(REGULAR_STATED) == set(RETAILERS)
-    assert REGULAR_STATED["b"] == "not_collected"
+    assert REGULAR_STATED["b"] == "on_promotion"
     for shop, declared in REGULAR_STATED.items():
         source = RETAILERS[shop][0]
         if source in CAPTURE_SHOPS:
@@ -173,18 +171,40 @@ def test_ounass_full_price_rows_keep_their_price_as_regular() -> None:
     assert d["meta"]["capabilities"]["promotions"] is True
 
 
+def test_bloomingdales_full_price_rows_keep_their_price_as_regular() -> None:
+    """Bloomingdale's states a regular only on markdowns (on_promotion, 9 Oct capture): a
+    full-price row's regular is its price, and a markdown keeps the regular the page stated."""
+    full = shop_row(BLOOMINGDALES, variant=400, family=400, price="90")
+    marked = replace(
+        shop_row(BLOOMINGDALES, variant=401, family=401, price="80", regular="100"),
+        price_type="promotional",
+    )
+    d = doc([full, marked], slots=("b",))
+    series = {p["id"]: o["series"] for p in d["products"] for o in p["offers"].values()}
+    got = sorted((s["price"][0]["amount"], s["regular"][0]["amount"]) for s in series.values())
+    assert got == [
+        ("80.00", "100.00"),
+        ("90.00", "90.00"),
+    ]
+    assert d["meta"]["fields"]["regular"] == "ok"
+    assert d["meta"]["capabilities"]["promotions"] is True
+
+
 @pytest.mark.parametrize("price_type", [None, "full"])
-def test_bloomingdales_regular_is_not_collected(price_type: str | None) -> None:
-    """Bloomingdale's captured no regular price: none is published, ``fields.regular`` is
-    not_collected and promotions are off. ``full`` is how the 7,694 rows of run 8 were loaded
-    before the declaration (the query then gave them regular = price, a 0% discount nobody
-    observed); ``None`` is how the importer loads them now. Both export the same."""
+def test_a_not_collected_source_publishes_no_regular(
+    monkeypatch: pytest.MonkeyPatch, price_type: str | None
+) -> None:
+    """A source that captured no regular price publishes none: ``fields.regular`` is
+    not_collected and promotions are off. ``full`` is a row loaded before such a declaration
+    (the query then gives it regular = price, a 0% discount nobody observed); ``None`` is how the
+    importer loads it now. Both export the same."""
+    monkeypatch.setitem(REGULAR_STATED, "b", "not_collected")
     rows = [
         replace(shop_row(BLOOMINGDALES, variant=v, family=v, price="90"), price_type=price_type)
         for v in (400, 401)
     ]
-    if price_type == "full":  # the query's CASE: a full row's regular is its own price
-        rows = [replace(r, regular=r.price) for r in rows]
+    if price_type is None:
+        rows = [replace(r, regular=None) for r in rows]
     d = doc(rows, slots=("b",))
     assert all(o["series"]["regular"] is None for p in d["products"] for o in p["offers"].values())
     assert all(o["series"]["price"] for p in d["products"] for o in p["offers"].values())
@@ -192,8 +212,11 @@ def test_bloomingdales_regular_is_not_collected(price_type: str | None) -> None:
     assert d["meta"]["capabilities"]["promotions"] is False
 
 
-def test_a_stated_regular_on_a_not_collected_source_fails_the_export() -> None:
+def test_a_stated_regular_on_a_not_collected_source_fails_the_export(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A contradiction is an error, never silently dropped (the importer rejects such a row)."""
+    monkeypatch.setitem(REGULAR_STATED, "b", "not_collected")
     stated = replace(shop_row(BLOOMINGDALES, price="80", regular="100"), price_type="promotional")
     with pytest.raises(ValueError, match="declared not_collected"):
         doc([stated])
@@ -396,12 +419,15 @@ def test_no_launch_and_no_removal_whatever_the_runs_say(source: str) -> None:
     assert offer.series.availability == ("out_of_stock",)
 
 
-def test_only_the_declaration_tells_two_sources_with_identical_rows_apart() -> None:
+def test_only_the_declaration_tells_two_sources_with_identical_rows_apart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The pin on "never derived": Ounass and Bloomingdale's rows identical but for the source,
     none struck (price_type 'full', regular = price as the query gives it), in one export. Only
-    the per-source declaration differs, so any rule read from the data or from a constant the
-    parsers share (LOOKED_FOR) would publish both the same."""
-    assert (REGULAR_STATED["o"], REGULAR_STATED["b"]) == ("on_promotion", "not_collected")
+    the per-source declaration differs (Bloomingdale's declared not_collected here), so any rule
+    read from the data or from a constant the parsers share (LOOKED_FOR) would publish both the
+    same."""
+    monkeypatch.setitem(REGULAR_STATED, "b", "not_collected")
     same: dict[str, Any] = {"price": "90", "regular": "90", "variant": 400, "family": 40}
     rows = [replace(row(source=s, **same), price_type="full") for s in (OUNASS, BLOOMINGDALES)]
     assert replace(rows[0], source_name=BLOOMINGDALES) == rows[1]
