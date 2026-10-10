@@ -683,3 +683,8 @@ def test_a_page_url_needing_no_escape_is_kept_byte_for_byte(make_capture: Captur
     capture = page(make_capture, url="https://shop.example/en/p/glow-serum-1.html")
     (row,) = build_feed([capture], SHOP).rows
     assert row["url"] == "https://shop.example/en/p/glow-serum-1.html"
+
+
+def test_bloomingdales_states_its_regular_price_on_promotion() -> None:
+    # the 9 Oct capture reads a list price on 90 markdowns, so a page without one is at full price
+    assert SHOPS["bloomingdales_ae"].regular_stated == "on_promotion"

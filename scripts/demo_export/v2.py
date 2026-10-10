@@ -120,15 +120,15 @@ STOCK_NOT_PUBLISHED = frozenset({"f"})
 #: is its price (the query's CASE). ``not_collected``: no regular price was ever captured, so none
 #: is published, ``fields.regular`` is ``not_collected`` and promotions are off; a stored
 #: price_type 'full' is not evidence of a full price. Every slot must be declared: no default.
-#: Bloomingdale's: no list price on any of the 7,739 pages captured 3-5 Oct, so whether the UAE
-#: site serves one on a markdown is unproven (Reviewer, 2026-10-08). It must agree with the
-#: importing shop's ``regular_stated`` (``pi_capture.feed.SHOPS``).
+#: Bloomingdale's: no list price on any of the 7,739 pages captured 3-5 Oct (Reviewer, 2026-10-08),
+#: but the 9 Oct capture reads one on 90 markdowns, so a page without one is at full price. It
+#: must agree with the importing shop's ``regular_stated`` (``pi_capture.feed.SHOPS``).
 REGULAR_STATED: dict[str, Literal["on_promotion", "not_collected"]] = {
     "u": "on_promotion",
     "s": "on_promotion",
     "f": "on_promotion",
     "o": "on_promotion",
-    "b": "not_collected",
+    "b": "on_promotion",
 }
 STATUS = {
     "ok": RetailerStatus.SUPPORTED,

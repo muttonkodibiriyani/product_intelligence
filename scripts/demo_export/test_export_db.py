@@ -36,7 +36,7 @@ from scripts.demo_export.export import (
     latest_params,
 )
 from scripts.demo_export.history import RunSpan, read_history
-from scripts.demo_export.v2 import build_dataset_v2
+from scripts.demo_export.v2 import REGULAR_STATED, build_dataset_v2
 
 pytestmark = pytest.mark.db
 
@@ -799,19 +799,22 @@ def test_an_imported_page_is_dated_by_its_capture_not_the_import(
     (offer,) = _offers(d)
     assert offer["evidence"]["capturedAt"] == "2026-10-02T09:00:00Z"
     assert d["meta"]["dates"] == ["2026-10-02"]
-    # ...and Bloomingdale's (regular_stated not_collected) publishes no regular price
-    assert got["price_type"] is None
-    assert offer["series"]["regular"] is None
-    assert d["meta"]["fields"]["regular"] == "not_collected"
-    assert d["meta"]["capabilities"]["promotions"] is False
+    # ...and Bloomingdale's (regular_stated on_promotion) loads a page without a list price at
+    # full price: its regular is its price
+    assert got["price_type"] == "full"
+    assert offer["series"]["regular"] == offer["series"]["price"]
+    assert d["meta"]["fields"]["regular"] == "ok"
+    assert d["meta"]["capabilities"]["promotions"] is True
 
 
 def test_rows_loaded_full_before_the_declaration_export_regular_not_collected(
-    conn: Conn,
+    conn: Conn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Run 8's 7,694 rows are stored price_type 'full' with no regular (append-only, and a replay
-    of the same feed is a no-op). The query still gives them regular = price; the export reads
-    the declaration per source and publishes none: not_collected, promotions off."""
+    """Rows stored price_type 'full' with no regular on a source declared not_collected (as
+    Bloomingdale's run 8 was until the 9 Oct capture). The query still gives them regular =
+    price; the export reads the declaration per source and publishes none: not_collected,
+    promotions off."""
+    monkeypatch.setitem(REGULAR_STATED, "b", "not_collected")
     world = World(conn, "bloomingdales_ae")
     run = world.run("partial", 1)
     for key in ("B1", "B2"):
