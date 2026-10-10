@@ -228,11 +228,12 @@ SHOPS: dict[str, Shop] = {
         locale="en-AE",
         currency="AED",
         time_zone="Asia/Dubai",
-        notes="Bloomingdale's UAE (Al Tayer), beauty product pages read from the 2026-10-03 "
+        notes="Bloomingdale's UAE (Al Tayer), beauty product pages read from the 2026-10-09 "
         "capture",
-        # No list price on any of the 7,739 pages captured 3-5 Oct: whether the UAE site serves
-        # one on a markdown is unproven (Reviewer, 2026-10-08), so no full price is claimed.
-        regular_stated="not_collected",
+        # No list price on any of the 7,739 pages captured 3-5 Oct (Reviewer, 2026-10-08), but the
+        # 9 Oct capture reads one on 90 markdowns (regular above current, promo equal to current),
+        # so the reader is seen to read it and a page without one is at full price.
+        regular_stated="on_promotion",
         markup_availability=True,
         page_attributes=True,
         style_family=True,
