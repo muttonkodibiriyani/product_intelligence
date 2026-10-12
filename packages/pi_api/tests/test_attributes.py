@@ -77,9 +77,7 @@ def test_projection_keeps_every_state_without_substitution() -> None:
         ),
         AttributeFact(key="returnable", raw=True, evidence=evidence("isReturnable")),
         AttributeFact(key="returnable", raw=False, evidence=evidence("returns.disabled")),
-        AttributeFact(
-            key="shipping_fee_minor", raw="free", evidence=evidence("shippingFee")
-        ),
+        AttributeFact(key="shipping_fee_minor", raw="free", evidence=evidence("shippingFee")),
     )
     slots = {
         slot.definition.key: slot
@@ -130,9 +128,10 @@ def test_saved_product_projects_exactly_154_slots_for_every_entity() -> None:
 
     assert by_target
     assert all(len(slots) == 154 for slots in by_target.values())
-    assert next(
-        slot for slot in by_target["p01:master"] if slot.definition.key == "brand"
-    ).state is AttributeState.OBSERVED
+    assert (
+        next(slot for slot in by_target["p01:master"] if slot.definition.key == "brand").state
+        is AttributeState.OBSERVED
+    )
     offer = by_target["p01:offer:shop_a"]
     price = next(slot for slot in offer if slot.definition.key == "price_minor")
     assert price.state is AttributeState.OBSERVED

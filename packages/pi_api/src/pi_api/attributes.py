@@ -183,9 +183,7 @@ def attribute_manifest() -> tuple[AttributeDefinition, ...]:
 
 
 class AttributeManifest(ContractModel):
-    version: Literal["requirements-v2+beauty2+variant-relationships@1"] = (
-        ATTRIBUTE_MANIFEST_VERSION
-    )
+    version: Literal["requirements-v2+beauty2+variant-relationships@1"] = ATTRIBUTE_MANIFEST_VERSION
     definitions: tuple[AttributeDefinition, ...] = Field(min_length=154, max_length=154)
 
 
@@ -611,9 +609,7 @@ def _profile_missing(
             raise UnknownAttributeError(declared.key)
         if definition.level is level and definition.key not in present:
             missing[definition.key] = (
-                AttributeState.NOT_PUBLISHED
-                if declared.capability
-                else AttributeState.NOT_OBSERVED
+                AttributeState.NOT_PUBLISHED if declared.capability else AttributeState.NOT_OBSERVED
             )
     return missing
 
@@ -677,9 +673,7 @@ def _global_targets(
     product_missing = _profile_missing(ds, AttributeTargetLevel.PRODUCT, product_present)
     if "description" not in product_present:
         product_missing["description"] = (
-            AttributeState.NOT_PUBLISHED
-            if description_covered
-            else AttributeState.NOT_OBSERVED
+            AttributeState.NOT_PUBLISHED if description_covered else AttributeState.NOT_OBSERVED
         )
     return [
         (
@@ -883,9 +877,7 @@ def _variant_targets(
 
 def _product_attribute_inputs(
     ds: DatasetV3, product: ProductV3
-) -> tuple[
-    tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]], ...
-]:
+) -> tuple[tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]], ...]:
     owner = {context.id: context.retailer for context in ds.meta.contexts}
     inputs = _global_targets(ds, product)
     for context, offer in sorted(product.offers.items()):
@@ -970,26 +962,18 @@ def attribute_page(
         raise InvalidQueryError("unknown attribute target")
     selected_target, facts, missing = selected_input
     projected = project_target(selected_target, facts, missing)
-    selected = [
-        slot
-        for slot in projected
-        if _matches(slot, query)
-    ]
+    selected = [slot for slot in projected if _matches(slot, query)]
     digest = _query_digest(query)
     offset = 0 if query.cursor is None else _decode_cursor(query.cursor, generation, digest)
     page = selected[offset : offset + query.limit]
     end = offset + len(page)
-    summaries = tuple(
-        AttributeTargetSummary(target=target) for target, _, _ in inputs
-    )
+    summaries = tuple(AttributeTargetSummary(target=target) for target, _, _ in inputs)
     return Metric[AttributePage](
         status=Status.OK,
         data=AttributePage(
             slot_total=len(projected),
             total=len(selected),
-            next_cursor=(
-                _encode_cursor(generation, end, digest) if end < len(selected) else None
-            ),
+            next_cursor=(_encode_cursor(generation, end, digest) if end < len(selected) else None),
             targets=summaries,
             items=tuple(page),
         ),
