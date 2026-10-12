@@ -51,6 +51,7 @@ no view yet: promotions are answered by `promotions`, and ratings by `reviews_su
 | `/insights` | Insights page aggregates (brand price policy, size ladders) built from `compare`'s counted pairs; `compare` answers the same questions. A tool can follow once the page settles |
 | `/findings` | The Insights page's twelve ranked findings, worded by the page from structured numbers and built from the catalogues and `compare`'s counted pairs. A tool can follow once the page settles |
 | `/catalogues/{retailer}`, `/catalogues/{retailer}/skus/{sku}` | SKU galleries and identity links for the product page (display only); no prices or counts to answer with (coordinator ruling 2026-10-01) |
+| `/products/{product_id}/attributes` | Paged 154-field evidence matrix for Product Detail (display only); `get_product` remains the assistant's bounded product answer |
 
 ## Planned
 

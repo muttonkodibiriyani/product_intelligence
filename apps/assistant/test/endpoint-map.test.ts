@@ -47,6 +47,11 @@ export const EXCLUDED: readonly { readonly pattern: RegExp; readonly reason: str
     reason:
       "SKU galleries and identity links for the product page (display only); no prices or counts to answer with",
   },
+  {
+    pattern: /^\/api\/v1\/products\/\{product_id\}\/attributes$/,
+    reason:
+      "the paged 154-field evidence matrix is a Product Detail display; get_product already answers product questions",
+  },
 ];
 
 const METHODS = ["get", "post", "put", "patch", "delete"];
