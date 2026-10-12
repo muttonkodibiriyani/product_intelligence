@@ -148,7 +148,7 @@ def test_attribute_page_is_bounded_filter_bound_and_generation_bound() -> None:
     first = attribute_page(dataset, product, "generation-1", query).data
     assert first is not None
     assert len(first.items) == 10
-    assert first.slot_total % 154 == 0
+    assert first.slot_total == 154
     assert first.definition_count == 154
     assert first.next_cursor is not None
 

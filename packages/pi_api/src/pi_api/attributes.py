@@ -12,7 +12,6 @@ import binascii
 import hashlib
 import json
 import re
-from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -522,7 +521,6 @@ class AttributeQuery(ContractModel):
 class AttributeTargetSummary(ContractModel):
     target: AttributeTarget
     slot_count: Literal[154] = 154
-    states: dict[AttributeState, int]
 
 
 class AttributePage(ContractModel):
@@ -883,20 +881,28 @@ def _variant_targets(
     return out
 
 
-def product_attribute_slots(
+def _product_attribute_inputs(
     ds: DatasetV3, product: ProductV3
-) -> tuple[tuple[AttributeTarget, tuple[AttributeSlot, ...]], ...]:
-    """Every target for a product, each with exactly the same 154 versioned slots."""
-
+) -> tuple[
+    tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]], ...
+]:
     owner = {context.id: context.retailer for context in ds.meta.contexts}
     inputs = _global_targets(ds, product)
     for context, offer in sorted(product.offers.items()):
         retailer = owner[context]
         inputs.append(_offer_target(ds, product, context, retailer, offer))
         inputs.extend(_variant_targets(ds, product, context, retailer, offer))
+    return tuple(inputs)
+
+
+def product_attribute_slots(
+    ds: DatasetV3, product: ProductV3
+) -> tuple[tuple[AttributeTarget, tuple[AttributeSlot, ...]], ...]:
+    """Offline coverage walk: every target with exactly the same 154 versioned slots."""
+
     return tuple(
         (target, project_target(target, facts, missing))
-        for target, facts, missing in inputs
+        for target, facts, missing in _product_attribute_inputs(ds, product)
     )
 
 
@@ -957,14 +963,16 @@ def attribute_page(
     generation: str,
     query: AttributeQuery,
 ) -> Metric[AttributePage]:
-    projected = product_attribute_slots(ds, product)
-    if query.target is not None and query.target not in {target.id for target, _ in projected}:
+    inputs = _product_attribute_inputs(ds, product)
+    selected_id = query.target or f"{product.id}:product"
+    selected_input = next((row for row in inputs if row[0].id == selected_id), None)
+    if selected_input is None:
         raise InvalidQueryError("unknown attribute target")
+    selected_target, facts, missing = selected_input
+    projected = project_target(selected_target, facts, missing)
     selected = [
         slot
-        for target, slots in projected
-        if query.target is None or target.id == query.target
-        for slot in slots
+        for slot in projected
         if _matches(slot, query)
     ]
     digest = _query_digest(query)
@@ -972,16 +980,12 @@ def attribute_page(
     page = selected[offset : offset + query.limit]
     end = offset + len(page)
     summaries = tuple(
-        AttributeTargetSummary(
-            target=target,
-            states=dict(Counter(slot.state for slot in slots)),
-        )
-        for target, slots in projected
+        AttributeTargetSummary(target=target) for target, _, _ in inputs
     )
     return Metric[AttributePage](
         status=Status.OK,
         data=AttributePage(
-            slot_total=sum(len(slots) for _, slots in projected),
+            slot_total=len(projected),
             total=len(selected),
             next_cursor=(
                 _encode_cursor(generation, end, digest) if end < len(selected) else None

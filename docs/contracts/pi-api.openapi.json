@@ -945,23 +945,12 @@
             "title": "Slotcount",
             "type": "integer"
           },
-          "states": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/AttributeState"
-            },
-            "title": "States",
-            "type": "object"
-          },
           "target": {
             "$ref": "#/components/schemas/AttributeTarget"
           }
         },
         "required": [
-          "target",
-          "states"
+          "target"
         ],
         "title": "AttributeTargetSummary",
         "type": "object"

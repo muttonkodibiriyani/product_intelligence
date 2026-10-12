@@ -768,10 +768,6 @@ export interface components {
              * @constant
              */
             slotCount: 154;
-            /** States */
-            states: {
-                [key: string]: number;
-            };
             target: components["schemas"]["AttributeTarget"];
         };
         /**

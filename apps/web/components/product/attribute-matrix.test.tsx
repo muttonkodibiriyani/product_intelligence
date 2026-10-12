@@ -88,7 +88,6 @@ function answer(items: Schemas['AttributeSlot'][], nextCursor: string | null = n
           {
             target: { id: 'p01:product', level: 'product', label: 'Fixture product' },
             slotCount: 154,
-            states: { observed: items.length },
           },
         ],
         items,

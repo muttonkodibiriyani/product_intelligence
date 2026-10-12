@@ -270,16 +270,10 @@
     ],
     "manifestVersion": "requirements-v2+beauty2+variant-relationships@1",
     "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjEwLCJmIjoiNTk5NjQ3MzFhZDAyNGE3OSJ9",
-    "slotTotal": 616,
+    "slotTotal": 154,
     "targets": [
       {
         "slotCount": 154,
-        "states": {
-          "not_applicable": 105,
-          "not_published": 2,
-          "observed": 1,
-          "unknown": 46
-        },
         "target": {
           "context": null,
           "id": "p01:master",
@@ -290,13 +284,6 @@
       },
       {
         "slotCount": 154,
-        "states": {
-          "not_applicable": 122,
-          "not_observed": 1,
-          "not_published": 1,
-          "observed": 1,
-          "unknown": 29
-        },
         "target": {
           "context": null,
           "id": "p01:product",
@@ -307,11 +294,6 @@
       },
       {
         "slotCount": 154,
-        "states": {
-          "not_applicable": 110,
-          "observed": 2,
-          "unknown": 42
-        },
         "target": {
           "context": "shop_a",
           "id": "p01:offer:shop_a",
@@ -322,11 +304,6 @@
       },
       {
         "slotCount": 154,
-        "states": {
-          "not_applicable": 110,
-          "observed": 2,
-          "unknown": 42
-        },
         "target": {
           "context": "shop_b",
           "id": "p01:offer:shop_b",
