@@ -636,10 +636,21 @@ def _global_targets(
         AttributeTargetLevel.OFFER: [],
         AttributeTargetLevel.VARIANT: [],
     }
+    evidence_gaps: dict[AttributeTargetLevel, set[str]] = {
+        AttributeTargetLevel.MASTER: set(),
+        AttributeTargetLevel.PRODUCT: set(),
+    }
     for key, raw in product.attributes.items():
         definition = by_key.get(key)
         if definition is None:
             raise UnknownAttributeError(key)
+        if definition.level not in evidence_gaps:
+            raise AttributeProjectionError(
+                f"{key} belongs to {definition.level}, not a product-owned target"
+            )
+        if key not in product.attribute_evidence:
+            evidence_gaps[definition.level].add(key)
+            continue
         facts[definition.level].append(
             AttributeFact(key=key, raw=raw, evidence=_attribute_evidence(product, key))
         )
@@ -675,6 +686,10 @@ def _global_targets(
         product_missing["description"] = (
             AttributeState.NOT_PUBLISHED if description_covered else AttributeState.NOT_OBSERVED
         )
+    for key in evidence_gaps[AttributeTargetLevel.MASTER]:
+        master_missing.pop(key, None)
+    for key in evidence_gaps[AttributeTargetLevel.PRODUCT]:
+        product_missing.pop(key, None)
     return [
         (
             AttributeTarget(
@@ -704,16 +719,29 @@ def _offer_target(
     retailer: str,
     offer: OfferV3,
 ) -> tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]]:
-    facts = [
-        AttributeFact(
-            key=key,
-            raw=raw,
-            evidence=_attribute_evidence(
-                product, key, offer=offer, context=context, retailer=retailer
-            ),
+    by_key = {definition.key: definition for definition in attribute_manifest()}
+    facts: list[AttributeFact] = []
+    evidence_gaps: set[str] = set()
+    for key, raw in offer.attributes.items():
+        definition = by_key.get(key)
+        if definition is None:
+            raise UnknownAttributeError(key)
+        if definition.level is not AttributeTargetLevel.OFFER:
+            raise AttributeProjectionError(
+                f"{key} belongs to {definition.level}, not {AttributeTargetLevel.OFFER}"
+            )
+        if key not in offer.attribute_evidence:
+            evidence_gaps.add(key)
+            continue
+        facts.append(
+            AttributeFact(
+                key=key,
+                raw=raw,
+                evidence=_attribute_evidence(
+                    product, key, offer=offer, context=context, retailer=retailer
+                ),
+            )
         )
-        for key, raw in offer.attributes.items()
-    ]
     latest = offer.series.price[-1]
     regular = offer.series.regular[-1] if offer.series.regular is not None else None
     if latest is not None:
@@ -743,6 +771,8 @@ def _offer_target(
     else:
         missing.setdefault("price_minor", AttributeState.NOT_OBSERVED)
         missing.setdefault("regular_price_minor", AttributeState.NOT_PUBLISHED)
+    for key in evidence_gaps:
+        missing.pop(key, None)
     return (
         AttributeTarget(
             id=f"{product.id}:offer:{context}",
@@ -772,10 +802,9 @@ def _variant_targets(
         if variants
         else [(offer.sku or "", None, None)]
     )
-    shade_covered = content is not None and ContentField.SHADE in content.captured
     gtin_covered = content is not None and ContentField.GTIN in content.captured
     out: list[tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]]] = []
-    for index, (sku, shade, gtin) in enumerate(rows):
+    for index, (sku, _shade, gtin) in enumerate(rows):
         facts = [
             AttributeFact(
                 key="retailer_sku",
@@ -785,20 +814,6 @@ def _variant_targets(
                 ),
             )
         ]
-        if shade is not None:
-            facts.append(
-                AttributeFact(
-                    key="shade_name",
-                    raw=shade,
-                    evidence=_fixed_evidence(
-                        offer,
-                        f"offer.content.variants[{index}].shade",
-                        context,
-                        retailer,
-                        shade,
-                    ),
-                )
-            )
         if gtin is not None:
             facts.append(
                 AttributeFact(
@@ -844,10 +859,6 @@ def _variant_targets(
             )
         present = {fact.key for fact in facts}
         missing = _profile_missing(ds, AttributeTargetLevel.VARIANT, present)
-        missing.setdefault(
-            "shade_name",
-            AttributeState.NOT_PUBLISHED if shade_covered else AttributeState.NOT_OBSERVED,
-        )
         missing.setdefault(
             "gtin",
             AttributeState.NOT_PUBLISHED if gtin_covered else AttributeState.NOT_OBSERVED,

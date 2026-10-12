@@ -24,6 +24,7 @@ from pi_api.attributes import (
     project_target,
 )
 from pi_api.catalog import InvalidQueryError, StaleCursorError
+from pi_dataset import AttributeEvidence, AttributeSource, ContentField, OfferContent, OfferVariant
 
 
 def test_manifest_is_the_reviewed_154_unique_definitions() -> None:
@@ -138,6 +139,80 @@ def test_saved_product_projects_exactly_154_slots_for_every_entity() -> None:
     assert price.evidence[0].context == "shop_a"
     assert all(row["slots"] == 154 for row in coverage_rows(dataset))
     assert coverage_rows(dataset) == coverage_rows(dataset)
+
+
+def test_variant_shade_does_not_cross_the_product_level_contract() -> None:
+    dataset = own_keys(served_dataset())
+    product = next(item for item in dataset.products if item.id == "p01")
+    offer = product.offers["shop_a"].model_copy(
+        update={
+            "content": OfferContent(
+                captured=(ContentField.SHADE,),
+                variants=(OfferVariant(sku="shop-a-ruby", shade="Ruby", gtin=None),),
+            )
+        }
+    )
+    product = product.model_copy(
+        update={
+            "offers": {**product.offers, "shop_a": offer},
+            "attributes": {**product.attributes, "shade_name": "Catalog Ruby"},
+            "attribute_evidence": {
+                **product.attribute_evidence,
+                "shade_name": AttributeEvidence(
+                    source=AttributeSource.PAGE,
+                    field="attributes.shadeName",
+                    excerpt="Catalog Ruby",
+                    rule=None,
+                ),
+            },
+        }
+    )
+    dataset = dataset.model_copy(
+        update={
+            "products": tuple(
+                product if item.id == product.id else item for item in dataset.products
+            )
+        }
+    )
+
+    by_target = {
+        target.id: {slot.definition.key: slot for slot in slots}
+        for target, slots in product_attribute_slots(dataset, product)
+    }
+
+    product_shade = by_target["p01:product"]["shade_name"]
+    variant_shade = by_target["p01:variant:shop_a:0"]["shade_name"]
+    assert product_shade.state is AttributeState.OBSERVED
+    assert product_shade.value is not None
+    assert product_shade.value.kind == "text"
+    assert product_shade.value.text == "Catalog Ruby"
+    assert variant_shade.state is AttributeState.NOT_APPLICABLE
+    assert by_target["p01:variant:shop_a:0"]["retailer_sku"].state is AttributeState.OBSERVED
+
+
+def test_saved_value_without_field_evidence_is_withheld_as_unknown() -> None:
+    dataset = own_keys(served_dataset())
+    product = next(item for item in dataset.products if item.id == "p01").model_copy(
+        update={"attributes": {"concentration": "edp"}}
+    )
+    dataset = dataset.model_copy(
+        update={
+            "products": tuple(
+                product if item.id == product.id else item for item in dataset.products
+            )
+        }
+    )
+
+    by_target = {
+        target.id: {slot.definition.key: slot for slot in slots}
+        for target, slots in product_attribute_slots(dataset, product)
+    }
+
+    concentration = by_target["p01:master"]["concentration"]
+    assert concentration.state is AttributeState.UNKNOWN
+    assert concentration.value is None
+    assert concentration.evidence == ()
+    assert concentration.raw_value is None
 
 
 def test_attribute_page_is_bounded_filter_bound_and_generation_bound() -> None:
