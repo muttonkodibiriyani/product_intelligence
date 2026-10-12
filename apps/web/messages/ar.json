@@ -467,6 +467,59 @@
     "content": {
       "not_published": "غير منشور",
       "not_captured": "غير مُلتقَط"
+    },
+    "attributes": {
+      "title": "مصفوفة السمات",
+      "hint": "154 حقلاً ذا إصدار لكل كيان. لا تُستبدل الأدلة المفقودة أو المتعارضة أو غير الصالحة بقيمة متجر آخر.",
+      "loading": "جارٍ تحميل أدلة السمات…",
+      "filters": "مرشحات السمات",
+      "target": "الكيان",
+      "state": "حالة الدليل",
+      "search": "البحث في الحقول",
+      "searchPlaceholder": "اسم الحقل أو المفتاح…",
+      "allStates": "كل الحالات",
+      "result": "عرض {visible} من {total} حقلاً مطابقاً · {definitions} تعريفاً في العقد",
+      "coverage": "{slots} خانة في هذا الكيان",
+      "caption": "قيم السمات المكتوبة وأدلة الحقول",
+      "field": "الحقل",
+      "type": "المستوى / النوع",
+      "value": "القيمة",
+      "evidence": "دليل الحقل",
+      "noEvidence": "لا يوجد دليل حقل مؤكد",
+      "observedAt": "رُصد في {date}",
+      "moreEvidence": "{count, plural, one {سجل دليل إضافي} two {سجلا دليل إضافيان} few {{n} سجلات دليل إضافية} many {{n} سجل دليل إضافي} other {{n} سجل دليل إضافي}}",
+      "conflict": "قيم متعارضة؛ لم تُختر قيمة فائزة",
+      "invalid": "قيمة ملتقطة غير صالحة",
+      "empty": "لا توجد حقول تطابق هذه المرشحات.",
+      "pagination": "صفحات السمات",
+      "previous": "السابق",
+      "next": "التالي",
+      "page": "الصفحة {page} من {pages}",
+      "levels": {
+        "master": "الرئيسي",
+        "product": "المنتج",
+        "offer": "العرض",
+        "variant": "الخيار"
+      },
+      "kinds": {
+        "text": "نص",
+        "enum": "تعداد",
+        "integer": "عدد صحيح",
+        "decimal": "رقم عشري",
+        "money": "مبلغ",
+        "boolean": "منطقي",
+        "list": "قائمة",
+        "object": "كائن"
+      },
+      "states": {
+        "observed": "مرصود",
+        "not_published": "غير منشور",
+        "not_observed": "غير مرصود",
+        "unknown": "غير معروف",
+        "conflict": "متعارض",
+        "invalid": "غير صالح",
+        "not_applicable": "غير منطبق"
+      }
     }
   },
   "compare": {
