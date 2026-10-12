@@ -7,8 +7,12 @@ retailer's observation for another retailer.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -17,11 +21,14 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, JsonValue, ValidationError, model_validator
 
+from pi_api.catalog import InvalidQueryError, StaleCursorError
+from pi_api.content import unpacked
 from pi_capture.registry import ATTRIBUTES, BaseType, type_spec
-from pi_dataset import ContractModel, MoneyValue
+from pi_dataset import ContentField, ContractModel, DatasetV3, MoneyValue, OfferV3, ProductV3
 from pi_dataset.profiles import AttributeDef as ProfileAttributeDef
 from pi_dataset.profiles import AttributeType as ProfileAttributeType
 from pi_dataset.profiles import committed_profile
+from pi_metrics import Metric, Status
 
 ATTRIBUTE_MANIFEST_VERSION: Literal["requirements-v2+beauty2+variant-relationships@1"] = (
     "requirements-v2+beauty2+variant-relationships@1"
@@ -498,3 +505,510 @@ def project_target(  # noqa: PLR0912 - explicit evidence-state precedence
             )
         )
     return tuple(slots)
+
+
+class AttributeQuery(ContractModel):
+    market: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+    scope: str | None = Field(default=None, min_length=1, max_length=120)
+    target: str | None = Field(default=None, min_length=1, max_length=300)
+    level: AttributeTargetLevel | None = None
+    state: AttributeState | None = None
+    group: str | None = Field(default=None, min_length=1, max_length=80)
+    q: str | None = Field(default=None, min_length=1, max_length=120)
+    limit: int = Field(default=25, ge=10, le=50)
+    cursor: str | None = Field(default=None, max_length=512)
+
+
+class AttributeTargetSummary(ContractModel):
+    target: AttributeTarget
+    slot_count: Literal[154] = 154
+    states: dict[AttributeState, int]
+
+
+class AttributePage(ContractModel):
+    manifest_version: Literal["requirements-v2+beauty2+variant-relationships@1"] = (
+        ATTRIBUTE_MANIFEST_VERSION
+    )
+    definition_count: Literal[154] = 154
+    slot_total: int
+    total: int
+    next_cursor: str | None
+    targets: tuple[AttributeTargetSummary, ...]
+    items: tuple[AttributeSlot, ...]
+
+
+def _public_evidence(  # noqa: PLR0913 - one bounded public evidence record
+    *,
+    source: str,
+    field: str,
+    excerpt: str | None = None,
+    captured_at: datetime | None = None,
+    context: str | None = None,
+    retailer: str | None = None,
+) -> tuple[AttributeFieldEvidence, ...]:
+    return (
+        AttributeFieldEvidence(
+            source=source[:40],
+            field=field[:160],
+            excerpt=excerpt[:120] if excerpt is not None else None,
+            captured_at=captured_at,
+            context=context,
+            retailer=retailer,
+        ),
+    )
+
+
+def _attribute_evidence(
+    product: ProductV3,
+    key: str,
+    *,
+    offer: OfferV3 | None = None,
+    context: str | None = None,
+    retailer: str | None = None,
+) -> tuple[AttributeFieldEvidence, ...]:
+    evidence = (
+        offer.attribute_evidence.get(key)
+        if offer is not None
+        else product.attribute_evidence.get(key)
+    )
+    if evidence is None:
+        raise AttributeProjectionError(f"{key} has no field evidence")
+    return _public_evidence(
+        source=evidence.source.value,
+        field=evidence.field,
+        excerpt=evidence.excerpt,
+        captured_at=offer.evidence.captured_at if offer is not None else None,
+        context=context,
+        retailer=retailer,
+    )
+
+
+def _fixed_evidence(
+    offer: OfferV3,
+    field: str,
+    context: str,
+    retailer: str,
+    excerpt: str | None = None,
+) -> tuple[AttributeFieldEvidence, ...]:
+    return _public_evidence(
+        source="dataset",
+        field=field,
+        excerpt=excerpt,
+        captured_at=offer.evidence.captured_at,
+        context=context,
+        retailer=retailer,
+    )
+
+
+def _profile_missing(
+    ds: DatasetV3,
+    level: AttributeTargetLevel,
+    present: set[str],
+) -> dict[str, AttributeState]:
+    by_key = {definition.key: definition for definition in attribute_manifest()}
+    missing: dict[str, AttributeState] = {}
+    for declared in ds.meta.attribute_set:
+        definition = by_key.get(declared.key)
+        if definition is None:
+            raise UnknownAttributeError(declared.key)
+        if definition.level is level and definition.key not in present:
+            missing[definition.key] = (
+                AttributeState.NOT_PUBLISHED
+                if declared.capability
+                else AttributeState.NOT_OBSERVED
+            )
+    return missing
+
+
+def _global_targets(
+    ds: DatasetV3, product: ProductV3
+) -> list[tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]]]:
+    by_key = {definition.key: definition for definition in attribute_manifest()}
+    facts: dict[AttributeTargetLevel, list[AttributeFact]] = {
+        AttributeTargetLevel.MASTER: [
+            AttributeFact(
+                key="brand",
+                raw=product.brand,
+                evidence=_public_evidence(source="dataset", field="product.brand"),
+            )
+        ],
+        AttributeTargetLevel.PRODUCT: [
+            AttributeFact(
+                key="title",
+                raw=product.name,
+                evidence=_public_evidence(source="dataset", field="product.name"),
+            )
+        ],
+        AttributeTargetLevel.OFFER: [],
+        AttributeTargetLevel.VARIANT: [],
+    }
+    for key, raw in product.attributes.items():
+        definition = by_key.get(key)
+        if definition is None:
+            raise UnknownAttributeError(key)
+        facts[definition.level].append(
+            AttributeFact(key=key, raw=raw, evidence=_attribute_evidence(product, key))
+        )
+
+    owner = {context.id: context.retailer for context in ds.meta.contexts}
+    description_covered = False
+    for context, offer in sorted(product.offers.items()):
+        content = unpacked(offer.content)
+        if content is None:
+            continue
+        if ContentField.DESCRIPTION in content.captured:
+            description_covered = True
+        if content.description is not None:
+            facts[AttributeTargetLevel.PRODUCT].append(
+                AttributeFact(
+                    key="description",
+                    raw=content.description,
+                    evidence=_fixed_evidence(
+                        offer,
+                        "offer.content.description",
+                        context,
+                        owner[context],
+                        content.description,
+                    ),
+                )
+            )
+
+    master_present = {fact.key for fact in facts[AttributeTargetLevel.MASTER]}
+    product_present = {fact.key for fact in facts[AttributeTargetLevel.PRODUCT]}
+    master_missing = _profile_missing(ds, AttributeTargetLevel.MASTER, master_present)
+    product_missing = _profile_missing(ds, AttributeTargetLevel.PRODUCT, product_present)
+    if "description" not in product_present:
+        product_missing["description"] = (
+            AttributeState.NOT_PUBLISHED
+            if description_covered
+            else AttributeState.NOT_OBSERVED
+        )
+    return [
+        (
+            AttributeTarget(
+                id=f"{product.id}:master",
+                level=AttributeTargetLevel.MASTER,
+                label=f"{product.brand} master",
+            ),
+            tuple(facts[AttributeTargetLevel.MASTER]),
+            master_missing,
+        ),
+        (
+            AttributeTarget(
+                id=f"{product.id}:product",
+                level=AttributeTargetLevel.PRODUCT,
+                label=product.name,
+            ),
+            tuple(facts[AttributeTargetLevel.PRODUCT]),
+            product_missing,
+        ),
+    ]
+
+
+def _offer_target(
+    ds: DatasetV3,
+    product: ProductV3,
+    context: str,
+    retailer: str,
+    offer: OfferV3,
+) -> tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]]:
+    facts = [
+        AttributeFact(
+            key=key,
+            raw=raw,
+            evidence=_attribute_evidence(
+                product, key, offer=offer, context=context, retailer=retailer
+            ),
+        )
+        for key, raw in offer.attributes.items()
+    ]
+    latest = offer.series.price[-1]
+    regular = offer.series.regular[-1] if offer.series.regular is not None else None
+    if latest is not None:
+        facts.append(
+            AttributeFact(
+                key="price_minor",
+                raw=latest.model_dump(mode="json", by_alias=True),
+                evidence=_fixed_evidence(offer, "offer.series.price[-1]", context, retailer),
+            )
+        )
+    if regular is not None:
+        facts.append(
+            AttributeFact(
+                key="regular_price_minor",
+                raw=regular.model_dump(mode="json", by_alias=True),
+                evidence=_fixed_evidence(offer, "offer.series.regular[-1]", context, retailer),
+            )
+        )
+    present = {fact.key for fact in facts}
+    missing = _profile_missing(ds, AttributeTargetLevel.OFFER, present)
+    if offer.not_observed_reason is not None:
+        missing |= {
+            definition.key: AttributeState.NOT_OBSERVED
+            for definition in attribute_manifest()
+            if definition.level is AttributeTargetLevel.OFFER and definition.key not in present
+        }
+    else:
+        missing.setdefault("price_minor", AttributeState.NOT_OBSERVED)
+        missing.setdefault("regular_price_minor", AttributeState.NOT_PUBLISHED)
+    return (
+        AttributeTarget(
+            id=f"{product.id}:offer:{context}",
+            level=AttributeTargetLevel.OFFER,
+            label=f"{retailer} offer",
+            context=context,
+            retailer=retailer,
+        ),
+        tuple(facts),
+        missing,
+    )
+
+
+def _variant_targets(
+    ds: DatasetV3,
+    product: ProductV3,
+    context: str,
+    retailer: str,
+    offer: OfferV3,
+) -> list[tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]]]:
+    content = unpacked(offer.content)
+    variants = list(content.variants) if content is not None else []
+    if not variants and offer.sku is None:
+        return []
+    rows: list[tuple[str, str | None, str | None]] = (
+        [(variant.sku, variant.shade, variant.gtin) for variant in variants]
+        if variants
+        else [(offer.sku or "", None, None)]
+    )
+    shade_covered = content is not None and ContentField.SHADE in content.captured
+    gtin_covered = content is not None and ContentField.GTIN in content.captured
+    out: list[tuple[AttributeTarget, tuple[AttributeFact, ...], dict[str, AttributeState]]] = []
+    for index, (sku, shade, gtin) in enumerate(rows):
+        facts = [
+            AttributeFact(
+                key="retailer_sku",
+                raw=sku,
+                evidence=_fixed_evidence(
+                    offer, f"offer.content.variants[{index}].sku", context, retailer, sku
+                ),
+            )
+        ]
+        if shade is not None:
+            facts.append(
+                AttributeFact(
+                    key="shade_name",
+                    raw=shade,
+                    evidence=_fixed_evidence(
+                        offer,
+                        f"offer.content.variants[{index}].shade",
+                        context,
+                        retailer,
+                        shade,
+                    ),
+                )
+            )
+        if gtin is not None:
+            facts.append(
+                AttributeFact(
+                    key="gtin",
+                    raw=gtin,
+                    evidence=_fixed_evidence(
+                        offer,
+                        f"offer.content.variants[{index}].gtin",
+                        context,
+                        retailer,
+                        gtin,
+                    ),
+                )
+            )
+        if offer.size is not None:
+            size_values = {
+                "size_label": offer.size.label,
+                "size_system": offer.size.system,
+                "size_value": offer.size.value,
+                "size_unit": offer.size.unit,
+            }
+            facts.extend(
+                AttributeFact(
+                    key=key,
+                    raw=value,
+                    evidence=_fixed_evidence(offer, f"offer.size.{key[5:]}", context, retailer),
+                )
+                for key, value in size_values.items()
+                if value is not None
+            )
+        if content is not None and (content.family is not None or len(rows) > 1):
+            facts.append(
+                AttributeFact(
+                    key="variant_relationships",
+                    raw={
+                        "family": content.family,
+                        "siblings": [other for other, _, _ in rows if other != sku],
+                    },
+                    evidence=_fixed_evidence(
+                        offer, "offer.content.family", context, retailer, content.family
+                    ),
+                )
+            )
+        present = {fact.key for fact in facts}
+        missing = _profile_missing(ds, AttributeTargetLevel.VARIANT, present)
+        missing.setdefault(
+            "shade_name",
+            AttributeState.NOT_PUBLISHED if shade_covered else AttributeState.NOT_OBSERVED,
+        )
+        missing.setdefault(
+            "gtin",
+            AttributeState.NOT_PUBLISHED if gtin_covered else AttributeState.NOT_OBSERVED,
+        )
+        if offer.size is None:
+            for key in ("size_label", "size_system", "size_value", "size_unit"):
+                missing[key] = (
+                    AttributeState.NOT_PUBLISHED
+                    if ds.meta.capabilities.sizes
+                    else AttributeState.NOT_OBSERVED
+                )
+        out.append(
+            (
+                AttributeTarget(
+                    id=f"{product.id}:variant:{context}:{index}",
+                    level=AttributeTargetLevel.VARIANT,
+                    label=sku,
+                    context=context,
+                    retailer=retailer,
+                ),
+                tuple(facts),
+                missing,
+            )
+        )
+    return out
+
+
+def product_attribute_slots(
+    ds: DatasetV3, product: ProductV3
+) -> tuple[tuple[AttributeTarget, tuple[AttributeSlot, ...]], ...]:
+    """Every target for a product, each with exactly the same 154 versioned slots."""
+
+    owner = {context.id: context.retailer for context in ds.meta.contexts}
+    inputs = _global_targets(ds, product)
+    for context, offer in sorted(product.offers.items()):
+        retailer = owner[context]
+        inputs.append(_offer_target(ds, product, context, retailer, offer))
+        inputs.extend(_variant_targets(ds, product, context, retailer, offer))
+    return tuple(
+        (target, project_target(target, facts, missing))
+        for target, facts, missing in inputs
+    )
+
+
+def _query_digest(query: AttributeQuery) -> str:
+    fields = query.model_dump(mode="json", exclude={"cursor", "limit"})
+    raw = json.dumps(fields, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _encode_cursor(generation: str, offset: int, digest: str) -> str:
+    raw = json.dumps({"g": generation, "o": offset, "f": digest}, separators=(",", ":"))
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str, generation: str, digest: str) -> int:
+    try:
+        raw = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+        cursor_generation, offset, cursor_digest = raw["g"], raw["o"], raw["f"]
+    except (binascii.Error, ValueError, KeyError, TypeError):
+        raise InvalidQueryError("cursor is not valid") from None
+    if not isinstance(offset, int) or offset < 0:
+        raise InvalidQueryError("cursor is not valid")
+    if cursor_digest != digest:
+        raise InvalidQueryError("cursor belongs to different filters")
+    if cursor_generation != generation:
+        raise StaleCursorError
+    return offset
+
+
+def _matches(slot: AttributeSlot, query: AttributeQuery) -> bool:
+    if query.level is not None and slot.definition.level is not query.level:
+        return False
+    if query.state is not None and slot.state is not query.state:
+        return False
+    if query.group is not None and slot.definition.group != query.group:
+        return False
+    if query.q is None:
+        return True
+    needle = query.q.casefold()
+    haystack = " ".join(
+        filter(
+            None,
+            (
+                slot.definition.key,
+                slot.definition.label.en,
+                slot.definition.label.ar,
+                slot.definition.group,
+                slot.state.value,
+            ),
+        )
+    ).casefold()
+    return needle in haystack
+
+
+def attribute_page(
+    ds: DatasetV3,
+    product: ProductV3,
+    generation: str,
+    query: AttributeQuery,
+) -> Metric[AttributePage]:
+    projected = product_attribute_slots(ds, product)
+    if query.target is not None and query.target not in {target.id for target, _ in projected}:
+        raise InvalidQueryError("unknown attribute target")
+    selected = [
+        slot
+        for target, slots in projected
+        if query.target is None or target.id == query.target
+        for slot in slots
+        if _matches(slot, query)
+    ]
+    digest = _query_digest(query)
+    offset = 0 if query.cursor is None else _decode_cursor(query.cursor, generation, digest)
+    page = selected[offset : offset + query.limit]
+    end = offset + len(page)
+    summaries = tuple(
+        AttributeTargetSummary(
+            target=target,
+            states=dict(Counter(slot.state for slot in slots)),
+        )
+        for target, slots in projected
+    )
+    return Metric[AttributePage](
+        status=Status.OK,
+        data=AttributePage(
+            slot_total=sum(len(slots) for _, slots in projected),
+            total=len(selected),
+            next_cursor=(
+                _encode_cursor(generation, end, digest) if end < len(selected) else None
+            ),
+            targets=summaries,
+            items=tuple(page),
+        ),
+        as_of=ds.meta.dates[-1],
+    )
+
+
+def coverage_rows(ds: DatasetV3) -> tuple[dict[str, str | int], ...]:
+    """Deterministic, secret-free entity coverage receipt for a validated saved catalog."""
+
+    rows = []
+    for product in sorted(ds.products, key=lambda item: item.id):
+        for target, slots in product_attribute_slots(ds, product):
+            rows.append(
+                {
+                    "product": product.id,
+                    "target": target.id,
+                    "level": target.level.value,
+                    "retailer": target.retailer or "",
+                    "slots": len(slots),
+                    "observed": sum(slot.state is AttributeState.OBSERVED for slot in slots),
+                    "invalid": sum(slot.state is AttributeState.INVALID for slot in slots),
+                    "conflict": sum(slot.state is AttributeState.CONFLICT for slot in slots),
+                }
+            )
+    return tuple(rows)
