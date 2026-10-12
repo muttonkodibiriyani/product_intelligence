@@ -10,6 +10,7 @@ from pi_connector_ulta.discover import (
     discover_sitemap,
     locale_url,
     sitemap_locs,
+    strict_sitemap_locs,
 )
 from pi_fetch.pacing import RobotsRules
 
@@ -24,6 +25,7 @@ def _sitemap(*locs: str) -> str:
 
 def test_sitemap_index_from_webkit_viewer_lists_product_sitemaps_first() -> None:
     document = (FIXTURES / "ulta_ae_sitemap_index_webkit_view.html").read_text()
+    assert len(strict_sitemap_locs(document)) == 3
     children = child_sitemaps(document, ROBOTS)
     assert len(children) == 3
     assert "product-sitemap" in children[0]
@@ -72,7 +74,29 @@ def test_locale_url_switches_storefront() -> None:
         locale_url("https://www.ulta.ae/en/shop-makeup-nails", "ar")
 
 
-@pytest.mark.parametrize("document", ["<urlset>", "<html><body>hello</body></html>"])
+@pytest.mark.parametrize(
+    "document",
+    [
+        "<urlset>",
+        "<html><body>hello</body></html>",
+        "<root><loc>https://www.ulta.ae/en/buy-not-a-sitemap</loc></root>",
+    ],
+)
 def test_invalid_sitemap_raises(document: str) -> None:
     with pytest.raises(DiscoveryError):
         sitemap_locs(document)
+
+
+def test_strict_sitemap_preserves_blank_and_padded_locs_for_caller_validation() -> None:
+    document = _sitemap(" https://www.ulta.ae/en/buy-padded ", "")
+    assert strict_sitemap_locs(document) == (" https://www.ulta.ae/en/buy-padded ", "")
+
+
+def test_strict_sitemap_rejects_arbitrary_html_with_encoded_loc_text() -> None:
+    document = (
+        "<!doctype html><html><body>sitemap "
+        "&lt;loc&gt;https://www.ulta.ae/en/buy-injected&lt;/loc&gt;"
+        "</body></html>"
+    )
+    with pytest.raises(DiscoveryError, match="WebKit XML sitemap view"):
+        strict_sitemap_locs(document)
