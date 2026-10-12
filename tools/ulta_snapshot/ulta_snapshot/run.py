@@ -12,13 +12,16 @@ Writes to ``OUT_DIR`` (the loader's input layout, see ``load.py``):
 
 * ``pdp/part-<start>.jsonl.gz``: one record per page load (``html`` + robots-allowed
   ``captures``), one part per (resumed) run;
-* ``urls_full_en.txt`` (``URL_SOURCE=sitemap``): the enumerated robots-allowed EN product URLs;
+* ``urls_full_en.txt`` (``URL_SOURCE=sitemap|missing``): the enumerated robots-allowed EN
+  product URLs;
 * ``robots.txt``: the robots.txt the fetcher obeyed for www.ulta.ae (read through the same route);
 * ``progress.json``: the status file, rewritten after every page (counts, proxy bytes, GB, USD);
 * ``audit.jsonl``: the fetcher's audit events (per-page proxy bytes and abort reasons);
 * ``evidence/``: the fetcher's content-addressed raw payloads.
 
-Env: ``OUT_DIR``, ``URLS_FILE`` (one product URL per line), ``PRIOR_GB`` or ``PRIOR_BYTES``
+Env: ``OUT_DIR``, ``URL_SOURCE`` (``file``, ``sitemap`` or fail-closed ``missing``),
+``URLS_FILE`` (one product URL per line), ``SERVED_DATASET`` (required only for ``missing``),
+``PRIOR_GB`` or ``PRIOR_BYTES``
 (required; already used from the allowance, rounded up), ``OWNER_APPROVAL_REF`` (the new owner
 item id for this run; required, an ADR reference is refused),
 ``SECRET_RESOURCE`` (a pinned ``.../versions/<n>``), ``CAPTURE_JSON`` (default off),
@@ -33,6 +36,7 @@ docs/runbooks/ulta-proxy-test.md).
 
 from __future__ import annotations
 
+import fcntl
 import gzip
 import json
 import logging
@@ -53,7 +57,12 @@ from urllib.parse import urlsplit
 
 from pydantic import HttpUrl
 
-from pi_connector_ulta.discover import DiscoveryError, child_sitemaps, discover_sitemap
+from pi_connector_ulta.discover import (
+    DiscoveryError,
+    child_sitemaps,
+    discover_sitemap,
+    strict_sitemap_locs,
+)
 from pi_core import CollectionContext, FetchMethod, LadderRung, Locale, Market, SourceContext
 from pi_fetch.cache import LocalEvidenceStore
 from pi_fetch.ladder import (
@@ -75,6 +84,15 @@ from pi_fetch.proxy import (
 )
 from pi_fetch.transports.base import Transport, TransportError
 from pi_fetch.types import BrowserEngine, BrowserProfile, FetchRequest, FetchResult, PayloadKind
+from ulta_snapshot.missing import (
+    FrontendInventory,
+    MissingPlan,
+    MissingPlanError,
+    build_missing_plan,
+    load_frontend_inventory,
+    strict_sitemap_product_urls,
+    write_missing_plan,
+)
 
 SOURCE_ID = 1  # placeholder id: fetch only, nothing is written to pi_db by this job
 EGRESS = "iproyal_ae"
@@ -90,6 +108,35 @@ DONE = frozenset({"complete", "batch_complete", "enumerated"})
 PAGE_INTERVAL_S = 5.0  # the pacer's floor; a random 0-5 s is added: one page per 5-10 s
 _BYTES_PER_GB = Decimal(1000**3)
 audit_log = logging.getLogger("pi_fetch.audit")
+
+
+def _product_sitemap_children(document: str, rules: RobotsRules, *, strict: bool) -> list[str]:
+    """Validate sitemap-index locations before selecting robots-allowed product maps."""
+    index_urls = strict_sitemap_locs(document) if strict else child_sitemaps(document, rules)
+    children: list[str] = []
+    for child in index_urls:
+        parts = urlsplit(child)
+        raw_invalid = strict and (
+            child != child.strip()
+            or any(
+                character.isspace() or ord(character) < 0x20 or ord(character) == 0x7F
+                for character in child
+            )
+        )
+        if (
+            raw_invalid
+            or parts.scheme != "https"
+            or parts.netloc.lower() not in {"ulta.ae", "www.ulta.ae"}
+            or not parts.path.startswith("/")
+            or not parts.path.endswith(".xml")
+            or parts.query
+            or parts.fragment
+        ):
+            label = "child" if strict else "product"
+            raise DiscoveryError(f"invalid {label} sitemap URL: {child!r}")
+        if "product" in parts.path.rsplit("/", 1)[-1].lower() and rules.allows(child):
+            children.append(child)
+    return children
 
 
 class RecordingTagger(RobotsTagger):
@@ -246,12 +293,19 @@ class Run:
         self.stopped = "running"
         self.challenged = False  # set only by a block that stopped the source (challenge/401/403)
         self.console = extra.get("console", sys.stdout)
-        #: ``file`` (the given URLs) or ``sitemap`` (enumerate on this route, then crawl).
+        #: ``file`` (given URLs), ``sitemap`` (full enumeration) or fail-closed ``missing``.
         self.url_source: str = extra.get("url_source", "file")
         #: Resume point in the URL list and the upper bound on pages this run (None: all).
         self.start: int = extra.get("start", 0)
         self.max_pages: int | None = extra.get("max_pages")
         self.est_bytes_per_page: int | None = extra.get("est_bytes_per_page")
+        #: In missing mode, fetch only URLs absent from this exact served dataset.
+        self.frontend: FrontendInventory | None = extra.get("frontend")
+        self.missing_plan: MissingPlan | None = None
+        self.resume_auto: bool = extra.get("resume_auto", False)
+        self.protect_existing_state = self.url_source == "missing" and any(
+            (out / name).exists() for name in ("progress.json", "manifest.json")
+        )
         self.next_index = self.start
         self.batch: list[str] = []
         (out / "pdp").mkdir(parents=True, exist_ok=True)
@@ -279,6 +333,7 @@ class Run:
             "start_index": self.start,
             #: Resume here (START_INDEX=auto): every URL before it was fetched or robots-refused.
             "next_index": self.next_index,
+            "missing_plan": self.missing_plan.manifest() if self.missing_plan else None,
         }
         tmp = self.out / "progress.json.tmp"
         tmp.write_text(json.dumps(body, indent=1))
@@ -309,7 +364,9 @@ class Run:
         except RobotsRefusedError:
             self.counts["robots_refused_page"] += 1
             self.say(f"refused by robots (not fetched, 0 bytes): {url}")
-            return True
+            if self.url_source == "missing":
+                self.stopped = f"stopped: missing PDP refused by robots: {url}"
+            return self.url_source != "missing"
         except (
             SourceStoppedError,
             ProxyBudgetExceededError,
@@ -323,6 +380,7 @@ class Run:
         page_bytes = int(self.usage()["bytes_via_proxy"]) - int(before)
         self.emit(page_record(result, page_bytes))
         self.counts["pdp_fetched"] += 1
+        go_on = True
         state = result.block.kind.value if result.block else f"http {result.http_status}"
         self.say(f"page {self.counts['pdp_fetched']}: {state}, {page_bytes} bytes: {url}")
         if result.block is not None:
@@ -331,14 +389,23 @@ class Run:
                 self.challenged = True
                 self.stopped = f"stopped: {result.block.kind.value} {result.block.http_status}"
                 return False
+            if self.url_source == "missing":
+                self.stopped = (
+                    f"stopped: missing PDP {result.block.kind.value} "
+                    f"{result.block.http_status}: {url}"
+                )
+                return False
         elif result.http_status == 200:
             self.counts["pdp_ok"] += 1
         else:
             self.counts[f"http_{result.http_status}"] += 1
+            if self.url_source == "missing":
+                self.stopped = f"stopped: missing PDP http {result.http_status}: {url}"
+                go_on = False
         if self.fetcher.stopped_sources():
             self.stopped = f"stopped: {self.fetcher.stopped_sources()}"
             return False
-        return True
+        return go_on
 
     def say(self, line: str) -> None:
         print(line, file=self.console, flush=True)
@@ -366,6 +433,9 @@ class Run:
 
     def finish(self) -> None:
         """Final status file, manifest and summary line (also after a stop or a signal)."""
+        if self.protect_existing_state:
+            self.say(self.summary())
+            return
         self.progress()
         (self.out / "manifest.json").write_text(
             json.dumps(
@@ -421,12 +491,24 @@ class Run:
         text = next((t for k, t in self.robots.texts.items() if k.startswith(SITE)), None)
         return None if text is None else RobotsRules(text, self.robots.agent)
 
-    def sitemap_urls(self, ctx: CollectionContext) -> list[str] | None:  # noqa: PLR0911
+    def sitemap_urls(self, ctx: CollectionContext) -> list[str] | None:
         """Robots-allowed EN product URLs from the sitemap index and its product sitemaps,
         written to ``urls_full_en.txt``; reused (never re-fetched) when that file exists."""
+        lock_path = self.out / ".sitemap.lock"
+        with lock_path.open("a+b") as lock:
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                self.stopped = "stopped: another sitemap planner holds this OUT_DIR"
+                return None
+            return self._sitemap_urls_locked(ctx)
+
+    def _sitemap_urls_locked(self, ctx: CollectionContext) -> list[str] | None:  # noqa: PLR0911
+        """The sitemap transaction while this output directory's process lock is held."""
         saved = self.out / URLS_FULL
         if saved.exists():
-            urls = [u for u in saved.read_text().splitlines() if u.strip()]
+            lines = saved.read_text().splitlines()
+            urls = lines if self.url_source == "missing" else [u for u in lines if u.strip()]
             self.say(f"SITEMAP: reusing {URLS_FULL} ({len(urls)} urls), nothing re-fetched")
             return urls
         index = self.document(SITEMAP_INDEX, ctx)
@@ -436,7 +518,7 @@ class Run:
                 self.stopped = "stopped: robots.txt unavailable (fail closed)"
             return None
         try:
-            children = [u for u in child_sitemaps(index, rules) if "product" in u]
+            children = _product_sitemap_children(index, rules, strict=self.url_source == "missing")
         except DiscoveryError as exc:
             self.stopped = f"stopped: sitemap index unreadable: {exc}"
             return None
@@ -450,11 +532,17 @@ class Run:
             if doc is None:
                 return None
             try:
-                keys = discover_sitemap(doc, rules)
-            except DiscoveryError as exc:
+                if self.url_source == "missing":
+                    product_urls = strict_sitemap_product_urls(strict_sitemap_locs(doc))
+                    found.update(url for url in product_urls if rules.allows(url))
+                else:
+                    keys = discover_sitemap(doc, rules)
+                    found.update(
+                        key.product_url for key in keys if key.product_url.startswith(f"{BASE}/en/")
+                    )
+            except (DiscoveryError, MissingPlanError) as exc:
                 self.stopped = f"stopped: product sitemap unreadable: {child}: {exc}"
                 return None
-            found.update(k.product_url for k in keys if k.product_url.startswith(f"{BASE}/en/"))
         urls = sorted(found)
         tmp = saved.with_suffix(".tmp")
         tmp.write_text("".join(f"{u}\n" for u in urls))
@@ -473,20 +561,91 @@ class Run:
         size = f"est {gb(n * per)} GB" if per else "est ? GB (set EST_BYTES_PER_PAGE)"
         return f"est {low:.1f}-{high:.1f} h, {size}"
 
-    def run(self, ctx: CollectionContext) -> None:
-        if self.url_source == "sitemap":
-            urls = self.sitemap_urls(ctx)
-            if urls is None:
+    def validate_missing_resume(self, plan: MissingPlan) -> None:
+        """Tie an existing cursor to this exact missing-page plan, or fail closed."""
+        previous_path = self.out / "progress.json"
+        if not previous_path.exists():
+            if self.resume_auto:
+                raise MissingPlanError("START_INDEX=auto requires matching prior progress")
+            if self.start != 0:
+                raise MissingPlanError("a non-zero START_INDEX requires matching prior progress")
+            return
+        try:
+            previous = json.loads(previous_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise MissingPlanError(f"prior progress is unreadable: {exc}") from exc
+        if not isinstance(previous, dict):
+            raise MissingPlanError("prior progress is not an object")
+        if previous.get("url_source") != "missing":
+            raise MissingPlanError("prior progress belongs to a different URL source")
+        if previous.get("missing_plan") != plan.manifest():
+            raise MissingPlanError("prior progress belongs to a different missing-page plan")
+        cursor = previous.get("next_index")
+        if type(cursor) is not int or not 0 <= cursor <= len(plan.missing_urls):
+            raise MissingPlanError("prior progress has an invalid next_index")
+        if self.resume_auto and self.start != cursor:
+            raise MissingPlanError("START_INDEX=auto does not match prior progress")
+        if not self.resume_auto and self.start != 0:
+            raise MissingPlanError("resume missing-page captures with START_INDEX=auto")
+
+    def prepare_missing_urls(self, urls: list[str]) -> list[str] | None:
+        """Commit one exact page-difference plan before allowing any PDP request."""
+        try:
+            if self.frontend is None:
+                raise MissingPlanError("missing mode requires a served frontend dataset")
+            plan = build_missing_plan(urls, self.frontend)
+            self.validate_missing_resume(plan)
+            write_missing_plan(self.out, plan)
+        except MissingPlanError as exc:
+            self.stopped = f"stopped: missing-only plan refused: {exc}"
+            self.protect_existing_state = True
+            return None
+        archive_previous(self.out)
+        self.protect_existing_state = False
+        self.missing_plan = plan
+        self.counts["frontend_urls"] = len(plan.inventory.urls)
+        self.counts["frontend_urls_in_sitemap"] = len(
+            plan.inventory.urls.intersection(plan.sitemap_urls)
+        )
+        self.counts["missing_urls"] = len(plan.missing_urls)
+        self.counts["frontend_urls_not_in_sitemap"] = len(plan.frontend_not_in_sitemap)
+        self.say(
+            f"SITEMAP: {len(plan.sitemap_urls)} urls; frontend "
+            f"{len(plan.inventory.urls)} urls; missing {len(plan.missing_urls)}, "
+            f"{self.estimate(len(plan.missing_urls))}"
+        )
+        self.say(
+            "MISSING-ONLY: frontend URLs absent from this sitemap are not_observed; "
+            "never removed or out of stock"
+        )
+        return list(plan.missing_urls)
+
+    def prepare_sitemap_urls(self, ctx: CollectionContext) -> list[str] | None:
+        """Enumerate one sitemap and optionally reduce it to the committed missing plan."""
+        urls = self.sitemap_urls(ctx)
+        if urls is None:
+            if not self.protect_existing_state:
                 self.progress()
+            return None
+        if not urls:
+            self.stopped = "stopped: sitemap gave no robots-allowed EN product URLs"
+            return None
+        self.counts["discovered"] = len(urls)
+        if self.url_source == "missing":
+            return self.prepare_missing_urls(urls)
+        self.say(f"SITEMAP: {len(urls)} urls, {self.estimate(len(urls))}")
+        return urls
+
+    def run(self, ctx: CollectionContext) -> None:
+        if self.url_source in {"sitemap", "missing"}:
+            urls = self.prepare_sitemap_urls(ctx)
+            if urls is None:
                 return
             self.urls = urls
-            self.say(f"SITEMAP: {len(urls)} urls, {self.estimate(len(urls))}")
-            if not urls:
-                self.stopped = "stopped: sitemap gave no robots-allowed EN product URLs"
-                return
         end = len(self.urls) if self.max_pages is None else self.start + self.max_pages
         self.batch = self.urls[self.start : end]
-        self.counts["discovered"] = len(self.urls)
+        if "discovered" not in self.counts:
+            self.counts["discovered"] = len(self.urls)
         if self.max_pages == 0:
             self.stopped = "enumerated"
             return
@@ -504,8 +663,11 @@ class Run:
             self.progress()
             if not go_on:
                 return
-        whole = self.start == 0 and self.next_index >= len(self.urls)
-        self.stopped = "complete" if whole else "batch_complete"
+        whole = self.max_pages is None and self.start == 0 and self.next_index >= len(self.urls)
+        if self.url_source == "missing" and self.counts["pdp_ok"] != len(self.batch):
+            self.stopped = "stopped: missing-page capture incomplete"
+        else:
+            self.stopped = "complete" if whole else "batch_complete"
 
 
 def make_run(  # noqa: PLR0913 - keyword-only test seams
@@ -553,23 +715,36 @@ def make_run(  # noqa: PLR0913 - keyword-only test seams
 def run_options(env: Mapping[str, str], out: Path) -> dict[str, Any]:
     """URL source, resume point, page bound and estimate input from the environment.
 
-    ``URL_SOURCE`` ``file`` (default: ``URLS_FILE``) or ``sitemap``; ``MAX_PAGES`` a number
-    (``0``: enumerate only) or ``all``; ``START_INDEX`` a number or ``auto`` (the previous run's
-    ``next_index`` in ``OUT_DIR/progress.json``); ``EST_BYTES_PER_PAGE`` from the test manifest.
+    ``URL_SOURCE`` ``file`` (default: ``URLS_FILE``), ``sitemap`` or ``missing``; ``MAX_PAGES`` a
+    number (``0``: enumerate only) or ``all``; ``START_INDEX`` a number or ``auto`` (the previous
+    run's ``next_index`` in ``OUT_DIR/progress.json``); ``EST_BYTES_PER_PAGE`` from the test
+    manifest. ``missing`` additionally validates that cursor against its exact hash-pinned plan.
     """
     source = env.get("URL_SOURCE", "file")
-    if source not in {"file", "sitemap"}:
-        msg = f"URL_SOURCE must be file or sitemap, not {source!r}"
+    if source not in {"file", "sitemap", "missing"}:
+        msg = f"URL_SOURCE must be file, sitemap or missing, not {source!r}"
         raise SystemExit(msg)
     raw_max = env.get("MAX_PAGES", "20").strip().lower()
     start_raw = env.get("START_INDEX", "0").strip().lower()
     previous = out / "progress.json"
     if start_raw == "auto":
-        start = (
-            int(json.loads(previous.read_text()).get("next_index", 0)) if previous.exists() else 0
-        )
+        if not previous.exists():
+            if source == "missing":
+                raise SystemExit("START_INDEX=auto requires prior progress in missing mode")
+            start = 0
+        else:
+            try:
+                previous_doc = json.loads(previous.read_text())
+                cursor = previous_doc["next_index"]
+            except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+                raise SystemExit(f"START_INDEX=auto cannot read prior progress: {exc}") from exc
+            if type(cursor) is not int:
+                raise SystemExit("START_INDEX=auto requires an integer prior next_index")
+            start = cursor
     else:
         start = int(start_raw)
+    if source == "missing" and start != 0:
+        raise SystemExit("resume missing-page captures with START_INDEX=auto")
     est = env.get("EST_BYTES_PER_PAGE", "").strip()
     if start < 0 or (raw_max != "all" and int(raw_max) < 0):
         msg = "START_INDEX and MAX_PAGES must not be negative"
@@ -577,6 +752,7 @@ def run_options(env: Mapping[str, str], out: Path) -> dict[str, Any]:
     return {
         "url_source": source,
         "start": start,
+        "resume_auto": start_raw == "auto",
         "max_pages": None if raw_max == "all" else int(raw_max),
         "est_bytes_per_page": int(est) if est else None,
     }
@@ -627,6 +803,17 @@ def owner_item(env: Mapping[str, str]) -> str:
     return ref
 
 
+def pinned_secret_resource(env: Mapping[str, str]) -> str:
+    """Require an explicit numeric secret version for this paid, audited Ulta run."""
+    resource = env.get("SECRET_RESOURCE", "").strip()
+    prefix = "projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/"
+    version = resource.removeprefix(prefix)
+    if not resource.startswith(prefix) or not version.isdigit() or int(version) < 1:
+        msg = f"SECRET_RESOURCE must be {prefix}<positive integer>, never latest"
+        raise SystemExit(msg)
+    return resource
+
+
 def prior_bytes(env: Mapping[str, str]) -> int:
     """Bytes already used from the allowance: ``PRIOR_BYTES``, else ``PRIOR_GB`` (the IPRoyal
     dashboard figure) rounded up to a whole byte. One of them is required: no default of 0."""
@@ -642,6 +829,15 @@ def main() -> int:
     out = Path(os.environ["OUT_DIR"])
     out.mkdir(parents=True, exist_ok=True)
     options = run_options(os.environ, out)
+    served = os.environ.get("SERVED_DATASET", "").strip()
+    if options["url_source"] == "missing" and not served:
+        raise SystemExit("URL_SOURCE=missing requires SERVED_DATASET")
+    if served and options["url_source"] != "missing":
+        raise SystemExit("SERVED_DATASET requires URL_SOURCE=missing")
+    try:
+        frontend = load_frontend_inventory(Path(served)) if served else None
+    except MissingPlanError as exc:
+        raise SystemExit(f"SERVED_DATASET refused: {exc}") from exc
     prior, prior_note = floored_prior(os.environ, out)
     urls = []
     if options["url_source"] == "file":
@@ -650,7 +846,7 @@ def main() -> int:
     pol = policy(
         prior,
         owner_item(os.environ),
-        os.environ["SECRET_RESOURCE"],
+        pinned_secret_resource(os.environ),
     )
     run = make_run(
         out,
@@ -658,6 +854,7 @@ def main() -> int:
         pol,
         SecretManagerReader(token=operator_token()),
         capture_json=os.environ.get("CAPTURE_JSON") == "1",
+        frontend=frontend,
         **options,
     )
 
@@ -667,7 +864,8 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
-    archive_previous(out)  # only once setup has succeeded
+    if options["url_source"] != "missing":
+        archive_previous(out)  # missing mode defers until its exact plan is accepted
     run.say(prior_note)
     run.say(
         f"ulta.ae proxied run: source={options['url_source']} start={options['start']}"

@@ -20,6 +20,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 
 from defusedxml import ElementTree  # type: ignore[import-untyped]
@@ -37,12 +38,17 @@ __all__ = [
     "discover_sitemap",
     "locale_url",
     "sitemap_locs",
+    "strict_sitemap_locs",
 ]
 
 BASE = "https://www.ulta.ae"
 _PRODUCT_PATH = re.compile(r"^/(en|ar)/buy-[^/?#]+/?$")
 _VIEWER_LOC = re.compile(r"<loc>\s*(\S+?)\s*</loc>")
 _TAG = re.compile(r"<[^>]+>")
+_VIEWER_HEADER = (
+    "This XML file does not appear to have any style information associated with it. "
+    "The document tree is shown below."
+)
 
 
 class DiscoveryError(ValueError):
@@ -73,12 +79,131 @@ def sitemap_locs(document: str) -> tuple[str, ...]:
         root = ElementTree.fromstring(document)
     except ElementTree.ParseError as exc:
         raise DiscoveryError("invalid sitemap XML") from exc
+    root_name = root.tag.rsplit("}", 1)[-1]
+    if root_name not in {"sitemapindex", "urlset"}:
+        raise DiscoveryError(f"invalid sitemap root: {root_name}")
     locs = [
         node.text.strip()
         for node in root.iter()
         if node.tag.rsplit("}", 1)[-1] == "loc" and node.text and node.text.strip()
     ]
     return tuple(dict.fromkeys(locs))
+
+
+@dataclass(slots=True)
+class _ViewerFrame:
+    tag: str
+    enters_tree: bool
+    enters_hidden: bool
+    capture_kind: str | None
+
+
+class _WebKitXmlViewerParser(HTMLParser):
+    """Reconstruct the visible XML tree from WebKit's built-in XML viewer."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.frames: list[_ViewerFrame] = []
+        self.tokens: list[tuple[str, str]] = []
+        self.capture: list[str] | None = None
+        self.capture_kind: str | None = None
+        self.tree_depth = 0
+        self.hidden_depth = 0
+        self.has_style = False
+        self.has_tree = False
+        self.invalid = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        classes = set((values.get("class") or "").split())
+        enters_tree = tag == "div" and values.get("id") == "tree" and "pretty-print" in classes
+        if tag == "style" and values.get("id") == "xml-viewer-style":
+            self.has_style = True
+        if enters_tree:
+            self.has_tree = True
+            self.tree_depth += 1
+        in_tree = self.tree_depth > 0
+        enters_hidden = in_tree and "hidden" in classes
+        if enters_hidden:
+            self.hidden_depth += 1
+        capture_kind = None
+        if in_tree and self.hidden_depth == 0 and tag == "span":
+            kinds = classes.intersection({"tag", "text"})
+            if len(kinds) == 1:
+                if self.capture is not None:
+                    self.invalid = True
+                else:
+                    capture_kind = kinds.pop()
+                    self.capture_kind = capture_kind
+                    self.capture = []
+        self.frames.append(_ViewerFrame(tag, enters_tree, enters_hidden, capture_kind))
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del tag, attrs
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.frames or self.frames[-1].tag != tag:
+            self.invalid = True
+            return
+        frame = self.frames.pop()
+        if frame.capture_kind is not None:
+            if self.capture is None or self.capture_kind != frame.capture_kind:
+                self.invalid = True
+            else:
+                self.tokens.append((frame.capture_kind, "".join(self.capture)))
+            self.capture = None
+            self.capture_kind = None
+        if frame.enters_hidden:
+            self.hidden_depth -= 1
+        if frame.enters_tree:
+            self.tree_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.capture is not None:
+            self.capture.append(data)
+
+
+def _raw_sitemap_locs(document: str) -> tuple[str, ...]:
+    try:
+        root = ElementTree.fromstring(document)
+    except ElementTree.ParseError as exc:
+        raise DiscoveryError("invalid sitemap XML") from exc
+    root_name = root.tag.rsplit("}", 1)[-1]
+    if root_name not in {"sitemapindex", "urlset"}:
+        raise DiscoveryError(f"invalid sitemap root: {root_name}")
+    return tuple(
+        node.text if node.text is not None else ""
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] == "loc"
+    )
+
+
+def strict_sitemap_locs(document: str) -> tuple[str, ...]:
+    """Return every raw ``<loc>`` value without trimming or dropping invalid entries.
+
+    HTML is accepted only when it has WebKit XML viewer's structural markers. Its visible tree is
+    reconstructed and parsed as XML; arbitrary HTML containing encoded ``<loc>`` text is refused.
+    """
+    if not _is_viewer(document):
+        return _raw_sitemap_locs(document)
+    parser = _WebKitXmlViewerParser()
+    try:
+        parser.feed(document)
+        parser.close()
+    except (AssertionError, ValueError) as exc:
+        raise DiscoveryError("invalid WebKit XML viewer page") from exc
+    if (
+        parser.invalid
+        or parser.frames
+        or not parser.has_style
+        or not parser.has_tree
+        or _VIEWER_HEADER not in document
+    ):
+        raise DiscoveryError("page is not a WebKit XML sitemap view")
+    reconstructed = "".join(
+        value if kind == "tag" else html.escape(value, quote=False) for kind, value in parser.tokens
+    )
+    return _raw_sitemap_locs(reconstructed)
 
 
 def _on_host(url: str) -> bool:

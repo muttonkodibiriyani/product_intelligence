@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import fcntl
 import gzip
 import html
 import io
 import json
 import re
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,7 @@ from typing import Any
 import pytest
 from pydantic import HttpUrl
 from ulta_snapshot.load import allowed_captures, page_product, robots_for
+from ulta_snapshot.missing import FrontendInventory
 from ulta_snapshot.run import (
     Run,
     archive_previous,
@@ -24,6 +27,7 @@ from ulta_snapshot.run import (
     main,
     make_run,
     owner_item,
+    pinned_secret_resource,
     policy,
     prior_bytes,
     run_options,
@@ -62,6 +66,13 @@ PRODUCT_SITEMAP = f"""<?xml version="1.0" encoding="UTF-8"?>
   <url><loc>{BASE}/en/makeup</loc></url>
   <url><loc>https://outside.example/en/buy-x</loc></url>
 </urlset>"""
+STRICT_PRODUCT_SITEMAP = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{URLS[2]}</loc></url>
+  <url><loc>{URLS[0]}</loc></url>
+  <url><loc>{URLS[1]}</loc></url>
+  <url><loc>{BASE}/ar/buy-a</loc></url>
+</urlset>"""
 SITEMAPS = [f"{BASE}/robots.txt", f"{BASE}/sitemap.xml", f"{BASE}/product-sitemap-ae.xml"]
 
 
@@ -71,6 +82,15 @@ class Reader:
         return SECRET
 
 
+@dataclass(frozen=True, slots=True)
+class FakeResponses:
+    challenge_at: int | None = None
+    http_at: int | None = None
+    robots_extra: str = ""
+    http_status: int = 500
+    product_sitemap: str = PRODUCT_SITEMAP
+
+
 class FakeBrowser:
     """Scripted proxied browser: asks robots about two graphql sub-requests per page."""
 
@@ -78,13 +98,11 @@ class FakeBrowser:
         self,
         meter: ProxyMeter,
         allowed: Callable[[str], bool],
-        challenge_at: int | None,
-        robots_extra: str = "",
+        responses: FakeResponses,
     ) -> None:
-        self.robots_extra = robots_extra
         self.meter = meter
         self.allowed = allowed
-        self.challenge_at = challenge_at
+        self.responses = responses
         self.pages = 0
         self.requested: list[str] = []
 
@@ -94,7 +112,9 @@ class FakeBrowser:
         self.meter.add(500, 1500)
         if url.endswith("/robots.txt"):
             robots = (FIXTURES / "ulta_ae_robots.txt").read_text()
-            robots = robots.replace("Disallow: /*?\n", f"Disallow: /*?\n{self.robots_extra}")
+            robots = robots.replace(
+                "Disallow: /*?\n", f"Disallow: /*?\n{self.responses.robots_extra}"
+            )
             text = html.escape(robots)
             body = f"<html><head></head><body><pre>{text}</pre></body></html>"
             return RawResponse(
@@ -106,7 +126,7 @@ class FakeBrowser:
                 elapsed_ms=1,
             )
         if url.endswith(".xml"):
-            doc = INDEX if url.endswith("/sitemap.xml") else PRODUCT_SITEMAP
+            doc = INDEX if url.endswith("/sitemap.xml") else self.responses.product_sitemap
             self.meter.add(500, len(doc))
             return RawResponse(
                 final_url=url,
@@ -117,13 +137,22 @@ class FakeBrowser:
                 elapsed_ms=1,
             )
         self.pages += 1
-        if self.pages == self.challenge_at:  # a Cloudflare challenge: the run must stop here
+        if self.pages == self.responses.challenge_at:  # a challenge: the run must stop here
             page = ROOT / "docs/recon/samples/probe/ulta_ae_cf_challenge_webkit_head.html"
             return RawResponse(
                 final_url=url,
                 status=403,
                 headers=(("content-type", "text/html"), ("server", "cloudflare")),
                 body=page.read_bytes(),
+                content_type="text/html",
+                elapsed_ms=1,
+            )
+        if self.pages == self.responses.http_at:
+            return RawResponse(
+                final_url=url,
+                status=self.responses.http_status,
+                headers=(("content-type", "text/html"),),
+                body=b"temporary failure",
                 content_type="text/html",
                 elapsed_ms=1,
             )
@@ -150,9 +179,21 @@ class FakeBrowser:
 class Factory:
     """The proxied-browser factory, keeping the browsers it built for assertions."""
 
-    def __init__(self, challenge_at: int | None = None, robots_extra: str = "") -> None:
-        self.challenge_at = challenge_at
-        self.robots_extra = robots_extra
+    def __init__(
+        self,
+        challenge_at: int | None = None,
+        robots_extra: str = "",
+        http_at: int | None = None,
+        http_status: int = 500,
+        product_sitemap: str = PRODUCT_SITEMAP,
+    ) -> None:
+        self.responses = FakeResponses(
+            challenge_at=challenge_at,
+            http_at=http_at,
+            robots_extra=robots_extra,
+            http_status=http_status,
+            product_sitemap=product_sitemap,
+        )
         self.browsers: list[FakeBrowser] = []
 
     def __call__(
@@ -163,7 +204,7 @@ class Factory:
         meter: ProxyMeter,
         allowed: Callable[[str], bool],
     ) -> Transport:
-        self.browsers.append(FakeBrowser(meter, allowed, self.challenge_at, self.robots_extra))
+        self.browsers.append(FakeBrowser(meter, allowed, self.responses))
         return self.browsers[-1]
 
     @property
@@ -347,6 +388,313 @@ def test_max_pages_zero_enumerates_only(tmp_path: Path) -> None:
     assert not list((out / "pdp").glob("part-*"))
 
 
+def test_missing_mode_with_served_inventory_fetches_only_frontend_gaps(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "snap"
+    console = io.StringIO()
+    factory = Factory(product_sitemap=STRICT_PRODUCT_SITEMAP)
+    frontend = FrontendInventory(
+        urls=frozenset({URLS[0], URLS[2], URLS[3]}),
+        dataset_file_sha256="f" * 64,
+        dataset_content_sha256="c" * 64,
+        product_count=3,
+        offer_count=3,
+    )
+    run = _run(
+        out,
+        [],
+        0,
+        factory,
+        console,
+        url_source="missing",
+        max_pages=None,
+        frontend=frontend,
+    )
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    assert factory.requested == [*SITEMAPS, URLS[1]]
+    assert (out / "urls_missing_en.txt").read_text().splitlines() == [URLS[1]]
+    assert (out / "frontend_urls_not_in_sitemap.txt").read_text().splitlines() == [URLS[3]]
+    progress = json.loads((out / "progress.json").read_text())
+    count_keys = (
+        "discovered",
+        "frontend_urls",
+        "frontend_urls_in_sitemap",
+        "missing_urls",
+        "frontend_urls_not_in_sitemap",
+    )
+    assert {key: progress["counts"]["en"][key] for key in count_keys} == {
+        "discovered": 3,
+        "frontend_urls": 3,
+        "frontend_urls_in_sitemap": 2,
+        "missing_urls": 1,
+        "frontend_urls_not_in_sitemap": 1,
+    }
+    assert progress["urls_total"] == 1
+    assert progress["stopped"] == "complete"
+    text = console.getvalue()
+    assert "frontend 3 urls; missing 1" in text
+    assert "never removed or out of stock" in text
+
+
+def test_changed_missing_plan_refuses_without_mutating_resume_state(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    first_frontend = FrontendInventory(
+        urls=frozenset({URLS[0], URLS[2]}),
+        dataset_file_sha256="a" * 64,
+        dataset_content_sha256="b" * 64,
+        product_count=2,
+        offer_count=2,
+    )
+    first = _run(
+        out,
+        [],
+        0,
+        Factory(product_sitemap=STRICT_PRODUCT_SITEMAP),
+        io.StringIO(),
+        url_source="missing",
+        max_pages=0,
+        frontend=first_frontend,
+    )
+    with first.fetcher:
+        first.run(context(datetime.now(UTC)))
+    first.finish()
+    audit_log.removeHandler(first.audit)
+    protected = {
+        name: (out / name).read_bytes()
+        for name in (
+            "progress.json",
+            "manifest.json",
+            "missing_plan.json",
+            "urls_missing_en.txt",
+            "frontend_urls_not_in_sitemap.txt",
+        )
+    }
+
+    changed_frontend = FrontendInventory(
+        urls=frozenset({URLS[1], URLS[2]}),
+        dataset_file_sha256="c" * 64,
+        dataset_content_sha256="d" * 64,
+        product_count=2,
+        offer_count=2,
+    )
+    factory = Factory(product_sitemap=STRICT_PRODUCT_SITEMAP)
+    second = _run(
+        out,
+        [],
+        0,
+        factory,
+        io.StringIO(),
+        url_source="missing",
+        resume_auto=True,
+        max_pages=None,
+        frontend=changed_frontend,
+    )
+    with second.fetcher:
+        second.run(context(datetime.now(UTC)))
+    second.finish()
+
+    assert second.stopped.startswith("stopped: missing-only plan refused")
+    assert factory.requested == []
+    assert {name: (out / name).read_bytes() for name in protected} == protected
+    assert not list(out.glob("progress-before-*.json"))
+
+
+def test_missing_mode_never_completes_or_advances_on_non_200(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    frontend = FrontendInventory(
+        urls=frozenset({URLS[0], URLS[2]}),
+        dataset_file_sha256="a" * 64,
+        dataset_content_sha256="b" * 64,
+        product_count=2,
+        offer_count=2,
+    )
+    run = _run(
+        out,
+        [],
+        0,
+        Factory(http_at=1, product_sitemap=STRICT_PRODUCT_SITEMAP),
+        io.StringIO(),
+        url_source="missing",
+        max_pages=None,
+        frontend=frontend,
+    )
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    progress = json.loads((out / "progress.json").read_text())
+    assert progress["stopped"].startswith("stopped: missing PDP http 500")
+    assert progress["next_index"] == 0
+    assert progress["counts"]["en"].get("pdp_ok", 0) == 0
+
+
+def test_bounded_missing_run_is_never_reported_complete(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    frontend = FrontendInventory(
+        urls=frozenset({URLS[0], URLS[2]}),
+        dataset_file_sha256="a" * 64,
+        dataset_content_sha256="b" * 64,
+        product_count=2,
+        offer_count=2,
+    )
+    run = _run(
+        out,
+        [],
+        0,
+        Factory(product_sitemap=STRICT_PRODUCT_SITEMAP),
+        io.StringIO(),
+        url_source="missing",
+        max_pages=20,
+        frontend=frontend,
+    )
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    progress = json.loads((out / "progress.json").read_text())
+    assert progress["counts"]["en"]["pdp_ok"] == 1
+    assert progress["stopped"] == "batch_complete"
+
+
+def test_first_429_in_missing_mode_stops_without_advancing(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    frontend = FrontendInventory(
+        urls=frozenset({URLS[0], URLS[2]}),
+        dataset_file_sha256="a" * 64,
+        dataset_content_sha256="b" * 64,
+        product_count=2,
+        offer_count=2,
+    )
+    run = _run(
+        out,
+        [],
+        0,
+        Factory(
+            http_at=1,
+            http_status=429,
+            product_sitemap=STRICT_PRODUCT_SITEMAP,
+        ),
+        io.StringIO(),
+        url_source="missing",
+        max_pages=None,
+        frontend=frontend,
+    )
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    progress = json.loads((out / "progress.json").read_text())
+    assert "rate_limited" in progress["stopped"]
+    assert progress["next_index"] == 0
+    assert progress["stopped"] != "complete"
+
+
+def test_missing_mode_refuses_sitemap_url_aliases_before_planning(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    malicious = """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://evil@www.ulta.ae/en/buy-aliased</loc></url>
+    </urlset>"""
+    factory = Factory(product_sitemap=malicious)
+    frontend = FrontendInventory(
+        urls=frozenset({URLS[0]}),
+        dataset_file_sha256="a" * 64,
+        dataset_content_sha256="b" * 64,
+        product_count=1,
+        offer_count=1,
+    )
+    run = _run(
+        out,
+        [],
+        0,
+        factory,
+        io.StringIO(),
+        url_source="missing",
+        max_pages=0,
+        frontend=frontend,
+    )
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    assert factory.requested == SITEMAPS
+    assert "product sitemap unreadable" in run.stopped
+    assert not (out / "missing_plan.json").exists()
+
+
+@pytest.mark.parametrize(
+    "product_sitemap",
+    [
+        f"""<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+        <url><loc>{URLS[0]}</loc></url><url><loc> </loc></url></urlset>""",
+        (f"<!doctype html><html><body>sitemap &lt;loc&gt;{URLS[0]}&lt;/loc&gt;</body></html>"),
+    ],
+)
+def test_missing_mode_refuses_unsanitized_raw_sitemap_documents(
+    tmp_path: Path, product_sitemap: str
+) -> None:
+    out = tmp_path / "snap"
+    factory = Factory(product_sitemap=product_sitemap)
+    frontend = FrontendInventory(
+        urls=frozenset({URLS[0]}),
+        dataset_file_sha256="a" * 64,
+        dataset_content_sha256="b" * 64,
+        product_count=1,
+        offer_count=1,
+    )
+    run = _run(
+        out,
+        [],
+        0,
+        factory,
+        io.StringIO(),
+        url_source="missing",
+        max_pages=0,
+        frontend=frontend,
+    )
+    with run.fetcher:
+        run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    assert factory.requested == SITEMAPS
+    assert "product sitemap unreadable" in run.stopped
+    assert not (out / "missing_plan.json").exists()
+
+
+def test_concurrent_sitemap_planner_fails_before_any_request(tmp_path: Path) -> None:
+    out = tmp_path / "snap"
+    frontend = FrontendInventory(
+        urls=frozenset({URLS[0]}),
+        dataset_file_sha256="a" * 64,
+        dataset_content_sha256="b" * 64,
+        product_count=1,
+        offer_count=1,
+    )
+    factory = Factory(product_sitemap=STRICT_PRODUCT_SITEMAP)
+    run = _run(
+        out,
+        [],
+        0,
+        factory,
+        io.StringIO(),
+        url_source="missing",
+        max_pages=0,
+        frontend=frontend,
+    )
+    with (out / ".sitemap.lock").open("a+b") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with run.fetcher:
+            run.run(context(datetime.now(UTC)))
+    run.finish()
+
+    assert factory.requested == []
+    assert "another sitemap planner" in run.stopped
+    assert not (out / "urls_full_en.txt").exists()
+
+
 def test_sitemap_disallowed_by_robots_is_never_fetched(tmp_path: Path) -> None:
     out = tmp_path / "snap"
     console = io.StringIO()
@@ -398,17 +746,40 @@ def test_run_options_parse_and_auto_resume(tmp_path: Path) -> None:
     assert run_options({}, tmp_path) == {
         "url_source": "file",
         "start": 0,
+        "resume_auto": False,
         "max_pages": 20,
         "est_bytes_per_page": None,
     }
     (tmp_path / "progress.json").write_text(json.dumps({"next_index": 7}))
     env = {"URL_SOURCE": "sitemap", "MAX_PAGES": "all", "START_INDEX": "auto"}
     got = run_options({**env, "EST_BYTES_PER_PAGE": "5"}, tmp_path)
-    assert got == {"url_source": "sitemap", "start": 7, "max_pages": None, "est_bytes_per_page": 5}
+    assert got == {
+        "url_source": "sitemap",
+        "start": 7,
+        "resume_auto": True,
+        "max_pages": None,
+        "est_bytes_per_page": 5,
+    }
     with pytest.raises(SystemExit):
         run_options({"URL_SOURCE": "api"}, tmp_path)
     with pytest.raises(SystemExit):
         run_options({"START_INDEX": "-1"}, tmp_path)
+    with pytest.raises(SystemExit, match="requires prior progress"):
+        run_options(
+            {"URL_SOURCE": "missing", "START_INDEX": "auto"},
+            tmp_path / "new-output",
+        )
+
+
+def test_auto_resume_refuses_a_non_integer_cursor(tmp_path: Path) -> None:
+    (tmp_path / "progress.json").write_text(json.dumps({"next_index": True}))
+    with pytest.raises(SystemExit, match="integer prior next_index"):
+        run_options({"URL_SOURCE": "missing", "START_INDEX": "auto"}, tmp_path)
+
+
+def test_missing_mode_refuses_an_explicit_nonzero_start(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit, match="START_INDEX=auto"):
+        run_options({"URL_SOURCE": "missing", "START_INDEX": "1"}, tmp_path)
 
 
 def test_only_one_run_over_the_whole_list_from_zero_is_complete(tmp_path: Path) -> None:
@@ -500,6 +871,54 @@ def test_main_refuses_without_a_new_owner_item_before_any_fetch_setup(
 
 def test_owner_item_id_is_passed_through() -> None:
     assert owner_item({"OWNER_APPROVAL_REF": " owner-item-2026-10-09 "}) == "owner-item-2026-10-09"
+
+
+@pytest.mark.parametrize(
+    "resource",
+    [
+        "",
+        "projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/latest",
+        "projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/0",
+        "projects/other/secrets/pi-proxy-iproyal-ae/versions/1",
+    ],
+)
+def test_ulta_runner_requires_an_explicit_numeric_secret_version(resource: str) -> None:
+    with pytest.raises(SystemExit, match="positive integer"):
+        pinned_secret_resource({"SECRET_RESOURCE": resource})
+    assert pinned_secret_resource({"SECRET_RESOURCE": f" {RESOURCE} "}) == RESOURCE
+
+
+def test_missing_mode_requires_served_dataset_before_fetch_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def never(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fetch setup reached without the served dataset")
+
+    for name in ("operator_token", "make_run"):
+        monkeypatch.setattr(f"ulta_snapshot.run.{name}", never)
+    monkeypatch.setenv("OUT_DIR", str(tmp_path / "out"))
+    monkeypatch.setenv("URL_SOURCE", "missing")
+    monkeypatch.delenv("SERVED_DATASET", raising=False)
+
+    with pytest.raises(SystemExit, match="requires SERVED_DATASET"):
+        main()
+
+
+@pytest.mark.parametrize("source", ["file", "sitemap"])
+def test_served_dataset_is_rejected_outside_missing_mode_before_fetch_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    def never(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fetch setup reached with SERVED_DATASET in a non-missing mode")
+
+    for name in ("operator_token", "make_run"):
+        monkeypatch.setattr(f"ulta_snapshot.run.{name}", never)
+    monkeypatch.setenv("OUT_DIR", str(tmp_path / "out"))
+    monkeypatch.setenv("URL_SOURCE", source)
+    monkeypatch.setenv("SERVED_DATASET", str(tmp_path / "served.json"))
+
+    with pytest.raises(SystemExit, match="requires URL_SOURCE=missing"):
+        main()
 
 
 def test_runbook_does_not_prefill_an_approval() -> None:

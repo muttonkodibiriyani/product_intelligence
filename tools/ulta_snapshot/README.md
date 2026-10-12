@@ -3,6 +3,59 @@
 Loader for one ulta.ae (UAE) snapshot from the rung-5 runner (`run.py`; see below).
 It uses the same loader contract as `sephora_snapshot`.
 
+## Missing PDP pages only (manual or scheduled entry point)
+
+Set `SERVED_DATASET` to an exact local copy of the object the live `ulta_ae=` entry in
+`PI_API_DATASETS` serves, then run missing mode. The runner validates that dataset with
+`pi_dataset.load_any`, enumerates the current robots-allowed English PDP sitemap, writes a
+hash-pinned plan, and fetches only sitemap URLs absent from the served dataset:
+
+```sh
+PYTHONPATH=tools/ulta_snapshot \
+OUT_DIR=/safe/new/ulta-run \
+URL_SOURCE=missing \
+SERVED_DATASET=/safe/read-only/current-ulta-dataset.json \
+MAX_PAGES=all START_INDEX=0 EST_BYTES_PER_PAGE=<measured-bytes> \
+PRIOR_GB=<provider-dashboard-value> \
+OWNER_APPROVAL_REF=<new-dated-owner-item-id> \
+SECRET_RESOURCE=projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/<number> \
+GOOGLE_OAUTH_ACCESS_TOKEN=<short-lived-operator-token> \
+CAPTURE_JSON=0 \
+uv run python -m ulta_snapshot.run
+```
+
+This is the same command for a scheduler and a manual run. It is deliberately not unattended:
+every run still needs a new dated owner item, the current provider usage, a pinned accessible
+secret version and a short-lived operator token. `SERVED_DATASET` is accepted only with
+`URL_SOURCE=missing`, and that mode refuses to start without it. Use a fresh `OUT_DIR` for a new
+plan; resume an accepted plan with `START_INDEX=auto`.
+
+This is a **page-level URL delta**, not a product-identity or variant delta. It finds a new PDP
+whose canonical URL is absent from the served dataset. It cannot discover a new shade, size or
+other variant added to a PDP URL already in the frontend; the canonical dataset-refresh and
+publication gates remain responsible for that full row-level delta.
+
+Outputs added for this mode:
+
+- `missing_plan.json`: hashes of the served file/content and all URL lists, plus counts;
+- `urls_missing_en.txt`: the only PDPs the run may fetch;
+- `frontend_urls_not_in_sitemap.txt`: `not_observed` evidence only. It never authorizes removal
+  or an out-of-stock inference.
+
+The files are create-once: a resume may reuse only the byte-identical plan. If the served dataset
+or sitemap inventory changed, use a new `OUT_DIR`. An empty or invalid sitemap fails; it never
+reports a misleading zero. Use `MAX_PAGES=0` to create and inspect the plan without fetching a
+product page. Any numeric `MAX_PAGES` is deliberately `batch_complete`, even when that bound is
+larger than the gap; only an unbounded `MAX_PAGES=all` run from index zero can be `complete`.
+`START_INDEX=auto` is valid only after this output folder contains matching accepted progress.
+
+For an offline plan only (no requests):
+
+```sh
+PYTHONPATH=tools/ulta_snapshot uv run python -m ulta_snapshot.missing \
+  current-ulta-dataset.json urls_full_en.txt /safe/new/ulta-run
+```
+
 **Never loaded into prod `ulta_ae`.** The owner's `ulta_ae` rows are protected: no PI action may
 update, delete or degrade them. Before its first write the loader runs `guard()`, which refuses
 (exit 2, nothing written):
@@ -43,7 +96,8 @@ python -m ulta_snapshot.load <local-dir> <gs://bucket/prefix> --finish   # close
 
 `SECRET_RESOURCE` is pinned to an explicit version:
 `projects/productintelligence-beeb3/secrets/pi-proxy-iproyal-ae/versions/4`
-(the current credential; `latest` is also accepted but not used).
+(example shape only; supply the currently approved accessible numeric version). This runner
+refuses `versions/latest`.
 There is no runtime fallback to the newest enabled version, and the job never calls
 `versions.list`. When the credential is rotated, update this pin and the one in
 `docs/runbooks/ulta-proxy-test.md` together. A disabled or destroyed version fails before any
