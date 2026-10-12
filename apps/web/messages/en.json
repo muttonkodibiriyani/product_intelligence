@@ -467,6 +467,59 @@
     "content": {
       "not_published": "Not published",
       "not_captured": "Not captured"
+    },
+    "attributes": {
+      "title": "Attribute matrix",
+      "hint": "154 versioned fields per entity. Missing, conflicting, and invalid evidence is never replaced with another retailer’s value.",
+      "loading": "Loading attribute evidence…",
+      "filters": "Attribute filters",
+      "target": "Entity",
+      "state": "Evidence state",
+      "search": "Search fields",
+      "searchPlaceholder": "Field name or key…",
+      "allStates": "All states",
+      "result": "Showing {visible} of {total} matching fields · {definitions} contract definitions",
+      "coverage": "{slots} slots on this entity",
+      "caption": "Typed attribute values and field evidence",
+      "field": "Field",
+      "type": "Level / type",
+      "value": "Value",
+      "evidence": "Field evidence",
+      "noEvidence": "No asserted field evidence",
+      "observedAt": "Observed {date}",
+      "moreEvidence": "{count, plural, one {{n} more evidence record} other {{n} more evidence records}}",
+      "conflict": "Conflicting values; no winner selected",
+      "invalid": "Invalid captured value",
+      "empty": "No fields match these filters.",
+      "pagination": "Attribute pages",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page} of {pages}",
+      "levels": {
+        "master": "Master",
+        "product": "Product",
+        "offer": "Offer",
+        "variant": "Variant"
+      },
+      "kinds": {
+        "text": "Text",
+        "enum": "Enum",
+        "integer": "Integer",
+        "decimal": "Decimal",
+        "money": "Money",
+        "boolean": "Boolean",
+        "list": "List",
+        "object": "Object"
+      },
+      "states": {
+        "observed": "Observed",
+        "not_published": "Not published",
+        "not_observed": "Not observed",
+        "unknown": "Unknown",
+        "conflict": "Conflict",
+        "invalid": "Invalid",
+        "not_applicable": "Not applicable"
+      }
     }
   },
   "compare": {

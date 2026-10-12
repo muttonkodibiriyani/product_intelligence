@@ -27,6 +27,7 @@ import { useMeta, useRetailerName } from '../use-meta';
 import { importedOn } from '../widgets/model';
 import { HistoryChart } from './history-chart';
 import { CatalogueGallery } from './catalogue-gallery';
+import { AttributeMatrix } from './attribute-matrix';
 import { offerPriceDate, ULTA_RETAILER, UltaOfferPriceDate } from './offer-price-date';
 import { sourceObservationDate } from '../ui/as-of';
 
@@ -201,6 +202,9 @@ export function ProductView() {
               <Matches matches={d.card.matches} name={name} />
             </Section>
           )}
+          <Section title={t('attributes.title')} hint={t('attributes.hint')}>
+            <AttributeMatrix id={id} />
+          </Section>
           <Section title={t('history')}>
             <History id={id} name={name} />
           </Section>

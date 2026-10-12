@@ -258,7 +258,7 @@
         "additionalProperties": false,
         "properties": {
           "apiVersion": {
-            "default": "1.25.0",
+            "default": "1.26.0",
             "title": "Apiversion",
             "type": "string"
           },
@@ -364,6 +364,67 @@
         "title": "AssortmentGaps",
         "type": "object"
       },
+      "AttributeAlternative": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeFieldEvidence"
+            },
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "value": {
+            "discriminator": {
+              "mapping": {
+                "boolean": "#/components/schemas/BooleanAttributeValue",
+                "decimal": "#/components/schemas/DecimalAttributeValue",
+                "enum": "#/components/schemas/EnumAttributeValue",
+                "integer": "#/components/schemas/IntegerAttributeValue",
+                "list": "#/components/schemas/ListAttributeValue",
+                "money": "#/components/schemas/MoneyAttributeValue",
+                "object": "#/components/schemas/ObjectAttributeValue",
+                "text": "#/components/schemas/TextAttributeValue"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TextAttributeValue"
+              },
+              {
+                "$ref": "#/components/schemas/EnumAttributeValue"
+              },
+              {
+                "$ref": "#/components/schemas/IntegerAttributeValue"
+              },
+              {
+                "$ref": "#/components/schemas/DecimalAttributeValue"
+              },
+              {
+                "$ref": "#/components/schemas/MoneyAttributeValue"
+              },
+              {
+                "$ref": "#/components/schemas/BooleanAttributeValue"
+              },
+              {
+                "$ref": "#/components/schemas/ListAttributeValue"
+              },
+              {
+                "$ref": "#/components/schemas/ObjectAttributeValue"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "evidence"
+        ],
+        "title": "AttributeAlternative",
+        "type": "object"
+      },
       "AttributeBlock": {
         "description": "Where the product page shows a key; a client renders an unknown block as key/value.",
         "enum": [
@@ -448,6 +509,183 @@
         "title": "AttributeDef",
         "type": "object"
       },
+      "AttributeDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "currencyFrom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currencyfrom"
+          },
+          "declaredType": {
+            "title": "Declaredtype",
+            "type": "string"
+          },
+          "enumValues": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Enumvalues",
+            "type": "array"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AttributeKind"
+          },
+          "label": {
+            "$ref": "#/components/schemas/AttributeLabel"
+          },
+          "level": {
+            "$ref": "#/components/schemas/AttributeTargetLevel"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "key",
+          "group",
+          "level",
+          "kind",
+          "declaredType",
+          "label"
+        ],
+        "title": "AttributeDefinition",
+        "type": "object"
+      },
+      "AttributeFieldEvidence": {
+        "additionalProperties": false,
+        "description": "Sanitized public evidence: no run id, auth material, storage path, or source URL.",
+        "properties": {
+          "capturedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capturedat"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 63,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "field": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "retailer": {
+            "anyOf": [
+              {
+                "maxLength": 63,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retailer"
+          },
+          "source": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "field"
+        ],
+        "title": "AttributeFieldEvidence",
+        "type": "object"
+      },
+      "AttributeKind": {
+        "enum": [
+          "text",
+          "enum",
+          "integer",
+          "decimal",
+          "money",
+          "boolean",
+          "list",
+          "object"
+        ],
+        "title": "AttributeKind",
+        "type": "string"
+      },
+      "AttributeLabel": {
+        "additionalProperties": false,
+        "properties": {
+          "ar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ar"
+          },
+          "en": {
+            "title": "En",
+            "type": "string"
+          }
+        },
+        "required": [
+          "en"
+        ],
+        "title": "AttributeLabel",
+        "type": "object"
+      },
       "AttributeLevel": {
         "enum": [
           "product",
@@ -455,6 +693,267 @@
         ],
         "title": "AttributeLevel",
         "type": "string"
+      },
+      "AttributePage": {
+        "additionalProperties": false,
+        "properties": {
+          "definitionCount": {
+            "const": 154,
+            "default": 154,
+            "title": "Definitioncount",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeSlot"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "manifestVersion": {
+            "const": "requirements-v2+beauty2+variant-relationships@1",
+            "default": "requirements-v2+beauty2+variant-relationships@1",
+            "title": "Manifestversion",
+            "type": "string"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          },
+          "slotTotal": {
+            "title": "Slottotal",
+            "type": "integer"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeTargetSummary"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slotTotal",
+          "total",
+          "nextCursor",
+          "targets",
+          "items"
+        ],
+        "title": "AttributePage",
+        "type": "object"
+      },
+      "AttributeSlot": {
+        "additionalProperties": false,
+        "properties": {
+          "alternatives": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttributeAlternative"
+            },
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/AttributeDefinition"
+          },
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttributeFieldEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "rawValue": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawvalue"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributeLabel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/AttributeState"
+          },
+          "targetId": {
+            "title": "Targetid",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "boolean": "#/components/schemas/BooleanAttributeValue",
+                    "decimal": "#/components/schemas/DecimalAttributeValue",
+                    "enum": "#/components/schemas/EnumAttributeValue",
+                    "integer": "#/components/schemas/IntegerAttributeValue",
+                    "list": "#/components/schemas/ListAttributeValue",
+                    "money": "#/components/schemas/MoneyAttributeValue",
+                    "object": "#/components/schemas/ObjectAttributeValue",
+                    "text": "#/components/schemas/TextAttributeValue"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextAttributeValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/EnumAttributeValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IntegerAttributeValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DecimalAttributeValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MoneyAttributeValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BooleanAttributeValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ListAttributeValue"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ObjectAttributeValue"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "targetId",
+          "definition",
+          "state"
+        ],
+        "title": "AttributeSlot",
+        "type": "object"
+      },
+      "AttributeState": {
+        "enum": [
+          "observed",
+          "not_published",
+          "not_observed",
+          "unknown",
+          "conflict",
+          "invalid",
+          "not_applicable"
+        ],
+        "title": "AttributeState",
+        "type": "string"
+      },
+      "AttributeTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 63,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/AttributeTargetLevel"
+          },
+          "retailer": {
+            "anyOf": [
+              {
+                "maxLength": 63,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retailer"
+          }
+        },
+        "required": [
+          "id",
+          "level",
+          "label"
+        ],
+        "title": "AttributeTarget",
+        "type": "object"
+      },
+      "AttributeTargetLevel": {
+        "enum": [
+          "master",
+          "product",
+          "offer",
+          "variant"
+        ],
+        "title": "AttributeTargetLevel",
+        "type": "string"
+      },
+      "AttributeTargetSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "slotCount": {
+            "const": 154,
+            "default": 154,
+            "title": "Slotcount",
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/AttributeTarget"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "AttributeTargetSummary",
+        "type": "object"
       },
       "AttributeType": {
         "enum": [
@@ -533,6 +1032,26 @@
           "other"
         ],
         "title": "Basket",
+        "type": "object"
+      },
+      "BooleanAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "boolean",
+            "default": "boolean",
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "BooleanAttributeValue",
         "type": "object"
       },
       "BrandCount": {
@@ -1800,6 +2319,37 @@
         "title": "DecidedBy",
         "type": "string"
       },
+      "DecimalAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "kind": {
+            "const": "decimal",
+            "default": "decimal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "title": "DecimalAttributeValue",
+        "type": "object"
+      },
       "Ending": {
         "description": "Allowed price endings. ``x9`` is a whole amount ending in 9 (49.00, 129.00).",
         "enum": [
@@ -1809,6 +2359,26 @@
         ],
         "title": "Ending",
         "type": "string"
+      },
+      "EnumAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "kind": {
+            "const": "enum",
+            "default": "enum",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "EnumAttributeValue",
+        "type": "object"
       },
       "EnumValue": {
         "additionalProperties": false,
@@ -4062,6 +4632,27 @@
         "title": "Insights",
         "type": "object"
       },
+      "IntegerAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "integer",
+            "default": "integer",
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "IntegerAttributeValue",
+        "type": "object"
+      },
+      "JsonValue": {},
       "Label": {
         "additionalProperties": false,
         "properties": {
@@ -4329,6 +4920,29 @@
         ],
         "title": "Level",
         "type": "string"
+      },
+      "ListAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "const": "list",
+            "default": "list",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ListAttributeValue",
+        "type": "object"
       },
       "Localized": {
         "additionalProperties": false,
@@ -4652,6 +5266,36 @@
         "title": "MetaView",
         "type": "object"
       },
+      "MoneyAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "kind": {
+            "const": "money",
+            "default": "money",
+            "title": "Kind",
+            "type": "string"
+          },
+          "minor": {
+            "title": "Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "minor",
+          "currency"
+        ],
+        "title": "MoneyAttributeValue",
+        "type": "object"
+      },
       "MoneyValue": {
         "additionalProperties": false,
         "description": "An exact amount at its currency's ISO 4217 exponent, as text plus integer minor units.",
@@ -4698,6 +5342,29 @@
         ],
         "title": "NoSuggestion",
         "type": "string"
+      },
+      "ObjectAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "kind": {
+            "const": "object",
+            "default": "object",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "ObjectAttributeValue",
+        "type": "object"
       },
       "OfferContentView": {
         "additionalProperties": false,
@@ -5732,6 +6399,82 @@
           "meta"
         ],
         "title": "ProductEnvelope[AdminProductDetail]",
+        "type": "object"
+      },
+      "ProductEnvelope_AttributePage_": {
+        "additionalProperties": false,
+        "properties": {
+          "caveats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CaveatView"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cohort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributePage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Localized"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedFrom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedFrom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "meta"
+        ],
+        "title": "ProductEnvelope[AttributePage]",
         "type": "object"
       },
       "ProductEnvelope_History_": {
@@ -7553,6 +8296,26 @@
         "title": "SummaryView",
         "type": "object"
       },
+      "TextAttributeValue": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "text",
+            "default": "text",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TextAttributeValue",
+        "type": "object"
+      },
       "TextContent": {
         "additionalProperties": false,
         "properties": {
@@ -8056,7 +8819,7 @@
   },
   "info": {
     "title": "Product Intelligence API",
-    "version": "1.25.0"
+    "version": "1.26.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -12856,6 +13619,269 @@
           }
         },
         "summary": "Get Product"
+      }
+    },
+    "/api/v1/products/{product_id}/attributes": {
+      "get": {
+        "description": "API 1.26.0: the reviewed 154-definition attribute contract projected onto every master, product, offer and discovered variant target. Values are typed and carry sanitized field evidence. Missing, conflicting and invalid states are explicit; pages are generation- and filter-bound.",
+        "operationId": "get_product_attributes_api_v1_products__product_id__attributes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AttributeTargetLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AttributeState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 10,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductEnvelope_AttributePage_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no role, or admins only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no such route, product, market or scope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "stale_cursor: the data changed; restart from the first page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited (Retry-After)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "internal_error: an unexpected failure; nothing about it is echoed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "data_unavailable / auth_unavailable: retry later (Retry-After)"
+          }
+        },
+        "summary": "Get Product Attributes"
       }
     },
     "/api/v1/products/{product_id}/history": {

@@ -1,0 +1,336 @@
+{
+  "caveats": [],
+  "cohort": null,
+  "data": {
+    "definitionCount": 154,
+    "items": [
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "style_id",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Style id"
+          },
+          "level": "master",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "enum captured|derived",
+          "enumValues": [
+            "captured",
+            "derived"
+          ],
+          "group": "identity",
+          "key": "style_id_source",
+          "kind": "enum",
+          "label": {
+            "ar": null,
+            "en": "Style id source"
+          },
+          "level": "master",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "our_style_code",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Our style code"
+          },
+          "level": "master",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "colour_code",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Colour code"
+          },
+          "level": "product",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "size_code",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Size code"
+          },
+          "level": "variant",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text(14)",
+          "enumValues": [],
+          "group": "identity",
+          "key": "gtin",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Gtin"
+          },
+          "level": "variant",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "mpn",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Mpn"
+          },
+          "level": "variant",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "retailer_sku",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Retailer sku"
+          },
+          "level": "variant",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "ينتمي هذا الحقل إلى مستوى كيان آخر.",
+          "en": "This field belongs to another entity level."
+        },
+        "state": "not_applicable",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "listing_id",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Listing id"
+          },
+          "level": "offer",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "لا يمكن للأدلة تصنيف هذه القيمة المفقودة.",
+          "en": "The evidence cannot classify this missing value."
+        },
+        "state": "unknown",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      },
+      {
+        "alternatives": [],
+        "definition": {
+          "currencyFrom": null,
+          "declaredType": "text",
+          "enumValues": [],
+          "group": "identity",
+          "key": "marketplace_id",
+          "kind": "text",
+          "label": {
+            "ar": null,
+            "en": "Marketplace id"
+          },
+          "level": "offer",
+          "unit": null
+        },
+        "evidence": [],
+        "rawValue": null,
+        "reason": {
+          "ar": "لا يمكن للأدلة تصنيف هذه القيمة المفقودة.",
+          "en": "The evidence cannot classify this missing value."
+        },
+        "state": "unknown",
+        "targetId": "p01:offer:shop_a",
+        "value": null
+      }
+    ],
+    "manifestVersion": "requirements-v2+beauty2+variant-relationships@1",
+    "nextCursor": "eyJnIjoiMTc5MDAwMDAwMDAwMDAwMDAwMCIsIm8iOjEwLCJmIjoiNTk5NjQ3MzFhZDAyNGE3OSJ9",
+    "slotTotal": 154,
+    "targets": [
+      {
+        "slotCount": 154,
+        "target": {
+          "context": null,
+          "id": "p01:master",
+          "label": "Fixture Beauty master",
+          "level": "master",
+          "retailer": null
+        }
+      },
+      {
+        "slotCount": 154,
+        "target": {
+          "context": null,
+          "id": "p01:product",
+          "label": "Product p01",
+          "level": "product",
+          "retailer": null
+        }
+      },
+      {
+        "slotCount": 154,
+        "target": {
+          "context": "shop_a",
+          "id": "p01:offer:shop_a",
+          "label": "shop_a offer",
+          "level": "offer",
+          "retailer": "shop_a"
+        }
+      },
+      {
+        "slotCount": 154,
+        "target": {
+          "context": "shop_b",
+          "id": "p01:offer:shop_b",
+          "label": "shop_b offer",
+          "level": "offer",
+          "retailer": "shop_b"
+        }
+      }
+    ],
+    "total": 154
+  },
+  "detail": null,
+  "meta": {
+    "apiVersion": "1.26.0",
+    "currency": "AED",
+    "cutoff": "2026-09-30T00:00:00Z",
+    "endpoint": "product_attributes",
+    "filters": {
+      "limit": 10,
+      "target": "p01:offer:shop_a"
+    },
+    "generation": "1790000000000000000",
+    "market": "AE",
+    "metricVersion": "2026-10-06.3",
+    "scope": "fixture"
+  },
+  "reason": null,
+  "resolvedFrom": null,
+  "status": "ok"
+}

@@ -1263,6 +1263,7 @@ source = { editable = "packages/pi_api" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "pi-capture" },
     { name = "pi-core" },
     { name = "pi-dataset" },
     { name = "pi-match" },
@@ -1282,6 +1283,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-cloud-storage", marker = "extra == 'gcs'", specifier = ">=2.18" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "pi-capture", editable = "packages/pi_capture" },
     { name = "pi-core", editable = "packages/pi_core" },
     { name = "pi-dataset", editable = "packages/pi_dataset" },
     { name = "pi-match", editable = "packages/pi_match" },

@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from api_fixture import DATASET_PATH, bearer, make_client, served_dataset, write
 from pi_api.analytics import MatchPage
 from pi_api.app import PREFIX
+from pi_api.attributes import AttributePage
 from pi_api.catalog import AdminProductDetail, History, MetaView, ProductDetail, ProductPage
 from pi_api.contract import main, openapi, openapi_text
 from pi_api.summary import SummaryView
@@ -49,6 +50,11 @@ GOLDENS: dict[str, tuple[str, type[BaseModel], dict[str, Any]]] = {
         {},
     ),
     "product": ("/products/p01", ProductEnvelope[ProductDetail], {}),
+    "product-attributes": (
+        "/products/p01/attributes?target=p01%3Aoffer%3Ashop_a&limit=10",
+        ProductEnvelope[AttributePage],
+        {},
+    ),
     "admin-product": (
         "/admin/products/p01",
         ProductEnvelope[AdminProductDetail],

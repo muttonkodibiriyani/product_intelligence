@@ -407,6 +407,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/products/{product_id}/attributes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Product Attributes
+         * @description API 1.26.0: the reviewed 154-definition attribute contract projected onto every master, product, offer and discovered variant target. Values are typed and carry sanitized field evidence. Missing, conflicting and invalid states are explicit; pages are generation- and filter-bound.
+         */
+        get: operations["get_product_attributes_api_v1_products__product_id__attributes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/products/{product_id}/history": {
         parameters: {
             query?: never;
@@ -538,7 +558,7 @@ export interface components {
         ApiMeta: {
             /**
              * Apiversion
-             * @default 1.25.0
+             * @default 1.26.0
              */
             apiVersion: string;
             /** Currency */
@@ -584,6 +604,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** AttributeAlternative */
+        AttributeAlternative: {
+            /** Evidence */
+            evidence: components["schemas"]["AttributeFieldEvidence"][];
+            /** Value */
+            value: components["schemas"]["TextAttributeValue"] | components["schemas"]["EnumAttributeValue"] | components["schemas"]["IntegerAttributeValue"] | components["schemas"]["DecimalAttributeValue"] | components["schemas"]["MoneyAttributeValue"] | components["schemas"]["BooleanAttributeValue"] | components["schemas"]["ListAttributeValue"] | components["schemas"]["ObjectAttributeValue"];
+        };
         /**
          * AttributeBlock
          * @description Where the product page shows a key; a client renders an unknown block as key/value.
@@ -608,11 +635,141 @@ export interface components {
             /** Values */
             values: components["schemas"]["EnumValue"][] | null;
         };
+        /** AttributeDefinition */
+        AttributeDefinition: {
+            /** Currencyfrom */
+            currencyFrom?: string | null;
+            /** Declaredtype */
+            declaredType: string;
+            /**
+             * Enumvalues
+             * @default []
+             */
+            enumValues: string[];
+            /** Group */
+            group: string;
+            /** Key */
+            key: string;
+            kind: components["schemas"]["AttributeKind"];
+            label: components["schemas"]["AttributeLabel"];
+            level: components["schemas"]["AttributeTargetLevel"];
+            /** Unit */
+            unit?: string | null;
+        };
+        /**
+         * AttributeFieldEvidence
+         * @description Sanitized public evidence: no run id, auth material, storage path, or source URL.
+         */
+        AttributeFieldEvidence: {
+            /** Capturedat */
+            capturedAt?: string | null;
+            /** Context */
+            context?: string | null;
+            /** Excerpt */
+            excerpt?: string | null;
+            /** Field */
+            field: string;
+            /** Retailer */
+            retailer?: string | null;
+            /** Source */
+            source: string;
+        };
+        /**
+         * AttributeKind
+         * @enum {string}
+         */
+        AttributeKind: "text" | "enum" | "integer" | "decimal" | "money" | "boolean" | "list" | "object";
+        /** AttributeLabel */
+        AttributeLabel: {
+            /** Ar */
+            ar?: string | null;
+            /** En */
+            en: string;
+        };
         /**
          * AttributeLevel
          * @enum {string}
          */
         AttributeLevel: "product" | "offer";
+        /** AttributePage */
+        AttributePage: {
+            /**
+             * Definitioncount
+             * @default 154
+             * @constant
+             */
+            definitionCount: 154;
+            /** Items */
+            items: components["schemas"]["AttributeSlot"][];
+            /**
+             * Manifestversion
+             * @default requirements-v2+beauty2+variant-relationships@1
+             * @constant
+             */
+            manifestVersion: "requirements-v2+beauty2+variant-relationships@1";
+            /** Nextcursor */
+            nextCursor: string | null;
+            /** Slottotal */
+            slotTotal: number;
+            /** Targets */
+            targets: components["schemas"]["AttributeTargetSummary"][];
+            /** Total */
+            total: number;
+        };
+        /** AttributeSlot */
+        AttributeSlot: {
+            /**
+             * Alternatives
+             * @default []
+             */
+            alternatives: components["schemas"]["AttributeAlternative"][];
+            definition: components["schemas"]["AttributeDefinition"];
+            /**
+             * Evidence
+             * @default []
+             */
+            evidence: components["schemas"]["AttributeFieldEvidence"][];
+            /** Rawvalue */
+            rawValue?: string | null;
+            reason?: components["schemas"]["AttributeLabel"] | null;
+            state: components["schemas"]["AttributeState"];
+            /** Targetid */
+            targetId: string;
+            /** Value */
+            value?: (components["schemas"]["TextAttributeValue"] | components["schemas"]["EnumAttributeValue"] | components["schemas"]["IntegerAttributeValue"] | components["schemas"]["DecimalAttributeValue"] | components["schemas"]["MoneyAttributeValue"] | components["schemas"]["BooleanAttributeValue"] | components["schemas"]["ListAttributeValue"] | components["schemas"]["ObjectAttributeValue"]) | null;
+        };
+        /**
+         * AttributeState
+         * @enum {string}
+         */
+        AttributeState: "observed" | "not_published" | "not_observed" | "unknown" | "conflict" | "invalid" | "not_applicable";
+        /** AttributeTarget */
+        AttributeTarget: {
+            /** Context */
+            context?: string | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            level: components["schemas"]["AttributeTargetLevel"];
+            /** Retailer */
+            retailer?: string | null;
+        };
+        /**
+         * AttributeTargetLevel
+         * @enum {string}
+         */
+        AttributeTargetLevel: "master" | "product" | "offer" | "variant";
+        /** AttributeTargetSummary */
+        AttributeTargetSummary: {
+            /**
+             * Slotcount
+             * @default 154
+             * @constant
+             */
+            slotCount: 154;
+            target: components["schemas"]["AttributeTarget"];
+        };
         /**
          * AttributeType
          * @enum {string}
@@ -643,6 +800,16 @@ export interface components {
         Basket: {
             base: components["schemas"]["MoneyValue"];
             other: components["schemas"]["MoneyValue"];
+        };
+        /** BooleanAttributeValue */
+        BooleanAttributeValue: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "boolean";
+            /** Value */
+            value: boolean;
         };
         /** BrandCount */
         BrandCount: {
@@ -1120,12 +1287,34 @@ export interface components {
          * @enum {string}
          */
         DecidedBy: "human" | "auto";
+        /** DecimalAttributeValue */
+        DecimalAttributeValue: {
+            /** Amount */
+            amount: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "decimal";
+            /** Unit */
+            unit?: string | null;
+        };
         /**
          * Ending
          * @description Allowed price endings. ``x9`` is a whole amount ending in 9 (49.00, 129.00).
          * @enum {string}
          */
         Ending: ".00" | ".50" | "x9.00";
+        /** EnumAttributeValue */
+        EnumAttributeValue: {
+            /** Code */
+            code: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "enum";
+        };
         /** EnumValue */
         EnumValue: {
             /** Id */
@@ -1735,6 +1924,17 @@ export interface components {
              */
             valueRatingPct: string;
         };
+        /** IntegerAttributeValue */
+        IntegerAttributeValue: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "integer";
+            /** Value */
+            value: number;
+        };
+        JsonValue: unknown;
         /** Label */
         Label: {
             /** Ar */
@@ -1840,6 +2040,16 @@ export interface components {
          * @enum {string}
          */
         Level: "bucket" | "common";
+        /** ListAttributeValue */
+        ListAttributeValue: {
+            /** Items */
+            items: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "list";
+        };
         /** Localized */
         Localized: {
             /** Ar */
@@ -1947,6 +2157,20 @@ export interface components {
             /** Vertical */
             vertical: string;
         };
+        /** MoneyAttributeValue */
+        MoneyAttributeValue: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "money";
+            /** Minor */
+            minor: number;
+        };
         /**
          * MoneyValue
          * @description An exact amount at its currency's ISO 4217 exponent, as text plus integer minor units.
@@ -1965,6 +2189,18 @@ export interface components {
          * @enum {string}
          */
         NoSuggestion: "not_offered" | "early" | "no_match" | "match_rejected" | "match_unreviewed" | "match_not_exact" | "unpriced" | "currency_mismatch" | "size_mismatch" | "size_unknown" | "stale_observation" | "not_observed" | "retailer_blocked" | "retailer_partial";
+        /** ObjectAttributeValue */
+        ObjectAttributeValue: {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "object";
+        };
         /**
          * OfferContentView
          * @description API 1.12.0: what the retailer's page says beyond price and stock. Every field has an
@@ -2252,6 +2488,21 @@ export interface components {
             caveats: components["schemas"]["CaveatView"][];
             cohort?: components["schemas"]["Cohort"] | null;
             data: components["schemas"]["AdminProductDetail"] | null;
+            detail?: components["schemas"]["Localized"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            reason?: components["schemas"]["Reason"] | null;
+            resolvedFrom?: components["schemas"]["ResolvedFrom"] | null;
+            status: components["schemas"]["Status"];
+        };
+        /** ProductEnvelope[AttributePage] */
+        ProductEnvelope_AttributePage_: {
+            /**
+             * Caveats
+             * @default []
+             */
+            caveats: components["schemas"]["CaveatView"][];
+            cohort?: components["schemas"]["Cohort"] | null;
+            data: components["schemas"]["AttributePage"] | null;
             detail?: components["schemas"]["Localized"] | null;
             meta: components["schemas"]["ApiMeta"];
             reason?: components["schemas"]["Reason"] | null;
@@ -2823,6 +3074,16 @@ export interface components {
             topDiscounts: components["schemas"]["TopDiscount"][] | null;
             /** Withheld */
             withheld: components["schemas"]["Withheld"][];
+        };
+        /** TextAttributeValue */
+        TextAttributeValue: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "text";
+            /** Text */
+            text: string;
         };
         /** TextContent */
         TextContent: {
@@ -5269,6 +5530,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductEnvelope_ProductDetail_"];
+                };
+            };
+            /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no role, or admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no such route, product, market or scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description stale_cursor: the data changed; restart from the first page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description invalid_request / invalid_query / ambiguous_dataset / ambiguous_context / export_too_large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited (Retry-After) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description internal_error: an unexpected failure; nothing about it is echoed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description data_unavailable / auth_unavailable: retry later (Retry-After) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_product_attributes_api_v1_products__product_id__attributes_get: {
+        parameters: {
+            query?: {
+                market?: string | null;
+                scope?: string | null;
+                target?: string | null;
+                level?: components["schemas"]["AttributeTargetLevel"] | null;
+                state?: components["schemas"]["AttributeState"] | null;
+                group?: string | null;
+                q?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductEnvelope_AttributePage_"];
                 };
             };
             /** @description missing, malformed or invalid Bearer token (WWW-Authenticate: Bearer) */

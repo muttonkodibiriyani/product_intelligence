@@ -61,6 +61,7 @@ from pi_api.analytics import (
     value_images,
     with_images,
 )
+from pi_api.attributes import AttributePage, AttributeQuery, attribute_page
 from pi_api.auth import AuthError, HttpCertSource, Principal, Role, TokenVerifier
 from pi_api.catalog import (
     AdminProductDetail,
@@ -631,6 +632,28 @@ def build_api(
         )
         detail = stale_first(loaded, detail, product.offers)
         return resolved(respond(loaded, "product", query, detail), resolved_from)
+
+    @api.get(
+        f"{PREFIX}/products/{{product_id}}/attributes",
+        response_model=ProductEnvelope[AttributePage],
+        description=(
+            "API 1.26.0: the reviewed 154-definition attribute contract projected onto every "
+            "master, product, offer and discovered variant target. Values are typed and carry "
+            "sanitized field evidence. Missing, conflicting and invalid states are explicit; "
+            "pages are generation- and filter-bound."
+        ),
+    )
+    def get_product_attributes(
+        product_id: ProductId,
+        query: Annotated[AttributeQuery, Query()],
+        _: Annotated[Principal, Depends(principal)],
+    ) -> ProductEnvelope[AttributePage]:
+        loaded = source.select(query.market, query.scope)
+        found, resolved_from = find(loaded, product_id)
+        product = loaded.as_of(found)
+        page = attribute_page(loaded.current, product, loaded.generation, query)
+        page = stale_first(loaded, page, product.offers)
+        return resolved(respond(loaded, "product_attributes", query, page), resolved_from)
 
     @api.get(
         f"{PREFIX}/admin/products/{{product_id}}",
