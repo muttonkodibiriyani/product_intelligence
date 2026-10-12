@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Read-only service-layer API over pi.dataset/v2 snapshots (service-layer design)"
 requires-python = ">=3.12"
 dependencies = [
+  "pi-capture",
   "pi-core",
   "pi-dataset",
   "pi-match",
