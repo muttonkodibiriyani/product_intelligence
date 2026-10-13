@@ -304,7 +304,11 @@ as it is.
     Without it pi_api refuses Ounass (`UNAVAILABLE`): the set is 2,938 MiB on the fit. Others
     are 1.06 MB under the 30 MB reserve, so no beauty, Faces or Ounass publish goes out until
     that revision is live (Coordinator, 2026-10-07); any later publish of one of them is a new
-    record.
+    record. The record now admits the 2026-10-10 set (Ounass `035a6503…` beside the versioned
+    beauty `776d2919…`, Ulta `5c454621…`, Faces `aac59eb8…` and Bloomingdale's `6c259f54…`;
+    others 55,666,049 bytes under the 80,000,000 cap; fitted peak 3,499 MiB): refresh peak
+    2,026 MiB ≤ 2,304, as
+    `PI_API_ADMITTED=035a650365f16c2927f04b44705c4bca05f0381f63dd078566cc3f2daa74f168:55666049`.
   - **The export gate** (`V3_MAX_BYTES` in `pi_dataset.gate`, imported by the exporter and by
     pi_api) is **51,000,000** bytes of **compact** JSON. The exporter and the publisher write
     compact JSON; whitespace is about a third of an indented file and none of it is resident. It
