@@ -205,11 +205,18 @@ class Withheld:
     cross-retailer gap is counted on their old captures. Each states ``since``, its window's last
     market day, and one whole-retailer ``notObserved`` entry with ``why`` runs from the day after
     ``since`` (or the cutoff day, if that is earlier) to ``until``: the roll-time cutoff day, or
-    the body's own cutoff day when ``None``; never earlier than the latter."""
+    the body's own cutoff day when ``None``; never earlier than the latter.
+
+    ``alone`` (``--withhold-alone``, Coordinator 01a11f65-8dca): every exported slot is withheld,
+    a per-source file served beside a windowed retailer in another file. Its own cutoff day is
+    ``since``, so the entry starts the day after ``since`` whenever that is not after ``until``
+    (no day is both observed and not observed, 01a11f65-cfeb), and the retailer's note is the
+    reason, which ``/coverage`` serves (01a11f66-02b5)."""
 
     slots: frozenset[str]
     why: Mapping[str, str]
     until: date | None = None
+    alone: bool = False
 
 
 def market_date(moment: datetime) -> date:
@@ -794,16 +801,18 @@ def withhold(
         if window is None:
             raise ValueError(f"{r.id}: withheld with no crawl window (--run) to take since from")
         since = market_date(window.end)
-        out.append(r.model_copy(update={"since": since}))
-        entries.append(
-            NotObserved(
-                retailer=r.id,
-                start=min(since + timedelta(days=1), day),
-                end=until,
-                categories=None,
-                why=with_since(withheld.why, since),
+        why = with_since(withheld.why, since)
+        after = since + timedelta(days=1)
+        if withheld.alone and after > until:
+            msg = (
+                f"--withhold-alone: --withhold-until {until} is not after since {since}: "
+                "nothing is withheld"
             )
-        )
+            raise ValueError(msg)
+        start = after if withheld.alone else min(after, day)
+        note = {"note": why} if withheld.alone else {}
+        out.append(r.model_copy(update={"since": since, **note}))
+        entries.append(NotObserved(retailer=r.id, start=start, end=until, categories=None, why=why))
     return out, entries
 
 

@@ -1454,6 +1454,15 @@ def parser() -> argparse.ArgumentParser:
             "day; default the body's own cutoff day, and never earlier"
         ),
     )
+    result.add_argument(
+        "--withhold-alone",
+        action="store_true",
+        help=(
+            "every --sources entry is withheld: a per-source file served beside a windowed "
+            "retailer in another file (Coordinator 01a11f65-8dca). Needs --withhold-until; the "
+            "entry starts the day after since, and the reason is also the retailer's note"
+        ),
+    )
     result.add_argument("--scope", default="beauty", help="v2 meta.scope (a storage path segment)")
     result.add_argument("--producer-commit", help="v2 meta.producer.commit (git sha)")
     return result
@@ -1522,18 +1531,25 @@ def check_withhold(args: argparse.Namespace) -> None:
     """``--withhold`` (F1): each source once and exported, beside at least one windowed source,
     with ``--run`` (its values and ``since`` come from its window), a v2/v3 output, and a reason
     in both languages with no placeholder but ``<since>`` in it; the reason and
-    ``--withhold-until`` never without a withheld source."""
+    ``--withhold-until`` never without a withheld source. Every source is withheld only with
+    ``--withhold-alone``, and that never without ``--withhold-until``."""
     held, why = args.withhold, (args.withhold_why, args.withhold_why_ar)
     if not held:
-        if any(v is not None for v in (*why, args.withhold_until)):
-            raise SystemExit("--withhold-why(-ar) and --withhold-until need --withhold")
+        if any(v is not None for v in (*why, args.withhold_until)) or args.withhold_alone:
+            raise SystemExit(
+                "--withhold-why(-ar), --withhold-until and --withhold-alone need --withhold"
+            )
         return
     if len(set(held)) != len(held):
         raise SystemExit(f"--withhold names a source twice: {held}")
     if extra := [s for s in held if s not in args.sources]:
         raise SystemExit(f"--withhold {', '.join(extra)}: not one of --sources")
-    if set(held) == set(args.sources):
+    if set(held) == set(args.sources) and not args.withhold_alone:
         raise SystemExit("--withhold needs a windowed source beside it: every source is withheld")
+    if args.withhold_alone and set(held) != set(args.sources):
+        raise SystemExit("--withhold-alone needs every --sources entry withheld")
+    if args.withhold_alone and args.withhold_until is None:
+        raise SystemExit("--withhold-alone needs --withhold-until: the roll-time cutoff day")
     if not args.run:
         raise SystemExit("--withhold needs --run: a withheld source's since comes from its run")
     if args.output_v2 is None and args.output_v3 is None:
@@ -1557,6 +1573,7 @@ def withheld_of(args: argparse.Namespace) -> Withheld | None:
         slots=frozenset(slot(source) for source in args.withhold),
         why={"en": args.withhold_why.strip(), "ar": args.withhold_why_ar.strip()},
         until=args.withhold_until,
+        alone=args.withhold_alone,
     )
 
 
